@@ -111,7 +111,7 @@ export default function InfoScreen() {
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
-                events@usaweightlifting
+                events@usaweightlifting.org
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>

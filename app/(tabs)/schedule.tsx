@@ -165,7 +165,7 @@ function DayView({ day, letterFilter }: { day: DaySchedule; letterFilter: string
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
           <ThemedText style={styles.emptyText}>
-            No sessions found for Group {letterFilter}
+            No {letterFilter} sessions found
           </ThemedText>
         </View>
       )}
@@ -229,7 +229,8 @@ export default function ScheduleScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
         backgroundColor: colors.background,
-        borderBottomColor: colors.border 
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
       }]}>
         <Pressable
           style={({ pressed }) => [
@@ -243,7 +244,7 @@ export default function ScheduleScreen() {
           onPress={() => setShowFilterModal(true)}
         >
           <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `Group ${letterFilter}` : 'All Groups'}
+            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
           </ThemedText>
           <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
         </Pressable>
@@ -276,7 +277,11 @@ export default function ScheduleScreen() {
         onRequestClose={() => setShowFilterModal(false)}
       >
         <Pressable 
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, { 
+            backgroundColor: currentTheme === 'dark' 
+              ? 'rgba(0,0,0,0.6)' 
+              : 'rgba(0,0,0,0.4)' 
+          }]}
           onPress={() => setShowFilterModal(false)}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -294,7 +299,7 @@ export default function ScheduleScreen() {
                 { color: colors.text },
                 letterFilter === '' && { color: '#007AFF' }
               ]}>
-                All Groups
+                All Sessions
               </ThemedText>
               {letterFilter === '' && (
                 <IconSymbol name="checkmark" size={16} color="#007AFF" />
@@ -316,7 +321,7 @@ export default function ScheduleScreen() {
                   { color: colors.text },
                   letterFilter === letter && { color: '#007AFF' }
                 ]}>
-                  Group {letter}
+                  {letter} Session
                 </ThemedText>
                 {letterFilter === letter && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />

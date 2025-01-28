@@ -112,7 +112,8 @@ export default function SavedScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
         backgroundColor: colors.background,
-        borderBottomColor: colors.border 
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
       }]}>
         <Pressable
           style={({ pressed }) => [
@@ -126,7 +127,7 @@ export default function SavedScreen() {
           onPress={() => setShowFilterModal(true)}
         >
           <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `Group ${letterFilter}` : 'All Groups'}
+            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
           </ThemedText>
           <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
         </Pressable>
@@ -141,7 +142,7 @@ export default function SavedScreen() {
           <View style={styles.emptyContainer}>
             <ThemedText style={styles.emptyText}>
               {letterFilter 
-                ? `No saved sessions found for Group ${letterFilter}`
+                ? `No ${letterFilter} sessions found`
                 : 'No saved sessions'}
             </ThemedText>
           </View>
@@ -155,7 +156,11 @@ export default function SavedScreen() {
         onRequestClose={() => setShowFilterModal(false)}
       >
         <Pressable 
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, { 
+            backgroundColor: currentTheme === 'dark' 
+              ? 'rgba(0,0,0,0.6)' 
+              : 'rgba(0,0,0,0.4)' 
+          }]}
           onPress={() => setShowFilterModal(false)}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -173,7 +178,7 @@ export default function SavedScreen() {
                 { color: colors.text },
                 letterFilter === '' && { color: '#007AFF' }
               ]}>
-                All Groups
+                All Sessions
               </ThemedText>
               {letterFilter === '' && (
                 <IconSymbol name="checkmark" size={16} color="#007AFF" />
@@ -195,7 +200,7 @@ export default function SavedScreen() {
                   { color: colors.text },
                   letterFilter === letter && { color: '#007AFF' }
                 ]}>
-                  Group {letter}
+                  {letter} Session
                 </ThemedText>
                 {letterFilter === letter && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />

@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
 
@@ -10,6 +11,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 export default function TabLayout() {
   const { currentTheme } = useTheme();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
@@ -40,8 +42,11 @@ export default function TabLayout() {
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: Platform.OS === 'ios' ? 85 : 60,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+          height: Platform.OS === 'ios' ? 50 + insets.bottom : 60,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 10,
+        },
+        tabBarItemStyle: {
+          marginTop: 8,
         },
         headerStyle: {
           backgroundColor: colors.background,
@@ -50,6 +55,7 @@ export default function TabLayout() {
         headerLargeTitle: true,
         headerTransparent: false,
         tabBarButton: HapticTab,
+        tabBarShowLabel: false,
       }}>
       <Tabs.Screen
         name="schedule"
