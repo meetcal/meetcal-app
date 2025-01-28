@@ -9,7 +9,27 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.memohnsen.meetcal",
+      "usesIcloudStorage": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSUbiquitousContainers": {
+          "iCloud.com.memohnsen.meetcal": {
+            "NSUbiquitousContainerIsDocumentScopePublic": true,
+            "NSUbiquitousContainerName": "Meet Calendar",
+            "NSUbiquitousContainerSupportedFolderLevels": "Any"
+          }
+        }
+      },
+      "entitlements": {
+        "com.apple.developer.icloud-container-identifiers": [
+          "iCloud.com.memohnsen.meetcal"
+        ],
+        "com.apple.developer.icloud-services": [
+          "CloudKit"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,6 +56,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "a0017b93-a31e-42b1-b36a-11cb5eedf11f"
+      }
+    },
+    "owner": "memohnsen"
   }
 }

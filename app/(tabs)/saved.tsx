@@ -1,0 +1,331 @@
+import { StyleSheet, View, FlatList, Pressable, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
+import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+
+// Platform colors for visual reference
+const platformColors = {
+  Red: '#FF6B6B',
+  White: '#4A4A4A',
+  Blue: '#4DABF7',
+};
+
+export default function SavedScreen() {
+  const { savedSessions } = useSavedSessions();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [letterFilter, setLetterFilter] = useState('');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
+  // Extract unique letters from saved sessions
+  const filterOptions = useMemo(() => {
+    const letterSet = new Set<string>();
+    savedSessions.forEach(session => {
+      const letter = session.weightClass.split(' ')[1];
+      if (letter) letterSet.add(letter);
+    });
+    return Array.from(letterSet).sort();
+  }, [savedSessions]);
+
+  // Filter saved sessions
+  const filteredSessions = useMemo(() => {
+    if (!letterFilter) return savedSessions;
+    return savedSessions.filter(session => 
+      session.weightClass.endsWith(letterFilter)
+    );
+  }, [savedSessions, letterFilter]);
+
+  const handleFilterSelect = (letter: string) => {
+    setLetterFilter(letter);
+    setShowFilterModal(false);
+  };
+
+  const renderSession = ({ item }) => (
+    <Pressable
+      style={({ pressed }) => [
+        styles.sessionContainer,
+        pressed && styles.sessionContainerPressed,
+      ]}
+      onPress={() => router.push({
+        pathname: '/(screens)/schedule-details',
+        params: item
+      })}
+    >
+      <ThemedText style={styles.sessionTitle}>Session {item.sessionNumber}</ThemedText>
+      <View style={styles.timeContainer}>
+        <View style={styles.timeRow}>
+          <View style={styles.timeBlock}>
+            <ThemedText style={styles.timeLabel}>Weigh-in:</ThemedText>
+            <ThemedText style={styles.timeText}>{item.weighInTime}</ThemedText>
+          </View>
+          <View style={styles.timeSeparator} />
+          <View style={styles.timeBlock}>
+            <ThemedText style={styles.timeLabel}>Start:</ThemedText>
+            <ThemedText style={styles.timeText}>{item.startTime}</ThemedText>
+          </View>
+        </View>
+      </View>
+      
+      <View style={styles.platformContainer}>
+        <View style={[
+          styles.platformIndicator,
+          { backgroundColor: platformColors[item.platform as keyof typeof platformColors] }
+        ]}>
+          <ThemedText style={styles.platformText}>
+            {item.platform}
+          </ThemedText>
+        </View>
+        <ThemedText style={styles.weightClassText}>{item.weightClass}</ThemedText>
+      </View>
+    </Pressable>
+  );
+
+  return (
+    <ThemedView style={styles.container}>
+      <View style={styles.filterContainer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.filterButton,
+            pressed && styles.filterButtonPressed,
+          ]}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <ThemedText style={styles.filterButtonText}>
+            {letterFilter ? `Group ${letterFilter}` : 'All Groups'}
+          </ThemedText>
+          <IconSymbol name="chevron.down" size={12} color="#666666" />
+        </Pressable>
+      </View>
+
+      <FlatList
+        data={filteredSessions}
+        keyExtractor={item => item.id}
+        renderItem={renderSession}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>
+              {letterFilter 
+                ? `No saved sessions found for Group ${letterFilter}`
+                : 'No saved sessions'}
+            </ThemedText>
+          </View>
+        )}
+      />
+
+      <Modal
+        visible={showFilterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.modalOption,
+                letterFilter === '' && styles.modalOptionSelected,
+                pressed && styles.modalOptionPressed,
+              ]}
+              onPress={() => handleFilterSelect('')}
+            >
+              <ThemedText style={[
+                styles.modalOptionText,
+                letterFilter === '' && styles.modalOptionTextSelected,
+              ]}>
+                All Groups
+              </ThemedText>
+              {letterFilter === '' && (
+                <IconSymbol name="checkmark" size={16} color="#007AFF" />
+              )}
+            </Pressable>
+            {filterOptions.map(letter => (
+              <Pressable
+                key={letter}
+                style={({ pressed }) => [
+                  styles.modalOption,
+                  letterFilter === letter && styles.modalOptionSelected,
+                  pressed && styles.modalOptionPressed,
+                ]}
+                onPress={() => handleFilterSelect(letter)}
+              >
+                <ThemedText style={[
+                  styles.modalOptionText,
+                  letterFilter === letter && styles.modalOptionTextSelected,
+                ]}>
+                  Group {letter}
+                </ThemedText>
+                {letterFilter === letter && (
+                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  filterContainer: {
+    padding: 16,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#C6C6C8',
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#C6C6C8',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  filterButtonPressed: {
+    opacity: 0.8,
+  },
+  filterButtonText: {
+    fontSize: 15,
+    color: '#666666',
+    fontWeight: '600',
+  },
+  list: {
+    padding: 16,
+  },
+  sessionContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sessionContainerPressed: {
+    opacity: 0.9,
+  },
+  sessionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    padding: 16,
+    paddingBottom: 0,
+  },
+  timeContainer: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  timeBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeSeparator: {
+    width: 24,
+  },
+  timeLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 4,
+  },
+  timeText: {
+    fontSize: 15,
+    color: '#666',
+  },
+  platformContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    margin: 16,
+    marginTop: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  platformIndicator: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  platformText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  weightClassText: {
+    fontSize: 15,
+    color: '#666',
+  },
+  emptyContainer: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E1E1E1',
+  },
+  modalOptionSelected: {
+    backgroundColor: '#F5F5F5',
+  },
+  modalOptionPressed: {
+    opacity: 0.8,
+  },
+  modalOptionText: {
+    fontSize: 17,
+    color: '#000000',
+  },
+  modalOptionTextSelected: {
+    color: '#007AFF',
+  },
+}); 
