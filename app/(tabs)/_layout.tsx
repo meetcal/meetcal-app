@@ -1,33 +1,55 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { currentTheme } = useTheme();
+  const navigation = useNavigation();
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#1C1C1E' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+  };
+
+  // Update navigation theme when theme changes
+  React.useEffect(() => {
+    navigation.setOptions({
+      ...(currentTheme === 'dark' ? DarkTheme : DefaultTheme),
+    });
+  }, [currentTheme, navigation]);
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: colors.text,
+        tabBarInactiveTintColor: colors.secondaryText,
+        tabBarStyle: {
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+          height: Platform.OS === 'ios' ? 85 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+        },
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.text,
         headerLargeTitle: true,
         headerTransparent: false,
-        headerStyle: {
-          backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
-        },
         tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            position: 'absolute',
-          },
-          default: {},
-        }),
       }}>
       <Tabs.Screen
         name="schedule"

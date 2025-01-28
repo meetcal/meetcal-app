@@ -13,7 +13,9 @@
       "bundleIdentifier": "com.memohnsen.meetcal",
       "usesIcloudStorage": true,
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSUbiquitousContainers": {
           "iCloud.com.memohnsen.meetcal": {
             "NSUbiquitousContainerIsDocumentScopePublic": true,
@@ -35,7 +37,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.memohnsen.meetcal"
     },
     "web": {
       "bundler": "metro",

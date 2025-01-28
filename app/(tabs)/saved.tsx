@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // Platform colors for visual reference
 const platformColors = {
@@ -20,6 +21,16 @@ export default function SavedScreen() {
   const insets = useSafeAreaInsets();
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const { currentTheme } = useTheme();
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
 
   // Extract unique letters from saved sessions
   const filterOptions = useMemo(() => {
@@ -48,29 +59,40 @@ export default function SavedScreen() {
     <Pressable
       style={({ pressed }) => [
         styles.sessionContainer,
-        pressed && styles.sessionContainerPressed,
+        { backgroundColor: colors.card },
+        pressed && { backgroundColor: colors.pressed }
       ]}
       onPress={() => router.push({
         pathname: '/(screens)/schedule-details',
         params: item
       })}
     >
-      <ThemedText style={styles.sessionTitle}>Session {item.sessionNumber}</ThemedText>
+      <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
+        Session {item.sessionNumber}
+      </ThemedText>
       <View style={styles.timeContainer}>
         <View style={styles.timeRow}>
           <View style={styles.timeBlock}>
-            <ThemedText style={styles.timeLabel}>Weigh-in:</ThemedText>
-            <ThemedText style={styles.timeText}>{item.weighInTime}</ThemedText>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Weigh-in:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {item.weighInTime}
+            </ThemedText>
           </View>
           <View style={styles.timeSeparator} />
           <View style={styles.timeBlock}>
-            <ThemedText style={styles.timeLabel}>Start:</ThemedText>
-            <ThemedText style={styles.timeText}>{item.startTime}</ThemedText>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Start:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {item.startTime}
+            </ThemedText>
           </View>
         </View>
       </View>
       
-      <View style={styles.platformContainer}>
+      <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
         <View style={[
           styles.platformIndicator,
           { backgroundColor: platformColors[item.platform as keyof typeof platformColors] }
@@ -79,25 +101,34 @@ export default function SavedScreen() {
             {item.platform}
           </ThemedText>
         </View>
-        <ThemedText style={styles.weightClassText}>{item.weightClass}</ThemedText>
+        <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
+          {item.weightClass}
+        </ThemedText>
       </View>
     </Pressable>
   );
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.filterContainer}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: colors.border 
+      }]}>
         <Pressable
           style={({ pressed }) => [
             styles.filterButton,
-            pressed && styles.filterButtonPressed,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border 
+            },
+            pressed && { backgroundColor: colors.pressed }
           ]}
           onPress={() => setShowFilterModal(true)}
         >
-          <ThemedText style={styles.filterButtonText}>
+          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
             {letterFilter ? `Group ${letterFilter}` : 'All Groups'}
           </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color="#666666" />
+          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
         </Pressable>
       </View>
 
@@ -127,18 +158,20 @@ export default function SavedScreen() {
           style={styles.modalOverlay}
           onPress={() => setShowFilterModal(false)}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Pressable
               style={({ pressed }) => [
                 styles.modalOption,
-                letterFilter === '' && styles.modalOptionSelected,
-                pressed && styles.modalOptionPressed,
+                { borderBottomColor: colors.border },
+                letterFilter === '' && { backgroundColor: colors.pressed },
+                pressed && { opacity: 0.8 }
               ]}
               onPress={() => handleFilterSelect('')}
             >
               <ThemedText style={[
                 styles.modalOptionText,
-                letterFilter === '' && styles.modalOptionTextSelected,
+                { color: colors.text },
+                letterFilter === '' && { color: '#007AFF' }
               ]}>
                 All Groups
               </ThemedText>
@@ -151,14 +184,16 @@ export default function SavedScreen() {
                 key={letter}
                 style={({ pressed }) => [
                   styles.modalOption,
-                  letterFilter === letter && styles.modalOptionSelected,
-                  pressed && styles.modalOptionPressed,
+                  { borderBottomColor: colors.border },
+                  letterFilter === letter && { backgroundColor: colors.pressed },
+                  pressed && { opacity: 0.8 }
                 ]}
                 onPress={() => handleFilterSelect(letter)}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
-                  letterFilter === letter && styles.modalOptionTextSelected,
+                  { color: colors.text },
+                  letterFilter === letter && { color: '#007AFF' }
                 ]}>
                   Group {letter}
                 </ThemedText>
@@ -177,7 +212,6 @@ export default function SavedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   filterContainer: {
     padding: 16,
@@ -313,19 +347,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E1E1',
-  },
-  modalOptionSelected: {
-    backgroundColor: '#F5F5F5',
-  },
-  modalOptionPressed: {
-    opacity: 0.8,
   },
   modalOptionText: {
     fontSize: 17,
-    color: '#000000',
-  },
-  modalOptionTextSelected: {
-    color: '#007AFF',
   },
 }); 
