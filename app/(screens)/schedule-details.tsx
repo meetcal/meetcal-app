@@ -5,6 +5,8 @@ import * as Calendar from 'expo-calendar';
 import { useState, useEffect } from 'react';
 import { Linking } from 'react-native';
 import { format } from 'date-fns';
+import { useTheme } from '@/contexts/ThemeContext';
+import { getPlatformColors } from '@/data/schedule';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -24,8 +26,18 @@ export default function SessionDetailsScreen() {
     startTime: string;
     weighInTime: string;
   }>();
+  const { currentTheme } = useTheme();
+  const platformColors = getPlatformColors();
 
   const isSaved = isSessionSaved(params.id);
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+  };
 
   useEffect(() => {
     (async () => {
@@ -35,10 +47,10 @@ export default function SessionDetailsScreen() {
   }, []);
 
   const showSaveAlert = (action: 'save' | 'remove') => {
-    const title = action === 'save' ? 'Session Saved' : 'Session Removed';
+    const title = action === 'save' ? 'Session Saved' : 'Session Unsaved';
     const message = action === 'save'
       ? `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been saved to your list`
-      : `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been removed from your list`;
+      : `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been unsaved from your list`;
 
     Alert.alert(
       title,
@@ -171,32 +183,59 @@ export default function SessionDetailsScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.card}>
-          <View style={styles.section}>
-            <ThemedText style={styles.label}>Session</ThemedText>
-            <ThemedText style={styles.value}>{params.sessionNumber}</ThemedText>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.content, { backgroundColor: colors.background }]}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Session
+            </ThemedText>
+            <ThemedText style={[styles.value, { color: colors.text }]}>
+              {params.sessionNumber}
+            </ThemedText>
           </View>
 
-          <View style={styles.section}>
-            <ThemedText style={styles.label}>Platform</ThemedText>
-            <ThemedText style={styles.value}>{params.platform}</ThemedText>
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Platform
+            </ThemedText>
+            <View style={styles.platformRow}>
+              <View style={[
+                styles.platformIndicator,
+                { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
+              ]}>
+                <ThemedText style={styles.platformText}>
+                  {params.platform}
+                </ThemedText>
+              </View>
+            </View>
           </View>
 
-          <View style={styles.section}>
-            <ThemedText style={styles.label}>Weight Class</ThemedText>
-            <ThemedText style={styles.value}>{params.weightClass}</ThemedText>
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Weight Class
+            </ThemedText>
+            <ThemedText style={[styles.value, { color: colors.text }]}>
+              {params.weightClass}
+            </ThemedText>
           </View>
 
-          <View style={styles.section}>
-            <ThemedText style={styles.label}>Weigh-in Time</ThemedText>
-            <ThemedText style={styles.value}>{params.weighInTime}</ThemedText>
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Weigh-in Time
+            </ThemedText>
+            <ThemedText style={[styles.value, { color: colors.text }]}>
+              {params.weighInTime}
+            </ThemedText>
           </View>
 
           <View style={[styles.section, styles.lastSection]}>
-            <ThemedText style={styles.label}>Start Time</ThemedText>
-            <ThemedText style={styles.value}>{params.startTime}</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Start Time
+            </ThemedText>
+            <ThemedText style={[styles.value, { color: colors.text }]}>
+              {params.startTime}
+            </ThemedText>
           </View>
 
           <View style={styles.buttonContainer}>
@@ -208,7 +247,7 @@ export default function SessionDetailsScreen() {
               onPress={handleSavePress}
             >
               <ThemedText style={styles.saveButtonText}>
-                {isSaved ? 'Remove Session' : 'Save Session'}
+                {isSaved ? 'Unsave Session' : 'Save Session'}
               </ThemedText>
             </Pressable>
 
@@ -233,13 +272,11 @@ export default function SessionDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   content: {
     padding: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: {
@@ -254,19 +291,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E1E1',
   },
   lastSection: {
     borderBottomWidth: 0,
   },
   label: {
     fontSize: 15,
-    color: '#6B6B6B',
     marginBottom: 4,
   },
   value: {
     fontSize: 17,
-    color: '#000000',
+  },
+  platformRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  platformIndicator: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  platformText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   buttonContainer: {
     padding: 16,
