@@ -1,10 +1,26 @@
-import { StyleSheet, View, Linking, Pressable, Platform } from 'react-native';
+import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { venueConfig, getFullAddress } from '@/config/venue';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function InfoScreen() {
+  const { currentTheme, setTheme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  // Define theme colors
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+    link: '#007AFF', // iOS blue stays the same in both modes
+  };
+
   const handlePress = (url: string) => {
     Linking.openURL(url);
   };
@@ -31,40 +47,60 @@ export default function InfoScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.content}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + 100 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Venue Info */}
-        <View style={styles.card}>
-          <ThemedText style={styles.cardTitle}>Venue Information</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            Venue Information
+          </ThemedText>
           
-          <View style={styles.section}>
-            <ThemedText style={styles.label}>Location</ThemedText>
-            <ThemedText style={styles.value}>{venueConfig.name}</ThemedText>
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Location
+            </ThemedText>
+            <ThemedText style={[styles.value, { color: colors.text }]}>
+              {venueConfig.name}
+            </ThemedText>
           </View>
           
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              pressed && styles.sectionPressed
+              { borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={handleAddressPress}
           >
-            <ThemedText style={styles.label}>Address</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Address
+            </ThemedText>
             <View style={styles.addressContainer}>
               <View>
-                <ThemedText style={styles.link}>{venueConfig.address.street}</ThemedText>
-                <ThemedText style={styles.link}>
+                <ThemedText style={[styles.link, { color: colors.link }]}>
+                  {venueConfig.address.street}
+                </ThemedText>
+                <ThemedText style={[styles.link, { color: colors.link }]}>
                   {venueConfig.address.city}, {venueConfig.address.state} {venueConfig.address.zip}
                 </ThemedText>
               </View>
-              <IconSymbol name="chevron.right" size={20} color="#007AFF" />
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
 
         {/* USAW Contact */}
-        <View style={styles.card}>
-          <ThemedText style={styles.cardTitle}>USAW Contact</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            USAW Contact
+          </ThemedText>
           
           <Pressable
             style={({ pressed }) => [
@@ -74,17 +110,23 @@ export default function InfoScreen() {
             ]}
             onPress={() => handlePress('mailto:events@usaweightlifting.org')}
           >
-            <ThemedText style={styles.label}>Email</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Email
+            </ThemedText>
             <View style={styles.linkRow}>
-              <ThemedText style={styles.link}>events@usaweightlifting</ThemedText>
-              <IconSymbol name="chevron.right" size={20} color="#007AFF" />
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                events@usaweightlifting
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
 
         {/* App Support */}
-        <View style={styles.card}>
-          <ThemedText style={styles.cardTitle}>App Support</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            App Support
+          </ThemedText>
           
           <Pressable
             style={({ pressed }) => [
@@ -94,17 +136,23 @@ export default function InfoScreen() {
             ]}
             onPress={() => handlePress('mailto:memohnsen@gmail.com')}
           >
-            <ThemedText style={styles.label}>Contact</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Contact
+            </ThemedText>
             <View style={styles.linkRow}>
-              <ThemedText style={styles.link}>memohnsen@gmail.com</ThemedText>
-              <IconSymbol name="chevron.right" size={20} color="#007AFF" />
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                memohnsen@gmail.com
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
 
         {/* Other Projects */}
-        <View style={styles.card}>
-          <ThemedText style={styles.cardTitle}>See Our Other Projects</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            See Our Other Projects
+          </ThemedText>
           
           <Pressable
             style={({ pressed }) => [
@@ -114,14 +162,39 @@ export default function InfoScreen() {
             ]}
             onPress={() => handlePress('https://wl-wargames.com')}
           >
-            <ThemedText style={styles.label}>Competition Simulator</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              Competition Simulator
+            </ThemedText>
             <View style={styles.linkRow}>
-              <ThemedText style={styles.link}>War Games</ThemedText>
-              <IconSymbol name="chevron.right" size={20} color="#007AFF" />
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                War Games
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
-      </View>
+
+        {/* Theme Settings */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            App Settings
+          </ThemedText>
+          
+          <View style={[styles.section, styles.lastSection]}>
+            <View style={styles.settingRow}>
+              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
+                Dark Mode
+              </ThemedText>
+              <Switch
+                value={currentTheme === 'dark'}
+                onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -129,13 +202,14 @@ export default function InfoScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     padding: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 16,
     shadowColor: '#000',
@@ -157,7 +231,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E1E1',
   },
   lastSection: {
     borderBottomWidth: 0,
@@ -167,12 +240,10 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 15,
-    color: '#6B6B6B',
     marginBottom: 4,
   },
   value: {
     fontSize: 17,
-    color: '#000000',
   },
   linkRow: {
     flexDirection: 'row',
@@ -181,12 +252,20 @@ const styles = StyleSheet.create({
   },
   link: {
     fontSize: 17,
-    color: '#007AFF',
   },
   addressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 4,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  settingLabel: {
+    fontSize: 17,
   },
 }); 

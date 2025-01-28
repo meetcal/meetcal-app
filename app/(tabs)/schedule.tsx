@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { schedule, getPlatformColors } from '@/data/schedule';
 import { Session, Platform, DaySchedule } from '@/types/schedule';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -40,7 +41,17 @@ function calculateWeighInTime(startTime: string): string {
 function SessionView({ session, letterFilter }: { session: Session; letterFilter: string }) {
   const router = useRouter();
   const platformColors = getPlatformColors();
+  const { currentTheme } = useTheme();
   
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
+
   // Filter platforms based on letterFilter
   const filteredPlatforms = letterFilter 
     ? session.platforms.filter(platform => platform.weightClass.endsWith(letterFilter))
@@ -60,34 +71,47 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
     });
   };
   
-  // Only render if there are platforms to show
   if (filteredPlatforms.length === 0) return null;
   
   return (
-    <View style={styles.sessionContainer}>
-      <ThemedText style={styles.sessionTitle}>Session {session.number}</ThemedText>
+    <View style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
+      <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
+        Session {session.number}
+      </ThemedText>
       <View style={styles.timeContainer}>
         <View style={styles.timeRow}>
           <View style={styles.timeBlock}>
-            <ThemedText style={styles.timeLabel}>Weigh-in:</ThemedText>
-            <ThemedText style={styles.timeText}>{session.weighInTime}</ThemedText>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Weigh-in:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {session.weighInTime}
+            </ThemedText>
           </View>
           <View style={styles.timeSeparator} />
           <View style={styles.timeBlock}>
-            <ThemedText style={styles.timeLabel}>Start:</ThemedText>
-            <ThemedText style={styles.timeText}>{session.startTime}</ThemedText>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Start:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {session.startTime}
+            </ThemedText>
           </View>
         </View>
       </View>
       
-      <View style={styles.platformsContainer}>
+      <View style={[styles.platformsContainer, { backgroundColor: colors.card }]}>
         {filteredPlatforms.map((platform, index) => (
           <Pressable
             key={platform.platform}
             style={({ pressed }) => [
               styles.platformCard,
-              index < filteredPlatforms.length - 1 && styles.platformCardBorder,
-              pressed && styles.platformCardPressed,
+              { backgroundColor: colors.card },
+              index < filteredPlatforms.length - 1 && [
+                styles.platformCardBorder,
+                { borderBottomColor: colors.border }
+              ],
+              pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => handlePlatformPress(platform)}
           >
@@ -100,14 +124,14 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
                   {platform.platform}
                 </ThemedText>
               </View>
-              <ThemedText style={styles.weightClassText}>
+              <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
                 {platform.weightClass}
               </ThemedText>
             </View>
             <IconSymbol 
               name="chevron.right" 
               size={20} 
-              color="#C7C7CC"
+              color={colors.secondaryText}
             />
           </Pressable>
         ))}
@@ -155,6 +179,15 @@ export default function ScheduleScreen() {
   const [currentDate, setCurrentDate] = useState(schedule[0].date);
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const { currentTheme } = useTheme();
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+  };
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -193,19 +226,26 @@ export default function ScheduleScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.filterContainer}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: colors.border 
+      }]}>
         <Pressable
           style={({ pressed }) => [
             styles.filterButton,
-            pressed && styles.filterButtonPressed,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border 
+            },
+            pressed && { backgroundColor: colors.pressed }
           ]}
           onPress={() => setShowFilterModal(true)}
         >
-          <ThemedText style={styles.filterButtonText}>
+          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
             {letterFilter ? `Group ${letterFilter}` : 'All Groups'}
           </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color="#666666" />
+          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
         </Pressable>
       </View>
 
@@ -239,18 +279,20 @@ export default function ScheduleScreen() {
           style={styles.modalOverlay}
           onPress={() => setShowFilterModal(false)}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Pressable
               style={({ pressed }) => [
                 styles.modalOption,
-                letterFilter === '' && styles.modalOptionSelected,
-                pressed && styles.modalOptionPressed,
+                { borderBottomColor: colors.border },
+                letterFilter === '' && { backgroundColor: colors.pressed },
+                pressed && { opacity: 0.8 }
               ]}
               onPress={() => handleFilterSelect('')}
             >
               <ThemedText style={[
                 styles.modalOptionText,
-                letterFilter === '' && styles.modalOptionTextSelected,
+                { color: colors.text },
+                letterFilter === '' && { color: '#007AFF' }
               ]}>
                 All Groups
               </ThemedText>
@@ -263,14 +305,16 @@ export default function ScheduleScreen() {
                 key={letter}
                 style={({ pressed }) => [
                   styles.modalOption,
-                  letterFilter === letter && styles.modalOptionSelected,
-                  pressed && styles.modalOptionPressed,
+                  { borderBottomColor: colors.border },
+                  letterFilter === letter && { backgroundColor: colors.pressed },
+                  pressed && { opacity: 0.8 }
                 ]}
                 onPress={() => handleFilterSelect(letter)}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
-                  letterFilter === letter && styles.modalOptionTextSelected,
+                  { color: colors.text },
+                  letterFilter === letter && { color: '#007AFF' }
                 ]}>
                   Group {letter}
                 </ThemedText>
@@ -289,7 +333,6 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
   },
   pageContainer: {
     flex: 1,
@@ -298,7 +341,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   sessionContainer: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 16,
     shadowColor: '#000',
@@ -383,9 +425,6 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     padding: 16,
-    backgroundColor: '#F5F5F5',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#C6C6C8',
   },
   filterButton: {
     flexDirection: 'row',
@@ -394,10 +433,8 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C6C6C8',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -407,12 +444,8 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
   },
-  filterButtonPressed: {
-    opacity: 0.8,
-  },
   filterButtonText: {
     fontSize: 15,
-    color: '#666666',
     fontWeight: '600',
   },
   modalOverlay: {
