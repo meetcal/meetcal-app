@@ -62,36 +62,32 @@ export default function InfoScreen() {
             Venue Information
           </ThemedText>
           
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Location
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {venueConfig.name}
-            </ThemedText>
-          </View>
-          
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomColor: colors.border },
+              styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={handleAddressPress}
           >
             <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Address
+              Location
             </ThemedText>
-            <View style={styles.addressContainer}>
-              <View>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.address.street}
-                </ThemedText>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.address.city}, {venueConfig.address.state} {venueConfig.address.zip}
-                </ThemedText>
+            <View>
+              <ThemedText style={[styles.value, { color: colors.text, marginBottom: 4 }]}>
+                {venueConfig.name}
+              </ThemedText>
+              <View style={styles.addressContainer}>
+                <View>
+                  <ThemedText style={[styles.link, { color: colors.link }]}>
+                    {venueConfig.address.street}
+                  </ThemedText>
+                  <ThemedText style={[styles.link, { color: colors.link }]}>
+                    {venueConfig.address.city}, {venueConfig.address.state} {venueConfig.address.zip}
+                  </ThemedText>
+                </View>
+                <IconSymbol name="chevron.right" size={20} color={colors.link} />
               </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
@@ -122,22 +118,22 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* App Support */}
+        {/* App Info */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            App Support
+            App Information
           </ThemedText>
           
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              styles.lastSection,
-              pressed && styles.sectionPressed
+              { borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => handlePress('mailto:memohnsen@gmail.com')}
           >
             <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Contact
+              Support
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
@@ -146,24 +142,17 @@ export default function InfoScreen() {
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
-        </View>
 
-        {/* Other Projects */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            See Our Other Projects
-          </ThemedText>
-          
           <Pressable
             style={({ pressed }) => [
               styles.section,
               styles.lastSection,
-              pressed && styles.sectionPressed
+              pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => handlePress('https://wl-wargames.com')}
           >
             <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Competition Simulator
+              Other Projects
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
@@ -252,12 +241,13 @@ const styles = StyleSheet.create({
   },
   link: {
     fontSize: 17,
+    lineHeight: 22,
   },
   addressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
+    alignItems: 'flex-start',
+    marginTop: 2,
   },
   settingRow: {
     flexDirection: 'row',
