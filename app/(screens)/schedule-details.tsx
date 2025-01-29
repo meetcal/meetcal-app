@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, View, Pressable, Platform, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
@@ -183,89 +183,99 @@ export default function SessionDetailsScreen() {
   };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.content, { backgroundColor: colors.background }]}>
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Session
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {params.sessionNumber}
-            </ThemedText>
-          </View>
+    <>
+      <Stack.Screen
+        options={{
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          animation: 'slide_from_right',
+        }}
+      />
+      
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { backgroundColor: colors.background }]}>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View style={[styles.section, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Session
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {params.sessionNumber}
+              </ThemedText>
+            </View>
 
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Platform
-            </ThemedText>
-            <View style={styles.platformRow}>
-              <View style={[
-                styles.platformIndicator,
-                { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
-              ]}>
-                <ThemedText style={styles.platformText}>
-                  {params.platform}
-                </ThemedText>
+            <View style={[styles.section, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Platform
+              </ThemedText>
+              <View style={styles.platformRow}>
+                <View style={[
+                  styles.platformIndicator,
+                  { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
+                ]}>
+                  <ThemedText style={styles.platformText}>
+                    {params.platform}
+                  </ThemedText>
+                </View>
               </View>
             </View>
-          </View>
 
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Weight Class
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {params.weightClass}
-            </ThemedText>
-          </View>
-
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Weigh-in Time
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {params.weighInTime}
-            </ThemedText>
-          </View>
-
-          <View style={[styles.section, styles.lastSection]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Start Time
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {params.startTime}
-            </ThemedText>
-          </View>
-
-          <View style={styles.buttonContainer}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.saveButton,
-                pressed && styles.saveButtonPressed
-              ]}
-              onPress={handleSavePress}
-            >
-              <ThemedText style={styles.saveButtonText}>
-                {isSaved ? 'Unsave Session' : 'Save Session'}
+            <View style={[styles.section, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Weight Class
               </ThemedText>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.calendarButton,
-                pressed && styles.calendarButtonPressed
-              ]}
-              onPress={addToCalendar}
-            >
-              <ThemedText style={styles.calendarButtonText}>
-                Add to Calendar
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {params.weightClass}
               </ThemedText>
-            </Pressable>
+            </View>
+
+            <View style={[styles.section, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Weigh-in Time
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {params.weighInTime}
+              </ThemedText>
+            </View>
+
+            <View style={[styles.section, styles.lastSection]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Start Time
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {params.startTime}
+              </ThemedText>
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  pressed && styles.saveButtonPressed
+                ]}
+                onPress={handleSavePress}
+              >
+                <ThemedText style={styles.saveButtonText}>
+                  {isSaved ? 'Unsave Session' : 'Save Session'}
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.calendarButton,
+                  pressed && styles.calendarButtonPressed
+                ]}
+                onPress={addToCalendar}
+              >
+                <ThemedText style={styles.calendarButtonText}>
+                  Add to Calendar
+                </ThemedText>
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
-    </ThemedView>
+      </ThemedView>
+    </>
   );
 }
 
