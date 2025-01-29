@@ -97,24 +97,6 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
             </ThemedText>
             <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
           </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Best Snatch 2024:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.bestSnatch}kg</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Best CJ 2024:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.bestCJ}kg</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Best Total 2024:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.bestTotal}kg</ThemedText>
-          </View>
         </View>
       )}
     </View>
