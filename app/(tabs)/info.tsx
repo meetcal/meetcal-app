@@ -92,32 +92,6 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* USAW Contact */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            USAW Contact
-          </ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && styles.sectionPressed
-            ]}
-            onPress={() => handlePress('mailto:events@usaweightlifting.org')}
-          >
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Email
-            </ThemedText>
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                events@usaweightlifting.org
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-        </View>
-
         {/* App Info */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
