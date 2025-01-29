@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { StyleSheet, View, Pressable, Platform, Alert } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, Alert, ScrollView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
 import { useState, useEffect } from 'react';
@@ -13,6 +13,83 @@ import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
+import { liftingResults } from '@/data/athletes';
+
+function getSessionAthletes(sessionNumber: number) {
+  return liftingResults
+    .filter(athlete => athlete.session?.number === sessionNumber)
+    .reduce((platforms, athlete) => {
+      const platform = athlete.session!.platform;
+      if (!platforms[platform]) {
+        platforms[platform] = [];
+      }
+      platforms[platform].push(athlete);
+      return platforms;
+    }, {} as Record<string, typeof liftingResults>);
+}
+
+function SessionAthletes({ sessionNumber }: { sessionNumber: number }) {
+  const { currentTheme } = useTheme();
+  const athletes = getSessionAthletes(sessionNumber);
+  
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+  };
+  
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
+          Session Athletes
+        </ThemedText>
+      </View>
+      
+      {Object.entries(athletes).map(([platform, platformAthletes]) => (
+        <View key={platform}>
+          {platformAthletes.map((athlete, index) => (
+            <View 
+              key={athlete.name} 
+              style={[
+                styles.athleteRow,
+                index !== platformAthletes.length - 1 && { 
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border 
+                }
+              ]}
+            >
+              <View style={styles.athleteHeader}>
+                <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
+                <ThemedText style={{ color: colors.secondaryText }}>{athlete.club}</ThemedText>
+              </View>
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Entry Total</ThemedText>
+                  <ThemedText style={styles.statValue}>{athlete.entryTotal}kg</ThemedText>
+                </View>
+                <View style={styles.statItem}>
+                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Snatch</ThemedText>
+                  <ThemedText style={styles.statValue}>{athlete.bestSnatch}kg</ThemedText>
+                </View>
+                <View style={styles.statItem}>
+                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best CJ</ThemedText>
+                  <ThemedText style={styles.statValue}>{athlete.bestCJ}kg</ThemedText>
+                </View>
+                <View style={styles.statItem}>
+                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Total</ThemedText>
+                  <ThemedText style={styles.statValue}>{athlete.bestTotal}kg</ThemedText>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
@@ -193,87 +270,91 @@ export default function SessionDetailsScreen() {
       />
       
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.content, { backgroundColor: colors.background }]}>
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Session
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.sessionNumber}
-              </ThemedText>
-            </View>
+        <ScrollView>
+          <View style={[styles.content, { backgroundColor: colors.background }]}>
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                  Session
+                </ThemedText>
+                <ThemedText style={[styles.value, { color: colors.text }]}>
+                  {params.sessionNumber}
+                </ThemedText>
+              </View>
 
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Platform
-              </ThemedText>
-              <View style={styles.platformRow}>
-                <View style={[
-                  styles.platformIndicator,
-                  { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
-                ]}>
-                  <ThemedText style={styles.platformText}>
-                    {params.platform}
-                  </ThemedText>
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                  Platform
+                </ThemedText>
+                <View style={styles.platformRow}>
+                  <View style={[
+                    styles.platformIndicator,
+                    { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
+                  ]}>
+                    <ThemedText style={styles.platformText}>
+                      {params.platform}
+                    </ThemedText>
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Weight Class
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.weightClass}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Weigh-in Time
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.weighInTime}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.section, styles.lastSection]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Start Time
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.startTime}
-              </ThemedText>
-            </View>
-
-            <View style={styles.buttonContainer}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  pressed && styles.saveButtonPressed
-                ]}
-                onPress={handleSavePress}
-              >
-                <ThemedText style={styles.saveButtonText}>
-                  {isSaved ? 'Unsave Session' : 'Save Session'}
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                  Weight Class
                 </ThemedText>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.calendarButton,
-                  pressed && styles.calendarButtonPressed
-                ]}
-                onPress={addToCalendar}
-              >
-                <ThemedText style={styles.calendarButtonText}>
-                  Add to Calendar
+                <ThemedText style={[styles.value, { color: colors.text }]}>
+                  {params.weightClass}
                 </ThemedText>
-              </Pressable>
+              </View>
+
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                  Weigh-in Time
+                </ThemedText>
+                <ThemedText style={[styles.value, { color: colors.text }]}>
+                  {params.weighInTime}
+                </ThemedText>
+              </View>
+
+              <View style={[styles.section, styles.lastSection]}>
+                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                  Start Time
+                </ThemedText>
+                <ThemedText style={[styles.value, { color: colors.text }]}>
+                  {params.startTime}
+                </ThemedText>
+              </View>
+
+              <View style={styles.buttonContainer}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    pressed && styles.saveButtonPressed
+                  ]}
+                  onPress={handleSavePress}
+                >
+                  <ThemedText style={styles.saveButtonText}>
+                    {isSaved ? 'Unsave Session' : 'Save Session'}
+                  </ThemedText>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.calendarButton,
+                    pressed && styles.calendarButtonPressed
+                  ]}
+                  onPress={addToCalendar}
+                >
+                  <ThemedText style={styles.calendarButtonText}>
+                    Add to Calendar
+                  </ThemedText>
+                </Pressable>
+              </View>
             </View>
+            
+            <SessionAthletes sessionNumber={parseInt(params.sessionNumber)} />
           </View>
-        </View>
+        </ScrollView>
       </ThemedView>
     </>
   );
@@ -285,6 +366,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingBottom: 32,
   },
   card: {
     borderRadius: 12,
@@ -357,5 +439,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  athleteRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  athleteHeader: {
+    gap: 2,
+  },
+  athleteName: {
+    fontSize: 17,
+    fontWeight: '500',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 16,
+  },
+  statItem: {
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 }); 
