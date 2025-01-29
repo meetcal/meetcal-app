@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { schedule, getPlatformColors } from '@/data/schedule';
 import { Session, Platform, DaySchedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
+import { PageIndicator } from '../../components/PageIndicator';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -180,6 +181,7 @@ export default function ScheduleScreen() {
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
+  const [currentPage, setCurrentPage] = useState(0);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -225,6 +227,18 @@ export default function ScheduleScreen() {
     setShowFilterModal(false);
   };
 
+  const handlePageChange = useCallback((index: number) => {
+    setCurrentPage(index);
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+  }, []);
+
+  const flatListRef = useRef<FlatList>(null);
+
+  const onScroll = useCallback((event: any) => {
+    const newPage = Math.round(event.nativeEvent.contentOffset.x / width);
+    setCurrentPage(newPage);
+  }, [width]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -250,25 +264,37 @@ export default function ScheduleScreen() {
         </Pressable>
       </View>
 
-      <FlatList
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        data={schedule}
-        keyExtractor={item => item.date}
-        renderItem={({ item }) => (
-          <View style={[styles.pageContainer, { width }]}>
-            <DayView day={item} letterFilter={letterFilter} />
-          </View>
-        )}
-        getItemLayout={(data, index) => ({
-          length: width,
-          offset: width * index,
-          index,
-        })}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-      />
+      <View style={styles.contentContainer}>
+        <FlatList
+          ref={flatListRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          data={schedule}
+          keyExtractor={item => item.date}
+          renderItem={({ item }) => (
+            <View style={[styles.pageContainer, { width }]}>
+              <DayView day={item} letterFilter={letterFilter} />
+            </View>
+          )}
+          getItemLayout={(data, index) => ({
+            length: width,
+            offset: width * index,
+            index,
+          })}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={styles.flatListContent}
+        />
+
+        <PageIndicator 
+          count={schedule.length}
+          currentPage={currentPage}
+          onPageChange={handlePageChange}
+        />
+      </View>
 
       <Modal
         visible={showFilterModal}
@@ -493,5 +519,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  contentContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  flatListContent: {
+    paddingBottom: 100,
   },
 }); 
