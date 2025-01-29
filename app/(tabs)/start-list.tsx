@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LiftResult, liftingResults } from '@/data/athletes';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { schedule } from '@/data/schedule';
 
 interface AthleteItemProps {
   athlete: LiftResult;
@@ -23,6 +24,19 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  function getSessionDetails(sessionNumber: number) {
+    for (const day of schedule) {
+      const session = day.sessions.find(s => s.number === sessionNumber);
+      if (session) {
+        return {
+          date: day.date,
+          startTime: session.startTime
+        };
+      }
+    }
+    return null;
+  }
 
   return (
     <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
@@ -43,6 +57,28 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
       
       {isExpanded && (
         <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
+          {athlete.session && (
+            <>
+              <View style={styles.detailRow}>
+                <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
+                  Session:
+                </ThemedText>
+                <ThemedText style={styles.detailValue}>
+                  Session {athlete.session.number} • {athlete.session.platform} Platform
+                </ThemedText>
+              </View>
+              {getSessionDetails(athlete.session.number) && (
+                <View style={styles.detailRow}>
+                  <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
+                    Date & Time:
+                  </ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    {getSessionDetails(athlete.session.number)?.date} • {getSessionDetails(athlete.session.number)?.startTime}
+                  </ThemedText>
+                </View>
+              )}
+            </>
+          )}
           <View style={styles.detailRow}>
             <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
               Club:
