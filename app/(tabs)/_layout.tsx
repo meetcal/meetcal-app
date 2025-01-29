@@ -72,6 +72,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="start-list"
+        options={{
+          title: 'Start List',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="info"
         options={{
           title: 'Info',
