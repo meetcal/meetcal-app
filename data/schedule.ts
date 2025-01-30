@@ -2,14 +2,14 @@ import { Schedule } from '@/types/schedule';
 
 export const schedule: Schedule = [
   {
-    date: 'February 27',
-    fullDate: '2025-02-27',
+    date: 'January 30',
+    fullDate: '2025-01-30',
     sessions: [
       {
         id: '1',
         number: 1,
-        startTime: '8:00 AM',
-        weighInTime: '6:00 AM',
+        startTime: '8:00 PM',
+        weighInTime: '6:00 PM',
         platforms: [
           {
             platform: 'Red',
