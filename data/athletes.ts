@@ -1,3 +1,6 @@
+// Define a union type for all platforms
+export type Platform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+
 export interface LiftResult {
   name: string;
   club: string;
@@ -8,7 +11,7 @@ export interface LiftResult {
   bestTotal: number;
   session?: {
     number: number;
-    platform: 'Red' | 'White' | 'Blue';
+    platform: Platform;  // Use the new Platform type
   };
 }
 
@@ -48,33 +51,33 @@ export const liftingResults: LiftResult[] = [
   { name: "Brynn Cupp", club: "West Michigan Muscle", weightClass: "Female 49kg", entryTotal: 144, bestSnatch: 65, bestCJ: 80, bestTotal: 145, session: { number: 1, platform: 'White'} },
   { name: "Laney Yost", club: "DSP Barbell Club", weightClass: "Female 49kg", entryTotal: 150, bestSnatch: 65, bestCJ: 83, bestTotal: 148, session: { number: 1, platform: 'White'} },
   { name: "Cicely Kyle", club: "POWER AND GRACE PERFORMANCE.", weightClass: "Female 49kg", entryTotal: 170, bestSnatch: 74, bestCJ: 95, bestTotal: 168, session: { number: 1, platform: 'White'} },
-  { name: "Kaylin White", club: "Bexar Barbell", weightClass: "Female 49kg", entryTotal: 170, bestSnatch: 73, bestCJ: 95, bestTotal: 167 },
-  { name: "Eesha Pallath", club: "Fortified Strength", weightClass: "Female 55kg", entryTotal: 60, bestSnatch: 28, bestCJ: 40, bestTotal: 68 },
-  { name: "Lindsay Adkins", club: "Beyond The Barbell", weightClass: "Female 55kg", entryTotal: 60, bestSnatch: 27, bestCJ: 38, bestTotal: 65 },
-  { name: "Kelly Roberts", club: "Lebanon Barbell Club", weightClass: "Female 55kg", entryTotal: 62, bestSnatch: 30, bestCJ: 38, bestTotal: 68 },
-  { name: "Sadie Cirbus", club: "Warwick Weightlifting Club", weightClass: "Female 55kg", entryTotal: 75, bestSnatch: 29, bestCJ: 37, bestTotal: 66 },
-  { name: "Hazyl Castillo", club: "Glass City Weightlifting", weightClass: "Female 55kg", entryTotal: 90, bestSnatch: 37, bestCJ: 45, bestTotal: 82 },
-  { name: "Addison Williams", club: "Lion Chaser Barbell", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 53, bestTotal: 95 },
-  { name: "Zoe Macias", club: "Houston Weightlifting Academy", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 56, bestTotal: 96 },
-  { name: "Alyssa Wagner", club: "Unaffiliated", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 46, bestCJ: 60, bestTotal: 106 },
-  { name: "Ashley Bowen", club: "Bowen Elite Weightlifting", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 43, bestCJ: 52, bestTotal: 95 },
-  { name: "Marissa Curcio", club: "Tri State Barbell", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 51, bestCJ: 63, bestTotal: 114 },
-  { name: "Lorena Nieblas", club: "Kaizen Strength", weightClass: "Female 55kg", entryTotal: 102, bestSnatch: 47, bestCJ: 55, bestTotal: 102 },
-  { name: "Amelia Cone", club: "Rising Tide Weightlifting", weightClass: "Female 55kg", entryTotal: 104, bestSnatch: 49, bestCJ: 64, bestTotal: 113 },
-  { name: "Scarlet Ruiz", club: "McKenna Weightlifting", weightClass: "Female 55kg", entryTotal: 105, bestSnatch: 47, bestCJ: 58, bestTotal: 105 },
-  { name: "Reece Robinson", club: "Beyond The Barbell", weightClass: "Female 55kg", entryTotal: 109, bestSnatch: 47, bestCJ: 63, bestTotal: 109 },
-  { name: "Alyssa Cypher", club: "POWER AND GRACE PERFORMANCE.", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 50, bestCJ: 61, bestTotal: 111 },
-  { name: "Emaan Qayyum", club: "Fortified Strength", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 43, bestCJ: 60, bestTotal: 103 },
-  { name: "Krystal Klubeck", club: "MythicFit Weightlifting", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 48, bestCJ: 63, bestTotal: 110 },
-  { name: "Victoria Bellerose", club: "HEAVY METAL BARBELL", weightClass: "Female 55kg", entryTotal: 115, bestSnatch: 55, bestCJ: 66, bestTotal: 121 },
-  { name: "Maya Litt", club: "Sanctuary Barbell", weightClass: "Female 55kg", entryTotal: 119, bestSnatch: 51, bestCJ: 68, bestTotal: 119 },
-  { name: "Lauren Storck", club: "ATLANTA PERFORMANCE", weightClass: "Female 55kg", entryTotal: 120, bestSnatch: 53, bestCJ: 71, bestTotal: 124 },
-  { name: "Eleanor Burgess", club: "JDI BARBELL", weightClass: "Female 55kg", entryTotal: 121, bestSnatch: 46, bestCJ: 66, bestTotal: 111 },
-  { name: "Ellen Lehman", club: "TEAM FLORIDA GULFCOAST WL", weightClass: "Female 55kg", entryTotal: 125, bestSnatch: 59, bestCJ: 68, bestTotal: 125 },
-  { name: "Heather Coffey", club: "Category 5 Athletics", weightClass: "Female 55kg", entryTotal: 129, bestSnatch: 57, bestCJ: 73, bestTotal: 129 },
-  { name: "Zeena Hernandez", club: "MURDER OF CROWS", weightClass: "Female 55kg", entryTotal: 129, bestSnatch: 59, bestCJ: 69, bestTotal: 127 },
-  { name: "Lauren Moon", club: "Unaffiliated", weightClass: "Female 55kg", entryTotal: 131, bestSnatch: 62, bestCJ: 72, bestTotal: 131 },
-  { name: "Judy Zhou", club: "PARAMOUNT BARBELL CLUB", weightClass: "Female 55kg", entryTotal: 140, bestSnatch: 64, bestCJ: 85, bestTotal: 149 },
+  { name: "Kaylin White", club: "Bexar Barbell", weightClass: "Female 49kg", entryTotal: 170, bestSnatch: 73, bestCJ: 95, bestTotal: 167, session: { number: 2, platform: 'Red' } },
+  { name: "Eesha Pallath", club: "Fortified Strength", weightClass: "Female 55kg", entryTotal: 60, bestSnatch: 28, bestCJ: 40, bestTotal: 68, session: { number: 2, platform: 'Red' }  },
+  { name: "Lindsay Adkins", club: "Beyond The Barbell", weightClass: "Female 55kg", entryTotal: 60, bestSnatch: 27, bestCJ: 38, bestTotal: 65, session: { number: 2, platform: 'Red' } },
+  { name: "Kelly Roberts", club: "Lebanon Barbell Club", weightClass: "Female 55kg", entryTotal: 62, bestSnatch: 30, bestCJ: 38, bestTotal: 68, session: { number: 2, platform: 'Red' } },
+  { name: "Sadie Cirbus", club: "Warwick Weightlifting Club", weightClass: "Female 55kg", entryTotal: 75, bestSnatch: 29, bestCJ: 37, bestTotal: 66, session: { number: 2, platform: 'Red' } },
+  { name: "Hazyl Castillo", club: "Glass City Weightlifting", weightClass: "Female 55kg", entryTotal: 90, bestSnatch: 37, bestCJ: 45, bestTotal: 82, session: { number: 2, platform: 'Red' } },
+  { name: "Addison Williams", club: "Lion Chaser Barbell", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 53, bestTotal: 95, session: { number: 2, platform: 'Red' } },
+  { name: "Zoe Macias", club: "Houston Weightlifting Academy", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 56, bestTotal: 96, session: { number: 2, platform: 'Red' } }, 
+  { name: "Alyssa Wagner", club: "Unaffiliated", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 46, bestCJ: 60, bestTotal: 106, session: { number: 2, platform: 'Red' } },
+  { name: "Ashley Bowen", club: "Bowen Elite Weightlifting", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 43, bestCJ: 52, bestTotal: 95, session: { number: 2, platform: 'White' }  },
+  { name: "Marissa Curcio", club: "Tri State Barbell", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 51, bestCJ: 63, bestTotal: 114, session: { number: 2, platform: 'White' } },
+  { name: "Lorena Nieblas", club: "Kaizen Strength", weightClass: "Female 55kg", entryTotal: 102, bestSnatch: 47, bestCJ: 55, bestTotal: 102, session: { number: 2, platform: 'White' } },
+  { name: "Amelia Cone", club: "Rising Tide Weightlifting", weightClass: "Female 55kg", entryTotal: 104, bestSnatch: 49, bestCJ: 64, bestTotal: 113, session: { number: 2, platform: 'White' } },
+  { name: "Scarlet Ruiz", club: "McKenna Weightlifting", weightClass: "Female 55kg", entryTotal: 105, bestSnatch: 47, bestCJ: 58, bestTotal: 105, session: { number: 2, platform: 'White' } },
+  { name: "Reece Robinson", club: "Beyond The Barbell", weightClass: "Female 55kg", entryTotal: 109, bestSnatch: 47, bestCJ: 63, bestTotal: 109, session: { number: 2, platform: 'White' } },
+  { name: "Alyssa Cypher", club: "POWER AND GRACE PERFORMANCE.", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 50, bestCJ: 61, bestTotal: 111, session: { number: 2, platform: 'White' } },
+  { name: "Emaan Qayyum", club: "Fortified Strength", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 43, bestCJ: 60, bestTotal: 103, session: { number: 2, platform: 'White' } },
+  { name: "Krystal Klubeck", club: "MythicFit Weightlifting", weightClass: "Female 55kg", entryTotal: 110, bestSnatch: 48, bestCJ: 63, bestTotal: 110, session: { number: 2, platform: 'White' } },
+  { name: "Victoria Bellerose", club: "HEAVY METAL BARBELL", weightClass: "Female 55kg", entryTotal: 115, bestSnatch: 55, bestCJ: 66, bestTotal: 121, session: { number: 2, platform: 'White' } },
+  { name: "Maya Litt", club: "Sanctuary Barbell", weightClass: "Female 55kg", entryTotal: 119, bestSnatch: 51, bestCJ: 68, bestTotal: 119, session: { number: 2, platform: 'Blue' } },
+  { name: "Lauren Storck", club: "ATLANTA PERFORMANCE", weightClass: "Female 55kg", entryTotal: 120, bestSnatch: 53, bestCJ: 71, bestTotal: 124, session: { number: 2, platform: 'Blue' } },
+  { name: "Eleanor Burgess", club: "JDI BARBELL", weightClass: "Female 55kg", entryTotal: 121, bestSnatch: 46, bestCJ: 66, bestTotal: 111, session: { number: 2, platform: 'Blue' } },
+  { name: "Ellen Lehman", club: "TEAM FLORIDA GULFCOAST WL", weightClass: "Female 55kg", entryTotal: 125, bestSnatch: 59, bestCJ: 68, bestTotal: 125, session: { number: 2, platform: 'Blue' } },
+  { name: "Heather Coffey", club: "Category 5 Athletics", weightClass: "Female 55kg", entryTotal: 129, bestSnatch: 57, bestCJ: 73, bestTotal: 129, session: { number: 2, platform: 'Blue' } },
+  { name: "Zeena Hernandez", club: "MURDER OF CROWS", weightClass: "Female 55kg", entryTotal: 129, bestSnatch: 59, bestCJ: 69, bestTotal: 127, session: { number: 2, platform: 'Blue' } },
+  { name: "Lauren Moon", club: "Unaffiliated", weightClass: "Female 55kg", entryTotal: 131, bestSnatch: 62, bestCJ: 72, bestTotal: 131, session: { number: 2, platform: 'Blue' } },
+  { name: "Judy Zhou", club: "PARAMOUNT BARBELL CLUB", weightClass: "Female 55kg", entryTotal: 140, bestSnatch: 64, bestCJ: 85, bestTotal: 149, session: { number: 2, platform: 'Blue' } },
   { name: "Juliana Flynn", club: "Marin Heavy Athletics", weightClass: "Female 55kg", entryTotal: 140, bestSnatch: 65, bestCJ: 78, bestTotal: 143 },
   { name: "Maryam Grafton", club: "EAST COAST GOLD W/L TEAM", weightClass: "Female 55kg", entryTotal: 140, bestSnatch: 61, bestCJ: 78, bestTotal: 139 },
   { name: "Zully Barrientos", club: "The Strength Tank Weightlifting Club", weightClass: "Female 55kg", entryTotal: 141, bestSnatch: 63, bestCJ: 80, bestTotal: 141 },
