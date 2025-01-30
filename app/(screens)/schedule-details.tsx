@@ -15,9 +15,12 @@ import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 
-function getSessionAthletes(sessionNumber: number) {
+function getSessionAthletes(sessionNumber: number, platform: string) {
   return liftingResults
-    .filter(athlete => athlete.session?.number === sessionNumber)
+    .filter(athlete => 
+      athlete.session?.number === sessionNumber && 
+      athlete.session?.platform === platform
+    )
     .reduce((platforms, athlete) => {
       const platform = athlete.session!.platform;
       if (!platforms[platform]) {
@@ -30,7 +33,8 @@ function getSessionAthletes(sessionNumber: number) {
 
 function SessionAthletes({ sessionNumber }: { sessionNumber: number }) {
   const { currentTheme } = useTheme();
-  const athletes = getSessionAthletes(sessionNumber);
+  const params = useLocalSearchParams<{ platform: string }>();
+  const athletes = getSessionAthletes(sessionNumber, params.platform);
   
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -204,7 +208,11 @@ export default function SessionDetailsScreen() {
       }
 
       const [year, month, day] = dateStr.split('-').map(Number);
-      return new Date(year, month - 1, day, adjustedHours, minutes);
+      
+      // Create date treating the input time as Eastern time
+      // The calendar API will handle timezone conversions for other users
+      const date = new Date(year, month - 1, day, adjustedHours, minutes);
+      return date;
     };
 
     // Find the day schedule for this session
@@ -234,8 +242,8 @@ export default function SessionDetailsScreen() {
       location: getFullLocation(),
       notes: `Weight Class: ${params.weightClass}\nWeigh-in Time: ${params.weighInTime}`,
       startDate: startDate,
-      endDate: new Date(startDate.getTime() + 2 * 60 * 60 * 1000),
-      timeZone: 'America/New_York',
+      endDate: new Date(startDate.getTime() + 2 * 60 * 60 * 1000), // 2 hours duration
+      timeZone: 'America/New_York', // This tells the calendar this is an Eastern time event
       alarms: [{
         relativeOffset: -60,
       }],
