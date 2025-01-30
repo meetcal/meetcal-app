@@ -2,14 +2,14 @@ import { Schedule } from '@/types/schedule';
 
 export const schedule: Schedule = [
   {
-    date: 'January 30',
-    fullDate: '2025-01-30',
+    date: 'February 27',
+    fullDate: '2025-02-27',
     sessions: [
       {
         id: '1',
         number: 1,
-        startTime: '8:00 PM',
-        weighInTime: '6:00 PM',
+        startTime: '8:00 AM',
+        weighInTime: '6:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -48,8 +48,8 @@ export const schedule: Schedule = [
       {
         id: '3',
         number: 3,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '12:00 PM',
+        weighInTime: '10:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -68,8 +68,8 @@ export const schedule: Schedule = [
       {
         id: '4',
         number: 4,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '2:00 PM',
+        weighInTime: '12:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -88,8 +88,8 @@ export const schedule: Schedule = [
       {
         id: '5',
         number: 5,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '4:00 PM',
+        weighInTime: '2:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -108,8 +108,8 @@ export const schedule: Schedule = [
       {
         id: '6',
         number: 6,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '6:00 PM',
+        weighInTime: '4:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -128,8 +128,8 @@ export const schedule: Schedule = [
       {
         id: '7',
         number: 7,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '8:00 PM',
+        weighInTime: '6:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -154,8 +154,8 @@ export const schedule: Schedule = [
       {
         id: '8',
         number: 8,
-        startTime: '9:00 AM',
-        weighInTime: '7:00 AM',
+        startTime: '8:00 AM',
+        weighInTime: '6:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -194,8 +194,8 @@ export const schedule: Schedule = [
       {
         id: '10',
         number: 10,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '12:00 PM',
+        weighInTime: '10:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -214,8 +214,8 @@ export const schedule: Schedule = [
       {
         id: '11',
         number: 11,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '2:00 PM',
+        weighInTime: '12:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -234,8 +234,8 @@ export const schedule: Schedule = [
       {
         id: '12',
         number: 12,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '4:00 PM',
+        weighInTime: '2:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -254,8 +254,8 @@ export const schedule: Schedule = [
       {
         id: '13',
         number: 13,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '6:00 PM',
+        weighInTime: '4:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -274,8 +274,8 @@ export const schedule: Schedule = [
       {
         id: '14',
         number: 14,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '8:00 PM',
+        weighInTime: '6:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -300,8 +300,8 @@ export const schedule: Schedule = [
       {
         id: '15',
         number: 15,
-        startTime: '9:00 AM',
-        weighInTime: '7:00 AM',
+        startTime: '8:00 AM',
+        weighInTime: '6:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -340,8 +340,8 @@ export const schedule: Schedule = [
       {
         id: '17',
         number: 17,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '12:00 PM',
+        weighInTime: '10:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -360,8 +360,8 @@ export const schedule: Schedule = [
       {
         id: '18',
         number: 18,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '2:00 PM',
+        weighInTime: '12:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -380,8 +380,8 @@ export const schedule: Schedule = [
       {
         id: '19',
         number: 19,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '4:00 PM',
+        weighInTime: '2:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -400,8 +400,8 @@ export const schedule: Schedule = [
       {
         id: '20',
         number: 20,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '6:00 PM',
+        weighInTime: '4:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -420,8 +420,8 @@ export const schedule: Schedule = [
       {
         id: '21',
         number: 21,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '8:00 PM',
+        weighInTime: '6:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -446,8 +446,8 @@ export const schedule: Schedule = [
       {
         id: '22',
         number: 22,
-        startTime: '9:00 AM',
-        weighInTime: '7:00 AM',
+        startTime: '8:00 AM',
+        weighInTime: '6:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -486,8 +486,8 @@ export const schedule: Schedule = [
       {
         id: '24',
         number: 24,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '12:00 PM',
+        weighInTime: '10:00 AM',
         platforms: [
           {
             platform: 'Red',
@@ -506,8 +506,8 @@ export const schedule: Schedule = [
       {
         id: '25',
         number: 25,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '2:00 PM',
+        weighInTime: '4:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -526,8 +526,8 @@ export const schedule: Schedule = [
       {
         id: '26',
         number: 26,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '4:00 PM',
+        weighInTime: '2:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -546,8 +546,8 @@ export const schedule: Schedule = [
       {
         id: '27',
         number: 27,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '6:00 PM',
+        weighInTime: '4:00 PM',
         platforms: [
           {
             platform: 'Red',
@@ -566,8 +566,8 @@ export const schedule: Schedule = [
       {
         id: '28',
         number: 28,
-        startTime: '10:00 AM',
-        weighInTime: '8:00 AM',
+        startTime: '8:00 PM',
+        weighInTime: '6:00 PM',
         platforms: [
           {
             platform: 'Red',

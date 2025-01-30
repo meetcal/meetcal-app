@@ -90,6 +90,13 @@ export default function InfoScreen() {
               </View>
             </View>
           </Pressable>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.section}>
+            <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>Time Zone</ThemedText>
+            <ThemedText style={[styles.sectionText, { color: colors.text }]}>Eastern Time (ET)</ThemedText>
+          </View>
         </View>
 
         {/* App Info */}
@@ -230,6 +237,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   settingLabel: {
+    fontSize: 17,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  sectionText: {
     fontSize: 17,
   },
 }); 
