@@ -21,6 +21,7 @@ function getSessionAthletes(sessionNumber: number, platform: string) {
       athlete.session?.number === sessionNumber && 
       athlete.session?.platform === platform
     )
+    .sort((a, b) => b.entryTotal - a.entryTotal)
     .reduce((platforms, athlete) => {
       const platform = athlete.session!.platform;
       if (!platforms[platform]) {
@@ -91,6 +92,17 @@ function SessionAthletes({ sessionNumber }: { sessionNumber: number }) {
           ))}
         </View>
       ))}
+    </View>
+  );
+}
+
+function PlatformBadge({ platform }: { platform: Platform }) {
+  const platformColors = getPlatformColors();
+  const backgroundColor = platformColors[platform];
+  
+  return (
+    <View style={[styles.platformBadge, { backgroundColor }]}>
+      <ThemedText style={styles.platformText}>{platform}</ThemedText>
     </View>
   );
 }
@@ -295,14 +307,7 @@ export default function SessionDetailsScreen() {
                   Platform
                 </ThemedText>
                 <View style={styles.platformRow}>
-                  <View style={[
-                    styles.platformIndicator,
-                    { backgroundColor: platformColors[params.platform as keyof typeof platformColors] }
-                  ]}>
-                    <ThemedText style={styles.platformText}>
-                      {params.platform}
-                    </ThemedText>
-                  </View>
+                  <PlatformBadge platform={params.platform as Platform} />
                 </View>
               </View>
 
@@ -406,7 +411,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  platformIndicator: {
+  platformBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,

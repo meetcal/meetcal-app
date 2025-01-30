@@ -1,5 +1,5 @@
 export type Platform = {
-  platform: 'Red' | 'White' | 'Blue';
+  platform: 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
   weightClass: string;
 };
 
