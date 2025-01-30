@@ -11,6 +11,7 @@ type SavedSession = {
   weightClass: string;
   startTime: string;
   weighInTime: string;
+  notificationId?: string;
 };
 
 type SavedSessionsContextType = {
@@ -21,6 +22,9 @@ type SavedSessionsContextType = {
   exportSessions: () => Promise<void>;
   importSessions: () => Promise<void>;
   isSyncing: boolean;
+  saveNotificationId: (sessionId: string, notificationId: string) => Promise<void>;
+  getNotificationId: (sessionId: string) => string | undefined;
+  removeNotificationId: (sessionId: string) => Promise<void>;
 };
 
 const SavedSessionsContext = createContext<SavedSessionsContextType | undefined>(undefined);
@@ -56,6 +60,9 @@ export function SavedSessionsProvider({ children }: { children: React.ReactNode 
       const updatedSessions = [...savedSessions, session];
       setSavedSessions(updatedSessions);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
+      
+      // Schedule notification when session is saved
+      await scheduleWeighInNotification(session);
     } catch (error) {
       console.error('Error saving session:', error);
       throw error;
@@ -64,10 +71,12 @@ export function SavedSessionsProvider({ children }: { children: React.ReactNode 
     }
   };
 
-  const removeSession = async (id: string) => {
+  const removeSession = async (sessionId: string) => {
     try {
-      setIsSyncing(true);
-      const updatedSessions = savedSessions.filter(session => session.id !== id);
+      // Cancel notification before removing session
+      await cancelWeighInNotification(sessionId);
+      
+      const updatedSessions = savedSessions.filter(s => s.id !== sessionId);
       setSavedSessions(updatedSessions);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
     } catch (error) {
@@ -111,6 +120,39 @@ export function SavedSessionsProvider({ children }: { children: React.ReactNode 
     return savedSessions.some(session => session.id === id);
   };
 
+  const saveNotificationId = async (sessionId: string, notificationId: string) => {
+    try {
+      const updatedSessions = savedSessions.map(session => 
+        session.id === sessionId 
+          ? { ...session, notificationId } 
+          : session
+      );
+      setSavedSessions(updatedSessions);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
+    } catch (error) {
+      console.error('Error saving notification ID:', error);
+    }
+  };
+
+  const getNotificationId = (sessionId: string) => {
+    const session = savedSessions.find(s => s.id === sessionId);
+    return session?.notificationId;
+  };
+
+  const removeNotificationId = async (sessionId: string) => {
+    try {
+      const updatedSessions = savedSessions.map(session => 
+        session.id === sessionId 
+          ? { ...session, notificationId: undefined } 
+          : session
+      );
+      setSavedSessions(updatedSessions);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
+    } catch (error) {
+      console.error('Error removing notification ID:', error);
+    }
+  };
+
   return (
     <SavedSessionsContext.Provider 
       value={{ 
@@ -120,7 +162,10 @@ export function SavedSessionsProvider({ children }: { children: React.ReactNode 
         isSessionSaved,
         exportSessions,
         importSessions,
-        isSyncing 
+        isSyncing,
+        saveNotificationId,
+        getNotificationId,
+        removeNotificationId
       }}
     >
       {children}

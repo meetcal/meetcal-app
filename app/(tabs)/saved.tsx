@@ -1,12 +1,15 @@
 import { StyleSheet, View, FlatList, Pressable, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { schedule } from '@/data/schedule';
 
 // Platform colors for visual reference
 const platformColors = {
@@ -15,6 +18,15 @@ const platformColors = {
   Blue: '#4DABF7',
 };
 
+// Set up notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
 export default function SavedScreen() {
   const { savedSessions } = useSavedSessions();
   const router = useRouter();
@@ -22,6 +34,10 @@ export default function SavedScreen() {
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
+  const [expoPushToken, setExpoPushToken] = useState('');
+  const [notificationPermission, setNotificationPermission] = useState(false);
+  const notificationListener = useRef();
+  const responseListener = useRef();
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -53,6 +69,131 @@ export default function SavedScreen() {
   const handleFilterSelect = (letter: string) => {
     setLetterFilter(letter);
     setShowFilterModal(false);
+  };
+
+  // Set up notifications when component mounts
+  useEffect(() => {
+    registerForPushNotifications();
+
+    // Listen for incoming notifications
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received:', notification);
+    });
+
+    // Listen for user interaction with notifications
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const sessionId = response.notification.request.content.data.sessionId;
+      if (sessionId) {
+        router.push({
+          pathname: '/(screens)/schedule-details',
+          params: { id: sessionId }
+        });
+      }
+    });
+
+    // Cleanup
+    return () => {
+      Notifications.removeNotificationSubscription(notificationListener.current);
+      Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, []);
+
+  // Register for push notifications
+  async function registerForPushNotifications() {
+    if (!Device.isDevice) {
+      alert('Push notifications are not available in the simulator');
+      return;
+    }
+
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      
+      if (finalStatus !== 'granted') {
+        alert('Failed to get push notification permissions');
+        return;
+      }
+
+      setNotificationPermission(true);
+    } catch (error) {
+      console.error('Error getting push token:', error);
+    }
+  }
+
+  // Schedule notification for a session
+  const scheduleWeighInNotification = async (session) => {
+    if (!notificationPermission) return;
+
+    try {
+      // Find the session day from schedule data
+      const sessionDay = schedule.find(day => 
+        day.sessions.some(s => 
+          s.platforms.some(p => 
+            `${s.id}-${p.platform}` === session.id
+          )
+        )
+      );
+
+      if (!sessionDay) {
+        console.error('Could not find session day');
+        return;
+      }
+
+      // Parse the start time
+      const [time, period] = session.startTime.split(' ');
+      const [hours, minutes] = time.split(':').map(Number);
+      
+      let startHour = hours;
+      if (period === 'PM' && hours !== 12) {
+        startHour += 12;
+      } else if (period === 'AM' && hours === 12) {
+        startHour = 0;
+      }
+
+      // Create date object for the session day
+      const [year, month, day] = sessionDay.fullDate.split('-').map(Number);
+      const startDate = new Date(year, month - 1, day, startHour, minutes);
+      
+      // Set weigh-in time (2 hours before)
+      const weighInDate = new Date(startDate.getTime());
+      weighInDate.setHours(weighInDate.getHours() - 2);
+
+      // Only schedule if weigh-in time is in the future
+      if (weighInDate > new Date()) {
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Weigh-in Time - Session ${session.sessionNumber}`,
+            body: `Weigh-in for ${session.weightClass} on Platform ${session.platform} begins now`,
+            data: { sessionId: session.id },
+          },
+          trigger: {
+            date: weighInDate,
+          },
+        });
+
+        await saveNotificationId(session.id, notificationId);
+      }
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+    }
+  };
+
+  // Cancel notification when session is unsaved
+  const cancelWeighInNotification = async (sessionId) => {
+    try {
+      const notificationId = await getNotificationId(sessionId); // Implement this
+      if (notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(notificationId);
+        await removeNotificationId(sessionId); // Implement this
+      }
+    } catch (error) {
+      console.error('Error canceling notification:', error);
+    }
   };
 
   const renderSession = ({ item }) => (

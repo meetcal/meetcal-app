@@ -15,7 +15,7 @@ export interface LiftResult {
 // Initial data - you can expand this with more athletes
 export const liftingResults: LiftResult[] = [
   { name: "Jayde Duncan", club: "South Georgia Barbell", weightClass: "Female 30kg", entryTotal: 30, bestSnatch: 15, bestCJ: 18, bestTotal: 32, session: { number: 1, platform: 'Red' } },
-  { name: "Eadie Shaft", club: "Optimus Barbell Club", weightClass: "Female 30kg", entryTotal: 40, bestSnatch: 14, bestCJ: 17, bestTotal: 31, session: { number: 1, platform: 'Red' } },
+  { name: "Eadie Shaft", club: "Optimus Barbell Club", weightClass: "Female 30kg", entryTotal: 40, bestSnatch: 14, bestCJ: 17, bestTotal: 31, session: { number: 2, platform: 'Red' } },
   { name: "Rayya Howard", club: "Nashville Weightlifting Club", weightClass: "Female 30kg", entryTotal: 70, bestSnatch: 31, bestCJ: 37, bestTotal: 68, session: { number: 1, platform: 'Red' }   },
   { name: "Avery Shupe", club: "3 Kings Weightlifting Club", weightClass: "Female 33kg", entryTotal: 50, bestSnatch: 22, bestCJ: 28, bestTotal: 50, session: { number: 1, platform: 'Red' } },
   { name: "Layla Johnson", club: "Fortified Strength", weightClass: "Female 33kg", entryTotal: 63, bestSnatch: 26, bestCJ: 38, bestTotal: 64, session: { number: 1, platform: 'Red' } },

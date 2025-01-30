@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -7,6 +7,22 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { LiftResult, liftingResults } from '@/data/athletes';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { schedule } from '@/data/schedule';
+import * as Calendar from 'expo-calendar';
+import { getFullLocation } from '@/config/venue';
+
+function getSessionDetails(sessionNumber: number) {
+  for (const day of schedule) {
+    const session = day.sessions.find(s => s.number === sessionNumber);
+    if (session) {
+      return {
+        date: day.fullDate,
+        startTime: session.startTime,
+        displayDate: day.date
+      };
+    }
+  }
+  return null;
+}
 
 interface AthleteItemProps {
   athlete: LiftResult;
@@ -24,19 +40,6 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
-
-  function getSessionDetails(sessionNumber: number) {
-    for (const day of schedule) {
-      const session = day.sessions.find(s => s.number === sessionNumber);
-      if (session) {
-        return {
-          date: day.date,
-          startTime: session.startTime
-        };
-      }
-    }
-    return null;
-  }
 
   return (
     <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
@@ -73,7 +76,7 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
                     Date & Time:
                   </ThemedText>
                   <ThemedText style={styles.detailValue}>
-                    {getSessionDetails(athlete.session.number)?.date} • {getSessionDetails(athlete.session.number)?.startTime}
+                    {getSessionDetails(athlete.session.number)?.displayDate} • {getSessionDetails(athlete.session.number)?.startTime}
                   </ThemedText>
                 </View>
               )}
@@ -132,6 +135,50 @@ function sortAthletes(a: LiftResult, b: LiftResult): number {
   return a.name.localeCompare(b.name);
 }
 
+async function requestCalendarPermissions() {
+  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  return status === 'granted';
+}
+
+async function createCalendarEvents(sessions: Array<{
+  date: string;
+  startTime: string;
+  weighInTime: string;
+  sessionNumber: number;
+  platform: string;
+  weightClass: string;
+}>) {
+  const calendar = await Calendar.getDefaultCalendarAsync();
+  
+  for (const session of sessions) {
+    const [year, month, day] = session.date.split('-').map(Number);
+    
+    let [timeStr, meridiem] = session.startTime.split(' ');
+    let [hours, minutes] = timeStr.split(':').map(Number);
+    
+    if (meridiem === 'PM' && hours !== 12) {
+      hours += 12;
+    } else if (meridiem === 'AM' && hours === 12) {
+      hours = 0;
+    }
+    
+    const startDate = new Date(year, month - 1, day, hours, minutes);
+    const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+
+    await Calendar.createEventAsync(calendar.id, {
+      title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
+      location: getFullLocation(), // Need to import this
+      notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`, // Need weightClass and weighInTime
+      startDate,
+      endDate,
+      timeZone: 'America/New_York', // Match the exact timezone
+      alarms: [{
+        relativeOffset: -60,
+      }],
+    });
+  }
+}
+
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -185,6 +232,67 @@ export default function StartListScreen() {
 
   const windowHeight = Dimensions.get('window').height;
 
+  const handleSaveToCalendar = async () => {
+    // Get unique sessions from filtered athletes
+    const uniqueSessions = filteredAthletes
+      .filter(athlete => athlete.session)
+      .map(athlete => {
+        const sessionDetails = getSessionDetails(athlete.session!.number);
+        const session = schedule
+          .flatMap(day => day.sessions)
+          .find(s => s.number === athlete.session!.number);
+          
+        return {
+          date: sessionDetails?.date || '',
+          startTime: sessionDetails?.startTime || '',
+          weighInTime: session?.weighInTime || '',
+          sessionNumber: athlete.session!.number,
+          platform: athlete.session!.platform,
+          weightClass: athlete.weightClass
+        };
+      })
+      .filter(session => session.date && session.startTime)
+      .filter((session, index, self) => 
+        index === self.findIndex(s => 
+          s.date === session.date && 
+          s.startTime === session.startTime
+        )
+      );
+
+    if (uniqueSessions.length === 0) {
+      Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
+      return;
+    }
+
+    Alert.alert(
+      'Add to Calendar',
+      `Add ${uniqueSessions.length} session${uniqueSessions.length === 1 ? '' : 's'} to your calendar?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Add',
+          onPress: async () => {
+            try {
+              const hasPermission = await requestCalendarPermissions();
+              if (!hasPermission) {
+                Alert.alert('Permission Required', 'Calendar permission is required to add sessions.');
+                return;
+              }
+              await createCalendarEvents(uniqueSessions);
+              Alert.alert('Success', 'Sessions have been added to your calendar.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to add sessions to calendar.');
+              console.error(error);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -231,6 +339,23 @@ export default function StartListScreen() {
             <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
         </View>
+        
+        <Pressable
+          style={({ pressed }) => [
+            styles.calendarButton,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={handleSaveToCalendar}
+        >
+          <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+            Save All to Calendar
+          </ThemedText>
+        </Pressable>
       </View>
 
       <FlatList
@@ -493,5 +618,24 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 17,
+  },
+  calendarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
   },
 }); 
