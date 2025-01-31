@@ -1,4 +1,4 @@
-import { Schedule } from '@/types/schedule';
+import { Schedule, Session } from '@/types/schedule';
 import { Platform } from '@/data/athletes';
 
 export const schedule: Schedule = [
@@ -18,7 +18,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'White',
-            weightClass: '48kg B',
+            weightClass: '49kg B',
           },
           {
             platform: 'Blue',
@@ -26,11 +26,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '55kg-67kg C',
+            weightClass: 'University 55kg-67kg C',
           },
           {
             platform: 'Stripes',
-            weightClass: '55kg B',
+            weightClass: 'University 55kg B',
           },
         ],
       },
@@ -54,11 +54,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '55kg-67kg B',
+            weightClass: 'University 55kg-67kg B',
           },
           {
             platform: 'Stripes',
-            weightClass: '59kg B',
+            weightClass: 'University 59kg B',
           },
         ],
       },
@@ -82,11 +82,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '55kg-67kg A',
+            weightClass: 'University 55kg-67kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '73kg B',
+            weightClass: 'University 73kg B',
           },
         ],
       },
@@ -110,11 +110,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '45-49kg A',
+            weightClass: 'University 45-49kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '55kg A',
+            weightClass: 'University 55kg A',
           },
         ],
       },
@@ -138,11 +138,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '81kg D',
+            weightClass: 'University 81kg D',
           },
           {
             platform: 'Stripes',
-            weightClass: '73kg A',
+            weightClass: 'University 73kg A',
           },
         ],
       },
@@ -166,7 +166,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '59kg A',
+            weightClass: 'University 59kg A',
           },
           {
             platform: 'Stripes',
@@ -194,7 +194,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '81kg C',
+            weightClass: 'University 81kg C',
           },
           {
             platform: 'Stripes',
@@ -228,11 +228,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '71kg C',
+            weightClass: 'University 71kg C',
           },
           {
             platform: 'Stripes',
-            weightClass: '89kg D',
+            weightClass: 'University 89kg D',
           },
         ],
       },
@@ -256,11 +256,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '64kg B',
+            weightClass: 'University 64kg B',
           },
           {
             platform: 'Stripes',
-            weightClass: '89kg C',
+            weightClass: 'University 89kg C',
           },
         ],
       },
@@ -276,19 +276,19 @@ export const schedule: Schedule = [
           },
           {
             platform: 'White',
-            weightClass: '89kg F',
+            weightClass: '89kg E',
           },
           {
             platform: 'Blue',
-            weightClass: '81kg D',
+            weightClass: '59kg B',
           },
           {
             platform: 'Stars',
-            weightClass: '64kg B',
+            weightClass: 'University 64kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '89kg C',
+            weightClass: 'University 81kg B',
           },
         ],
       },
@@ -324,11 +324,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '71kg B',
+            weightClass: 'University 71kg B',
           },
           {
             platform: 'Stripes',
-            weightClass: '81kg A',
+            weightClass: 'University 81kg A',
           },
         ],
       },
@@ -364,7 +364,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '71kg A',
+            weightClass: 'University 71kg A',
           },
           {
             platform: 'Stripes',
@@ -396,7 +396,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stripes',
-            weightClass: '89kg B',
+            weightClass: 'University 89kg B',
           },
         ],
       },
@@ -424,7 +424,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stripes',
-            weightClass: '89kg A',
+            weightClass: 'University 89kg A',
           },
         ],
       },
@@ -455,11 +455,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '96kg C',
+            weightClass: 'University 96kg C',
           },
           {
             platform: 'Stripes',
-            weightClass: '76kg B',
+            weightClass: 'University 76kg B',
           },
         ],
       },
@@ -483,11 +483,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '96kg B',
+            weightClass: 'University 96kg B',
           },
           {
             platform: 'Stripes',
-            weightClass: '81kg B',
+            weightClass: 'University 81kg B',
           },
         ],
       },
@@ -511,11 +511,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '96kg A',
+            weightClass: 'University 96kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '76kg A',
+            weightClass: 'University 76kg A',
           },
         ],
       },
@@ -539,11 +539,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '102kg A',
+            weightClass: 'University 102kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '81kg A',
+            weightClass: 'University 81kg A',
           },
         ],
       },
@@ -633,7 +633,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stripes',
-            weightClass: '109kg B',
+            weightClass: 'University 109kg B',
           },
         ],
       },
@@ -661,7 +661,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stripes',
-            weightClass: '+109kg B',
+            weightClass: 'University +109kg B',
           },
         ],
       },
@@ -689,7 +689,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stripes',
-            weightClass: '87kg A',
+            weightClass: 'University 87kg A',
           },
         ],
       },
@@ -713,7 +713,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '109kg A',
+            weightClass: 'University 109kg A',
           },
         ],
       },
@@ -737,11 +737,11 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Stars',
-            weightClass: '+87kg A',
+            weightClass: 'University +87kg A',
           },
           {
             platform: 'Stripes',
-            weightClass: '+109kg A',
+            weightClass: 'University +109kg A',
           },
         ],
       },
