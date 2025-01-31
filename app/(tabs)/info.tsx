@@ -5,10 +5,13 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { venueConfig, getFullAddress } from '@/config/venue';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   // Define theme colors
   const colors = {
@@ -70,15 +73,15 @@ export default function InfoScreen() {
             ]}
             onPress={handleAddressPress}
           >
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
               Location
             </ThemedText>
             <View>
-              <ThemedText style={[styles.value, { color: colors.text, marginBottom: 4 }]}>
-                {venueConfig.name}
-              </ThemedText>
               <View style={styles.addressContainer}>
                 <View>
+                <ThemedText style={[styles.link, { color: colors.link }]}>
+                  {venueConfig.name}
+                  </ThemedText>
                   <ThemedText style={[styles.link, { color: colors.link }]}>
                     {venueConfig.address.street}
                   </ThemedText>
@@ -94,8 +97,8 @@ export default function InfoScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <View style={styles.section}>
-            <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>Time Zone</ThemedText>
-            <ThemedText style={[styles.sectionText, { color: colors.text }]}>Eastern Time (ET)</ThemedText>
+            <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>Venue Time Zone</ThemedText>
+            <ThemedText style={[styles.sectionText, { color: colors.text }]}>Eastern Time</ThemedText>
           </View>
         </View>
 
@@ -111,9 +114,30 @@ export default function InfoScreen() {
               { borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
+            onPress={() => router.push('/(screens)/subscription')}
+          >
+            <View style={styles.subscriptionContainer}>
+              <View style={styles.subscriptionInfo}>
+                <ThemedText style={[styles.label, { color: colors.text, fontWeight: '600' }]}>
+                  Subscription
+                </ThemedText>
+                <ThemedText style={[styles.subscriptionPreview, { color: colors.text }]}>
+                  Unlock athlete tracking, custom alerts, and more
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
             onPress={() => handlePress('mailto:memohnsen@gmail.com')}
           >
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
               Support
             </ThemedText>
             <View style={styles.linkRow}>
@@ -132,7 +156,7 @@ export default function InfoScreen() {
             ]}
             onPress={() => handlePress('https://wl-wargames.com')}
           >
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
               Other Projects
             </ThemedText>
             <View style={styles.linkRow}>
@@ -192,7 +216,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '600',
     padding: 16,
     paddingBottom: 8,
@@ -209,11 +233,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   label: {
-    fontSize: 15,
+    fontSize: 17,
     marginBottom: 4,
   },
   value: {
-    fontSize: 17,
+    fontSize: 16,
   },
   linkRow: {
     flexDirection: 'row',
@@ -227,7 +251,7 @@ const styles = StyleSheet.create({
   addressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginTop: 2,
   },
   settingRow: {
@@ -249,6 +273,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sectionText: {
-    fontSize: 17,
+    fontSize: 16,
+  },
+  subscriptionContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  subscriptionInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  subscriptionPreview: {
+    fontSize: 16,
+    lineHeight: 21,
   },
 }); 
