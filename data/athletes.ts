@@ -1061,7 +1061,6 @@ export const liftingResults: LiftResult[] = [
   { name: "Christina Rameau", club: "Gator Weightlifting", weightClass: "Female 45kg", entryTotal: 85, bestSnatch: 33, bestCJ: 48, bestTotal: 81 },
   { name: "Ashley Cucchiara", club: "Gator Weightlifting", weightClass: "Female 45kg", entryTotal: 90, bestSnatch: 50, bestCJ: 55, bestTotal: 105 },
   { name: "Lilly Cottingham", club: "FORZA WEIGHTLIFTING CLUB", weightClass: "Female 45kg", entryTotal: 90, bestSnatch: 40, bestCJ: 53, bestTotal: 92 },
-  { name: "Delaney Bollman", club: "CROSSFIT FORT VANCOUVER BARBELL CLUB", weightClass: "Female 45kg", entryTotal: 100, bestSnatch: 42, bestCJ: 63, bestTotal: 105 },
   { name: "Madhumati Mirel", club: "Unaffiliated", weightClass: "Female 49kg", entryTotal: 95, bestSnatch: 40, bestCJ: 52, bestTotal: 92 },
   { name: "Tristan Kiyan", club: "University of Oregon Weightlifting Club", weightClass: "Female 49kg", entryTotal: 103, bestSnatch: 49, bestCJ: 58, bestTotal: 103 },
   { name: "Nina Mergen", club: "Unaffiliated", weightClass: "Female 49kg", entryTotal: 105, bestSnatch: 45, bestCJ: 62, bestTotal: 107 },
