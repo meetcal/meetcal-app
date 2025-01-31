@@ -16,17 +16,17 @@ export interface LiftResult {
 }
 
 export const liftingResults: LiftResult[] = [
-  { name: "Jayde Duncan", club: "South Georgia Barbell", weightClass: "Female 30kg", entryTotal: 30, bestSnatch: 15, bestCJ: 18, bestTotal: 32, session: { number: 1, platform: 'Red' } },
-  { name: "Eadie Shaft", club: "Optimus Barbell Club", weightClass: "Female 30kg", entryTotal: 40, bestSnatch: 14, bestCJ: 17, bestTotal: 31, session: { number: 1, platform: 'Red' } },
-  { name: "Rayya Howard", club: "Nashville Weightlifting Club", weightClass: "Female 30kg", entryTotal: 70, bestSnatch: 31, bestCJ: 37, bestTotal: 68, session: { number: 1, platform: 'Red' }   },
-  { name: "Avery Shupe", club: "3 Kings Weightlifting Club", weightClass: "Female 33kg", entryTotal: 50, bestSnatch: 22, bestCJ: 28, bestTotal: 50, session: { number: 1, platform: 'Red' } },
-  { name: "Layla Johnson", club: "Fortified Strength", weightClass: "Female 33kg", entryTotal: 63, bestSnatch: 26, bestCJ: 38, bestTotal: 64, session: { number: 1, platform: 'Red' } },
-  { name: "Violet Hayhoe", club: "Unaffiliated", weightClass: "Female 36kg", entryTotal: 52, bestSnatch: 26, bestCJ: 32, bestTotal: 58, session: { number: 1, platform: 'Red' } },
-  { name: "Carmen Gurley", club: "Coffee Weightlifting Team", weightClass: "Female 36kg", entryTotal: 73, bestSnatch: 29, bestCJ: 36, bestTotal: 65, session: { number: 1, platform: 'Red' } },
-
-  { name: "Kate Yetter", club: "SANDUSKY WEIGHTLIFTING", weightClass: "Female 40kg", entryTotal: 47, bestSnatch: 20, bestCJ: 27, bestTotal: 47, session: { number: 1, platform: 'Red' } },
-  { name: "Alena Griesser", club: "Country Strong", weightClass: "Female 40kg", entryTotal: 62, bestSnatch: 30, bestCJ: 38, bestTotal: 68, session: { number: 1, platform: 'Red' } },
-  { name: "Aurelia Bujanda", club: "Bujanda Strong", weightClass: "Female 40kg", entryTotal: 83, bestSnatch: 35, bestCJ: 45, bestTotal: 80, session: { number: 1, platform: 'Red' } },
+  //** Done */
+  { name: "Jayde Duncan", club: "South Georgia Barbell", weightClass: "Female 30kg", entryTotal: 30, bestSnatch: 15, bestCJ: 18, bestTotal: 32, session: { number: 3, platform: 'Red' } },
+  { name: "Eadie Shaft", club: "Optimus Barbell Club", weightClass: "Female 30kg", entryTotal: 40, bestSnatch: 14, bestCJ: 17, bestTotal: 31, session: { number: 3, platform: 'Red' } },
+  { name: "Rayya Howard", club: "Nashville Weightlifting Club", weightClass: "Female 30kg", entryTotal: 70, bestSnatch: 31, bestCJ: 37, bestTotal: 68, session: { number: 3, platform: 'Red' }   },
+  { name: "Avery Shupe", club: "3 Kings Weightlifting Club", weightClass: "Female 33kg", entryTotal: 50, bestSnatch: 22, bestCJ: 28, bestTotal: 50, session: { number: 3, platform: 'Red' } },
+  { name: "Layla Johnson", club: "Fortified Strength", weightClass: "Female 33kg", entryTotal: 63, bestSnatch: 26, bestCJ: 38, bestTotal: 64, session: { number: 3, platform: 'Red' } },
+  { name: "Violet Hayhoe", club: "Unaffiliated", weightClass: "Female 36kg", entryTotal: 52, bestSnatch: 26, bestCJ: 32, bestTotal: 58, session: { number: 3, platform: 'Red' } },
+  { name: "Carmen Gurley", club: "Coffee Weightlifting Team", weightClass: "Female 36kg", entryTotal: 73, bestSnatch: 29, bestCJ: 36, bestTotal: 65, session: { number: 3, platform: 'Red' } },
+  { name: "Kate Yetter", club: "SANDUSKY WEIGHTLIFTING", weightClass: "Female 40kg", entryTotal: 47, bestSnatch: 20, bestCJ: 27, bestTotal: 47, session: { number: 3, platform: 'Red' } },
+  { name: "Alena Griesser", club: "Country Strong", weightClass: "Female 40kg", entryTotal: 62, bestSnatch: 30, bestCJ: 38, bestTotal: 68, session: { number: 3, platform: 'Red' } },
+  { name: "Aurelia Bujanda", club: "Bujanda Strong", weightClass: "Female 40kg", entryTotal: 83, bestSnatch: 35, bestCJ: 45, bestTotal: 80, session: { number: 3, platform: 'Red' } },
 
   //** Done */
   { name: "Autumn Whitmer", club: "Pilchuck Barbell", weightClass: "Female 45kg", entryTotal: 46, bestSnatch: 20, bestCJ: 29, bestTotal: 49, session: { number: 4, platform: 'Blue' } },
@@ -215,10 +215,11 @@ export const liftingResults: LiftResult[] = [
   { name: "Janet Kim", club: "Rebels Weightlifting Club", weightClass: "Female 64kg", entryTotal: 138, bestSnatch: 60, bestCJ: 77, bestTotal: 137, session: { number: 10, platform: 'Red'} },
   { name: "Chelsea Bijansky", club: "Optimus Barbell Club", weightClass: "Female 64kg", entryTotal: 140, bestSnatch: 63, bestCJ: 80, bestTotal: 142, session: { number: 10, platform: 'Red'} },
 
-//** 10/12 */
+//** 11/12 */
   { name: "Emily Khaykin", club: "CHFP WEIGHTLIFTING CLUB", weightClass: "Female 64kg", entryTotal: 140, bestSnatch: 63, bestCJ: 79, bestTotal: 142, session: { number: 12, platform: 'Red'} },
   { name: "Melissa Coughlin", club: "Strength Solutions Weightlifting", weightClass: "Female 64kg", entryTotal: 140, bestSnatch: 65, bestCJ: 80, bestTotal: 145, session: { number: 12, platform: 'Red'} },
   { name: "Anell Duran", club: "Unaffiliated", weightClass: "Female 64kg", entryTotal: 141, bestSnatch: 58, bestCJ: 78, bestTotal: 136, session: { number: 12, platform: 'Red'} },
+  { name: "Samantha Love", club: "PARAMOUNT BARBELL CLUB", weightClass: "Female 64kg", entryTotal: 141, bestSnatch: 64, bestCJ: 78, bestTotal: 141 },
   { name: "Lexie Mueller", club: "Blackheart Barbell", weightClass: "Female 64kg", entryTotal: 141, bestSnatch: 66, bestCJ: 79, bestTotal: 141, session: { number: 12, platform: 'Red'} },
   { name: "Bianca Macias", club: "DC WEIGHTLIFTING CLUB", weightClass: "Female 64kg", entryTotal: 145, bestSnatch: 69, bestCJ: 88, bestTotal: 157, session: { number: 12, platform: 'Red'} },
   { name: "Brianna Marquez", club: "Bexar Barbell", weightClass: "Female 64kg", entryTotal: 145, bestSnatch: 61, bestCJ: 80, bestTotal: 141, session: { number: 12, platform: 'Red'} },
@@ -518,11 +519,12 @@ export const liftingResults: LiftResult[] = [
   { name: "Anna McElderry", club: "GARAGE STRENGTH", weightClass: "Female 81kg", entryTotal: 225, bestSnatch: 103, bestCJ: 127, bestTotal: 226, session: { number: 25, platform: 'White' } },
   { name: "Shacasia Johnson", club: "Unaffiliated", weightClass: "Female 81kg", entryTotal: 225, bestSnatch: 91, bestCJ: 115, bestTotal: 206, session: { number: 25, platform: 'White' } },
 
-//** 8/10 */
+//** 9/10 */
   { name: "Jill Ring", club: "CLEAN SLATE WEIGHTLIFTING", weightClass: "Female 87kg", entryTotal: 65, bestSnatch: 32, bestCJ: 37, bestTotal: 69, session: { number: 22, platform: 'Stripes' } },
   { name: "Maria Hansen", club: "Wolf Pack Weightlifting", weightClass: "Female 87kg", entryTotal: 105, bestSnatch: 46, bestCJ: 65, bestTotal: 111, session: { number: 22, platform: 'Stripes' } },
   { name: "Morgan Lueck", club: "Butcher Barbell", weightClass: "Female 87kg", entryTotal: 115, bestSnatch: 49, bestCJ: 66, bestTotal: 115, session: { number: 22, platform: 'Stripes' } },
   { name: "Shannon Rose", club: "Unaffiliated", weightClass: "Female 87kg", entryTotal: 120, bestSnatch: 50, bestCJ: 71, bestTotal: 121, session: { number: 22, platform: 'Stripes' } },
+  { name: "Ashley Collazo", club: "Maxx Effort Training", weightClass: "Female 87kg", entryTotal: 122, bestSnatch: 58, bestCJ: 65, bestTotal: 122 },
   { name: "SARAH FORGUE", club: "Maxx Effort Training", weightClass: "Female 87kg", entryTotal: 127, bestSnatch: 55, bestCJ: 74, bestTotal: 127, session: { number: 22, platform: 'Stripes' } },
   { name: "Rachel Scutt", club: "Black Tree Barbell Club", weightClass: "Female 87kg", entryTotal: 131, bestSnatch: 54, bestCJ: 77, bestTotal: 131, session: { number: 22, platform: 'Stripes' } },
   { name: "Kelsey Ogle", club: "Unaffiliated", weightClass: "Female 87kg", entryTotal: 140, bestSnatch: 63, bestCJ: 89, bestTotal: 149, session: { number: 22, platform: 'Stripes' } },
@@ -575,9 +577,10 @@ export const liftingResults: LiftResult[] = [
   { name: "Sally Coons", club: "PROJECT LIFT", weightClass: "Female +87kg", entryTotal: 116, bestSnatch: 52, bestCJ: 65, bestTotal: 117, session: { number: 23, platform: 'Stars' } },
   { name: "Lauren Tackett", club: "Motor City Barbell", weightClass: "Female +87kg", entryTotal: 122, bestSnatch: 60, bestCJ: 73, bestTotal: 132, session: { number: 23, platform: 'Stars' } },
 
-//** 8/10 */
+//** 9/10 */
   { name: "Josie Bohnke", club: "Unaffiliated", weightClass: "Female +87kg", entryTotal: 130, bestSnatch: 58, bestCJ: 72, bestTotal: 130, session: { number: 24, platform: 'Stars' } },
   { name: "Megan LaVine", club: "Motor City Barbell", weightClass: "Female +87kg", entryTotal: 130, bestSnatch: 55, bestCJ: 78, bestTotal: 133, session: { number: 24, platform: 'Stars' } },
+  { name: "Helen Filosa", club: "Anna Banana Barbell Club", weightClass: "Female +87kg", entryTotal: 135, bestSnatch: 61, bestCJ: 85, bestTotal: 144 },
   { name: "Catherine Huddleston", club: "Unaffiliated", weightClass: "Female +87kg", entryTotal: 137, bestSnatch: 62, bestCJ: 75, bestTotal: 137, session: { number: 24, platform: 'Stars' } },
   { name: "Shannon Fernando-Cole", club: "Unaffiliated", weightClass: "Female +87kg", entryTotal: 137, bestSnatch: 62, bestCJ: 75, bestTotal: 137, session: { number: 24, platform: 'Stars' } },
   { name: "Abigail Coombs", club: "PHILADELPHIA BARBELL", weightClass: "Female +87kg", entryTotal: 138, bestSnatch: 75, bestCJ: 90, bestTotal: 165, session: { number: 24, platform: 'Stars' } },
@@ -616,6 +619,14 @@ export const liftingResults: LiftResult[] = [
   { name: "Emily Rodriguez", club: "Aegis Barbell", weightClass: "Female +87kg", entryTotal: 220, bestSnatch: 100, bestCJ: 120, bestTotal: 220, session: { number: 27, platform: 'Blue' } },
   { name: "Caitlin Thilges", club: "1Kilo", weightClass: "Female +87kg", entryTotal: 240, bestSnatch: 100, bestCJ: 142, bestTotal: 242, session: { number: 27, platform: 'Blue' } },
   { name: "Mary Theisen-Lappen", club: "1Kilo", weightClass: "Female +87kg", entryTotal: 260, bestSnatch: 119, bestCJ: 156, bestTotal: 274, session: { number: 27, platform: 'Blue' } },
+
+
+  // Adaptive
+  { name: "Angel Santiago", club: "Maxx Effort Training", weightClass: "Male 55kg", entryTotal: 38, bestSnatch: 23, bestCJ: 29, bestTotal: 52 },
+  { name: "Justus Foster", club: "Moran Academy", weightClass: "Male 89kg", entryTotal: 160, bestSnatch: 69, bestCJ: 91, bestTotal: 159 },
+  { name: "Thomas Smalley", club: "Bexar Barbell", weightClass: "Male 89kg", entryTotal: 218, bestSnatch: 95, bestCJ: 121, bestTotal: 215 },
+  { name: "Roman Alexander Paez", club: "Bexar Barbell", weightClass: "Male +89kg", entryTotal: 160, bestSnatch: 74, bestCJ: 86, bestTotal: 160 },
+  { name: "Eric Hale", club: "Bexar Barbell", weightClass: "Male 109kg", entryTotal: 255, bestSnatch: 125, bestCJ: 140, bestTotal: 265 },
 
 
   { name: "Jarell Brooks", club: "Unaffiliated", weightClass: "Male 32kg", entryTotal: 33, bestSnatch: 16, bestCJ: 17, bestTotal: 33 },
@@ -1044,16 +1055,6 @@ export const liftingResults: LiftResult[] = [
   { name: "Matthew Naugle", club: "Glass City Weightlifting", weightClass: "Male +109kg", entryTotal: 345, bestSnatch: 155, bestCJ: 192, bestTotal: 345 },
   { name: "Dimitri Albury", club: "Rising Tide Weightlifting", weightClass: "Male +109kg", entryTotal: 355, bestSnatch: 150, bestCJ: 203, bestTotal: 348 },
   { name: "Tayon Vereen", club: "COASTAL EMPIRE WEIGHTLIFTING", weightClass: "Male +109kg", entryTotal: 360, bestSnatch: 162, bestCJ: 211, bestTotal: 373 },
-
-  // Adaptive
-  { name: "Samantha Love", club: "PARAMOUNT BARBELL CLUB", weightClass: "Female 64kg", entryTotal: 141, bestSnatch: 64, bestCJ: 78, bestTotal: 141 },
-  { name: "Ashley Collazo", club: "Maxx Effort Training", weightClass: "Female 87kg", entryTotal: 122, bestSnatch: 58, bestCJ: 65, bestTotal: 122 },
-  { name: "Helen Filosa", club: "Anna Banana Barbell Club", weightClass: "Female +87kg", entryTotal: 135, bestSnatch: 61, bestCJ: 85, bestTotal: 144 },
-  { name: "Angel Santiago", club: "Maxx Effort Training", weightClass: "Male 55kg", entryTotal: 38, bestSnatch: 23, bestCJ: 29, bestTotal: 52 },
-  { name: "Justus Foster", club: "Moran Academy", weightClass: "Male 89kg", entryTotal: 160, bestSnatch: 69, bestCJ: 91, bestTotal: 159 },
-  { name: "Thomas Smalley", club: "Bexar Barbell", weightClass: "Male 89kg", entryTotal: 218, bestSnatch: 95, bestCJ: 121, bestTotal: 215 },
-  { name: "Roman Alexander Paez", club: "Bexar Barbell", weightClass: "Male +89kg", entryTotal: 160, bestSnatch: 74, bestCJ: 86, bestTotal: 160 },
-  { name: "Eric Hale", club: "Bexar Barbell", weightClass: "Male 109kg", entryTotal: 255, bestSnatch: 125, bestCJ: 140, bestTotal: 265 },
 
   // University
   { name: "Makayla Compton", club: "Warner University", weightClass: "Female 45kg", entryTotal: 80, bestSnatch: 38, bestCJ: 50, bestTotal: 87 },
