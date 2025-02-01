@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -17,39 +18,51 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const [initialLoad, setInitialLoad] = useState(true);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-      // Set initialLoad to false after a brief delay
-      const timer = setTimeout(() => setInitialLoad(false), 100);
-      return () => clearTimeout(timer);
+    async function checkOnboarding() {
+      const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+      setHasSeenOnboarding(!!seen);
+      if (loaded) {
+        SplashScreen.hideAsync();
+        const timer = setTimeout(() => setInitialLoad(false), 100);
+        return () => clearTimeout(timer);
+      }
     }
+    checkOnboarding();
   }, [loaded]);
 
-  if (!loaded) {
+  if (!loaded || hasSeenOnboarding === null) {
     return null;
   }
 
   return (
     <CustomThemeProvider>
       <SavedSessionsProvider>
-        <RootLayoutNav initialLoad={initialLoad} />
+        <RootLayoutNav initialLoad={initialLoad} hasSeenOnboarding={hasSeenOnboarding} />
       </SavedSessionsProvider>
     </CustomThemeProvider>
   );
 }
 
-function RootLayoutNav({ initialLoad }: { initialLoad: boolean }) {
+function RootLayoutNav({ 
+  initialLoad, 
+  hasSeenOnboarding 
+}: { 
+  initialLoad: boolean;
+  hasSeenOnboarding: boolean;
+}) {
   const { currentTheme } = useTheme();
 
   return (
     <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen 
           name="(screens)/schedule-details" 
           options={{ 
+            headerShown: true,
             title: 'Session Details',
             headerBackTitle: 'Back',
             presentation: 'push',
@@ -59,10 +72,20 @@ function RootLayoutNav({ initialLoad }: { initialLoad: boolean }) {
             headerTintColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
           }} 
         />
-        <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+        <Stack.Screen 
+          name="(screens)/subscription" 
+          options={{
+            headerShown: true,
+            title: 'Premium Features',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen name="(onboarding)" />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-      {initialLoad && <Redirect href="/(tabs)/schedule" />}
+      {initialLoad && (
+        <Redirect href={hasSeenOnboarding ? "/(tabs)/schedule" : "/(onboarding)"} />
+      )}
     </ThemeProvider>
   );
 }
