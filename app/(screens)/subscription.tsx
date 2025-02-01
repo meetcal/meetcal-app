@@ -7,10 +7,21 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import * as InAppPurchases from 'expo-in-app-purchases';
 import { useEffect, useState } from 'react';
 import Constants from 'expo-constants';
+import { SFSymbol } from '@/types/SFSymbols';
 
 // Product IDs for the subscriptions
 const QUARTERLY_SUB = 'quarterly_meetcal';
 const YEARLY_SUB = 'yearly_meetcal';
+
+// Update the Feature component props type
+type FeatureProps = {
+  icon: SFSymbol;
+  title: string;
+  description: string;
+  colors: {
+    secondaryText: string;
+  };
+};
 
 export default function SubscriptionScreen() {
   const { currentTheme } = useTheme();
@@ -37,20 +48,16 @@ export default function SubscriptionScreen() {
         YEARLY_SUB
       ]);
       
-      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+      if (responseCode === InAppPurchases.IAPResponseCode.OK && results) {
         setProducts(results);
       }
 
       // Set up purchase listener
       InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }) => {
-        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+        if (responseCode === InAppPurchases.IAPResponseCode.OK && results) {
           results.forEach(async (purchase) => {
             if (!purchase.acknowledged) {
-              // Finish the transaction
               await InAppPurchases.finishTransactionAsync(purchase, true);
-              
-              // Update user's subscription status
-              // You'll need to implement this based on your backend
               await updateUserSubscription(purchase);
             }
           });
@@ -125,7 +132,7 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const updateUserSubscription = async (purchase: InAppPurchases.IAPPurchase) => {
+  const updateUserSubscription = async (purchase: InAppPurchases.InAppPurchase) => {
     try {
       // Verify receipt with your backend
       // const response = await api.verifyPurchase({
@@ -218,15 +225,11 @@ export default function SubscriptionScreen() {
   );
 }
 
-function Feature({ icon, title, description, colors }: { 
-  icon: string; 
-  title: string; 
-  description: string;
-  colors: any;
-}) {
+// Update the Feature component to use proper icon type
+function Feature({ icon, title, description, colors }: FeatureProps) {
   return (
     <View style={styles.feature}>
-      <IconSymbol name={icon} size={24} color="#007AFF" />
+      <IconSymbol name={icon as SFSymbol} size={24} color="#007AFF" />
       <View style={styles.featureText}>
         <ThemedText style={styles.featureTitle}>{title}</ThemedText>
         <ThemedText style={[styles.featureDescription, { color: colors.secondaryText }]}>
