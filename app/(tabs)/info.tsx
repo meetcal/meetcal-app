@@ -102,6 +102,26 @@ export default function InfoScreen() {
           </View>
         </View>
 
+        {/* Theme Settings */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            App Settings
+          </ThemedText>
+          
+          <View style={[styles.section, styles.lastSection]}>
+            <View style={styles.settingRow}>
+              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
+                Dark Mode
+              </ThemedText>
+              <Switch
+                value={currentTheme === 'dark'}
+                onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        </View>
         {/* App Info */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
@@ -166,27 +186,24 @@ export default function InfoScreen() {
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
-        </View>
-
-        {/* Theme Settings */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            App Settings
-          </ThemedText>
-          
-          <View style={[styles.section, styles.lastSection]}>
-            <View style={styles.settingRow}>
-              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
-                Dark Mode
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => handlePress('https://www.meetcal.app')}
+          >
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              We Don't Collect Any Data
+            </ThemedText>
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                Privacy Policy & Terms of Use
               </ThemedText>
-              <Switch
-                value={currentTheme === 'dark'}
-                onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
-                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
-                thumbColor="#FFFFFF"
-              />
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
-          </View>
+          </Pressable>
         </View>
       </ScrollView>
     </ThemedView>
