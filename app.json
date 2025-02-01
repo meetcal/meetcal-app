@@ -22,7 +22,8 @@
             "NSUbiquitousContainerName": "Meet Calendar",
             "NSUbiquitousContainerSupportedFolderLevels": "Any"
           }
-        }
+        },
+        "SKPaymentTransactions": true
       },
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [

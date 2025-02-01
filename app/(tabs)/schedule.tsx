@@ -55,7 +55,7 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
 
   // Filter platforms based on letterFilter
   const filteredPlatforms = letterFilter 
-    ? session.platforms.filter(platform => platform.weightClass.endsWith(letterFilter))
+    ? session.platforms.filter(platform => platform.weightClass.slice(-1) === letterFilter)
     : session.platforms;
   
   const handlePlatformPress = (platform: Platform) => {
@@ -146,7 +146,7 @@ function DayView({ day, letterFilter }: { day: DaySchedule; letterFilter: string
     if (!letterFilter) return day.sessions;
     return day.sessions.filter(session => 
       session.platforms.some(platform => 
-        platform.weightClass.endsWith(letterFilter)
+        platform.weightClass.slice(-1) === letterFilter
       )
     );
   }, [day.sessions, letterFilter]);
@@ -197,8 +197,10 @@ export default function ScheduleScreen() {
     schedule.forEach(day => {
       day.sessions.forEach(session => {
         session.platforms.forEach(platform => {
-          const letter = platform.weightClass.split(' ')[1];
-          if (letter) letterSet.add(letter);
+          const lastChar = platform.weightClass.slice(-1);
+          if (/^[A-G]$/.test(lastChar)) {
+            letterSet.add(lastChar);
+          }
         });
       });
     });

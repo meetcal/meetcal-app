@@ -7,13 +7,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
-
-// Platform colors for visual reference
-const platformColors = {
-  Red: '#FF6B6B',
-  White: '#4A4A4A',
-  Blue: '#4DABF7',
-};
+import { getPlatformColors } from '@/data/schedule';
 
 export default function SavedScreen() {
   const { savedSessions } = useSavedSessions();
@@ -36,8 +30,10 @@ export default function SavedScreen() {
   const filterOptions = useMemo(() => {
     const letterSet = new Set<string>();
     savedSessions.forEach(session => {
-      const letter = session.weightClass.split(' ')[1];
-      if (letter) letterSet.add(letter);
+      const lastChar = session.weightClass.slice(-1);
+      if (/^[A-G]$/.test(lastChar)) {
+        letterSet.add(lastChar);
+      }
     });
     return Array.from(letterSet).sort();
   }, [savedSessions]);
@@ -46,7 +42,7 @@ export default function SavedScreen() {
   const filteredSessions = useMemo(() => {
     if (!letterFilter) return savedSessions;
     return savedSessions.filter(session => 
-      session.weightClass.endsWith(letterFilter)
+      session.weightClass.slice(-1) === letterFilter
     );
   }, [savedSessions, letterFilter]);
 
@@ -95,7 +91,7 @@ export default function SavedScreen() {
       <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
         <View style={[
           styles.platformIndicator,
-          { backgroundColor: platformColors[item.platform as keyof typeof platformColors] }
+          { backgroundColor: getPlatformColors()[item.platform] }
         ]}>
           <ThemedText style={styles.platformText}>
             {item.platform}
@@ -137,7 +133,10 @@ export default function SavedScreen() {
         data={filteredSessions}
         keyExtractor={item => item.id}
         renderItem={renderSession}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: insets.bottom + 100 }
+        ]}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <ThemedText style={styles.emptyText}>
