@@ -1,13 +1,103 @@
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import * as InAppPurchases from 'expo-in-app-purchases';
+import { useEffect, useState } from 'react';
+import Constants from 'expo-constants';
+
+// Product IDs for the subscriptions
+const QUARTERLY_SUB = 'quarterly_meetcal';
+const YEARLY_SUB = 'yearly_meetcal';
 
 export default function SubscriptionScreen() {
   const { currentTheme } = useTheme();
+  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
   
+  useEffect(() => {
+    initializePurchases();
+  }, []);
+
+  const initializePurchases = async () => {
+    try {
+      // Only initialize purchases in production or TestFlight
+      if (__DEV__ && Platform.OS === 'ios') {
+        console.log('Skipping IAP initialization in development');
+        return;
+      }
+
+      await InAppPurchases.connectAsync();
+      
+      // Load the products
+      const { responseCode, results } = await InAppPurchases.getProductsAsync([
+        QUARTERLY_SUB,
+        YEARLY_SUB
+      ]);
+      
+      if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+        setProducts(results);
+      }
+
+      // Set up purchase listener
+      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }) => {
+        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+          results.forEach(async (purchase) => {
+            if (!purchase.acknowledged) {
+              // Finish the transaction
+              await InAppPurchases.finishTransactionAsync(purchase, true);
+              
+              // Update user's subscription status
+              // You'll need to implement this based on your backend
+              await updateUserSubscription(purchase);
+            }
+          });
+        }
+
+        if (errorCode) {
+          Alert.alert('Error', 'There was an error with the purchase. Please try again.');
+        }
+        
+        setLoading(false);
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to initialize purchases');
+    }
+  };
+
+  const handlePurchase = async (productId: string) => {
+    try {
+      // In development, just show success
+      if (__DEV__ && Platform.OS === 'ios') {
+        Alert.alert('Development', 'Purchase would happen here in production');
+        return;
+      }
+
+      setLoading(true);
+      await InAppPurchases.purchaseItemAsync(productId);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to process purchase');
+      setLoading(false);
+    }
+  };
+
+  const updateUserSubscription = async (purchase: InAppPurchases.IAPPurchase) => {
+    // Implement your backend verification and user status update here
+    // This should verify the purchase receipt with Apple and update the user's status
+    try {
+      // Example:
+      // await api.verifyPurchase(purchase.originalOrderId, purchase.transactionReceipt);
+      Alert.alert('Success', 'Thank you for subscribing!');
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to verify purchase');
+    }
+  };
+
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -54,11 +144,32 @@ export default function SubscriptionScreen() {
           />
         </View>
 
-        <Pressable style={styles.subscribeButton}>
-          <ThemedText style={styles.subscribeText}>Subscribe - $10 Per Quarter</ThemedText>
+        <Pressable 
+          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+          onPress={() => handlePurchase(QUARTERLY_SUB)}
+          disabled={loading}
+        >
+          <View style={styles.buttonContent}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <ThemedText style={styles.subscribeText}>Subscribe - $10 Per Quarter</ThemedText>
+            )}
+          </View>
         </Pressable>
-        <Pressable style={styles.subscribeButton}>
-          <ThemedText style={styles.subscribeText}>Subscribe - $30 Per Year</ThemedText>
+
+        <Pressable 
+          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+          onPress={() => handlePurchase(YEARLY_SUB)}
+          disabled={loading}
+        >
+          <View style={styles.buttonContent}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <ThemedText style={styles.subscribeText}>Subscribe - $30 Per Year</ThemedText>
+            )}
+          </View>
         </Pressable>
       </View>
     </ThemedView>
@@ -146,5 +257,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  subscribeButtonDisabled: {
+    opacity: 0.6,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 
