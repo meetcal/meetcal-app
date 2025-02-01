@@ -32,6 +32,9 @@
         "com.apple.developer.icloud-services": [
           "CloudKit"
         ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {

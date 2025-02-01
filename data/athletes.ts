@@ -68,9 +68,9 @@ export const liftingResults: LiftResult[] = [
   { name: "Addison Williams", club: "Lion Chaser Barbell", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 53, bestTotal: 95, session: { number: 1, platform: 'Red' } },
   { name: "Zoe Macias", club: "Houston Weightlifting Academy", weightClass: "Female 55kg", entryTotal: 95, bestSnatch: 42, bestCJ: 56, bestTotal: 96, session: { number: 1, platform: 'Red' } }, 
   { name: "Alyssa Wagner", club: "Unaffiliated", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 46, bestCJ: 60, bestTotal: 106, session: { number: 1, platform: 'Red' } },
-  { name: "Ashley Bowen", club: "Bowen Elite Weightlifting", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 43, bestCJ: 52, bestTotal: 95, session: { number: 1, platform: 'White' }  },
-  { name: "Marissa Curcio", club: "Tri State Barbell", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 51, bestCJ: 63, bestTotal: 114, session: { number: 1, platform: 'White' } },
-  { name: "Lorena Nieblas", club: "Kaizen Strength", weightClass: "Female 55kg", entryTotal: 102, bestSnatch: 47, bestCJ: 55, bestTotal: 102, session: { number: 1, platform: 'White' } },
+  { name: "Ashley Bowen", club: "Bowen Elite Weightlifting", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 43, bestCJ: 52, bestTotal: 95, session: { number: 1, platform: 'Red' }  },
+  { name: "Marissa Curcio", club: "Tri State Barbell", weightClass: "Female 55kg", entryTotal: 100, bestSnatch: 51, bestCJ: 63, bestTotal: 114, session: { number: 1, platform: 'Red' } },
+  { name: "Lorena Nieblas", club: "Kaizen Strength", weightClass: "Female 55kg", entryTotal: 102, bestSnatch: 47, bestCJ: 55, bestTotal: 102, session: { number: 1, platform: 'Red' } },
 
   //** Done */
   { name: "Amelia Cone", club: "Rising Tide Weightlifting", weightClass: "Female 55kg", entryTotal: 104, bestSnatch: 49, bestCJ: 64, bestTotal: 113, session: { number: 2, platform: 'Red' } },
@@ -620,7 +620,6 @@ export const liftingResults: LiftResult[] = [
   { name: "Caitlin Thilges", club: "1Kilo", weightClass: "Female +87kg", entryTotal: 240, bestSnatch: 100, bestCJ: 142, bestTotal: 242, session: { number: 27, platform: 'Blue' } },
   { name: "Mary Theisen-Lappen", club: "1Kilo", weightClass: "Female +87kg", entryTotal: 260, bestSnatch: 119, bestCJ: 156, bestTotal: 274, session: { number: 27, platform: 'Blue' } },
 
-
 //** 11/10 */
   { name: "Jarell Brooks", club: "Unaffiliated", weightClass: "Male 32kg", entryTotal: 33, bestSnatch: 16, bestCJ: 17, bestTotal: 33, session: { number: 1, platform: 'Blue' } },
   { name: "Angel Santiago", club: "Maxx Effort Training", weightClass: "Male 55kg", entryTotal: 38, bestSnatch: 23, bestCJ: 29, bestTotal: 52 },
@@ -706,7 +705,6 @@ export const liftingResults: LiftResult[] = [
   { name: "Samuel Lind", club: "Rose Gold Athletics", weightClass: "Male 67kg", entryTotal: 235, bestSnatch: 103, bestCJ: 138, bestTotal: 240, session: { number: 7, platform: 'White' } },
   { name: "Henry Ludbrook", club: "Team Strength Works", weightClass: "Male 67kg", entryTotal: 250, bestSnatch: 105, bestCJ: 135, bestTotal: 238, session: { number: 7, platform: 'White' } },
   { name: "Mario Marquez", club: "Bexar Barbell", weightClass: "Male 67kg", entryTotal: 270, bestSnatch: 112, bestCJ: 152, bestTotal: 264, session: { number: 7, platform: 'White' } },
-
 
 //** 10/11 */
   { name: "Derrick Lee", club: "HASSLE FREE BBC", weightClass: "Male 73kg", entryTotal: 0, bestSnatch: 87, bestCJ: 108, bestTotal: 194, session: { number: 2, platform: 'White' } },
@@ -850,10 +848,9 @@ export const liftingResults: LiftResult[] = [
   { name: "Preston Powell", club: "POWER AND GRACE PERFORMANCE.", weightClass: "Male 81kg", entryTotal: 325, bestSnatch: 148, bestCJ: 185, bestTotal: 333, session: { number: 16, platform: 'Blue' } },
   { name: "Timur Kusov", club: "Performance Training Systems Weightlifting", weightClass: "Male 81kg", entryTotal: 330, bestSnatch: 142, bestCJ: 170, bestTotal: 312, session: { number: 16, platform: 'Blue' } },
 
-//** 14/13 */
+//** Done */
   { name: "Datton Nguyen", club: "Strength Solutions Weightlifting", weightClass: "Male 89kg", entryTotal: 0, bestSnatch: 96, bestCJ: 120, bestTotal: 216, session: { number: 8, platform: 'White' } },
-  { name: "Justus Foster", club: "Moran Academy", weightClass: "Male 89kg", entryTotal: 160, bestSnatch: 69, bestCJ: 91, bestTotal: 159 },
-  { name: "Justus Foster", club: "Moran Academy", weightClass: "Male 89kg", entryTotal: 160, bestSnatch: 69, bestCJ: 91, bestTotal: 159 },
+  { name: "Justus Foster", club: "Moran Academy", weightClass: "Male 89kg", entryTotal: 160, bestSnatch: 69, bestCJ: 91, bestTotal: 159, session: { number: 8, platform: 'White' } },
   { name: "paul hansen", club: "KC WEIGHTLIFTING", weightClass: "Male 89kg", entryTotal: 112, bestSnatch: 52, bestCJ: 61, bestTotal: 113, session: { number: 8, platform: 'White' }  },
   { name: "Todd Everett", club: "PROJECT LIFT", weightClass: "Male 89kg", entryTotal: 140, bestSnatch: 65, bestCJ: 83, bestTotal: 148, session: { number: 8, platform: 'White' }  },
   { name: "Adam Rowe", club: "Butcher Barbell", weightClass: "Male 89kg", entryTotal: 150, bestSnatch: 70, bestCJ: 83, bestTotal: 153, session: { number: 8, platform: 'White' }  },
@@ -867,7 +864,7 @@ export const liftingResults: LiftResult[] = [
   { name: "Jeremy Blevens", club: "Boombox Barbell", weightClass: "Male 89kg", entryTotal: 190, bestSnatch: 81, bestCJ: 110, bestTotal: 191, session: { number: 8, platform: 'White' }  },
 
 //** Done */
-  { name: "Mike Osborn", club: "Unaffiliated", weightClass: "Male 89kg", entryTotal: 190, bestSnatch: 80, bestCJ: 106, bestTotal: 186, session: { number: 8, platform: 'White' }  },
+  { name: "Mike Osborn", club: "Unaffiliated", weightClass: "Male 89kg", entryTotal: 190, bestSnatch: 80, bestCJ: 106, bestTotal: 186, session: { number: 9, platform: 'White' }  },
   { name: "Seth Chart", club: "BASA Weightlifting", weightClass: "Male 89kg", entryTotal: 190, bestSnatch: 82, bestCJ: 102, bestTotal: 184, session: { number: 9, platform: 'White' } },
   { name: "Zachary Raub", club: "4 Star Strength", weightClass: "Male 89kg", entryTotal: 190, bestSnatch: 75, bestCJ: 100, bestTotal: 175, session: { number: 9, platform: 'White' }  },
   { name: "Greg Karas", club: "4 Star Strength", weightClass: "Male 89kg", entryTotal: 195, bestSnatch: 83, bestCJ: 110, bestTotal: 193, session: { number: 9, platform: 'White' }  },
@@ -909,17 +906,17 @@ export const liftingResults: LiftResult[] = [
   { name: "Jazz Widney", club: "Unaffiliated", weightClass: "Male 89kg", entryTotal: 232, bestSnatch: 107, bestCJ: 125, bestTotal: 232, session: { number: 12, platform: 'White' }   },
 
 //** 11/12 */
-  { name: "Jacob Sterny", club: "Butcher Barbell", weightClass: "Male 89kg", entryTotal: 235, bestSnatch: 104, bestCJ: 125, bestTotal: 229, session: { number: 13, platform: 'White' }   },
-  { name: "Matthew Benson", club: "CHFP WEIGHTLIFTING CLUB", weightClass: "Male 89kg", entryTotal: 235, bestSnatch: 107, bestCJ: 126, bestTotal: 233, session: { number: 13, platform: 'White' }    },
-  { name: "David Meyer", club: "Aegis Barbell", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 105, bestCJ: 142, bestTotal: 247, session: { number: 13, platform: 'White' }    },
-  { name: "Michael Headings", club: "Steadfast Barbell", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 108, bestCJ: 132, bestTotal: 240, session: { number: 13, platform: 'White' }    },
-  { name: "Orlando Castillo", club: "HEAVY METAL BARBELL", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 105, bestCJ: 135, bestTotal: 240, session: { number: 13, platform: 'White' }    },
-  { name: "Tyler Sperry", club: "Attitude Nation Barbell Club", weightClass: "Male 89kg", entryTotal: 242, bestSnatch: 108, bestCJ: 136, bestTotal: 242, session: { number: 13, platform: 'White' }    },
-  { name: "Bryan Opaskar", club: "CLEAN SLATE WEIGHTLIFTING", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 120, bestCJ: 146, bestTotal: 265, session: { number: 13, platform: 'White' }    },
-  { name: "Bryant Thomas", club: "JDI BARBELL", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 105, bestCJ: 130, bestTotal: 235, session: { number: 13, platform: 'White' }    },
-  { name: "Evan Melendez", club: "PROJECT LIFT", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 110, bestCJ: 133, bestTotal: 242, session: { number: 13, platform: 'White' }    },
-  { name: "Jonathan Raymond", club: "Steadfast Barbell", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 110, bestCJ: 132, bestTotal: 242, session: { number: 13, platform: 'White' }    },
-  { name: "Thomas Vinetti", club: "Warwick Weightlifting Club", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 111, bestCJ: 137, bestTotal: 248, session: { number: 13, platform: 'White' }    },
+  { name: "Jacob Sterny", club: "Butcher Barbell", weightClass: "Male 89kg", entryTotal: 235, bestSnatch: 104, bestCJ: 125, bestTotal: 229, session: { number: 14, platform: 'White' }   },
+  { name: "Matthew Benson", club: "CHFP WEIGHTLIFTING CLUB", weightClass: "Male 89kg", entryTotal: 235, bestSnatch: 107, bestCJ: 126, bestTotal: 233, session: { number: 14, platform: 'White' }    },
+  { name: "David Meyer", club: "Aegis Barbell", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 105, bestCJ: 142, bestTotal: 247, session: { number: 14, platform: 'White' }    },
+  { name: "Michael Headings", club: "Steadfast Barbell", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 108, bestCJ: 132, bestTotal: 240, session: { number: 14, platform: 'White' }    },
+  { name: "Orlando Castillo", club: "HEAVY METAL BARBELL", weightClass: "Male 89kg", entryTotal: 240, bestSnatch: 105, bestCJ: 135, bestTotal: 240, session: { number: 14, platform: 'White' }    },
+  { name: "Tyler Sperry", club: "Attitude Nation Barbell Club", weightClass: "Male 89kg", entryTotal: 242, bestSnatch: 108, bestCJ: 136, bestTotal: 242, session: { number: 14, platform: 'White' }    },
+  { name: "Bryan Opaskar", club: "CLEAN SLATE WEIGHTLIFTING", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 120, bestCJ: 146, bestTotal: 265, session: { number: 14, platform: 'White' }    },
+  { name: "Bryant Thomas", club: "JDI BARBELL", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 105, bestCJ: 130, bestTotal: 235, session: { number: 14, platform: 'White' }    },
+  { name: "Evan Melendez", club: "PROJECT LIFT", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 110, bestCJ: 133, bestTotal: 242, session: { number: 14, platform: 'White' }    },
+  { name: "Jonathan Raymond", club: "Steadfast Barbell", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 110, bestCJ: 132, bestTotal: 242, session: { number: 14, platform: 'White' }    },
+  { name: "Thomas Vinetti", club: "Warwick Weightlifting Club", weightClass: "Male 89kg", entryTotal: 250, bestSnatch: 111, bestCJ: 137, bestTotal: 248, session: { number: 14, platform: 'White' }    },
 
 //** Done */
   { name: "Cody Limas", club: "Unaffiliated", weightClass: "Male 89kg", entryTotal: 260, bestSnatch: 110, bestCJ: 135, bestTotal: 245, session: { number: 15, platform: 'White' } },
@@ -1090,7 +1087,7 @@ export const liftingResults: LiftResult[] = [
   { name: "Oluwaseun Ladipo", club: "Tacoma Strength Weightlifting", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 112, bestCJ: 136, bestTotal: 248, session: { number: 24, platform: "Blue"} },
 
 //** 12/13 */
-  { name: "Tashawn Williams", club: "Orlando Strength", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 122, bestCJ: 151, bestTotal: 272, session: { number: 24, platform: "Blue"} },
+  { name: "Tashawn Williams", club: "Orlando Strength", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 122, bestCJ: 151, bestTotal: 272, session: { number: 27, platform: "White"} },
   { name: "Madden Mones", club: "Unaffiliated", weightClass: "Male +102kg", entryTotal: 267, bestSnatch: 117, bestCJ: 150, bestTotal: 267, session: { number: 27, platform: "White"} },
   { name: "Henry Schmitt", club: "CLEAN SLATE WEIGHTLIFTING", weightClass: "Male 109kg", entryTotal: 270, bestSnatch: 115, bestCJ: 150, bestTotal: 265, session: { number: 27, platform: "White"} },
   { name: "Thaddeus Perkins", club: "Unaffiliated", weightClass: "Male 109kg", entryTotal: 275, bestSnatch: 122, bestCJ: 157, bestTotal: 279, session: { number: 27, platform: "White"} },
