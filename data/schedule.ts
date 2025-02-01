@@ -681,7 +681,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'Blue',
-            weightClass: '87kg & +81kg A',
+            weightClass: '87kg & +81kg B',
           },
           {
             platform: 'Stars',
@@ -705,7 +705,7 @@ export const schedule: Schedule = [
           },
           {
             platform: 'White',
-            weightClass: '87kg & +81kg B',
+            weightClass: '87kg & +81kg A',
           },
           {
             platform: 'Blue',
