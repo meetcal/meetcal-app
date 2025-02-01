@@ -70,31 +70,73 @@ export default function SubscriptionScreen() {
 
   const handlePurchase = async (productId: string) => {
     try {
-      // In development, just show success
-      if (__DEV__ && Platform.OS === 'ios') {
-        Alert.alert('Development', 'Purchase would happen here in production');
+      setLoading(true);
+      
+      // Connect to store
+      await InAppPurchases.connectAsync();
+      
+      // Get products
+      const { responseCode, results } = await InAppPurchases.getProductsAsync([
+        productId
+      ]);
+      
+      if (responseCode !== InAppPurchases.IAPResponseCode.OK) {
+        throw new Error('Failed to load products');
+      }
+
+      if (results.length === 0) {
+        throw new Error('No products available');
+      }
+
+      // Purchase
+      const { responseCode: purchaseResponseCode, results: purchaseResults } = 
+        await InAppPurchases.purchaseItemAsync(productId);
+
+      if (purchaseResponseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
+        console.log('User canceled the transaction');
         return;
       }
 
-      setLoading(true);
-      await InAppPurchases.purchaseItemAsync(productId);
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to process purchase');
+      if (purchaseResponseCode !== InAppPurchases.IAPResponseCode.OK) {
+        throw new Error('Purchase failed');
+      }
+
+      // Handle successful purchase
+      if (purchaseResults && purchaseResults[0]) {
+        const purchase = purchaseResults[0];
+        
+        // Verify the purchase
+        if (!purchase.acknowledged) {
+          await InAppPurchases.finishTransactionAsync(purchase, true);
+        }
+        
+        // Update user's subscription status
+        await updateUserSubscription(purchase);
+      }
+
+    } catch (error) {
+      console.error('Purchase error:', error);
+      Alert.alert(
+        'Purchase Error',
+        error instanceof Error ? error.message : 'Failed to process purchase. Please try again.'
+      );
+    } finally {
       setLoading(false);
     }
   };
 
   const updateUserSubscription = async (purchase: InAppPurchases.IAPPurchase) => {
-    // Implement your backend verification and user status update here
-    // This should verify the purchase receipt with Apple and update the user's status
     try {
-      // Example:
-      // await api.verifyPurchase(purchase.originalOrderId, purchase.transactionReceipt);
+      // Verify receipt with your backend
+      // const response = await api.verifyPurchase({
+      //   receipt: purchase.transactionReceipt,
+      //   productId: purchase.productId
+      // });
+      
       Alert.alert('Success', 'Thank you for subscribing!');
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to verify purchase');
+    } catch (error) {
+      console.error('Verification error:', error);
+      Alert.alert('Error', 'Failed to verify purchase. Please contact support.');
     }
   };
 
