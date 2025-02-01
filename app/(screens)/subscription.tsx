@@ -35,27 +35,30 @@ export default function SubscriptionScreen() {
 
         <View style={styles.features}>
           <Feature
-            icon="star.fill"
-            title="Athlete Tracking"
-            description="Follow specific athletes and get notified when they lift"
+            icon="calendar"
+            title="Calendar Made Simple"
+            description="The PDF calendar is hard to read and hard to find. Have your whole competition schedule simple and clean."
             colors={colors}
           />
           <Feature
-            icon="bell.fill"
-            title="Custom Alerts"
-            description="Set up alerts for specific sessions, platforms, or weight classes"
+            icon="bookmark.fill"
+            title="Save Sessions"
+            description="Save sessions to the app or directly to your calendar. Know exactly where all your athletes and teams are competing in just a quick glance."
             colors={colors}
           />
           <Feature
-            icon="chart.bar.fill"
-            title="Advanced Statistics"
-            description="Access detailed performance analytics and historical data"
+            icon="line.3.horizontal.decrease"
+            title="Filter Views"
+            description="Filter your views by weight class, platform, even by club. Take control of the schedule in a way you've never seen before."
             colors={colors}
           />
         </View>
 
         <Pressable style={styles.subscribeButton}>
-          <ThemedText style={styles.subscribeText}>Subscribe - $4.99/month</ThemedText>
+          <ThemedText style={styles.subscribeText}>Subscribe - $10 Per Quarter</ThemedText>
+        </Pressable>
+        <Pressable style={styles.subscribeButton}>
+          <ThemedText style={styles.subscribeText}>Subscribe - $30 Per Year</ThemedText>
         </Pressable>
       </View>
     </ThemedView>
@@ -137,6 +140,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginTop: 12,
   },
   subscribeText: {
     color: '#FFFFFF',
