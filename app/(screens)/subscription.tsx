@@ -11,6 +11,7 @@ import { SFSymbol } from '@/types/SFSymbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Product IDs for both platforms
 const PRODUCT_IDS = Platform.select({
@@ -106,6 +107,13 @@ export default function SubscriptionScreen() {
             
             // Set subscription status and redirect
             await setSubscribed(true);
+            
+            // Verify subscription was saved before continuing
+            const status = await AsyncStorage.getItem('subscriptionStatus');
+            if (status !== 'true') {
+              throw new Error('Failed to save subscription status');
+            }
+
             Alert.alert(
               'Success', 
               'Thank you for subscribing to MeetCal Pro!',
@@ -120,7 +128,16 @@ export default function SubscriptionScreen() {
             );
           } catch (err) {
             console.error('Error processing purchase:', err);
-            Alert.alert('Error', 'Failed to process purchase. Please try again.');
+            Alert.alert(
+              'Error',
+              'Your purchase was successful but there was an error activating your subscription. Please contact support.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => setLoading(false)
+                }
+              ]
+            );
           }
         } else {
           console.error('Purchase error:', errorCode);
@@ -151,6 +168,8 @@ export default function SubscriptionScreen() {
     initializePurchases();
 
     return () => {
+      // Need to remove purchase listener before disconnecting
+      InAppPurchases.setPurchaseListener(null);
       InAppPurchases.disconnectAsync().catch(console.error);
     };
   }, []);
