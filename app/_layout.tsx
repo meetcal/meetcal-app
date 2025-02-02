@@ -54,22 +54,24 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
     return <Slot />;
   }
 
-  if (!isSubscribed) {
+  if (isSubscribed) {
     return (
       <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
-          {!hasSeenOnboarding ? (
-            <Stack.Screen name="(onboarding)" />
-          ) : (
-            <Stack.Screen 
-              name="(screens)/subscription" 
-              options={{
-                headerShown: true,
-                title: 'Premium Features',
-                headerBackTitle: 'Back',
-              }}
-            />
-          )}
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen 
+            name="(screens)/schedule-details" 
+            options={{ 
+              headerShown: true,
+              title: 'Session Details',
+              headerBackTitle: 'Back',
+              presentation: 'push',
+              headerStyle: {
+                backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+              },
+              headerTintColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+            }} 
+          />
         </Stack>
         <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
       </ThemeProvider>
@@ -79,29 +81,18 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
   return (
     <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen 
-          name="(screens)/schedule-details" 
-          options={{ 
-            headerShown: true,
-            title: 'Session Details',
-            headerBackTitle: 'Back',
-            presentation: 'push',
-            headerStyle: {
-              backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-            },
-            headerTintColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-          }} 
-        />
-        <Stack.Screen 
-          name="(screens)/subscription" 
-          options={{
-            headerShown: true,
-            title: 'Premium Features',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <Stack.Screen name="(onboarding)" />
+        {!hasSeenOnboarding ? (
+          <Stack.Screen name="(onboarding)" />
+        ) : (
+          <Stack.Screen 
+            name="(screens)/subscription" 
+            options={{
+              headerShown: true,
+              title: 'Premium Features',
+              headerBackTitle: 'Back',
+            }}
+          />
+        )}
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
