@@ -59,18 +59,14 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
       <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(screens)/schedule-details" />
           <Stack.Screen 
-            name="(screens)/schedule-details" 
-            options={{ 
+            name="(screens)/subscription" 
+            options={{
               headerShown: true,
-              title: 'Session Details',
+              title: 'Premium Features',
               headerBackTitle: 'Back',
-              presentation: 'push',
-              headerStyle: {
-                backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-              },
-              headerTintColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-            }} 
+            }}
           />
         </Stack>
         <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
