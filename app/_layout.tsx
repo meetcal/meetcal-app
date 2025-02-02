@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
+import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -17,7 +18,6 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-  const [initialLoad, setInitialLoad] = useState(true);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -26,8 +26,6 @@ export default function RootLayout() {
       setHasSeenOnboarding(!!seen);
       if (loaded) {
         SplashScreen.hideAsync();
-        const timer = setTimeout(() => setInitialLoad(false), 100);
-        return () => clearTimeout(timer);
       }
     }
     checkOnboarding();
@@ -38,22 +36,45 @@ export default function RootLayout() {
   }
 
   return (
-    <CustomThemeProvider>
-      <SavedSessionsProvider>
-        <RootLayoutNav initialLoad={initialLoad} hasSeenOnboarding={hasSeenOnboarding} />
-      </SavedSessionsProvider>
-    </CustomThemeProvider>
+    <SubscriptionProvider>
+      <CustomThemeProvider>
+        <SavedSessionsProvider>
+          <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />
+        </SavedSessionsProvider>
+      </CustomThemeProvider>
+    </SubscriptionProvider>
   );
 }
 
-function RootLayoutNav({ 
-  initialLoad, 
-  hasSeenOnboarding 
-}: { 
-  initialLoad: boolean;
-  hasSeenOnboarding: boolean;
-}) {
+function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
   const { currentTheme } = useTheme();
+  const { isSubscribed, isLoading } = useSubscription();
+
+  if (isLoading) {
+    return <Slot />;
+  }
+
+  if (!isSubscribed) {
+    return (
+      <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          {!hasSeenOnboarding ? (
+            <Stack.Screen name="(onboarding)" />
+          ) : (
+            <Stack.Screen 
+              name="(screens)/subscription" 
+              options={{
+                headerShown: true,
+                title: 'Premium Features',
+                headerBackTitle: 'Back',
+              }}
+            />
+          )}
+        </Stack>
+        <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -83,9 +104,6 @@ function RootLayoutNav({
         <Stack.Screen name="(onboarding)" />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-      {initialLoad && (
-        <Redirect href={hasSeenOnboarding ? "/(tabs)/schedule" : "/(onboarding)"} />
-      )}
     </ThemeProvider>
   );
 }
