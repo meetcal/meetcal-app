@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react';
 import Constants from 'expo-constants';
 import { SFSymbol } from '@/types/SFSymbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useRouter } from 'expo-router';
 
 // Product IDs for both platforms
 const PRODUCT_IDS = Platform.select({
@@ -32,6 +34,8 @@ export default function SubscriptionScreen() {
   const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { setSubscribed } = useSubscription();
+  const router = useRouter();
   
   const initializePurchases = async () => {
     try {
@@ -91,18 +95,36 @@ export default function SubscriptionScreen() {
         setError(null);
       }
 
-      InAppPurchases.setPurchaseListener(({ responseCode, results = [], errorCode }) => {
+      InAppPurchases.setPurchaseListener(async ({ responseCode, results = [], errorCode }) => {
         if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          results.forEach(async (purchase) => {
-            if (!purchase.acknowledged) {
-              await InAppPurchases.finishTransactionAsync(purchase, true);
+          try {
+            for (const purchase of results) {
+              if (!purchase.acknowledged) {
+                await InAppPurchases.finishTransactionAsync(purchase, true);
+              }
             }
-          });
-          Alert.alert('Success', 'Thank you for subscribing to MeetCal Pro!');
+            
+            // Set subscription status and redirect
+            await setSubscribed(true);
+            Alert.alert(
+              'Success', 
+              'Thank you for subscribing to MeetCal Pro!',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    router.replace('/(tabs)/schedule');
+                  }
+                }
+              ]
+            );
+          } catch (err) {
+            console.error('Error processing purchase:', err);
+            Alert.alert('Error', 'Failed to process purchase. Please try again.');
+          }
         } else {
           console.error('Purchase error:', errorCode);
           
-          // Check for authentication error in the response
           if (errorCode?.includes('Authentication Failed') || 
               errorCode?.includes('ASDErrorDomain')) {
             Alert.alert(
@@ -189,11 +211,18 @@ export default function SubscriptionScreen() {
       <Stack.Screen 
         options={{ 
           title: 'Premium Features',
-          headerBackTitle: 'Back'
+          headerBackTitle: 'Back',
+          headerShown: false
         }} 
       />
       
-      <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <View style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.card,
+          marginTop: insets.top + 20
+        }
+      ]}>
         <View style={styles.header}>
           <ThemedText style={styles.title}>Unlock Premium Features</ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
@@ -320,15 +349,21 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 32,
+    paddingTop: 8,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 12,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+    lineHeight: 34,
   },
   subtitle: {
     fontSize: 17,
     textAlign: 'center',
+    paddingHorizontal: 16,
+    lineHeight: 22,
   },
   features: {
     marginBottom: 32,
