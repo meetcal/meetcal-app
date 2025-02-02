@@ -7,24 +7,179 @@ import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { 
+  useAnimatedStyle, 
+  withSpring,
+  withSequence,
+  withDelay,
+  useSharedValue,
+  withTiming 
+} from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
+
+function NotificationCard({ children, style, colors }: { 
+  children: React.ReactNode; 
+  style?: any;
+  colors: any;
+}) {
+  return (
+    <View style={[{
+      flexDirection: 'row',
+      padding: 20,
+      borderRadius: 20,
+      alignItems: 'center',
+      gap: 16,
+      backgroundColor: colors.card,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 5,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+    }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function EntryListCard({ children, style, colors }: { 
+  children: React.ReactNode; 
+  style?: any;
+  colors: any;
+}) {
+  return (
+    <View style={[{
+      borderRadius: 20,
+      overflow: 'hidden',
+      backgroundColor: colors.card,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 5,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+    }, style]}>
+      {children}
+    </View>
+  );
+}
 
 const ONBOARDING_SCREENS = [
   {
     title: 'Welcome to MeetCal',
-    description: 'Your ultimate competition companion for tracking weightlifting events',
-    icon: 'calendar',
+    description: 'Track your weightlifting competitions with ease',
+    mainContent: ({ colors }: { colors: any }) => (
+      <Animated.View style={styles.demoContainer}>
+        <View style={styles.calendarDemo}>
+          <DemoCard style={{ width: '100%' }}>
+            <View style={styles.iconCircle}>
+              <IconSymbol name="calendar" size={32} color="#007AFF" />
+            </View>
+            <ThemedText style={[styles.demoText, { color: '#007AFF' }]}>
+              Today's Sessions
+            </ThemedText>
+            <View style={[styles.previewCard, { backgroundColor: colors.card }]}>
+              <ThemedText style={styles.previewText}>Session 1 - 81kg A</ThemedText>
+              <ThemedText style={[styles.previewTime, { color: colors.secondaryText }]}>9:00 AM</ThemedText>
+            </View>
+          </DemoCard>
+        </View>
+      </Animated.View>
+    ),
   },
   {
-    title: 'Stay Organized',
-    description: 'Track sessions, save athletes, and never miss a lift with our powerful features',
-    icon: 'bookmark.fill',
+    title: 'Find Your Sessions',
+    description: 'Filter and search sessions by platform, weight class, or club',
+    mainContent: ({ colors }: { colors: any }) => (
+      <Animated.View style={styles.demoContainer}>
+        <View style={styles.filterDemo}>
+          <View style={[styles.platformBadge, { backgroundColor: '#007AFF' }]}>
+            <ThemedText style={styles.platformText}>A</ThemedText>
+          </View>
+          <View style={[styles.platformBadge, { backgroundColor: '#34C759' }]}>
+            <ThemedText style={styles.platformText}>B</ThemedText>
+          </View>
+          <View style={[styles.platformBadge, { backgroundColor: '#FF9500' }]}>
+            <ThemedText style={styles.platformText}>C</ThemedText>
+          </View>
+        </View>
+      </Animated.View>
+    ),
   },
   {
-    title: 'Unlock Premium Features',
-    description: 'Get access to athlete tracking, custom alerts, and more with a subscription',
-    icon: 'star.fill',
+    title: 'Never Miss a Lift',
+    description: 'Save sessions and add to your calendar to get notified when they start',
+    mainContent: ({ colors }: { colors: any }) => (
+      <Animated.View style={styles.demoContainer}>
+        <View style={styles.notificationDemo}>
+          <NotificationCard colors={colors}>
+            <IconSymbol name="bell.fill" size={24} color="#FF9500" />
+            <View style={styles.notificationContent}>
+              <ThemedText style={styles.notificationTitle}>Session Starting Soon</ThemedText>
+              <ThemedText style={[styles.notificationBody, { color: colors.secondaryText }]}>
+                Session 1 - 81kg A - Red
+              </ThemedText>
+            </View>
+          </NotificationCard>
+        </View>
+      </Animated.View>
+    ),
+  },
+  {
+    title: 'View All Entries',
+    description: 'See all athletes, their entry totals, and 2024 competitions PRs in one place',
+    mainContent: ({ colors }: { colors: any }) => (
+      <Animated.View style={styles.demoContainer}>
+        <View style={styles.entryListDemo}>
+          <View style={styles.entryListHeader}>
+            <ThemedText style={[styles.entryListHeaderText, { color: colors.secondaryText }]}>
+              81kg A Session
+            </ThemedText>
+          </View>
+          
+          <EntryListCard colors={colors}>
+            <View style={[styles.entryItem, { borderBottomColor: colors.border }]}>
+              <View style={styles.entryInfo}>
+                <ThemedText style={styles.entryName}>Sarah Johnson</ThemedText>
+                <ThemedText style={[styles.entryClub, { color: colors.secondaryText }]}>
+                  Garage Strength
+                </ThemedText>
+              </View>
+              <ThemedText style={[styles.entryTotal, { color: colors.text }]}>
+                205kg
+              </ThemedText>
+            </View>
+            
+            <View style={[styles.entryItem, { borderBottomColor: colors.border }]}>
+              <View style={styles.entryInfo}>
+                <ThemedText style={styles.entryName}>Emily Chen</ThemedText>
+                <ThemedText style={[styles.entryClub, { color: colors.secondaryText }]}>
+                  Cal Strength
+                </ThemedText>
+              </View>
+              <ThemedText style={[styles.entryTotal, { color: colors.text }]}>
+                198kg
+              </ThemedText>
+            </View>
+            
+            <View style={styles.entryItem}>
+              <View style={styles.entryInfo}>
+                <ThemedText style={styles.entryName}>Maria Garcia</ThemedText>
+                <ThemedText style={[styles.entryClub, { color: colors.secondaryText }]}>
+                  Power & Grace
+                </ThemedText>
+              </View>
+              <ThemedText style={[styles.entryTotal, { color: colors.text }]}>
+                201kg
+              </ThemedText>
+            </View>
+          </EntryListCard>
+        </View>
+      </Animated.View>
+    ),
   },
 ];
 
@@ -40,6 +195,9 @@ export default function Onboarding() {
     background: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    screenBackground: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
   };
 
   const handleComplete = async () => {
@@ -87,8 +245,21 @@ export default function Onboarding() {
     checkOnboardingStatus();
   }, []);
 
+  const scale = useSharedValue(0.8);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = withSpring(1);
+    opacity.value = withDelay(150, withSpring(1));
+  }, [currentPage]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.screenBackground }]}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -98,36 +269,19 @@ export default function Onboarding() {
         scrollEventThrottle={16}
       >
         {ONBOARDING_SCREENS.map((screen, index) => (
-          <View 
-            key={index} 
-            style={styles.page}
-          >
-            <View style={[
-              styles.pageContent,
-              { paddingTop: insets.top + 40 }
-            ]}>
-              <View style={styles.iconContainer}>
-                <IconSymbol name={screen.icon} size={64} color="#007AFF" />
-              </View>
-              <View style={styles.textContainer}>
-                <ThemedText 
-                  style={[
-                    styles.title, 
-                    { color: colors.text }
-                  ]}
-                  adjustsFontSizeToFit
-                >
-                  {screen.title}
-                </ThemedText>
-                <ThemedText 
-                  style={[
-                    styles.description, 
-                    { color: colors.secondaryText }
-                  ]}
-                >
-                  {screen.description}
-                </ThemedText>
-              </View>
+          <View key={index} style={styles.page}>
+            <View style={[styles.pageContent, { paddingTop: insets.top + 40 }]}>
+              <Animated.View style={[styles.contentContainer, animatedStyle]}>
+                {screen.mainContent({ colors })}
+                <View style={styles.textContainer}>
+                  <ThemedText style={[styles.title, { color: colors.text }]}>
+                    {screen.title}
+                  </ThemedText>
+                  <ThemedText style={[styles.description, { color: colors.secondaryText }]}>
+                    {screen.description}
+                  </ThemedText>
+                </View>
+              </Animated.View>
             </View>
           </View>
         ))}
@@ -156,6 +310,29 @@ export default function Onboarding() {
         </Pressable>
       </View>
     </ThemedView>
+  );
+}
+
+function DemoCard({ children, style }: { children: React.ReactNode; style?: any }) {
+  const { currentTheme } = useTheme();
+  const colors = {
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+  };
+
+  return (
+    <View style={[{
+      padding: 24,
+      borderRadius: 22,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 5,
+    }, style]}>
+      {children}
+    </View>
   );
 }
 
@@ -233,5 +410,132 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  demoContainer: {
+    width: width - 80,
+    height: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 40,
+  },
+  contentContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  calendarDemo: {
+    width: '100%',
+    padding: 24,
+    borderRadius: 24,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  demoText: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  filterDemo: {
+    flexDirection: 'row',
+    gap: 20,
+    padding: 32,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  platformBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  platformText: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    fontWeight: '600',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    lineHeight: 40,
+  },
+  notificationDemo: {
+    width: '100%',
+    padding: 24,
+    borderRadius: 24,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  notificationBody: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  entryListDemo: {
+    width: '100%',
+    padding: 24,
+    borderRadius: 24,
+  },
+  entryListHeader: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  entryListHeaderText: {
+    fontSize: 15,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  entryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  entryInfo: {
+    flex: 1,
+  },
+  entryName: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  entryClub: {
+    fontSize: 15,
+  },
+  entryTotal: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginLeft: 16,
+  },
+  previewCard: {
+    width: '100%',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  previewText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  previewTime: {
+    fontSize: 15,
   },
 }); 

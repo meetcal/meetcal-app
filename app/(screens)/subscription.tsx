@@ -8,10 +8,13 @@ import * as InAppPurchases from 'expo-in-app-purchases';
 import { useEffect, useState } from 'react';
 import Constants from 'expo-constants';
 import { SFSymbol } from '@/types/SFSymbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Product IDs for the subscriptions
-const QUARTERLY_SUB = 'quarterly_meetcal';
-const YEARLY_SUB = 'yearly_meetcal';
+// Product IDs for both platforms
+const PRODUCT_IDS = Platform.select({
+  ios: ['quarterly_meetcal', 'yearly_meetcal'],
+  android: ['meetcal.pro.monthly', 'meetcal.pro.yearly'],
+});
 
 // Update the Feature component props type
 type FeatureProps = {
@@ -25,125 +28,151 @@ type FeatureProps = {
 
 export default function SubscriptionScreen() {
   const { currentTheme } = useTheme();
-  const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState<InAppPurchases.IAPItemDetails[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  useEffect(() => {
-    initializePurchases();
-  }, []);
-
   const initializePurchases = async () => {
     try {
-      // Only initialize purchases in production or TestFlight
-      if (__DEV__ && Platform.OS === 'ios') {
-        console.log('Skipping IAP initialization in development');
-        return;
-      }
-
+      console.log('Starting StoreKit initialization...');
+      console.log('App Bundle ID:', Constants.expoConfig?.ios?.bundleIdentifier);
+      console.log('Development Mode:', __DEV__ ? 'Yes' : 'No');
+      
       await InAppPurchases.connectAsync();
+      console.log('Successfully connected to StoreKit');
       
-      // Load the products
-      const { responseCode, results } = await InAppPurchases.getProductsAsync([
-        QUARTERLY_SUB,
-        YEARLY_SUB
-      ]);
-      
-      if (responseCode === InAppPurchases.IAPResponseCode.OK && results) {
-        setProducts(results);
+      // Give StoreKit a moment to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      if (!PRODUCT_IDS) {
+        throw new Error('No product IDs configured for this platform');
       }
 
-      // Set up purchase listener
-      InAppPurchases.setPurchaseListener(({ responseCode, results, errorCode }) => {
-        if (responseCode === InAppPurchases.IAPResponseCode.OK && results) {
+      // Try to get products multiple times if needed
+      let attempts = 0;
+      let results: InAppPurchases.IAPItemDetails[] = [];
+      
+      while (attempts < 3 && results.length === 0) {
+        console.log(`Attempt ${attempts + 1} to fetch products:`, PRODUCT_IDS);
+        
+        const response = await InAppPurchases.getProductsAsync(PRODUCT_IDS);
+        console.log('StoreKit response code:', response.responseCode);
+        
+        if (response.responseCode === InAppPurchases.IAPResponseCode.OK) {
+          results = response.results || [];
+          console.log('Products found:', results.length);
+          if (results.length > 0) {
+            console.log('Product details:', results.map(p => ({
+              id: p.productId,
+              title: p.title,
+              price: p.price
+            })));
+            break;
+          }
+        }
+        
+        attempts++;
+        if (attempts < 3) {
+          console.log('Waiting before next attempt...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (results.length === 0) {
+        setError(
+          'Unable to load products. Please verify:\n' +
+          '1. You are signed in with a sandbox account\n' +
+          '2. The app has been completely restarted\n' +
+          '3. Your sandbox account region matches the app'
+        );
+      } else {
+        setProducts(results);
+        setError(null);
+      }
+
+      InAppPurchases.setPurchaseListener(({ responseCode, results = [], errorCode }) => {
+        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
           results.forEach(async (purchase) => {
             if (!purchase.acknowledged) {
               await InAppPurchases.finishTransactionAsync(purchase, true);
-              await updateUserSubscription(purchase);
             }
           });
+          Alert.alert('Success', 'Thank you for subscribing to MeetCal Pro!');
+        } else {
+          console.error('Purchase error:', errorCode);
+          
+          // Check for authentication error in the response
+          if (errorCode?.includes('Authentication Failed') || 
+              errorCode?.includes('ASDErrorDomain')) {
+            Alert.alert(
+              'Authentication Error',
+              'Please sign out of the App Store in Settings, sign back in with your sandbox account, and try again.'
+            );
+          } else {
+            Alert.alert('Error', 'Failed to complete purchase. Please try again.');
+          }
         }
-
-        if (errorCode) {
-          Alert.alert('Error', 'There was an error with the purchase. Please try again.');
-        }
-        
         setLoading(false);
       });
+
     } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to initialize purchases');
+      console.error('Failed to initialize purchases:', err);
+      setError(
+        `Failed to initialize purchases: ${err instanceof Error ? err.message : 'Unknown error'}. 
+        Please make sure you're signed into the App Store and try again.`
+      );
     }
   };
+
+  useEffect(() => {
+    initializePurchases();
+
+    return () => {
+      InAppPurchases.disconnectAsync().catch(console.error);
+    };
+  }, []);
 
   const handlePurchase = async (productId: string) => {
     try {
       setLoading(true);
+      const product = products.find(p => p.productId === productId);
       
-      // Connect to store
-      await InAppPurchases.connectAsync();
+      if (!product) {
+        throw new Error('Product not found');
+      }
+
+      await InAppPurchases.purchaseItemAsync(product.productId);
+    } catch (err) {
+      console.error('Purchase error:', err);
       
-      // Get products
-      const { responseCode, results } = await InAppPurchases.getProductsAsync([
-        productId
-      ]);
-      
-      if (responseCode !== InAppPurchases.IAPResponseCode.OK) {
-        throw new Error('Failed to load products');
+      // Check for authentication error
+      if (err instanceof Error && 
+          (err.message.includes('Authentication Failed') || 
+           err.message.includes('ASDErrorDomain'))) {
+        Alert.alert(
+          'Authentication Error',
+          'Please sign out of the App Store in Settings, sign back in with your sandbox account, and try again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => setLoading(false)
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Purchase Error',
+          'Failed to start purchase. Please try again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => setLoading(false)
+            }
+          ]
+        );
       }
-
-      if (results.length === 0) {
-        throw new Error('No products available');
-      }
-
-      // Purchase
-      const { responseCode: purchaseResponseCode, results: purchaseResults } = 
-        await InAppPurchases.purchaseItemAsync(productId);
-
-      if (purchaseResponseCode === InAppPurchases.IAPResponseCode.USER_CANCELED) {
-        console.log('User canceled the transaction');
-        return;
-      }
-
-      if (purchaseResponseCode !== InAppPurchases.IAPResponseCode.OK) {
-        throw new Error('Purchase failed');
-      }
-
-      // Handle successful purchase
-      if (purchaseResults && purchaseResults[0]) {
-        const purchase = purchaseResults[0];
-        
-        // Verify the purchase
-        if (!purchase.acknowledged) {
-          await InAppPurchases.finishTransactionAsync(purchase, true);
-        }
-        
-        // Update user's subscription status
-        await updateUserSubscription(purchase);
-      }
-
-    } catch (error) {
-      console.error('Purchase error:', error);
-      Alert.alert(
-        'Purchase Error',
-        error instanceof Error ? error.message : 'Failed to process purchase. Please try again.'
-      );
-    } finally {
       setLoading(false);
-    }
-  };
-
-  const updateUserSubscription = async (purchase: InAppPurchases.InAppPurchase) => {
-    try {
-      // Verify receipt with your backend
-      // const response = await api.verifyPurchase({
-      //   receipt: purchase.transactionReceipt,
-      //   productId: purchase.productId
-      // });
-      
-      Alert.alert('Success', 'Thank you for subscribing!');
-    } catch (error) {
-      console.error('Verification error:', error);
-      Alert.alert('Error', 'Failed to verify purchase. Please contact support.');
     }
   };
 
@@ -193,33 +222,64 @@ export default function SubscriptionScreen() {
           />
         </View>
 
-        <Pressable 
-          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
-          onPress={() => handlePurchase(QUARTERLY_SUB)}
-          disabled={loading}
-        >
-          <View style={styles.buttonContent}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <ThemedText style={styles.subscribeText}>Subscribe - $10 Per Quarter</ThemedText>
-            )}
+        {error ? (
+          <View style={styles.loadingContainer}>
+            <ThemedText style={[styles.loadingText, { color: '#FF3B30' }]}>
+              {error}
+            </ThemedText>
+            <ThemedText style={[styles.helpText, { color: colors.secondaryText }]}>
+              Make sure you're signed into the App Store and have a valid payment method.
+            </ThemedText>
+            <Pressable
+              style={[styles.retryButton, { marginTop: 12 }]}
+              onPress={() => {
+                setError(null);
+                initializePurchases();
+              }}
+            >
+              <ThemedText style={styles.retryText}>Retry</ThemedText>
+            </Pressable>
           </View>
-        </Pressable>
+        ) : products.length > 0 ? (
+          <>
+            <Pressable 
+              style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+              onPress={() => handlePurchase('quarterly_meetcal')}
+              disabled={loading}
+            >
+              <View style={styles.buttonContent}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={styles.subscribeText}>
+                    Subscribe - {products.find(p => p.productId === 'quarterly_meetcal')?.price || '$10'} Per Quarter
+                  </ThemedText>
+                )}
+              </View>
+            </Pressable>
 
-        <Pressable 
-          style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
-          onPress={() => handlePurchase(YEARLY_SUB)}
-          disabled={loading}
-        >
-          <View style={styles.buttonContent}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <ThemedText style={styles.subscribeText}>Subscribe - $30 Per Year</ThemedText>
-            )}
+            <Pressable 
+              style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+              onPress={() => handlePurchase('yearly_meetcal')}
+              disabled={loading}
+            >
+              <View style={styles.buttonContent}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={styles.subscribeText}>
+                    Subscribe - {products.find(p => p.productId === 'yearly_meetcal')?.price || '$30'} Per Year
+                  </ThemedText>
+                )}
+              </View>
+            </Pressable>
+          </>
+        ) : (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
           </View>
-        </Pressable>
+        )}
       </View>
     </ThemedView>
   );
@@ -310,5 +370,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: '#8E8E93',
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  helpText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
   },
 }); 
