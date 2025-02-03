@@ -59,15 +59,39 @@ export default function SubscriptionScreen() {
   const handlePurchase = async (productId: string) => {
     try {
       setLoading(true);
+      
+      // Check current subscription status first
+      const customerInfo = await Purchases.getCustomerInfo();
+      if (customerInfo.entitlements.active['pro_features']) {
+        Alert.alert(
+          'Already Subscribed',
+          'You already have an active subscription. Would you like to manage your subscription?',
+          [
+            {
+              text: 'Manage Subscription',
+              onPress: () => {
+                // We'll add settings link in next step
+                console.log('Open subscription settings');
+              }
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+        return;
+      }
+
       const revenueCatPackage = revenueCatProducts.find(pkg => pkg.identifier === productId);
       
       if (!revenueCatPackage) {
         throw new Error('Product not found');
       }
 
-      const { customerInfo } = await Purchases.purchasePackage(revenueCatPackage);
+      const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(revenueCatPackage);
       
-      if (customerInfo.entitlements.active['pro_features']) {
+      if (newCustomerInfo.entitlements.active['pro_features']) {
         await setSubscribed(true);
         
         // Verify subscription was saved
@@ -252,7 +276,10 @@ export default function SubscriptionScreen() {
                         <ActivityIndicator color="#FFFFFF" />
                       ) : (
                         <ThemedText style={styles.subscribeText}>
-                          Subscribe - {pkg.product.priceString} {pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}
+                          {isSubscribed 
+                            ? 'Manage Subscription'
+                            : `Subscribe - ${pkg.product.priceString} ${pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}`
+                          }
                         </ThemedText>
                       )}
                     </View>
