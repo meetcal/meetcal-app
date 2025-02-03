@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases from 'react-native-purchases';
+import { Platform } from 'react-native';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -30,6 +32,27 @@ export default function RootLayout() {
     }
     checkOnboarding();
   }, [loaded]);
+
+  useEffect(() => {
+    // Initialize RevenueCat
+    const initializeRevenueCat = async () => {
+      try {
+        if (Platform.OS === 'ios') {
+          // Ensure the native module is available
+          if (Purchases.configure) {
+            await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
+            if (__DEV__) {
+              Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize RevenueCat:', error);
+      }
+    };
+
+    initializeRevenueCat();
+  }, []);
 
   if (!loaded || hasSeenOnboarding === null) {
     return null;
