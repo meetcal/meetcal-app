@@ -36,6 +36,7 @@ export default function SubscriptionScreen() {
   const { setSubscribed, restorePurchases, isSubscribed } = useSubscription();
   const router = useRouter();
   const [revenueCatProducts, setRevenueCatProducts] = useState<Purchases.Package[]>([]);
+  const [loadingProductId, setLoadingProductId] = useState<string | null>(null);
   
   const fetchProducts = async () => {
     try {
@@ -58,7 +59,7 @@ export default function SubscriptionScreen() {
 
   const handlePurchase = async (productId: string) => {
     try {
-      setLoading(true);
+      setLoadingProductId(productId);
       
       // Check current subscription status first
       const customerInfo = await Purchases.getCustomerInfo();
@@ -130,12 +131,12 @@ export default function SubscriptionScreen() {
         ]
       );
     } finally {
-      setLoading(false);
+      setLoadingProductId(null);
     }
   };
 
   const handleRestore = async () => {
-    setLoading(true);
+    setLoadingProductId('restore');
     try {
       const restored = await restorePurchases();
       if (restored) {
@@ -161,7 +162,7 @@ export default function SubscriptionScreen() {
         'Failed to restore subscription. Please try again.'
       );
     } finally {
-      setLoading(false);
+      setLoadingProductId(null);
     }
   };
 
@@ -267,12 +268,15 @@ export default function SubscriptionScreen() {
                 {revenueCatProducts.map((pkg) => (
                   <Pressable 
                     key={pkg.identifier}
-                    style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+                    style={[
+                      styles.subscribeButton, 
+                      loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
+                    ]}
                     onPress={() => handlePurchase(pkg.identifier)}
-                    disabled={loading}
+                    disabled={loadingProductId === pkg.identifier}
                   >
                     <View style={styles.buttonContent}>
-                      {loading ? (
+                      {loadingProductId === pkg.identifier ? (
                         <ActivityIndicator color="#FFFFFF" />
                       ) : (
                         <ThemedText style={styles.subscribeText}>
@@ -299,7 +303,7 @@ export default function SubscriptionScreen() {
                   <Pressable
                     style={styles.restoreButton}
                     onPress={handleRestore}
-                    disabled={loading}
+                    disabled={loadingProductId === 'restore'}
                   >
                     <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
                       Restore Purchase
