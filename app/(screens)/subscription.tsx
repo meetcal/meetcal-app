@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -73,9 +73,7 @@ export default function SubscriptionScreen() {
           [
             {
               text: 'Manage Subscription',
-              onPress: () => {
-                console.log('Open subscription settings');
-              }
+              onPress: handleManageSubscription
             },
             {
               text: 'Cancel',
@@ -168,6 +166,41 @@ export default function SubscriptionScreen() {
     }
   };
 
+  const handleManageSubscription = async () => {
+    try {
+      setLoadingProductId('manage');
+      
+      // Get customer info to get management URL
+      const customerInfo = await Purchases.getCustomerInfo();
+      
+      if (Platform.OS === 'ios') {
+        // Try management URL first
+        if (customerInfo.managementURL) {
+          await Linking.openURL(customerInfo.managementURL);
+        } else {
+          // Fallback to subscriptions settings
+          await Linking.openURL('itms-apps://apps.apple.com/account/subscriptions');
+        }
+      } else {
+        // Android handling
+        await Linking.openSettings();
+      }
+    } catch (error) {
+      console.error('Failed to open subscription settings:', error);
+      // Last resort fallback
+      if (Platform.OS === 'ios') {
+        Linking.openURL('itms-apps://apps.apple.com/account/subscriptions').catch(() => {
+          // If that fails, open general settings
+          Linking.openSettings();
+        });
+      } else {
+        Linking.openSettings();
+      }
+    } finally {
+      setLoadingProductId(null);
+    }
+  };
+
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -228,15 +261,15 @@ export default function SubscriptionScreen() {
 
         {isSubscribed ? (
           <Pressable 
-            style={[styles.manageButton, loading && styles.buttonDisabled]}
-            onPress={() => {
-              // We'll add the settings link in the next step
-              console.log('Open subscription settings');
-            }}
-            disabled={loading}
+            style={[
+              styles.manageButton, 
+              loadingProductId === 'manage' && styles.buttonDisabled
+            ]}
+            onPress={handleManageSubscription}
+            disabled={loadingProductId === 'manage'}
           >
             <View style={styles.buttonContent}>
-              {loading ? (
+              {loadingProductId === 'manage' ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <ThemedText style={styles.buttonText}>
