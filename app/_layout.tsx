@@ -1,16 +1,15 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, Slot } from 'expo-router';
+import { Redirect, Stack, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { storage } from '@/utils/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
-import { OnboardingProvider, useOnboarding } from '@/contexts/OnboardingContext';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -19,53 +18,77 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    async function checkOnboarding() {
+      const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+      setHasSeenOnboarding(!!seen);
+      if (loaded) {
+        SplashScreen.hideAsync();
+      }
     }
+    checkOnboarding();
   }, [loaded]);
 
-  if (!loaded) {
+  if (!loaded || hasSeenOnboarding === null) {
     return null;
   }
 
   return (
-    <OnboardingProvider>
-      <SubscriptionProvider>
-        <CustomThemeProvider>
-          <SavedSessionsProvider>
-            <RootLayoutNav />
-          </SavedSessionsProvider>
-        </CustomThemeProvider>
-      </SubscriptionProvider>
-    </OnboardingProvider>
+    <SubscriptionProvider>
+      <CustomThemeProvider>
+        <SavedSessionsProvider>
+          <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />
+        </SavedSessionsProvider>
+      </CustomThemeProvider>
+    </SubscriptionProvider>
   );
 }
 
-function RootLayoutNav() {
+function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
   const { currentTheme } = useTheme();
-  const { hasSeenSubscription } = useOnboarding();
   const { isSubscribed, isLoading } = useSubscription();
 
   if (isLoading) {
     return <Slot />;
   }
 
+  if (isSubscribed) {
+    return (
+      <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(screens)/schedule-details" />
+          <Stack.Screen 
+            name="(screens)/subscription" 
+            options={{
+              headerShown: true,
+              title: 'Premium Features',
+              headerBackTitle: 'Back',
+            }}
+          />
+        </Stack>
+        <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
-        {!hasSeenSubscription && <Stack.Screen name="(onboarding)" />}
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(screens)/schedule-details" />
-        <Stack.Screen 
-          name="(screens)/subscription" 
-          options={{
-            headerShown: true,
-            title: 'Premium Features',
-            headerBackTitle: 'Back',
-          }}
-        />
+        {!hasSeenOnboarding ? (
+          <Stack.Screen name="(onboarding)" />
+        ) : (
+          <Stack.Screen 
+            name="(screens)/subscription" 
+            options={{
+              headerShown: true,
+              title: 'Premium Features',
+              headerBackTitle: 'Back',
+            }}
+          />
+        )}
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>

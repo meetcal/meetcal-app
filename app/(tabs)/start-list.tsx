@@ -9,8 +9,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { schedule } from '@/data/schedule';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
-import { Stack } from 'expo-router';
-import { SubscriptionGate } from '@/components/SubscriptionGate';
 
 function getSessionDetails(sessionNumber: number) {
   for (const day of schedule) {
@@ -296,239 +294,231 @@ export default function StartListScreen() {
   };
 
   return (
-    <SubscriptionGate>
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen 
-          options={{ 
-            title: 'Start List',
-            headerLargeTitle: true
-          }} 
-        />
-        <View style={[styles.filterContainer, { 
-          backgroundColor: colors.background,
-          borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-          borderBottomWidth: 1,
-        }]}>
-          <View style={styles.filterButtonsRow}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterButton,
-                { 
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  flex: 1,
-                  marginRight: 8
-                },
-                pressed && { backgroundColor: colors.pressed }
-              ]}
-              onPress={() => setShowFilterModal(true)}
-            >
-              <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-                {weightClassFilter || 'All Classes'}
-              </ThemedText>
-              <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterButton,
-                { 
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  flex: 1,
-                  marginLeft: 8
-                },
-                pressed && { backgroundColor: colors.pressed }
-              ]}
-              onPress={() => setShowClubModal(true)}
-            >
-              <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-                {clubFilter || 'All Clubs'}
-              </ThemedText>
-              <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-            </Pressable>
-          </View>
-          
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
+      }]}>
+        <View style={styles.filterButtonsRow}>
           <Pressable
             style={({ pressed }) => [
-              styles.calendarButton,
+              styles.filterButton,
               { 
                 backgroundColor: colors.card,
                 borderColor: colors.border,
+                flex: 1,
+                marginRight: 8
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={handleSaveToCalendar}
+            onPress={() => setShowFilterModal(true)}
           >
-            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
             <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              Save All to Calendar
+              {weightClassFilter || 'All Classes'}
             </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                flex: 1,
+                marginLeft: 8
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => setShowClubModal(true)}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {clubFilter || 'All Clubs'}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
         </View>
-
-        <FlatList
-          data={filteredAthletes}
-          keyExtractor={item => item.name}
-          renderItem={({ item }) => (
-            <AthleteItem
-              athlete={item}
-              isExpanded={expandedId === item.name}
-              onPress={() => handlePress(item.name)}
-            />
-          )}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: 80 + insets.bottom }
+        
+        <Pressable
+          style={({ pressed }) => [
+            styles.calendarButton,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+            pressed && { backgroundColor: colors.pressed }
           ]}
-          showsVerticalScrollIndicator={false}
-        />
-
-        <Modal
-          visible={showFilterModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowFilterModal(false)}
+          onPress={handleSaveToCalendar}
         >
-          <Pressable 
-            style={[
-              styles.modalOverlay,
-              { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-            ]}
-            onPress={() => setShowFilterModal(false)}
-          >
-            <Pressable style={[
-              styles.modalContent,
-              { 
-                maxHeight: windowHeight * 0.7,
-                backgroundColor: colors.card
-              }
-            ]}>
-              <ScrollView bounces={false}>
+          <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+            Save All to Calendar
+          </ThemedText>
+        </Pressable>
+      </View>
+
+      <FlatList
+        data={filteredAthletes}
+        keyExtractor={item => item.name}
+        renderItem={({ item }) => (
+          <AthleteItem
+            athlete={item}
+            isExpanded={expandedId === item.name}
+            onPress={() => handlePress(item.name)}
+          />
+        )}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 80 + insets.bottom }
+        ]}
+        showsVerticalScrollIndicator={false}
+      />
+
+      <Modal
+        visible={showFilterModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <Pressable 
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <Pressable style={[
+            styles.modalContent,
+            { 
+              maxHeight: windowHeight * 0.7,
+              backgroundColor: colors.card
+            }
+          ]}>
+            <ScrollView bounces={false}>
+              <Pressable
+                key="all"
+                style={({ pressed }) => [
+                  styles.modalOption,
+                  { borderBottomColor: colors.border },
+                  weightClassFilter === '' && { backgroundColor: colors.pressed },
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => handleFilterSelect('')}
+              >
+                <ThemedText style={[
+                  styles.modalOptionText,
+                  weightClassFilter === '' && { color: '#007AFF' }
+                ]}>
+                  All Weight Classes
+                </ThemedText>
+                {weightClassFilter === '' && (
+                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                )}
+              </Pressable>
+              {weightClassOptions.map((weightClass) => (
                 <Pressable
-                  key="all"
+                  key={weightClass}
                   style={({ pressed }) => [
                     styles.modalOption,
                     { borderBottomColor: colors.border },
-                    weightClassFilter === '' && { backgroundColor: colors.pressed },
+                    weightClassFilter === weightClass && { backgroundColor: colors.pressed },
                     pressed && { opacity: 0.8 }
                   ]}
-                  onPress={() => handleFilterSelect('')}
+                  onPress={() => handleFilterSelect(weightClass)}
                 >
                   <ThemedText style={[
                     styles.modalOptionText,
-                    weightClassFilter === '' && { color: '#007AFF' }
+                    { color: colors.text },
+                    weightClassFilter === weightClass && { color: '#007AFF' }
                   ]}>
-                    All Weight Classes
+                    {weightClass}
                   </ThemedText>
-                  {weightClassFilter === '' && (
+                  {weightClassFilter === weightClass && (
                     <IconSymbol name="checkmark" size={16} color="#007AFF" />
                   )}
                 </Pressable>
-                {weightClassOptions.map((weightClass) => (
-                  <Pressable
-                    key={weightClass}
-                    style={({ pressed }) => [
-                      styles.modalOption,
-                      { borderBottomColor: colors.border },
-                      weightClassFilter === weightClass && { backgroundColor: colors.pressed },
-                      pressed && { opacity: 0.8 }
-                    ]}
-                    onPress={() => handleFilterSelect(weightClass)}
-                  >
-                    <ThemedText style={[
-                      styles.modalOptionText,
-                      { color: colors.text },
-                      weightClassFilter === weightClass && { color: '#007AFF' }
-                    ]}>
-                      {weightClass}
-                    </ThemedText>
-                    {weightClassFilter === weightClass && (
-                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Pressable>
+              ))}
+            </ScrollView>
           </Pressable>
-        </Modal>
+        </Pressable>
+      </Modal>
 
-        <Modal
-          visible={showClubModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowClubModal(false)}
+      <Modal
+        visible={showClubModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowClubModal(false)}
+      >
+        <Pressable 
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
+          onPress={() => setShowClubModal(false)}
         >
-          <Pressable 
-            style={[
-              styles.modalOverlay,
-              { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-            ]}
-            onPress={() => setShowClubModal(false)}
-          >
-            <Pressable style={[
-              styles.modalContent,
-              { 
-                maxHeight: windowHeight * 0.7,
-                backgroundColor: colors.card
-              }
-            ]}>
-              <ScrollView bounces={false}>
+          <Pressable style={[
+            styles.modalContent,
+            { 
+              maxHeight: windowHeight * 0.7,
+              backgroundColor: colors.card
+            }
+          ]}>
+            <ScrollView bounces={false}>
+              <Pressable
+                key="all-clubs"
+                style={({ pressed }) => [
+                  styles.modalOption,
+                  { borderBottomColor: colors.border },
+                  clubFilter === '' && { backgroundColor: colors.pressed },
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => {
+                  setClubFilter('');
+                  setShowClubModal(false);
+                }}
+              >
+                <ThemedText style={[
+                  styles.modalOptionText,
+                  clubFilter === '' && { color: '#007AFF' }
+                ]}>
+                  All Clubs
+                </ThemedText>
+                {clubFilter === '' && (
+                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                )}
+              </Pressable>
+              {clubOptions.map((club) => (
                 <Pressable
-                  key="all-clubs"
+                  key={club}
                   style={({ pressed }) => [
                     styles.modalOption,
                     { borderBottomColor: colors.border },
-                    clubFilter === '' && { backgroundColor: colors.pressed },
+                    clubFilter === club && { backgroundColor: colors.pressed },
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
-                    setClubFilter('');
+                    setClubFilter(club);
                     setShowClubModal(false);
                   }}
                 >
                   <ThemedText style={[
                     styles.modalOptionText,
-                    clubFilter === '' && { color: '#007AFF' }
+                    { color: colors.text },
+                    clubFilter === club && { color: '#007AFF' }
                   ]}>
-                    All Clubs
+                    {club}
                   </ThemedText>
-                  {clubFilter === '' && (
+                  {clubFilter === club && (
                     <IconSymbol name="checkmark" size={16} color="#007AFF" />
                   )}
                 </Pressable>
-                {clubOptions.map((club) => (
-                  <Pressable
-                    key={club}
-                    style={({ pressed }) => [
-                      styles.modalOption,
-                      { borderBottomColor: colors.border },
-                      clubFilter === club && { backgroundColor: colors.pressed },
-                      pressed && { opacity: 0.8 }
-                    ]}
-                    onPress={() => {
-                      setClubFilter(club);
-                      setShowClubModal(false);
-                    }}
-                  >
-                    <ThemedText style={[
-                      styles.modalOptionText,
-                      { color: colors.text },
-                      clubFilter === club && { color: '#007AFF' }
-                    ]}>
-                      {club}
-                    </ThemedText>
-                    {clubFilter === club && (
-                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Pressable>
+              ))}
+            </ScrollView>
           </Pressable>
-        </Modal>
-      </ThemedView>
-    </SubscriptionGate>
+        </Pressable>
+      </Modal>
+    </ThemedView>
   );
 }
 
