@@ -15,16 +15,33 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Helper function to check subscription status consistently
+  const checkEntitlementStatus = async (customerInfo: Purchases.CustomerInfo): Promise<boolean> => {
+    const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
+    console.log('Checking entitlement status:', {
+      hasActiveEntitlement,
+      activeEntitlements: customerInfo.entitlements.active,
+      allEntitlements: customerInfo.entitlements
+    });
+    return hasActiveEntitlement;
+  };
+
   const checkSubscriptionStatus = async () => {
     try {
+      // Wait longer for RevenueCat initialization
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('Fetching customer info...');
       const customerInfo = await Purchases.getCustomerInfo();
-      const hasActiveSubscription = customerInfo.entitlements.active['pro_features'] != null;
+      console.log('Raw customer info:', customerInfo);
+      
+      const hasActiveSubscription = await checkEntitlementStatus(customerInfo);
+      console.log('Final subscription status:', hasActiveSubscription);
       
       await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
       setIsSubscribed(hasActiveSubscription);
     } catch (error) {
       console.error('Failed to check subscription status:', error);
-      // Fall back to stored value if RevenueCat check fails
       const status = await AsyncStorage.getItem('subscriptionStatus');
       setIsSubscribed(status === 'true');
     } finally {
@@ -33,7 +50,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   };
 
   useEffect(() => {
+    const customerInfoUpdateListener = Purchases.addCustomerInfoUpdateListener(async (info) => {
+      console.log('Customer info updated:', info);
+      const hasActiveSubscription = await checkEntitlementStatus(info);
+      console.log('Subscription update received:', hasActiveSubscription);
+      await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
+      setIsSubscribed(hasActiveSubscription);
+    });
+
+    // Initial check
     checkSubscriptionStatus();
+
+    return () => {
+      customerInfoUpdateListener.remove();
+    };
   }, []);
 
   const setSubscribed = async (value: boolean) => {
@@ -47,8 +77,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const restorePurchases = async (): Promise<boolean> => {
     try {
+      console.log('Attempting to restore purchases...');
       const customerInfo = await Purchases.restorePurchases();
-      const hasActiveSubscription = customerInfo.entitlements.active['pro_features'] != null;
+      const hasActiveSubscription = await checkEntitlementStatus(customerInfo);
+      console.log('Restore purchases result:', hasActiveSubscription);
       
       await setSubscribed(hasActiveSubscription);
       return hasActiveSubscription;

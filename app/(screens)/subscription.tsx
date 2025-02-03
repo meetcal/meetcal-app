@@ -61,9 +61,12 @@ export default function SubscriptionScreen() {
     try {
       setLoadingProductId(productId);
       
-      // Check current subscription status first
+      console.log('Checking current subscription before purchase...');
       const customerInfo = await Purchases.getCustomerInfo();
-      if (customerInfo.entitlements.active['pro_features']) {
+      const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
+      console.log('Purchase check - subscription status:', hasActiveEntitlement);
+      
+      if (hasActiveEntitlement) {
         Alert.alert(
           'Already Subscribed',
           'You already have an active subscription. Would you like to manage your subscription?',
@@ -71,7 +74,6 @@ export default function SubscriptionScreen() {
             {
               text: 'Manage Subscription',
               onPress: () => {
-                // We'll add settings link in next step
                 console.log('Open subscription settings');
               }
             },
@@ -92,7 +94,7 @@ export default function SubscriptionScreen() {
 
       const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(revenueCatPackage);
       
-      if (newCustomerInfo.entitlements.active['pro_features']) {
+      if (newCustomerInfo.entitlements.active['Subscriptions']) {
         await setSubscribed(true);
         
         // Verify subscription was saved
