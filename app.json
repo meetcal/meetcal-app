@@ -39,7 +39,8 @@
         ]
       },
       "config": {
-        "usesNonExemptEncryption": false
+        "usesNonExemptEncryption": false,
+        "usesIAP": true
       }
     },
     "android": {

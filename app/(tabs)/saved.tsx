@@ -8,6 +8,8 @@ import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors } from '@/data/schedule';
+import { SubscriptionGate } from '@/components/SubscriptionGate';
+import { Stack } from 'expo-router';
 
 export default function SavedScreen() {
   const { savedSessions } = useSavedSessions();
@@ -105,111 +107,119 @@ export default function SavedScreen() {
   );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.filterButton,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border 
-            },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-          </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={filteredSessions}
-        keyExtractor={item => item.id}
-        renderItem={renderSession}
-        contentContainerStyle={[
-          styles.list,
-          { paddingBottom: insets.bottom + 100 }
-        ]}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>
-              {letterFilter 
-                ? `No ${letterFilter} sessions found`
-                : 'No saved sessions'}
+    <SubscriptionGate>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen 
+          options={{ 
+            title: 'Saved Sessions',
+            headerLargeTitle: true
+          }} 
+        />
+        <View style={[styles.filterContainer, { 
+          backgroundColor: colors.background,
+          borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+          borderBottomWidth: 1,
+        }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
             </ThemedText>
-          </View>
-        )}
-      />
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+        </View>
 
-      <Modal
-        visible={showFilterModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowFilterModal(false)}
-      >
-        <Pressable 
-          style={[styles.modalOverlay, { 
-            backgroundColor: currentTheme === 'dark' 
-              ? 'rgba(0,0,0,0.6)' 
-              : 'rgba(0,0,0,0.4)' 
-          }]}
-          onPress={() => setShowFilterModal(false)}
-        >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.modalOption,
-                { borderBottomColor: colors.border },
-                letterFilter === '' && { backgroundColor: colors.pressed },
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={() => handleFilterSelect('')}
-            >
-              <ThemedText style={[
-                styles.modalOptionText,
-                { color: colors.text },
-                letterFilter === '' && { color: '#007AFF' }
-              ]}>
-                All Sessions
+        <FlatList
+          data={filteredSessions}
+          keyExtractor={item => item.id}
+          renderItem={renderSession}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: insets.bottom + 100 }
+          ]}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <ThemedText style={styles.emptyText}>
+                {letterFilter 
+                  ? `No ${letterFilter} sessions found`
+                  : 'No saved sessions'}
               </ThemedText>
-              {letterFilter === '' && (
-                <IconSymbol name="checkmark" size={16} color="#007AFF" />
-              )}
-            </Pressable>
-            {filterOptions.map(letter => (
+            </View>
+          )}
+        />
+
+        <Modal
+          visible={showFilterModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowFilterModal(false)}
+        >
+          <Pressable 
+            style={[styles.modalOverlay, { 
+              backgroundColor: currentTheme === 'dark' 
+                ? 'rgba(0,0,0,0.6)' 
+                : 'rgba(0,0,0,0.4)' 
+            }]}
+            onPress={() => setShowFilterModal(false)}
+          >
+            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
               <Pressable
-                key={letter}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },
-                  letterFilter === letter && { backgroundColor: colors.pressed },
+                  letterFilter === '' && { backgroundColor: colors.pressed },
                   pressed && { opacity: 0.8 }
                 ]}
-                onPress={() => handleFilterSelect(letter)}
+                onPress={() => handleFilterSelect('')}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
                   { color: colors.text },
-                  letterFilter === letter && { color: '#007AFF' }
+                  letterFilter === '' && { color: '#007AFF' }
                 ]}>
-                  {letter} Session
+                  All Sessions
                 </ThemedText>
-                {letterFilter === letter && (
+                {letterFilter === '' && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />
                 )}
               </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
-    </ThemedView>
+              {filterOptions.map(letter => (
+                <Pressable
+                  key={letter}
+                  style={({ pressed }) => [
+                    styles.modalOption,
+                    { borderBottomColor: colors.border },
+                    letterFilter === letter && { backgroundColor: colors.pressed },
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={() => handleFilterSelect(letter)}
+                >
+                  <ThemedText style={[
+                    styles.modalOptionText,
+                    { color: colors.text },
+                    letterFilter === letter && { color: '#007AFF' }
+                  ]}>
+                    {letter} Session
+                  </ThemedText>
+                  {letterFilter === letter && (
+                    <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Modal>
+      </ThemedView>
+    </SubscriptionGate>
   );
 }
 
