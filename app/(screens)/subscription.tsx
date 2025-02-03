@@ -33,7 +33,7 @@ export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setSubscribed, restorePurchases } = useSubscription();
+  const { setSubscribed, restorePurchases, isSubscribed } = useSubscription();
   const router = useRouter();
   const [revenueCatProducts, setRevenueCatProducts] = useState<Purchases.Package[]>([]);
   
@@ -167,9 +167,14 @@ export default function SubscriptionScreen() {
         }
       ]}>
         <View style={styles.header}>
-          <ThemedText style={styles.title}>Unlock Premium Features</ThemedText>
+          <ThemedText style={styles.title}>
+            {isSubscribed ? 'MeetCal Pro' : 'Unlock Premium Features'}
+          </ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
-            Enhance your competition experience
+            {isSubscribed 
+              ? 'You have full access to all premium features'
+              : 'Enhance your competition experience'
+            }
           </ThemedText>
         </View>
 
@@ -194,72 +199,95 @@ export default function SubscriptionScreen() {
           />
         </View>
 
-        {error ? (
-          <View style={styles.loadingContainer}>
-            <ThemedText style={[styles.loadingText, { color: '#FF3B30' }]}>
-              {error}
-            </ThemedText>
-            <ThemedText style={[styles.helpText, { color: colors.secondaryText }]}>
-              Make sure you're signed into the App Store and have a valid payment method.
-            </ThemedText>
-            <Pressable
-              style={[styles.retryButton, { marginTop: 12 }]}
-              onPress={() => {
-                setError(null);
-                fetchProducts();
-              }}
-            >
-              <ThemedText style={styles.retryText}>Retry</ThemedText>
-            </Pressable>
-          </View>
-        ) : revenueCatProducts.length > 0 ? (
-          <>
-            {revenueCatProducts.map((pkg) => (
-              <Pressable 
-                key={pkg.identifier}
-                style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
-                onPress={() => handlePurchase(pkg.identifier)}
-                disabled={loading}
-              >
-                <View style={styles.buttonContent}>
-                  {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <ThemedText style={styles.subscribeText}>
-                      Subscribe - {pkg.product.priceString} {pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}
-                    </ThemedText>
-                  )}
-                </View>
-              </Pressable>
-            ))}
-          </>
+        {isSubscribed ? (
+          <Pressable 
+            style={[styles.manageButton, loading && styles.buttonDisabled]}
+            onPress={() => {
+              // We'll add the settings link in the next step
+              console.log('Open subscription settings');
+            }}
+            disabled={loading}
+          >
+            <View style={styles.buttonContent}>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <ThemedText style={styles.buttonText}>
+                  Manage Subscription
+                </ThemedText>
+              )}
+            </View>
+          </Pressable>
         ) : (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
-          </View>
+          <>
+            {error ? (
+              <View style={styles.loadingContainer}>
+                <ThemedText style={[styles.loadingText, { color: '#FF3B30' }]}>
+                  {error}
+                </ThemedText>
+                <ThemedText style={[styles.helpText, { color: colors.secondaryText }]}>
+                  Make sure you're signed into the App Store and have a valid payment method.
+                </ThemedText>
+                <Pressable
+                  style={[styles.retryButton, { marginTop: 12 }]}
+                  onPress={() => {
+                    setError(null);
+                    fetchProducts();
+                  }}
+                >
+                  <ThemedText style={styles.retryText}>Retry</ThemedText>
+                </Pressable>
+              </View>
+            ) : revenueCatProducts.length > 0 ? (
+              <>
+                {revenueCatProducts.map((pkg) => (
+                  <Pressable 
+                    key={pkg.identifier}
+                    style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+                    onPress={() => handlePurchase(pkg.identifier)}
+                    disabled={loading}
+                  >
+                    <View style={styles.buttonContent}>
+                      {loading ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <ThemedText style={styles.subscribeText}>
+                          Subscribe - {pkg.product.priceString} {pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}
+                        </ThemedText>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+                
+                <View style={styles.bottomButtons}>
+                  <Pressable
+                    style={styles.skipButton}
+                    onPress={() => router.replace('/(tabs)/schedule')}
+                  >
+                    <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
+                      Skip for now
+                    </ThemedText>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={styles.restoreButton}
+                    onPress={handleRestore}
+                    disabled={loading}
+                  >
+                    <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
+                      Restore Purchase
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#007AFF" />
+                <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
+              </View>
+            )}
+          </>
         )}
-      </View>
-
-      <View style={styles.bottomButtons}>
-        <Pressable
-          style={styles.skipButton}
-          onPress={() => router.replace('/(tabs)/schedule')}
-        >
-          <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
-            Skip for now
-          </ThemedText>
-        </Pressable>
-        
-        <Pressable
-          style={styles.restoreButton}
-          onPress={handleRestore}
-          disabled={loading}
-        >
-          <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
-            Restore Purchase
-          </ThemedText>
-        </Pressable>
       </View>
     </ThemedView>
   );
@@ -402,5 +430,20 @@ const styles = StyleSheet.create({
   },
   restoreText: {
     fontSize: 15,
+  },
+  manageButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
   },
 }); 
