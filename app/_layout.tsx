@@ -76,12 +76,13 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
 
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
-  return (
-    <ThemeProvider value={theme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        {isSubscribed ? (
-          // Subscribed users go straight to main app
-          <>
+  // Early return with redirect for subscribed users
+  if (isSubscribed) {
+    return (
+      <>
+        <Redirect href="/(tabs)/schedule" />
+        <ThemeProvider value={theme}>
+          <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="(screens)/schedule-details" />
             <Stack.Screen 
@@ -92,21 +93,40 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
                 headerBackTitle: 'Back',
               }}
             />
-          </>
-        ) : !hasSeenOnboarding ? (
-          // New users see onboarding
-          <Stack.Screen name="(onboarding)" />
-        ) : (
-          // Non-subscribed users who've seen onboarding see subscription
-          <Stack.Screen 
-            name="(screens)/subscription" 
-            options={{
-              headerShown: true,
-              title: 'Premium Features',
-              headerBackTitle: 'Back',
-            }}
-          />
-        )}
+          </Stack>
+          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+        </ThemeProvider>
+      </>
+    );
+  }
+
+  // Early return with redirect for non-subscribed users based on onboarding
+  if (!hasSeenOnboarding) {
+    return (
+      <>
+        <Redirect href="/(onboarding)" />
+        <ThemeProvider value={theme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(onboarding)" />
+          </Stack>
+          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+        </ThemeProvider>
+      </>
+    );
+  }
+
+  // Default case: show subscription screen for non-subscribed users who've seen onboarding
+  return (
+    <ThemeProvider value={theme}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen 
+          name="(screens)/subscription" 
+          options={{
+            headerShown: true,
+            title: 'Premium Features',
+            headerBackTitle: 'Back',
+          }}
+        />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
