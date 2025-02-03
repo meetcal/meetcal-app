@@ -1,46 +1,42 @@
 // This file is a fallback for using MaterialIcons on Android and web.
 
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SymbolWeight } from 'expo-symbols';
 import React from 'react';
 import { OpaqueColorValue, StyleProp, ViewStyle } from 'react-native';
 
-// Add your SFSymbol to MaterialIcons mappings here.
-const MAPPING = {
-  // See MaterialIcons here: https://icons.expo.fyi
-  // See SF Symbols in the SF Symbols app on Mac.
-  'house.fill': 'home',
-  'paperplane.fill': 'send',
-  'chevron.left.forwardslash.chevron.right': 'code',
-  'chevron.right': 'chevron-right',
-  'calendar': 'calendar-today',
+// Map SF Symbols to Ionicons names
+const iconMap: Record<string, string> = {
+  'chevron.down': 'chevron-down',
+  'chevron.right': 'chevron-forward',
+  'chevron.up': 'chevron-up',
+  'calendar': 'calendar',
   'bookmark.fill': 'bookmark',
-  'info.circle.fill': 'info',
-} as Partial<
-  Record<
-    import('expo-symbols').SymbolViewProps['name'],
-    React.ComponentProps<typeof MaterialIcons>['name']
-  >
->;
+  'line.3.horizontal.decrease': 'filter',
+  'info.circle.fill': 'information-circle',
+  'list.bullet': 'list',
+  'checkmark': 'checkmark',
+};
 
-export type IconSymbolName = keyof typeof MAPPING;
+type IconSymbolProps = {
+  name: string;
+  size: number;
+  color: string;
+};
 
-/**
- * An icon component that uses native SFSymbols on iOS, and MaterialIcons on Android and web. This ensures a consistent look across platforms, and optimal resource usage.
- *
- * Icon `name`s are based on SFSymbols and require manual mapping to MaterialIcons.
- */
-export function IconSymbol({
-  name,
-  size = 24,
-  color,
-  style,
-}: {
-  name: IconSymbolName;
-  size?: number;
-  color: string | OpaqueColorValue;
-  style?: StyleProp<ViewStyle>;
-  weight?: SymbolWeight;
-}) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+export function IconSymbol({ name, size, color }: IconSymbolProps) {
+  // Convert SF Symbol name to Ionicons name
+  const ionIconName = Platform.select({
+    ios: name,
+    android: iconMap[name] || name,
+  });
+
+  return (
+    <Ionicons 
+      name={ionIconName as any}
+      size={size}
+      color={color}
+    />
+  );
 }
