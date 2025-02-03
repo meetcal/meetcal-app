@@ -38,12 +38,9 @@ export default function RootLayout() {
     const initializeRevenueCat = async () => {
       try {
         if (Platform.OS === 'ios') {
-          // Ensure the native module is available
-          if (Purchases.configure) {
-            await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
-            if (__DEV__) {
-              Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-            }
+          await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
+          if (__DEV__) {
+            Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
           }
         }
       } catch (error) {
@@ -77,32 +74,30 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
     return <Slot />;
   }
 
-  if (isSubscribed) {
-    return (
-      <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(screens)/schedule-details" />
-          <Stack.Screen 
-            name="(screens)/subscription" 
-            options={{
-              headerShown: true,
-              title: 'Premium Features',
-              headerBackTitle: 'Back',
-            }}
-          />
-        </Stack>
-        <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-      </ThemeProvider>
-    );
-  }
+  const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
   return (
-    <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        {!hasSeenOnboarding ? (
+        {isSubscribed ? (
+          // Subscribed users go straight to main app
+          <>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(screens)/schedule-details" />
+            <Stack.Screen 
+              name="(screens)/subscription" 
+              options={{
+                headerShown: true,
+                title: 'Premium Features',
+                headerBackTitle: 'Back',
+              }}
+            />
+          </>
+        ) : !hasSeenOnboarding ? (
+          // New users see onboarding
           <Stack.Screen name="(onboarding)" />
         ) : (
+          // Non-subscribed users who've seen onboarding see subscription
           <Stack.Screen 
             name="(screens)/subscription" 
             options={{
