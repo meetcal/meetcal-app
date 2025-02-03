@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as InAppPurchases from 'expo-in-app-purchases';
+import Purchases from 'react-native-purchases';
 
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
   setSubscribed: (value: boolean) => Promise<void>;
   isLoading: boolean;
+  restorePurchases: () => Promise<boolean>;
 };
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -14,48 +15,26 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    checkSubscriptionStatus();
-  }, []);
-
   const checkSubscriptionStatus = async () => {
     try {
-      // First check local storage
-      const status = await AsyncStorage.getItem('subscriptionStatus');
+      const customerInfo = await Purchases.getCustomerInfo();
+      const hasActiveSubscription = customerInfo.entitlements.active['pro_features'] != null;
       
-      // Verify with StoreKit
-      if (status === 'true') {
-        try {
-          await InAppPurchases.connectAsync();
-          const history = await InAppPurchases.getPurchaseHistoryAsync();
-          
-          // Check for any valid subscription purchase
-          const hasActiveSubscription = history.some(purchase => 
-            (purchase.productId === 'quarterly_meetcal' || 
-             purchase.productId === 'yearly_meetcal')
-          );
-
-          setIsSubscribed(hasActiveSubscription);
-          
-          // Update storage if verification fails
-          if (!hasActiveSubscription) {
-            await AsyncStorage.setItem('subscriptionStatus', 'false');
-          }
-        } catch (e) {
-          console.error('Failed to verify subscription:', e);
-          // Fall back to stored value if StoreKit verification fails
-          setIsSubscribed(true);
-        }
-      } else {
-        setIsSubscribed(false);
-      }
-    } catch (e) {
-      console.error('Failed to get subscription status:', e);
-      setIsSubscribed(false);
+      await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
+      setIsSubscribed(hasActiveSubscription);
+    } catch (error) {
+      console.error('Failed to check subscription status:', error);
+      // Fall back to stored value if RevenueCat check fails
+      const status = await AsyncStorage.getItem('subscriptionStatus');
+      setIsSubscribed(status === 'true');
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    checkSubscriptionStatus();
+  }, []);
 
   const setSubscribed = async (value: boolean) => {
     try {
@@ -66,8 +45,26 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const restorePurchases = async (): Promise<boolean> => {
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      const hasActiveSubscription = customerInfo.entitlements.active['pro_features'] != null;
+      
+      await setSubscribed(hasActiveSubscription);
+      return hasActiveSubscription;
+    } catch (error) {
+      console.error('Failed to restore purchases:', error);
+      return false;
+    }
+  };
+
   return (
-    <SubscriptionContext.Provider value={{ isSubscribed, setSubscribed, isLoading }}>
+    <SubscriptionContext.Provider value={{ 
+      isSubscribed, 
+      setSubscribed, 
+      isLoading,
+      restorePurchases 
+    }}>
       {children}
     </SubscriptionContext.Provider>
   );
