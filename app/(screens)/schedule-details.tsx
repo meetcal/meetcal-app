@@ -14,7 +14,6 @@ import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
-import { SubscriptionGate } from '@/components/SubscriptionGate';
 
 function getSessionAthletes(sessionNumber: number, platform: string) {
   return liftingResults
@@ -108,7 +107,7 @@ function PlatformBadge({ platform }: { platform: Platform }) {
   );
 }
 
-export default function ScheduleDetailsScreen() {
+export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
@@ -281,17 +280,13 @@ export default function ScheduleDetailsScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <Stack.Screen 
-        options={{ 
-          headerShown: true,
-          title: 'Session Details',
-          headerBackTitle: 'Back',
-          headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-          },
-          headerTintColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-        }} 
+    <>
+      <Stack.Screen
+        options={{
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          animation: 'slide_from_right',
+        }}
       />
       
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -346,6 +341,18 @@ export default function ScheduleDetailsScreen() {
               <View style={styles.buttonContainer}>
                 <Pressable
                   style={({ pressed }) => [
+                    styles.saveButton,
+                    pressed && styles.saveButtonPressed
+                  ]}
+                  onPress={handleSavePress}
+                >
+                  <ThemedText style={styles.saveButtonText}>
+                    {isSaved ? 'Unsave Session' : 'Save Session'}
+                  </ThemedText>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
                     styles.calendarButton,
                     pressed && styles.calendarButtonPressed
                   ]}
@@ -357,30 +364,12 @@ export default function ScheduleDetailsScreen() {
                 </Pressable>
               </View>
             </View>
-
-            <SubscriptionGate>
-              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-                <View style={styles.buttonContainer}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.saveButton,
-                      pressed && styles.saveButtonPressed
-                    ]}
-                    onPress={handleSavePress}
-                  >
-                    <ThemedText style={styles.saveButtonText}>
-                      {isSaved ? 'Unsave Session' : 'Save Session'}
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              </View>
-              
-              <SessionAthletes sessionNumber={parseInt(params.sessionNumber)} />
-            </SubscriptionGate>
+            
+            <SessionAthletes sessionNumber={parseInt(params.sessionNumber)} />
           </View>
         </ScrollView>
       </ThemedView>
-    </ThemedView>
+    </>
   );
 }
 

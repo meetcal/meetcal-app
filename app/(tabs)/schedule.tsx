@@ -11,7 +11,6 @@ import { schedule, getPlatformColors } from '@/data/schedule';
 import { Session, Platform, DaySchedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
-import { GatedFilterButton } from '@/components/GatedFilterButton';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -249,11 +248,22 @@ export default function ScheduleScreen() {
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
       }]}>
-        <GatedFilterButton
+        <Pressable
+          style={({ pressed }) => [
+            styles.filterButton,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border 
+            },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
           onPress={() => setShowFilterModal(true)}
-          label={letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-          colors={colors}
-        />
+        >
+          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
+          </ThemedText>
+          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+        </Pressable>
       </View>
 
       <View style={styles.contentContainer}>

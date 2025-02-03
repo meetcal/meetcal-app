@@ -10,12 +10,8 @@ import Constants from 'expo-constants';
 import { SFSymbol } from '@/types/SFSymbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useOnboarding } from '@/contexts/OnboardingContext';
-import { useLocalStorage } from '@/contexts/LocalStorageContext';
-import { StorageKeys } from '@/constants/StorageKeys';
-import { storage } from '@/utils/storage';
 
 // Product IDs for both platforms
 const PRODUCT_IDS = Platform.select({
@@ -33,8 +29,6 @@ type FeatureProps = {
   };
 };
 
-const HAS_SEEN_SUBSCRIPTION = 'hasSeenSubscription';
-
 export default function SubscriptionScreen() {
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -43,84 +37,130 @@ export default function SubscriptionScreen() {
   const [error, setError] = useState<string | null>(null);
   const { setSubscribed } = useSubscription();
   const router = useRouter();
-  const { setHasSeenSubscription } = useOnboarding();
-  const [loadingProduct, setLoadingProduct] = useState<string | null>(null);
   
   const initializePurchases = async () => {
     try {
       console.log('Starting StoreKit initialization...');
       console.log('App Bundle ID:', Constants.expoConfig?.ios?.bundleIdentifier);
       console.log('Development Mode:', __DEV__ ? 'Yes' : 'No');
-
-      // First disconnect to ensure clean state
-      await InAppPurchases.disconnectAsync().catch(() => {});
       
-      // Set up listener before connecting
-      InAppPurchases.setPurchaseListener(({ responseCode, results = [] }) => {
-        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
-          (async () => {
-            try {
-              // Finish the transaction
-              for (const purchase of results) {
-                if (!purchase.acknowledged) {
-                  await InAppPurchases.finishTransactionAsync(purchase, true);
-                }
-              }
-              
-              // Update subscription status
-              storage.set(HAS_SEEN_SUBSCRIPTION, true);
-              setHasSeenSubscription(true);
-              await setSubscribed(true);
-              
-              Alert.alert(
-                'Success',
-                'Thank you for subscribing to MeetCal Pro!',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => router.replace('/(tabs)/schedule')
-                  }
-                ]
-              );
-            } catch (err) {
-              console.error('Error processing purchase:', err);
-              setError('Failed to complete purchase. Please try again.');
-            } finally {
-              setLoadingProduct(null);
-            }
-          })();
-        } else {
-          setError('Purchase failed. Please try again.');
-          setLoadingProduct(null);
-        }
-      });
-
-      // Then connect to StoreKit
       await InAppPurchases.connectAsync();
       console.log('Successfully connected to StoreKit');
+      
+      // Give StoreKit a moment to fully initialize
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       if (!PRODUCT_IDS) {
         throw new Error('No product IDs configured for this platform');
       }
 
-      // Get products
-      const response = await InAppPurchases.getProductsAsync(PRODUCT_IDS);
-      console.log('StoreKit response code:', response.responseCode);
-
-      if (response.responseCode === InAppPurchases.IAPResponseCode.OK) {
-        const results = response.results || [];
-        console.log('Products found:', results.length);
-        if (results.length > 0) {
-          setProducts(results);
-          setError(null);
-        } else {
-          setError('No products available. Please try again later.');
+      // Try to get products multiple times if needed
+      let attempts = 0;
+      let results: InAppPurchases.IAPItemDetails[] = [];
+      
+      while (attempts < 3 && results.length === 0) {
+        console.log(`Attempt ${attempts + 1} to fetch products:`, PRODUCT_IDS);
+        
+        const response = await InAppPurchases.getProductsAsync(PRODUCT_IDS);
+        console.log('StoreKit response code:', response.responseCode);
+        
+        if (response.responseCode === InAppPurchases.IAPResponseCode.OK) {
+          results = response.results || [];
+          console.log('Products found:', results.length);
+          if (results.length > 0) {
+            console.log('Product details:', results.map(p => ({
+              id: p.productId,
+              title: p.title,
+              price: p.price
+            })));
+            break;
+          }
+        }
+        
+        attempts++;
+        if (attempts < 3) {
+          console.log('Waiting before next attempt...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
 
+      if (results.length === 0) {
+        setError(
+          'Unable to load products. Please verify:\n' +
+          '1. You are signed in with a sandbox account\n' +
+          '2. The app has been completely restarted\n' +
+          '3. Your sandbox account region matches the app'
+        );
+      } else {
+        setProducts(results);
+        setError(null);
+      }
+
+      InAppPurchases.setPurchaseListener(async ({ responseCode, results = [], errorCode }) => {
+        if (responseCode === InAppPurchases.IAPResponseCode.OK) {
+          try {
+            for (const purchase of results) {
+              if (!purchase.acknowledged) {
+                await InAppPurchases.finishTransactionAsync(purchase, true);
+              }
+            }
+            
+            // Set subscription status and redirect
+            await setSubscribed(true);
+            
+            // Verify subscription was saved before continuing
+            const status = await AsyncStorage.getItem('subscriptionStatus');
+            if (status !== 'true') {
+              throw new Error('Failed to save subscription status');
+            }
+
+            Alert.alert(
+              'Success', 
+              'Thank you for subscribing to MeetCal Pro!',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    router.replace('/(tabs)/schedule');
+                  }
+                }
+              ]
+            );
+          } catch (err) {
+            console.error('Error processing purchase:', err);
+            Alert.alert(
+              'Error',
+              'Your purchase was successful but there was an error activating your subscription. Please contact support.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => setLoading(false)
+                }
+              ]
+            );
+          }
+        } else {
+          console.error('Purchase error:', errorCode);
+          
+          if (errorCode?.includes('Authentication Failed') || 
+              errorCode?.includes('ASDErrorDomain')) {
+            Alert.alert(
+              'Authentication Error',
+              'Please sign out of the App Store in Settings, sign back in with your sandbox account, and try again.'
+            );
+          } else {
+            Alert.alert('Error', 'Failed to complete purchase. Please try again.');
+          }
+        }
+        setLoading(false);
+      });
+
     } catch (err) {
       console.error('Failed to initialize purchases:', err);
-      setError('Failed to initialize purchases. Please try again.');
+      setError(
+        `Failed to initialize purchases: ${err instanceof Error ? err.message : 'Unknown error'}. 
+        Please make sure you're signed into the App Store and try again.`
+      );
     }
   };
 
@@ -128,43 +168,52 @@ export default function SubscriptionScreen() {
     initializePurchases();
 
     return () => {
+      // Need to remove purchase listener before disconnecting
       InAppPurchases.setPurchaseListener(null);
-      InAppPurchases.disconnectAsync().catch(() => {});
+      InAppPurchases.disconnectAsync().catch(console.error);
     };
   }, []);
 
   const handlePurchase = async (productId: string) => {
     try {
-      if (loadingProduct) return; // Prevent multiple purchases at once
-      
-      setLoadingProduct(productId);
-      setError(null);
-
+      setLoading(true);
       const product = products.find(p => p.productId === productId);
+      
       if (!product) {
         throw new Error('Product not found');
       }
 
-      await InAppPurchases.purchaseItemAsync(productId);
+      await InAppPurchases.purchaseItemAsync(product.productId);
     } catch (err) {
       console.error('Purchase error:', err);
-      setError('Failed to start purchase. Please try again.');
-      setLoadingProduct(null);
-    }
-  };
-
-  const handleSkip = async () => {
-    try {
-      storage.set(HAS_SEEN_SUBSCRIPTION, true);
-      setHasSeenSubscription(true);
-      router.replace('/(tabs)/schedule');
-    } catch (err) {
-      console.error('Failed to mark subscription as seen:', err);
-      Alert.alert(
-        'Error',
-        'Failed to save settings. Please try again.',
-        [{ text: 'OK' }]
-      );
+      
+      // Check for authentication error
+      if (err instanceof Error && 
+          (err.message.includes('Authentication Failed') || 
+           err.message.includes('ASDErrorDomain'))) {
+        Alert.alert(
+          'Authentication Error',
+          'Please sign out of the App Store in Settings, sign back in with your sandbox account, and try again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => setLoading(false)
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Purchase Error',
+          'Failed to start purchase. Please try again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => setLoading(false)
+            }
+          ]
+        );
+      }
+      setLoading(false);
     }
   };
 
@@ -182,15 +231,7 @@ export default function SubscriptionScreen() {
         options={{ 
           title: 'Premium Features',
           headerBackTitle: 'Back',
-          headerShown: true,
-          presentation: 'push',
-          headerRight: () => (
-            <Pressable onPress={handleSkip}>
-              <ThemedText style={{ color: '#007AFF', fontSize: 17 }}>
-                Skip
-              </ThemedText>
-            </Pressable>
-          ),
+          headerShown: false
         }} 
       />
       
@@ -198,7 +239,7 @@ export default function SubscriptionScreen() {
         styles.card, 
         { 
           backgroundColor: colors.card,
-          marginTop: 20
+          marginTop: insets.top + 20
         }
       ]}>
         <View style={styles.header}>
@@ -250,15 +291,12 @@ export default function SubscriptionScreen() {
         ) : products.length > 0 ? (
           <>
             <Pressable 
-              style={[
-                styles.subscribeButton, 
-                loadingProduct === 'quarterly_meetcal' && styles.subscribeButtonDisabled
-              ]}
+              style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
               onPress={() => handlePurchase('quarterly_meetcal')}
-              disabled={!!loadingProduct}
+              disabled={loading}
             >
               <View style={styles.buttonContent}>
-                {loadingProduct === 'quarterly_meetcal' ? (
+                {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <ThemedText style={styles.subscribeText}>
@@ -269,15 +307,12 @@ export default function SubscriptionScreen() {
             </Pressable>
 
             <Pressable 
-              style={[
-                styles.subscribeButton, 
-                loadingProduct === 'yearly_meetcal' && styles.subscribeButtonDisabled
-              ]}
+              style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
               onPress={() => handlePurchase('yearly_meetcal')}
-              disabled={!!loadingProduct}
+              disabled={loading}
             >
               <View style={styles.buttonContent}>
-                {loadingProduct === 'yearly_meetcal' ? (
+                {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <ThemedText style={styles.subscribeText}>
@@ -294,6 +329,15 @@ export default function SubscriptionScreen() {
           </View>
         )}
       </View>
+
+      <Pressable
+        style={styles.skipButton}
+        onPress={() => router.replace('/(tabs)/schedule')}
+      >
+        <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
+          Skip for now
+        </ThemedText>
+      </Pressable>
     </ThemedView>
   );
 }
@@ -416,5 +460,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 20,
+  },
+  skipButton: {
+    alignItems: 'center',
+    padding: 16,
+    marginTop: 16,
+  },
+  skipText: {
+    fontSize: 15,
   },
 }); 
