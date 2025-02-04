@@ -28,9 +28,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const checkSubscriptionStatus = async () => {
     try {
-      // Wait longer for RevenueCat initialization
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       console.log('Fetching customer info...');
       const customerInfo = await Purchases.getCustomerInfo();
       console.log('Raw customer info:', customerInfo);
@@ -50,19 +47,30 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   };
 
   useEffect(() => {
-    const customerInfoUpdateListener = Purchases.addCustomerInfoUpdateListener(async (info) => {
-      console.log('Customer info updated:', info);
-      const hasActiveSubscription = await checkEntitlementStatus(info);
-      console.log('Subscription update received:', hasActiveSubscription);
-      await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
-      setIsSubscribed(hasActiveSubscription);
-    });
+    let customerInfoUpdateListener: { remove: () => void } | undefined;
 
-    // Initial check
+    const setupListener = async () => {
+      try {
+        customerInfoUpdateListener = Purchases.addCustomerInfoUpdateListener(async (info) => {
+          console.log('Customer info updated:', info);
+          const hasActiveSubscription = await checkEntitlementStatus(info);
+          console.log('Subscription update received:', hasActiveSubscription);
+          await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
+          setIsSubscribed(hasActiveSubscription);
+        });
+      } catch (error) {
+        console.error('Failed to setup customer info listener:', error);
+      }
+    };
+
+    // Initial setup
+    setupListener();
     checkSubscriptionStatus();
 
     return () => {
-      customerInfoUpdateListener.remove();
+      if (customerInfoUpdateListener?.remove) {
+        customerInfoUpdateListener.remove();
+      }
     };
   }, []);
 
