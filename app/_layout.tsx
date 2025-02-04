@@ -20,19 +20,7 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    async function checkOnboarding() {
-      const seen = await AsyncStorage.getItem('hasSeenOnboarding');
-      setHasSeenOnboarding(!!seen);
-      if (loaded) {
-        SplashScreen.hideAsync();
-      }
-    }
-    checkOnboarding();
-  }, [loaded]);
-
+  
   useEffect(() => {
     // Initialize RevenueCat
     const initializeRevenueCat = async () => {
@@ -51,7 +39,7 @@ export default function RootLayout() {
     initializeRevenueCat();
   }, []);
 
-  if (!loaded || hasSeenOnboarding === null) {
+  if (!loaded) {
     return null;
   }
 
@@ -59,11 +47,44 @@ export default function RootLayout() {
     <SubscriptionProvider>
       <CustomThemeProvider>
         <SavedSessionsProvider>
-          <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />
+          <AppContent />
         </SavedSessionsProvider>
       </CustomThemeProvider>
     </SubscriptionProvider>
   );
+}
+
+function AppContent() {
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
+  const { isSubscribed, isLoading } = useSubscription();
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  useEffect(() => {
+    async function initialize() {
+      try {
+        const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+        setHasSeenOnboarding(!!seen);
+        setIsInitialized(true);
+      } catch (error) {
+        console.error('Initialization error:', error);
+        setIsInitialized(true);
+      }
+    }
+
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    if (isInitialized && hasSeenOnboarding !== null && !isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isInitialized, hasSeenOnboarding, isLoading]);
+
+  if (!isInitialized || hasSeenOnboarding === null || isLoading) {
+    return null;
+  }
+
+  return <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />;
 }
 
 function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
