@@ -20,30 +20,15 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    async function checkOnboarding() {
-      const seen = await AsyncStorage.getItem('hasSeenOnboarding');
-      setHasSeenOnboarding(!!seen);
-      if (loaded) {
-        SplashScreen.hideAsync();
-      }
-    }
-    checkOnboarding();
-  }, [loaded]);
-
+  
   useEffect(() => {
     // Initialize RevenueCat
     const initializeRevenueCat = async () => {
       try {
         if (Platform.OS === 'ios') {
-          // Ensure the native module is available
-          if (Purchases.configure) {
-            await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
-            if (__DEV__) {
-              Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-            }
+          await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
+          if (__DEV__) {
+            Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
           }
         }
       } catch (error) {
@@ -54,7 +39,7 @@ export default function RootLayout() {
     initializeRevenueCat();
   }, []);
 
-  if (!loaded || hasSeenOnboarding === null) {
+  if (!loaded) {
     return null;
   }
 
@@ -62,11 +47,44 @@ export default function RootLayout() {
     <SubscriptionProvider>
       <CustomThemeProvider>
         <SavedSessionsProvider>
-          <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />
+          <AppContent />
         </SavedSessionsProvider>
       </CustomThemeProvider>
     </SubscriptionProvider>
   );
+}
+
+function AppContent() {
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
+  const { isSubscribed, isLoading } = useSubscription();
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  useEffect(() => {
+    async function initialize() {
+      try {
+        const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+        setHasSeenOnboarding(!!seen);
+        setIsInitialized(true);
+      } catch (error) {
+        console.error('Initialization error:', error);
+        setIsInitialized(true);
+      }
+    }
+
+    initialize();
+  }, []);
+
+  useEffect(() => {
+    if (isInitialized && hasSeenOnboarding !== null && !isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isInitialized, hasSeenOnboarding, isLoading]);
+
+  if (!isInitialized || hasSeenOnboarding === null || isLoading) {
+    return null;
+  }
+
+  return <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />;
 }
 
 function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
@@ -77,41 +95,59 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
     return <Slot />;
   }
 
+  const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
+
+  // Early return with redirect for subscribed users
   if (isSubscribed) {
     return (
-      <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(screens)/schedule-details" />
-          <Stack.Screen 
-            name="(screens)/subscription" 
-            options={{
-              headerShown: true,
-              title: 'Premium Features',
-              headerBackTitle: 'Back',
-            }}
-          />
-        </Stack>
-        <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-      </ThemeProvider>
+      <>
+        <Redirect href="/(tabs)/schedule" />
+        <ThemeProvider value={theme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(screens)/schedule-details" />
+            <Stack.Screen 
+              name="(screens)/subscription" 
+              options={{
+                headerShown: true,
+                title: 'Premium Features',
+                headerBackTitle: 'Back',
+              }}
+            />
+          </Stack>
+          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+        </ThemeProvider>
+      </>
     );
   }
 
+  // Early return with redirect for non-subscribed users based on onboarding
+  if (!hasSeenOnboarding) {
+    return (
+      <>
+        <Redirect href="/(onboarding)" />
+        <ThemeProvider value={theme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(onboarding)" />
+          </Stack>
+          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+        </ThemeProvider>
+      </>
+    );
+  }
+
+  // Default case: show subscription screen for non-subscribed users who've seen onboarding
   return (
-    <ThemeProvider value={currentTheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        {!hasSeenOnboarding ? (
-          <Stack.Screen name="(onboarding)" />
-        ) : (
-          <Stack.Screen 
-            name="(screens)/subscription" 
-            options={{
-              headerShown: true,
-              title: 'Premium Features',
-              headerBackTitle: 'Back',
-            }}
-          />
-        )}
+        <Stack.Screen 
+          name="(screens)/subscription" 
+          options={{
+            headerShown: true,
+            title: 'Premium Features',
+            headerBackTitle: 'Back',
+          }}
+        />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
