@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
+import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking, Text } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -301,28 +301,36 @@ export default function SubscriptionScreen() {
             ) : revenueCatProducts.length > 0 ? (
               <>
                 {revenueCatProducts.map((pkg) => (
-                  <Pressable 
-                    key={pkg.identifier}
-                    style={[
-                      styles.subscribeButton, 
-                      loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
-                    ]}
-                    onPress={() => handlePurchase(pkg.identifier)}
-                    disabled={loadingProductId === pkg.identifier}
-                  >
-                    <View style={styles.buttonContent}>
-                      {loadingProductId === pkg.identifier ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <ThemedText style={styles.subscribeText}>
-                          {isSubscribed 
-                            ? 'Manage Subscription'
-                            : `Subscribe - ${pkg.product.priceString} ${pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}`
-                          }
-                        </ThemedText>
+                  <View key={pkg.identifier} style={styles.subscriptionContainer}>
+                    <Pressable 
+                      style={[
+                        styles.subscribeButton, 
+                        loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
+                      ]}
+                      onPress={() => handlePurchase(pkg.identifier)}
+                      disabled={loadingProductId === pkg.identifier}
+                    >
+                      {pkg.packageType === 'ANNUAL' && (
+                        <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
+                          <Text style={[styles.trialText, { color: colors.text }]}>
+                            3 day free trial
+                          </Text>
+                        </View>
                       )}
-                    </View>
-                  </Pressable>
+                      <View style={styles.buttonContent}>
+                        {loadingProductId === pkg.identifier ? (
+                          <ActivityIndicator color="#FFFFFF" />
+                        ) : (
+                          <ThemedText style={styles.subscribeText}>
+                            {isSubscribed 
+                              ? 'Manage Subscription'
+                              : `Subscribe - ${pkg.product.priceString} ${pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}`
+                            }
+                          </ThemedText>
+                        )}
+                      </View>
+                    </Pressable>
+                  </View>
                 ))}
                 
                 <View style={styles.bottomButtons}>
@@ -427,7 +435,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginTop: 12,
+    position: 'relative',
   },
   subscribeText: {
     color: '#FFFFFF',
@@ -493,5 +501,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  subscriptionContainer: {
+    marginBottom: 20,
+  },
+  trialBubble: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    zIndex: 1,
+  },
+  trialText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 }); 

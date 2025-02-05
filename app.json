@@ -4,7 +4,10 @@
     "slug": "meetcal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/MeetCal-Dark.png",
+    "icon": {
+      "light": "./assets/images/MeetCal.png",
+      "dark": "./assets/images/MeetCal-Dark.png"
+    },
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
