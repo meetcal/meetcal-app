@@ -134,27 +134,6 @@ export default function InfoScreen() {
               { borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(onboarding)')}
-          >
-            <View style={styles.subscriptionContainer}>
-              <View style={styles.subscriptionInfo}>
-                <ThemedText style={[styles.label, { color: colors.text, fontWeight: '600' }]}>
-                  App Tutorial
-                </ThemedText>
-                <ThemedText style={[styles.subscriptionPreview, { color: colors.text }]}>
-                  View the introduction screens again
-                </ThemedText>
-              </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
             onPress={() => router.push('/(screens)/subscription')}
           >
             <View style={styles.subscriptionContainer}>

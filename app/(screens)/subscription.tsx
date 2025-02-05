@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -36,6 +36,7 @@ export default function SubscriptionScreen() {
   const { setSubscribed, restorePurchases, isSubscribed } = useSubscription();
   const router = useRouter();
   const [revenueCatProducts, setRevenueCatProducts] = useState<Purchases.Package[]>([]);
+  const [loadingProductId, setLoadingProductId] = useState<string | null>(null);
   
   const fetchProducts = async () => {
     try {
@@ -58,16 +59,40 @@ export default function SubscriptionScreen() {
 
   const handlePurchase = async (productId: string) => {
     try {
-      setLoading(true);
+      setLoadingProductId(productId);
+      
+      console.log('Checking current subscription before purchase...');
+      const customerInfo = await Purchases.getCustomerInfo();
+      const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
+      console.log('Purchase check - subscription status:', hasActiveEntitlement);
+      
+      if (hasActiveEntitlement) {
+        Alert.alert(
+          'Already Subscribed',
+          'You already have an active subscription. Would you like to manage your subscription?',
+          [
+            {
+              text: 'Manage Subscription',
+              onPress: handleManageSubscription
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+        return;
+      }
+
       const revenueCatPackage = revenueCatProducts.find(pkg => pkg.identifier === productId);
       
       if (!revenueCatPackage) {
         throw new Error('Product not found');
       }
 
-      const { customerInfo } = await Purchases.purchasePackage(revenueCatPackage);
+      const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(revenueCatPackage);
       
-      if (customerInfo.entitlements.active['pro_features']) {
+      if (newCustomerInfo.entitlements.active['Subscriptions']) {
         await setSubscribed(true);
         
         // Verify subscription was saved
@@ -106,12 +131,12 @@ export default function SubscriptionScreen() {
         ]
       );
     } finally {
-      setLoading(false);
+      setLoadingProductId(null);
     }
   };
 
   const handleRestore = async () => {
-    setLoading(true);
+    setLoadingProductId('restore');
     try {
       const restored = await restorePurchases();
       if (restored) {
@@ -137,7 +162,42 @@ export default function SubscriptionScreen() {
         'Failed to restore subscription. Please try again.'
       );
     } finally {
-      setLoading(false);
+      setLoadingProductId(null);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      setLoadingProductId('manage');
+      
+      // Get customer info to get management URL
+      const customerInfo = await Purchases.getCustomerInfo();
+      
+      if (Platform.OS === 'ios') {
+        // Try management URL first
+        if (customerInfo.managementURL) {
+          await Linking.openURL(customerInfo.managementURL);
+        } else {
+          // Fallback to subscriptions settings
+          await Linking.openURL('itms-apps://apps.apple.com/account/subscriptions');
+        }
+      } else {
+        // Android handling
+        await Linking.openSettings();
+      }
+    } catch (error) {
+      console.error('Failed to open subscription settings:', error);
+      // Last resort fallback
+      if (Platform.OS === 'ios') {
+        Linking.openURL('itms-apps://apps.apple.com/account/subscriptions').catch(() => {
+          // If that fails, open general settings
+          Linking.openSettings();
+        });
+      } else {
+        Linking.openSettings();
+      }
+    } finally {
+      setLoadingProductId(null);
     }
   };
 
@@ -201,15 +261,15 @@ export default function SubscriptionScreen() {
 
         {isSubscribed ? (
           <Pressable 
-            style={[styles.manageButton, loading && styles.buttonDisabled]}
-            onPress={() => {
-              // We'll add the settings link in the next step
-              console.log('Open subscription settings');
-            }}
-            disabled={loading}
+            style={[
+              styles.manageButton, 
+              loadingProductId === 'manage' && styles.buttonDisabled
+            ]}
+            onPress={handleManageSubscription}
+            disabled={loadingProductId === 'manage'}
           >
             <View style={styles.buttonContent}>
-              {loading ? (
+              {loadingProductId === 'manage' ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <ThemedText style={styles.buttonText}>
@@ -243,16 +303,22 @@ export default function SubscriptionScreen() {
                 {revenueCatProducts.map((pkg) => (
                   <Pressable 
                     key={pkg.identifier}
-                    style={[styles.subscribeButton, loading && styles.subscribeButtonDisabled]}
+                    style={[
+                      styles.subscribeButton, 
+                      loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
+                    ]}
                     onPress={() => handlePurchase(pkg.identifier)}
-                    disabled={loading}
+                    disabled={loadingProductId === pkg.identifier}
                   >
                     <View style={styles.buttonContent}>
-                      {loading ? (
+                      {loadingProductId === pkg.identifier ? (
                         <ActivityIndicator color="#FFFFFF" />
                       ) : (
                         <ThemedText style={styles.subscribeText}>
-                          Subscribe - {pkg.product.priceString} {pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}
+                          {isSubscribed 
+                            ? 'Manage Subscription'
+                            : `Subscribe - ${pkg.product.priceString} ${pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}`
+                          }
                         </ThemedText>
                       )}
                     </View>
@@ -261,18 +327,9 @@ export default function SubscriptionScreen() {
                 
                 <View style={styles.bottomButtons}>
                   <Pressable
-                    style={styles.skipButton}
-                    onPress={() => router.replace('/(tabs)/schedule')}
-                  >
-                    <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
-                      Skip for now
-                    </ThemedText>
-                  </Pressable>
-                  
-                  <Pressable
                     style={styles.restoreButton}
                     onPress={handleRestore}
-                    disabled={loading}
+                    disabled={loadingProductId === 'restore'}
                   >
                     <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
                       Restore Purchase
@@ -412,17 +469,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 20,
   },
-  skipButton: {
-    alignItems: 'center',
-    padding: 16,
-    marginTop: 16,
-  },
-  skipText: {
-    fontSize: 15,
-  },
   bottomButtons: {
     marginTop: 16,
-    gap: 8,
   },
   restoreButton: {
     alignItems: 'center',
