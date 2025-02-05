@@ -60,7 +60,12 @@
     "splash": {
       "image": "./assets/images/MeetCal.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/images/MeetCal-Dark.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#000000"
+      }
     },
     "plugins": [
       "expo-router",
@@ -70,7 +75,13 @@
           "image": "./assets/images/MeetCal.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/images/MeetCal-Dark.png",
+            "imageWidth": 200,
+            "resizeMode": "contain",
+            "backgroundColor": "#000000"
+          }
         }
       ],
       [
