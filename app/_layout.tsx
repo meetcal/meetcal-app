@@ -1,26 +1,29 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Redirect, Stack, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
+  const [appIsReady, setAppIsReady] = useState(false);
+  
+  // Load any fonts you need here
+  const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-  
+
   useEffect(() => {
     // Initialize RevenueCat
     const initializeRevenueCat = async () => {
@@ -39,18 +42,44 @@ export default function RootLayout() {
     initializeRevenueCat();
   }, []);
 
-  if (!loaded) {
+  useEffect(() => {
+    async function prepare() {
+      try {
+        // Pre-load any resources, make API calls, etc.
+        // For example, initialize services, load initial data, etc.
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Optional delay for smoother transition
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        setAppIsReady(true);
+      }
+    }
+
+    prepare();
+  }, []);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady && fontsLoaded) {
+      await SplashScreen.hideAsync();
+    }
+  }, [appIsReady, fontsLoaded]);
+
+  if (!appIsReady || !fontsLoaded) {
     return null;
   }
 
   return (
-    <SubscriptionProvider>
-      <CustomThemeProvider>
-        <SavedSessionsProvider>
-          <AppContent />
-        </SavedSessionsProvider>
-      </CustomThemeProvider>
-    </SubscriptionProvider>
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationThemeProvider value={DefaultTheme}>
+        <CustomThemeProvider>
+          <SubscriptionProvider>
+            <SavedSessionsProvider>
+              <AppContent />
+            </SavedSessionsProvider>
+          </SubscriptionProvider>
+        </CustomThemeProvider>
+      </NavigationThemeProvider>
+    </View>
   );
 }
 
@@ -102,7 +131,7 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
     return (
       <>
         <Redirect href="/(tabs)/schedule" />
-        <ThemeProvider value={theme}>
+        <NavigationThemeProvider value={theme}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="(screens)/schedule-details" />
@@ -116,7 +145,7 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
             />
           </Stack>
           <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-        </ThemeProvider>
+        </NavigationThemeProvider>
       </>
     );
   }
@@ -126,19 +155,19 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
     return (
       <>
         <Redirect href="/(onboarding)" />
-        <ThemeProvider value={theme}>
+        <NavigationThemeProvider value={theme}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(onboarding)" />
           </Stack>
           <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-        </ThemeProvider>
+        </NavigationThemeProvider>
       </>
     );
   }
 
   // Default case: show subscription screen for non-subscribed users who've seen onboarding
   return (
-    <ThemeProvider value={theme}>
+    <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen 
           name="(screens)/subscription" 
@@ -150,6 +179,6 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
         />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-    </ThemeProvider>
+    </NavigationThemeProvider>
   );
 }
