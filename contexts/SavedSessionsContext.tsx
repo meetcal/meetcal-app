@@ -8,6 +8,7 @@ interface SavedSessionsContextType {
   saveSession: (session: SavedSession) => Promise<boolean>;
   removeSession: (sessionId: string) => Promise<boolean>;
   isSessionSaved: (sessionId: string) => boolean;
+  resetAllSessions: () => Promise<boolean>;
 }
 
 const SavedSessionsContext = createContext<SavedSessionsContextType | undefined>(undefined);

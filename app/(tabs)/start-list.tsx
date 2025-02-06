@@ -377,6 +377,9 @@ export default function StartListScreen() {
     setExpandedSection(null);
   };
 
+  // Add new state for save modal
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -410,58 +413,38 @@ export default function StartListScreen() {
             />
           </View>
         </View>
-        <View style={styles.filterButtonsRow}>
+        <View style={styles.buttonRow}>
           <Pressable
             style={({ pressed }) => [
-              styles.filterButton,
+              styles.button,
               { 
                 backgroundColor: colors.card,
                 borderColor: colors.border,
-                flex: 1,
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={handleOpenModal}
           >
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
               {getFilterDisplayText()}
             </ThemedText>
             <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
-        </View>
-        
-        <View style={styles.actionButtonsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionButton,
-              { 
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={handleSaveAll}
-          >
-            <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              Save All
-            </ThemedText>
-          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
-              styles.actionButton,
+              styles.button,
               { 
                 backgroundColor: colors.card,
                 borderColor: colors.border,
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={handleSaveToCalendar}
+            onPress={() => setShowSaveModal(true)}
           >
-            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              Add to Calendar
+            <IconSymbol name="square.and.arrow.down" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+              Save
             </ThemedText>
           </Pressable>
         </View>
@@ -530,7 +513,7 @@ export default function StartListScreen() {
                           Weight Class
                         </ThemedText>
                         <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {weightClassFilter || 'All Classes'}
+                          {tempWeightClassFilter || 'All Classes'}
                         </ThemedText>
                       </View>
                       <IconSymbol 
@@ -553,7 +536,7 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          weightClassFilter === '' && { backgroundColor: colors.pressed },
+                          tempWeightClassFilter === '' && { backgroundColor: colors.pressed },
                           pressed && { opacity: 0.8 }
                         ]}
                         onPress={() => {
@@ -564,11 +547,11 @@ export default function StartListScreen() {
                         <ThemedText style={[
                           styles.filterOptionText,
                           { color: colors.text },
-                          weightClassFilter === '' && { color: '#007AFF' }
+                          tempWeightClassFilter === '' && { color: '#007AFF' }
                         ]}>
                           All Classes
                         </ThemedText>
-                        {weightClassFilter === '' && (
+                        {tempWeightClassFilter === '' && (
                           <IconSymbol name="checkmark" size={16} color="#007AFF" />
                         )}
                       </Pressable>
@@ -578,7 +561,7 @@ export default function StartListScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            weightClassFilter === weightClass && { backgroundColor: colors.pressed },
+                            tempWeightClassFilter === weightClass && { backgroundColor: colors.pressed },
                             pressed && { opacity: 0.8 }
                           ]}
                           onPress={() => {
@@ -589,11 +572,11 @@ export default function StartListScreen() {
                           <ThemedText style={[
                             styles.filterOptionText,
                             { color: colors.text },
-                            weightClassFilter === weightClass && { color: '#007AFF' }
+                            tempWeightClassFilter === weightClass && { color: '#007AFF' }
                           ]}>
                             {weightClass}
                           </ThemedText>
-                          {weightClassFilter === weightClass && (
+                          {tempWeightClassFilter === weightClass && (
                             <IconSymbol name="checkmark" size={16} color="#007AFF" />
                           )}
                         </Pressable>
@@ -619,7 +602,7 @@ export default function StartListScreen() {
                           Club
                         </ThemedText>
                         <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {clubFilter || 'All Clubs'}
+                          {tempClubFilter || 'All Clubs'}
                         </ThemedText>
                       </View>
                       <IconSymbol 
@@ -642,7 +625,7 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          clubFilter === '' && { backgroundColor: colors.pressed },
+                          tempClubFilter === '' && { backgroundColor: colors.pressed },
                           pressed && { opacity: 0.8 }
                         ]}
                         onPress={() => {
@@ -653,11 +636,11 @@ export default function StartListScreen() {
                         <ThemedText style={[
                           styles.filterOptionText,
                           { color: colors.text },
-                          clubFilter === '' && { color: '#007AFF' }
+                          tempClubFilter === '' && { color: '#007AFF' }
                         ]}>
                           All Clubs
                         </ThemedText>
-                        {clubFilter === '' && (
+                        {tempClubFilter === '' && (
                           <IconSymbol name="checkmark" size={16} color="#007AFF" />
                         )}
                       </Pressable>
@@ -667,7 +650,7 @@ export default function StartListScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            clubFilter === club && { backgroundColor: colors.pressed },
+                            tempClubFilter === club && { backgroundColor: colors.pressed },
                             pressed && { opacity: 0.8 }
                           ]}
                           onPress={() => {
@@ -678,11 +661,11 @@ export default function StartListScreen() {
                           <ThemedText style={[
                             styles.filterOptionText,
                             { color: colors.text },
-                            clubFilter === club && { color: '#007AFF' }
+                            tempClubFilter === club && { color: '#007AFF' }
                           ]}>
                             {club}
                           </ThemedText>
-                          {clubFilter === club && (
+                          {tempClubFilter === club && (
                             <IconSymbol name="checkmark" size={16} color="#007AFF" />
                           )}
                         </Pressable>
@@ -709,6 +692,81 @@ export default function StartListScreen() {
                 </ThemedText>
               </Pressable>
             </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showSaveModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSaveModal(false)}
+      >
+        <Pressable 
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
+          onPress={() => setShowSaveModal(false)}
+        >
+          <View style={[
+            styles.modalContent,
+            { backgroundColor: colors.card }
+          ]}>
+            <View style={[styles.saveModalHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.saveModalTitle, { color: colors.text }]}>
+                Save {filteredAthletes.length} Athletes
+              </ThemedText>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveOption,
+                { borderBottomColor: colors.border },
+                pressed && { backgroundColor: colors.pressed }
+              ]}
+              onPress={() => {
+                setShowSaveModal(false);
+                handleSaveAll();
+              }}
+            >
+              <View style={styles.saveOptionContent}>
+                <IconSymbol name="bookmark" size={22} color={colors.text} />
+                <View style={styles.saveOptionText}>
+                  <ThemedText style={[styles.saveOptionTitle, { color: colors.text }]}>
+                    Add to Saved
+                  </ThemedText>
+                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                    Save sessions to your list
+                  </ThemedText>
+                </View>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.secondaryText} />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveOption,
+                pressed && { backgroundColor: colors.pressed }
+              ]}
+              onPress={() => {
+                setShowSaveModal(false);
+                handleSaveToCalendar();
+              }}
+            >
+              <View style={styles.saveOptionContent}>
+                <IconSymbol name="calendar" size={22} color={colors.text} />
+                <View style={styles.saveOptionText}>
+                  <ThemedText style={[styles.saveOptionTitle, { color: colors.text }]}>
+                    Add to Calendar
+                  </ThemedText>
+                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                    Save sessions to your calendar
+                  </ThemedText>
+                </View>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color={colors.secondaryText} />
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -766,17 +824,19 @@ const styles = StyleSheet.create({
   filterContainer: {
     padding: 16,
   },
-  filterButtonsRow: {
+  buttonRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 16,
+    marginTop: 6,
   },
-  filterButton: {
+  button: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
@@ -788,7 +848,7 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
   },
-  filterButtonText: {
+  buttonText: {
     fontSize: 15,
     fontWeight: '600',
   },
@@ -838,32 +898,8 @@ const styles = StyleSheet.create({
   filterOptionText: {
     fontSize: 17,
   },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 12,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
   searchContainer: {
-    marginBottom: 12,
+    marginBottom: 6,
   },
   searchBar: {
     flexDirection: 'row',
@@ -911,5 +947,36 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  saveModalHeader: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  saveModalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  saveOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  saveOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  saveOptionText: {
+    gap: 4,
+  },
+  saveOptionTitle: {
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  saveOptionSubtitle: {
+    fontSize: 13,
   },
 }); 
