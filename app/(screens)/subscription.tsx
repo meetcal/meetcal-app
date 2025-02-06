@@ -42,6 +42,7 @@ export default function SubscriptionScreen() {
     try {
       const offerings = await Purchases.getOfferings();
       if (offerings.current?.availablePackages.length) {
+        console.log('Available packages:', JSON.stringify(offerings.current.availablePackages, null, 2));
         setRevenueCatProducts(offerings.current.availablePackages);
         setError(null);
       } else {
@@ -324,7 +325,15 @@ export default function SubscriptionScreen() {
                           <ThemedText style={styles.subscribeText}>
                             {isSubscribed 
                               ? 'Manage Subscription'
-                              : `Subscribe - ${pkg.product.priceString} ${pkg.packageType === 'QUARTERLY' ? 'Per Quarter' : 'Per Year'}`
+                              : (() => {
+                                  console.log('Package details:', {
+                                    identifier: pkg.identifier,
+                                    packageType: pkg.packageType,
+                                    product: pkg.product,
+                                    period: pkg.product.subscriptionPeriod
+                                  });
+                                  return `Subscribe - ${pkg.product.priceString}${pkg.product.subscriptionPeriod === 'P3M' ? ' Per Quarter' : ' Per Year'}`;
+                                })()
                             }
                           </ThemedText>
                         )}
@@ -341,15 +350,6 @@ export default function SubscriptionScreen() {
                   >
                     <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
                       Restore Purchase
-                    </ThemedText>
-                  </Pressable>
-                  
-                  <Pressable
-                    style={styles.skipButton}
-                    onPress={() => router.replace('/(tabs)/schedule')}
-                  >
-                    <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
-                      Skip (Testing Only)
                     </ThemedText>
                   </Pressable>
                 </View>
@@ -528,14 +528,5 @@ const styles = StyleSheet.create({
   trialText: {
     fontSize: 12,
     fontWeight: '500',
-  },
-  skipButton: {
-    alignItems: 'center',
-    padding: 8,
-    marginTop: 8,
-  },
-  skipText: {
-    fontSize: 13,
-    textDecorationLine: 'underline',
   },
 }); 
