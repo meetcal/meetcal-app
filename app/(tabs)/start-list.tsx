@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { schedule } from '@/data/schedule';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
+import { useRouter } from 'expo-router';
+import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 
 function getSessionDetails(sessionNumber: number) {
   for (const day of schedule) {
@@ -185,8 +187,11 @@ export default function StartListScreen() {
   const [weightClassFilter, setWeightClassFilter] = useState('');
   const [showClubModal, setShowClubModal] = useState(false);
   const [clubFilter, setClubFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { saveSessionsFromAthletes } = useSavedSessions();
   
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -226,11 +231,55 @@ export default function StartListScreen() {
     .filter(athlete => {
       const matchesWeightClass = weightClassFilter ? athlete.weightClass === weightClassFilter : true;
       const matchesClub = clubFilter ? athlete.club === clubFilter : true;
-      return matchesWeightClass && matchesClub;
+      const matchesSearch = searchQuery 
+        ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
+        : true;
+      return matchesWeightClass && matchesClub && matchesSearch;
     })
     .sort(sortAthletes);
 
   const windowHeight = Dimensions.get('window').height;
+
+  const handleSaveAll = async () => {
+    Alert.alert(
+      'Save Sessions',
+      `Save sessions from ${filteredAthletes.length} athlete${filteredAthletes.length === 1 ? '' : 's'} to your saved list?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Save',
+          onPress: async () => {
+            try {
+              const success = await saveSessionsFromAthletes(filteredAthletes);
+              if (success) {
+                Alert.alert(
+                  'Success', 
+                  'Sessions have been saved to your list.',
+                  [
+                    {
+                      text: 'View Saved',
+                      onPress: () => router.push('/saved'),
+                    },
+                    {
+                      text: 'OK',
+                    }
+                  ]
+                );
+              } else {
+                Alert.alert('Error', 'Failed to save sessions.');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'Failed to save sessions.');
+              console.error(error);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const handleSaveToCalendar = async () => {
     // Get unique sessions from filtered athletes
@@ -300,6 +349,32 @@ export default function StartListScreen() {
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
       }]}>
+        <View style={styles.searchContainer}>
+          <View style={[
+            styles.searchBar,
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border
+            }
+          ]}>
+            <IconSymbol 
+              name="magnifyingglass" 
+              size={16} 
+              color={colors.secondaryText}
+            />
+            <TextInput
+              style={[
+                styles.searchInput,
+                { color: colors.text }
+              ]}
+              placeholder="Search athletes..."
+              placeholderTextColor={colors.secondaryText}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              clearButtonMode="while-editing"
+            />
+          </View>
+        </View>
         <View style={styles.filterButtonsRow}>
           <Pressable
             style={({ pressed }) => [
@@ -340,22 +415,41 @@ export default function StartListScreen() {
           </Pressable>
         </View>
         
-        <Pressable
-          style={({ pressed }) => [
-            styles.calendarButton,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={handleSaveToCalendar}
-        >
-          <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
-          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            Save All to Calendar
-          </ThemedText>
-        </Pressable>
+        <View style={styles.actionButtonsRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleSaveAll}
+          >
+            <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              Save All
+            </ThemedText>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleSaveToCalendar}
+          >
+            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              Add to Calendar
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -619,7 +713,13 @@ const styles = StyleSheet.create({
   modalOptionText: {
     fontSize: 17,
   },
-  calendarButton: {
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 12,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -628,7 +728,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -637,5 +736,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 1,
     elevation: 1,
+  },
+  searchContainer: {
+    marginBottom: 12,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    padding: 0, // Remove default padding on iOS
+    height: 24, // Match the height of other buttons
   },
 }); 

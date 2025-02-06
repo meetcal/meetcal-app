@@ -343,6 +343,15 @@ export default function SubscriptionScreen() {
                       Restore Purchase
                     </ThemedText>
                   </Pressable>
+                  
+                  <Pressable
+                    style={styles.skipButton}
+                    onPress={() => router.replace('/(tabs)/schedule')}
+                  >
+                    <ThemedText style={[styles.skipText, { color: colors.secondaryText }]}>
+                      Skip (Testing Only)
+                    </ThemedText>
+                  </Pressable>
                 </View>
               </>
             ) : (
@@ -519,5 +528,14 @@ const styles = StyleSheet.create({
   trialText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  skipButton: {
+    alignItems: 'center',
+    padding: 8,
+    marginTop: 8,
+  },
+  skipText: {
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 }); 

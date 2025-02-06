@@ -15,6 +15,8 @@ import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 
+type SessionPlatform = 'A' | 'B' | 'C' | 'D';
+
 function getSessionAthletes(sessionNumber: number, platform: string) {
   return liftingResults
     .filter(athlete => 
@@ -96,7 +98,7 @@ function SessionAthletes({ sessionNumber }: { sessionNumber: number }) {
   );
 }
 
-function PlatformBadge({ platform }: { platform: Platform }) {
+function PlatformBadge({ platform }: { platform: SessionPlatform }) {
   const platformColors = getPlatformColors();
   const backgroundColor = platformColors[platform];
   
@@ -318,7 +320,7 @@ export default function SessionDetailsScreen() {
                 Platform
               </ThemedText>
               <View style={styles.platformRow}>
-                <PlatformBadge platform={params.platform as Platform} />
+                <PlatformBadge platform={params.platform as SessionPlatform} />
               </View>
             </View>
 
