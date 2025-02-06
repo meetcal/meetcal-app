@@ -185,7 +185,6 @@ export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState('');
-  const [showClubModal, setShowClubModal] = useState(false);
   const [clubFilter, setClubFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const { currentTheme } = useTheme();
@@ -217,14 +216,15 @@ export default function StartListScreen() {
     setExpandedId(expandedId === athleteName ? null : athleteName);
   };
 
-  const handleFilterSelect = (weightClass: string) => {
-    setWeightClassFilter(weightClass);
-    setShowFilterModal(false);
-  };
-
-  const handleClubSelect = (club: string) => {
-    setClubFilter(club);
-    setShowClubModal(false);
+  const getFilterDisplayText = () => {
+    if (weightClassFilter && clubFilter) {
+      return `${weightClassFilter} • ${clubFilter}`;
+    } else if (weightClassFilter) {
+      return weightClassFilter;
+    } else if (clubFilter) {
+      return clubFilter;
+    }
+    return 'Filter';
   };
 
   const filteredAthletes = liftingResults
@@ -239,6 +239,7 @@ export default function StartListScreen() {
     .sort(sortAthletes);
 
   const windowHeight = Dimensions.get('window').height;
+  const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 
   const handleSaveAll = async () => {
     Alert.alert(
@@ -342,6 +343,40 @@ export default function StartListScreen() {
     );
   };
 
+  // Add new state for expanded section
+  const [expandedSection, setExpandedSection] = useState<'weightClass' | 'club' | null>(null);
+
+  // Add new state for temporary filters
+  const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
+  const [tempClubFilter, setTempClubFilter] = useState('');
+
+  // Add helper function to count filtered results
+  const getFilteredCount = (weightClass: string, club: string) => {
+    return liftingResults.filter(athlete => {
+      const matchesWeightClass = weightClass ? athlete.weightClass === weightClass : true;
+      const matchesClub = club ? athlete.club === club : true;
+      const matchesSearch = searchQuery 
+        ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
+        : true;
+      return matchesWeightClass && matchesClub && matchesSearch;
+    }).length;
+  };
+
+  // Update modal open handler
+  const handleOpenModal = () => {
+    setTempWeightClassFilter(weightClassFilter);
+    setTempClubFilter(clubFilter);
+    setShowFilterModal(true);
+  };
+
+  // Add apply handler
+  const handleApplyFilters = () => {
+    setWeightClassFilter(tempWeightClassFilter);
+    setClubFilter(tempClubFilter);
+    setShowFilterModal(false);
+    setExpandedSection(null);
+  };
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -383,33 +418,13 @@ export default function StartListScreen() {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
                 flex: 1,
-                marginRight: 8
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => setShowFilterModal(true)}
+            onPress={handleOpenModal}
           >
             <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              {weightClassFilter || 'All Classes'}
-            </ThemedText>
-            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButton,
-              { 
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                flex: 1,
-                marginLeft: 8
-              },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => setShowClubModal(true)}
-          >
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              {clubFilter || 'All Clubs'}
+              {getFilterDisplayText()}
             </ThemedText>
             <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
@@ -473,143 +488,228 @@ export default function StartListScreen() {
         visible={showFilterModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowFilterModal(false)}
+        onRequestClose={() => {
+          setExpandedSection(null);
+          setShowFilterModal(false);
+        }}
       >
         <Pressable 
           style={[
             styles.modalOverlay,
             { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
           ]}
-          onPress={() => setShowFilterModal(false)}
+          onPress={() => {
+            setExpandedSection(null);
+            setShowFilterModal(false);
+          }}
         >
-          <Pressable style={[
+          <View style={[
             styles.modalContent,
             { 
-              maxHeight: windowHeight * 0.7,
-              backgroundColor: colors.card
+              backgroundColor: colors.card,
+              maxHeight: windowHeight * 0.8
             }
           ]}>
-            <ScrollView bounces={false}>
-              <Pressable
-                key="all"
-                style={({ pressed }) => [
-                  styles.modalOption,
-                  { borderBottomColor: colors.border },
-                  weightClassFilter === '' && { backgroundColor: colors.pressed },
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={() => handleFilterSelect('')}
-              >
-                <ThemedText style={[
-                  styles.modalOptionText,
-                  weightClassFilter === '' && { color: '#007AFF' }
-                ]}>
-                  All Weight Classes
-                </ThemedText>
-                {weightClassFilter === '' && (
-                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                )}
-              </Pressable>
-              {weightClassOptions.map((weightClass) => (
-                <Pressable
-                  key={weightClass}
-                  style={({ pressed }) => [
-                    styles.modalOption,
-                    { borderBottomColor: colors.border },
-                    weightClassFilter === weightClass && { backgroundColor: colors.pressed },
-                    pressed && { opacity: 0.8 }
-                  ]}
-                  onPress={() => handleFilterSelect(weightClass)}
-                >
-                  <ThemedText style={[
-                    styles.modalOptionText,
-                    { color: colors.text },
-                    weightClassFilter === weightClass && { color: '#007AFF' }
-                  ]}>
-                    {weightClass}
-                  </ThemedText>
-                  {weightClassFilter === weightClass && (
-                    <IconSymbol name="checkmark" size={16} color="#007AFF" />
+            <View style={styles.modalScrollContent}>
+              <ScrollView bounces={false}>
+                {/* Weight Class Filter */}
+                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.filterSectionButton,
+                      { borderBottomColor: colors.border },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => setExpandedSection(
+                      expandedSection === 'weightClass' ? null : 'weightClass'
+                    )}
+                  >
+                    <View style={styles.filterSectionButtonContent}>
+                      <View>
+                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                          Weight Class
+                        </ThemedText>
+                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                          {weightClassFilter || 'All Classes'}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol 
+                        name={expandedSection === 'weightClass' ? "chevron.up" : "chevron.down"} 
+                        size={16} 
+                        color={colors.secondaryText}
+                      />
+                    </View>
+                  </Pressable>
+                  
+                  {expandedSection === 'weightClass' && (
+                    <ScrollView 
+                      style={[
+                        styles.filterOptions,
+                        { maxHeight: maxOptionsHeight }
+                      ]}
+                      bounces={false}
+                    >
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          weightClassFilter === '' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempWeightClassFilter('');
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          weightClassFilter === '' && { color: '#007AFF' }
+                        ]}>
+                          All Classes
+                        </ThemedText>
+                        {weightClassFilter === '' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+                      {weightClassOptions.map((weightClass) => (
+                        <Pressable
+                          key={weightClass}
+                          style={({ pressed }) => [
+                            styles.filterOption,
+                            { borderBottomColor: colors.border },
+                            weightClassFilter === weightClass && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => {
+                            setTempWeightClassFilter(weightClass);
+                            setExpandedSection(null);
+                          }}
+                        >
+                          <ThemedText style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            weightClassFilter === weightClass && { color: '#007AFF' }
+                          ]}>
+                            {weightClass}
+                          </ThemedText>
+                          {weightClassFilter === weightClass && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
                   )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                </View>
 
-      <Modal
-        visible={showClubModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowClubModal(false)}
-      >
-        <Pressable 
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-          ]}
-          onPress={() => setShowClubModal(false)}
-        >
-          <Pressable style={[
-            styles.modalContent,
-            { 
-              maxHeight: windowHeight * 0.7,
-              backgroundColor: colors.card
-            }
-          ]}>
-            <ScrollView bounces={false}>
+                {/* Club Filter */}
+                <View style={styles.filterSection}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.filterSectionButton,
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => setExpandedSection(
+                      expandedSection === 'club' ? null : 'club'
+                    )}
+                  >
+                    <View style={styles.filterSectionButtonContent}>
+                      <View>
+                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                          Club
+                        </ThemedText>
+                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                          {clubFilter || 'All Clubs'}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol 
+                        name={expandedSection === 'club' ? "chevron.up" : "chevron.down"} 
+                        size={16} 
+                        color={colors.secondaryText}
+                      />
+                    </View>
+                  </Pressable>
+
+                  {expandedSection === 'club' && (
+                    <ScrollView 
+                      style={[
+                        styles.filterOptions,
+                        { maxHeight: maxOptionsHeight }
+                      ]}
+                      bounces={false}
+                    >
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          clubFilter === '' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempClubFilter('');
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          clubFilter === '' && { color: '#007AFF' }
+                        ]}>
+                          All Clubs
+                        </ThemedText>
+                        {clubFilter === '' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+                      {clubOptions.map((club) => (
+                        <Pressable
+                          key={club}
+                          style={({ pressed }) => [
+                            styles.filterOption,
+                            { borderBottomColor: colors.border },
+                            clubFilter === club && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => {
+                            setTempClubFilter(club);
+                            setExpandedSection(null);
+                          }}
+                        >
+                          <ThemedText style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            clubFilter === club && { color: '#007AFF' }
+                          ]}>
+                            {club}
+                          </ThemedText>
+                          {clubFilter === club && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+              <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]}>
+                {getFilteredCount(tempWeightClassFilter, tempClubFilter)} athletes
+              </ThemedText>
               <Pressable
-                key="all-clubs"
                 style={({ pressed }) => [
-                  styles.modalOption,
-                  { borderBottomColor: colors.border },
-                  clubFilter === '' && { backgroundColor: colors.pressed },
+                  styles.applyButton,
                   pressed && { opacity: 0.8 }
                 ]}
-                onPress={() => {
-                  setClubFilter('');
-                  setShowClubModal(false);
-                }}
+                onPress={handleApplyFilters}
               >
-                <ThemedText style={[
-                  styles.modalOptionText,
-                  clubFilter === '' && { color: '#007AFF' }
-                ]}>
-                  All Clubs
+                <ThemedText style={styles.applyButtonText}>
+                  Apply
                 </ThemedText>
-                {clubFilter === '' && (
-                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                )}
               </Pressable>
-              {clubOptions.map((club) => (
-                <Pressable
-                  key={club}
-                  style={({ pressed }) => [
-                    styles.modalOption,
-                    { borderBottomColor: colors.border },
-                    clubFilter === club && { backgroundColor: colors.pressed },
-                    pressed && { opacity: 0.8 }
-                  ]}
-                  onPress={() => {
-                    setClubFilter(club);
-                    setShowClubModal(false);
-                  }}
-                >
-                  <ThemedText style={[
-                    styles.modalOptionText,
-                    { color: colors.text },
-                    clubFilter === club && { color: '#007AFF' }
-                  ]}>
-                    {club}
-                  </ThemedText>
-                  {clubFilter === club && (
-                    <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
+            </View>
+          </View>
         </Pressable>
       </Modal>
     </ThemedView>
@@ -696,21 +796,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
-    padding: 16,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',
+    marginHorizontal: 16,
+    maxHeight: '80%', // Fallback if windowHeight not available
   },
-  modalOption: {
+  filterSection: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterSectionButton: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterSectionButtonContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  filterSectionLabel: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  filterSectionValue: {
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  filterOptions: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  filterOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
+    paddingLeft: 32,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  modalOptionText: {
+  filterOptionText: {
     fontSize: 17,
   },
   actionButtonsRow: {
@@ -762,5 +887,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     padding: 0, // Remove default padding on iOS
     height: 24, // Match the height of other buttons
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  resultCount: {
+    fontSize: 15,
+  },
+  applyButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
   },
 }); 
