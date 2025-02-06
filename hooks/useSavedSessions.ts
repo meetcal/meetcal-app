@@ -15,16 +15,19 @@ export interface SavedSession {
   date: string;
 }
 
-function getSessionDetails(sessionNumber: number) {
+function getSessionPlatformDetails(sessionNumber: number, platformName: string) {
   for (const day of schedule) {
     const session = day.sessions.find(s => s.number === sessionNumber);
     if (session) {
-      return {
-        date: day.fullDate,
-        startTime: session.startTime,
-        weighInTime: session.weighInTime,
-        displayDate: day.date
-      };
+      const platform = session.platforms.find(p => p.platform === platformName);
+      if (platform) {
+        return {
+          weightClass: platform.weightClass,
+          date: day.fullDate,
+          startTime: session.startTime,
+          weighInTime: session.weighInTime,
+        };
+      }
     }
   }
   return null;
@@ -53,21 +56,23 @@ export function useSavedSessions() {
 
   const saveSessionsFromAthletes = async (athletes: LiftResult[]) => {
     try {
-      // Extract unique sessions from athletes
       const uniqueSessions = athletes
         .filter(athlete => athlete.session)
         .map(athlete => {
-          const sessionDetails = getSessionDetails(athlete.session!.number);
-          if (!sessionDetails) return null;
+          const platformDetails = getSessionPlatformDetails(
+            athlete.session!.number,
+            athlete.session!.platform
+          );
+          if (!platformDetails) return null;
 
           return {
             id: `session-${athlete.session!.number}-${athlete.session!.platform}`,
             sessionNumber: athlete.session!.number,
             platform: athlete.session!.platform,
-            weightClass: athlete.weightClass,
-            startTime: sessionDetails.startTime,
-            weighInTime: sessionDetails.weighInTime,
-            date: sessionDetails.date,
+            weightClass: platformDetails.weightClass,
+            startTime: platformDetails.startTime,
+            weighInTime: platformDetails.weighInTime,
+            date: platformDetails.date,
           };
         })
         .filter((session): session is SavedSession => session !== null)
@@ -75,7 +80,6 @@ export function useSavedSessions() {
           index === self.findIndex(s => s.id === session.id)
         );
 
-      // Combine with existing sessions, removing duplicates
       const allSessions = [...savedSessions];
       uniqueSessions.forEach(session => {
         if (!allSessions.some(saved => saved.id === session.id)) {
@@ -94,7 +98,6 @@ export function useSavedSessions() {
 
   const saveSession = async (session: SavedSession) => {
     try {
-      // Check if session already exists
       if (savedSessions.some(s => s.id === session.id)) {
         return true;
       }
@@ -125,6 +128,17 @@ export function useSavedSessions() {
     }
   };
 
+  const resetAllSessions = async () => {
+    try {
+      await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify([]));
+      setSavedSessions([]);
+      return true;
+    } catch (error) {
+      console.error('Error resetting sessions:', error);
+      return false;
+    }
+  };
+
   return {
     savedSessions,
     isLoading,
@@ -132,5 +146,6 @@ export function useSavedSessions() {
     saveSession,
     removeSession,
     isSessionSaved,
+    resetAllSessions,
   };
 } 
