@@ -58,13 +58,13 @@
       "favicon": "./assets/images/favicon.png"
     },
     "splash": {
-      "image": "./assets/images/MeetCal.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff",
+      "backgroundColor": "#FFFFFF",
       "dark": {
-        "image": "./assets/images/MeetCal-Dark.png",
+        "image": "./assets/splash.png",
         "resizeMode": "contain",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#242831"
       }
     },
     "plugins": [

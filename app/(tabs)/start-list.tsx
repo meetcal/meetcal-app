@@ -19,6 +19,7 @@ function getSessionDetails(sessionNumber: number) {
       return {
         date: day.fullDate,
         startTime: session.startTime,
+        weighInTime: session.weighInTime,
         displayDate: day.date
       };
     }
@@ -30,9 +31,10 @@ interface AthleteItemProps {
   athlete: LiftResult;
   isExpanded: boolean;
   onPress: () => void;
+  router: ReturnType<typeof useRouter>;
 }
 
-function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
+function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   
   const colors = {
@@ -41,6 +43,26 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
+
+  const handleSessionPress = () => {
+    if (!athlete.session) return;
+
+    const sessionDetails = getSessionDetails(athlete.session.number);
+    if (!sessionDetails) return;
+
+    router.push({
+      pathname: '/(screens)/schedule-details',
+      params: {
+        id: `session-${athlete.session.number}-${athlete.session.platform}`,
+        sessionNumber: athlete.session.number,
+        platform: athlete.session.platform,
+        weightClass: athlete.weightClass,
+        startTime: sessionDetails.startTime,
+        weighInTime: sessionDetails.weighInTime,
+        date: sessionDetails.date,
+      }
+    });
   };
 
   return (
@@ -64,14 +86,24 @@ function AthleteItem({ athlete, isExpanded, onPress }: AthleteItemProps) {
         <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
           {athlete.session && (
             <>
-              <View style={styles.detailRow}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.detailRow,
+                  styles.sessionLink,
+                  pressed && { backgroundColor: colors.pressed }
+                ]}
+                onPress={handleSessionPress}
+              >
                 <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
                   Session:
                 </ThemedText>
-                <ThemedText style={styles.detailValue}>
-                  Session {athlete.session.number} • {athlete.session.platform} Platform
-                </ThemedText>
-              </View>
+                <View style={styles.sessionValueContainer}>
+                  <ThemedText style={[styles.detailValue, { color: '#007AFF' }]}>
+                    Session {athlete.session.number} • {athlete.session.platform} Platform
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={13} color="#007AFF" />
+                </View>
+              </Pressable>
               {getSessionDetails(athlete.session.number) && (
                 <View style={styles.detailRow}>
                   <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
@@ -458,6 +490,7 @@ export default function StartListScreen() {
             athlete={item}
             isExpanded={expandedId === item.name}
             onPress={() => handlePress(item.name)}
+            router={router}
           />
         )}
         contentContainerStyle={[
@@ -978,5 +1011,15 @@ const styles = StyleSheet.create({
   },
   saveOptionSubtitle: {
     fontSize: 13,
+  },
+  sessionLink: {
+    borderRadius: 8,
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+  },
+  sessionValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
 }); 
