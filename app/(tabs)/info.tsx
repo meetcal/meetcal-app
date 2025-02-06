@@ -7,11 +7,18 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
+  const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
   const insets = useSafeAreaInsets();
   const router = useRouter();
+
+  // Sync the switch state with theme changes
+  useEffect(() => {
+    setIsEnabled(currentTheme === 'dark');
+  }, [currentTheme]);
 
   // Define theme colors
   const colors = {
@@ -47,6 +54,11 @@ export default function InfoScreen() {
         Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`);
       }
     });
+  };
+
+  const handleThemeChange = (value: boolean) => {
+    setIsEnabled(value); // Update switch state immediately
+    setTheme(value ? 'dark' : 'light'); // Update theme
   };
 
   return (
@@ -114,8 +126,8 @@ export default function InfoScreen() {
                 Dark Mode
               </ThemedText>
               <Switch
-                value={currentTheme === 'dark'}
-                onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                value={isEnabled}
+                onValueChange={handleThemeChange}
                 trackColor={{ false: '#E1E1E1', true: '#34C759' }}
                 thumbColor="#FFFFFF"
               />
