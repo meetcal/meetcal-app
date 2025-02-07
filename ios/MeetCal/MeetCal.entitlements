@@ -10,7 +10,13 @@
     </array>
     <key>com.apple.developer.icloud-services</key>
     <array>
-      <string>CloudKit</string>
+      <string>CloudDocuments</string>
     </array>
+    <key>com.apple.developer.ubiquity-container-identifiers</key>
+    <array>
+      <string>iCloud.com.memohnsen.meetcal</string>
+    </array>
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>$(TeamIdentifierPrefix)com.memohnsen.meetcal</string>
   </dict>
 </plist>
