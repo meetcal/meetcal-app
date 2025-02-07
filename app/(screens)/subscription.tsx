@@ -202,6 +202,25 @@ export default function SubscriptionScreen() {
     }
   };
 
+  const handleSkip = async () => {
+    try {
+      await setSubscribed(true);
+      Alert.alert(
+        'Test Mode', 
+        'Subscription skipped for testing',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/(tabs)/schedule')
+          }
+        ]
+      );
+    } catch (err) {
+      console.error('Skip error:', err);
+      Alert.alert('Error', 'Failed to skip subscription');
+    }
+  };
+
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -350,6 +369,15 @@ export default function SubscriptionScreen() {
                   >
                     <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
                       Restore Purchase
+                    </ThemedText>
+                  </Pressable>
+                  
+                  <Pressable
+                    style={[styles.skipButton]}
+                    onPress={handleSkip}
+                  >
+                    <ThemedText style={styles.skipText}>
+                      Skip (Testing Only)
                     </ThemedText>
                   </Pressable>
                 </View>
@@ -528,5 +556,17 @@ const styles = StyleSheet.create({
   trialText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  skipButton: {
+    backgroundColor: '#FF9500',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  skipText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 }); 

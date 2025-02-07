@@ -1,9 +1,9 @@
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors, schedule } from '@/data/schedule';
 import { Platform } from '@/data/athletes';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 
 // Inside your component where you render platform badges/colors
 function PlatformBadge({ platform }: { platform: Platform }) {
@@ -20,20 +20,57 @@ function PlatformBadge({ platform }: { platform: Platform }) {
 }
 
 // Usage in your saved sessions list
-function SavedSessionItem({ 
-  session, 
-  platform, 
-  weightClass 
-}: { 
+function SavedSessionItem({ session, platform }: { 
   session: string; 
-  platform?: Platform; 
-  weightClass: string;
+  platform?: Platform;
 }) {
+  const router = useRouter();
+
+  // Get the correct weight class from schedule.ts
+  const sessionNumber = parseInt(session);
+  const sessionDay = schedule.find(day => 
+    day.sessions.some(s => s.number === sessionNumber)
+  );
+  
+  const scheduleSession = sessionDay?.sessions.find(s => 
+    s.number === sessionNumber
+  );
+
+  const platformData = scheduleSession?.platforms.find(p => 
+    p.platform === platform
+  );
+
+  if (!platformData) {
+    console.error('Platform data not found:', {
+      session: sessionNumber,
+      platform: platform
+    });
+    return null;
+  }
+
+  const handleSessionPress = () => {
+    router.push({
+      pathname: '/(screens)/schedule-details',
+      params: {
+        id: `session-${session}-${platform}`,
+        sessionNumber: session,
+        platform: platform,
+        weightClass: platformData.weightClass, // Use schedule.ts weight class
+        startTime: scheduleSession?.startTime || '',
+        weighInTime: scheduleSession?.weighInTime || '',
+        date: sessionDay?.fullDate || '',
+      }
+    });
+  };
+
   return (
-    <View style={styles.sessionItem}>
+    <Pressable 
+      style={styles.sessionItem}
+      onPress={handleSessionPress}
+    >
       {platform && <PlatformBadge platform={platform} />}
-      <ThemedText>{weightClass}</ThemedText>
-    </View>
+      <ThemedText>{platformData.weightClass}</ThemedText> {/* Show schedule.ts weight class */}
+    </Pressable>
   );
 }
 
