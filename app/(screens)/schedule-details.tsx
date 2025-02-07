@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, View, Pressable, Platform, Alert, ScrollView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Linking } from 'react-native';
 import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -17,7 +17,27 @@ import { liftingResults } from '@/data/athletes';
 
 type SessionPlatform = 'A' | 'B' | 'C' | 'D';
 
+// Type for just the athlete data we need
+type SessionAthlete = {
+  name: string;
+  club: string;
+  entryTotal: number;
+  bestSnatch: number;
+  bestCJ: number;
+  bestTotal: number;
+};
+
 function getSessionAthletes(sessionNumber: number, platform: string) {
+  // Get session data first
+  const sessionDay = schedule.find(day => 
+    day.sessions.some(s => s.number === sessionNumber)
+  );
+  
+  const session = sessionDay?.sessions.find(s => 
+    s.number === sessionNumber
+  );
+
+  // Get athletes but only take the fields we need
   return liftingResults
     .filter(athlete => 
       athlete.session?.number === sessionNumber && 
@@ -29,15 +49,28 @@ function getSessionAthletes(sessionNumber: number, platform: string) {
       if (!platforms[platform]) {
         platforms[platform] = [];
       }
-      platforms[platform].push(athlete);
+      
+      // Only include the specific fields we need, no weightClass
+      platforms[platform].push({
+        name: athlete.name,
+        club: athlete.club,
+        entryTotal: athlete.entryTotal,
+        bestSnatch: athlete.bestSnatch,
+        bestCJ: athlete.bestCJ,
+        bestTotal: athlete.bestTotal
+      });
+      
       return platforms;
-    }, {} as Record<string, typeof liftingResults>);
+    }, {} as Record<string, SessionAthlete[]>);
 }
 
-function SessionAthletes({ sessionNumber }: { sessionNumber: number }) {
+function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: { 
+  sessionNumber: number;
+  platform: string;
+  sessionWeightClass: string;
+}) {
   const { currentTheme } = useTheme();
-  const params = useLocalSearchParams<{ platform: string }>();
-  const athletes = getSessionAthletes(sessionNumber, params.platform);
+  const athletes = getSessionAthletes(sessionNumber, platform);
   
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -120,6 +153,7 @@ export default function SessionDetailsScreen() {
     weightClass: string;
     startTime: string;
     weighInTime: string;
+    date: string;
   }>();
   const { currentTheme } = useTheme();
   const platformColors = getPlatformColors();
@@ -141,11 +175,28 @@ export default function SessionDetailsScreen() {
     })();
   }, []);
 
+  // Get the correct weight class from schedule.ts
+  const sessionWeightClass = useMemo(() => {
+    const sessionDay = schedule.find(day => 
+      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    );
+    
+    const session = sessionDay?.sessions.find(s => 
+      s.number === parseInt(params.sessionNumber)
+    );
+
+    const platformData = session?.platforms.find(p => 
+      p.platform === params.platform
+    );
+
+    return platformData?.weightClass;
+  }, [params.sessionNumber, params.platform]);
+
   const showSaveAlert = (action: 'save' | 'remove') => {
     const title = action === 'save' ? 'Session Saved' : 'Session Unsaved';
     const message = action === 'save'
-      ? `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been saved to your list`
-      : `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been unsaved from your list`;
+      ? `Session ${params.sessionNumber} - ${params.platform} - ${sessionWeightClass} has been saved to your list`
+      : `Session ${params.sessionNumber} - ${params.platform} - ${sessionWeightClass} has been unsaved from your list`;
 
     Alert.alert(
       title,
@@ -155,41 +206,31 @@ export default function SessionDetailsScreen() {
     );
   };
 
-  const handleSavePress = async () => {
-    try {
-      if (isSaved) {
-        await removeSession(params.id);
-        showSaveAlert('remove');
-      } else {
-        await saveSession({
-          id: params.id,
-          sessionNumber: params.sessionNumber,
-          platform: params.platform,
-          weightClass: params.weightClass,
-          startTime: params.startTime,
-          weighInTime: params.weighInTime,
-        });
-        showSaveAlert('save');
-      }
-      
-      Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success
-      );
-    } catch (error) {
-      console.error('Error saving session:', error);
-      Alert.alert(
-        'Error',
-        'Could not update saved sessions. Please try again.',
-        [{ text: 'OK' }],
-        { userInterfaceStyle: 'light' }
-      );
+  const handleSavePress = () => {
+    if (isSaved) {
+      removeSession(params.id);
+      showSaveAlert('remove');
+    } else {
+      saveSession({
+        id: params.id,
+        sessionNumber: params.sessionNumber,
+        platform: params.platform,
+        weightClass: sessionWeightClass || params.weightClass, // Use correct weight class
+        startTime: params.startTime,
+        weighInTime: params.weighInTime,
+        date: params.date,
+      });
+      showSaveAlert('save');
     }
+    Haptics.notificationAsync(
+      Haptics.NotificationFeedbackType.Success
+    );
   };
 
   const showSuccessAlert = () => {
     Alert.alert(
       'Added to Calendar',
-      `Session ${params.sessionNumber} - ${params.platform} - ${params.weightClass} has been added to your calendar`,
+      `Session ${params.sessionNumber} - ${params.platform} - ${sessionWeightClass} has been added to your calendar`,
       [{ text: 'OK' }],
       { userInterfaceStyle: 'light' }
     );
@@ -223,25 +264,27 @@ export default function SessionDetailsScreen() {
 
       const [year, month, day] = dateStr.split('-').map(Number);
       
-      // Create date treating the input time as Eastern time
-      // The calendar API will handle timezone conversions for other users
       const date = new Date(year, month - 1, day, adjustedHours, minutes);
       return date;
     };
 
-    // Find the day schedule for this session
+    // Find the session by session number and platform instead of ID
     const sessionDay = schedule.find(day => 
       day.sessions.some(session => 
-        session.platforms.some(platform => 
-          `${session.id}-${platform.platform}` === params.id
-        )
+        session.number === parseInt(params.sessionNumber) &&
+        session.platforms.some(platform => platform.platform === params.platform)
       )
     );
 
     if (!sessionDay) {
+      console.error('Session day not found:', {
+        sessionNumber: params.sessionNumber,
+        platform: params.platform,
+        date: params.date
+      });
       Alert.alert(
         'Error',
-        'Could not find session details',
+        'Could not find session details. Please try again.',
         [{ text: 'OK' }],
         { userInterfaceStyle: 'light' }
       );
@@ -254,7 +297,7 @@ export default function SessionDetailsScreen() {
     const eventDetails = {
       title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
       location: getFullLocation(),
-      notes: `Weight Class: ${params.weightClass}\nWeigh-in Time: ${params.weighInTime}`,
+      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${params.weighInTime}`,
       startDate: startDate,
       endDate: new Date(startDate.getTime() + 2 * 60 * 60 * 1000), // 2 hours duration
       timeZone: 'America/New_York', // This tells the calendar this is an Eastern time event
@@ -264,14 +307,14 @@ export default function SessionDetailsScreen() {
     };
 
     try {
-      const defaultCalendar = await Calendar.getDefaultCalendarAsync();
-      await Calendar.createEventAsync(defaultCalendar.id, eventDetails);
+      const calendar = await Calendar.getDefaultCalendarAsync();
+      await Calendar.createEventAsync(calendar.id, eventDetails);
       showSuccessAlert();
       Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success
       );
     } catch (error) {
-      console.error('Error adding to calendar:', error);
+      console.error('Error creating calendar event:', error);
       Alert.alert(
         'Error',
         'Could not add event to calendar. Please try again.',
@@ -329,7 +372,7 @@ export default function SessionDetailsScreen() {
                 Weight Class
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.weightClass}
+                {sessionWeightClass || params.weightClass}
               </ThemedText>
             </View>
 
@@ -378,7 +421,11 @@ export default function SessionDetailsScreen() {
             </View>
           </View>
           
-          <SessionAthletes sessionNumber={parseInt(params.sessionNumber)} />
+          <SessionAthletes 
+            sessionNumber={parseInt(params.sessionNumber)} 
+            platform={params.platform}
+            sessionWeightClass={sessionWeightClass || params.weightClass}
+          />
         </View>
       </ScrollView>
     </ThemedView>
@@ -499,5 +546,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  weightClass: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
   },
 }); 
