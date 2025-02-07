@@ -319,7 +319,7 @@ export default function SubscriptionScreen() {
                 </Pressable>
               </View>
             ) : revenueCatProducts.length > 0 ? (
-              <>
+              <View>
                 {revenueCatProducts.map((pkg) => (
                   <View key={pkg.identifier} style={styles.subscriptionContainer}>
                     <Pressable 
@@ -360,34 +360,34 @@ export default function SubscriptionScreen() {
                     </Pressable>
                   </View>
                 ))}
-                
-                <View style={styles.bottomButtons}>
-                  <Pressable
-                    style={styles.restoreButton}
-                    onPress={handleRestore}
-                    disabled={loadingProductId === 'restore'}
-                  >
-                    <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
-                      Restore Purchase
-                    </ThemedText>
-                  </Pressable>
-                  
-                  <Pressable
-                    style={[styles.skipButton]}
-                    onPress={handleSkip}
-                  >
-                    <ThemedText style={styles.skipText}>
-                      Skip (Testing Only)
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              </>
+              </View>
             ) : (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007AFF" />
                 <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
               </View>
             )}
+            
+            <View style={styles.bottomButtons}>
+              <Pressable
+                style={styles.restoreButton}
+                onPress={handleRestore}
+                disabled={loadingProductId === 'restore'}
+              >
+                <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
+                  Restore Purchase
+                </ThemedText>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.skipButton]}
+                onPress={handleSkip}
+              >
+                <ThemedText style={styles.skipText}>
+                  Skip (Testing Only)
+                </ThemedText>
+              </Pressable>
+            </View>
           </>
         )}
       </View>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { View, ScrollView, StyleSheet, Dimensions, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/ThemedText';
@@ -116,7 +116,14 @@ const ONBOARDING_SCREENS = [
       <Animated.View style={styles.demoContainer}>
         <View style={styles.notificationDemo}>
           <NotificationCard colors={colors}>
-            <IconSymbol name="bell.fill" size={24} color="#FF9500" />
+            <IconSymbol 
+              name={Platform.select({ 
+                ios: "bell.fill",
+                android: "notifications"
+              })} 
+              size={24} 
+              color="#FF9500" 
+            />
             <View style={styles.notificationContent}>
               <ThemedText style={styles.notificationTitle}>Session Starting Soon</ThemedText>
               <ThemedText style={[styles.notificationBody, { color: colors.secondaryText }]}>
