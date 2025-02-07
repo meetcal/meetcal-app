@@ -3,11 +3,12 @@ import { useFonts } from 'expo-font';
 import { Redirect, Stack, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
 import { Platform, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -119,6 +120,15 @@ function AppContent() {
 function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
   const { currentTheme } = useTheme();
   const { isSubscribed, isLoading } = useSubscription();
+  const hasRedirected = useRef(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!hasRedirected.current && !isLoading && isSubscribed) {
+      hasRedirected.current = true;
+      router.replace('/(tabs)/schedule');
+    }
+  }, [isLoading, isSubscribed, router]);
 
   if (isLoading) {
     return <Slot />;
@@ -126,49 +136,12 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
 
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
-  // Early return with redirect for subscribed users
-  if (isSubscribed) {
-    return (
-      <>
-        <Redirect href="/(tabs)/schedule" />
-        <NavigationThemeProvider value={theme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(screens)/schedule-details" />
-            <Stack.Screen 
-              name="(screens)/subscription" 
-              options={{
-                headerShown: true,
-                title: 'Premium Features',
-                headerBackTitle: 'Back',
-              }}
-            />
-          </Stack>
-          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-        </NavigationThemeProvider>
-      </>
-    );
-  }
-
-  // Early return with redirect for non-subscribed users based on onboarding
-  if (!hasSeenOnboarding) {
-    return (
-      <>
-        <Redirect href="/(onboarding)" />
-        <NavigationThemeProvider value={theme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(onboarding)" />
-          </Stack>
-          <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-        </NavigationThemeProvider>
-      </>
-    );
-  }
-
-  // Default case: show subscription screen for non-subscribed users who've seen onboarding
+  // Remove the redirect and just render the navigation
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(screens)/schedule-details" />
         <Stack.Screen 
           name="(screens)/subscription" 
           options={{
