@@ -248,6 +248,7 @@ export default function SessionDetailsScreen() {
         );
         return;
       }
+      setHasCalendarPermission(true);
     }
 
     // Parse time strings (assuming format like "8:00 AM")
@@ -300,24 +301,57 @@ export default function SessionDetailsScreen() {
       notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${params.weighInTime}`,
       startDate: startDate,
       endDate: new Date(startDate.getTime() + 2 * 60 * 60 * 1000), // 2 hours duration
-      timeZone: 'America/New_York', // This tells the calendar this is an Eastern time event
+      timeZone: 'America/New_York',
       alarms: [{
         relativeOffset: -60,
       }],
     };
 
     try {
-      const calendar = await Calendar.getDefaultCalendarAsync();
-      await Calendar.createEventAsync(calendar.id, eventDetails);
+      let calendarId;
+
+      if (Platform.OS === 'ios') {
+        const calendar = await Calendar.getDefaultCalendarAsync();
+        calendarId = calendar.id;
+      } else {
+        // Android: Get available calendars and find a suitable one
+        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+        const primaryCalendar = calendars.find(cal => 
+          cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
+          cal.allowsModifications
+        );
+
+        if (!primaryCalendar) {
+          Alert.alert(
+            'Calendar Error',
+            'No suitable calendar found. Please make sure you have at least one calendar set up on your device.',
+            [{ text: 'OK' }],
+            { userInterfaceStyle: 'light' }
+          );
+          return;
+        }
+
+        calendarId = primaryCalendar.id;
+      }
+
+      await Calendar.createEventAsync(calendarId, eventDetails);
       showSuccessAlert();
       Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success
       );
     } catch (error) {
       console.error('Error creating calendar event:', error);
+      
+      // More specific error message
+      const errorMessage = Platform.select({
+        ios: 'Could not add event to calendar. Please try again.',
+        android: 'Could not add event to calendar. Please make sure you have a calendar app installed and try again.',
+        default: 'Could not add event to calendar. Please try again.'
+      });
+
       Alert.alert(
         'Error',
-        'Could not add event to calendar. Please try again.',
+        errorMessage,
         [{ text: 'OK' }],
         { userInterfaceStyle: 'light' }
       );

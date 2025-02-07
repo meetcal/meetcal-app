@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput, Platform } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -76,7 +76,7 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
       >
         <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
         <IconSymbol 
-          name={isExpanded ? "chevron.down" : "chevron.right"} 
+          name={getChevronIcon(isExpanded ? 'down' : 'right')} 
           size={20} 
           color={colors.secondaryText}
         />
@@ -101,7 +101,11 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
                   <ThemedText style={[styles.detailValue, { color: '#007AFF' }]}>
                     Session {athlete.session.number} • {athlete.session.platform} Platform
                   </ThemedText>
-                  <IconSymbol name="chevron.right" size={13} color="#007AFF" />
+                  <IconSymbol 
+                    name={getChevronIcon('right')} 
+                    size={13} 
+                    color="#007AFF" 
+                  />
                 </View>
               </Pressable>
               {getSessionDetails(athlete.session.number) && (
@@ -182,36 +186,79 @@ async function createCalendarEvents(sessions: Array<{
   platform: string;
   weightClass: string;
 }>) {
-  const calendar = await Calendar.getDefaultCalendarAsync();
+  try {
+    let calendarId;
+
+    if (Platform.OS === 'ios') {
+      const calendar = await Calendar.getDefaultCalendarAsync();
+      calendarId = calendar.id;
+    } else {
+      // Android: Get available calendars and find a suitable one
+      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const primaryCalendar = calendars.find(cal => 
+        cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
+        cal.allowsModifications
+      );
+
+      if (!primaryCalendar) {
+        throw new Error('no_calendar');
+      }
+
+      calendarId = primaryCalendar.id;
+    }
   
-  for (const session of sessions) {
-    const [year, month, day] = session.date.split('-').map(Number);
+    for (const session of sessions) {
+      const [year, month, day] = session.date.split('-').map(Number);
+      
+      let [timeStr, meridiem] = session.startTime.split(' ');
+      let [hours, minutes] = timeStr.split(':').map(Number);
+      
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0;
+      }
+      
+      const startDate = new Date(year, month - 1, day, hours, minutes);
+      const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+
+      await Calendar.createEventAsync(calendarId, {
+        title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
+        location: getFullLocation(),
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`,
+        startDate,
+        endDate,
+        timeZone: 'America/New_York',
+        alarms: [{
+          relativeOffset: -60,
+        }],
+      });
+    }
+  } catch (error) {
+    console.error('Error creating calendar events:', error);
     
-    let [timeStr, meridiem] = session.startTime.split(' ');
-    let [hours, minutes] = timeStr.split(':').map(Number);
-    
-    if (meridiem === 'PM' && hours !== 12) {
-      hours += 12;
-    } else if (meridiem === 'AM' && hours === 12) {
-      hours = 0;
+    if (error instanceof Error && error.message === 'no_calendar') {
+      throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
     }
     
-    const startDate = new Date(year, month - 1, day, hours, minutes);
-    const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
-
-    await Calendar.createEventAsync(calendar.id, {
-      title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-      location: getFullLocation(), // Need to import this
-      notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`, // Need weightClass and weighInTime
-      startDate,
-      endDate,
-      timeZone: 'America/New_York', // Match the exact timezone
-      alarms: [{
-        relativeOffset: -60,
-      }],
+    // More specific error message based on platform
+    const errorMessage = Platform.select({
+      ios: 'Could not add events to calendar. Please try again.',
+      android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
+      default: 'Could not add events to calendar. Please try again.'
     });
+    
+    throw new Error(errorMessage);
   }
 }
+
+// Add a helper function at the top level for chevron icons
+const getChevronIcon = (direction: 'down' | 'right') => {
+  return Platform.select({
+    ios: `chevron.${direction}`,
+    android: direction === 'right' ? 'chevron-forward' : 'chevron-down'
+  });
+};
 
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -366,7 +413,7 @@ export default function StartListScreen() {
               await createCalendarEvents(uniqueSessions);
               Alert.alert('Success', 'Sessions have been added to your calendar.');
             } catch (error) {
-              Alert.alert('Error', 'Failed to add sessions to calendar.');
+              Alert.alert('Error', error instanceof Error ? error.message : 'Failed to add sessions to calendar.');
               console.error(error);
             }
           }
@@ -428,7 +475,10 @@ export default function StartListScreen() {
             }
           ]}>
             <IconSymbol 
-              name="magnifyingglass" 
+              name={Platform.select({
+                ios: "magnifyingglass",
+                android: "search"
+              })}
               size={16} 
               color={colors.secondaryText}
             />
@@ -460,7 +510,11 @@ export default function StartListScreen() {
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
               {getFilterDisplayText()}
             </ThemedText>
-            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+            <IconSymbol 
+              name={getChevronIcon('down')} 
+              size={12} 
+              color={colors.secondaryText} 
+            />
           </Pressable>
 
           <Pressable
@@ -474,7 +528,14 @@ export default function StartListScreen() {
             ]}
             onPress={() => setShowSaveModal(true)}
           >
-            <IconSymbol name="square.and.arrow.down" size={16} color={colors.secondaryText} />
+            <IconSymbol 
+              name={Platform.select({
+                ios: "square.and.arrow.down",
+                android: "download"
+              })} 
+              size={16} 
+              color={colors.secondaryText} 
+            />
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
               Save
             </ThemedText>
@@ -550,7 +611,7 @@ export default function StartListScreen() {
                         </ThemedText>
                       </View>
                       <IconSymbol 
-                        name={expandedSection === 'weightClass' ? "chevron.up" : "chevron.down"} 
+                        name={getChevronIcon(expandedSection === 'weightClass' ? 'down' : 'right')} 
                         size={16} 
                         color={colors.secondaryText}
                       />
@@ -639,7 +700,7 @@ export default function StartListScreen() {
                         </ThemedText>
                       </View>
                       <IconSymbol 
-                        name={expandedSection === 'club' ? "chevron.up" : "chevron.down"} 
+                        name={getChevronIcon(expandedSection === 'club' ? 'down' : 'right')} 
                         size={16} 
                         color={colors.secondaryText}
                       />
@@ -774,7 +835,11 @@ export default function StartListScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.secondaryText} />
+              <IconSymbol 
+                name={getChevronIcon('right')} 
+                size={16} 
+                color={colors.secondaryText} 
+              />
             </Pressable>
 
             <Pressable
@@ -798,7 +863,11 @@ export default function StartListScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <IconSymbol name="chevron.right" size={16} color={colors.secondaryText} />
+              <IconSymbol 
+                name={getChevronIcon('right')} 
+                size={16} 
+                color={colors.secondaryText} 
+              />
             </Pressable>
           </View>
         </Pressable>

@@ -234,7 +234,7 @@ export default function InfoScreen() {
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://www.meetcal.app')}
+            onPress={() => handlePress('https://www.meetcal.app/privacy')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
               We Don't Collect Any Data
