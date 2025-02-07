@@ -40,10 +40,14 @@ export default function SavedScreen() {
 
   // Filter saved sessions
   const filteredSessions = useMemo(() => {
-    if (!letterFilter) return savedSessions;
-    return savedSessions.filter(session => 
-      session.weightClass.slice(-1) === letterFilter
-    );
+    if (!letterFilter) {
+      return savedSessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
+    }
+    return savedSessions
+      .filter(session => 
+        session.weightClass.slice(-1) === letterFilter
+      )
+      .sort((a, b) => a.sessionNumber - b.sessionNumber);
   }, [savedSessions, letterFilter]);
 
   const handleFilterSelect = (letter: string) => {

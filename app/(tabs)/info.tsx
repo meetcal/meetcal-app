@@ -1,4 +1,4 @@
-import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch } from 'react-native';
+import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -7,11 +7,20 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
+  const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { savedSessions, resetAllSessions } = useSavedSessions();
+
+  // Sync the switch state with theme changes
+  useEffect(() => {
+    setIsEnabled(currentTheme === 'dark');
+  }, [currentTheme]);
 
   // Define theme colors
   const colors = {
@@ -47,6 +56,39 @@ export default function InfoScreen() {
         Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`);
       }
     });
+  };
+
+  const handleThemeChange = (value: boolean) => {
+    setIsEnabled(value); // Update switch state immediately
+    setTheme(value ? 'dark' : 'light'); // Update theme
+  };
+
+  const handleResetSessions = () => {
+    Alert.alert(
+      'Reset Saved Sessions',
+      'Are you sure you want to remove all saved sessions? This cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const success = await resetAllSessions();
+              if (!success) {
+                Alert.alert('Error', 'Failed to reset saved sessions.');
+              }
+            } catch (error) {
+              console.error('Error resetting sessions:', error);
+              Alert.alert('Error', 'Failed to reset saved sessions.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -114,8 +156,8 @@ export default function InfoScreen() {
                 Dark Mode
               </ThemedText>
               <Switch
-                value={currentTheme === 'dark'}
-                onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                value={isEnabled}
+                onValueChange={handleThemeChange}
                 trackColor={{ false: '#E1E1E1', true: '#34C759' }}
                 thumbColor="#FFFFFF"
               />
@@ -203,6 +245,19 @@ export default function InfoScreen() {
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
+          </Pressable>
+        </View>
+        <View style={styles.dangerZone}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.resetButton,
+              pressed && { opacity: 0.8 }
+            ]}
+            onPress={handleResetSessions}
+          >
+            <ThemedText style={styles.resetButtonText}>
+              Reset Saved Sessions
+            </ThemedText>
           </Pressable>
         </View>
       </ScrollView>
@@ -309,5 +364,20 @@ const styles = StyleSheet.create({
   subscriptionPreview: {
     fontSize: 16,
     lineHeight: 21,
+  },
+  dangerZone: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  resetButton: {
+    backgroundColor: '#FF3B30', // iOS red
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  resetButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
   },
 }); 
