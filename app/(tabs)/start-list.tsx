@@ -120,11 +120,15 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
               )}
             </>
           )}
-          <View style={styles.detailRow}>
+          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
             <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
               Club:
             </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.club}</ThemedText>
+            <View style={styles.wrappingDetailValue}>
+              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
+                {athlete.club}
+              </ThemedText>
+            </View>
           </View>
           <View style={styles.detailRow}>
             <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
@@ -916,12 +920,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  wrappingDetailRow: {
+    alignItems: 'flex-start',
+  },
   detailLabel: {
     fontSize: 15,
+    minWidth: 95,
   },
   detailValue: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  wrappingDetailValue: {
+    flex: 1,
+    paddingLeft: 16,
+  },
+  wrappingText: {
+    textAlign: 'right',
+    flexWrap: 'wrap',
   },
   filterContainer: {
     padding: 16,
