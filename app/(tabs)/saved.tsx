@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors, schedule } from '@/data/schedule';
 
 export default function SavedScreen() {
   const { savedSessions } = useSavedSessions();
@@ -68,7 +68,7 @@ export default function SavedScreen() {
       })}
     >
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-        Session {item.sessionNumber}
+        Session {item.sessionNumber} • {schedule.find(day => day.sessions.some(s => s.number === parseInt(item.sessionNumber)))?.date}
       </ThemedText>
       <View style={styles.timeContainer}>
         <View style={styles.timeRow}>
