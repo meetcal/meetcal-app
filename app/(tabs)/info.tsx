@@ -104,7 +104,7 @@ export default function InfoScreen() {
         {/* Venue Info */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Venue Information
+            Virus Weightlifting Series 1
           </ThemedText>
           
           <Pressable
