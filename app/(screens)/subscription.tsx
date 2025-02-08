@@ -232,21 +232,30 @@ export default function SubscriptionScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
-        options={{ 
-          title: 'Premium Features',
-          headerBackTitle: 'Back',
-          headerShown: false
+        options={{
+          headerShown: false,
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          animation: 'slide_from_right',
         }} 
       />
-      
-      <View style={[
-        styles.card, 
-        { 
-          backgroundColor: colors.card,
-          marginTop: insets.top + 20
-        }
-      ]}>
-        <View style={styles.header}>
+
+      <View style={[styles.header, { marginTop: insets.top }]}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <IconSymbol
+            name="chevron.left"
+            size={20}
+            color="#007AFF"
+          />
+          <ThemedText style={styles.backText}>Back</ThemedText>
+        </Pressable>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={styles.contentHeader}>
           <ThemedText style={styles.title}>
             {isSubscribed ? 'MeetCal Pro' : 'Unlock Premium Features'}
           </ThemedText>
@@ -413,9 +422,34 @@ function Feature({ icon, title, description, colors }: FeatureProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  backText: {
+    color: '#007AFF',
+    fontSize: 17,
+    marginLeft: -4,
+  },
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
   },
   card: {
+    margin: 16,
     borderRadius: 12,
     padding: 24,
     shadowColor: '#000',
@@ -427,10 +461,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  header: {
+  contentHeader: {
     alignItems: 'center',
     marginBottom: 32,
-    paddingTop: 8,
   },
   title: {
     fontSize: 26,
