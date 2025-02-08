@@ -853,11 +853,14 @@ export default function StartListScreen() {
                             setExpandedSection(null);
                           }}
                         >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempClubFilter === club && { color: '#007AFF' }
-                          ]}>
+                          <ThemedText 
+                            style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempClubFilter === club && { color: '#007AFF' }
+                            ]}
+                            numberOfLines={2}
+                          >
                             {club}
                           </ThemedText>
                           <View style={styles.filterOptionRight}>
@@ -1122,11 +1125,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    paddingLeft: 32,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   filterOptionText: {
     fontSize: 17,
+    flex: 1,
+    marginRight: 16,
   },
   searchContainer: {
     marginBottom: 6,
@@ -1223,10 +1227,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexShrink: 0,
   },
   starButton: {
-    padding: 4, // Increase touch target
-    marginRight: -4, // Offset padding
+    padding: 4,
+    marginRight: -4,
   },
   filterOptionContent: {
     flexDirection: 'row',
@@ -1234,6 +1239,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   starredClubsIcon: {
-    marginTop: 1, // Slight adjustment for visual alignment
+    marginTop: 1,
   },
 }); 
