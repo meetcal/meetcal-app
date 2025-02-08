@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     padding: 16,
     paddingBottom: 8,
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   label: {
-    fontSize: 17,
+    fontSize: 16,
     marginBottom: 4,
   },
   value: {
