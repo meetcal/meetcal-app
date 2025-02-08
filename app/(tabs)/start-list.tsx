@@ -827,9 +827,8 @@ export default function StartListScreen() {
                             </ThemedText>
                             <IconSymbol 
                               name="star.fill"
-                              size={16}
+                              size={22}
                               color="#FFB340"
-                              style={styles.starredClubsIcon}
                             />
                           </View>
                           {tempClubFilter === STARRED_CLUBS_FILTER && (
@@ -876,7 +875,7 @@ export default function StartListScreen() {
                             >
                               <IconSymbol
                                 name={starredClubs.includes(club) ? 'star.fill' : 'star'}
-                                size={20}
+                                size={22}
                                 color={starredClubs.includes(club) ? '#FFB340' : colors.secondaryText}
                               />
                             </Pressable>
@@ -1230,8 +1229,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   starButton: {
-    padding: 4,
-    marginRight: -4,
+    padding: 6,
+    marginRight: -6,
   },
   filterOptionContent: {
     flexDirection: 'row',
