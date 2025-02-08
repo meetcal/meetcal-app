@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput, Platform } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -11,6 +11,7 @@ import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
 import { useRouter } from 'expo-router';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function getSessionDetails(sessionNumber: number) {
   for (const day of schedule) {
@@ -264,6 +265,9 @@ const getChevronIcon = (direction: 'down' | 'right') => {
   });
 };
 
+// Add special value for starred clubs filter
+const STARRED_CLUBS_FILTER = 'Favorites';
+
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -294,26 +298,77 @@ export default function StartListScreen() {
     new Set(liftingResults.map(athlete => athlete.club))
   ).sort();
 
+  // Add new state for starred clubs
+  const [starredClubs, setStarredClubs] = useState<string[]>([]);
+
+  // Add useEffect to load starred clubs on mount
+  useEffect(() => {
+    const loadStarredClubs = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('starredClubs');
+        if (stored) {
+          setStarredClubs(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.error('Error loading starred clubs:', error);
+      }
+    };
+    loadStarredClubs();
+  }, []);
+
+  // Add function to toggle starred status
+  const toggleStarredClub = async (club: string) => {
+    try {
+      const newStarredClubs = starredClubs.includes(club)
+        ? starredClubs.filter(c => c !== club)
+        : [...starredClubs, club];
+      
+      setStarredClubs(newStarredClubs);
+      await AsyncStorage.setItem('starredClubs', JSON.stringify(newStarredClubs));
+    } catch (error) {
+      console.error('Error saving starred clubs:', error);
+    }
+  };
+
+  // Update the sort function for clubs
+  const sortedClubOptions = useMemo(() => {
+    return clubOptions.sort((a, b) => {
+      const aIsStarred = starredClubs.includes(a);
+      const bIsStarred = starredClubs.includes(b);
+      
+      if (aIsStarred && !bIsStarred) return -1;
+      if (!aIsStarred && bIsStarred) return 1;
+      
+      return a.localeCompare(b);
+    });
+  }, [clubOptions, starredClubs]);
+
   const handlePress = (athleteName: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedId(expandedId === athleteName ? null : athleteName);
   };
 
+  // Update getFilterDisplayText to handle starred clubs
   const getFilterDisplayText = () => {
     if (weightClassFilter && clubFilter) {
-      return `${weightClassFilter} • ${clubFilter}`;
+      return `${weightClassFilter} • ${clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter}`;
     } else if (weightClassFilter) {
       return weightClassFilter;
     } else if (clubFilter) {
-      return clubFilter;
+      return clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter;
     }
     return 'Filter';
   };
 
+  // Update the filtered athletes logic
   const filteredAthletes = liftingResults
     .filter(athlete => {
       const matchesWeightClass = weightClassFilter ? athlete.weightClass === weightClassFilter : true;
-      const matchesClub = clubFilter ? athlete.club === clubFilter : true;
+      const matchesClub = clubFilter 
+        ? clubFilter === STARRED_CLUBS_FILTER 
+          ? starredClubs.includes(athlete.club)
+          : athlete.club === clubFilter
+        : true;
       const matchesSearch = searchQuery 
         ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
         : true;
@@ -433,11 +488,15 @@ export default function StartListScreen() {
   const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
   const [tempClubFilter, setTempClubFilter] = useState('');
 
-  // Add helper function to count filtered results
+  // Update helper function to count filtered results
   const getFilteredCount = (weightClass: string, club: string) => {
     return liftingResults.filter(athlete => {
       const matchesWeightClass = weightClass ? athlete.weightClass === weightClass : true;
-      const matchesClub = club ? athlete.club === club : true;
+      const matchesClub = club 
+        ? club === STARRED_CLUBS_FILTER 
+          ? starredClubs.includes(athlete.club)
+          : athlete.club === club
+        : true;
       const matchesSearch = searchQuery 
         ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
         : true;
@@ -719,6 +778,7 @@ export default function StartListScreen() {
                       ]}
                       bounces={false}
                     >
+                      {/* All Clubs option */}
                       <Pressable
                         style={({ pressed }) => [
                           styles.filterOption,
@@ -742,7 +802,44 @@ export default function StartListScreen() {
                           <IconSymbol name="checkmark" size={16} color="#007AFF" />
                         )}
                       </Pressable>
-                      {clubOptions.map((club) => (
+
+                      {/* All Starred Clubs option */}
+                      {starredClubs.length > 0 && (
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.filterOption,
+                            { borderBottomColor: colors.border },
+                            tempClubFilter === STARRED_CLUBS_FILTER && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => {
+                            setTempClubFilter(STARRED_CLUBS_FILTER);
+                            setExpandedSection(null);
+                          }}
+                        >
+                          <View style={styles.filterOptionContent}>
+                            <ThemedText style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempClubFilter === STARRED_CLUBS_FILTER && { color: '#007AFF' }
+                            ]}>
+                              Favorites
+                            </ThemedText>
+                            <IconSymbol 
+                              name="star.fill"
+                              size={16}
+                              color="#FFB340"
+                              style={styles.starredClubsIcon}
+                            />
+                          </View>
+                          {tempClubFilter === STARRED_CLUBS_FILTER && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      )}
+
+                      {/* Individual club options */}
+                      {sortedClubOptions.map((club) => (
                         <Pressable
                           key={club}
                           style={({ pressed }) => [
@@ -763,9 +860,24 @@ export default function StartListScreen() {
                           ]}>
                             {club}
                           </ThemedText>
-                          {tempClubFilter === club && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                          )}
+                          <View style={styles.filterOptionRight}>
+                            {tempClubFilter === club && (
+                              <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            )}
+                            <Pressable
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                toggleStarredClub(club);
+                              }}
+                              style={styles.starButton}
+                            >
+                              <IconSymbol
+                                name={starredClubs.includes(club) ? 'star.fill' : 'star'}
+                                size={20}
+                                color={starredClubs.includes(club) ? '#FFB340' : colors.secondaryText}
+                              />
+                            </Pressable>
+                          </View>
                         </Pressable>
                       ))}
                     </ScrollView>
@@ -1106,5 +1218,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  filterOptionRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  starButton: {
+    padding: 4, // Increase touch target
+    marginRight: -4, // Offset padding
+  },
+  filterOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  starredClubsIcon: {
+    marginTop: 1, // Slight adjustment for visual alignment
   },
 }); 
