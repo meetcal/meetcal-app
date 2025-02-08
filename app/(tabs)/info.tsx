@@ -176,7 +176,10 @@ export default function InfoScreen() {
               { borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(screens)/subscription')}
+            onPress={() => router.push({
+              pathname: '/(screens)/subscription',
+              params: { from: 'info' }
+            })}
           >
             <View style={styles.subscriptionContainer}>
               <View style={styles.subscriptionInfo}>

@@ -1,5 +1,5 @@
 import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking, Text } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -37,6 +37,7 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const [revenueCatProducts, setRevenueCatProducts] = useState<Purchases.Package[]>([]);
   const [loadingProductId, setLoadingProductId] = useState<string | null>(null);
+  const params = useLocalSearchParams<{ from?: string }>();
   
   const fetchProducts = async () => {
     try {
@@ -234,27 +235,35 @@ export default function SubscriptionScreen() {
       <Stack.Screen 
         options={{
           headerShown: false,
-          gestureEnabled: true,
+          gestureEnabled: params.from === 'info',
           gestureDirection: 'horizontal',
           animation: 'slide_from_right',
         }} 
       />
 
-      <View style={[styles.header, { marginTop: insets.top }]}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol
-            name="chevron.left"
-            size={20}
-            color="#007AFF"
-          />
-          <ThemedText style={styles.backText}>Back</ThemedText>
-        </Pressable>
-      </View>
+      {params.from === 'info' && (
+        <View style={[styles.header, { marginTop: insets.top }]}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <IconSymbol
+              name="chevron.left"
+              size={20}
+              color="#007AFF"
+            />
+            <ThemedText style={styles.backText}>Back</ThemedText>
+          </Pressable>
+        </View>
+      )}
 
-      <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <View style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.card,
+          marginTop: params.from === 'info' ? 16 : insets.top + 20
+        }
+      ]}>
         <View style={styles.contentHeader}>
           <ThemedText style={styles.title}>
             {isSubscribed ? 'MeetCal Pro' : 'Unlock Premium Features'}
