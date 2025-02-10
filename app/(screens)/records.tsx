@@ -1,15 +1,28 @@
-import { StyleSheet, View, ScrollView } from 'react-native';
+import { StyleSheet, View, ScrollView, Pressable, Modal } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { americanRecords } from '@/data/records';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState } from 'react';
+
+type Gender = 'men' | 'women';
+type AgeGroup = 'senior' | 'junior' | 'u17' | 'u15' | 'u13';
+
+interface Filters {
+  gender: Gender;
+  ageGroup: AgeGroup;
+}
 
 export default function RecordsScreen() {
   const { currentTheme } = useTheme();
-  const [selectedGender, setSelectedGender] = useState<'men' | 'women'>('men');
+  const [filters, setFilters] = useState<Filters>({
+    gender: 'men',
+    ageGroup: 'senior'
+  });
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterType, setFilterType] = useState<'gender' | 'ageGroup'>('gender');
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -17,6 +30,23 @@ export default function RecordsScreen() {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
+
+  const handleFilterSelect = (value: string) => {
+    if (filterType === 'gender') {
+      setFilters(prev => ({ ...prev, gender: value as Gender }));
+    } else {
+      setFilters(prev => ({ ...prev, ageGroup: value as AgeGroup }));
+    }
+    setShowFilterModal(false);
+  };
+
+  const getFilterDisplayText = () => {
+    if (filterType === 'gender') {
+      return filters.gender === 'men' ? 'Men' : 'Women';
+    }
+    return filters.ageGroup.toUpperCase();
   };
 
   return (
@@ -34,12 +64,52 @@ export default function RecordsScreen() {
         headerShadowVisible: false,
       }} />
 
-      <View style={styles.segmentedControlContainer}>
-        <SegmentedControl
-          values={['Men', 'Women']}
-          selectedIndex={selectedGender === 'men' ? 0 : 1}
-          onChange={(index) => setSelectedGender(index === 0 ? 'men' : 'women')}
-        />
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
+      }]}>
+        <View style={styles.filterButtons}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => {
+              setFilterType('gender');
+              setShowFilterModal(true);
+            }}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {filters.gender === 'men' ? 'Men' : 'Women'}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => {
+              setFilterType('ageGroup');
+              setShowFilterModal(true);
+            }}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1)}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView 
@@ -54,12 +124,12 @@ export default function RecordsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {americanRecords[selectedGender].map((record, index) => (
+          {americanRecords[filters.ageGroup][filters.gender].map((record, index) => (
             <View 
               key={record.weightClass}
               style={[
                 styles.row,
-                index < americanRecords[selectedGender].length - 1 && {
+                index < americanRecords[filters.ageGroup][filters.gender].length - 1 && {
                   borderBottomWidth: StyleSheet.hairlineWidth,
                   borderBottomColor: colors.border
                 }
@@ -73,6 +143,79 @@ export default function RecordsScreen() {
           ))}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showFilterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <Pressable 
+          style={[styles.modalOverlay, { 
+            backgroundColor: currentTheme === 'dark' 
+              ? 'rgba(0,0,0,0.6)' 
+              : 'rgba(0,0,0,0.4)' 
+          }]}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            {filterType === 'gender' ? (
+              <>
+                {(['men', 'women'] as Gender[]).map((gender) => (
+                  <Pressable
+                    key={gender}
+                    style={({ pressed }) => [
+                      styles.modalOption,
+                      { borderBottomColor: colors.border },
+                      filters.gender === gender && { backgroundColor: colors.pressed },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => handleFilterSelect(gender)}
+                  >
+                    <ThemedText style={[
+                      styles.modalOptionText,
+                      { color: colors.text },
+                      filters.gender === gender && { color: '#007AFF' }
+                    ]}>
+                      {gender === 'men' ? 'Men' : 'Women'}
+                    </ThemedText>
+                    {filters.gender === gender && (
+                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                    )}
+                  </Pressable>
+                ))}
+              </>
+            ) : (
+              <>
+                {(['u13', 'u15', 'u17', 'junior', 'senior'] as AgeGroup[]).map((ageGroup) => (
+                  <Pressable
+                    key={ageGroup}
+                    style={({ pressed }) => [
+                      styles.modalOption,
+                      { borderBottomColor: colors.border },
+                      filters.ageGroup === ageGroup && { backgroundColor: colors.pressed },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => handleFilterSelect(ageGroup)}
+                  >
+                    <ThemedText style={[
+                      styles.modalOptionText,
+                      { color: colors.text },
+                      filters.ageGroup === ageGroup && { color: '#007AFF' }
+                    ]}>
+                      {ageGroup === 'u15' ? 'U15' : 
+                       ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1)}
+                    </ThemedText>
+                    {filters.ageGroup === ageGroup && (
+                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                    )}
+                  </Pressable>
+                ))}
+              </>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -81,15 +224,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  segmentedControlContainer: {
+  filterContainer: {
     padding: 16,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#C6C6C8',
+  },
+  filterButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#C6C6C8',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  filterButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingTop: 0,
   },
   card: {
     borderRadius: 12,
@@ -120,6 +294,27 @@ const styles = StyleSheet.create({
   },
   cell: {
     flex: 1,
+    fontSize: 17,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalOptionText: {
     fontSize: 17,
   },
 }); 
