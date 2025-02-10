@@ -14,6 +14,7 @@ export type RecordsData = {
   u13: AgeGroupRecords;
   u15: AgeGroupRecords;
   u17: AgeGroupRecords;
+  collegiate: AgeGroupRecords;
   junior: AgeGroupRecords;
   senior: AgeGroupRecords;
 }; 

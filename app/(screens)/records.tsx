@@ -8,7 +8,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState } from 'react';
 
 type Gender = 'men' | 'women';
-type AgeGroup = 'senior' | 'junior' | 'u17' | 'u15' | 'u13';
+type AgeGroup = 'senior' | 'junior' | 'collegiate' | 'u17' | 'u15' | 'u13';
 
 interface Filters {
   gender: Gender;
@@ -187,7 +187,7 @@ export default function RecordsScreen() {
               </>
             ) : (
               <>
-                {(['u13', 'u15', 'u17', 'junior', 'senior'] as AgeGroup[]).map((ageGroup) => (
+                {(['u13', 'u15', 'u17', 'collegiate', 'junior', 'senior'] as AgeGroup[]).map((ageGroup) => (
                   <Pressable
                     key={ageGroup}
                     style={({ pressed }) => [
