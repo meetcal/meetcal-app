@@ -79,8 +79,8 @@ export default function NewStandardsScreen() {
               ]}
             >
               <ThemedText style={[styles.cell, { flex: 2 }]}>{record.weightClass}</ThemedText>
-              <ThemedText style={styles.cell}>{record.aRecord}kg</ThemedText>
-              <ThemedText style={styles.cell}>{record.bRecord}kg</ThemedText>
+              <ThemedText style={styles.cell}>{record.a}kg</ThemedText>
+              <ThemedText style={styles.cell}>{record.b}kg</ThemedText>
             </View>
           ))}
         </View>
