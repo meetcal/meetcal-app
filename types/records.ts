@@ -5,7 +5,15 @@ export type WeightClassRecord = {
   totalRecord: number;
 };
 
-export type RecordsData = {
+export type AgeGroupRecords = {
   men: WeightClassRecord[];
   women: WeightClassRecord[];
+};
+
+export type RecordsData = {
+  u13: AgeGroupRecords;
+  u15: AgeGroupRecords;
+  u17: AgeGroupRecords;
+  junior: AgeGroupRecords;
+  senior: AgeGroupRecords;
 }; 

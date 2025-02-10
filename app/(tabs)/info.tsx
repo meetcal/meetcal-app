@@ -182,7 +182,7 @@ export default function InfoScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomColor: colors.border },
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => router.push({
@@ -193,17 +193,20 @@ export default function InfoScreen() {
             <View style={styles.subscriptionContainer}>
               <View style={styles.subscriptionInfo}>
                 <ThemedText style={[styles.label, { color: colors.text, fontWeight: '600' }]}>
-                  Subscription
-                </ThemedText>
-                <ThemedText style={[styles.subscriptionPreview, { color: colors.text }]}>
-                  Unlock athlete tracking, custom alerts, and more
+                  Manage Subscription
                 </ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
 
-          <View style={[styles.section, styles.lastSection]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+          >
             <View style={styles.settingRow}>
               <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
                 Dark Mode
@@ -215,12 +218,12 @@ export default function InfoScreen() {
                 thumbColor="#FFFFFF"
               />
             </View>
-          </View>
+          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              styles.lastSection,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => handlePress('mailto:memohnsen@gmail.com')}
@@ -239,10 +242,10 @@ export default function InfoScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              styles.lastSection,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://wl-wargames.com')}
+            onPress={() => handlePress('https://wargames.mohsenweb.com')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
               Other Projects
@@ -254,13 +257,14 @@ export default function InfoScreen() {
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
+
           <Pressable
             style={({ pressed }) => [
               styles.section,
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://www.meetcal.app/privacy')}
+            onPress={() => handlePress('https://mohsenweb.com/privacy')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
               We Don't Collect Any Data
