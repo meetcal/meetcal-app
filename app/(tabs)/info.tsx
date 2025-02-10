@@ -144,6 +144,61 @@ export default function InfoScreen() {
           </View>
         </View>
 
+        {/* Records and Standards */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            Records and Standards
+          </ThemedText>
+          
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/current-standards')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Current Bodyweight Standards
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/new-standards')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                New Bodyweight Standards
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/records')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                American Records
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+        </View>
+
         {/* Theme Settings */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>

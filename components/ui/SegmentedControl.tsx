@@ -1,61 +1,70 @@
-import { StyleSheet, View, TouchableOpacity, Animated } from 'react-native';
+import { View, Pressable, StyleSheet, Animated } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedText } from '@/components/ThemedText';
-import { useEffect, useRef } from 'react';
 
-type Option = {
-  label: string;
-  value: string;
-};
+interface SegmentedControlProps {
+  values: string[];
+  selectedIndex: number;
+  onChange: (index: number) => void;
+}
 
-type Props = {
-  values: Option[];
-  selectedValue: string;
-  onChange: (value: string) => void;
-};
+export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedControlProps) {
+  const { currentTheme } = useTheme();
+  const [segmentWidth, setSegmentWidth] = useState(0);
+  const slideAnimation = useRef(new Animated.Value(0)).current;
 
-export function SegmentedControl({ values, selectedValue, onChange }: Props) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const segmentWidth = 100 / values.length;
+  const colors = {
+    background: currentTheme === 'dark' ? '#1C1C1E' : '#E5E5EA',
+    selected: currentTheme === 'dark' ? '#FFFFFF' : '#FFFFFF',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    selectedText: currentTheme === 'dark' ? '#000000' : '#000000',
+  };
 
   useEffect(() => {
-    const selectedIndex = values.findIndex(v => v.value === selectedValue);
-    Animated.spring(translateX, {
+    Animated.spring(slideAnimation, {
       toValue: selectedIndex * segmentWidth,
       useNativeDriver: true,
+      tension: 100,
+      friction: 20,
     }).start();
-  }, [selectedValue, values, segmentWidth]);
+  }, [selectedIndex, segmentWidth]);
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, { backgroundColor: colors.background }]}
+      onLayout={({ nativeEvent }) => {
+        setSegmentWidth(nativeEvent.layout.width / values.length);
+      }}
+    >
       <Animated.View
         style={[
           styles.selectedSegment,
           {
-            width: `${segmentWidth}%`,
-            transform: [{
-              translateX: translateX.interpolate({
-                inputRange: [0, 100],
-                outputRange: ['0%', '100%'],
-              }),
-            }],
+            backgroundColor: colors.selected,
+            width: segmentWidth,
+            transform: [{ translateX: slideAnimation }],
           },
         ]}
       />
-      {values.map((option) => (
-        <TouchableOpacity
-          key={option.value}
-          style={[styles.segment, { width: `${segmentWidth}%` }]}
-          onPress={() => onChange(option.value)}
+      {values.map((value, index) => (
+        <Pressable
+          key={value}
+          style={styles.segment}
+          onPress={() => onChange(index)}
         >
           <ThemedText
             style={[
               styles.segmentText,
-              selectedValue === option.value && styles.selectedText,
+              {
+                color: selectedIndex === index ? colors.selectedText : colors.text,
+                fontWeight: selectedIndex === index ? '600' : '400',
+              },
             ]}
           >
-            {option.label}
+            {value}
           </ThemedText>
-        </TouchableOpacity>
+        </Pressable>
       ))}
     </View>
   );
@@ -64,22 +73,15 @@ export function SegmentedControl({ values, selectedValue, onChange }: Props) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: '#E5E5EA',
     borderRadius: 8,
-    padding: 2,
-    position: 'relative',
+    overflow: 'hidden',
     height: 32,
-  },
-  segment: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+    position: 'relative',
   },
   selectedSegment: {
     position: 'absolute',
     top: 2,
     bottom: 2,
-    backgroundColor: '#FFFFFF',
     borderRadius: 6,
     shadowColor: '#000',
     shadowOffset: {
@@ -87,14 +89,16 @@ const styles = StyleSheet.create({
       height: 1,
     },
     shadowOpacity: 0.15,
-    shadowRadius: 2,
+    shadowRadius: 1,
     elevation: 2,
+  },
+  segment: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
   },
   segmentText: {
     fontSize: 13,
-    fontWeight: '500',
-  },
-  selectedText: {
-    color: '#000000',
   },
 }); 
