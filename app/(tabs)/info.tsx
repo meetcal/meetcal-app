@@ -101,55 +101,29 @@ export default function InfoScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Venue Info */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Virus Weightlifting Series 1
-          </ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={handleAddressPress}
-          >
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Location
-            </ThemedText>
-            <View>
-              <View style={styles.addressContainer}>
-                <View>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.name}
-                  </ThemedText>
-                  <ThemedText style={[styles.link, { color: colors.link }]}>
-                    {venueConfig.address.street}
-                  </ThemedText>
-                  <ThemedText style={[styles.link, { color: colors.link }]}>
-                    {venueConfig.address.city}, {venueConfig.address.state} {venueConfig.address.zip}
-                  </ThemedText>
-                </View>
-                <IconSymbol name="chevron.right" size={20} color={colors.link} />
-              </View>
-            </View>
-          </Pressable>
-
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-          <View style={styles.section}>
-            <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>Venue Time Zone</ThemedText>
-            <ThemedText style={[styles.sectionText, { color: colors.text }]}>Eastern Time</ThemedText>
-          </View>
-        </View>
-
+        
         {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             Records and Standards
           </ThemedText>
           
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/event-info')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Event Info
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
           <Pressable
             style={({ pressed }) => [
               styles.section,
@@ -199,26 +173,6 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* Theme Settings */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            App Settings
-          </ThemedText>
-          
-          <View style={[styles.section, styles.lastSection]}>
-            <View style={styles.settingRow}>
-              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
-                Dark Mode
-              </ThemedText>
-              <Switch
-                value={isEnabled}
-                onValueChange={handleThemeChange}
-                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-        </View>
         {/* App Info */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
@@ -248,6 +202,20 @@ export default function InfoScreen() {
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
+
+          <View style={[styles.section, styles.lastSection]}>
+            <View style={styles.settingRow}>
+              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
+                Dark Mode
+              </ThemedText>
+              <Switch
+                value={isEnabled}
+                onValueChange={handleThemeChange}
+                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
 
           <Pressable
             style={({ pressed }) => [

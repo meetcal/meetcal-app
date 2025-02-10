@@ -1,7 +1,7 @@
 export type StandardRecord = {
   weightClass: string;
-  aRecord: number;
-  bRecord: number;
+  a: number;
+  b: number;
 };
 
 export type AgeGroupStandards = {
