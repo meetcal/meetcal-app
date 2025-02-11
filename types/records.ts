@@ -17,4 +17,14 @@ export type RecordsData = {
   collegiate: AgeGroupRecords;
   junior: AgeGroupRecords;
   senior: AgeGroupRecords;
+  "Masters 35-39": AgeGroupRecords;
+  "Masters 40-44": AgeGroupRecords;
+  "Masters 45-49": AgeGroupRecords;
+  "Masters 50-54": AgeGroupRecords;
+  "Masters 55-59": AgeGroupRecords;
+  "Masters 60-64": AgeGroupRecords;
+  "Masters 65-69": AgeGroupRecords;
+  "Masters 70-74": AgeGroupRecords;
+  "Masters 75-79": AgeGroupRecords;
+  "Masters +80": AgeGroupRecords;
 }; 

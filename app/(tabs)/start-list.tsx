@@ -143,6 +143,32 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
             </ThemedText>
             <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
           </View>
+
+          <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
+            <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
+              2024 Stats
+            </ThemedText>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                  Best Snatch
+                </ThemedText>
+                <ThemedText style={styles.statValue}>{athlete.bestSnatch}kg</ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                  Best CJ
+                </ThemedText>
+                <ThemedText style={styles.statValue}>{athlete.bestCJ}kg</ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                  Best Total
+                </ThemedText>
+                <ThemedText style={styles.statValue}>{athlete.bestTotal}kg</ThemedText>
+              </View>
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -198,7 +224,6 @@ async function createCalendarEvents(sessions: Array<{
       const calendar = await Calendar.getDefaultCalendarAsync();
       calendarId = calendar.id;
     } else {
-      // Android: Get available calendars and find a suitable one
       const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
       const primaryCalendar = calendars.find(cal => 
         cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
@@ -213,18 +238,20 @@ async function createCalendarEvents(sessions: Array<{
     }
   
     for (const session of sessions) {
+      // Parse the date and time components
       const [year, month, day] = session.date.split('-').map(Number);
-      
-      let [timeStr, meridiem] = session.startTime.split(' ');
+      const [timeStr, period] = session.startTime.split(' ');
       let [hours, minutes] = timeStr.split(':').map(Number);
       
-      if (meridiem === 'PM' && hours !== 12) {
+      // Convert to 24-hour format
+      if (period === 'PM' && hours !== 12) {
         hours += 12;
-      } else if (meridiem === 'AM' && hours === 12) {
+      } else if (period === 'AM' && hours === 12) {
         hours = 0;
       }
-      
-      const startDate = new Date(year, month - 1, day, hours, minutes);
+
+      // Create Date object in Eastern Time
+      const startDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
       const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
 
       await Calendar.createEventAsync(calendarId, {
@@ -246,7 +273,6 @@ async function createCalendarEvents(sessions: Array<{
       throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
     }
     
-    // More specific error message based on platform
     const errorMessage = Platform.select({
       ios: 'Could not add events to calendar. Please try again.',
       android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
@@ -929,6 +955,22 @@ export default function StartListScreen() {
               <ThemedText style={[styles.saveModalTitle, { color: colors.text }]}>
                 Save {filteredAthletes.length} Athletes
               </ThemedText>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => setShowSaveModal(false)}
+              >
+                <IconSymbol 
+                  name={Platform.select({
+                    ios: "xmark",
+                    android: "close"
+                  })}
+                  size={20} 
+                  color={colors.secondaryText} 
+                />
+              </Pressable>
             </View>
 
             <Pressable
@@ -1184,6 +1226,14 @@ const styles = StyleSheet.create({
   saveModalHeader: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    padding: 4,
+    zIndex: 1,
   },
   saveModalTitle: {
     fontSize: 17,
@@ -1239,5 +1289,36 @@ const styles = StyleSheet.create({
   },
   starredClubsIcon: {
     marginTop: 1,
+  },
+  statsContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 13,
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 }); 
