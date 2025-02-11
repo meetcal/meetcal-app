@@ -105,7 +105,7 @@ export default function InfoScreen() {
         {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Records and Standards
+            Weightlifting Information
           </ThemedText>
           
           <Pressable
