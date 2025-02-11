@@ -86,7 +86,7 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
               Weigh-in:
             </ThemedText>
             <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {session.weighInTime}
+              {session.weighInTime} EST
             </ThemedText>
           </View>
           <View style={styles.timeSeparator} />
@@ -95,7 +95,7 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
               Start:
             </ThemedText>
             <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {session.startTime}
+              {session.startTime} EST
             </ThemedText>
           </View>
         </View>

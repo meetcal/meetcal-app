@@ -206,7 +206,7 @@ export default function SavedScreen() {
               Weigh-in:
             </ThemedText>
             <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {item.weighInTime}
+              {item.weighInTime} EST
             </ThemedText>
           </View>
           <View style={styles.timeSeparator} />
@@ -215,7 +215,7 @@ export default function SavedScreen() {
               Start:
             </ThemedText>
             <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {item.startTime}
+              {item.startTime} EST
             </ThemedText>
           </View>
         </View>

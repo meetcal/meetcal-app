@@ -415,7 +415,7 @@ export default function SessionDetailsScreen() {
                 Weigh-in Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.weighInTime}
+                {params.weighInTime} EST
               </ThemedText>
             </View>
 
@@ -424,7 +424,7 @@ export default function SessionDetailsScreen() {
                 Start Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.startTime}
+                {params.startTime} EST
               </ThemedText>
             </View>
 
