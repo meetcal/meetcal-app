@@ -1,13 +1,92 @@
-import { StyleSheet, View, FlatList, Pressable, Modal } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, Modal, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors, schedule } from '@/data/schedule';
+import * as Calendar from 'expo-calendar';
+import { getFullLocation } from '@/config/venue';
+
+async function requestCalendarPermissions() {
+  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  return status === 'granted';
+}
+
+async function createCalendarEvents(sessions: Array<{
+  date: string;
+  startTime: string;
+  weighInTime: string;
+  sessionNumber: string;
+  platform: string;
+  weightClass: string;
+}>) {
+  try {
+    let calendarId;
+
+    if (Platform.OS === 'ios') {
+      const calendar = await Calendar.getDefaultCalendarAsync();
+      calendarId = calendar.id;
+    } else {
+      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const primaryCalendar = calendars.find(cal => 
+        cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
+        cal.allowsModifications
+      );
+
+      if (!primaryCalendar) {
+        throw new Error('no_calendar');
+      }
+
+      calendarId = primaryCalendar.id;
+    }
+
+    for (const session of sessions) {
+      const [year, month, day] = session.date.split('-').map(Number);
+      
+      let [timeStr, meridiem] = session.startTime.split(' ');
+      let [hours, minutes] = timeStr.split(':').map(Number);
+      
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0;
+      }
+      
+      const startDate = new Date(year, month - 1, day, hours, minutes);
+      const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+
+      await Calendar.createEventAsync(calendarId, {
+        title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
+        location: getFullLocation(),
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`,
+        startDate,
+        endDate,
+        timeZone: 'America/New_York',
+        alarms: [{
+          relativeOffset: -60,
+        }],
+      });
+    }
+  } catch (error) {
+    console.error('Error creating calendar events:', error);
+    
+    if (error instanceof Error && error.message === 'no_calendar') {
+      throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
+    }
+    
+    const errorMessage = Platform.select({
+      ios: 'Could not add events to calendar. Please try again.',
+      android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
+      default: 'Could not add events to calendar. Please try again.'
+    });
+    
+    throw new Error(errorMessage);
+  }
+}
 
 export default function SavedScreen() {
   const { savedSessions } = useSavedSessions();
@@ -16,6 +95,7 @@ export default function SavedScreen() {
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
+  const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -53,6 +133,53 @@ export default function SavedScreen() {
   const handleFilterSelect = (letter: string) => {
     setLetterFilter(letter);
     setShowFilterModal(false);
+  };
+
+  const handleSaveToCalendar = async () => {
+    if (filteredSessions.length === 0) {
+      Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
+      return;
+    }
+
+    Alert.alert(
+      'Add to Calendar',
+      `Add ${filteredSessions.length} session${filteredSessions.length === 1 ? '' : 's'} to your calendar?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Add',
+          onPress: async () => {
+            try {
+              const hasPermission = await requestCalendarPermissions();
+              if (!hasPermission) {
+                Alert.alert('Permission Required', 'Calendar permission is required to add sessions.');
+                return;
+              }
+
+              const sessionsToAdd = filteredSessions.map(session => ({
+                date: schedule.find(day => 
+                  day.sessions.some(s => s.number === parseInt(session.sessionNumber))
+                )?.fullDate || '',
+                startTime: session.startTime,
+                weighInTime: session.weighInTime,
+                sessionNumber: session.sessionNumber,
+                platform: session.platform,
+                weightClass: session.weightClass
+              }));
+
+              await createCalendarEvents(sessionsToAdd);
+              Alert.alert('Success', 'Sessions have been added to your calendar.');
+            } catch (error) {
+              Alert.alert('Error', error instanceof Error ? error.message : 'Failed to add sessions to calendar.');
+              console.error(error);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const renderSession = ({ item }) => (
@@ -108,6 +235,14 @@ export default function SavedScreen() {
     </Pressable>
   );
 
+  // Add useEffect for calendar permissions
+  useEffect(() => {
+    (async () => {
+      const { status } = await Calendar.requestCalendarPermissionsAsync();
+      setHasCalendarPermission(status === 'granted');
+    })();
+  }, []);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -115,22 +250,41 @@ export default function SavedScreen() {
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
       }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.filterButton,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border 
-            },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-          </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-        </Pressable>
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleSaveToCalendar}
+          >
+            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+              Add to Calendar
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -227,7 +381,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#C6C6C8',
   },
-  filterButton: {
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  button: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -247,10 +406,7 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
   },
-  filterButtonPressed: {
-    opacity: 0.8,
-  },
-  filterButtonText: {
+  buttonText: {
     fontSize: 15,
     color: '#666666',
     fontWeight: '600',
