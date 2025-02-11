@@ -12,8 +12,11 @@ export const americanRecords: RecordsData = {
       { weightClass: '61kg', snatchRecord: 91, cjRecord: 118, totalRecord: 209 },
       { weightClass: '67kg', snatchRecord: 105, cjRecord: 131, totalRecord: 235 },
       { weightClass: '73kg', snatchRecord: 89, cjRecord: 112, totalRecord: 200 },
+      { weightClass: '+73kg', snatchRecord: 92, cjRecord: 118, totalRecord: 210 },
     ],
     women: [
+      { weightClass: '30kg', snatchRecord: 31, cjRecord: 37, totalRecord: 68 },
+      { weightClass: '33kg', snatchRecord: 35, cjRecord: 45, totalRecord: 80 },
       { weightClass: '36kg', snatchRecord: 41, cjRecord: 53, totalRecord: 93 },
       { weightClass: '40kg', snatchRecord: 46, cjRecord: 58, totalRecord: 103 },
       { weightClass: '45kg', snatchRecord: 56, cjRecord: 72, totalRecord: 128 },
@@ -21,13 +24,21 @@ export const americanRecords: RecordsData = {
       { weightClass: '55kg', snatchRecord: 62, cjRecord: 77, totalRecord: 139 },
       { weightClass: '59kg', snatchRecord: 64, cjRecord: 81, totalRecord: 144 },
       { weightClass: '64kg', snatchRecord: 71, cjRecord: 88, totalRecord: 160 },
-      { weightClass: '64kg', snatchRecord: 80, cjRecord: 96, totalRecord: 175 },
-      { weightClass: '68kg', snatchRecord: 35, cjRecord: 45, totalRecord: 80 },
+      { weightClass: '+64kg', snatchRecord: 80, cjRecord: 96, totalRecord: 175 },
     ]
   },
   u15: {
     men: [
-      { weightClass: '49kg', snatchRecord: 70, cjRecord: 90, totalRecord: 160 },
+      { weightClass: '39kg', snatchRecord: 47, cjRecord: 60, totalRecord: 115 },
+      { weightClass: '44kg', snatchRecord: 64, cjRecord: 81, totalRecord: 147 },
+      { weightClass: '49kg', snatchRecord: 76, cjRecord: 98, totalRecord: 169 },
+      { weightClass: '55kg', snatchRecord: 95, cjRecord: 117, totalRecord: 212 },
+      { weightClass: '61kg', snatchRecord: 109, cjRecord: 146, totalRecord: 255 },
+      { weightClass: '67kg', snatchRecord: 117, cjRecord: 153, totalRecord: 263 },
+      { weightClass: '73kg', snatchRecord: 134, cjRecord: 175, totalRecord: 306 },
+      { weightClass: '81kg', snatchRecord: 134, cjRecord: 171, totalRecord: 303 },
+      { weightClass: '89kg', snatchRecord: 135, cjRecord: 168, totalRecord: 298 },
+      { weightClass: '+89kg', snatchRecord: 137, cjRecord: 170, totalRecord: 303 },
     ],
     women: [
       { weightClass: '36kg', snatchRecord: 37, cjRecord: 53, totalRecord: 88 },
@@ -44,8 +55,17 @@ export const americanRecords: RecordsData = {
   },
   u17: {
     men: [
-      { weightClass: '49kg', snatchRecord: 80, cjRecord: 100, totalRecord: 180 },
-      ],
+      { weightClass: '49kg', snatchRecord: 77, cjRecord: 103, totalRecord: 208 },
+      { weightClass: '55kg', snatchRecord: 102, cjRecord: 124, totalRecord: 224 },
+      { weightClass: '61kg', snatchRecord: 120, cjRecord: 156, totalRecord: 276 },
+      { weightClass: '67kg', snatchRecord: 129, cjRecord: 165, totalRecord: 289 },
+      { weightClass: '73kg', snatchRecord: 141, cjRecord: 185, totalRecord: 322 },
+      { weightClass: '81kg', snatchRecord: 155, cjRecord: 193, totalRecord: 348 },
+      { weightClass: '89kg', snatchRecord: 149, cjRecord: 186, totalRecord: 329 },
+      { weightClass: '96kg', snatchRecord: 151, cjRecord: 190, totalRecord: 339 },
+      { weightClass: '102kg', snatchRecord: 159, cjRecord: 191, totalRecord: 350 },
+      { weightClass: '+102kg', snatchRecord: 142, cjRecord: 182, totalRecord: 314 },
+    ],
     women: [
       { weightClass: '40kg', snatchRecord: 45, cjRecord: 58, totalRecord: 99 },
       { weightClass: '45kg', snatchRecord: 61, cjRecord: 78, totalRecord: 132 },
@@ -63,14 +83,14 @@ export const americanRecords: RecordsData = {
     men: [
       { weightClass: '55kg', snatchRecord: 103, cjRecord: 130, totalRecord: 233 },
       { weightClass: '61kg', snatchRecord: 113, cjRecord: 141, totalRecord: 252 },
-      { weightClass: '67kg', snatchRecord: 164, cjRecord: 0, totalRecord: 288 },
+      { weightClass: '67kg', snatchRecord: 128, cjRecord: 164, totalRecord: 288 },
       { weightClass: '73kg', snatchRecord: 140, cjRecord: 182, totalRecord: 320 },
       { weightClass: '81kg', snatchRecord: 150, cjRecord: 184, totalRecord: 330 },
       { weightClass: '89kg', snatchRecord: 159, cjRecord: 197, totalRecord: 352 },
       { weightClass: '96kg', snatchRecord: 165, cjRecord: 211, totalRecord: 372 },
       { weightClass: '102kg', snatchRecord: 162, cjRecord: 201, totalRecord: 358 },
       { weightClass: '109kg', snatchRecord: 163, cjRecord: 206, totalRecord: 365 },
-      { weightClass: '+109kg', snatchRecord: 167, cjRecord: 211, totalRecord: 373 },
+      { weightClass: '+109kg', snatchRecord: 167.5, cjRecord: 211, totalRecord: 373 },
     ],
     women: [
       { weightClass: '45kg', snatchRecord: 76, cjRecord: 87, totalRecord: 167 },
@@ -96,7 +116,7 @@ export const americanRecords: RecordsData = {
       { weightClass: '96kg', snatchRecord: 163, cjRecord: 202, totalRecord: 363 },
       { weightClass: '102kg', snatchRecord: 172, cjRecord: 206, totalRecord: 378 },
       { weightClass: '109kg', snatchRecord: 173, cjRecord: 207, totalRecord: 379 },
-      { weightClass: '+109kg', snatchRecord: 165, cjRecord: 204, totalRecord: 365 },
+      { weightClass: '+109kg', snatchRecord: 165.5, cjRecord: 204, totalRecord: 365 },
     ],
     women: [
       { weightClass: '45kg', snatchRecord: 70, cjRecord: 88, totalRecord: 150 },
@@ -122,7 +142,7 @@ export const americanRecords: RecordsData = {
       { weightClass: '96kg', snatchRecord: 174, cjRecord: 213, totalRecord: 380 },
       { weightClass: '102kg', snatchRecord: 177, cjRecord: 218, totalRecord: 388 },
       { weightClass: '109kg', snatchRecord: 177, cjRecord: 223, totalRecord: 399 },
-      { weightClass: '+109kg', snatchRecord: 197.5, cjRecord: 233, totalRecord: 399 },
+      { weightClass: '+109kg', snatchRecord: 197.5, cjRecord: 237.5, totalRecord: 430 },
     ],
     women: [
       { weightClass: '45kg', snatchRecord: 82, cjRecord: 96, totalRecord: 181 },
