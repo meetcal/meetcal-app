@@ -1,4 +1,5 @@
-import { StyleSheet, View, ScrollView, Pressable, Modal } from 'react-native';
+import React from 'react';
+import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -6,9 +7,13 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { americanRecords } from '@/data/records';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState } from 'react';
+import { WeightClassRecord } from '@/types/records';
 
 type Gender = 'men' | 'women';
-type AgeGroup = 'senior' | 'junior' | 'collegiate' | 'u17' | 'u15' | 'u13';
+type AgeGroup = 'senior' | 'junior' | 'collegiate' | 'u17' | 'u15' | 'u13' | 
+  'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 
+  'Masters 55-59' | 'Masters 60-64' | 'Masters 65-69' | 'Masters 70-74' |
+  'Masters 75-79' | 'Masters +80';
 
 interface Filters {
   gender: Gender;
@@ -32,6 +37,9 @@ export default function RecordsScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  const windowHeight = Dimensions.get('window').height;
+  const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 
   const handleFilterSelect = (value: string) => {
     if (filterType === 'gender') {
@@ -124,7 +132,7 @@ export default function RecordsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {americanRecords[filters.ageGroup][filters.gender].map((record, index) => (
+          {americanRecords[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
             <View 
               key={record.weightClass}
               style={[
@@ -158,61 +166,88 @@ export default function RecordsScreen() {
           }]}
           onPress={() => setShowFilterModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            {filterType === 'gender' ? (
-              <>
-                {(['men', 'women'] as Gender[]).map((gender) => (
-                  <Pressable
-                    key={gender}
-                    style={({ pressed }) => [
-                      styles.modalOption,
-                      { borderBottomColor: colors.border },
-                      filters.gender === gender && { backgroundColor: colors.pressed },
-                      pressed && { opacity: 0.8 }
-                    ]}
-                    onPress={() => handleFilterSelect(gender)}
-                  >
-                    <ThemedText style={[
-                      styles.modalOptionText,
-                      { color: colors.text },
-                      filters.gender === gender && { color: '#007AFF' }
-                    ]}>
-                      {gender === 'men' ? 'Men' : 'Women'}
-                    </ThemedText>
-                    {filters.gender === gender && (
-                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                    )}
-                  </Pressable>
-                ))}
-              </>
-            ) : (
-              <>
-                {(['u13', 'u15', 'u17', 'collegiate', 'junior', 'senior'] as AgeGroup[]).map((ageGroup) => (
-                  <Pressable
-                    key={ageGroup}
-                    style={({ pressed }) => [
-                      styles.modalOption,
-                      { borderBottomColor: colors.border },
-                      filters.ageGroup === ageGroup && { backgroundColor: colors.pressed },
-                      pressed && { opacity: 0.8 }
-                    ]}
-                    onPress={() => handleFilterSelect(ageGroup)}
-                  >
-                    <ThemedText style={[
-                      styles.modalOptionText,
-                      { color: colors.text },
-                      filters.ageGroup === ageGroup && { color: '#007AFF' }
-                    ]}>
-                      {ageGroup === 'u15' ? 'U15' : 
-                       ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1)}
-                    </ThemedText>
-                    {filters.ageGroup === ageGroup && (
-                      <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                    )}
-                  </Pressable>
-                ))}
-              </>
-            )}
+          <View style={[
+            styles.modalContent, 
+            { 
+              backgroundColor: colors.card,
+              maxHeight: windowHeight * 0.8
+            }
+          ]}>
+            <View style={styles.modalScrollContent}>
+              <ScrollView bounces={false}>
+                {filterType === 'gender' ? (
+                  <View style={styles.filterSection}>
+                    <ScrollView 
+                      style={[styles.filterOptions, { maxHeight: maxOptionsHeight }]}
+                      bounces={false}
+                    >
+                      {(['men', 'women'] as Gender[]).map((gender) => (
+                        <Pressable
+                          key={gender}
+                          style={({ pressed }) => [
+                            styles.modalOption,
+                            { borderBottomColor: colors.border },
+                            filters.gender === gender && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => handleFilterSelect(gender)}
+                        >
+                          <ThemedText style={[
+                            styles.modalOptionText,
+                            { color: colors.text },
+                            filters.gender === gender && { color: '#007AFF' }
+                          ]}>
+                            {gender === 'men' ? 'Men' : 'Women'}
+                          </ThemedText>
+                          {filters.gender === gender && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : (
+                  <View style={styles.filterSection}>
+                    <ScrollView 
+                      style={[styles.filterOptions, { maxHeight: maxOptionsHeight }]}
+                      bounces={false}
+                    >
+                      {([
+                        'u13', 'u15', 'u17', 'collegiate', 'junior', 'senior',
+                        'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
+                        'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
+                        'Masters 75-79', 'Masters +80'
+                      ] as AgeGroup[]).map((ageGroup) => (
+                        <Pressable
+                          key={ageGroup}
+                          style={({ pressed }) => [
+                            styles.modalOption,
+                            { borderBottomColor: colors.border },
+                            filters.ageGroup === ageGroup && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => handleFilterSelect(ageGroup)}
+                        >
+                          <ThemedText style={[
+                            styles.modalOptionText,
+                            { color: colors.text },
+                            filters.ageGroup === ageGroup && { color: '#007AFF' }
+                          ]}>
+                            {ageGroup === 'u13' ? 'U13' :
+                             ageGroup === 'u15' ? 'U15' :
+                             ageGroup === 'u17' ? 'U17' :
+                             ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1)}
+                          </ThemedText>
+                          {filters.ageGroup === ageGroup && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -306,6 +341,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+  },
+  filterSection: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterOptions: {
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   modalOption: {
     flexDirection: 'row',
