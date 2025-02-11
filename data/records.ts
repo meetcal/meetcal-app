@@ -391,7 +391,7 @@ export const americanRecords: RecordsData = {
       { weightClass: '+87kg', snatchRecord: 25, cjRecord: 31, totalRecord: 55 }
     ],
   },
-  "Masters +80": {
+  "Masters 80-84": {
     men: [
       { weightClass: '55kg', snatchRecord: 32, cjRecord: 35, totalRecord: 67 },
       { weightClass: '61kg', snatchRecord: 38, cjRecord: 32, totalRecord: 70 },
@@ -415,6 +415,34 @@ export const americanRecords: RecordsData = {
       { weightClass: '81kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
       { weightClass: '87kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
       { weightClass: '+87kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
+    ],
+  },
+  "Masters 85-89": {
+    men: [
+      { weightClass: '55kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '61kg', snatchRecord: 37, cjRecord: 50, totalRecord: 87 },
+      { weightClass: '67kg', snatchRecord: 38, cjRecord: 44, totalRecord: 82 },
+      { weightClass: '73kg', snatchRecord: 36, cjRecord: 47, totalRecord: 83 },
+      { weightClass: '81kg', snatchRecord: 50, cjRecord: 63, totalRecord: 113 },
+      { weightClass: '89kg', snatchRecord: 53, cjRecord: 72, totalRecord: 125 },
+      { weightClass: '96kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '102kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '109kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '+109kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
+    ],
+  },
+  "Masters +90": {
+    men: [
+      { weightClass: '55kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '61kg', snatchRecord: 35, cjRecord: 45, totalRecord: 80 },
+      { weightClass: '67kg', snatchRecord: 25, cjRecord: 32, totalRecord: 55 },
+      { weightClass: '73kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '81kg', snatchRecord: 33, cjRecord: 43, totalRecord: 76 },
+      { weightClass: '89kg', snatchRecord: 23, cjRecord: 31, totalRecord: 54 },
+      { weightClass: '96kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '102kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '109kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: '+109kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
     ],
   },
 };  
