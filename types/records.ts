@@ -26,5 +26,7 @@ export type RecordsData = {
   "Masters 65-69": AgeGroupRecords;
   "Masters 70-74": AgeGroupRecords;
   "Masters 75-79": AgeGroupRecords;
-  "Masters +80": AgeGroupRecords;
+  "Masters 80-84": AgeGroupRecords;
+  "Masters 85-89": AgeGroupRecords;
+  "Masters +90": AgeGroupRecords;
 }; 

@@ -13,7 +13,7 @@ type Gender = 'men' | 'women';
 type AgeGroup = 'senior' | 'junior' | 'collegiate' | 'u17' | 'u15' | 'u13' | 
   'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 
   'Masters 55-59' | 'Masters 60-64' | 'Masters 65-69' | 'Masters 70-74' |
-  'Masters 75-79' | 'Masters +80';
+  'Masters 75-79' | 'Masters 80-84' | 'Masters 85-89' | 'Masters +90';
 
 interface Filters {
   gender: Gender;
@@ -132,23 +132,31 @@ export default function RecordsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {americanRecords[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
-            <View 
-              key={record.weightClass}
-              style={[
-                styles.row,
-                index < americanRecords[filters.ageGroup][filters.gender].length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border
-                }
-              ]}
-            >
-              <ThemedText style={[styles.cell, { flex: 2 }]}>{record.weightClass}</ThemedText>
-              <ThemedText style={styles.cell}>{record.snatchRecord}kg</ThemedText>
-              <ThemedText style={styles.cell}>{record.cjRecord}kg</ThemedText>
-              <ThemedText style={styles.cell}>{record.totalRecord}kg</ThemedText>
+          {americanRecords[filters.ageGroup]?.[filters.gender]?.length > 0 ? (
+            americanRecords[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
+              <View 
+                key={record.weightClass}
+                style={[
+                  styles.row,
+                  index < americanRecords[filters.ageGroup][filters.gender].length - 1 && {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: colors.border
+                  }
+                ]}
+              >
+                <ThemedText style={[styles.cell, { flex: 2 }]}>{record.weightClass}</ThemedText>
+                <ThemedText style={styles.cell}>{record.snatchRecord}kg</ThemedText>
+                <ThemedText style={styles.cell}>{record.cjRecord}kg</ThemedText>
+                <ThemedText style={styles.cell}>{record.totalRecord}kg</ThemedText>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
+                No records available for {filters.gender === 'women' ? 'women' : 'men'} in this age group
+              </ThemedText>
             </View>
-          ))}
+          )}
         </View>
       </ScrollView>
 
@@ -216,7 +224,7 @@ export default function RecordsScreen() {
                         'u13', 'u15', 'u17', 'collegiate', 'junior', 'senior',
                         'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
                         'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
-                        'Masters 75-79', 'Masters +80'
+                        'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
                       ] as AgeGroup[]).map((ageGroup) => (
                         <Pressable
                           key={ageGroup}
@@ -360,5 +368,14 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 17,
+  },
+  emptyStateContainer: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    fontSize: 17,
+    textAlign: 'center',
   },
 }); 
