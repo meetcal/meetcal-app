@@ -67,6 +67,19 @@ export const qualifyingTotals: QualifyingTotals = {
           ]
         },
         {
+          name: "University",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "142" },
+            { bodyweightDivision: "65kg", qt: "157" },
+            { bodyweightDivision: "71kg", qt: "168" },
+            { bodyweightDivision: "79kg", qt: "179" },
+            { bodyweightDivision: "88kg", qt: "190" },
+            { bodyweightDivision: "98kg", qt: "197" },
+            { bodyweightDivision: "110kg", qt: "202" },
+            { bodyweightDivision: "110+kg", qt: "204" }
+          ]
+        },
+        {
           name: "Junior",
           weightClasses: [
             { bodyweightDivision: "60kg", qt: "164" },
@@ -130,7 +143,150 @@ export const qualifyingTotals: QualifyingTotals = {
             { bodyweightDivision: "65kg", qt: "65" },
             { bodyweightDivision: "65+kg", qt: "66" }
           ]
-        }
+        },
+        {
+          name: "Masters 35",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "164" },
+            { bodyweightDivision: "65kg", qt: "173" },
+            { bodyweightDivision: "71kg", qt: "182" },
+            { bodyweightDivision: "79kg", qt: "195" },
+            { bodyweightDivision: "88kg", qt: "206" },
+            { bodyweightDivision: "98kg", qt: "216" },
+            { bodyweightDivision: "110kg", qt: "223" },
+            { bodyweightDivision: "110+kg", qt: "228" }
+          ]
+        },
+        {
+          name: "Masters 40",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "155" },
+            { bodyweightDivision: "65kg", qt: "163" },
+            { bodyweightDivision: "71kg", qt: "172" },
+            { bodyweightDivision: "79kg", qt: "184" },
+            { bodyweightDivision: "88kg", qt: "194" },
+            { bodyweightDivision: "98kg", qt: "204" },
+            { bodyweightDivision: "110kg", qt: "211" },
+            { bodyweightDivision: "110+kg", qt: "215" }
+          ]
+        },
+        {
+          name: "Masters 45",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "146" },
+            { bodyweightDivision: "65kg", qt: "154" },
+            { bodyweightDivision: "71kg", qt: "161" },
+            { bodyweightDivision: "79kg", qt: "173" },
+            { bodyweightDivision: "88kg", qt: "183" },
+            { bodyweightDivision: "98kg", qt: "192" },
+            { bodyweightDivision: "110kg", qt: "199" },
+            { bodyweightDivision: "110+kg", qt: "203" }
+          ]
+        },
+        {
+          name: "Masters 50",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "137" },
+            { bodyweightDivision: "65kg", qt: "144" },
+            { bodyweightDivision: "71kg", qt: "151" },
+            { bodyweightDivision: "79kg", qt: "162" },
+            { bodyweightDivision: "88kg", qt: "171" },
+            { bodyweightDivision: "98kg", qt: "180" },
+            { bodyweightDivision: "110kg", qt: "186" },
+            { bodyweightDivision: "110+kg", qt: "191" }
+          ]
+        },
+        {
+          name: "Masters 55",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "118" },
+            { bodyweightDivision: "65kg", qt: "124" },
+            { bodyweightDivision: "71kg", qt: "130" },
+            { bodyweightDivision: "79kg", qt: "140" },
+            { bodyweightDivision: "88kg", qt: "148" },
+            { bodyweightDivision: "98kg", qt: "156" },
+            { bodyweightDivision: "110kg", qt: "162" },
+            { bodyweightDivision: "110+kg", qt: "165" }
+          ]
+        },
+        {
+          name: "Masters 60",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "108" },
+            { bodyweightDivision: "65kg", qt: "113" },
+            { bodyweightDivision: "71kg", qt: "119" },
+            { bodyweightDivision: "79kg", qt: "128" },
+            { bodyweightDivision: "88kg", qt: "135" },
+            { bodyweightDivision: "98kg", qt: "143" },
+            { bodyweightDivision: "110kg", qt: "148" },
+            { bodyweightDivision: "110+kg", qt: "152" }
+          ]
+        },
+        {
+          name: "Masters 65",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "93" },
+            { bodyweightDivision: "65kg", qt: "98" },
+            { bodyweightDivision: "71kg", qt: "102" },
+            { bodyweightDivision: "79kg", qt: "111" },
+            { bodyweightDivision: "88kg", qt: "117" },
+            { bodyweightDivision: "98kg", qt: "124" },
+            { bodyweightDivision: "110kg", qt: "129" },
+            { bodyweightDivision: "110+kg", qt: "132" }
+          ]
+        },
+        {
+          name: "Masters 70",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "79" },
+            { bodyweightDivision: "65kg", qt: "83" },
+            { bodyweightDivision: "71kg", qt: "87" },
+            { bodyweightDivision: "79kg", qt: "94" },
+            { bodyweightDivision: "88kg", qt: "100" },
+            { bodyweightDivision: "98kg", qt: "106" },
+            { bodyweightDivision: "110kg", qt: "111" },
+            { bodyweightDivision: "110+kg", qt: "113" }
+          ]
+        },
+        {
+          name: "Masters 75",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+        {
+          name: "Masters 80",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+        {
+          name: "Masters 85",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
       ]
     },
     Women: {
@@ -172,6 +328,19 @@ export const qualifyingTotals: QualifyingTotals = {
             { bodyweightDivision: "77kg", qt: "142" },
             { bodyweightDivision: "86kg", qt: "149" },
             { bodyweightDivision: "86+kg", qt: "154" }
+          ]
+        },
+        {
+          name: "University",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "85" },
+            { bodyweightDivision: "53kg", qt: "99" },
+            { bodyweightDivision: "58kg", qt: "114" },
+            { bodyweightDivision: "63kg", qt: "119" },
+            { bodyweightDivision: "69kg", qt: "122" },
+            { bodyweightDivision: "77kg", qt: "130" },
+            { bodyweightDivision: "86kg", qt: "132" },
+            { bodyweightDivision: "86+kg", qt: "138" }
           ]
         },
         {
@@ -239,7 +408,550 @@ export const qualifyingTotals: QualifyingTotals = {
             { bodyweightDivision: "63+kg", qt: "64" }
           ]
         },
+        {
+          name: "Masters 35",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "83" },
+            { bodyweightDivision: "53kg", qt: "90" },
+            { bodyweightDivision: "58kg", qt: "96" },
+            { bodyweightDivision: "63kg", qt: "102" },
+            { bodyweightDivision: "69kg", qt: "108" },
+            { bodyweightDivision: "77kg", qt: "116" },
+            { bodyweightDivision: "86kg", qt: "119" },
+            { bodyweightDivision: "86+kg", qt: "124" }
+          ]
+        },
+        {
+          name: "Masters 40",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "78" },
+            { bodyweightDivision: "53kg", qt: "85" },
+            { bodyweightDivision: "58kg", qt: "91" },
+            { bodyweightDivision: "63kg", qt: "96" },
+            { bodyweightDivision: "69kg", qt: "102" },
+            { bodyweightDivision: "77kg", qt: "110" },
+            { bodyweightDivision: "86kg", qt: "112" },
+            { bodyweightDivision: "86+kg", qt: "117" }
+          ]
+        },
+        {
+          name: "Masters 45",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "74" },
+            { bodyweightDivision: "53kg", qt: "80" },
+            { bodyweightDivision: "58kg", qt: "85" },
+            { bodyweightDivision: "63kg", qt: "90" },
+            { bodyweightDivision: "69kg", qt: "96" },
+            { bodyweightDivision: "77kg", qt: "103" },
+            { bodyweightDivision: "86kg", qt: "106" },
+            { bodyweightDivision: "86+kg", qt: "110" }
+          ]
+        },
+        {
+          name: "Masters 50",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "69" },
+            { bodyweightDivision: "53kg", qt: "75" },
+            { bodyweightDivision: "58kg", qt: "80" },
+            { bodyweightDivision: "63kg", qt: "85" },
+            { bodyweightDivision: "69kg", qt: "89" },
+            { bodyweightDivision: "77kg", qt: "97" },
+            { bodyweightDivision: "86kg", qt: "99" },
+            { bodyweightDivision: "86+kg", qt: "103" }
+          ]
+        },
+        {
+          name: "Masters 55",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "59" },
+            { bodyweightDivision: "53kg", qt: "63" },
+            { bodyweightDivision: "58kg", qt: "68" },
+            { bodyweightDivision: "63kg", qt: "72" },
+            { bodyweightDivision: "69kg", qt: "76" },
+            { bodyweightDivision: "77kg", qt: "83" },
+            { bodyweightDivision: "86kg", qt: "85" },
+            { bodyweightDivision: "86+kg", qt: "88" }
+          ]
+        },
+        {
+          name: "Masters 60",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "49" },
+            { bodyweightDivision: "53kg", qt: "54" },
+            { bodyweightDivision: "58kg", qt: "58" },
+            { bodyweightDivision: "63kg", qt: "61" },
+            { bodyweightDivision: "69kg", qt: "64" },
+            { bodyweightDivision: "77kg", qt: "71" },
+            { bodyweightDivision: "86kg", qt: "72" },
+            { bodyweightDivision: "86+kg", qt: "75" }
+          ]
+        },
+        {
+          name: "Masters 65",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "48" },
+            { bodyweightDivision: "58kg", qt: "52" },
+            { bodyweightDivision: "63kg", qt: "55" },
+            { bodyweightDivision: "69kg", qt: "58" },
+            { bodyweightDivision: "77kg", qt: "64" },
+            { bodyweightDivision: "86kg", qt: "65" },
+            { bodyweightDivision: "86+kg", qt: "68" }
+          ]
+        },
+        {
+          name: "Masters 70",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "39" },
+            { bodyweightDivision: "53kg", qt: "42" },
+            { bodyweightDivision: "58kg", qt: "46" },
+            { bodyweightDivision: "63kg", qt: "49" },
+            { bodyweightDivision: "69kg", qt: "51" },
+            { bodyweightDivision: "77kg", qt: "57" },
+            { bodyweightDivision: "86kg", qt: "58" },
+            { bodyweightDivision: "86+kg", qt: "61" }
+          ]
+        },
+        {
+          name: "Masters 75",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "38" },
+            { bodyweightDivision: "53kg", qt: "37" },
+            { bodyweightDivision: "58kg", qt: "39" },
+            { bodyweightDivision: "63kg", qt: "42" },
+            { bodyweightDivision: "69kg", qt: "44" },
+            { bodyweightDivision: "77kg", qt: "49" },
+            { bodyweightDivision: "86kg", qt: "50" },
+            { bodyweightDivision: "86+kg", qt: "53" }
+          ]
+        },
+        {
+          name: "Masters 80",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "44" },
+            { bodyweightDivision: "58kg", qt: "44" },
+            { bodyweightDivision: "63kg", qt: "44" },
+            { bodyweightDivision: "69kg", qt: "44" },
+            { bodyweightDivision: "77kg", qt: "44" },
+            { bodyweightDivision: "86kg", qt: "46" },
+            { bodyweightDivision: "86+kg", qt: "48" }
+          ]
+        },
+        {
+          name: "Masters 85",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "44" },
+            { bodyweightDivision: "58kg", qt: "44" },
+            { bodyweightDivision: "63kg", qt: "44" },
+            { bodyweightDivision: "69kg", qt: "44" },
+            { bodyweightDivision: "77kg", qt: "44" },
+            { bodyweightDivision: "86kg", qt: "46" },
+            { bodyweightDivision: "86+kg", qt: "48" }
+          ]
+        },
       ]
     }
-  }
+  },
+  'Virus Finals': {
+    Men: {
+      ageCategories: [
+        {
+          name: "Senior",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "208" },
+            { bodyweightDivision: "65kg", qt: "225" },
+            { bodyweightDivision: "71kg", qt: "240" },
+            { bodyweightDivision: "79kg", qt: "264" },
+            { bodyweightDivision: "88kg", qt: "283" },
+            { bodyweightDivision: "98kg", qt: "293" },
+            { bodyweightDivision: "110kg", qt: "300" },
+            { bodyweightDivision: "110+kg", qt: "304" }
+          ]
+        },
+        {
+          name: "U17",
+          weightClasses: [
+            { bodyweightDivision: "56kg", qt: "131" },
+            { bodyweightDivision: "60kg", qt: "148" },
+            { bodyweightDivision: "65kg", qt: "163" },
+            { bodyweightDivision: "71kg", qt: "178" },
+            { bodyweightDivision: "79kg", qt: "193" },
+            { bodyweightDivision: "88kg", qt: "205" },
+            { bodyweightDivision: "98kg", qt: "216" },
+            { bodyweightDivision: "98+kg", qt: "220" }
+          ]
+        },
+        {
+          name: "U15",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "87" },
+            { bodyweightDivision: "52kg", qt: "99" },
+            { bodyweightDivision: "56kg", qt: "122" },
+            { bodyweightDivision: "60kg", qt: "130" },
+            { bodyweightDivision: "65kg", qt: "136" },
+            { bodyweightDivision: "71kg", qt: "141" },
+            { bodyweightDivision: "79kg", qt: "153" },
+            { bodyweightDivision: "79+kg", qt: "159" }
+          ]
+        },
+        {
+          name: "U13",
+          weightClasses: [
+            { bodyweightDivision: "40kg", qt: "56" },
+            { bodyweightDivision: "44kg", qt: "62" },
+            { bodyweightDivision: "48kg", qt: "67" },
+            { bodyweightDivision: "52kg", qt: "73" },
+            { bodyweightDivision: "56kg", qt: "78" },
+            { bodyweightDivision: "60kg", qt: "84" },
+            { bodyweightDivision: "65kg", qt: "91" },
+            { bodyweightDivision: "65+kg", qt: "92" }
+          ]
+        },
+        {
+          name: "Masters 35",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "164" },
+            { bodyweightDivision: "65kg", qt: "173" },
+            { bodyweightDivision: "71kg", qt: "182" },
+            { bodyweightDivision: "79kg", qt: "195" },
+            { bodyweightDivision: "88kg", qt: "206" },
+            { bodyweightDivision: "98kg", qt: "216" },
+            { bodyweightDivision: "110kg", qt: "223" },
+            { bodyweightDivision: "110+kg", qt: "228" }
+          ]
+        },
+        {
+          name: "Masters 40",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "155" },
+            { bodyweightDivision: "65kg", qt: "163" },
+            { bodyweightDivision: "71kg", qt: "172" },
+            { bodyweightDivision: "79kg", qt: "184" },
+            { bodyweightDivision: "88kg", qt: "194" },
+            { bodyweightDivision: "98kg", qt: "204" },
+            { bodyweightDivision: "110kg", qt: "211" },
+            { bodyweightDivision: "110+kg", qt: "215" }
+          ]
+        },
+        {
+          name: "Masters 45",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "146" },
+            { bodyweightDivision: "65kg", qt: "154" },
+            { bodyweightDivision: "71kg", qt: "161" },
+            { bodyweightDivision: "79kg", qt: "173" },
+            { bodyweightDivision: "88kg", qt: "183" },
+            { bodyweightDivision: "98kg", qt: "192" },
+            { bodyweightDivision: "110kg", qt: "199" },
+            { bodyweightDivision: "110+kg", qt: "203" }
+          ]
+        },
+        {
+          name: "Masters 50",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "137" },
+              { bodyweightDivision: "65kg", qt: "144" },
+              { bodyweightDivision: "71kg", qt: "151" },
+              { bodyweightDivision: "79kg", qt: "162" },
+              { bodyweightDivision: "88kg", qt: "171" },
+              { bodyweightDivision: "98kg", qt: "180" },
+              { bodyweightDivision: "110kg", qt: "186" },
+              { bodyweightDivision: "110+kg", qt: "191" }
+          ]
+        },
+        {
+          name: "Masters 55",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "98" },
+            { bodyweightDivision: "65kg", qt: "104" },
+            { bodyweightDivision: "71kg", qt: "106" },
+            { bodyweightDivision: "79kg", qt: "112" },
+            { bodyweightDivision: "88kg", qt: "119" },
+            { bodyweightDivision: "98kg", qt: "128" },
+            { bodyweightDivision: "110kg", qt: "142" },
+            { bodyweightDivision: "110+kg", qt: "145" }
+          ]
+        },
+        {
+          name: "Masters 60",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "90" },
+            { bodyweightDivision: "65kg", qt: "95" },
+            { bodyweightDivision: "71kg", qt: "97" },
+            { bodyweightDivision: "79kg", qt: "103" },
+            { bodyweightDivision: "88kg", qt: "109" },
+            { bodyweightDivision: "98kg", qt: "118" },
+            { bodyweightDivision: "110kg", qt: "129" },
+            { bodyweightDivision: "110+kg", qt: "132" }
+          ]
+        },
+        {
+          name: "Masters 65",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "78" },
+            { bodyweightDivision: "65kg", qt: "82" },
+            { bodyweightDivision: "71kg", qt: "84" },
+            { bodyweightDivision: "79kg", qt: "89" },
+            { bodyweightDivision: "88kg", qt: "95" },
+            { bodyweightDivision: "98kg", qt: "103" },
+            { bodyweightDivision: "110kg", qt: "113" },
+            { bodyweightDivision: "110+kg", qt: "116" }
+          ]
+        },
+        {
+          name: "Masters 70",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+        {
+          name: "Masters 75",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+        {
+          name: "Masters 80",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+        {
+          name: "Masters 85",
+          weightClasses: [
+            { bodyweightDivision: "60kg", qt: "66" },
+            { bodyweightDivision: "65kg", qt: "69" },
+            { bodyweightDivision: "71kg", qt: "71" },
+            { bodyweightDivision: "79kg", qt: "77" },
+            { bodyweightDivision: "88kg", qt: "82" },
+            { bodyweightDivision: "98kg", qt: "89" },
+            { bodyweightDivision: "110kg", qt: "99" },
+            { bodyweightDivision: "110+kg", qt: "100" }
+          ]
+        },
+      ]
+    },
+    Women: {
+      ageCategories: [
+        {
+          name: "Senior",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "128" },
+            { bodyweightDivision: "53kg", qt: "146" },
+            { bodyweightDivision: "58kg", qt: "158" },
+            { bodyweightDivision: "63kg", qt: "168" },
+            { bodyweightDivision: "69kg", qt: "172" },
+            { bodyweightDivision: "77kg", qt: "181" },
+            { bodyweightDivision: "86kg", qt: "185" },
+            { bodyweightDivision: "86+kg", qt: "190" }
+          ]
+        },
+        {
+          name: "U17",
+          weightClasses: [
+            { bodyweightDivision: "44kg", qt: "78" },
+            { bodyweightDivision: "48kg", qt: "89" },
+            { bodyweightDivision: "53kg", qt: "97" },
+            { bodyweightDivision: "58kg", qt: "112" },
+            { bodyweightDivision: "63kg", qt: "127" },
+            { bodyweightDivision: "69kg", qt: "129" },
+            { bodyweightDivision: "77kg", qt: "136" },
+            { bodyweightDivision: "77+kg", qt: "139" }
+          ]
+        },
+        {
+          name: "U15",
+          weightClasses: [
+            { bodyweightDivision: "40kg", qt: "78" },
+            { bodyweightDivision: "44kg", qt: "82" },
+            { bodyweightDivision: "48kg", qt: "85" },
+            { bodyweightDivision: "53kg", qt: "91" },
+            { bodyweightDivision: "58kg", qt: "99" },
+            { bodyweightDivision: "63kg", qt: "102" },
+            { bodyweightDivision: "69kg", qt: "107" },
+            { bodyweightDivision: "69+kg", qt: "110" }
+          ]
+        },
+        {
+          name: "U13",
+          weightClasses: [
+            { bodyweightDivision: "36kg", qt: "50" },
+            { bodyweightDivision: "40kg", qt: "56" },
+            { bodyweightDivision: "44kg", qt: "62" },
+            { bodyweightDivision: "48kg", qt: "67" },
+            { bodyweightDivision: "53kg", qt: "74" },
+            { bodyweightDivision: "58kg", qt: "81" },
+            { bodyweightDivision: "63kg", qt: "88" },
+            { bodyweightDivision: "63+kg", qt: "90" }
+          ]
+        },
+        {
+          name: "Masters 35",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "73" },
+            { bodyweightDivision: "53kg", qt: "79" },
+            { bodyweightDivision: "58kg", qt: "87" },
+            { bodyweightDivision: "63kg", qt: "91" },
+            { bodyweightDivision: "69kg", qt: "95" },
+            { bodyweightDivision: "77kg", qt: "101" },
+            { bodyweightDivision: "86kg", qt: "105" },
+            { bodyweightDivision: "86+kg", qt: "112" }
+          ]
+        },
+        {
+          name: "Masters 40",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "66" },
+            { bodyweightDivision: "53kg", qt: "71" },
+            { bodyweightDivision: "58kg", qt: "78" },
+            { bodyweightDivision: "63kg", qt: "82" },
+            { bodyweightDivision: "69kg", qt: "87" },
+            { bodyweightDivision: "77kg", qt: "93" },
+            { bodyweightDivision: "86kg", qt: "96" },
+            { bodyweightDivision: "86+kg", qt: "103" }
+          ]
+        },
+        {
+          name: "Masters 45",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "63" },
+            { bodyweightDivision: "53kg", qt: "67" },
+            { bodyweightDivision: "58kg", qt: "73" },
+            { bodyweightDivision: "63kg", qt: "79" },
+            { bodyweightDivision: "69kg", qt: "80" },
+            { bodyweightDivision: "77kg", qt: "87" },
+            { bodyweightDivision: "86kg", qt: "91" },
+            { bodyweightDivision: "86+kg", qt: "97" }
+          ]
+        },
+        {
+          name: "Masters 50",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "59" },
+            { bodyweightDivision: "53kg", qt: "63" },
+            { bodyweightDivision: "58kg", qt: "69" },
+            { bodyweightDivision: "63kg", qt: "73" },
+            { bodyweightDivision: "69kg", qt: "77" },
+            { bodyweightDivision: "77kg", qt: "82" },
+            { bodyweightDivision: "86kg", qt: "85" },
+            { bodyweightDivision: "86+kg", qt: "92" }
+          ]
+        },
+        {
+          name: "Masters 55",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "47" },
+            { bodyweightDivision: "58kg", qt: "53" },
+            { bodyweightDivision: "63kg", qt: "56" },
+            { bodyweightDivision: "69kg", qt: "58" },
+            { bodyweightDivision: "77kg", qt: "63" },
+            { bodyweightDivision: "86kg", qt: "66" },
+            { bodyweightDivision: "86+kg", qt: "71" }
+          ]
+        },
+        {
+          name: "Masters 60",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "40" },
+            { bodyweightDivision: "53kg", qt: "43" },
+            { bodyweightDivision: "58kg", qt: "48" },
+            { bodyweightDivision: "63kg", qt: "51" },
+            { bodyweightDivision: "69kg", qt: "53" },
+            { bodyweightDivision: "77kg", qt: "58" },
+            { bodyweightDivision: "86kg", qt: "61" },
+            { bodyweightDivision: "86+kg", qt: "63" }
+          ]
+        },
+        {
+          name: "Masters 65",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "37" },
+            { bodyweightDivision: "53kg", qt: "39" },
+            { bodyweightDivision: "58kg", qt: "43" },
+            { bodyweightDivision: "63kg", qt: "45" },
+            { bodyweightDivision: "69kg", qt: "47" },
+            { bodyweightDivision: "77kg", qt: "52" },
+            { bodyweightDivision: "86kg", qt: "55" },
+            { bodyweightDivision: "86+kg", qt: "58" }
+          ]
+        },
+        {
+          name: "Masters 70",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "33" },
+            { bodyweightDivision: "53kg", qt: "35" },
+            { bodyweightDivision: "58kg", qt: "38" },
+            { bodyweightDivision: "63kg", qt: "40" },
+            { bodyweightDivision: "69kg", qt: "42" },
+            { bodyweightDivision: "77kg", qt: "47" },
+            { bodyweightDivision: "86kg", qt: "49" },
+            { bodyweightDivision: "86+kg", qt: "51" }
+          ]
+        },
+        {
+          name: "Masters 75",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "28" },
+            { bodyweightDivision: "53kg", qt: "30" },
+            { bodyweightDivision: "58kg", qt: "33" },
+            { bodyweightDivision: "63kg", qt: "35" },
+            { bodyweightDivision: "69kg", qt: "36" },
+            { bodyweightDivision: "77kg", qt: "41" },
+            { bodyweightDivision: "86kg", qt: "43" },
+            { bodyweightDivision: "86+kg", qt: "44" }
+          ]
+        },
+        {
+          name: "Masters 80",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "44" },
+            { bodyweightDivision: "58kg", qt: "44" },
+            { bodyweightDivision: "63kg", qt: "44" },
+            { bodyweightDivision: "69kg", qt: "44" },
+            { bodyweightDivision: "77kg", qt: "44" },
+            { bodyweightDivision: "86kg", qt: "46" },
+            { bodyweightDivision: "86+kg", qt: "48" }
+          ]
+        },
+        {
+          name: "Masters 85",
+          weightClasses: [
+            { bodyweightDivision: "48kg", qt: "44" },
+            { bodyweightDivision: "53kg", qt: "44" },
+            { bodyweightDivision: "58kg", qt: "44" },
+            { bodyweightDivision: "63kg", qt: "44" },
+            { bodyweightDivision: "69kg", qt: "44" },
+            { bodyweightDivision: "77kg", qt: "44" },
+            { bodyweightDivision: "86kg", qt: "46" },
+            { bodyweightDivision: "86+kg", qt: "48" }
+          ]
+        },
+      ]
+    }
+  },
 };
