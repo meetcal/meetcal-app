@@ -58,15 +58,16 @@ async function createCalendarEvents(sessions: Array<{
 
       const [year, month, day] = session.date.split('-').map(Number);
       
-      const startDate = new Date(year, month - 1, day, adjustedHours, minutes);
+      // Create Date object in UTC
+      const startDate = new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
       const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
 
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
         location: getFullLocation(),
         notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`,
-        startDate,
-        endDate,
+        startDate: startDate.getTime(),
+        endDate: endDate.getTime(),
         timeZone: 'America/New_York',
         alarms: [{
           relativeOffset: -60,
