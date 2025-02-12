@@ -45,20 +45,20 @@ async function createCalendarEvents(sessions: Array<{
     }
 
     for (const session of sessions) {
-      // Parse the date and time components
-      const [year, month, day] = session.date.split('-').map(Number);
+      // Parse time strings (assuming format like "8:00 AM")
       const [timeStr, period] = session.startTime.split(' ');
-      let [hours, minutes] = timeStr.split(':').map(Number);
+      const [hours, minutes] = timeStr.split(':').map(Number);
       
-      // Convert to 24-hour format
+      let adjustedHours = hours;
       if (period === 'PM' && hours !== 12) {
-        hours += 12;
+        adjustedHours += 12;
       } else if (period === 'AM' && hours === 12) {
-        hours = 0;
+        adjustedHours = 0;
       }
 
-      // Create Date object in Eastern Time
-      const startDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+      const [year, month, day] = session.date.split('-').map(Number);
+      
+      const startDate = new Date(year, month - 1, day, adjustedHours, minutes);
       const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
 
       await Calendar.createEventAsync(calendarId, {
