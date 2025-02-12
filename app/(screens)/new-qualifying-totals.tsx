@@ -9,7 +9,7 @@ import { qualifyingTotals } from '@/data/new-qualifying';
 
 type Gender = 'Men' | 'Women';
 type Event = 'Nationals' | 'Virus Series' | 'Virus Finals';
-type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11';
+type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11' | 'Masters 35' | 'Masters 45' | 'Masters 55' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
 
 interface Filters {
   event: Event;
@@ -343,6 +343,17 @@ export default function QualifyingTotalsScreen() {
                         { id: 'U15', label: 'U15' },
                         { id: 'U13', label: 'U13' },
                         { id: 'U11', label: 'U11' },
+                        { id: 'Masters 35', label: 'Masters 35' },
+                        { id: 'Masters 40', label: 'Masters 40' },
+                        { id: 'Masters 45', label: 'Masters 45' },
+                        { id: 'Masters 50', label: 'Masters 50' },
+                        { id: 'Masters 55', label: 'Masters 55' },
+                        { id: 'Masters 60', label: 'Masters 60' },
+                        { id: 'Masters 65', label: 'Masters 65' },
+                        { id: 'Masters 70', label: 'Masters 70' },
+                        { id: 'Masters 75', label: 'Masters 75' },
+                        { id: 'Masters 80', label: 'Masters 80' },
+                        { id: 'Masters 85', label: 'Masters 85' },
                       ].map((ageGroup) => (
                         <Pressable
                           key={ageGroup.id}
