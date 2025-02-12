@@ -265,8 +265,8 @@ export default function SessionDetailsScreen() {
 
       const [year, month, day] = dateStr.split('-').map(Number);
       
-      const date = new Date(year, month - 1, day, adjustedHours, minutes);
-      return date;
+      // Create Date object in UTC, adding 5 hours for EST
+      return new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
     };
 
     // Find the session by session number and platform instead of ID
@@ -293,14 +293,14 @@ export default function SessionDetailsScreen() {
     }
 
     const startDate = parseTimeString(params.startTime, sessionDay.fullDate);
-    const weighInDate = parseTimeString(params.weighInTime, sessionDay.fullDate);
+    const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
     const eventDetails = {
       title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
       location: getFullLocation(),
       notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${params.weighInTime}`,
-      startDate: startDate,
-      endDate: new Date(startDate.getTime() + 2 * 60 * 60 * 1000), // 2 hours duration
+      startDate: startDate.getTime(),
+      endDate: endDate.getTime(),
       timeZone: 'America/New_York',
       alarms: [{
         relativeOffset: -60,
