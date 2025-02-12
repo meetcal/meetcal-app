@@ -5,11 +5,11 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState } from 'react';
-import { qualifyingTotals } from '@/data/qualifying';
+import { qualifyingTotals } from '@/data/new-qualifying';
 
 type Gender = 'Men' | 'Women';
 type Event = 'Nationals' | 'Virus Series' | 'Virus Finals';
-type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13';
+type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11';
 
 interface Filters {
   event: Event;
@@ -342,6 +342,7 @@ export default function QualifyingTotalsScreen() {
                         { id: 'U17', label: 'U17' },
                         { id: 'U15', label: 'U15' },
                         { id: 'U13', label: 'U13' },
+                        { id: 'U11', label: 'U11' },
                       ].map((ageGroup) => (
                         <Pressable
                           key={ageGroup.id}
