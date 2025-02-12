@@ -130,6 +130,22 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
+            onPress={() => router.push('/(screens)/qualifying-totals')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Qualifying Totals
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
             onPress={() => router.push('/(screens)/current-standards')}
           >
             <View style={styles.linkRow}>
