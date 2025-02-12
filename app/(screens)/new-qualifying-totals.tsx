@@ -8,8 +8,8 @@ import { useState } from 'react';
 import { qualifyingTotals } from '@/data/qualifying';
 
 type Gender = 'Men' | 'Women';
-type Event = 'Nationals';
-type AgeGroup = 'Senior' | 'U25' | 'U23' | 'Junior' | 'U17' | 'U15' | 'U13';
+type Event = 'Nationals' | 'Virus Series' | 'Virus Finals';
+type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13';
 
 interface Filters {
   event: Event;
@@ -200,7 +200,9 @@ export default function QualifyingTotalsScreen() {
                   {expandedSection === 'event' && (
                     <ScrollView style={styles.filterOptions} bounces={false}>
                       {[
-                        { id: 'Nationals', label: 'Nationals' }
+                        { id: 'Nationals', label: 'Nationals' },
+                        { id: 'Virus Series', label: 'Virus Series' },
+                        { id: 'Virus Finals', label: 'Virus Finals' },
                       ].map((event) => (
                         <Pressable
                           key={event.id}
@@ -335,6 +337,7 @@ export default function QualifyingTotalsScreen() {
                         { id: 'Senior', label: 'Senior' },
                         { id: 'U25', label: 'U25' },
                         { id: 'U23', label: 'U23' },
+                        { id: 'University', label: 'University' },
                         { id: 'Junior', label: 'Junior' },
                         { id: 'U17', label: 'U17' },
                         { id: 'U15', label: 'U15' },

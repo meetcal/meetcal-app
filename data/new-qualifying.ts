@@ -19,6 +19,8 @@ interface Event {
 
 interface QualifyingTotals {
   Nationals: Event;
+  'Virus Series'?: Event;
+  'Virus Finals'?: Event;
 }
 
 export const qualifyingTotals: QualifyingTotals = {
