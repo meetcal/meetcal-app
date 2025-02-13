@@ -224,7 +224,7 @@ export default function InfoScreen() {
           >
             <View style={styles.subscriptionContainer}>
               <View style={styles.subscriptionInfo}>
-                <ThemedText style={[styles.label, { color: colors.text, fontWeight: '600' }]}>
+                <ThemedText style={[styles.label, { color: colors.text }]}>
                   Manage Subscription
                 </ThemedText>
               </View>

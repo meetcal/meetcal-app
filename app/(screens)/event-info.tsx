@@ -17,6 +17,8 @@ export default function EventInfoScreen() {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     link: '#007AFF',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F2F2F2',
+    primary: currentTheme === 'dark' ? '#0A84FF' : '#007AFF',
   };
 
   const handleAddressPress = () => {
@@ -54,10 +56,14 @@ export default function EventInfoScreen() {
       }} />
 
       <View style={[styles.card, { backgroundColor: colors.card }]}>
-        <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-          Virus Weightlifting Series 1
-        </ThemedText>
+        <View style={styles.section}>
+          <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
+            Virus Weightlifting Series 1
+          </ThemedText>
+        </View>
         
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
         <Pressable
           style={({ pressed }) => [
             styles.section,
@@ -90,8 +96,25 @@ export default function EventInfoScreen() {
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         <View style={styles.section}>
-          <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>Venue Time Zone</ThemedText>
-          <ThemedText style={[styles.sectionText, { color: colors.text }]}>Eastern Time</ThemedText>
+          <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
+            Venue Time Zone
+          </ThemedText>
+          <ThemedText style={[styles.sectionText, { color: colors.text }]}>
+            Eastern Time
+          </ThemedText>
+        </View>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={styles.section}>
+          <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
+            Disclaimer
+          </ThemedText>
+          <ThemedText style={[styles.sectionText, { color: colors.text }]}>
+            All of the information on this app is accurate based on the information provided by the event organizers. 
+            The event organizers can and do occasionally change the location of sessions, please check their Instagram 
+            for any platform changes.
+          </ThemedText>
         </View>
       </View>
     </ThemedView>
@@ -115,18 +138,26 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    padding: 16,
-    paddingBottom: 8,
-  },
   section: {
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
   lastSection: {
     borderBottomWidth: 0,
+  },
+  mainTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  sectionText: {
+    fontSize: 16,
+    lineHeight: 24,
   },
   label: {
     fontSize: 16,
@@ -145,13 +176,5 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  sectionText: {
-    fontSize: 16,
   },
 }); 
