@@ -14,8 +14,8 @@ import Purchases from 'react-native-purchases';
 
 // Product IDs for both platforms
 const PRODUCT_IDS = Platform.select({
-  ios: ['quarterly_meetcal', 'yearly_meetcal'],
-  android: ['meetcal.pro.monthly', 'meetcal.pro.yearly'],
+  ios: ['quarterly_meetcal', 'yearly_meetcal', 'lifetime_meetcal_pro'],
+  android: ['meetcal.pro.monthly', 'meetcal.pro.yearly', 'lifetime_meetcal_pro'],
 });
 
 // Update the Feature component props type
@@ -26,6 +26,11 @@ type FeatureProps = {
   colors: {
     secondaryText: string;
   };
+};
+
+// Update the package type helper to handle RC package types
+const isLifetimePackage = (pkg: Purchases.Package) => {
+  return pkg.packageType === 'LIFETIME' || pkg.identifier === 'lifetime_meetcal_pro';
 };
 
 export default function SubscriptionScreen() {
@@ -39,13 +44,51 @@ export default function SubscriptionScreen() {
   const [loadingProductId, setLoadingProductId] = useState<string | null>(null);
   const params = useLocalSearchParams<{ from?: string }>();
   
+  // Update the fetchProducts function to log more details
   const fetchProducts = async () => {
     try {
       const offerings = await Purchases.getOfferings();
+      console.log('All offerings:', JSON.stringify(offerings, null, 2));
+      
+      // Get all products first
+      const products = await Purchases.getProducts(PRODUCT_IDS);
+      console.log('All available products:', products);
+      
       if (offerings.current?.availablePackages.length) {
-        console.log('Available packages:', JSON.stringify(offerings.current.availablePackages, null, 2));
-        setRevenueCatProducts(offerings.current.availablePackages);
-        setError(null);
+        // Find the lifetime product
+        const lifetimeProduct = products.find(p => p.identifier === 'lifetime_meetcal_pro');
+        
+        if (lifetimeProduct) {
+          // Create a lifetime package that matches RevenueCat's package structure
+          const lifetimePackage = {
+            identifier: 'lifetime_meetcal_pro',
+            packageType: 'LIFETIME',
+            offeringIdentifier: 'default',
+            product: lifetimeProduct,
+            presentedOfferingContext: null
+          } as Purchases.Package;
+
+          // Sort packages to ensure correct order
+          const sortedPackages = offerings.current.availablePackages.sort((a, b) => {
+            if (a.packageType === 'THREE_MONTH') return -1;
+            if (b.packageType === 'THREE_MONTH') return 1;
+            return 0;
+          });
+
+          // Insert lifetime package after yearly subscription
+          const allPackages = [
+            ...sortedPackages.filter(pkg => pkg.packageType === 'THREE_MONTH'),
+            ...sortedPackages.filter(pkg => pkg.packageType === 'ANNUAL'),
+            lifetimePackage
+          ];
+          
+          console.log('Updated packages:', allPackages);
+          setRevenueCatProducts(allPackages);
+          setError(null);
+        } else {
+          setRevenueCatProducts(offerings.current.availablePackages);
+          setError(null);
+        }
       } else {
         setError('No subscription options available');
       }
@@ -63,10 +106,9 @@ export default function SubscriptionScreen() {
     try {
       setLoadingProductId(productId);
       
-      console.log('Checking current subscription before purchase...');
+      console.log('Starting purchase for:', productId);
       const customerInfo = await Purchases.getCustomerInfo();
       const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
-      console.log('Purchase check - subscription status:', hasActiveEntitlement);
       
       if (hasActiveEntitlement) {
         Alert.alert(
@@ -86,33 +128,34 @@ export default function SubscriptionScreen() {
         return;
       }
 
-      const revenueCatPackage = revenueCatProducts.find(pkg => pkg.identifier === productId);
-      
-      if (!revenueCatPackage) {
-        throw new Error('Product not found');
-      }
-
-      const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(revenueCatPackage);
-      
-      if (newCustomerInfo.entitlements.active['Subscriptions']) {
-        await setSubscribed(true);
+      if (productId === 'lifetime_meetcal_pro') {
+        // For lifetime purchase, use purchaseProduct instead of purchasePackage
+        const { customerInfo: newCustomerInfo } = await Purchases.purchaseProduct(productId);
+        console.log('Purchase result:', newCustomerInfo);
         
-        // Verify subscription was saved
-        const status = await AsyncStorage.getItem('subscriptionStatus');
-        if (status !== 'true') {
-          throw new Error('Failed to save subscription status');
+        if (newCustomerInfo.entitlements.active['Lifetime'] || 
+            newCustomerInfo.entitlements.active['Subscriptions']) {
+          await setSubscribed(true);
+          Alert.alert(
+            'Success', 
+            'Thank you for purchasing MeetCal Pro!',
+            [{ text: 'OK', onPress: () => router.replace('/(tabs)/schedule') }]
+          );
         }
-
-        Alert.alert(
-          'Success', 
-          'Thank you for subscribing to MeetCal Pro!',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.replace('/(tabs)/schedule')
-            }
-          ]
-        );
+      } else {
+        // Handle subscription purchases as before
+        const packageToPurchase = revenueCatProducts.find(pkg => pkg.identifier === productId);
+        if (!packageToPurchase) throw new Error('Product not found');
+        
+        const { customerInfo: newCustomerInfo } = await Purchases.purchasePackage(packageToPurchase);
+        if (newCustomerInfo.entitlements.active['Subscriptions']) {
+          await setSubscribed(true);
+          Alert.alert(
+            'Success', 
+            'Thank you for subscribing to MeetCal Pro!',
+            [{ text: 'OK', onPress: () => router.replace('/(tabs)/schedule') }]
+          );
+        }
       }
     } catch (err) {
       console.error('Purchase error:', err);
@@ -126,11 +169,7 @@ export default function SubscriptionScreen() {
       Alert.alert(
         'Purchase Error',
         'Failed to complete purchase. Please try again.',
-        [
-          {
-            text: 'OK'
-          }
-        ]
+        [{ text: 'OK' }]
       );
     } finally {
       setLoadingProductId(null);
@@ -338,46 +377,59 @@ export default function SubscriptionScreen() {
               </View>
             ) : revenueCatProducts.length > 0 ? (
               <View>
-                {revenueCatProducts.map((pkg) => (
-                  <View key={pkg.identifier} style={styles.subscriptionContainer}>
-                    <Pressable 
-                      style={[
-                        styles.subscribeButton, 
-                        loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
-                      ]}
-                      onPress={() => handlePurchase(pkg.identifier)}
-                      disabled={loadingProductId === pkg.identifier}
-                    >
-                      {pkg.packageType === 'ANNUAL' && (
-                        <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
-                          <Text style={[styles.trialText, { color: colors.text }]}>
-                            3 day free trial
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.buttonContent}>
-                        {loadingProductId === pkg.identifier ? (
-                          <ActivityIndicator color="#FFFFFF" />
-                        ) : (
-                          <ThemedText style={styles.subscribeText}>
-                            {isSubscribed 
-                              ? 'Manage Subscription'
-                              : (() => {
-                                  console.log('Package details:', {
-                                    identifier: pkg.identifier,
-                                    packageType: pkg.packageType,
-                                    product: pkg.product,
-                                    period: pkg.product.subscriptionPeriod
-                                  });
-                                  return `Subscribe - ${pkg.product.priceString}${pkg.product.subscriptionPeriod === 'P3M' ? ' Per Quarter' : ' Per Year'}`;
-                                })()
-                            }
-                          </ThemedText>
+                {revenueCatProducts.map((pkg) => {
+                  console.log('Rendering package:', pkg.identifier);
+                  return (
+                    <View key={pkg.identifier} style={styles.subscriptionContainer}>
+                      <Pressable 
+                        style={[
+                          styles.subscribeButton,
+                          isLifetimePackage(pkg) && styles.lifetimeButton, 
+                          loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
+                        ]}
+                        onPress={() => handlePurchase(pkg.identifier)}
+                        disabled={loadingProductId === pkg.identifier}
+                      >
+                        {pkg.packageType === 'ANNUAL' && (
+                          <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
+                            <Text style={[styles.trialText, { color: colors.text }]}>
+                              3 Day Free Trial
+                            </Text>
+                          </View>
                         )}
-                      </View>
-                    </Pressable>
-                  </View>
-                ))}
+                        {isLifetimePackage(pkg) && (
+                          <View style={[styles.bestValueBadge, { 
+                            backgroundColor: colors.card,
+                            borderColor: '#007AFF'
+                          }]}>
+                            <Text style={[styles.bestValueText, { 
+                              color: colors.text
+                            }]}>
+                              Best Value for Coaches
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.buttonContent}>
+                          {loadingProductId === pkg.identifier ? (
+                            <ActivityIndicator color="#FFFFFF" />
+                          ) : (
+                            <ThemedText style={styles.subscribeText}>
+                              {isSubscribed 
+                                ? 'Manage Subscription'
+                                : (() => {
+                                    if (isLifetimePackage(pkg)) {
+                                      return `Lifetime Access - ${pkg.product.priceString}`;
+                                    }
+                                    return `Subscribe - ${pkg.product.priceString}${pkg.product.subscriptionPeriod === 'P3M' ? ' Per Quarter' : ' Per Year'}`;
+                                  })()
+                              }
+                            </ThemedText>
+                          )}
+                        </View>
+                      </Pressable>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <View style={styles.loadingContainer}>
@@ -561,7 +613,6 @@ const styles = StyleSheet.create({
   },
   restoreButton: {
     alignItems: 'center',
-    padding: 16,
   },
   restoreText: {
     fontSize: 15,
@@ -582,7 +633,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   subscriptionContainer: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   trialBubble: {
     position: 'absolute',
@@ -610,5 +661,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  lifetimeButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 20,
+  },
+  bestValueBadge: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 1,
+  },
+  bestValueText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lifetimeSubtext: {
+    fontSize: 13,
+    marginTop: 4,
+    textAlign: 'center',
   },
 }); 

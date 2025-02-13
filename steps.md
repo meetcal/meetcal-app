@@ -1,81 +1,92 @@
 # Adding Lifetime Access Button to MeetCal Pro
 
 ## Overview
-We'll add a one-time purchase option for lifetime access to MeetCal Pro using RevenueCat's non-consumable in-app purchase functionality.
+Adding a one-time purchase option for lifetime access to MeetCal Pro alongside existing subscription options, using RevenueCat's non-consumable in-app purchase functionality.
 
-## Steps
+## Completed Steps
+### ✓ 1. RevenueCat Dashboard Setup
+- Product `lifetime_meetcal_pro` configured and linked
+- Non-consumable product type set up
+- Pricing and details configured in app stores
+  
+### ✓ 2. Product Configuration
+- Added lifetime product ID to PRODUCT_IDS constant
+- Updated type definitions for non-subscription packages
+- Added constant for identifying lifetime purchase
 
-### 1. RevenueCat Dashboard Setup
-- Log into RevenueCat dashboard
-- Add new product with identifier `lifetime_meetcal_pro`
-- Configure as non-consumable product type
-- Set up pricing and details in App Store Connect/Google Play Console
-- Link the product in RevenueCat dashboard
-
-### 2. Update Product Configuration
-- Add lifetime product ID to PRODUCT_IDS constant
-- Update type definitions to handle non-subscription packages
-- Add new constant for identifying lifetime purchase
-
-```typescript
-const PRODUCT_IDS = Platform.select({
-  ios: ['quarterly_meetcal', 'yearly_meetcal', 'lifetime_meetcal_pro'],
-  android: ['meetcal.pro.monthly', 'meetcal.pro.yearly', 'lifetime_meetcal_pro']
-});
-```
+## Remaining Steps
 
 ### 3. Update UI Components
-- Add new section for lifetime access button
-- Style lifetime button distinctly from subscription options
-- Add "Best Value" or similar badge
-- Ensure proper spacing and layout
+- Add lifetime access section to subscription screen
+  - Place below existing subscription options
+  - Include "One-time Purchase" label
+  - Add "Best Value" badge
+  - Show lifetime price with "Pay Once" messaging
+- Maintain clear separation from subscription options
+- Ensure existing subscription UI remains unchanged
+- Add visual hierarchy to distinguish purchase types
 
-### 4. Implement Purchase Logic
-- Update handlePurchase function to handle non-subscription purchases
-- Add specific logic for lifetime purchase validation
-- Update purchase success handling for lifetime access
-- Modify error handling for non-subscription purchases
+### 4. Update Subscription Context
+- Extend SubscriptionContext to handle lifetime access
+- Add new state: `hasLifetimeAccess`
+- Preserve existing subscription checking logic
+- Update context provider to check for lifetime purchase
+- Ensure backwards compatibility with subscription logic
+- Add persistence for lifetime access status
 
-### 5. Update Subscription Context
-- Modify SubscriptionContext to handle lifetime access
-- Add new state for lifetime purchase status
-- Update subscription checking logic
-- Ensure persistence of lifetime access status
+### 5. Implement Purchase Logic
+- Add lifetime-specific purchase handler
+- Preserve existing subscription purchase flow
+- Update purchase success handling:
+  - Set lifetime access state
+  - Update UI accordingly
+  - Store purchase status
+- Handle purchase errors gracefully
+- Ensure subscription purchases remain unaffected
 
-### 6. Testing
-1. Test purchase flow:
-   - New purchase
-   - Restore purchase
-   - Error handling
-2. Test UI in both light and dark mode
-3. Test on both iOS and Android
-4. Verify persistence after app restart
-5. Test alongside existing subscription options
+### 6. Update Restore Purchase Logic
+- Add lifetime purchase detection to restore flow
+- Maintain existing subscription restore functionality
+- Update state management for restored purchases
+- Handle mixed cases (lifetime + subscription)
 
-### 7. Update Restore Purchase Logic
-- Modify restorePurchases function to check for lifetime purchase
-- Update restore success/failure handling
-- Ensure proper state updates after restore
+### 7. Testing
+1. Core functionality:
+   - New lifetime purchase flow
+   - Existing subscription flow (verify unaffected)
+   - Restore purchases (both types)
+   - Purchase validation
+2. UI/UX testing:
+   - Light/dark mode
+   - iOS and Android
+   - Layout and spacing
+   - Badge visibility
+3. State management:
+   - App restart persistence
+   - Context updates
+   - Mixed purchase scenarios
+4. Error scenarios:
+   - Network issues
+   - Purchase cancellation
+   - Invalid purchases
 
-### 8. Documentation & Code Cleanup
-- Update comments and documentation
-- Clean up any console.logs
-- Add type safety improvements
+### 8. Documentation & Cleanup
+- Update inline code documentation
+- Remove debug logs
 - Document testing procedures
+- Add comments for future maintenance
+- Document any RevenueCat-specific considerations
 
 ## Implementation Order
-1. Start with RevenueCat dashboard setup
-2. Update product configuration
-3. Implement basic UI changes
-4. Add purchase logic
-5. Update subscription context
-6. Implement restore functionality
-7. Add final UI polish
-8. Conduct thorough testing
-9. Clean up and document
+1. UI updates (maintain existing layout)
+2. Context modifications
+3. Purchase logic
+4. Restore functionality
+5. Testing
+6. Documentation
 
 ## Notes
-- Ensure backwards compatibility with existing subscriptions
-- Consider migration path for existing subscribers
-- Plan for proper error handling and edge cases
-- Consider adding analytics for tracking lifetime vs subscription purchases 
+- Always preserve existing subscription functionality
+- Test thoroughly before deployment
+- Consider analytics for purchase type tracking
+- Document any necessary user communication 
