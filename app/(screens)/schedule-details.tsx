@@ -192,6 +192,13 @@ export default function SessionDetailsScreen() {
     return platformData?.weightClass;
   }, [params.sessionNumber, params.platform]);
 
+  const sessionDate = useMemo(() => {
+    const sessionDay = schedule.find(day => 
+      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    );
+    return sessionDay?.date || `Session ${params.sessionNumber}`;
+  }, [params.sessionNumber]);
+
   const showSaveAlert = (action: 'save' | 'remove') => {
     const title = action === 'save' ? 'Session Saved' : 'Session Unsaved';
     const message = action === 'save'
@@ -363,7 +370,7 @@ export default function SessionDetailsScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: `Session ${params.sessionNumber}`,
+          headerTitle: sessionDate,
           headerBackTitle: 'Back',
           gestureEnabled: true,
           gestureDirection: 'horizontal',
