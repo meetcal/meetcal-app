@@ -122,17 +122,25 @@ export default function InfoScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen 
+        options={{
+          headerTitle: 'Info',
+          headerTitleStyle: {
+            color: colors.text,
+          },
+          headerStyle: {
+            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',  // White in light mode, dark gray in dark mode
+          },
+          headerShadowVisible: false,
+        }}
+      />
+
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={[
-          styles.content,
-          { 
-            paddingTop: 8,
-            paddingHorizontal: 16,
-            paddingBottom: insets.bottom + 100,
-          }
+          styles.scrollContent,
+          { paddingHorizontal: 20, paddingTop: 20 }
         ]}
-        showsVerticalScrollIndicator={false}
       >
         
         {/* Records and Standards */}
@@ -339,8 +347,8 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  content: {
-    flexGrow: 1,
+  scrollContent: {
+    paddingBottom: 40,
   },
   card: {
     borderRadius: 12,
