@@ -263,14 +263,11 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('mailto:memohnsen@gmail.com')}
+            onPress={() => router.push('/(screens)/feedback')}
           >
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Support
-            </ThemedText>
             <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                memohnsen@gmail.com
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Submit Feedback
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
