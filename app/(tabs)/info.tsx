@@ -1,4 +1,4 @@
-import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert } from 'react-native';
+import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -9,6 +9,8 @@ import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+import { getUserProfile, type UserProfile } from '@/lib/profile'
+import { supabase } from '@/lib/supabase'
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
@@ -16,11 +18,32 @@ export default function InfoScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [loadingProfile, setLoadingProfile] = useState(true)
 
   // Sync the switch state with theme changes
   useEffect(() => {
     setIsEnabled(currentTheme === 'dark');
   }, [currentTheme]);
+
+  // Add useEffect to fetch profile
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const userProfile = await getUserProfile(user.id)
+          setProfile(userProfile)
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error)
+      } finally {
+        setLoadingProfile(false)
+      }
+    }
+
+    loadProfile()
+  }, [])
 
   // Define theme colors
   const colors = {
@@ -91,13 +114,23 @@ export default function InfoScreen() {
     );
   };
 
+  // Move profileLabel style into the component render
+  const profileLabelStyle = {
+    fontSize: 16,
+    color: colors.secondaryText,
+  }
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + 100 },
+          { 
+            paddingTop: insets.top + 16,
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + 100,
+          }
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -232,6 +265,42 @@ export default function InfoScreen() {
             </View>
           </Pressable>
 
+          {/* Profile section */}
+          {loadingProfile ? (
+            <View style={[
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            ]}>
+              <ActivityIndicator color={colors.text} />
+            </View>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.section,
+                { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+                pressed && { backgroundColor: colors.pressed }
+              ]}
+              onPress={() => router.push({
+                pathname: '/user-profile',
+                params: { from: 'info' }
+              })}
+            >
+              <View style={styles.subscriptionContainer}>
+                <View style={styles.subscriptionInfo}>
+                  <ThemedText style={[styles.label, { color: colors.text }]}>
+                    Manage Profile
+                  </ThemedText>
+                  {profile && (
+                    <ThemedText style={[styles.subscriptionPreview, { color: colors.secondaryText }]}>
+                      {profile.name} • {profile.role}
+                    </ThemedText>
+                  )}
+                </View>
+                <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              </View>
+            </Pressable>
+          )}
+
           <Pressable
             style={({ pressed }) => [
               styles.section,
@@ -277,7 +346,7 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://wargames.mohsenweb.com')}
+            onPress={() => handlePress('https://wl-wargames.com')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
               Other Projects
@@ -296,10 +365,10 @@ export default function InfoScreen() {
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://mohsenweb.com/privacy')}
+            onPress={() => handlePress('https://meetcal.app/privacy')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              We Don't Collect Any Data
+              We Will Never Sell Your Data
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
@@ -309,6 +378,7 @@ export default function InfoScreen() {
             </View>
           </Pressable>
         </View>
+
         <View style={styles.dangerZone}>
           <Pressable
             style={({ pressed }) => [
@@ -335,7 +405,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    flexGrow: 1,
   },
   card: {
     borderRadius: 12,
@@ -395,7 +465,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   settingLabel: {
-    fontSize: 17,
+    fontSize: 16,
+    marginBottom: 4,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
@@ -441,5 +512,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+  },
+  profileContent: {
+    paddingVertical: 4,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  profileValue: {
+    fontSize: 16,
   },
 }); 
