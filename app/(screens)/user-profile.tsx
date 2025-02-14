@@ -2,7 +2,7 @@ import { View, TextInput, StyleSheet, ScrollView, Platform, Pressable, Modal, Ac
 import { useState, useEffect } from 'react'
 import { router, Stack, useLocalSearchParams } from 'expo-router'
 import { Picker } from '@react-native-picker/picker'
-import { createUserProfile, getUserProfile } from '@/lib/profile'
+import { createUserProfile, getUserProfile, updateUserProfile } from '@/lib/profile'
 import { ThemedText } from '@/components/ThemedText'
 import { ThemedView } from '@/components/ThemedView'
 import { ThemedButton } from '@/components/ui/ThemedButton'
@@ -16,12 +16,13 @@ export default function UserProfileScreen() {
   const { from } = useLocalSearchParams<{ from: string }>()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'Athlete' | 'Coach' | 'Spectator'>('Athlete')
+  const [role, setRole] = useState<'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'>('Athlete')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showRolePicker, setShowRolePicker] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [profileId, setProfileId] = useState<string | null>(null)
 
   const colors = {
     background: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
@@ -32,7 +33,7 @@ export default function UserProfileScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
   }
 
-  const roleOptions = ['Athlete', 'Coach', 'Spectator'] as const
+  const roleOptions = ['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'] as const
 
   const selectRole = (selectedRole: typeof role) => {
     setRole(selectedRole)
@@ -49,11 +50,25 @@ export default function UserProfileScreen() {
     setError(null)
 
     try {
-      await createUserProfile({
-        name,
-        email,
-        role
-      })
+      console.log('Submitting profile:', { name, email, role })
+      let profile
+      
+      if (profileId) {
+        // Update existing profile
+        profile = await updateUserProfile(profileId, {
+          name,
+          email,
+          role
+        })
+      } else {
+        // Create new profile
+        profile = await createUserProfile({
+          name,
+          email,
+          role
+        })
+      }
+      console.log('Profile saved:', profile)
 
       if (from === 'info') {
         setShowSuccessModal(true)
@@ -65,8 +80,8 @@ export default function UserProfileScreen() {
         router.push('/subscription')
       }
     } catch (err) {
-      console.error('Profile creation error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to create profile')
+      console.error('Profile save error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save profile')
     } finally {
       setLoading(false)
     }
@@ -83,16 +98,13 @@ export default function UserProfileScreen() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const profiles = await supabase
-          .from('user_profiles')
-          .select('*')
-          .limit(1)
-          .single()
-
-        if (profiles.data) {
-          setName(profiles.data.name || '')
-          setEmail(profiles.data.email || '')
-          setRole(profiles.data.role || 'Athlete')
+        const profile = await getUserProfile()
+        console.log('Loaded profile:', profile)
+        if (profile) {
+          setName(profile.name || '')
+          setEmail(profile.email || '')
+          setRole(profile.role || '')
+          setProfileId(profile.id)  // Save the profile ID
         }
       } catch (error) {
         console.error('Error loading profile:', error)

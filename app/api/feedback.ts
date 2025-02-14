@@ -2,9 +2,10 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.EXPO_PUBLIC_RESEND_API_KEY)
 
-export async function sendFeedback({ name, email, description }: { 
+export async function sendFeedback({ name, email, role, description }: { 
   name: string
   email: string
+  role: string
   description: string 
 }) {
   const htmlContent = `
@@ -49,7 +50,7 @@ export async function sendFeedback({ name, email, description }: {
         
         <div class="section">
           <div class="label">From:</div>
-          <div class="content">${name} (${email})</div>
+          <div class="content">${name} (${email}) - ${role}</div>
         </div>
         
         <div class="section">
@@ -63,7 +64,7 @@ export async function sendFeedback({ name, email, description }: {
   const { data, error } = await resend.emails.send({
     from: 'MeetCal Feedback <feedback@wl-wargames.com>',
     to: 'memohnsen@gmail.com',
-    subject: `MeetCal Feedback from ${name}`,
+    subject: `MeetCal Feedback from ${name} (${role})`,
     html: htmlContent,
     reply_to: email
   })

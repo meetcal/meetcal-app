@@ -14,6 +14,7 @@ export default function FeedbackScreen() {
   const insets = useSafeAreaInsets()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [role, setRole] = useState<string>('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,6 +43,7 @@ export default function FeedbackScreen() {
         if (profiles.data) {
           setName(profiles.data.name || '')
           setEmail(profiles.data.email || '')
+          setRole(profiles.data.role || '')
         }
       } catch (error) {
         console.error('Error loading profile:', error)
@@ -63,7 +65,7 @@ export default function FeedbackScreen() {
     setError(null)
 
     try {
-      await sendFeedback({ name, email, description })
+      await sendFeedback({ name, email, role, description })
       setShowSuccessModal(true)
       setTimeout(() => {
         setShowSuccessModal(false)
@@ -145,6 +147,21 @@ export default function FeedbackScreen() {
                   placeholderTextColor={colors.text + '80'}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <ThemedText style={styles.label}>Role</ThemedText>
+                <TextInput
+                  style={[styles.input, { 
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: colors.input
+                  }]}
+                  value={role}
+                  onChangeText={setRole}
+                  placeholder="Enter your role"
+                  placeholderTextColor={colors.text + '80'}
                 />
               </View>
 
