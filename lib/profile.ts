@@ -4,7 +4,7 @@ export type UserProfile = {
   id: string
   name: string | null
   email: string | null
-  role: 'Athlete' | 'Coach' | 'Spectator' | null
+  role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media' | null
   created_at: string
   updated_at: string
 }
@@ -12,7 +12,7 @@ export type UserProfile = {
 export async function createUserProfile(data: {
   name: string
   email: string
-  role: 'Athlete' | 'Coach' | 'Spectator'
+  role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'
 }) {
   const { data: profile, error } = await supabase
     .from('user_profiles')
@@ -24,11 +24,11 @@ export async function createUserProfile(data: {
   return profile
 }
 
-export async function getUserProfile(userId: string) {
+export async function getUserProfile() {
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .select('*')
-    .eq('user_id', userId)
+    .limit(1)
     .single()
 
   if (error) throw error
@@ -36,13 +36,13 @@ export async function getUserProfile(userId: string) {
 }
 
 export async function updateUserProfile(
-  userId: string,
+  id: string,
   data: Partial<Pick<UserProfile, 'name' | 'email' | 'role'>>
 ) {
   const { data: profile, error } = await supabase
     .from('user_profiles')
     .update(data)
-    .eq('user_id', userId)
+    .eq('id', id)
     .select()
     .single()
 
