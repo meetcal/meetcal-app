@@ -243,6 +243,22 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
+            onPress={() => router.push('/(screens)/feedback')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Submit Feedback
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+          
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
           >
             <View style={styles.settingRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -257,21 +273,7 @@ export default function InfoScreen() {
             </View>
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/feedback')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Submit Feedback
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+
 
           <Pressable
             style={({ pressed }) => [

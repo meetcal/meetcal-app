@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 
-const resend = new Resend('re_SpdzjvPG_rspUGeK1xmqd3MhRMwimFFLR')
+const resend = new Resend(process.env.EXPO_PUBLIC_RESEND_API_KEY)
 
 export async function sendFeedback({ name, email, description }: { 
   name: string
