@@ -1,92 +1,90 @@
-# Adding Lifetime Access Button to MeetCal Pro
+# User Data Implementation Plan
 
-## Overview
-Adding a one-time purchase option for lifetime access to MeetCal Pro alongside existing subscription options, using RevenueCat's non-consumable in-app purchase functionality.
+## 1. Initial Supabase Project Setup
+- Install Supabase client libraries:
+  ```bash
+  npm install @supabase/supabase-js
+  ```
+- Create environment configuration file `.env`:
+  - Add Supabase URL
+  - Add Supabase anon/public key
+- Create Supabase client configuration file:
+  - Create new file `lib/supabase.ts`
+  - Initialize Supabase client
+  - Export client for use across app
 
-## Completed Steps
-### ✓ 1. RevenueCat Dashboard Setup
-- Product `lifetime_meetcal_pro` configured and linked
-- Non-consumable product type set up
-- Pricing and details configured in app stores
-  
-### ✓ 2. Product Configuration
-- Added lifetime product ID to PRODUCT_IDS constant
-- Updated type definitions for non-subscription packages
-- Added constant for identifying lifetime purchase
+## 2. Supabase Database Setup
+- Create new table `user_profiles` with columns:
+  - `id` (uuid, primary key)
+  - `user_id` (uuid, foreign key to auth.users)
+  - `name` (text)
+  - `email` (text)
+  - `role` (text)
+  - `created_at` (timestamp with timezone)
+  - `updated_at` (timestamp with timezone)
+- Set up Row Level Security (RLS) policies:
+  - Users can only read/write their own profile
+  - Admin can read all profiles
 
-## Remaining Steps
+## 3. Create User Profile Screen
+- Create new screen `app/(screens)/user-profile.tsx`
+- Design form with:
+  - Name input field
+  - Email input field
+  - Role selector (Athlete/Coach/Spectator)
+  - Submit button
+- Add form validation
+- Implement navigation flow between onboarding and subscription screens
 
-### 3. Update UI Components
-- Add lifetime access section to subscription screen
-  - Place below existing subscription options
-  - Include "One-time Purchase" label
-  - Add "Best Value" badge
-  - Show lifetime price with "Pay Once" messaging
-- Maintain clear separation from subscription options
-- Ensure existing subscription UI remains unchanged
-- Add visual hierarchy to distinguish purchase types
+## 4. Update Navigation Flow
+- Modify onboarding flow to include new profile screen
+- Update navigation order:
+  1. Initial onboarding screens
+  2. User profile collection
+  3. Subscription screen
 
-### 4. Update Subscription Context
-- Extend SubscriptionContext to handle lifetime access
-- Add new state: `hasLifetimeAccess`
-- Preserve existing subscription checking logic
-- Update context provider to check for lifetime purchase
-- Ensure backwards compatibility with subscription logic
-- Add persistence for lifetime access status
+## 5. Supabase Integration
+- Set up Supabase client configuration
+- Create helper functions for:
+  - Creating new user profile
+  - Updating existing profile
+  - Fetching profile data
+- Implement error handling
 
-### 5. Implement Purchase Logic
-- Add lifetime-specific purchase handler
-- Preserve existing subscription purchase flow
-- Update purchase success handling:
-  - Set lifetime access state
-  - Update UI accordingly
-  - Store purchase status
-- Handle purchase errors gracefully
-- Ensure subscription purchases remain unaffected
+## 6. Profile Tab Implementation
+- Add profile section to info tab
+- Create profile view component
+- Add edit profile functionality
+- Display user information:
+  - Name
+  - Email
+  - Role
+  - Subscription status
 
-### 6. Update Restore Purchase Logic
-- Add lifetime purchase detection to restore flow
-- Maintain existing subscription restore functionality
-- Update state management for restored purchases
-- Handle mixed cases (lifetime + subscription)
+## 7. Testing & Validation
+- Test user profile creation
+- Verify data storage in Supabase
+- Test profile updates
+- Validate navigation flow
+- Check error handling
+- Test edge cases
 
-### 7. Testing
-1. Core functionality:
-   - New lifetime purchase flow
-   - Existing subscription flow (verify unaffected)
-   - Restore purchases (both types)
-   - Purchase validation
-2. UI/UX testing:
-   - Light/dark mode
-   - iOS and Android
-   - Layout and spacing
-   - Badge visibility
-3. State management:
-   - App restart persistence
-   - Context updates
-   - Mixed purchase scenarios
-4. Error scenarios:
-   - Network issues
-   - Purchase cancellation
-   - Invalid purchases
+## 8. Security & Privacy
+- Implement data validation
+- Add input sanitization
+- Set up appropriate Supabase RLS (Row Level Security) policies
+- Ensure email verification process
 
-### 8. Documentation & Cleanup
-- Update inline code documentation
-- Remove debug logs
-- Document testing procedures
-- Add comments for future maintenance
-- Document any RevenueCat-specific considerations
-
-## Implementation Order
-1. UI updates (maintain existing layout)
-2. Context modifications
-3. Purchase logic
-4. Restore functionality
-5. Testing
-6. Documentation
+## 9. Polish & Deployment
+- Add loading states
+- Implement error messages
+- Add success notifications
+- Test on both iOS and Android
+- Prepare for app store submission
 
 ## Notes
-- Always preserve existing subscription functionality
-- Test thoroughly before deployment
-- Consider analytics for purchase type tracking
-- Document any necessary user communication 
+- Supabase Project ID: ztziuiiharxtvzitwzfv
+- Project URL: https://ztziuiiharxtvzitwzfv.supabase.co
+- Remember to use environment variables for API keys in production
+- Implement proper error handling for network issues
+- Consider offline support for profile data

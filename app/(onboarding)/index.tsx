@@ -15,6 +15,7 @@ import Animated, {
   useSharedValue,
   withTiming 
 } from 'react-native-reanimated';
+import { ThemedButton } from '@/components/ui/ThemedButton';
 
 const { width } = Dimensions.get('window');
 
@@ -207,19 +208,26 @@ export default function Onboarding() {
     screenBackground: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
   };
 
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, []);
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const value = await AsyncStorage.getItem('@hasSeenOnboarding');
+      setHasSeenOnboarding(value === 'true');
+    } catch (error) {
+      console.error('Error checking onboarding status:', error);
+    }
+  };
+
   const handleComplete = async () => {
-    if (currentPage === ONBOARDING_SCREENS.length - 1) {
-      // Don't set hasSeenOnboarding when viewing from info screen
-      if (!hasSeenOnboarding) {
-        await AsyncStorage.setItem('hasSeenOnboarding', 'true');
-      }
-      router.replace('/(screens)/subscription');
-    } else {
-      // Scroll to next page
-      scrollRef.current?.scrollTo({
-        x: width * (currentPage + 1),
-        animated: true,
-      });
+    try {
+      await AsyncStorage.setItem('@hasSeenOnboarding', 'true');
+      setHasSeenOnboarding(true);
+      router.push('/user-profile');
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
     }
   };
 
@@ -265,6 +273,9 @@ export default function Onboarding() {
     opacity: opacity.value,
   }));
 
+  // Only show the last page "Get Started" button on the final screen
+  const isLastPage = currentPage === ONBOARDING_SCREENS.length - 1;
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.screenBackground }]}>
       <ScrollView
@@ -301,20 +312,25 @@ export default function Onboarding() {
               key={index}
               style={[
                 styles.paginationDot,
-                index === currentPage && styles.paginationDotActive,
+                {
+                  backgroundColor: index === currentPage ? colors.text : colors.secondaryText + '40',
+                },
               ]}
             />
           ))}
         </View>
 
-        <Pressable
+        <ThemedButton
+          onPress={isLastPage ? handleComplete : () => {
+            scrollRef.current?.scrollTo({
+              x: (currentPage + 1) * width,
+              animated: true,
+            });
+          }}
           style={styles.button}
-          onPress={handleComplete}
         >
-          <ThemedText style={styles.buttonText}>
-            {currentPage === ONBOARDING_SCREENS.length - 1 ? 'Get Started' : 'Continue'}
-          </ThemedText>
-        </Pressable>
+          {isLastPage ? 'Get Started' : 'Continue'}
+        </ThemedButton>
       </View>
     </ThemedView>
   );
@@ -392,22 +408,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#007AFF40',
     marginHorizontal: 4,
   },
-  paginationDotActive: {
-    backgroundColor: '#007AFF',
-  },
   button: {
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
+    marginTop: 20,
+    width: '100%',
   },
   backButton: {
     position: 'absolute',

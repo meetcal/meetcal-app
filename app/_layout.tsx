@@ -140,7 +140,14 @@ function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
+        {!hasSeenOnboarding ? (
+          <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
+        ) : (
+          <>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(screens)" />
+          </>
+        )}
         <Stack.Screen name="(screens)/schedule-details" />
         <Stack.Screen 
           name="(screens)/subscription" 

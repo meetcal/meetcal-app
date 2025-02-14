@@ -10,6 +10,10 @@ export default function OnboardingLayout() {
       contentStyle: {
         backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF'
       }
-    }} />
+    }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="user-profile" />
+      <Stack.Screen name="subscription" />
+    </Stack>
   );
 } 
