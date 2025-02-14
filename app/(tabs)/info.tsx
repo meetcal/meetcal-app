@@ -127,7 +127,7 @@ export default function InfoScreen() {
         contentContainerStyle={[
           styles.content,
           { 
-            paddingTop: insets.top + 16,
+            paddingTop: 8,
             paddingHorizontal: 16,
             paddingBottom: insets.bottom + 100,
           }
@@ -160,78 +160,14 @@ export default function InfoScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/qualifying-totals')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Current Bodyweight Qualifying Totals
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/new-qualifying-totals')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                New Bodyweight Qualifying Totals
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/current-standards')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Current Bodyweight Standards
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/new-standards')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                New Bodyweight Standards
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(screens)/records')}
+            onPress={() => router.push('/(screens)/records-and-standards')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                American Records
+                Totals, Standards, & Records
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
@@ -309,7 +245,7 @@ export default function InfoScreen() {
             ]}
           >
             <View style={styles.settingRow}>
-              <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Dark Mode
               </ThemedText>
               <Switch
@@ -462,7 +398,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 4,
   },
   settingLabel: {
     fontSize: 16,
