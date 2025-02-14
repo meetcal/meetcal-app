@@ -68,7 +68,7 @@ export default function FeedbackScreen() {
       setTimeout(() => {
         setShowSuccessModal(false)
         router.back()
-      }, 1500)
+      }, 1000)
     } catch (err) {
       console.error('Feedback submission error:', err)
       setError(err instanceof Error ? err.message : 'Failed to submit feedback')
