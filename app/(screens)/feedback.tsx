@@ -1,4 +1,4 @@
-import { StyleSheet, View, TextInput, ScrollView, ActivityIndicator, Modal } from 'react-native'
+import { StyleSheet, View, TextInput, ScrollView, ActivityIndicator, Modal, Pressable } from 'react-native'
 import { useState, useEffect } from 'react'
 import { Stack, router } from 'expo-router'
 import { ThemedText } from '@/components/ThemedText'
@@ -8,18 +8,20 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sendFeedback } from '../api/feedback'
 import { supabase } from '@/lib/supabase'
+import type { UserProfile } from '@/lib/profile'
 
 export default function FeedbackScreen() {
   const { currentTheme } = useTheme()
   const insets = useSafeAreaInsets()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<string>('')
+  const [role, setRole] = useState<UserProfile['role']>('Athlete')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [showRolePicker, setShowRolePicker] = useState(false)
 
   const colors = {
     background: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
@@ -43,7 +45,7 @@ export default function FeedbackScreen() {
         if (profiles.data) {
           setName(profiles.data.name || '')
           setEmail(profiles.data.email || '')
-          setRole(profiles.data.role || '')
+          setRole(profiles.data.role || 'Athlete')
         }
       } catch (error) {
         console.error('Error loading profile:', error)
@@ -152,17 +154,24 @@ export default function FeedbackScreen() {
 
               <View style={styles.inputContainer}>
                 <ThemedText style={styles.label}>Role</ThemedText>
-                <TextInput
-                  style={[styles.input, { 
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: colors.input
-                  }]}
-                  value={role}
-                  onChangeText={setRole}
-                  placeholder="Enter your role"
-                  placeholderTextColor={colors.text + '80'}
-                />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.roleButton,
+                    { 
+                      backgroundColor: colors.input,
+                      borderColor: colors.border,
+                      opacity: pressed ? 0.8 : 1
+                    }
+                  ]}
+                  onPress={() => setShowRolePicker(true)}
+                >
+                  <ThemedText style={[
+                    styles.roleText,
+                    { color: colors.text }
+                  ]}>
+                    {role}
+                  </ThemedText>
+                </Pressable>
               </View>
 
               <View style={styles.inputContainer}>
@@ -215,6 +224,54 @@ export default function FeedbackScreen() {
             </ThemedText>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showRolePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRolePicker(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowRolePicker(false)}
+        >
+          <View 
+            style={[
+              styles.modalContent, 
+              { 
+                backgroundColor: colors.input,
+                paddingBottom: insets.bottom + 20
+              }
+            ]}
+          >
+            {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
+              <Pressable
+                key={option}
+                style={({ pressed }) => [
+                  styles.roleOption,
+                  {
+                    backgroundColor: pressed ? colors.border : 'transparent',
+                    borderBottomColor: colors.border,
+                  }
+                ]}
+                onPress={() => {
+                  setRole(option as UserProfile['role'])
+                  setShowRolePicker(false)
+                }}
+              >
+                <ThemedText 
+                  style={[
+                    styles.roleOptionText,
+                    { color: option === role ? '#007AFF' : colors.text }
+                  ]}
+                >
+                  {option}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
       </Modal>
     </ThemedView>
   )
@@ -302,5 +359,38 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  roleButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 50,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  roleText: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  roleOption: {
+    padding: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  roleOptionText: {
+    fontSize: 18,
+    lineHeight: 22,
   },
 }) 
