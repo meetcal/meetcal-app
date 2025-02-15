@@ -85,15 +85,12 @@ export default function RootLayout() {
 }
 
 function AppContent() {
-  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   const { isSubscribed, isLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     async function initialize() {
       try {
-        const seen = await AsyncStorage.getItem('hasSeenOnboarding');
-        setHasSeenOnboarding(!!seen);
         setIsInitialized(true);
       } catch (error) {
         console.error('Initialization error:', error);
@@ -105,58 +102,39 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (isInitialized && hasSeenOnboarding !== null && !isLoading) {
+    if (isInitialized && !isLoading) {
       SplashScreen.hideAsync();
     }
-  }, [isInitialized, hasSeenOnboarding, isLoading]);
+  }, [isInitialized, isLoading]);
 
-  if (!isInitialized || hasSeenOnboarding === null || isLoading) {
+  if (!isInitialized || isLoading) {
     return null;
   }
 
-  return <RootLayoutNav hasSeenOnboarding={hasSeenOnboarding} />;
+  return <RootLayoutNav isSubscribed={isSubscribed} />;
 }
 
-function RootLayoutNav({ hasSeenOnboarding }: { hasSeenOnboarding: boolean }) {
+function RootLayoutNav({ isSubscribed }: { isSubscribed: boolean }) {
   const { currentTheme } = useTheme();
-  const { isSubscribed, isLoading } = useSubscription();
-  const hasRedirected = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (!hasRedirected.current && !isLoading && isSubscribed) {
-      hasRedirected.current = true;
+    // Redirect based on subscription status
+    if (!isSubscribed) {
+      router.replace('/(onboarding)');
+    } else {
       router.replace('/(tabs)/schedule');
     }
-  }, [isLoading, isSubscribed, router]);
-
-  if (isLoading) {
-    return <Slot />;
-  }
+  }, [isSubscribed, router]);
 
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
-  // Remove the redirect and just render the navigation
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        {!hasSeenOnboarding ? (
-          <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
-        ) : (
-          <>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(screens)" />
-          </>
-        )}
-        <Stack.Screen name="(screens)/schedule-details" />
-        <Stack.Screen 
-          name="(screens)/subscription" 
-          options={{
-            headerShown: true,
-            title: 'Premium Features',
-            headerBackTitle: 'Back',
-          }}
-        />
+        <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(screens)" />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>

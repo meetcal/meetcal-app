@@ -8,7 +8,7 @@ export default function OnboardingLayout() {
     <Stack screenOptions={{
       headerShown: false,
       contentStyle: {
-        backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF'
+        backgroundColor: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF'
       }
     }}>
       <Stack.Screen name="index" />

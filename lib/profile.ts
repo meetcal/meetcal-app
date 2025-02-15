@@ -1,27 +1,17 @@
 import { supabase } from './supabase'
 
 export type UserProfile = {
-  id: string
-  name: string | null
-  email: string | null
-  role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media' | null
-  created_at: string
-  updated_at: string
-}
-
-export async function createUserProfile(data: {
   name: string
   email: string
   role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'
-}) {
-  const { data: profile, error } = await supabase
+}
+
+export async function createUserProfile(data: UserProfile) {
+  const { error } = await supabase
     .from('user_profiles')
     .insert(data)
-    .select()
-    .single()
 
   if (error) throw error
-  return profile
 }
 
 export async function getUserProfile() {
