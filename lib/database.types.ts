@@ -12,30 +12,21 @@ export interface Database {
       user_profiles: {
         Row: {
           id: string
-          user_id: string
-          name: string | null
-          email: string | null
-          role: 'Athlete' | 'Coach' | 'Spectator' | null
+          name: string
+          email: string
+          role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'
           created_at: string
-          updated_at: string
         }
         Insert: {
           id?: string
-          user_id: string
-          name?: string | null
-          email?: string | null
-          role?: 'Athlete' | 'Coach' | 'Spectator' | null
-          created_at?: string
-          updated_at?: string
+          name: string
+          email: string
+          role: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'
         }
         Update: {
-          id?: string
-          user_id?: string
-          name?: string | null
-          email?: string | null
-          role?: 'Athlete' | 'Coach' | 'Spectator' | null
-          created_at?: string
-          updated_at?: string
+          name?: string
+          email?: string
+          role?: 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'
         }
       }
     }

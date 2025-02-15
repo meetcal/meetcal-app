@@ -9,8 +9,6 @@ import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
-import { getUserProfile, type UserProfile } from '@/lib/profile'
-import { supabase } from '@/lib/supabase'
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
@@ -18,32 +16,11 @@ export default function InfoScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loadingProfile, setLoadingProfile] = useState(true)
 
   // Sync the switch state with theme changes
   useEffect(() => {
     setIsEnabled(currentTheme === 'dark');
   }, [currentTheme]);
-
-  // Add useEffect to fetch profile
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const userProfile = await getUserProfile(user.id)
-          setProfile(userProfile)
-        }
-      } catch (error) {
-        console.error('Error loading profile:', error)
-      } finally {
-        setLoadingProfile(false)
-      }
-    }
-
-    loadProfile()
-  }, [])
 
   // Define theme colors
   const colors = {
@@ -113,12 +90,6 @@ export default function InfoScreen() {
       ]
     );
   };
-
-  // Move profileLabel style into the component render
-  const profileLabelStyle = {
-    fontSize: 16,
-    color: colors.secondaryText,
-  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -209,42 +180,6 @@ export default function InfoScreen() {
             </View>
           </Pressable>
 
-          {/* Profile section */}
-          {loadingProfile ? (
-            <View style={[
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            ]}>
-              <ActivityIndicator color={colors.text} />
-            </View>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [
-                styles.section,
-                { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
-              ]}
-              onPress={() => router.push({
-                pathname: '/user-profile',
-                params: { from: 'info' }
-              })}
-            >
-              <View style={styles.subscriptionContainer}>
-                <View style={styles.subscriptionInfo}>
-                  <ThemedText style={[styles.label, { color: colors.text }]}>
-                    Manage Profile
-                  </ThemedText>
-                  {profile && (
-                    <ThemedText style={[styles.subscriptionPreview, { color: colors.secondaryText }]}>
-                      {profile.name} • {profile.role}
-                    </ThemedText>
-                  )}
-                </View>
-                <IconSymbol name="chevron.right" size={20} color={colors.link} />
-              </View>
-            </Pressable>
-          )}
-
           <Pressable
             style={({ pressed }) => [
               styles.section,
@@ -280,8 +215,6 @@ export default function InfoScreen() {
               />
             </View>
           </Pressable>
-
-
 
           <Pressable
             style={({ pressed }) => [
