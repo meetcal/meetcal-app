@@ -63,7 +63,7 @@ export async function sendFeedback({ name, email, role, description }: {
 
   const { data, error } = await resend.emails.send({
     from: 'MeetCal Feedback <feedback@wl-wargames.com>',
-    to: 'memohnsen@gmail.com',
+    to: 'maddisen@meetcal.app',
     subject: `MeetCal Feedback from ${name} (${role})`,
     html: htmlContent,
     reply_to: email
