@@ -1,49 +1,51 @@
-# Implementation Plan for Feedback Feature
+# Android Compatibility Issues
 
-## 1. Add Feedback Button to Info Screen
-✅ Add new Pressable component in info.tsx between dark mode and support sections
-✅ Use consistent styling with other sections
-✅ Add navigation to new feedback screen
+## Critical (Will Prevent Build/Cause Crashes)
+1. Conflicting In-App Purchase Modules
+   - Issue: `expo-in-app-purchases` module is causing build failures but isn't being used
+   - Fix: Remove the unused module:
+   ```bash
+   npm uninstall expo-in-app-purchases
+   ```
+   - Note: App uses RevenueCat's `react-native-purchases` for IAP functionality
 
-## 2. Create Feedback Screen
-1. Create new file: app/(screens)/feedback.tsx
-2. Implement screen with:
-  ✅ Header with back button
-  ✅ Form with Name, Email, and Description fields
-  - Implement local profile storage for Name/Email
-  - Auto-populate Name/Email from local storage
-  ✅ Submit button
-  ✅ Loading state
-  ✅ Success/Error states
+2. Missing `invokeDefaultOnBackPressed` Method in MainActivity.kt
+   - Current: Method declaration is missing
+   - Fix: Add complete method implementation:
+   ```kotlin
+   override fun invokeDefaultOnBackPressed() {
+     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+       if (!moveTaskToBack(false)) {
+         super.invokeDefaultOnBackPressed()
+       }
+       return
+     }
+     super.invokeDefaultOnBackPressed()
+   }
+   ```
 
-## 3. Setup Email Integration
-1. Create API helper in app/api/feedback.ts:
-  ✅ Add types for feedback submission
-  ✅ Implement Resend integration
-  ✅ Create HTML email template
-  ✅ Add error handling
+## High Priority (Major Functionality Issues)
+3. Calendar Implementation Differences
+   - Issue: iOS uses `getDefaultCalendarAsync()` while Android needs explicit calendar selection
+   - Location: app/(tabs)/start-list.tsx
+   - Fix: Implement more robust calendar fallbacks for Android and better error handling
 
-## 4. Testing & Security
-1. Test all flows:
-  ✅ Form validation
-  ✅ Email sending
-  ✅ Error handling
-  ✅ Loading states
-  - Test profile data persistence
-  - Test auto-population from storage
+## Medium Priority (UI/UX Issues)
+4. Icon Name Mapping Incompatibilities
+   - Issue: Incomplete icon mapping between iOS SF Symbols and Android equivalents
+   - Location: components/ui/IconSymbol.tsx
+   - Fix: Complete the icon mapping with appropriate Android alternatives
+   - Impact: Some icons may not display correctly on Android
 
-## 5. Future Improvements
-1. Security enhancements:
-   - Move Resend API key to secure storage
-   - Add rate limiting for submissions
-   - Add spam prevention
+5. Subscription Management Deep Linking
+   - Issue: iOS-specific subscription management URLs
+   - Location: app/(screens)/subscription.tsx
+   - Fix: Implement proper Android-specific subscription management deep linking
+   - Impact: Suboptimal subscription management experience on Android
 
-2. Profile management:
-   - Add profile edit screen
-   - Sync profile data across app
-   - Add profile data validation
-
-2. UX improvements:
-   - Add feedback categories
-   - Add attachments support
-   - Add confirmation emails to users
+## Low Priority (Visual Polish)
+6. iOS-Specific Blur Effect
+   - Issue: Using iOS-specific BlurView component
+   - Location: components/ui/TabBarBackground.ios.tsx
+   - Fix: Create an Android-specific tab bar background component
+   - Impact: Visual inconsistency in tab bar appearance

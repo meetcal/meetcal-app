@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "meetcal-451221",
+  "private_key_id": "e6bd28650e24bbd508ceeee3125a6b7ca442d348",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQDaxLSzX78a8AfT\nxlpS0ny07FGdJsnHDNFru1hlyY8OKVIAkippyHHO8FmxO0V/DHeY8orsn/HiRLjB\nK/jASgdSVLh+lr8DYHtUbkFYWneP+CjXJFVdrDvZwpEqlBe4wItRy/DVj4KFg3R5\nPiGFzRsbi7GlhfnfCnVJ/9uYVl05ZQmkJ329xhVdBtQm6008q8FAdMyoK2oOH4wj\n84oDQnXAMvEy+C9dhHZ2Nr3uy5NZx7pc07jszXivMWYPobTvh5PXTCmiH2bSAoMf\nRCKUHjzNML6aNE985t9+jRfAFId/qdn7FpQGJqKIZPH8a7MGust148cRAYYuLi6D\nnJPfWmfTAgMBAAECgf8BSCXG50i3X7CsDP16fsE8TiYsRY3pHKodd3uNHSE5dASG\n/FRDSmlgTQg5gZ9mnywUOVeXC1jfeoeamida+RQR520tULTN0ELou7ymR+FrdojG\nue/GHLw9CmbPWQ7KhlZKpGdE2RJqtdp422RW5FzETI096wsLw4PsaxNeUSM6stoU\nYnJMJkAtpFR6XsasLvqQAWXA8CaXewn6ci0w0rMUlOVi9yg31Ftvpn54mQ/XT7e1\nS/pCBztl9O3A3LPIbt+bqPH/OBukdB5lo0nn04leEaIRsGdNYMoFdgEp8ESGCP8P\nW+2zmqjv2CqlJzI2Ytd2KBp7PT+88kDrzR2TofUCgYEA+zbZrbbj5wsWVcxs/tW/\nMpoReUtbbg+o7damEJGcn+OHmtVBiKJJZvc5y4WYCDY22tIp5tNOO0q1xKGe7Zh/\nsr1/LtiWMj29UaUMHsSrjMjK5DKhY9wN07m8Kmn3PpNKFUN5oqywOk0DCV2rh2Z2\n4qKo/EQMdbOG89FjlR8xwlUCgYEA3u+esPaEoQ7vFI2oRxh9ZKkU0c41oZK1pU/d\nt3G4kQIEsSAEh2guN32ziFmDQDkxht2KHhiA9JmZKDxfrpVChL7D4ALMoYnDSvkY\nUbvR5Ee7GDCXl8Yex5oh2Ap+T2NcXyWe5v6OC+VQP72F7TzlWCjaXefNvwP9+/4y\nvkB4OYcCgYBwibbkck0QYNAlqYmec8TOd2SikNaprIxB1+nW/FRM8FH8U9Ki0gjN\n/qy+dt+PtjHGv2WUCU8/ko1xQ/H9gFacjPWf19kZMr1QCP8v/WzYic8SgXf5U0hC\ndC9OVOA1ASir8+lWrcPYqk1U8ch4xLc3eiT3tchbJgyrxz60PCA/bQKBgF+gyaF/\nHUU48rUOTrCwgJk9LgERQ1Abbm+K4sBdt538D6cq5MZwmeKTuP8z5mkWH3iKb0SZ\nnjdN67SmsSRiQjZO3hapHL3uKidu0k+9ETuqyUaHEX+5LFrSctIJLkU/idAGgzLy\n3lub8eBlm504EejPHVxKoqbdP4VodLvHS8rhAoGBAIpJoPgGaLwFe9j6ESLJyFro\nm/N2fIeXRC4JTjfamPqeyrQZdKmY+hnu10VSV7h5cZ/cxqGBnGDJSkqmNpJncvvB\nSWzggLIonpa5viMj6C8fGp0QGjaOnu8YTKZsMjR2R9byA8+w0AkErPct0Cpt/PBW\nzQDQSNAsTUsb23nKlPJZ\n-----END PRIVATE KEY-----\n",
+  "client_email": "meetcal-play-store@meetcal-451221.iam.gserviceaccount.com",
+  "client_id": "117515761199793417751",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/meetcal-play-store%40meetcal-451221.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
