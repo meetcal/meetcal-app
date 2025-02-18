@@ -225,7 +225,7 @@ export default function InfoScreen() {
             onPress={() => handlePress('https://wl-wargames.com')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              Other Projects
+              Use the code MEETCAL20 for 20% off!
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
