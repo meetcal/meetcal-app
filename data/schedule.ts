@@ -9,7 +9,7 @@ export const schedule: Schedule = [
         {
           "id": "1",
           "number": 1,
-          "startTime": "8:00 AM",
+          "startTime": "8:00 AM", 
           "weighInTime": "6:00 AM",
           "platforms": [
             {
@@ -37,7 +37,7 @@ export const schedule: Schedule = [
         {
           "id": "2",
           "number": 2,
-          "startTime": "10:00 AM",
+          "startTime": "10:00 AM", //some at 9:50
           "weighInTime": "8:00 AM",
           "platforms": [
             {
@@ -65,7 +65,7 @@ export const schedule: Schedule = [
         {
           "id": "3",
           "number": 3,
-          "startTime": "12:00 PM",
+          "startTime": "12:00 PM", //some at 11:30
           "weighInTime": "10:00 AM",
           "platforms": [
             {
@@ -93,7 +93,7 @@ export const schedule: Schedule = [
         {
           "id": "4",
           "number": 4,
-          "startTime": "2:00 PM",
+          "startTime": "2:00 PM", //some at 1:10
           "weighInTime": "12:00 PM",
           "platforms": [
             {
@@ -121,7 +121,7 @@ export const schedule: Schedule = [
         {
           "id": "5",
           "number": 5,
-          "startTime": "4:00 PM",
+          "startTime": "4:00 PM", //some at 3
           "weighInTime": "2:00 PM",
           "platforms": [
             {
@@ -149,7 +149,7 @@ export const schedule: Schedule = [
         {
           "id": "6",
           "number": 6,
-          "startTime": "6:00 PM",
+          "startTime": "6:00 PM", //some at 5:30
           "weighInTime": "4:00 PM",
           "platforms": [
             {
@@ -177,7 +177,7 @@ export const schedule: Schedule = [
         {
           "id": "7",
           "number": 7,
-          "startTime": "8:00 PM",
+          "startTime": "8:00 PM", //some at 7:30/750
           "weighInTime": "6:00 PM",
           "platforms": [
             {
@@ -521,7 +521,7 @@ export const schedule: Schedule = [
         {
           "id": "20",
           "number": 20,
-          "startTime": "2:00 PM",
+          "startTime": "2:00 PM", //some at 1:40
           "weighInTime": "12:00 PM",
           "platforms": [
             {
@@ -639,7 +639,7 @@ export const schedule: Schedule = [
         {
           "id": "24",
           "number": 24,
-          "startTime": "10:00 AM",
+          "startTime": "10:00 AM", //some at 9:50
           "weighInTime": "8:00 AM",
           "platforms": [
             {
@@ -667,7 +667,7 @@ export const schedule: Schedule = [
         {
           "id": "25",
           "number": 25,
-          "startTime": "12:00 PM",
+          "startTime": "12:00 PM", //some at 11:45/1210
           "weighInTime": "10:00 AM",
           "platforms": [
             {
@@ -695,7 +695,7 @@ export const schedule: Schedule = [
         {
           "id": "26",
           "number": 26,
-          "startTime": "1:40 PM",
+          "startTime": "1:40 PM", //some at 1:40/130
           "weighInTime": "11:40 AM",
           "platforms": [
             {
@@ -719,7 +719,7 @@ export const schedule: Schedule = [
         {
           "id": "27",
           "number": 27,
-          "startTime": "4:00 PM",
+          "startTime": "4:00 PM",//some at 3:30 / 145???
           "weighInTime": "2:00 PM",
           "platforms": [
             {
