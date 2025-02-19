@@ -45,8 +45,25 @@ async function createCalendarEvents(sessions: Array<{
     }
 
     for (const session of sessions) {
-      // Parse time strings (assuming format like "8:00 AM")
-      const [timeStr, period] = session.startTime.split(' ');
+      // Find session in schedule to get platform-specific time
+      const sessionDay = schedule.find(day => 
+        day.sessions.some(s => s.number === parseInt(session.sessionNumber))
+      );
+      
+      const scheduleSession = sessionDay?.sessions.find(s => 
+        s.number === parseInt(session.sessionNumber)
+      );
+
+      const platform = scheduleSession?.platforms.find(p => 
+        p.platform === session.platform
+      );
+
+      // Use platform-specific time if available
+      const startTime = platform?.platformStartTime || session.startTime;
+      const weighInTime = calculateWeighInTime(startTime);
+
+      // Parse time strings
+      const [timeStr, period] = startTime.split(' ');
       const [hours, minutes] = timeStr.split(':').map(Number);
       
       let adjustedHours = hours;
@@ -65,9 +82,9 @@ async function createCalendarEvents(sessions: Array<{
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
         location: getFullLocation(),
-        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`,
-        startDate: startDate.getTime(),
-        endDate: endDate.getTime(),
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
+        startDate: startDate,
+        endDate: endDate,
         timeZone: 'America/New_York',
         alarms: [{
           relativeOffset: -60,
@@ -89,6 +106,32 @@ async function createCalendarEvents(sessions: Array<{
     
     throw new Error(errorMessage);
   }
+}
+
+function calculateWeighInTime(startTime: string): string {
+  const [time, period] = startTime.split(' ');
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  // Convert to 24 hour format
+  let hour24 = hours;
+  if (period === 'PM' && hours !== 12) hour24 += 12;
+  if (period === 'AM' && hours === 12) hour24 = 0;
+  
+  // Subtract 2 hours
+  let weighInHour = hour24 - 2;
+  
+  // Handle day wrap
+  if (weighInHour < 0) weighInHour += 24;
+  
+  // Convert back to 12 hour format
+  let weighInPeriod = 'AM';
+  if (weighInHour >= 12) {
+    weighInPeriod = 'PM';
+    if (weighInHour > 12) weighInHour -= 12;
+  }
+  if (weighInHour === 0) weighInHour = 12;
+  
+  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
 export default function SavedScreen() {
@@ -185,58 +228,81 @@ export default function SavedScreen() {
     );
   };
 
-  const renderSession = ({ item }) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.sessionContainer,
-        { backgroundColor: colors.card },
-        pressed && { backgroundColor: colors.pressed }
-      ]}
-      onPress={() => router.push({
-        pathname: '/(screens)/schedule-details',
-        params: item
-      })}
-    >
-      <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-        Session {item.sessionNumber} • {schedule.find(day => day.sessions.some(s => s.number === parseInt(item.sessionNumber)))?.date}
-      </ThemedText>
-      <View style={styles.timeContainer}>
-        <View style={styles.timeRow}>
-          <View style={styles.timeBlock}>
-            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-              Weigh-in:
-            </ThemedText>
-            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {item.weighInTime} EST
-            </ThemedText>
-          </View>
-          <View style={styles.timeSeparator} />
-          <View style={styles.timeBlock}>
-            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-              Start:
-            </ThemedText>
-            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {item.startTime} EST
-            </ThemedText>
+  const renderSession = ({ item }) => {
+    // Find session in schedule to get platform-specific time
+    const sessionDay = schedule.find(day => 
+      day.sessions.some(s => s.number === parseInt(item.sessionNumber))
+    );
+    
+    const scheduleSession = sessionDay?.sessions.find(s => 
+      s.number === parseInt(item.sessionNumber)
+    );
+
+    const platform = scheduleSession?.platforms.find(p => 
+      p.platform === item.platform
+    );
+
+    // Use platform-specific time if available, otherwise fall back to session time
+    const startTime = platform?.platformStartTime || item.startTime;
+    const weighInTime = calculateWeighInTime(startTime);
+
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.sessionContainer,
+          { backgroundColor: colors.card },
+          pressed && { backgroundColor: colors.pressed }
+        ]}
+        onPress={() => router.push({
+          pathname: '/(screens)/schedule-details',
+          params: {
+            ...item,
+            startTime,
+            weighInTime,
+          }
+        })}
+      >
+        <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
+          Session {item.sessionNumber} • {sessionDay?.date}
+        </ThemedText>
+        <View style={styles.timeContainer}>
+          <View style={styles.timeRow}>
+            <View style={styles.timeBlock}>
+              <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+                Weigh-in:
+              </ThemedText>
+              <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+                {weighInTime} EST
+              </ThemedText>
+            </View>
+            <View style={styles.timeSeparator} />
+            <View style={styles.timeBlock}>
+              <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+                Start:
+              </ThemedText>
+              <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+                {startTime} EST
+              </ThemedText>
+            </View>
           </View>
         </View>
-      </View>
-      
-      <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
-        <View style={[
-          styles.platformIndicator,
-          { backgroundColor: getPlatformColors()[item.platform] }
-        ]}>
-          <ThemedText style={styles.platformText}>
-            {item.platform}
+        
+        <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
+          <View style={[
+            styles.platformIndicator,
+            { backgroundColor: getPlatformColors()[item.platform] }
+          ]}>
+            <ThemedText style={styles.platformText}>
+              {item.platform}
+            </ThemedText>
+          </View>
+          <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
+            {item.weightClass}
           </ThemedText>
         </View>
-        <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
-          {item.weightClass}
-        </ThemedText>
-      </View>
-    </Pressable>
-  );
+      </Pressable>
+    );
+  };
 
   // Add useEffect for calendar permissions
   useEffect(() => {

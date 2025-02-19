@@ -49,8 +49,23 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
   const handleSessionPress = () => {
     if (!athlete.session) return;
 
-    const sessionDetails = getSessionDetails(athlete.session.number);
-    if (!sessionDetails) return;
+    const sessionDay = schedule.find(day => 
+      day.sessions.some(s => s.number === athlete.session?.number)
+    );
+    
+    const scheduleSession = sessionDay?.sessions.find(s => 
+      s.number === athlete.session?.number
+    );
+
+    const platform = scheduleSession?.platforms.find(p => 
+      p.platform === athlete.session?.platform
+    );
+
+    // Use platform-specific time if available
+    const startTime = platform?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime;
+    const weighInTime = startTime ? calculateWeighInTime(startTime) : getSessionDetails(athlete.session.number)?.weighInTime;
+
+    if (!sessionDay || !startTime || !weighInTime) return;
 
     router.push({
       pathname: '/(screens)/schedule-details',
@@ -59,9 +74,9 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
         sessionNumber: athlete.session.number,
         platform: athlete.session.platform,
         weightClass: athlete.weightClass,
-        startTime: sessionDetails.startTime,
-        weighInTime: sessionDetails.weighInTime,
-        date: sessionDetails.date,
+        startTime,
+        weighInTime,
+        date: sessionDay.fullDate,
       }
     });
   };
@@ -115,7 +130,15 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
                     Date & Time:
                   </ThemedText>
                   <ThemedText style={styles.detailValue}>
-                    {getSessionDetails(athlete.session.number)?.displayDate} • {getSessionDetails(athlete.session.number)?.startTime}
+                    {getSessionDetails(athlete.session.number)?.displayDate} • {
+                      schedule.find(day => 
+                        day.sessions.some(s => s.number === athlete.session?.number)
+                      )?.sessions.find(s => 
+                        s.number === athlete.session?.number
+                      )?.platforms.find(p => 
+                        p.platform === athlete.session?.platform
+                      )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
+                    }
                   </ThemedText>
                 </View>
               )}
@@ -209,11 +232,29 @@ async function requestCalendarPermissions() {
   return status === 'granted';
 }
 
+// Helper function to parse time string (same as in schedule-details.tsx)
+function parseTimeString(timeStr: string, dateStr: string) {
+  const [time, period] = timeStr.split(' ');
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  let adjustedHours = hours;
+  if (period === 'PM' && hours !== 12) {
+    adjustedHours += 12;
+  } else if (period === 'AM' && hours === 12) {
+    adjustedHours = 0;
+  }
+
+  const [year, month, day] = dateStr.split('-').map(Number);
+  
+  // Create Date object in UTC, adding 5 hours for EST
+  return new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
+}
+
 async function createCalendarEvents(sessions: Array<{
   date: string;
   startTime: string;
   weighInTime: string;
-  sessionNumber: number;
+  sessionNumber: string;
   platform: string;
   weightClass: string;
 }>) {
@@ -236,30 +277,34 @@ async function createCalendarEvents(sessions: Array<{
 
       calendarId = primaryCalendar.id;
     }
-  
-    for (const session of sessions) {
-      // Parse the date and time components
-      const [year, month, day] = session.date.split('-').map(Number);
-      const [timeStr, period] = session.startTime.split(' ');
-      let [hours, minutes] = timeStr.split(':').map(Number);
-      
-      // Convert to 24-hour format
-      if (period === 'PM' && hours !== 12) {
-        hours += 12;
-      } else if (period === 'AM' && hours === 12) {
-        hours = 0;
-      }
 
-      // Create Date object in UTC, adding 5 hours for EST
-      const startDate = new Date(Date.UTC(year, month - 1, day, hours + 5, minutes));
+    for (const session of sessions) {
+      // Find session in schedule to get platform-specific time
+      const sessionDay = schedule.find(day => 
+        day.sessions.some(s => s.number === session.sessionNumber)
+      );
+      
+      const scheduleSession = sessionDay?.sessions.find(s => 
+        s.number === session.sessionNumber
+      );
+
+      const platform = scheduleSession?.platforms.find(p => 
+        p.platform === session.platform
+      );
+
+      // Use platform-specific time if available
+      const startTime = platform?.platformStartTime || session.startTime;
+      const weighInTime = calculateWeighInTime(startTime);
+
+      const startDate = parseTimeString(startTime, sessionDay?.fullDate || session.date);
       const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
 
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
         location: getFullLocation(),
-        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${session.weighInTime}`,
-        startDate: startDate.getTime(),
-        endDate: endDate.getTime(),
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
+        startDate: startDate,
+        endDate: endDate,
         timeZone: 'America/New_York',
         alarms: [{
           relativeOffset: -60,
@@ -267,19 +312,7 @@ async function createCalendarEvents(sessions: Array<{
       });
     }
   } catch (error) {
-    console.error('Error creating calendar events:', error);
-    
-    if (error instanceof Error && error.message === 'no_calendar') {
-      throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
-    }
-    
-    const errorMessage = Platform.select({
-      ios: 'Could not add events to calendar. Please try again.',
-      android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
-      default: 'Could not add events to calendar. Please try again.'
-    });
-    
-    throw new Error(errorMessage);
+    throw error;
   }
 }
 
@@ -293,6 +326,33 @@ const getChevronIcon = (direction: 'down' | 'right') => {
 
 // Add special value for starred clubs filter
 const STARRED_CLUBS_FILTER = 'Favorites';
+
+// Add the helper function
+function calculateWeighInTime(startTime: string): string {
+  const [time, period] = startTime.split(' ');
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  // Convert to 24 hour format
+  let hour24 = hours;
+  if (period === 'PM' && hours !== 12) hour24 += 12;
+  if (period === 'AM' && hours === 12) hour24 = 0;
+  
+  // Subtract 2 hours
+  let weighInHour = hour24 - 2;
+  
+  // Handle day wrap
+  if (weighInHour < 0) weighInHour += 24;
+  
+  // Convert back to 12 hour format
+  let weighInPeriod = 'AM';
+  if (weighInHour >= 12) {
+    weighInPeriod = 'PM';
+    if (weighInHour > 12) weighInHour -= 12;
+  }
+  if (weighInHour === 0) weighInHour = 12;
+  
+  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
+}
 
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -448,39 +508,27 @@ export default function StartListScreen() {
 
   const handleSaveToCalendar = async () => {
     // Get unique sessions from filtered athletes
-    const uniqueSessions = filteredAthletes
+    const sessionsToAdd = filteredAthletes
       .filter(athlete => athlete.session)
-      .map(athlete => {
-        const sessionDetails = getSessionDetails(athlete.session!.number);
-        const session = schedule
-          .flatMap(day => day.sessions)
-          .find(s => s.number === athlete.session!.number);
-          
-        return {
-          date: sessionDetails?.date || '',
-          startTime: sessionDetails?.startTime || '',
-          weighInTime: session?.weighInTime || '',
-          sessionNumber: athlete.session!.number,
-          platform: athlete.session!.platform,
-          weightClass: athlete.weightClass
-        };
-      })
-      .filter(session => session.date && session.startTime)
-      .filter((session, index, self) => 
-        index === self.findIndex(s => 
-          s.date === session.date && 
-          s.startTime === session.startTime
-        )
-      );
+      .map(athlete => ({
+        date: schedule.find(day => 
+          day.sessions.some(s => s.number === athlete.session?.number)
+        )?.fullDate || '',
+        startTime: getSessionDetails(athlete.session?.number || 0)?.startTime || '',
+        weighInTime: getSessionDetails(athlete.session?.number || 0)?.weighInTime || '',
+        sessionNumber: athlete.session?.number.toString() || '',
+        platform: athlete.session?.platform || '',
+        weightClass: athlete.weightClass
+      }));
 
-    if (uniqueSessions.length === 0) {
+    if (sessionsToAdd.length === 0) {
       Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
       return;
     }
 
     Alert.alert(
       'Add to Calendar',
-      `Add ${uniqueSessions.length} session${uniqueSessions.length === 1 ? '' : 's'} to your calendar?`,
+      `Add ${sessionsToAdd.length} session${sessionsToAdd.length === 1 ? '' : 's'} to your calendar?`,
       [
         {
           text: 'Cancel',
@@ -495,7 +543,7 @@ export default function StartListScreen() {
                 Alert.alert('Permission Required', 'Calendar permission is required to add sessions.');
                 return;
               }
-              await createCalendarEvents(uniqueSessions);
+              await createCalendarEvents(sessionsToAdd);
               Alert.alert('Success', 'Sessions have been added to your calendar.');
             } catch (error) {
               Alert.alert('Error', error instanceof Error ? error.message : 'Failed to add sessions to calendar.');

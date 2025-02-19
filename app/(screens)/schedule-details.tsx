@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Linking } from 'react-native';
 import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors, getSessionTimeRange, getPlatformStartTime } from '@/data/schedule';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -15,7 +15,7 @@ import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 
-type SessionPlatform = 'A' | 'B' | 'C' | 'D';
+type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
 
 // Type for just the athlete data we need
 type SessionAthlete = {
@@ -142,6 +142,33 @@ function PlatformBadge({ platform }: { platform: SessionPlatform }) {
   );
 }
 
+// Add this helper function (or import it if you want to move it to a utilities file)
+function calculateWeighInTime(startTime: string): string {
+  const [time, period] = startTime.split(' ');
+  const [hours, minutes] = time.split(':').map(Number);
+  
+  // Convert to 24 hour format
+  let hour24 = hours;
+  if (period === 'PM' && hours !== 12) hour24 += 12;
+  if (period === 'AM' && hours === 12) hour24 = 0;
+  
+  // Subtract 2 hours
+  let weighInHour = hour24 - 2;
+  
+  // Handle day wrap
+  if (weighInHour < 0) weighInHour += 24;
+  
+  // Convert back to 12 hour format
+  let weighInPeriod = 'AM';
+  if (weighInHour >= 12) {
+    weighInPeriod = 'PM';
+    if (weighInHour > 12) weighInHour -= 12;
+  }
+  if (weighInHour === 0) weighInHour = 12;
+  
+  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
+}
+
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
@@ -198,6 +225,28 @@ export default function SessionDetailsScreen() {
     );
     return sessionDay?.date || `Session ${params.sessionNumber}`;
   }, [params.sessionNumber]);
+
+  // Get the platform-specific start time and calculate weigh-in time
+  const platformStartTime = useMemo(() => {
+    const sessionDay = schedule.find(day => 
+      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    );
+    
+    const session = sessionDay?.sessions.find(s => 
+      s.number === parseInt(params.sessionNumber)
+    );
+
+    const platformData = session?.platforms.find(p => 
+      p.platform === params.platform
+    );
+
+    return platformData?.platformStartTime || params.startTime;
+  }, [params.sessionNumber, params.platform, params.startTime]);
+
+  // Calculate weigh-in time based on platform start time
+  const platformWeighInTime = useMemo(() => {
+    return calculateWeighInTime(platformStartTime);
+  }, [platformStartTime]);
 
   const showSaveAlert = (action: 'save' | 'remove') => {
     const title = action === 'save' ? 'Session Saved' : 'Session Unsaved';
@@ -276,7 +325,7 @@ export default function SessionDetailsScreen() {
       return new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
     };
 
-    // Find the session by session number and platform instead of ID
+    // Find the session and get platform-specific time
     const sessionDay = schedule.find(day => 
       day.sessions.some(session => 
         session.number === parseInt(params.sessionNumber) &&
@@ -299,15 +348,21 @@ export default function SessionDetailsScreen() {
       return;
     }
 
-    const startDate = parseTimeString(params.startTime, sessionDay.fullDate);
+    // Use platform-specific start time if available, otherwise use session start time
+    const session = sessionDay.sessions.find(s => s.number === parseInt(params.sessionNumber));
+    const platform = session?.platforms.find(p => p.platform === params.platform);
+    const startTime = platform?.platformStartTime || params.startTime;
+    const weighInTime = calculateWeighInTime(startTime);
+
+    const startDate = parseTimeString(startTime, sessionDay.fullDate);
     const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
     const eventDetails = {
       title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
       location: getFullLocation(),
-      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${params.weighInTime}`,
-      startDate: startDate.getTime(),
-      endDate: endDate.getTime(),
+      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${weighInTime}`,
+      startDate: startDate,
+      endDate: endDate,
       timeZone: 'America/New_York',
       alarms: [{
         relativeOffset: -60,
@@ -321,7 +376,6 @@ export default function SessionDetailsScreen() {
         const calendar = await Calendar.getDefaultCalendarAsync();
         calendarId = calendar.id;
       } else {
-        // Android: Get available calendars and find a suitable one
         const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
         const primaryCalendar = calendars.find(cal => 
           cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
@@ -329,13 +383,7 @@ export default function SessionDetailsScreen() {
         );
 
         if (!primaryCalendar) {
-          Alert.alert(
-            'Calendar Error',
-            'No suitable calendar found. Please make sure you have at least one calendar set up on your device.',
-            [{ text: 'OK' }],
-            { userInterfaceStyle: 'light' }
-          );
-          return;
+          throw new Error('no_calendar');
         }
 
         calendarId = primaryCalendar.id;
@@ -349,7 +397,6 @@ export default function SessionDetailsScreen() {
     } catch (error) {
       console.error('Error creating calendar event:', error);
       
-      // More specific error message
       const errorMessage = Platform.select({
         ios: 'Could not add event to calendar. Please try again.',
         android: 'Could not add event to calendar. Please make sure you have a calendar app installed and try again.',
@@ -422,7 +469,7 @@ export default function SessionDetailsScreen() {
                 Weigh-in Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.weighInTime} EST
+                {platformWeighInTime} EST
               </ThemedText>
             </View>
 
@@ -431,7 +478,7 @@ export default function SessionDetailsScreen() {
                 Start Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.startTime} EST
+                {platformStartTime} EST
               </ThemedText>
             </View>
 

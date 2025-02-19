@@ -7,7 +7,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { schedule, getPlatformColors } from '@/data/schedule';
+import { schedule, getPlatformColors, getSessionTimeRange, formatTimeRange } from '@/data/schedule';
 import { Session, Platform, DaySchedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
@@ -79,27 +79,6 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
         Session {session.number}
       </ThemedText>
-      <View style={styles.timeContainer}>
-        <View style={styles.timeRow}>
-          <View style={styles.timeBlock}>
-            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-              Weigh-in:
-            </ThemedText>
-            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {session.weighInTime} EST
-            </ThemedText>
-          </View>
-          <View style={styles.timeSeparator} />
-          <View style={styles.timeBlock}>
-            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-              Start:
-            </ThemedText>
-            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-              {session.startTime} EST
-            </ThemedText>
-          </View>
-        </View>
-      </View>
       
       <View style={[styles.platformsContainer, { backgroundColor: colors.card }]}>
         {filteredPlatforms.map((platform, index) => (
@@ -125,9 +104,14 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
                   {platform.platform}
                 </ThemedText>
               </View>
-              <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
-                {platform.weightClass}
-              </ThemedText>
+              <View style={styles.platformInfo}>
+                <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
+                  {platform.weightClass}
+                </ThemedText>
+                <ThemedText style={[styles.platformTimeText, { color: colors.secondaryText }]}>
+                  Start: {platform.platformStartTime || session.startTime} EST
+                </ThemedText>
+              </View>
             </View>
             <IconSymbol 
               name="chevron.right" 
@@ -389,7 +373,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     padding: 16,
-    paddingBottom: 0,
+    paddingBottom: 4,
   },
   timeContainer: {
     padding: 16,
@@ -428,7 +412,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
   },
   platformCardBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -438,9 +421,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   platformContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginRight: 12,
   },
   platformIndicator: {
     paddingHorizontal: 8,
@@ -452,9 +437,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  platformInfo: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  platformTimeText: {
+    fontSize: 13,
+    marginTop: 2,
+  },
   weightClassText: {
     fontSize: 15,
-    color: '#666',
   },
   filterContainer: {
     padding: 16,

@@ -46,11 +46,13 @@ export const schedule: Schedule = [
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 73 D"
+              "weightClass": "VWS1 M 73 D",
+              "platformStartTime": "9:50 AM"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 44 B"
+              "weightClass": "VWS1 M 44 B",
+              "platformStartTime": "9:50 AM"
             },
             {
               "platform": "Stars",
@@ -58,7 +60,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 59 B"
+              "weightClass": "UNI W 59 B",
+              "platformStartTime": "9:50 AM"
             }
           ]
         },
@@ -78,7 +81,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 55 A"
+              "weightClass": "VWS1 M 55 A",
+              "platformStartTime": "11:30 AM"
             },
             {
               "platform": "Stars",
@@ -106,7 +110,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 45 A"
+              "weightClass": "VWS1 W 45 A",
+              "platformStartTime": "1:10 PM"
             },
             {
               "platform": "Stars",
@@ -134,7 +139,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 61 A"
+              "weightClass": "VWS1 M 61 A",
+              "platformStartTime": "3:00 PM"
             },
             {
               "platform": "Stars",
@@ -162,7 +168,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 55 A"
+              "weightClass": "VWS1 W 55 A",
+              "platformStartTime": "5:30 PM"
             },
             {
               "platform": "Stars",
@@ -186,11 +193,13 @@ export const schedule: Schedule = [
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 67 A"
+              "weightClass": "VWS1 M 67 A",
+              "platformStartTime": "7:50 PM"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 73 A"
+              "weightClass": "VWS1 M 73 A",
+              "platformStartTime": "7:30 PM"
             },
             {
               "platform": "Stars",
@@ -538,7 +547,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 102 A"
+              "weightClass": "UNI M 102 A",
+              "platformStartTime": "1:40 PM"
             },
             {
               "platform": "Stripes",
@@ -652,7 +662,8 @@ export const schedule: Schedule = [
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 109 B"
+              "weightClass": "VWS1 M 109 B",
+              "platformStartTime": "9:50 AM"
             },
             {
               "platform": "Stars",
@@ -676,11 +687,13 @@ export const schedule: Schedule = [
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 81 A"
+              "weightClass": "VWS1 W 81 A",
+              "platformStartTime": "11:45 AM"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 81+ B"
+              "weightClass": "VWS1 W 81+ B",
+              "platformStartTime": "12:10 PM"
             },
             {
               "platform": "Stars",
@@ -700,11 +713,13 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 109+ B"
+              "weightClass": "VWS1 M 109+ B",
+              "platformStartTime": "1:40 PM"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 87+ A"
+              "weightClass": "VWS1 W 87+ A",
+              "platformStartTime": "1:30 PM"
             },
             {
               "platform": "Blue",
@@ -728,15 +743,17 @@ export const schedule: Schedule = [
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 109 A"
+              "weightClass": "VWS1 M 109 A",
+              "platformStartTime": "3:30 PM"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 87+ A"
+              "weightClass": "VWS1 W 87+ A"            
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 87+ A"
+              "weightClass": "UNI W 87+ A",
+              "platformStartTime": "3:45 PM"
             },
             {
               "platform": "Stripes",
@@ -771,4 +788,60 @@ export function getPlatformColors() {
 export interface PlatformSession {
   platform: Platform;
   weightClass: string;
+}
+
+// Helper to check if a session has multiple different start times
+export function getSessionTimeRange(session: Session): { start: string; end: string } | null {
+  // If no platform has a specific time, return null to indicate single time
+  const hasCustomTimes = session.platforms.some(p => p.platformStartTime);
+  if (!hasCustomTimes) {
+    return null;
+  }
+
+  // Get all times including default and platform-specific
+  const times = session.platforms.map(p => p.platformStartTime || session.startTime);
+  
+  // Convert to 24h format for comparison
+  const convertTo24h = (timeStr: string) => {
+    const [time, period] = timeStr.split(' ');
+    const [hours, minutes] = time.split(':').map(Number);
+    let hour = hours;
+    
+    if (period === 'PM' && hours !== 12) {
+      hour += 12;
+    } else if (period === 'AM' && hours === 12) {
+      hour = 0;
+    }
+    
+    return { hour, minutes };
+  };
+
+  // Sort times and get earliest/latest
+  const sortedTimes = times.sort((a, b) => {
+    const timeA = convertTo24h(a);
+    const timeB = convertTo24h(b);
+    if (timeA.hour === timeB.hour) {
+      return timeA.minutes - timeB.minutes;
+    }
+    return timeA.hour - timeB.hour;
+  });
+
+  return {
+    start: sortedTimes[0],
+    end: sortedTimes[sortedTimes.length - 1]
+  };
+}
+
+// Helper to get the specific start time for a platform
+export function getPlatformStartTime(session: Session, platformName: string): string {
+  const platform = session.platforms.find(p => p.platform === platformName);
+  return platform?.platformStartTime || session.startTime;
+}
+
+// Format time range for display
+export function formatTimeRange(timeRange: { start: string; end: string }): string {
+  if (timeRange.start === timeRange.end) {
+    return timeRange.start;
+  }
+  return `${timeRange.start}-${timeRange.end}`;
 } 
