@@ -14,23 +14,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "UNI M 73"
+              "weightClass": "UNI M 73 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 49"
+              "weightClass": "VWS1 W 49 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 55"
+              "weightClass": "VWS1 M 55 C"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 61"
+              "weightClass": "UNI M 61 C"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 55"
+              "weightClass": "UNI W 55 B"
             }
           ]
         },
@@ -42,23 +42,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 55"
+              "weightClass": "VWS1 W 55 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 73"
+              "weightClass": "VWS1 M 73 D"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 44"
+              "weightClass": "VWS1 M 44 B"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 61"
+              "weightClass": "UNI M 61 B"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 59"
+              "weightClass": "UNI W 59 B"
             }
           ]
         },
@@ -70,23 +70,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 30"
+              "weightClass": "VWS1 W 30 A"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 73"
+              "weightClass": "VWS1 M 73 C"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 55"
+              "weightClass": "VWS1 M 55 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 67"
+              "weightClass": "UNI M 67 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 73"
+              "weightClass": "UNI M 73 B"
             }
           ]
         },
@@ -98,23 +98,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 67"
+              "weightClass": "VWS1 M 67 B"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 73"
+              "weightClass": "VWS1 M 73 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 45"
+              "weightClass": "VWS1 W 45 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 49"
+              "weightClass": "UNI W 49 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 55"
+              "weightClass": "UNI W 55 A"
             }
           ]
         },
@@ -126,23 +126,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 59"
+              "weightClass": "VWS1 W 59 E"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 55"
+              "weightClass": "VWS1 W 55 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 61"
+              "weightClass": "VWS1 M 61 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 81"
+              "weightClass": "UNI M 81 D"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 73"
+              "weightClass": "UNI M 73 A"
             }
           ]
         },
@@ -154,23 +154,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 59"
+              "weightClass": "VWS1 W 59 D"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 49"
+              "weightClass": "VWS1 W 49 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 55"
+              "weightClass": "VWS1 W 55 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 59"
+              "weightClass": "UNI W 59 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 G"
             }
           ]
         },
@@ -182,23 +182,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 59"
+              "weightClass": "VWS1 W 59 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 67"
+              "weightClass": "VWS1 M 67 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 73"
+              "weightClass": "VWS1 M 73 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 81"
+              "weightClass": "UNI M 81 C"
             },
             {
               "platform": "Stripes",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 F"
             }
           ]
         }
@@ -216,23 +216,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 G"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 G"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 E"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 71"
+              "weightClass": "UNI W 71 C"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 89"
+              "weightClass": "UNI M 89 D"
             }
           ]
         },
@@ -244,23 +244,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 F"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 F"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 D"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 64"
+              "weightClass": "UNI W 64 B"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 89"
+              "weightClass": "UNI M 89 C"
             }
           ]
         },
@@ -272,23 +272,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 E"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 E"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 59"
+              "weightClass": "VWS1 W 59 B"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 64"
+              "weightClass": "UNI W 64 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 81"
+              "weightClass": "UNI M 81 B"
             }
           ]
         },
@@ -312,23 +312,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 D"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 D"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 59"
+              "weightClass": "VWS1 W 59 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 71"
+              "weightClass": "UNI W 71 B"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 81"
+              "weightClass": "UNI M 81 A"
             }
           ]
         },
@@ -352,23 +352,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 C"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 C"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 71"
+              "weightClass": "UNI W 71 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 I"
             }
           ]
         },
@@ -380,23 +380,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 B"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 B"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 H"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 89"
+              "weightClass": "UNI M 89 B"
             }
           ]
         },
@@ -408,23 +408,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 64"
+              "weightClass": "VWS1 W 64 A"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 89"
+              "weightClass": "VWS1 M 89 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 81"
+              "weightClass": "VWS1 M 81 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 G"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 89"
+              "weightClass": "UNI M 89 A"
             }
           ]
         }
@@ -442,23 +442,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 F"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 F"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 F"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 96"
+              "weightClass": "UNI M 96 C"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 76"
+              "weightClass": "UNI W 76 B"
             }
           ]
         },
@@ -470,23 +470,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 E"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 E"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 E"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 96"
+              "weightClass": "UNI M 96 B"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 81"
+              "weightClass": "UNI W 81 B"
             }
           ]
         },
@@ -498,23 +498,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 D"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 D"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 D"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 96"
+              "weightClass": "UNI M 96 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 76"
+              "weightClass": "UNI W 76 A"
             }
           ]
         },
@@ -526,23 +526,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 C"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 C"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 102"
+              "weightClass": "UNI M 102 A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 81"
+              "weightClass": "UNI W 81 A"
             }
           ]
         },
@@ -554,23 +554,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 B"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 B"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 81"
+              "weightClass": "VWS1 W 81 E"
             },
             {
               "platform": "Stripes",
-              "weightClass": "VWS1 M 102"
+              "weightClass": "VWS1 M 102 D"
             }
           ]
         },
@@ -582,23 +582,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 W 71"
+              "weightClass": "VWS1 W 71 A"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 76"
+              "weightClass": "VWS1 W 76 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 96"
+              "weightClass": "VWS1 M 96 A"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 81"
+              "weightClass": "VWS1 W 81 D"
             },
             {
               "platform": "Stripes",
-              "weightClass": "VWS1 W 87"
+              "weightClass": "VWS1 W 87 D"
             }
           ]
         }
@@ -616,23 +616,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 102"
+              "weightClass": "VWS1 M 102 C"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 81"
+              "weightClass": "VWS1 W 81 C"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 87"
+              "weightClass": "VWS1 W 87 C"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 87+"
+              "weightClass": "VWS1 W 87+ E"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 109"
+              "weightClass": "UNI M 109 B"
             }
           ]
         },
@@ -644,23 +644,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 102"
+              "weightClass": "VWS1 M 102 B"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 81"
+              "weightClass": "VWS1 W 81 B"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 M 109"
+              "weightClass": "VWS1 M 109 B"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 87+"
+              "weightClass": "VWS1 W 87+ D"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 109+"
+              "weightClass": "UNI M 109+ B"
             }
           ]
         },
@@ -672,23 +672,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 102"
+              "weightClass": "VWS1 M 102 A"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 81"
+              "weightClass": "VWS1 W 81 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 81+"
+              "weightClass": "VWS1 W 81+ B"
             },
             {
               "platform": "Stars",
-              "weightClass": "VWS1 W 87+"
+              "weightClass": "VWS1 W 87+ C"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI W 87"
+              "weightClass": "UNI W 87 A"
             }
           ]
         },
@@ -700,19 +700,19 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 109+"
+              "weightClass": "VWS1 M 109+ B"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 W 87"
+              "weightClass": "VWS1 W 87+ A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 87+"
+              "weightClass": "VWS1 W 87+ B"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI M 109"
+              "weightClass": "UNI M 109 A"
             }
           ]
         },
@@ -724,23 +724,23 @@ export const schedule: Schedule = [
           "platforms": [
             {
               "platform": "Red",
-              "weightClass": "VWS1 M 109+"
+              "weightClass": "VWS1 M 109+ A"
             },
             {
               "platform": "White",
-              "weightClass": "VWS1 M 109"
+              "weightClass": "VWS1 M 109 A"
             },
             {
               "platform": "Blue",
-              "weightClass": "VWS1 W 87+"
+              "weightClass": "VWS1 W 87+ A"
             },
             {
               "platform": "Stars",
-              "weightClass": "UNI W 87+"
+              "weightClass": "UNI W 87+ A"
             },
             {
               "platform": "Stripes",
-              "weightClass": "UNI M 109+"
+              "weightClass": "UNI M 109+ A"
             }
           ]
         }
