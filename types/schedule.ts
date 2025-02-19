@@ -1,6 +1,7 @@
 export type Platform = {
   platform: 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
   weightClass: string;
+  platformStartTime?: string; // Optional field for platform-specific start time
 };
 
 export type Session = {
