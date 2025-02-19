@@ -58,7 +58,7 @@ export default function EventInfoScreen() {
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
-            Virus Weightlifting Series 1
+            Virus Weightlifting Series 1 & University Nationals
           </ThemedText>
         </View>
         

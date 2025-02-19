@@ -20,7 +20,6 @@ export default function FeedbackScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
-  const [initialLoading, setInitialLoading] = useState(true)
   const [showRolePicker, setShowRolePicker] = useState(false)
 
   const colors = {
@@ -31,31 +30,6 @@ export default function FeedbackScreen() {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
   }
-
-  // Load user profile data from Supabase
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const profiles = await supabase
-          .from('user_profiles')
-          .select('*')
-          .limit(1)
-          .single()
-
-        if (profiles.data) {
-          setName(profiles.data.name || '')
-          setEmail(profiles.data.email || '')
-          setRole(profiles.data.role || 'Athlete')
-        }
-      } catch (error) {
-        console.error('Error loading profile:', error)
-      } finally {
-        setInitialLoading(false)
-      }
-    }
-
-    loadProfile()
-  }, [])
 
   const handleSubmit = async () => {
     if (!name || !email || !description) {
@@ -102,115 +76,107 @@ export default function FeedbackScreen() {
         }}
       />
 
-      {initialLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.text} />
-        </View>
-      ) : (
-        <>
-          <ScrollView 
-            style={styles.scrollView}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingHorizontal: 20 }
-            ]}
-          >
-            {error && (
-              <ThemedText style={styles.error}>{error}</ThemedText>
-            )}
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: 20 }
+        ]}
+      >
+        {error && (
+          <ThemedText style={styles.error}>{error}</ThemedText>
+        )}
 
-            <View style={styles.formContainer}>
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.label}>Name</ThemedText>
-                <TextInput
-                  style={[styles.input, { 
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: colors.input
-                  }]}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Enter your name"
-                  placeholderTextColor={colors.text + '80'}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.label}>Email</ThemedText>
-                <TextInput
-                  style={[styles.input, { 
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: colors.input
-                  }]}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter your email"
-                  placeholderTextColor={colors.text + '80'}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.label}>Role</ThemedText>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.roleButton,
-                    { 
-                      backgroundColor: colors.input,
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.8 : 1
-                    }
-                  ]}
-                  onPress={() => setShowRolePicker(true)}
-                >
-                  <ThemedText style={[
-                    styles.roleText,
-                    { color: colors.text }
-                  ]}>
-                    {role}
-                  </ThemedText>
-                </Pressable>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.label}>Description</ThemedText>
-                <TextInput
-                  style={[styles.textArea, { 
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: colors.input
-                  }]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Describe your feedback"
-                  placeholderTextColor={colors.text + '80'}
-                  multiline
-                  numberOfLines={6}
-                  textAlignVertical="top"
-                />
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={[
-            styles.buttonWrapper,
-            { 
-              paddingBottom: insets.bottom + 20,
-              backgroundColor: colors.background 
-            }
-          ]}>
-            <ThemedButton
-              onPress={handleSubmit}
-              disabled={loading}
-              style={styles.button}
-            >
-              {loading ? 'Submitting...' : 'Submit Feedback'}
-            </ThemedButton>
+        <View style={styles.formContainer}>
+          <View style={styles.inputContainer}>
+            <ThemedText style={styles.label}>Name</ThemedText>
+            <TextInput
+              style={[styles.input, { 
+                borderColor: colors.border,
+                color: colors.text,
+                backgroundColor: colors.input
+              }]}
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name"
+              placeholderTextColor={colors.text + '80'}
+            />
           </View>
-        </>
-      )}
+
+          <View style={styles.inputContainer}>
+            <ThemedText style={styles.label}>Email</ThemedText>
+            <TextInput
+              style={[styles.input, { 
+                borderColor: colors.border,
+                color: colors.text,
+                backgroundColor: colors.input
+              }]}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor={colors.text + '80'}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <ThemedText style={styles.label}>Role</ThemedText>
+            <Pressable
+              style={({ pressed }) => [
+                styles.roleButton,
+                { 
+                  backgroundColor: colors.input,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.8 : 1
+                }
+              ]}
+              onPress={() => setShowRolePicker(true)}
+            >
+              <ThemedText style={[
+                styles.roleText,
+                { color: colors.text }
+              ]}>
+                {role}
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <ThemedText style={styles.label}>Description</ThemedText>
+            <TextInput
+              style={[styles.textArea, { 
+                borderColor: colors.border,
+                color: colors.text,
+                backgroundColor: colors.input
+              }]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Describe your feedback"
+              placeholderTextColor={colors.text + '80'}
+              multiline
+              numberOfLines={6}
+              textAlignVertical="top"
+            />
+          </View>
+        </View>
+      </ScrollView>
+
+      <View style={[
+        styles.buttonWrapper,
+        { 
+          paddingBottom: insets.bottom + 20,
+          backgroundColor: colors.background 
+        }
+      ]}>
+        <ThemedButton
+          onPress={handleSubmit}
+          disabled={loading}
+          style={styles.button}
+        >
+          {loading ? 'Submitting...' : 'Submit Feedback'}
+        </ThemedButton>
+      </View>
 
       <Modal
         visible={showSuccessModal}
@@ -329,11 +295,6 @@ const styles = StyleSheet.create({
     color: 'red',
     marginBottom: 20,
     textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   successModalOverlay: {
     flex: 1,
