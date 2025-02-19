@@ -1,14 +1,6 @@
 # Android Compatibility Issues
 
 ## Critical (Will Prevent Build/Cause Crashes)
-1. Conflicting In-App Purchase Modules
-   - Issue: `expo-in-app-purchases` module is causing build failures but isn't being used
-   - Fix: Remove the unused module:
-   ```bash
-   npm uninstall expo-in-app-purchases
-   ```
-   - Note: App uses RevenueCat's `react-native-purchases` for IAP functionality
-
 2. Missing `invokeDefaultOnBackPressed` Method in MainActivity.kt
    - Current: Method declaration is missing
    - Fix: Add complete method implementation:
