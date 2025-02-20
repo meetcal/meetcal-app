@@ -645,7 +645,7 @@ export const liftingResults: LiftResult[] = [
   { name: "Ellis Ruiz", club: "McKenna Weightlifting", weightClass: "Male 44kg", entryTotal: 50, bestSnatch: 20, bestCJ: 26, bestTotal: 45, session: { number: 1, platform: "Blue"} },
   { name: "Charles Epperson", club: "WOLFPACK", weightClass: "Male 49kg", entryTotal: 65, bestSnatch: 28, bestCJ: 36, bestTotal: 64, session: { number: 1, platform: "Blue"} },
   { name: "Gideon Hayhoe", club: "Unaffiliated", weightClass: "Male 55kg", entryTotal: 70, bestSnatch: 34, bestCJ: 44, bestTotal: 78, session: { number: 1, platform: "Blue"} },
-  { name: "Ferron Harris", club: "Lorton Barbell Club", weightClass: "Male 39kg", entryTotal: 175, bestSnatch: 80, bestCJ: 95, bestTotal: 175, session: { number: 1, platform: "Blue"} },
+  { name: "Ferron Harris.", club: "Lorton Barbell Club", weightClass: "Male 39kg", entryTotal: 175, bestSnatch: 80, bestCJ: 95, bestTotal: 175, session: { number: 1, platform: "Blue"} },
   { name: "Eduardo Marquez", club: "ALLSOUTH Barbell", weightClass: "Male 49kg", entryTotal: 60, bestSnatch: 28, bestCJ: 35, bestTotal: 62, session: { number: 1, platform: "Blue"} },
   { name: "Angel Santiago", club: "Maxx Effort Training", weightClass: "Male 55kg", entryTotal: 38, bestSnatch: 23, bestCJ: 29, bestTotal: 52, session: { number: 1, platform: "Blue"} },
 
