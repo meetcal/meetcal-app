@@ -1090,7 +1090,7 @@ export const liftingResults: LiftResult[] = [
   { name: "Christopher Keegan", club: "Mastiff Barbell", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 125, bestCJ: 150, bestTotal: 275, session: { number: 24, platform: "Blue"} },
   { name: "Edward Quillin", club: "Country Strong", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 116, bestCJ: 143, bestTotal: 255, session: { number: 24, platform: "Blue"} },
   { name: "Oluwaseun Ladipo", club: "Tacoma Strength Weightlifting", weightClass: "Male 109kg", entryTotal: 260, bestSnatch: 112, bestCJ: 136, bestTotal: 248, session: { number: 24, platform: "Blue"} },
-  { name: "Eric Hale", club: "Bexar Barbell", weightClass: "Male 109kg", entryTotal: 255, bestSnatch: 125, bestCJ: 140, bestTotal: 265, session: { number: 24, platform: "Blue"} }
+  { name: "Eric Hale", club: "Bexar Barbell", weightClass: "Male 109kg", entryTotal: 255, bestSnatch: 125, bestCJ: 140, bestTotal: 265, session: { number: 24, platform: "Blue"} },
   { name: "Ryan Newton", club: "DSP Barbell Club", weightClass: "Male 109kg", entryTotal: 250, bestSnatch: 112, bestCJ: 140, bestTotal: 252, session: { number: 24, platform: "Blue"} },
 
 
