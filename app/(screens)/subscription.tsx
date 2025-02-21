@@ -242,12 +242,21 @@ export default function SubscriptionScreen() {
     }
   };
 
+  const handleTermsPress = () => {
+    Linking.openURL('https://meetcal.app/terms');
+  };
+
+  const handleEULAPress = () => {
+    Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
+  };
+
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    link: currentTheme === 'dark' ? '#007AFF' : '#007AFF',
   };
 
   return (
@@ -286,12 +295,12 @@ export default function SubscriptionScreen() {
       ]}>
         <View style={styles.contentHeader}>
           <ThemedText style={styles.title}>
-            {isSubscribed ? 'MeetCal Pro' : 'Unlock Premium Features'}
+            {isSubscribed ? 'MeetCal Pro' : 'Sign Up To Access'}
           </ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
             {isSubscribed 
               ? 'You have full access to all premium features'
-              : 'Enhance your competition experience'
+              : 'All MeetCal features require payment through one of the options below'
             }
           </ThemedText>
         </View>
@@ -419,6 +428,20 @@ export default function SubscriptionScreen() {
               </View>
             )}
             
+            <View style={styles.legalLinks}>
+              <Pressable onPress={handleTermsPress}>
+                <ThemedText style={[styles.legalText, { color: colors.link }]}>
+                  Terms of Use
+                </ThemedText>
+              </Pressable>
+              <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
+              <Pressable onPress={handleEULAPress}>
+                <ThemedText style={[styles.legalText, { color: colors.link }]}>
+                  License Agreement
+                </ThemedText>
+              </Pressable>
+            </View>
+
             <View style={styles.bottomButtons}>
               <Pressable
                 style={styles.restoreButton}
@@ -644,5 +667,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     textAlign: 'center',
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  legalText: {
+    fontSize: 14,
   },
 }); 
