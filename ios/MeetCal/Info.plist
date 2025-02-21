@@ -54,13 +54,13 @@
       <true/>
     </dict>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your calendars</string>
+    <string>MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your calendars</string>
+    <string>MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your reminders</string>
+    <string>MeetCal needs reminders access to set alerts for your upcoming weightlifting competition sessions, including weigh-in times and platform start times. MeetCal will only ever write new reminders to your reminders, it will not read your current reminders.</string>
     <key>NSRemindersUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your reminders</string>
+    <string>MeetCal needs reminders access to set alerts for your upcoming weightlifting competition sessions, including weigh-in times and platform start times. MeetCal will only ever write new reminders to your reminders, it will not read your current reminders.</string>
     <key>NSUbiquitousContainers</key>
     <dict>
       <key>iCloud.com.memohnsen.meetcal</key>
