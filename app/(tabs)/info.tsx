@@ -238,17 +238,33 @@ export default function InfoScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              styles.lastSection,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => handlePress('https://meetcal.app/privacy')}
           >
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              We Will Never Sell Your Data
+              Policies & Agreements
             </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
                 Privacy Policy & Terms of Use
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => handlePress('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                End User License Agreement
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
