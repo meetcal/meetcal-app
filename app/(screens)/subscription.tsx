@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking, Text } from 'react-native';
+import { View, StyleSheet, Pressable, Alert, ActivityIndicator, Platform, Linking, Text, ScrollView } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -286,176 +286,182 @@ export default function SubscriptionScreen() {
         </View>
       )}
 
-      <View style={[
-        styles.card, 
-        { 
-          backgroundColor: colors.card,
-          marginTop: params.from === 'info' ? 16 : insets.top + 20
-        }
-      ]}>
-        <View style={styles.contentHeader}>
-          <ThemedText style={styles.title}>
-            {isSubscribed ? 'MeetCal Pro' : 'Sign Up To Access'}
-          </ThemedText>
-          <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
-            {isSubscribed 
-              ? 'You have full access to all premium features'
-              : 'All MeetCal features require payment through one of the options below'
-            }
-          </ThemedText>
-        </View>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[
+          styles.card, 
+          { 
+            backgroundColor: colors.card,
+            marginTop: params.from === 'info' ? 16 : insets.top + 20
+          }
+        ]}>
+          <View style={styles.contentHeader}>
+            <ThemedText style={styles.title}>
+              {isSubscribed ? 'MeetCal Pro' : 'Sign Up To Access'}
+            </ThemedText>
+            <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
+              {isSubscribed 
+                ? 'You have full access to all premium features'
+                : 'All MeetCal features require payment through one of the options below'
+              }
+            </ThemedText>
+          </View>
 
-        <View style={styles.features}>
-          <Feature
-            icon="calendar"
-            title="Calendar Made Simple"
-            description="The PDF calendar is hard to read and hard to find. Have your whole competition schedule simple and clean."
-            colors={colors}
-          />
-          <Feature
-            icon="bookmark.fill"
-            title="Save Sessions"
-            description="Save sessions to the app or directly to your calendar. Know exactly where all your athletes and teams are competing in just a quick glance."
-            colors={colors}
-          />
-          <Feature
-            icon="line.3.horizontal.decrease"
-            title="Filter Views"
-            description="Filter your views by weight class, platform, even by club. Take control of the schedule in a way you've never seen before."
-            colors={colors}
-          />
-        </View>
+          <View style={styles.features}>
+            <Feature
+              icon="calendar"
+              title="Calendar Made Simple"
+              description="The PDF calendar is hard to read and hard to find. Have your whole competition schedule simple and clean."
+              colors={colors}
+            />
+            <Feature
+              icon="bookmark.fill"
+              title="Save Sessions"
+              description="Save sessions to the app or directly to your calendar. Know exactly where all your athletes and teams are competing in just a quick glance."
+              colors={colors}
+            />
+            <Feature
+              icon="line.3.horizontal.decrease"
+              title="Filter Views"
+              description="Filter your views by weight class, platform, even by club. Take control of the schedule in a way you've never seen before."
+              colors={colors}
+            />
+          </View>
 
-        {isSubscribed ? (
-          <Pressable 
-            style={[
-              styles.manageButton, 
-              loadingProductId === 'manage' && styles.buttonDisabled
-            ]}
-            onPress={handleManageSubscription}
-            disabled={loadingProductId === 'manage'}
-          >
-            <View style={styles.buttonContent}>
-              {loadingProductId === 'manage' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <ThemedText style={styles.buttonText}>
-                  Manage Subscription
-                </ThemedText>
-              )}
-            </View>
-          </Pressable>
-        ) : (
-          <>
-            {error ? (
-              <View style={styles.loadingContainer}>
-                <ThemedText style={[styles.loadingText, { color: '#FF3B30' }]}>
-                  {error}
-                </ThemedText>
-                <ThemedText style={[styles.helpText, { color: colors.secondaryText }]}>
-                  Make sure you're signed into the App Store and have a valid payment method.
-                </ThemedText>
-                <Pressable
-                  style={[styles.retryButton, { marginTop: 12 }]}
-                  onPress={() => {
-                    setError(null);
-                    fetchProducts();
-                  }}
-                >
-                  <ThemedText style={styles.retryText}>Retry</ThemedText>
-                </Pressable>
+          {isSubscribed ? (
+            <Pressable 
+              style={[
+                styles.manageButton, 
+                loadingProductId === 'manage' && styles.buttonDisabled
+              ]}
+              onPress={handleManageSubscription}
+              disabled={loadingProductId === 'manage'}
+            >
+              <View style={styles.buttonContent}>
+                {loadingProductId === 'manage' ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={styles.buttonText}>
+                    Manage Subscription
+                  </ThemedText>
+                )}
               </View>
-            ) : revenueCatProducts.length > 0 ? (
-              <View>
-                {revenueCatProducts.map((pkg) => {
-                  console.log('Rendering package:', pkg.identifier);
-                  return (
-                    <View key={pkg.identifier} style={styles.subscriptionContainer}>
-                      <Pressable 
-                        style={[
-                          styles.subscribeButton,
-                          isLifetimePackage(pkg) && styles.lifetimeButton, 
-                          loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
-                        ]}
-                        onPress={() => handlePurchase(pkg.identifier)}
-                        disabled={loadingProductId === pkg.identifier}
-                      >
-                        {pkg.packageType === 'ANNUAL' && (
-                          <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
-                            <Text style={[styles.trialText, { color: colors.text }]}>
-                              3 Day Free Trial
-                            </Text>
-                          </View>
-                        )}
-                        {isLifetimePackage(pkg) && (
-                          <View style={[styles.bestValueBadge, { 
-                            backgroundColor: colors.card,
-                            borderColor: '#007AFF'
-                          }]}>
-                            <Text style={[styles.bestValueText, { 
-                              color: colors.text
+            </Pressable>
+          ) : (
+            <>
+              {error ? (
+                <View style={styles.loadingContainer}>
+                  <ThemedText style={[styles.loadingText, { color: '#FF3B30' }]}>
+                    {error}
+                  </ThemedText>
+                  <ThemedText style={[styles.helpText, { color: colors.secondaryText }]}>
+                    Make sure you're signed into the App Store and have a valid payment method.
+                  </ThemedText>
+                  <Pressable
+                    style={[styles.retryButton, { marginTop: 12 }]}
+                    onPress={() => {
+                      setError(null);
+                      fetchProducts();
+                    }}
+                  >
+                    <ThemedText style={styles.retryText}>Retry</ThemedText>
+                  </Pressable>
+                </View>
+              ) : revenueCatProducts.length > 0 ? (
+                <View>
+                  {revenueCatProducts.map((pkg) => {
+                    console.log('Rendering package:', pkg.identifier);
+                    return (
+                      <View key={pkg.identifier} style={styles.subscriptionContainer}>
+                        <Pressable 
+                          style={[
+                            styles.subscribeButton,
+                            isLifetimePackage(pkg) && styles.lifetimeButton, 
+                            loadingProductId === pkg.identifier && styles.subscribeButtonDisabled
+                          ]}
+                          onPress={() => handlePurchase(pkg.identifier)}
+                          disabled={loadingProductId === pkg.identifier}
+                        >
+                          {pkg.packageType === 'ANNUAL' && (
+                            <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
+                              <Text style={[styles.trialText, { color: colors.text }]}>
+                                3 Day Free Trial
+                              </Text>
+                            </View>
+                          )}
+                          {isLifetimePackage(pkg) && (
+                            <View style={[styles.bestValueBadge, { 
+                              backgroundColor: colors.card,
+                              borderColor: '#007AFF'
                             }]}>
-                              Best Value for Coaches
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.buttonContent}>
-                          {loadingProductId === pkg.identifier ? (
-                            <ActivityIndicator color="#FFFFFF" />
-                          ) : (
-                            <ThemedText style={styles.subscribeText}>
-                              {isSubscribed 
-                                ? 'Manage Subscription'
-                                : (() => {
-                                    if (isLifetimePackage(pkg)) {
-                                      return `Lifetime Access - ${pkg.product.priceString}`;
-                                    }
-                                    return `Subscribe - ${pkg.product.priceString}${pkg.product.subscriptionPeriod === 'P3M' ? ' Per Quarter' : ' Per Year'}`;
-                                  })()
+                              <Text style={[styles.bestValueText, { 
+                                color: colors.text
+                              }]}>
+                                Best Value for Coaches
+                              </Text>
+                            </View>
+                          )}
+                          <View style={styles.buttonContent}>
+                            {loadingProductId === pkg.identifier ? (
+                              <ActivityIndicator color="#FFFFFF" />
+                            ) : (
+                              <ThemedText style={styles.subscribeText}>
+                                {isSubscribed 
+                                  ? 'Manage Subscription'
+                                  : (() => {
+                                      if (isLifetimePackage(pkg)) {
+                                        return `Lifetime Access - ${pkg.product.priceString}`;
+                                      }
+                                      return `Subscribe - ${pkg.product.priceString}${pkg.product.subscriptionPeriod === 'P3M' ? ' Per Quarter' : ' Per Year'}`;
+                                    })()
                               }
                             </ThemedText>
                           )}
-                        </View>
-                      </Pressable>
-                    </View>
-                  );
-                })}
+                          </View>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#007AFF" />
+                  <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
+                </View>
+              )}
+              
+              <View style={styles.legalLinks}>
+                <Pressable onPress={handleTermsPress}>
+                  <ThemedText style={[styles.legalText, { color: colors.link }]}>
+                    Terms of Use
+                  </ThemedText>
+                </Pressable>
+                <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
+                <Pressable onPress={handleEULAPress}>
+                  <ThemedText style={[styles.legalText, { color: colors.link }]}>
+                    License Agreement
+                  </ThemedText>
+                </Pressable>
               </View>
-            ) : (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007AFF" />
-                <ThemedText style={styles.loadingText}>Loading subscription options...</ThemedText>
-              </View>
-            )}
-            
-            <View style={styles.legalLinks}>
-              <Pressable onPress={handleTermsPress}>
-                <ThemedText style={[styles.legalText, { color: colors.link }]}>
-                  Terms of Use
-                </ThemedText>
-              </Pressable>
-              <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
-              <Pressable onPress={handleEULAPress}>
-                <ThemedText style={[styles.legalText, { color: colors.link }]}>
-                  License Agreement
-                </ThemedText>
-              </Pressable>
-            </View>
 
-            <View style={styles.bottomButtons}>
-              <Pressable
-                style={styles.restoreButton}
-                onPress={handleRestore}
-                disabled={loadingProductId === 'restore'}
-              >
-                <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
-                  Restore Purchase
-                </ThemedText>
-              </Pressable>
-            </View>
-          </>
-        )}
-      </View>
+              <View style={styles.bottomButtons}>
+                <Pressable
+                  style={styles.restoreButton}
+                  onPress={handleRestore}
+                  disabled={loadingProductId === 'restore'}
+                >
+                  <ThemedText style={[styles.restoreText, { color: colors.secondaryText }]}>
+                    Restore Purchase
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </View>
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -677,5 +683,11 @@ const styles = StyleSheet.create({
   },
   legalText: {
     fontSize: 14,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
   },
 }); 
