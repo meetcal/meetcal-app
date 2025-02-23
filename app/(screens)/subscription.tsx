@@ -388,7 +388,14 @@ export default function SubscriptionScreen() {
                           {pkg.packageType === 'ANNUAL' && (
                             <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
                               <Text style={[styles.trialText, { color: colors.text }]}>
-                                3 Day Free Trial
+                                MeetCal Pro - 3 Day Free Trial
+                              </Text>
+                            </View>
+                          )}
+                          {pkg.packageType === 'THREE_MONTH' && (
+                            <View style={[styles.trialBubble, { backgroundColor: colors.card }]}>
+                              <Text style={[styles.trialText, { color: colors.text }]}>
+                                MeetCal Plus - Pay Per Meet
                               </Text>
                             </View>
                           )}
@@ -400,7 +407,7 @@ export default function SubscriptionScreen() {
                               <Text style={[styles.bestValueText, { 
                                 color: colors.text
                               }]}>
-                                Best Value for Coaches
+                                MeetCal Elite - Best Value for Coaches
                               </Text>
                             </View>
                           )}
