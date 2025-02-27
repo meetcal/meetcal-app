@@ -86,7 +86,7 @@ export default function RecordsAndStandardsScreen() {
             { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
             pressed && { backgroundColor: colors.pressed }
           ]}
-          onPress={() => router.push('/(screens)/standards')}
+          onPress={() => router.push('/(screens)/current-standards')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
