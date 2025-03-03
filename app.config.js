@@ -8,12 +8,7 @@ export default ({ config }) => ({
   splash: {
     image: './assets/images/MeetCal.png',
     resizeMode: 'contain',
-    backgroundColor: '#ffffff',
-    dark: {
-      image: './assets/images/MeetCal-apple-dark.png',
-      resizeMode: 'contain',
-      backgroundColor: '#1c1c1e'
-    }
+    backgroundColor: '#ffffff'
   },
   assetBundlePatterns: [
     '**/*'
