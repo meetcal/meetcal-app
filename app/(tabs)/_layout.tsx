@@ -52,7 +52,6 @@ export default function TabLayout() {
           backgroundColor: colors.background,
         },
         headerTintColor: colors.text,
-        headerLargeTitle: true,
         headerTransparent: false,
         tabBarButton: HapticTab,
         tabBarShowLabel: false,
@@ -76,6 +75,19 @@ export default function TabLayout() {
         options={{
           title: 'Start List',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="sponsors"
+        options={{
+          title: 'Sponsors',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol 
+              size={28} 
+              name={Platform.OS === 'ios' ? "star.fill" : "star"} 
+              color={color} 
+            />
+          ),
         }}
       />
       <Tabs.Screen

@@ -112,8 +112,8 @@ export default function NewStandardsScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
             <ThemedText style={[styles.headerCell, { flex: 2 }]}>Weight Class</ThemedText>
-            <ThemedText style={styles.headerCell}>A Standard</ThemedText>
-            <ThemedText style={styles.headerCell}>B Standard</ThemedText>
+            <ThemedText style={styles.headerCell}>A</ThemedText>
+            <ThemedText style={styles.headerCell}>B</ThemedText>
           </View>
 
           {newStandards[filters.ageGroup][filters.gender].map((record, index) => (

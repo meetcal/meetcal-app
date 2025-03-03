@@ -222,30 +222,8 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://wl-wargames.com')}
-          >
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Use the code MEETCAL20 for 20% off!
-            </ThemedText>
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                War Games
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
             onPress={() => handlePress('https://meetcal.app/privacy')}
           >
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Policies & Agreements
-            </ThemedText>
             <View style={styles.linkRow}>
               <ThemedText style={[styles.link, { color: colors.link }]}>
                 Privacy Policy & Terms of Use

@@ -22,7 +22,7 @@ export default function EventInfoScreen() {
   };
 
   const handleAddressPress = () => {
-    const address = "400 N High St, Columbus, OH 43215";
+    const address = "2000 Convention Center Concourse, College Park, GA 30337";
     const encodedAddress = encodeURIComponent(address);
     
     const mapsUrl = Platform.select({
@@ -58,7 +58,7 @@ export default function EventInfoScreen() {
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
-            Virus Weightlifting Series 1 & University Nationals
+            USAW Masters Nationals
           </ThemedText>
         </View>
         
@@ -113,7 +113,7 @@ export default function EventInfoScreen() {
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
             MeetCal is in no way affiliated with USA Weightlifting. All of the information on this app is accurate based on the information provided by the event organizers. 
             The event organizers can and do occasionally change the location of sessions, please check their Instagram 
-            for any platform changes.
+            for any platform or time changes.
           </ThemedText>
         </View>
       </View>
