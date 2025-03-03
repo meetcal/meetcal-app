@@ -7,6 +7,7 @@ import { Linking } from 'react-native';
 import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors, getSessionTimeRange, getPlatformStartTime } from '@/data/schedule';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -169,6 +170,42 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
+const checkAndShowReviewPrompt = async () => {
+  try {
+    const hasShownReview = await AsyncStorage.getItem('hasShownReview');
+    const hasSavedBefore = await AsyncStorage.getItem('hasSavedBefore');
+    
+    if (!hasSavedBefore && !hasShownReview) {
+      // Mark that user has saved a session
+      await AsyncStorage.setItem('hasSavedBefore', 'true');
+      // Show review prompt
+      Alert.alert(
+        'Enjoying MeetCal?',
+        'Please consider leaving a review! Unless you think a bunch of PDFs are better for some reason.',
+        [
+          {
+            text: 'I Prefer PDFs',
+            style: 'cancel',
+            onPress: async () => {
+              // Mark that we've shown the review prompt
+              await AsyncStorage.setItem('hasShownReview', 'true');
+            }
+          },
+          {
+            text: 'Leave Review',
+            onPress: async () => {
+              await AsyncStorage.setItem('hasShownReview', 'true');
+              Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286');
+            }
+          }
+        ]
+      );
+    }
+  } catch (error) {
+    console.error('Error checking review status:', error);
+  }
+};
+
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
@@ -271,12 +308,13 @@ export default function SessionDetailsScreen() {
         id: params.id,
         sessionNumber: params.sessionNumber,
         platform: params.platform,
-        weightClass: sessionWeightClass || params.weightClass, // Use correct weight class
+        weightClass: sessionWeightClass || params.weightClass,
         startTime: params.startTime,
         weighInTime: params.weighInTime,
         date: params.date,
       });
       showSaveAlert('save');
+      checkAndShowReviewPrompt();
     }
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success

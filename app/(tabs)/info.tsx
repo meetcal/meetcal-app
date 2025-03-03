@@ -9,6 +9,26 @@ import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const showReviewPrompt = () => {
+  Alert.alert(
+    'Enjoying MeetCal?',
+    'Would you like to leave a review? Your feedback helps us improve the app.',
+    [
+      {
+        text: 'Not Now',
+        style: 'cancel'
+      },
+      {
+        text: 'Leave Review',
+        onPress: () => {
+          Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286');
+        }
+      }
+    ]
+  );
+};
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
@@ -191,6 +211,22 @@ export default function InfoScreen() {
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Submit Feedback
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => handlePress('https://apps.apple.com/us/app/meetcal/id6741133286')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Leave a Review
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
