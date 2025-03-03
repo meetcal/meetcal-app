@@ -86,9 +86,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.memohnsen.meetcal'
+    namespace 'com.meetcal.app'
     defaultConfig {
-        applicationId 'com.memohnsen.meetcal'
+        applicationId 'com.meetcal.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

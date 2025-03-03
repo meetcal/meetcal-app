@@ -1,10 +1,10 @@
 export const venueConfig = {
-  name: 'Greater Columbus Convention Center',
+  name: 'Georgia International Convention Center',
   address: {
-    street: '400 N High St',
-    city: 'Columbus',
-    state: 'OH',
-    zip: '43215',
+    street: '2000 Convention Center Concourse',
+    city: 'College Park',
+    state: 'GA',
+    zip: '30337',
   },
   // Add any other venue-specific info here
 };

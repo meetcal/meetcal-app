@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": {
       "light": "./assets/images/MeetCal.png",
-      "dark": "./assets/images/MeetCal-Dark.png"
+      "dark": "./assets/images/MeetCal-apple-dark.png"
     },
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -79,10 +79,10 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
-            "image": "./assets/images/MeetCal-Dark.png",
+            "image": "./assets/images/MeetCal-apple-dark.png",
             "imageWidth": 200,
             "resizeMode": "contain",
-            "backgroundColor": "#000000"
+            "backgroundColor": "#1c1c1e"
           }
         }
       ],

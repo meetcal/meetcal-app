@@ -83,7 +83,7 @@ const ONBOARDING_SCREENS = [
               Today's Sessions
             </ThemedText>
             <View style={[styles.previewCard, { backgroundColor: colors.card }]}>
-              <ThemedText style={styles.previewText}>Session 1 - 81kg A</ThemedText>
+              <ThemedText style={styles.previewText}>Session 1</ThemedText>
               <ThemedText style={[styles.previewTime, { color: colors.secondaryText }]}>9:00 AM</ThemedText>
             </View>
           </DemoCard>

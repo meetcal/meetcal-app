@@ -22,13 +22,6 @@
    - Location: app/(tabs)/start-list.tsx
    - Fix: Implement more robust calendar fallbacks for Android and better error handling
 
-## Medium Priority (UI/UX Issues)
-4. Icon Name Mapping Incompatibilities
-   - Issue: Incomplete icon mapping between iOS SF Symbols and Android equivalents
-   - Location: components/ui/IconSymbol.tsx
-   - Fix: Complete the icon mapping with appropriate Android alternatives
-   - Impact: Some icons may not display correctly on Android
-
 5. Subscription Management Deep Linking
    - Issue: iOS-specific subscription management URLs
    - Location: app/(screens)/subscription.tsx

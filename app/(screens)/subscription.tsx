@@ -452,6 +452,12 @@ export default function SubscriptionScreen() {
                     License Agreement
                   </ThemedText>
                 </Pressable>
+                <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
+                <Pressable onPress={() => router.replace('/(tabs)/schedule')}>
+                  <ThemedText style={[styles.legalText, { color: colors.link }]}>
+                    Skip
+                  </ThemedText>
+                </Pressable>
               </View>
 
               <View style={styles.bottomButtons}>

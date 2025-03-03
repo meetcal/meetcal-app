@@ -1,10 +1,86 @@
-export default {
+export default ({ config }) => ({
   name: 'MeetCal',
-  // ... other config
+  slug: 'meetcal',
+  version: '1.0.0',
+  orientation: 'portrait',
+  icon: './assets/images/MeetCal.png',
+  userInterfaceStyle: 'automatic',
+  splash: {
+    image: './assets/images/MeetCal.png',
+    resizeMode: 'contain',
+    backgroundColor: '#ffffff',
+    dark: {
+      image: './assets/images/MeetCal-apple-dark.png',
+      resizeMode: 'contain',
+      backgroundColor: '#1c1c1e'
+    }
+  },
+  assetBundlePatterns: [
+    '**/*'
+  ],
+  ios: {
+    supportsTablet: false,
+    bundleIdentifier: 'com.meetcal.app',
+    buildNumber: '1',
+    infoPlist: {
+      NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
+      UIBackgroundModes: ["remote-notification"],
+    },
+    icon: {
+      light: './assets/images/MeetCal.png',
+      dark: './assets/images/MeetCal-apple-dark.png'
+    }
+  },
+  android: {
+    adaptiveIcon: {
+      foregroundImage: './assets/images/MeetCal.png',
+      backgroundColor: '#ffffff',
+      dark: {
+        foregroundImage: './assets/images/MeetCal-apple-dark.png',
+        backgroundColor: '#1c1c1e'
+      }
+    },
+    package: 'com.meetcal.app',
+    versionCode: 1,
+    permissions: ["READ_CALENDAR", "WRITE_CALENDAR"]
+  },
+  web: {
+    favicon: './assets/favicon.png'
+  },
+  plugins: [
+    'expo-router',
+    [
+      'expo-build-properties',
+      {
+        ios: {
+          deploymentTarget: '18.2',
+          useFrameworks: 'static',
+        },
+        android: {
+          compileSdkVersion: 33,
+          targetSdkVersion: 33,
+          buildToolsVersion: '33.0.0',
+        },
+      },
+    ],
+  ],
+  experiments: {
+    typedRoutes: true,
+  },
   extra: {
     eas: {
       projectId: 'a0017b93-a31e-42b1-b36a-11cb5eedf11f'
     },
     EXPO_PUBLIC_RESEND_API_KEY: process.env.EXPO_PUBLIC_RESEND_API_KEY,
+    EXPO_PUBLIC_REVENUECAT_API_KEY_IOS: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS,
+    EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID,
   },
-} 
+  scheme: 'meetcal',
+  owner: 'memohnsen',
+  runtimeVersion: {
+    policy: 'sdkVersion'
+  },
+  updates: {
+    url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f'
+  }
+}); 

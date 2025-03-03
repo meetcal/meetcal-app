@@ -1,4 +1,4 @@
-package com.memohnsen.meetcal
+package com.meetcal.app
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
