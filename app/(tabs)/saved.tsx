@@ -1,7 +1,7 @@
-import { StyleSheet, View, FlatList, Pressable, Modal, Alert, Platform } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, Modal, Alert, Platform, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useMemo, useState, useEffect } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -11,6 +11,7 @@ import { getPlatformColors, schedule } from '@/data/schedule';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
 import { SavedSession } from '@/hooks/useSavedSessions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Add a type that extends SavedSession to include the legacy athleteName property
 interface LegacySavedSession extends SavedSession {
@@ -141,13 +142,16 @@ function calculateWeighInTime(startTime: string): string {
 }
 
 export default function SavedScreen() {
-  const { savedSessions } = useSavedSessions();
+  const { savedSessions, refreshSessions } = useSavedSessions();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [localSessions, setLocalSessions] = useState([]);
+  const [usingLocalSessions, setUsingLocalSessions] = useState(false);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -170,17 +174,20 @@ export default function SavedScreen() {
     return Array.from(letterSet).sort();
   }, [savedSessions]);
 
+  // Use local sessions if available, otherwise use context sessions
+  const displaySessions = usingLocalSessions ? localSessions : savedSessions;
+
   // Filter saved sessions
   const filteredSessions = useMemo(() => {
     if (!letterFilter) {
-      return savedSessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
+      return displaySessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
     }
-    return savedSessions
+    return displaySessions
       .filter(session => 
         session.weightClass.slice(-1) === letterFilter
       )
       .sort((a, b) => a.sessionNumber - b.sessionNumber);
-  }, [savedSessions, letterFilter]);
+  }, [displaySessions, letterFilter]);
 
   const handleFilterSelect = (letter: string) => {
     setLetterFilter(letter);
@@ -356,40 +363,75 @@ export default function SavedScreen() {
     })();
   }, []);
 
+  // Add a function to directly load sessions from AsyncStorage
+  const forceLoadSessions = async () => {
+    setRefreshing(true);
+    
+    try {
+      // Try all possible storage keys
+      const STORAGE_KEYS = ['@saved_sessions', 'savedSessions', '@savedSessions', 'sessions'];
+      let loadedSessions = null;
+      
+      for (const key of STORAGE_KEYS) {
+        const storedData = await AsyncStorage.getItem(key);
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log(`Found ${parsed.length} sessions in ${key}`);
+              loadedSessions = parsed;
+              break;
+            }
+          } catch (e) {
+            console.error(`Error parsing data from ${key}:`, e);
+          }
+        }
+      }
+      
+      // If we found sessions, display them directly
+      if (loadedSessions && loadedSessions.length > 0) {
+        // Create a local state to hold the sessions
+        setLocalSessions(loadedSessions);
+        setUsingLocalSessions(true);
+      } else {
+        setUsingLocalSessions(false);
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+      setUsingLocalSessions(false);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Call forceLoadSessions when the component mounts
+  useEffect(() => {
+    forceLoadSessions();
+  }, []);
+
+  // Also refresh when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      forceLoadSessions();
+    }, [])
+  );
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
+      <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
           <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              { 
-                backgroundColor: colors.card,
-                borderColor: colors.border 
-              },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
+            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => setShowFilterModal(true)}
           >
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
+              Filter By Session
             </ThemedText>
             <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
-
+          
           <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              { 
-                backgroundColor: colors.card,
-                borderColor: colors.border 
-              },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
+            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
           >
             <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
@@ -417,6 +459,14 @@ export default function SavedScreen() {
             </ThemedText>
           </View>
         )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={forceLoadSessions}
+            colors={['#007AFF']}
+            tintColor={colors.text}
+          />
+        }
       />
 
       <Modal
