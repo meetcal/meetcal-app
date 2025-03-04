@@ -97,10 +97,30 @@ export default function InfoScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const success = await resetAllSessions();
-              if (!success) {
-                Alert.alert('Error', 'Failed to reset saved sessions.');
+              // Try to use the context's reset function first
+              let success = false;
+              if (typeof resetAllSessions === 'function') {
+                success = await resetAllSessions();
               }
+              
+              // Also manually clear all possible storage keys
+              const STORAGE_KEYS = [
+                '@saved_sessions',
+                'savedSessions',
+                '@savedSessions',
+                'sessions'
+              ];
+              
+              for (const key of STORAGE_KEYS) {
+                await AsyncStorage.setItem(key, JSON.stringify([]));
+              }
+              
+              // Set a flag to notify other components that sessions were reset
+              await AsyncStorage.setItem('@sessions_reset', Date.now().toString());
+              
+              // Show success message
+              Alert.alert('Success', 'All saved sessions have been reset.');
+              
             } catch (error) {
               console.error('Error resetting sessions:', error);
               Alert.alert('Error', 'Failed to reset saved sessions.');
