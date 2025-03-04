@@ -435,16 +435,22 @@ export default function StartListScreen() {
     setExpandedId(expandedId === athleteName ? null : athleteName);
   };
 
-  // Update getFilterDisplayText to handle starred clubs
+  // Add new state for age group filter
+  const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | null>(null);
+
+  // Add new state for temporary filters
+  const [tempAgeGroupFilter, setTempAgeGroupFilter] = useState('');
+  const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
+  const [tempClubFilter, setTempClubFilter] = useState('');
+
+  // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
-    if (weightClassFilter && clubFilter) {
-      return `${weightClassFilter} • ${clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter}`;
-    } else if (weightClassFilter) {
-      return weightClassFilter;
-    } else if (clubFilter) {
-      return clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter;
-    }
-    return 'Filter';
+    const filters = [];
+    if (weightClassFilter) filters.push(weightClassFilter);
+    if (clubFilter) filters.push(clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter);
+    if (tempAgeGroupFilter) filters.push(tempAgeGroupFilter);
+    
+    return filters.length > 0 ? filters.join(' • ') : 'Filter';
   };
 
   // Update the filtered athletes logic
@@ -556,40 +562,25 @@ export default function StartListScreen() {
     );
   };
 
-  // Add new state for expanded section
-  const [expandedSection, setExpandedSection] = useState<'weightClass' | 'club' | null>(null);
+  // Add new state for age group filter
+  const [ageGroupFilter, setAgeGroupFilter] = useState('');
 
-  // Add new state for temporary filters
-  const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
-  const [tempClubFilter, setTempClubFilter] = useState('');
-
-  // Update helper function to count filtered results
-  const getFilteredCount = (weightClass: string, club: string) => {
-    return liftingResults.filter(athlete => {
-      const matchesWeightClass = weightClass ? athlete.weightClass === weightClass : true;
-      const matchesClub = club 
-        ? club === STARRED_CLUBS_FILTER 
-          ? starredClubs.includes(athlete.club)
-          : athlete.club === club
-        : true;
-      const matchesSearch = searchQuery 
-        ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
-        : true;
-      return matchesWeightClass && matchesClub && matchesSearch;
-    }).length;
-  };
+  // Define age group options
+  const ageGroupOptions = ['U13', 'U15', 'U17', 'U23', 'U25', 'Senior', 'Masters 35', 'Masters 40', 'Masters 45', 'Masters 50', 'Masters 55', 'Masters 60', 'Masters 65', 'Masters 70', 'Masters 75', 'Masters 80', 'Masters 85', 'Masters 90'];
 
   // Update modal open handler
   const handleOpenModal = () => {
     setTempWeightClassFilter(weightClassFilter);
     setTempClubFilter(clubFilter);
+    setTempAgeGroupFilter(ageGroupFilter);
     setShowFilterModal(true);
   };
 
-  // Add apply handler
+  // Update apply handler
   const handleApplyFilters = () => {
     setWeightClassFilter(tempWeightClassFilter);
     setClubFilter(tempClubFilter);
+    setAgeGroupFilter(tempAgeGroupFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
   };
@@ -727,6 +718,96 @@ export default function StartListScreen() {
           ]}>
             <View style={styles.modalScrollContent}>
               <ScrollView bounces={false}>
+                {/* Age Group Filter */}
+                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.filterSectionButton,
+                      { borderBottomColor: colors.border },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => setExpandedSection(
+                      expandedSection === 'ageGroup' ? null : 'ageGroup'
+                    )}
+                  >
+                    <View style={styles.filterSectionButtonContent}>
+                      <View>
+                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                          Age Group
+                        </ThemedText>
+                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                          {tempAgeGroupFilter || 'All Age Groups'}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol 
+                        name={getChevronIcon(expandedSection === 'ageGroup' ? 'down' : 'right')} 
+                        size={16} 
+                        color={colors.secondaryText}
+                      />
+                    </View>
+                  </Pressable>
+                  
+                  {expandedSection === 'ageGroup' && (
+                    <ScrollView 
+                      style={[
+                        styles.filterOptions,
+                        { maxHeight: maxOptionsHeight }
+                      ]}
+                      bounces={false}
+                    >
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempAgeGroupFilter === '' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempAgeGroupFilter('');
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempAgeGroupFilter === '' && { color: '#007AFF' }
+                        ]}>
+                          All Age Groups
+                        </ThemedText>
+                        {tempAgeGroupFilter === '' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+                      {ageGroupOptions.map((ageGroup) => (
+                        <Pressable
+                          key={ageGroup}
+                          style={({ pressed }) => [
+                            styles.filterOption,
+                            { borderBottomColor: colors.border },
+                            tempAgeGroupFilter === ageGroup && { backgroundColor: colors.pressed },
+                            pressed && { opacity: 0.8 }
+                          ]}
+                          onPress={() => {
+                            setTempAgeGroupFilter(ageGroup);
+                            setExpandedSection(null);
+                          }}
+                        >
+                          <ThemedText style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempAgeGroupFilter === ageGroup && { color: '#007AFF' }
+                          ]}>
+                            {ageGroup}
+                          </ThemedText>
+                          {tempAgeGroupFilter === ageGroup && (
+                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                          )}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+
                 {/* Weight Class Filter */}
                 <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
                   <Pressable
@@ -965,7 +1046,7 @@ export default function StartListScreen() {
 
             <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
               <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]}>
-                {getFilteredCount(tempWeightClassFilter, tempClubFilter)} athletes
+                {filteredAthletes.length} athletes
               </ThemedText>
               <Pressable
                 style={({ pressed }) => [
