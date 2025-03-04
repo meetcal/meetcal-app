@@ -1,5 +1,5 @@
 import { View, TextInput, StyleSheet, ScrollView, Platform, Pressable, Modal, ActivityIndicator } from 'react-native'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { router, Stack } from 'expo-router'
 import { Picker } from '@react-native-picker/picker'
 import { createUserProfile } from '@/lib/profile'
@@ -8,6 +8,9 @@ import { ThemedView } from '@/components/ThemedView'
 import { ThemedButton } from '@/components/ui/ThemedButton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { liftingResults } from '@/data/athletes'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useSavedSessions } from '@/contexts/SavedSessionsContext'
 
 export default function UserProfileScreen() {
   const { currentTheme } = useTheme()
@@ -15,9 +18,11 @@ export default function UserProfileScreen() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media'>('Athlete')
+  const [clubName, setClubName] = useState<string>('None')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showRolePicker, setShowRolePicker] = useState(false)
+  const [showClubPicker, setShowClubPicker] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
 
   const colors = {
@@ -29,6 +34,14 @@ export default function UserProfileScreen() {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
   }
 
+  // Extract unique club names from athletes data
+  const clubOptions = ['None', ...Array.from(
+    new Set(liftingResults.map(athlete => athlete.club))
+  ).sort()]
+
+  // Get the correct functions/values from the context
+  const { savedSessions, setSavedSessions } = useSavedSessions()
+
   const handleSubmit = async () => {
     if (!name || !email || !role) {
       setError('Please fill in all fields')
@@ -39,13 +52,87 @@ export default function UserProfileScreen() {
     setError(null)
 
     try {
-      await createUserProfile({ name, email, role })
+      // Add retry logic for profile creation
+      let retryCount = 0;
+      const maxRetries = 2;
+      let profileCreated = false;
+      
+      while (!profileCreated && retryCount < maxRetries) {
+        try {
+          // First save the profile
+          await createUserProfile({ 
+            name, 
+            email, 
+            role, 
+            club_name: clubName 
+          });
+          profileCreated = true;
+        } catch (profileError) {
+          console.log(`Profile creation attempt ${retryCount + 1} failed:`, profileError);
+          retryCount++;
+          
+          if (retryCount >= maxRetries) {
+            throw profileError; // Re-throw if we've exhausted retries
+          }
+          
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // Navigate immediately after profile creation
       router.push('/subscription')
+      
+      // Handle club starring in the background
+      if (clubName !== 'None') {
+        // Use setTimeout to move this to the next event loop cycle
+        setTimeout(async () => {
+          try {
+            console.log('Adding club to starred clubs (background):', clubName)
+            
+            // Get current starred clubs from AsyncStorage directly
+            const storedClubs = await AsyncStorage.getItem('starredClubs')
+            let starredClubs: string[] = []
+            
+            if (storedClubs) {
+              try {
+                starredClubs = JSON.parse(storedClubs)
+              } catch (parseError) {
+                console.error('Error parsing stored clubs:', parseError)
+              }
+            }
+            
+            // Add the club if not already starred
+            if (!starredClubs.includes(clubName)) {
+              starredClubs.push(clubName)
+              
+              // Save back to AsyncStorage
+              await AsyncStorage.setItem('starredClubs', JSON.stringify(starredClubs))
+              console.log('Club added to starred clubs successfully (background)')
+              
+              // Update the context if needed
+              if (setSavedSessions) {
+                setSavedSessions({
+                  ...savedSessions,
+                  starredClubs
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error adding club to starred clubs (background):', error)
+          }
+        }, 0);
+      }
     } catch (err) {
       console.error('Profile creation error:', err)
       setError(err instanceof Error ? err.message : 'Failed to create profile')
-    } finally {
       setLoading(false)
+    } finally {
+      // Only set loading to false if there was an error
+      // For successful submissions, we've already navigated away
+      if (error) {
+        setLoading(false)
+      }
     }
   }
 
@@ -73,7 +160,6 @@ export default function UserProfileScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           { 
-            paddingTop: insets.top + 20,
             paddingHorizontal: 20,
           }
         ]}
@@ -139,6 +225,28 @@ export default function UserProfileScreen() {
                   { color: colors.text }
                 ]}>
                   {role}
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <ThemedText style={styles.label}>Club Name</ThemedText>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.roleButton,
+                  { 
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.8 : 1
+                  }
+                ]}
+                onPress={() => setShowClubPicker(true)}
+              >
+                <ThemedText style={[
+                  styles.roleText,
+                  { color: colors.text }
+                ]}>
+                  {clubName}
                 </ThemedText>
               </Pressable>
             </View>
@@ -223,6 +331,57 @@ export default function UserProfileScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={showClubPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowClubPicker(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowClubPicker(false)}
+        >
+          <View 
+            style={[
+              styles.modalContent, 
+              { 
+                backgroundColor: colors.input,
+                paddingBottom: insets.bottom + 20,
+                maxHeight: '70%'
+              }
+            ]}
+          >
+            <ScrollView>
+              {clubOptions.map((club) => (
+                <Pressable
+                  key={club}
+                  style={({ pressed }) => [
+                    styles.roleOption,
+                    {
+                      backgroundColor: pressed ? colors.border : 'transparent',
+                      borderBottomColor: colors.border,
+                    }
+                  ]}
+                  onPress={() => {
+                    setClubName(club)
+                    setShowClubPicker(false)
+                  }}
+                >
+                  <ThemedText 
+                    style={[
+                      styles.roleOptionText,
+                      { color: club === clubName ? '#007AFF' : colors.text }
+                    ]}
+                  >
+                    {club}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </ThemedView>
   )
 }
@@ -237,15 +396,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 100,
   },
-  contentContainer: {
-    paddingTop: '5%',
-  },
   title: {
     fontSize: 32,
     fontWeight: '700',
     marginBottom: 24,
     textAlign: 'center',
-    lineHeight: 38,
+    lineHeight: 40,
   },
   formContainer: {
     borderRadius: 20,
