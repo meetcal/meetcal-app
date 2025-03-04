@@ -77,6 +77,7 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
         startTime,
         weighInTime,
         date: sessionDay.fullDate,
+        athleteName: athlete.name,
       }
     });
   };

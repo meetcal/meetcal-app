@@ -13,6 +13,7 @@ type Sponsor = {
   description: string;
   website: string;
   discount?: string;
+  image: any; // Add image property
 };
 
 const sponsors: Sponsor[] = [
@@ -21,7 +22,8 @@ const sponsors: Sponsor[] = [
     name: 'War Games',
     description: 'Weightlifting Competition Simulator',
     website: 'https://wl-wargames.com',
-    discount: 'Use code MEETCAL20 for 20% off!'
+    discount: 'Use code MEETCAL20 for 20% off!',
+    image: require('@/assets/images/wg-ad.png') // Use your image
   }
 ];
 
@@ -90,7 +92,11 @@ export default function SponsorsScreen() {
             ]}
             onPress={() => handleOpenWebsite(sponsor.website)}
           >
-            <NoImage />
+            <Image 
+              source={sponsor.image}
+              style={styles.sponsorImage}
+              resizeMode="cover"
+            />
             <View style={styles.cardContent}>
               <View style={styles.textContent}>
                 <ThemedText style={[styles.sponsorName, { color: colors.text }]}>
@@ -169,6 +175,10 @@ const styles = StyleSheet.create({
   noImageText: {
     fontSize: 16,
     color: '#999999',
+  },
+  sponsorImage: {
+    width: '100%',
+    height: 160,
   },
   cardContent: {
     flexDirection: 'row',

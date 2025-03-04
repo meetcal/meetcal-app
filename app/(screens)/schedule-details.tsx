@@ -218,6 +218,7 @@ export default function SessionDetailsScreen() {
     startTime: string;
     weighInTime: string;
     date: string;
+    athleteName?: string;
   }>();
   const { currentTheme } = useTheme();
   const platformColors = getPlatformColors();
@@ -287,9 +288,10 @@ export default function SessionDetailsScreen() {
 
   const showSaveAlert = (action: 'save' | 'remove') => {
     const title = action === 'save' ? 'Session Saved' : 'Session Unsaved';
-    const message = action === 'save'
+    let message = action === 'save'
       ? `Session ${params.sessionNumber} - ${params.platform} - ${sessionWeightClass} has been saved to your list`
       : `Session ${params.sessionNumber} - ${params.platform} - ${sessionWeightClass} has been unsaved from your list`;
+
 
     Alert.alert(
       title,
@@ -306,12 +308,13 @@ export default function SessionDetailsScreen() {
     } else {
       saveSession({
         id: params.id,
-        sessionNumber: params.sessionNumber,
+        sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
         weightClass: sessionWeightClass || params.weightClass,
         startTime: params.startTime,
         weighInTime: params.weighInTime,
         date: params.date,
+        athleteNames: params.athleteName ? [params.athleteName] : undefined,
       });
       showSaveAlert('save');
       checkAndShowReviewPrompt();
