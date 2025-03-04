@@ -10,6 +10,12 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors, schedule } from '@/data/schedule';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
+import { SavedSession } from '@/hooks/useSavedSessions';
+
+// Add a type that extends SavedSession to include the legacy athleteName property
+interface LegacySavedSession extends SavedSession {
+  athleteName?: string;
+}
 
 async function requestCalendarPermissions() {
   const { status } = await Calendar.requestCalendarPermissionsAsync();
@@ -207,11 +213,11 @@ export default function SavedScreen() {
 
               const sessionsToAdd = filteredSessions.map(session => ({
                 date: schedule.find(day => 
-                  day.sessions.some(s => s.number === parseInt(session.sessionNumber))
+                  day.sessions.some(s => s.number === parseInt(session.sessionNumber.toString()))
                 )?.fullDate || '',
                 startTime: session.startTime,
                 weighInTime: session.weighInTime,
-                sessionNumber: session.sessionNumber,
+                sessionNumber: session.sessionNumber.toString(),
                 platform: session.platform,
                 weightClass: session.weightClass
               }));
@@ -228,14 +234,14 @@ export default function SavedScreen() {
     );
   };
 
-  const renderSession = ({ item }) => {
+  const renderSession = ({ item }: { item: LegacySavedSession }) => {
     // Find session in schedule to get platform-specific time
     const sessionDay = schedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(item.sessionNumber))
+      day.sessions.some(s => s.number === parseInt(item.sessionNumber.toString()))
     );
     
     const scheduleSession = sessionDay?.sessions.find(s => 
-      s.number === parseInt(item.sessionNumber)
+      s.number === parseInt(item.sessionNumber.toString())
     );
 
     const platform = scheduleSession?.platforms.find(p => 
@@ -290,7 +296,7 @@ export default function SavedScreen() {
         <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
           <View style={[
             styles.platformIndicator,
-            { backgroundColor: getPlatformColors()[item.platform] }
+            { backgroundColor: getPlatformColors()[item.platform as keyof ReturnType<typeof getPlatformColors>] }
           ]}>
             <ThemedText style={styles.platformText}>
               {item.platform}
@@ -300,6 +306,44 @@ export default function SavedScreen() {
             {item.weightClass}
           </ThemedText>
         </View>
+        
+        {/* Display athlete names if available (saved from start list) */}
+        {item.athleteNames && item.athleteNames.length > 0 && (
+          <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
+            <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
+              {item.athleteNames.length === 1 ? 'Athlete:' : 'Athletes:'}
+            </ThemedText>
+            <View style={styles.athleteNamesContainer}>
+              {item.athleteNames.slice(0, 3).map((name, index) => (
+                <ThemedText 
+                  key={index} 
+                  style={[styles.athleteName, { color: colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {name}
+                </ThemedText>
+              ))}
+              {item.athleteNames.length > 3 && (
+                <ThemedText style={[styles.athleteMoreText, { color: colors.secondaryText }]}>
+                  +{item.athleteNames.length - 3} more
+                </ThemedText>
+              )}
+            </View>
+          </View>
+        )}
+        
+        {/* For backward compatibility with old saved sessions */}
+        {!item.athleteNames && item.athleteName && (
+          <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
+            <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
+              Athlete:
+            </ThemedText>
+            <ThemedText style={[styles.athleteName, { color: colors.text }]}>
+              {item.athleteName}
+            </ThemedText>
+          </View>
+        )}
       </Pressable>
     );
   };
@@ -583,5 +627,28 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 17,
+  },
+  athleteContainer: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E1E1E1',
+  },
+  athleteLabel: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  athleteNamesContainer: {
+    flexDirection: 'column',
+    gap: 4,
+    width: '100%',
+  },
+  athleteName: {
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  athleteMoreText: {
+    fontSize: 14,
+    fontStyle: 'italic',
   },
 }); 

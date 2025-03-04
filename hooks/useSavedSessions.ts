@@ -13,6 +13,7 @@ export interface SavedSession {
   startTime: string;
   weighInTime: string;
   date: string;
+  athleteNames?: string[];
 }
 
 function getSessionPlatformDetails(sessionNumber: number, platformName: string) {
@@ -56,33 +57,63 @@ export function useSavedSessions() {
 
   const saveSessionsFromAthletes = async (athletes: LiftResult[]) => {
     try {
-      const uniqueSessions = athletes
+      const sessionMap = new Map<string, { session: any, athletes: string[] }>();
+      
+      athletes
         .filter(athlete => athlete.session)
-        .map(athlete => {
-          const platformDetails = getSessionPlatformDetails(
-            athlete.session!.number,
-            athlete.session!.platform
-          );
-          if (!platformDetails) return null;
-
-          return {
-            id: `session-${athlete.session!.number}-${athlete.session!.platform}`,
-            sessionNumber: athlete.session!.number,
-            platform: athlete.session!.platform,
-            weightClass: platformDetails.weightClass,
-            startTime: platformDetails.startTime,
-            weighInTime: platformDetails.weighInTime,
-            date: platformDetails.date,
-          };
-        })
-        .filter((session): session is SavedSession => session !== null)
-        .filter((session, index, self) => 
-          index === self.findIndex(s => s.id === session.id)
-        );
+        .forEach(athlete => {
+          const sessionId = `session-${athlete.session!.number}-${athlete.session!.platform}`;
+          
+          if (!sessionMap.has(sessionId)) {
+            const platformDetails = getSessionPlatformDetails(
+              athlete.session!.number,
+              athlete.session!.platform
+            );
+            
+            if (platformDetails) {
+              sessionMap.set(sessionId, {
+                session: {
+                  id: sessionId,
+                  sessionNumber: athlete.session!.number,
+                  platform: athlete.session!.platform,
+                  weightClass: platformDetails.weightClass,
+                  startTime: platformDetails.startTime,
+                  weighInTime: platformDetails.weighInTime,
+                  date: platformDetails.date,
+                  athleteNames: []
+                },
+                athletes: []
+              });
+            }
+          }
+          
+          const sessionData = sessionMap.get(sessionId);
+          if (sessionData) {
+            sessionData.athletes.push(athlete.name);
+          }
+        });
+      
+      const uniqueSessions = Array.from(sessionMap.values()).map(({ session, athletes }) => {
+        return {
+          ...session,
+          athleteNames: athletes
+        };
+      });
 
       const allSessions = [...savedSessions];
       uniqueSessions.forEach(session => {
-        if (!allSessions.some(saved => saved.id === session.id)) {
+        const existingSessionIndex = allSessions.findIndex(saved => saved.id === session.id);
+        
+        if (existingSessionIndex >= 0) {
+          const existingSession = allSessions[existingSessionIndex];
+          const existingNames = existingSession.athleteNames || [];
+          const newNames = session.athleteNames || [];
+          
+          allSessions[existingSessionIndex] = {
+            ...existingSession,
+            athleteNames: [...new Set([...existingNames, ...newNames])]
+          };
+        } else {
           allSessions.push(session);
         }
       });
