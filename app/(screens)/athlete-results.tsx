@@ -1,0 +1,222 @@
+import { StyleSheet, View, ScrollView } from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { ThemedView } from '@/components/ThemedView';
+import { ThemedText } from '@/components/ThemedText';
+import { useTheme } from '@/contexts/ThemeContext';
+import { liftingResults } from '@/data/results';
+import { useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+export default function AthleteResultsScreen() {
+  const { currentTheme } = useTheme();
+  const { name } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    success: '#34C759',
+    fail: '#FF3B30',
+  };
+
+  const athleteResults = useMemo(() => {
+    if (!name) return [];
+    
+    const nameStr = Array.isArray(name) ? name[0] : name;
+    return liftingResults
+      .filter(result => result.lifter.toLowerCase() === nameStr.toLowerCase())
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [name]);
+
+  if (!name) {
+    return (
+      <ThemedView style={styles.container}>
+        <ThemedText>No athlete selected</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  return (
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: name?.toString() || 'Meet Results',
+          headerBackTitle: 'Back',
+          headerTitleStyle: { color: colors.text },
+          headerTintColor: '#007AFF',
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          animation: 'slide_from_right',
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerShadowVisible: false,
+        }}
+      />
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 20 }
+        ]}
+      >
+        {athleteResults.length === 0 ? (
+          <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+            <View style={styles.emptyStateContainer}>
+              <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
+                No meet results found for {name}
+              </ThemedText>
+            </View>
+          </View>
+        ) : (
+          athleteResults.map((result, index) => (
+            <View 
+              key={`${result.meet}-${result.date}`}
+              style={[
+                styles.card,
+                { backgroundColor: colors.card },
+                index === 0 && { marginTop: 16 }
+              ]}
+            >
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <ThemedText style={styles.meetName}>{result.meet}</ThemedText>
+                <ThemedText style={[styles.meetDate, { color: colors.secondaryText }]}>
+                  Date: {new Date(result.date).toLocaleDateString()}
+                </ThemedText>
+                <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
+                  Bodyweight: {result.bodyWeight} kg
+                </ThemedText>
+              </View>
+
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <View style={styles.liftRow}>
+                  <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+                    Snatch
+                  </ThemedText>
+                  <View style={styles.attempts}>
+                    <AttemptDisplay attempt={result.snatch1} colors={colors} />
+                    <AttemptDisplay attempt={result.snatch2} colors={colors} />
+                    <AttemptDisplay attempt={result.snatch3} colors={colors} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <View style={styles.liftRow}>
+                  <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+                    Clean & Jerk
+                  </ThemedText>
+                  <View style={styles.attempts}>
+                    <AttemptDisplay attempt={result.cj1} colors={colors} />
+                    <AttemptDisplay attempt={result.cj2} colors={colors} />
+                    <AttemptDisplay attempt={result.cj3} colors={colors} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <ThemedText style={styles.total}>
+                  {result.snatch}/{result.cj}/{result.total}
+                </ThemedText>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
+function AttemptDisplay({ attempt, colors }: { attempt: number, colors: any }) {
+  if (attempt === 0) {
+    return <ThemedText style={[styles.attempt, { color: colors.secondaryText }]}>—</ThemedText>;
+  }
+
+  const isSuccess = attempt > 0;
+  return (
+    <ThemedText style={[
+      styles.attempt,
+      { color: isSuccess ? colors.success : colors.fail }
+    ]}>
+      {Math.abs(attempt)}
+    </ThemedText>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+  },
+  card: {
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  section: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  meetName: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  meetDate: {
+    fontSize: 15,
+    marginBottom: 2,
+  },
+  weightClass: {
+    fontSize: 15,
+  },
+  liftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  liftName: {
+    fontSize: 16,
+    fontWeight: '500',
+    minWidth: 100,
+  },
+  attempts: {
+    flexDirection: 'row',
+    gap: 24,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  attempt: {
+    fontSize: 16,
+    fontWeight: '600',
+    minWidth: 50,
+    textAlign: 'center',
+  },
+  bestLift: {
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  total: {
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptyStateContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+}); 

@@ -27,6 +27,13 @@ const sponsors: Sponsor[] = [
   },
   {
     id: '2',
+    name: 'Power & Grace Performance',
+    description: 'The Best Team in USA Weightlifting',
+    website: 'https://powerandgraceperformance.com',
+    image: require('@/assets/images/P&G.png') // Use your image
+  },
+  {
+    id: '3',
     name: 'Virus',
     description: 'The Official Apparel Sponsor of USA Weightlifting',
     website: 'https://virusintl.com',
@@ -34,7 +41,7 @@ const sponsors: Sponsor[] = [
     image: require('@/assets/images/virus.png') // Use your image
   },
   {
-    id: '3',
+    id: '4',
     name: 'Onyx Straps',
     description: 'The Gear For Weightlifters, By Weightlifters',
     website: 'https://onyxstraps.com',
