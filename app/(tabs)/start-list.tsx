@@ -170,29 +170,49 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
 
           <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
             <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
-              2024 Stats
+              Bests From The Last Year
             </ThemedText>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  Best Snatch
+                  Snatch
                 </ThemedText>
                 <ThemedText style={styles.statValue}>{athlete.bestSnatch}kg</ThemedText>
               </View>
               <View style={styles.statItem}>
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  Best CJ
+                  CJ
                 </ThemedText>
                 <ThemedText style={styles.statValue}>{athlete.bestCJ}kg</ThemedText>
               </View>
               <View style={styles.statItem}>
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  Best Total
+                  Total
                 </ThemedText>
                 <ThemedText style={styles.statValue}>{athlete.bestTotal}kg</ThemedText>
               </View>
             </View>
           </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.meetResultsButton,
+              pressed && { opacity: 0.8 }
+            ]}
+            onPress={() => router.push({
+              pathname: '/(screens)/athlete-results',
+              params: { name: athlete.name }
+            })}
+          >
+            <ThemedText style={styles.meetResultsText}>
+              See All Meet Results
+            </ThemedText>
+            <IconSymbol 
+              name={getChevronIcon('right')} 
+              size={13} 
+              color="#007AFF"
+            />
+          </Pressable>
         </View>
       )}
     </View>
@@ -282,11 +302,11 @@ async function createCalendarEvents(sessions: Array<{
     for (const session of sessions) {
       // Find session in schedule to get platform-specific time
       const sessionDay = schedule.find(day => 
-        day.sessions.some(s => s.number === session.sessionNumber)
+        day.sessions.some(s => s.number === Number(session.sessionNumber))
       );
       
       const scheduleSession = sessionDay?.sessions.find(s => 
-        s.number === session.sessionNumber
+        s.number === Number(session.sessionNumber)
       );
 
       const platform = scheduleSession?.platforms.find(p => 
@@ -317,12 +337,12 @@ async function createCalendarEvents(sessions: Array<{
   }
 }
 
-// Add a helper function at the top level for chevron icons
-const getChevronIcon = (direction: 'down' | 'right') => {
+// Update the helper function to ensure it always returns a string
+const getChevronIcon = (direction: 'down' | 'right'): string => {
   return Platform.select({
     ios: `chevron.${direction}`,
     android: direction === 'right' ? 'chevron-forward' : 'chevron-down'
-  });
+  }) || `chevron.${direction}`; // Fallback to iOS style if platform select fails
 };
 
 // Add special value for starred clubs filter
@@ -607,7 +627,7 @@ export default function StartListScreen() {
               name={Platform.select({
                 ios: "magnifyingglass",
                 android: "search"
-              })}
+              }) || "magnifyingglass"}
               size={16} 
               color={colors.secondaryText}
             />
@@ -1450,5 +1470,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  meetResultsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  meetResultsText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#007AFF',
   },
 }); 
