@@ -31,9 +31,15 @@ export default function RootLayout() {
       try {
         if (Platform.OS === 'ios') {
           await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
-          if (__DEV__) {
-            Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-          }
+        } else if (Platform.OS === 'android') {
+          await Purchases.configure({ 
+            apiKey: 'goog_tUXAGSdnOuHiTVFNSvQKHxNTbpI',
+            appUserID: null, // RevenueCat will generate a random ID
+          });
+        }
+
+        if (__DEV__) {
+          Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
         }
       } catch (error) {
         console.error('Failed to initialize RevenueCat:', error);
