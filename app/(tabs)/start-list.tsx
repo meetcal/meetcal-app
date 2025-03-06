@@ -12,6 +12,7 @@ import { getFullLocation } from '@/config/venue';
 import { useRouter } from 'expo-router';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { liftingResults as liftingResultsData } from '@/data/results';
 
 function getSessionDetails(sessionNumber: number) {
   for (const day of schedule) {
@@ -35,6 +36,29 @@ interface AthleteItemProps {
   router: ReturnType<typeof useRouter>;
 }
 
+function getLastYearBests(athleteName: string) {
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  
+  const athleteResults = liftingResultsData.filter(result => {
+    const resultDate = new Date(result.date);
+    return (
+      result.lifter.toLowerCase() === athleteName.toLowerCase() &&
+      resultDate >= oneYearAgo
+    );
+  });
+
+  if (athleteResults.length === 0) {
+    return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+  }
+
+  return {
+    bestSnatch: Math.max(...athleteResults.map(r => r.snatch)),
+    bestCJ: Math.max(...athleteResults.map(r => r.cj)),
+    bestTotal: Math.max(...athleteResults.map(r => r.total))
+  };
+}
+
 function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   
@@ -45,6 +69,12 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+    // Get the athlete's best lifts from the past year
+    const yearBests = useMemo(() => 
+      getLastYearBests(athlete.name),
+      [athlete.name]
+    );
 
   const handleSessionPress = () => {
     if (!athlete.session) return;
@@ -177,19 +207,25 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
                   Snatch
                 </ThemedText>
-                <ThemedText style={styles.statValue}>{athlete.bestSnatch}kg</ThemedText>
+                <ThemedText style={styles.statValue}>
+                  {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                </ThemedText>
               </View>
               <View style={styles.statItem}>
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
                   CJ
                 </ThemedText>
-                <ThemedText style={styles.statValue}>{athlete.bestCJ}kg</ThemedText>
+                <ThemedText style={styles.statValue}>
+                  {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                </ThemedText>
               </View>
               <View style={styles.statItem}>
                 <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
                   Total
                 </ThemedText>
-                <ThemedText style={styles.statValue}>{athlete.bestTotal}kg</ThemedText>
+                <ThemedText style={styles.statValue}>
+                  {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                </ThemedText>
               </View>
             </View>
           </View>
