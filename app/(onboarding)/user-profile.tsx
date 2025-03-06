@@ -8,10 +8,35 @@ import { ThemedView } from '@/components/ThemedView'
 import { ThemedButton } from '@/components/ui/ThemedButton'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { liftingResults, LiftResult } from '@/data/athletes'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSavedSessions } from '@/contexts/SavedSessionsContext'
 import { schedule } from '@/data/schedule'
+import { supabase } from '@/lib/supabase'
+
+// Define the LiftingResult type to match your Supabase table
+interface LiftingResult {
+  id: number
+  event_id: string
+  meet: string
+  date: string
+  name: string
+  age: string
+  body_weight: number
+  snatch1: number
+  snatch2: number
+  snatch3: number
+  snatch_best: number
+  cj1: number
+  cj2: number
+  cj3: number
+  cj_best: number
+  total: number
+  club?: string
+  session?: {
+    number: string
+    platform: string
+  }
+}
 
 export default function UserProfileScreen() {
   const { currentTheme } = useTheme()
@@ -26,6 +51,32 @@ export default function UserProfileScreen() {
   const [showClubPicker, setShowClubPicker] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [autoSaveSessions, setAutoSaveSessions] = useState(false)
+  const [liftingResults, setLiftingResults] = useState<LiftingResult[]>([])
+
+  // Fetch lifting results from Supabase
+  useEffect(() => {
+    fetchLiftingResults()
+  }, [])
+
+  const fetchLiftingResults = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('lifting_results')
+        .select('*')
+        .order('date', { ascending: false })
+
+      if (error) {
+        throw error
+      }
+
+      if (data) {
+        setLiftingResults(data)
+      }
+    } catch (error) {
+      console.error('Error fetching lifting results:', error)
+      setError('Failed to fetch lifting results')
+    }
+  }
 
   const colors = {
     background: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
@@ -38,7 +89,7 @@ export default function UserProfileScreen() {
 
   // Extract unique club names from athletes data
   const clubOptions = ['None', ...Array.from(
-    new Set(liftingResults.map(athlete => athlete.club))
+    new Set(liftingResults.map(athlete => athlete.club).filter(Boolean))
   ).sort()]
 
   // Get the correct functions from the context
@@ -90,11 +141,10 @@ export default function UserProfileScreen() {
                   id: `session-${athlete.session.number}-${athlete.session.platform}`,
                   sessionNumber: athlete.session.number,
                   platform: athlete.session.platform,
-                  weightClass: athlete.weightClass,
                   startTime,
                   weighInTime,
-                  athleteNames: [athlete.name],
-                  date: sessionDay.fullDate
+                  date: sessionDay.fullDate,
+                  athleteNames: [athlete.name]
                 });
               }
             } else {
@@ -194,7 +244,7 @@ export default function UserProfileScreen() {
         }
         
       } catch (error) {
-        console.error('Error saving club sessions (background):', error);
+        console.error('Error saving club sessions:', error);
       }
     }, 0);
   };

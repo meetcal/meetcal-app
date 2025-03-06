@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { StyleSheet, View, Pressable, Platform, Alert, ScrollView } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
 import { useState, useEffect, useMemo } from 'react';
@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors, getSessionTimeRange, getPlatformStartTime } from '@/data/schedule';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -17,6 +18,13 @@ import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 
 type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+
+// Add interface for Supabase results
+interface SupabaseBests {
+  snatch_best: number;
+  cj_best: number;
+  total: number;
+}
 
 // Type for just the athlete data we need
 type SessionAthlete = {
@@ -65,30 +73,72 @@ function getSessionAthletes(sessionNumber: number, platform: string) {
     }, {} as Record<string, SessionAthlete[]>);
 }
 
+async function getAthleteBests(name: string): Promise<SupabaseBests> {
+  try {
+    const { data, error } = await supabase
+      .from('lifting_results')
+      .select('snatch_best, cj_best, total')
+      .eq('name', name)
+      .order('date', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error('Error fetching athlete bests:', error);
+      return { snatch_best: 0, cj_best: 0, total: 0 };
+    }
+
+    return data?.[0] || { snatch_best: 0, cj_best: 0, total: 0 };
+  } catch (error) {
+    console.error('Error in getAthleteBests:', error);
+    return { snatch_best: 0, cj_best: 0, total: 0 };
+  }
+}
+
 function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: { 
   sessionNumber: number;
   platform: string;
   sessionWeightClass: string;
 }) {
   const { currentTheme } = useTheme();
-  const athletes = getSessionAthletes(sessionNumber, platform);
-  
+  const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
+  const [loading, setLoading] = useState(true);
+
   const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
   };
-  
-  return (
-    <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-      <View style={[styles.section, { borderBottomColor: colors.border }]}>
-        <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
-          Session Athletes
-        </ThemedText>
-      </View>
+
+  const athletes = useMemo(() => 
+    getSessionAthletes(sessionNumber, platform), 
+    [sessionNumber, platform]
+  );
+
+  useEffect(() => {
+    const fetchAthleteBests = async () => {
+      setLoading(true);
+      const bests: Record<string, SupabaseBests> = {};
       
+      for (const [_, platformAthletes] of Object.entries(athletes)) {
+        for (const athlete of platformAthletes) {
+          bests[athlete.name] = await getAthleteBests(athlete.name);
+        }
+      }
+      
+      setAthleteBests(bests);
+      setLoading(false);
+    };
+
+    fetchAthleteBests();
+  }, [athletes]);
+
+  if (!athletes[platform]?.length) {
+    return null;
+  }
+
+  return (
+    <View style={styles.athletesContainer}>
+      <ThemedText style={styles.athletesTitle}>Athletes</ThemedText>
       {Object.entries(athletes).map(([platform, platformAthletes]) => (
         <View key={platform}>
           {platformAthletes.map((athlete, index) => (
@@ -111,18 +161,30 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
                   <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Entry Total</ThemedText>
                   <ThemedText style={styles.statValue}>{athlete.entryTotal}kg</ThemedText>
                 </View>
-                <View style={styles.statItem}>
-                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Snatch</ThemedText>
-                  <ThemedText style={styles.statValue}>{athlete.bestSnatch}kg</ThemedText>
-                </View>
-                <View style={styles.statItem}>
-                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best CJ</ThemedText>
-                  <ThemedText style={styles.statValue}>{athlete.bestCJ}kg</ThemedText>
-                </View>
-                <View style={styles.statItem}>
-                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Total</ThemedText>
-                  <ThemedText style={styles.statValue}>{athlete.bestTotal}kg</ThemedText>
-                </View>
+                {loading ? (
+                  <ActivityIndicator size="small" color={colors.secondaryText} />
+                ) : (
+                  <>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Snatch</ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {athleteBests[athlete.name]?.snatch_best || '—'}kg
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best CJ</ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {athleteBests[athlete.name]?.cj_best || '—'}kg
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Total</ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {athleteBests[athlete.name]?.total || '—'}kg
+                      </ThemedText>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
           ))}
@@ -680,5 +742,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  athletesContainer: {
+    marginTop: 16,
+  },
+  athletesTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
   },
 }); 

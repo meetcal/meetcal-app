@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput, Platform } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput, Platform, ActivityIndicator } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { liftingResults as liftingResultsData } from '@/data/results';
+import { supabase } from '@/lib/supabase';
 
 function getSessionDetails(sessionNumber: number) {
   for (const day of schedule) {
@@ -36,31 +37,63 @@ interface AthleteItemProps {
   router: ReturnType<typeof useRouter>;
 }
 
-function getLastYearBests(athleteName: string) {
+// Add interface for Supabase results
+interface SupabaseLiftResult {
+  id: number;
+  event_id: string;
+  meet: string;
+  date: string;
+  name: string;
+  age: string;
+  body_weight: number;
+  snatch1: number;
+  snatch2: number;
+  snatch3: number;
+  snatch_best: number;
+  cj1: number;
+  cj2: number;
+  cj3: number;
+  cj_best: number;
+  total: number;
+}
+
+// Update the getLastYearBests function to use Supabase
+async function getLastYearBests(athleteName: string) {
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   
-  const athleteResults = liftingResultsData.filter(result => {
-    const resultDate = new Date(result.date);
-    return (
-      result.lifter.toLowerCase() === athleteName.toLowerCase() &&
-      resultDate >= oneYearAgo
-    );
-  });
+  try {
+    const { data: athleteResults, error } = await supabase
+      .from('lifting_results')
+      .select('snatch_best, cj_best, total')
+      .eq('name', athleteName)
+      .gte('date', oneYearAgo.toISOString())
+      .order('date', { ascending: false });
 
-  if (athleteResults.length === 0) {
+    if (error) {
+      console.error('Error fetching athlete results:', error);
+      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    }
+
+    if (!athleteResults || athleteResults.length === 0) {
+      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    }
+
+    return {
+      bestSnatch: Math.max(...athleteResults.map(r => r.snatch_best || 0)),
+      bestCJ: Math.max(...athleteResults.map(r => r.cj_best || 0)),
+      bestTotal: Math.max(...athleteResults.map(r => r.total || 0))
+    };
+  } catch (error) {
+    console.error('Error in getLastYearBests:', error);
     return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
   }
-
-  return {
-    bestSnatch: Math.max(...athleteResults.map(r => r.snatch)),
-    bestCJ: Math.max(...athleteResults.map(r => r.cj)),
-    bestTotal: Math.max(...athleteResults.map(r => r.total))
-  };
 }
 
 function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps) {
   const { currentTheme } = useTheme();
+  const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+  const [loadingBests, setLoadingBests] = useState(true);
   
   const colors = {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -70,11 +103,17 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-    // Get the athlete's best lifts from the past year
-    const yearBests = useMemo(() => 
-      getLastYearBests(athlete.name),
-      [athlete.name]
-    );
+  useEffect(() => {
+    const loadBests = async () => {
+      if (isExpanded) {
+        setLoadingBests(true);
+        const bests = await getLastYearBests(athlete.name);
+        setYearBests(bests);
+        setLoadingBests(false);
+      }
+    };
+    loadBests();
+  }, [isExpanded, athlete.name]);
 
   const handleSessionPress = () => {
     if (!athlete.session) return;
@@ -203,30 +242,36 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
               Bests From The Last Year
             </ThemedText>
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  Snatch
-                </ThemedText>
-                <ThemedText style={styles.statValue}>
-                  {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                </ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  CJ
-                </ThemedText>
-                <ThemedText style={styles.statValue}>
-                  {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                </ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                  Total
-                </ThemedText>
-                <ThemedText style={styles.statValue}>
-                  {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                </ThemedText>
-              </View>
+              {loadingBests ? (
+                <ActivityIndicator size="small" color={colors.secondaryText} />
+              ) : (
+                <>
+                  <View style={styles.statItem}>
+                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                      Snatch
+                    </ThemedText>
+                    <ThemedText style={styles.statValue}>
+                      {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                      CJ
+                    </ThemedText>
+                    <ThemedText style={styles.statValue}>
+                      {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                      Total
+                    </ThemedText>
+                    <ThemedText style={styles.statValue}>
+                      {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                    </ThemedText>
+                  </View>
+                </>
+              )}
             </View>
           </View>
 
