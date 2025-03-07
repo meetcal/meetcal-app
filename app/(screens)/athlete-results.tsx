@@ -14,7 +14,7 @@ interface SupabaseLiftResult {
   meet: string;
   date: string;
   name: string;
-  age: string;
+  age: number;
   body_weight: number;
   snatch1: number | null;
   snatch2: number | null;
@@ -140,6 +140,9 @@ export default function AthleteResultsScreen() {
                 </ThemedText>
                 <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
                   Bodyweight: {result.body_weight?.toFixed(1) ?? '—'} kg
+                </ThemedText>
+                <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
+                  Age: {result.age}
                 </ThemedText>
               </View>
 

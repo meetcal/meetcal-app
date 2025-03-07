@@ -12,7 +12,6 @@ import { getFullLocation } from '@/config/venue';
 import { useRouter } from 'expo-router';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { liftingResults as liftingResultsData } from '@/data/results';
 import { supabase } from '@/lib/supabase';
 
 function getSessionDetails(sessionNumber: number) {
@@ -44,7 +43,7 @@ interface SupabaseLiftResult {
   meet: string;
   date: string;
   name: string;
-  age: string;
+  age: number;
   body_weight: number;
   snatch1: number;
   snatch2: number;
@@ -224,11 +223,21 @@ function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps)
               </ThemedText>
             </View>
           </View>
-          <View style={styles.detailRow}>
+          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
             <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
               Weight Class:
             </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.weightClass}</ThemedText>
+            <View style={styles.wrappingDetailValue}>
+              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
+                {athlete.weightClass}
+              </ThemedText>
+            </View>
+          </View>
+          <View style={styles.detailRow}>
+            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
+              Age:
+            </ThemedText>
+            <ThemedText style={styles.detailValue}>{athlete.age}</ThemedText>
           </View>
           <View style={styles.detailRow}>
             <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
@@ -456,6 +465,20 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
+// Add this helper function to determine age category
+function getAgeCategory(age: number): string {
+  if (age <= 13) return 'U13';
+  if (age >= 14 && age <= 15) return 'U15';
+  if (age >= 16 && age <= 17) return 'U17';
+  if (age >= 18 && age <= 20) return 'Junior';
+  if (age >= 21 && age <= 34) return 'Senior';
+  if (age >= 90) return 'Masters 90+';
+  
+  // For ages 35-89, calculate the masters category in 5-year increments
+  const mastersStart = Math.floor((age - 35) / 5) * 5 + 35;
+  return `Masters ${mastersStart}`;
+}
+
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -555,20 +578,26 @@ export default function StartListScreen() {
   };
 
   // Update the filtered athletes logic
-  const filteredAthletes = liftingResults
-    .filter(athlete => {
-      const matchesWeightClass = weightClassFilter ? athlete.weightClass === weightClassFilter : true;
-      const matchesClub = clubFilter 
-        ? clubFilter === STARRED_CLUBS_FILTER 
-          ? starredClubs.includes(athlete.club)
-          : athlete.club === clubFilter
-        : true;
-      const matchesSearch = searchQuery 
-        ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
-        : true;
-      return matchesWeightClass && matchesClub && matchesSearch;
-    })
-    .sort(sortAthletes);
+  const filteredAthletes = useMemo(() => {
+    return liftingResults
+      .filter(athlete => {
+        const matchesWeightClass = weightClassFilter ? athlete.weightClass === weightClassFilter : true;
+        const matchesClub = clubFilter 
+          ? clubFilter === STARRED_CLUBS_FILTER 
+            ? starredClubs.includes(athlete.club)
+            : athlete.club === clubFilter
+          : true;
+        const matchesSearch = searchQuery 
+          ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
+          : true;
+        const matchesAgeGroup = tempAgeGroupFilter 
+          ? getAgeCategory(athlete.age) === tempAgeGroupFilter
+          : true;
+
+        return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup;
+      })
+      .sort(sortAthletes);
+  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -663,17 +692,32 @@ export default function StartListScreen() {
     );
   };
 
-  // Add new state for age group filter
-  const [ageGroupFilter, setAgeGroupFilter] = useState('');
-
-  // Define age group options
-  const ageGroupOptions = ['U13', 'U15', 'U17', 'U23', 'U25', 'Senior', 'Masters 35', 'Masters 40', 'Masters 45', 'Masters 50', 'Masters 55', 'Masters 60', 'Masters 65', 'Masters 70', 'Masters 75', 'Masters 80', 'Masters 85', 'Masters 90'];
+  // Update the age group options
+  const ageGroupOptions = [
+    'U13',
+    'U15',
+    'U17',
+    'Junior',
+    'Senior',
+    'Masters 35',
+    'Masters 40',
+    'Masters 45',
+    'Masters 50',
+    'Masters 55',
+    'Masters 60',
+    'Masters 65',
+    'Masters 70',
+    'Masters 75',
+    'Masters 80',
+    'Masters 85',
+    'Masters 90+'
+  ];
 
   // Update modal open handler
   const handleOpenModal = () => {
     setTempWeightClassFilter(weightClassFilter);
     setTempClubFilter(clubFilter);
-    setTempAgeGroupFilter(ageGroupFilter);
+    setTempAgeGroupFilter(tempAgeGroupFilter);
     setShowFilterModal(true);
   };
 
@@ -681,7 +725,7 @@ export default function StartListScreen() {
   const handleApplyFilters = () => {
     setWeightClassFilter(tempWeightClassFilter);
     setClubFilter(tempClubFilter);
-    setAgeGroupFilter(tempAgeGroupFilter);
+    setTempAgeGroupFilter(tempAgeGroupFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
   };
@@ -879,6 +923,7 @@ export default function StartListScreen() {
                           <IconSymbol name="checkmark" size={16} color="#007AFF" />
                         )}
                       </Pressable>
+
                       {ageGroupOptions.map((ageGroup) => (
                         <Pressable
                           key={ageGroup}
@@ -1320,7 +1365,6 @@ const styles = StyleSheet.create({
   },
   wrappingDetailValue: {
     flex: 1,
-    paddingLeft: 16,
   },
   wrappingText: {
     textAlign: 'right',
