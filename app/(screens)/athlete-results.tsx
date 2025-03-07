@@ -139,10 +139,7 @@ export default function AthleteResultsScreen() {
                   Date: {new Date(result.date).toLocaleDateString()}
                 </ThemedText>
                 <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
-                  Bodyweight: {result.body_weight?.toFixed(1) ?? '—'} kg
-                </ThemedText>
-                <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
-                  Age: {result.age}
+                  {result.age}
                 </ThemedText>
               </View>
 

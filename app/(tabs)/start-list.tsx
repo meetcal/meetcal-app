@@ -479,6 +479,54 @@ function getAgeCategory(age: number): string {
   return `Masters ${mastersStart}`;
 }
 
+// Update the helper function to parse weight class numbers with gender
+function parseWeightClasses(weightClass: string): string[] {
+  const classes = weightClass.split(' / ');
+  const weightClasses = new Set<string>();
+  
+  // Look at first 2-3 classes max
+  classes.slice(0, 3).forEach(classStr => {
+    // Match pattern: M or W followed by a number (possibly with +)
+    const match = classStr.match(/([MW])\s*(\d+\+?)/);
+    if (match && match[1] && match[2]) {
+      weightClasses.add(`${match[1]} ${match[2]}`);
+    }
+  });
+  
+  return Array.from(weightClasses);
+}
+
+// Update the weight class options extraction
+const weightClassOptions = useMemo(() => {
+  const weightClasses = new Set<string>();
+  
+  liftingResults.forEach(athlete => {
+    if (athlete.weightClass) {
+      const parsed = parseWeightClasses(athlete.weightClass);
+      parsed.forEach(wc => weightClasses.add(wc));
+    }
+  });
+  
+  // Sort by gender (W first) then numerically
+  return Array.from(weightClasses).sort((a, b) => {
+    const [genderA, numberA] = a.split(' ');
+    const [genderB, numberB] = b.split(' ');
+    
+    // Sort W before M
+    if (genderA !== genderB) {
+      return genderA === 'W' ? -1 : 1;
+    }
+    
+    // Then sort numerically
+    const numA = parseInt(numberA.replace('+', ''));
+    const numB = parseInt(numberB.replace('+', ''));
+    if (numA === numB) {
+      return numberA.includes('+') ? 1 : -1;
+    }
+    return numA - numB;
+  });
+}, [liftingResults]);
+
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -498,11 +546,6 @@ export default function StartListScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
-
-  // Extract unique weight classes
-  const weightClassOptions = Array.from(
-    new Set(liftingResults.map(athlete => athlete.weightClass))
-  ).sort(sortWeightClasses);
 
   // Add club options extraction (near weightClassOptions)
   const clubOptions = Array.from(
@@ -581,7 +624,9 @@ export default function StartListScreen() {
   const filteredAthletes = useMemo(() => {
     return liftingResults
       .filter(athlete => {
-        const matchesWeightClass = weightClassFilter ? athlete.weightClass === weightClassFilter : true;
+        const matchesWeightClass = weightClassFilter 
+          ? parseWeightClasses(athlete.weightClass).includes(weightClassFilter)
+          : true;
         const matchesClub = clubFilter 
           ? clubFilter === STARRED_CLUBS_FILTER 
             ? starredClubs.includes(athlete.club)
@@ -1033,7 +1078,7 @@ export default function StartListScreen() {
                             { color: colors.text },
                             tempWeightClassFilter === weightClass && { color: '#007AFF' }
                           ]}>
-                            {weightClass}
+                            {weightClass}kg
                           </ThemedText>
                           {tempWeightClassFilter === weightClass && (
                             <IconSymbol name="checkmark" size={16} color="#007AFF" />
