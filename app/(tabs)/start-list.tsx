@@ -778,6 +778,18 @@ export default function StartListScreen() {
   // Add new state for save modal
   const [showSaveModal, setShowSaveModal] = useState(false);
 
+  // Add resetFilters function before the return statement
+  const resetFilters = () => {
+    setTempWeightClassFilter('');
+    setTempClubFilter('');
+    setTempAgeGroupFilter('');
+    setWeightClassFilter('');
+    setClubFilter('');
+    setSearchQuery('');
+    setShowFilterModal(false);
+    setExpandedSection(null);
+  };
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -1236,20 +1248,35 @@ export default function StartListScreen() {
             </View>
 
             <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
-              <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]}>
-                {filteredAthletes.length} athletes
-              </ThemedText>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.applyButton,
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={handleApplyFilters}
-              >
-                <ThemedText style={styles.applyButtonText}>
-                  Apply
-                </ThemedText>
-              </Pressable>
+              <View style={styles.modalFooterContent}>
+                <View style={styles.modalFooterRight}>
+                  <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]}>
+                    {filteredAthletes.length} athletes
+                  </ThemedText>
+                  <Pressable
+                  style={({ pressed }) => [
+                    styles.resetButton,
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={resetFilters}
+                >
+                  <ThemedText style={styles.resetButtonText}>
+                    Reset
+                  </ThemedText>
+                </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.applyButton,
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={handleApplyFilters}
+                  >
+                    <ThemedText style={styles.applyButtonText}>
+                      Apply
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
             </View>
           </View>
         </Pressable>
@@ -1527,10 +1554,35 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  modalFooterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  modalFooterRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  resetButton: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  resetButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   resultCount: {
     fontSize: 15,
+    marginRight: 'auto',
   },
   applyButton: {
     backgroundColor: '#007AFF',
