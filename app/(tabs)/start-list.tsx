@@ -496,37 +496,6 @@ function parseWeightClasses(weightClass: string): string[] {
   return Array.from(weightClasses);
 }
 
-// Update the weight class options extraction
-const weightClassOptions = useMemo(() => {
-  const weightClasses = new Set<string>();
-  
-  liftingResults.forEach(athlete => {
-    if (athlete.weightClass) {
-      const parsed = parseWeightClasses(athlete.weightClass);
-      parsed.forEach(wc => weightClasses.add(wc));
-    }
-  });
-  
-  // Sort by gender (W first) then numerically
-  return Array.from(weightClasses).sort((a, b) => {
-    const [genderA, numberA] = a.split(' ');
-    const [genderB, numberB] = b.split(' ');
-    
-    // Sort W before M
-    if (genderA !== genderB) {
-      return genderA === 'W' ? -1 : 1;
-    }
-    
-    // Then sort numerically
-    const numA = parseInt(numberA.replace('+', ''));
-    const numB = parseInt(numberB.replace('+', ''));
-    if (numA === numB) {
-      return numberA.includes('+') ? 1 : -1;
-    }
-    return numA - numB;
-  });
-}, [liftingResults]);
-
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -537,7 +506,10 @@ export default function StartListScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { saveSessionsFromAthletes } = useSavedSessions();
+  const [starredClubs, setStarredClubs] = useState<string[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
   
+  // Add back the colors object
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -547,15 +519,7 @@ export default function StartListScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Add club options extraction (near weightClassOptions)
-  const clubOptions = Array.from(
-    new Set(liftingResults.map(athlete => athlete.club))
-  ).sort();
-
-  // Add new state for starred clubs
-  const [starredClubs, setStarredClubs] = useState<string[]>([]);
-
-  // Add useEffect to load starred clubs on mount
+  // Add back useEffect for starred clubs
   useEffect(() => {
     const loadStarredClubs = async () => {
       try {
@@ -570,7 +534,7 @@ export default function StartListScreen() {
     loadStarredClubs();
   }, []);
 
-  // Add function to toggle starred status
+  // Add back toggleStarredClub function
   const toggleStarredClub = async (club: string) => {
     try {
       const newStarredClubs = starredClubs.includes(club)
@@ -584,7 +548,39 @@ export default function StartListScreen() {
     }
   };
 
-  // Update the sort function for clubs
+  // Move weightClassOptions here, before any useEffect
+  const weightClassOptions = useMemo(() => {
+    const weightClasses = new Set<string>();
+    
+    liftingResults.forEach(athlete => {
+      if (athlete.weightClass) {
+        const parsed = parseWeightClasses(athlete.weightClass);
+        parsed.forEach(wc => weightClasses.add(wc));
+      }
+    });
+    
+    return Array.from(weightClasses).sort((a, b) => {
+      const [genderA, numberA] = a.split(' ');
+      const [genderB, numberB] = b.split(' ');
+      
+      if (genderA !== genderB) {
+        return genderA === 'W' ? -1 : 1;
+      }
+      
+      const numA = parseInt(numberA.replace('+', ''));
+      const numB = parseInt(numberB.replace('+', ''));
+      if (numA === numB) {
+        return numberA.includes('+') ? 1 : -1;
+      }
+      return numA - numB;
+    });
+  }, []);
+
+  // Move clubOptions and sortedClubOptions here
+  const clubOptions = Array.from(
+    new Set(liftingResults.map(athlete => athlete.club))
+  ).sort();
+
   const sortedClubOptions = useMemo(() => {
     return clubOptions.sort((a, b) => {
       const aIsStarred = starredClubs.includes(a);
@@ -774,9 +770,6 @@ export default function StartListScreen() {
     setShowFilterModal(false);
     setExpandedSection(null);
   };
-
-  // Add new state for save modal
-  const [showSaveModal, setShowSaveModal] = useState(false);
 
   // Add resetFilters function before the return statement
   const resetFilters = () => {
