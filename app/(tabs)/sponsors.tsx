@@ -29,8 +29,9 @@ const sponsors: Sponsor[] = [
     id: '2',
     name: 'Power & Grace Performance',
     description: 'The Best Team in USA Weightlifting',
-    website: 'https://powerandgraceperformance.com',
-    image: require('@/assets/images/P&G.png') // Use your image
+    website: 'https://powerandgraceperformance.com/programming-2/',
+    discount: '',
+    image: require('@/assets/images/powergrace.png') // Use your image
   },
   // {
   //   id: '3',
