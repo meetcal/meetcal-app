@@ -2,7 +2,7 @@
   "expo": {
     "name": "MeetCal",
     "slug": "meetcal",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": {
       "light": "./assets/images/MeetCal.png",
