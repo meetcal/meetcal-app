@@ -32,22 +32,22 @@ const sponsors: Sponsor[] = [
     website: 'https://powerandgraceperformance.com',
     image: require('@/assets/images/P&G.png') // Use your image
   },
-  {
-    id: '3',
-    name: 'Virus',
-    description: 'The Official Apparel Sponsor of USA Weightlifting',
-    website: 'https://virusintl.com',
-    discount: 'Stop by the booth for 10% off!',
-    image: require('@/assets/images/virus.png') // Use your image
-  },
-  {
-    id: '4',
-    name: 'Onyx Straps',
-    description: 'The Gear For Weightlifters, By Weightlifters',
-    website: 'https://onyxstraps.com',
-    discount: 'Stop by the booth for BOGO straps!',
-    image: require('@/assets/images/onyx.png') // Use your image
-  },
+  // {
+  //   id: '3',
+  //   name: 'Virus',
+  //   description: 'The Official Apparel Sponsor of USA Weightlifting',
+  //   website: 'https://virusintl.com',
+  //   discount: 'Stop by the booth for 10% off!',
+  //   image: require('@/assets/images/virus.png') // Use your image
+  // },
+  // {
+  //   id: '4',
+  //   name: 'Onyx Straps',
+  //   description: 'The Gear For Weightlifters, By Weightlifters',
+  //   website: 'https://onyxstraps.com',
+  //   discount: 'Stop by the booth for BOGO straps!',
+  //   image: require('@/assets/images/onyx.png') // Use your image
+  // },
 ];
 
 const NoImage = () => (
