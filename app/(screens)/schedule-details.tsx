@@ -29,11 +29,9 @@ interface SupabaseBests {
 // Type for just the athlete data we need
 type SessionAthlete = {
   name: string;
+  age: number;
   club: string;
   entryTotal: number;
-  bestSnatch: number;
-  bestCJ: number;
-  bestTotal: number;
 };
 
 function getSessionAthletes(sessionNumber: number, platform: string) {
@@ -62,11 +60,9 @@ function getSessionAthletes(sessionNumber: number, platform: string) {
       // Only include the specific fields we need, no weightClass
       platforms[platform].push({
         name: athlete.name,
+        age: athlete.age,
         club: athlete.club,
         entryTotal: athlete.entryTotal,
-        bestSnatch: athlete.bestSnatch,
-        bestCJ: athlete.bestCJ,
-        bestTotal: athlete.bestTotal
       });
       
       return platforms;
@@ -107,6 +103,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
   };
 
   const athletes = useMemo(() => 
@@ -138,58 +135,77 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
 
   return (
     <View style={styles.athletesContainer}>
-      <ThemedText style={styles.athletesTitle}>Athletes</ThemedText>
-      {Object.entries(athletes).map(([platform, platformAthletes]) => (
-        <View key={platform}>
-          {platformAthletes.map((athlete, index) => (
-            <View 
-              key={athlete.name} 
-              style={[
-                styles.athleteRow,
-                index !== platformAthletes.length - 1 && { 
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border 
-                }
-              ]}
-            >
-              <View style={styles.athleteHeader}>
-                <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
-                <ThemedText style={{ color: colors.secondaryText }}>{athlete.club}</ThemedText>
-              </View>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Entry Total</ThemedText>
-                  <ThemedText style={styles.statValue}>{athlete.entryTotal}kg</ThemedText>
-                </View>
-                {loading ? (
-                  <ActivityIndicator size="small" color={colors.secondaryText} />
-                ) : (
-                  <>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Snatch</ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {athleteBests[athlete.name]?.snatch_best || '—'}kg
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best CJ</ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {athleteBests[athlete.name]?.cj_best || '—'}kg
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>Best Total</ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {athleteBests[athlete.name]?.total || '—'}kg
-                      </ThemedText>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-          ))}
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={[styles.titleSection, { borderBottomColor: colors.border }]}>
+          <ThemedText style={styles.athletesTitle}>Session Athletes</ThemedText>
         </View>
-      ))}
+
+        {Object.entries(athletes).map(([platform, platformAthletes]) => (
+          <View key={platform}>
+            {platformAthletes.map((athlete, index) => (
+              <View 
+                key={athlete.name} 
+                style={[
+                  styles.athleteSection,
+                  index !== platformAthletes.length - 1 && { 
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: colors.border 
+                  }
+                ]}
+              >
+                <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
+                <ThemedText style={[styles.athleteDetail, { color: colors.secondaryText }]}>
+                  Age: {athlete.age}
+                </ThemedText>
+                <ThemedText style={[styles.athleteDetail, { color: colors.secondaryText }]}>
+                  {athlete.club}
+                </ThemedText>
+
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                      Entry Total
+                    </ThemedText>
+                    <ThemedText style={styles.statValue}>
+                      {athlete.entryTotal}kg
+                    </ThemedText>
+                  </View>
+                  {loading ? (
+                    <ActivityIndicator size="small" color={colors.secondaryText} />
+                  ) : (
+                    <>
+                      <View style={styles.statItem}>
+                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                          Best Sn
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.snatch_best ?? '—'}kg
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                          Best CJ
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.cj_best ?? '—'}kg
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                          Best Total
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.total ?? '—'}kg
+                        </ThemedText>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -636,6 +652,7 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 12,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -710,21 +727,32 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
   },
-  athleteRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 4,
+  athletesContainer: {
+    marginTop: 16,
   },
-  athleteHeader: {
-    gap: 2,
+  titleSection: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  athletesTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  athleteSection: {
+    padding: 16,
   },
   athleteName: {
     fontSize: 17,
     fontWeight: '500',
+    marginBottom: 4,
+  },
+  athleteDetail: {
+    fontSize: 15,
+    marginBottom: 2,
   },
   statsRow: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginTop: 12,
     gap: 16,
   },
   statItem: {
@@ -737,18 +765,5 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 15,
     fontWeight: '500',
-  },
-  weightClass: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  athletesContainer: {
-    marginTop: 16,
-  },
-  athletesTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
   },
 }); 
