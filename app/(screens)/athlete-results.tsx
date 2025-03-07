@@ -1,16 +1,38 @@
-import { StyleSheet, View, ScrollView } from 'react-native';
+import { StyleSheet, View, ScrollView, ActivityIndicator } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { liftingResults } from '@/data/results';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabase';
+
+// First, add the interface for Supabase results
+interface SupabaseLiftResult {
+  id: number;
+  event_id: string;
+  meet: string;
+  date: string;
+  name: string;
+  age: string;
+  body_weight: number;
+  snatch1: number | null;
+  snatch2: number | null;
+  snatch3: number | null;
+  snatch_best: number | null;
+  cj1: number | null;
+  cj2: number | null;
+  cj3: number | null;
+  cj_best: number | null;
+  total: number | null;
+}
 
 export default function AthleteResultsScreen() {
   const { currentTheme } = useTheme();
   const { name } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
+  const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>([]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -22,13 +44,35 @@ export default function AthleteResultsScreen() {
     fail: '#FF3B30',
   };
 
-  const athleteResults = useMemo(() => {
-    if (!name) return [];
-    
-    const nameStr = Array.isArray(name) ? name[0] : name;
-    return liftingResults
-      .filter(result => result.lifter.toLowerCase() === nameStr.toLowerCase())
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // Add useEffect to fetch data from Supabase
+  useEffect(() => {
+    const fetchAthleteResults = async () => {
+      if (!name) return;
+
+      try {
+        setLoading(true);
+        const nameStr = Array.isArray(name) ? name[0] : name;
+        
+        const { data, error } = await supabase
+          .from('lifting_results')
+          .select('*')
+          .eq('name', nameStr)
+          .order('date', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching athlete results:', error);
+          return;
+        }
+
+        setAthleteResults(data || []);
+      } catch (error) {
+        console.error('Error in fetchAthleteResults:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAthleteResults();
   }, [name]);
 
   if (!name) {
@@ -65,7 +109,13 @@ export default function AthleteResultsScreen() {
           { paddingBottom: insets.bottom + 20 }
         ]}
       >
-        {athleteResults.length === 0 ? (
+        {loading ? (
+          <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.secondaryText} />
+            </View>
+          </View>
+        ) : athleteResults.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
             <View style={styles.emptyStateContainer}>
               <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
@@ -74,13 +124,13 @@ export default function AthleteResultsScreen() {
             </View>
           </View>
         ) : (
-          athleteResults.map((result, index) => (
+          athleteResults.map((result) => (
             <View 
               key={`${result.meet}-${result.date}`}
               style={[
                 styles.card,
                 { backgroundColor: colors.card },
-                index === 0 && { marginTop: 16 }
+                athleteResults.indexOf(result) === 0 && { marginTop: 16 }
               ]}
             >
               <View style={[styles.section, { borderBottomColor: colors.border }]}>
@@ -89,7 +139,7 @@ export default function AthleteResultsScreen() {
                   Date: {new Date(result.date).toLocaleDateString()}
                 </ThemedText>
                 <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
-                  Bodyweight: {result.bodyWeight} kg
+                  Bodyweight: {result.body_weight?.toFixed(1) ?? '—'} kg
                 </ThemedText>
               </View>
 
@@ -121,7 +171,7 @@ export default function AthleteResultsScreen() {
 
               <View style={styles.section}>
                 <ThemedText style={styles.total}>
-                  {result.snatch}/{result.cj}/{result.total}
+                  {result.snatch_best ?? '—'}/{result.cj_best ?? '—'}/{result.total ?? '—'}
                 </ThemedText>
               </View>
             </View>
@@ -132,8 +182,8 @@ export default function AthleteResultsScreen() {
   );
 }
 
-function AttemptDisplay({ attempt, colors }: { attempt: number, colors: any }) {
-  if (attempt === 0) {
+function AttemptDisplay({ attempt, colors }: { attempt: number | null, colors: any }) {
+  if (attempt === null || attempt === 0) {
     return <ThemedText style={[styles.attempt, { color: colors.secondaryText }]}>—</ThemedText>;
   }
 
@@ -218,5 +268,10 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 15,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 
