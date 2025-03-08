@@ -472,8 +472,8 @@ export default function SessionDetailsScreen() {
 
       const [year, month, day] = dateStr.split('-').map(Number);
       
-      // Create Date object in UTC, adding 5 hours for EST
-      return new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
+      // Create Date object in UTC, adding 4 hours for EDT (Eastern Daylight Time)
+      return new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
     };
 
     // Find the session and get platform-specific time

@@ -357,8 +357,8 @@ function parseTimeString(timeStr: string, dateStr: string) {
 
   const [year, month, day] = dateStr.split('-').map(Number);
   
-  // Create Date object in UTC, adding 5 hours for EST
-  return new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
+  // Create Date object in UTC, adding 4 hours for EDT
+  return new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
 }
 
 async function createCalendarEvents(sessions: Array<{

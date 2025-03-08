@@ -83,7 +83,7 @@ async function createCalendarEvents(sessions: Array<{
       const [year, month, day] = session.date.split('-').map(Number);
       
       // Create Date object in UTC
-      const startDate = new Date(Date.UTC(year, month - 1, day, adjustedHours + 5, minutes));
+      const startDate = new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
       const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
 
       await Calendar.createEventAsync(calendarId, {
