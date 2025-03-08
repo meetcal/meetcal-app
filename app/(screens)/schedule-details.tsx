@@ -16,6 +16,7 @@ import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 
 type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
 
@@ -95,6 +96,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   platform: string;
   sessionWeightClass: string;
 }) {
+  const router = useRouter();
   const { currentTheme } = useTheme();
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
@@ -128,6 +130,13 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
 
     fetchAthleteBests();
   }, [athletes]);
+
+  const handleAthletePress = (athleteName: string) => {
+    router.push({
+      pathname: '/athlete-results',
+      params: { name: athleteName }
+    });
+  };
 
   if (!athletes[platform]?.length) {
     return null;
@@ -201,6 +210,29 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
                     </>
                   )}
                 </View>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.meetResultsButton,
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={() => router.push({
+                    pathname: '/athlete-results',
+                    params: { name: athlete.name }
+                  })}
+                >
+                  <ThemedText style={styles.meetResultsText}>
+                    See All Meet Results
+                  </ThemedText>
+                  <IconSymbol 
+                    name={Platform.select({
+                      ios: "chevron.right",
+                      android: "chevron-forward"
+                    })} 
+                    size={13} 
+                    color="#007AFF"
+                  />
+                </Pressable>
               </View>
             ))}
           </View>
@@ -741,6 +773,12 @@ const styles = StyleSheet.create({
   athleteSection: {
     padding: 16,
   },
+  athleteNameButton: {
+    marginBottom: 4,
+  },
+  athleteNamePressed: {
+    opacity: 0.7,
+  },
   athleteName: {
     fontSize: 17,
     fontWeight: '500',
@@ -765,5 +803,17 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  meetResultsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  meetResultsText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#007AFF',
   },
 }); 
