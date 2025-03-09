@@ -23,7 +23,7 @@ export default ({ config }) => ({
     },
     icon: {
       light: './assets/images/MeetCal.png',
-      dark: './assets/images/MeetCal-apple-dark.png'
+      dark: './assets/images/MeetCal-no-bg.png'
     }
   },
   android: {
@@ -31,11 +31,11 @@ export default ({ config }) => ({
       foregroundImage: './assets/images/MeetCal.png',
       backgroundColor: '#ffffff',
       dark: {
-        foregroundImage: './assets/images/MeetCal-apple-dark.png',
+        foregroundImage: './assets/images/MeetCal-no-bg.png',
         backgroundColor: '#1c1c1e'
       }
     },
-    package: 'com.meetcal.app',
+    package: 'com.memohnsen.meetcal',
     versionCode: 1,
     permissions: ["READ_CALENDAR", "WRITE_CALENDAR"]
   },
@@ -52,7 +52,7 @@ export default ({ config }) => ({
           useFrameworks: 'static',
         },
         android: {
-          compileSdkVersion: 33,
+          compileSdkVersion: 35,
           targetSdkVersion: 33,
           buildToolsVersion: '33.0.0',
         },

@@ -84,20 +84,15 @@ android {
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdkVersion 35
+    compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.meetcal.app'
+    namespace 'com.memohnsen.meetcal'
     defaultConfig {
-        applicationId 'com.meetcal.app'
+        applicationId 'com.memohnsen.meetcal'
         minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion 33
+        targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
-        
-        // Add these permissions
-        manifestPlaceholders = [
-            'appAuthRedirectScheme': 'com.meetcal.app'
-        ]
     }
     signingConfigs {
         debug {
@@ -178,6 +173,4 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-
-    implementation "com.revenuecat.purchases:purchases:6.0.0"
 }
