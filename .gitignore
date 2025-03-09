@@ -40,3 +40,10 @@ app-example
 
 .env
 steps.md
+
+# Keystore files
+android/keystores/release.jks
+*.jks
+
+# Credentials
+credentials.json
