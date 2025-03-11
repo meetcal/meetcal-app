@@ -1,39 +1,59 @@
-import { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, FlatList, Pressable, LayoutAnimation, Modal, ScrollView, Dimensions, Alert, TextInput, Platform, ActivityIndicator } from 'react-native';
-import { ThemedView } from '@/components/ThemedView';
-import { ThemedText } from '@/components/ThemedText';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import React from 'react';
+import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { LiftResult, liftingResults } from '@/data/athletes';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { schedule } from '@/data/schedule';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { useSavedSessions } from '@/contexts/SavedSessionsContext';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { liftingResults as usawLiftingResults } from '@/data/meets/usaw-masters-nationals/athletes';
+import { liftingResults as usamwLiftingResults } from '@/data/meets/usamw-masters-nationals/athletes';
+import { schedule as usawSchedule } from '@/data/meets/usaw-masters-nationals/schedule';
+import { schedule as usamwSchedule } from '@/data/meets/usamw-masters-nationals/schedule';
+import { LiftResult } from '@/data/meets/usaw-masters-nationals/athletes';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
-import { useRouter } from 'expo-router';
-import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LayoutAnimation } from 'react-native';
 
-function getSessionDetails(sessionNumber: number) {
-  for (const day of schedule) {
-    const session = day.sessions.find(s => s.number === sessionNumber);
-    if (session) {
-      return {
-        date: day.fullDate,
-        startTime: session.startTime,
-        weighInTime: session.weighInTime,
-        displayDate: day.date
-      };
-    }
-  }
-  return null;
+// Rename Platform interface to PlatformSchedule to avoid conflict
+interface PlatformSchedule {
+  platform: string;
+  platformStartTime?: string;
 }
+
+interface Session {
+  number: number;
+  startTime: string;
+  weighInTime: string;
+  platforms: PlatformSchedule[];
+}
+
+interface ScheduleDay {
+  date: string;
+  fullDate: string;
+  sessions: Session[];
+}
+
+type Schedule = ScheduleDay;
 
 interface AthleteItemProps {
   athlete: LiftResult;
   isExpanded: boolean;
   onPress: () => void;
   router: ReturnType<typeof useRouter>;
+  schedule: Schedule[];
+  getSessionDetails: (sessionNumber: number) => {
+    date: string;
+    startTime: string;
+    weighInTime: string;
+    displayDate: string;
+    platforms: PlatformSchedule[];
+  } | null;
 }
 
 // Add interface for Supabase results
@@ -89,7 +109,7 @@ async function getLastYearBests(athleteName: string) {
   }
 }
 
-function AthleteItem({ athlete, isExpanded, onPress, router }: AthleteItemProps) {
+function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessionDetails }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
@@ -361,73 +381,10 @@ function parseTimeString(timeStr: string, dateStr: string) {
   return new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
 }
 
-async function createCalendarEvents(sessions: Array<{
-  date: string;
-  startTime: string;
-  weighInTime: string;
-  sessionNumber: string;
-  platform: string;
-  weightClass: string;
-}>) {
-  try {
-    let calendarId;
+// Add special value for starred clubs filter
+const STARRED_CLUBS_FILTER = 'Favorites';
 
-    if (Platform.OS === 'ios') {
-      const calendar = await Calendar.getDefaultCalendarAsync();
-      calendarId = calendar.id;
-    } else {
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      const primaryCalendar = calendars.find(cal => 
-        cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
-        cal.allowsModifications
-      );
-
-      if (!primaryCalendar) {
-        throw new Error('no_calendar');
-      }
-
-      calendarId = primaryCalendar.id;
-    }
-
-    for (const session of sessions) {
-      // Find session in schedule to get platform-specific time
-      const sessionDay = schedule.find(day => 
-        day.sessions.some(s => s.number === Number(session.sessionNumber))
-      );
-      
-      const scheduleSession = sessionDay?.sessions.find(s => 
-        s.number === Number(session.sessionNumber)
-      );
-
-      const platform = scheduleSession?.platforms.find(p => 
-        p.platform === session.platform
-      );
-
-      // Use platform-specific time if available
-      const startTime = platform?.platformStartTime || session.startTime;
-      const weighInTime = calculateWeighInTime(startTime);
-
-      const startDate = parseTimeString(startTime, sessionDay?.fullDate || session.date);
-      const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
-
-      await Calendar.createEventAsync(calendarId, {
-        title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-        location: getFullLocation(),
-        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
-        startDate: startDate,
-        endDate: endDate,
-        timeZone: 'America/New_York',
-        alarms: [{
-          relativeOffset: -60,
-        }],
-      });
-    }
-  } catch (error) {
-    throw error;
-  }
-}
-
-// Update the helper function to ensure it always returns a string
+// Add these helper functions near the top with other helpers
 const getChevronIcon = (direction: 'down' | 'right'): string => {
   return Platform.select({
     ios: `chevron.${direction}`,
@@ -435,8 +392,19 @@ const getChevronIcon = (direction: 'down' | 'right'): string => {
   }) || `chevron.${direction}`; // Fallback to iOS style if platform select fails
 };
 
-// Add special value for starred clubs filter
-const STARRED_CLUBS_FILTER = 'Favorites';
+const getSaveIcon = (): string => {
+  return Platform.select({
+    ios: "square.and.arrow.down",
+    android: "download"
+  }) || "square.and.arrow.down";
+};
+
+const getCloseIcon = (): string => {
+  return Platform.select({
+    ios: "xmark",
+    android: "close"
+  }) || "xmark";
+};
 
 // Add the helper function
 function calculateWeighInTime(startTime: string): string {
@@ -508,6 +476,34 @@ export default function StartListScreen() {
   const { saveSessionsFromAthletes } = useSavedSessions();
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const { selectedMeet } = useSelectedMeet();
+  
+  // Monitor selectedMeet changes
+  useEffect(() => {
+    console.log('selectedMeet changed to:', selectedMeet);
+    console.log('selectedMeet type:', typeof selectedMeet);
+    console.log('selectedMeet exact value:', JSON.stringify(selectedMeet));
+    console.log('comparison result:', selectedMeet === 'USAW Master\'s Nationals');
+  }, [selectedMeet]);
+  
+  // Get meet-specific schedule and athletes
+  const schedule = useMemo(() => {
+    console.log('Schedule comparison:', {
+      selectedMeet,
+      isUSAW: selectedMeet === 'USAW Master\'s Nationals',
+      scheduleToUse: selectedMeet === 'USAW Master\'s Nationals' ? 'USAW' : 'USAMW'
+    });
+    return selectedMeet === 'USAW Master\'s Nationals' ? usawSchedule : usamwSchedule;
+  }, [selectedMeet]);
+  
+  const liftingResults = useMemo(() => {
+    console.log('Athletes comparison:', {
+      selectedMeet,
+      isUSAW: selectedMeet === 'USAW Master\'s Nationals',
+      resultsToUse: selectedMeet === 'USAW Master\'s Nationals' ? 'USAW' : 'USAMW'
+    });
+    return selectedMeet === 'USAW Master\'s Nationals' ? usawLiftingResults : usamwLiftingResults;
+  }, [selectedMeet]);
   
   // Add back the colors object
   const colors = {
@@ -518,6 +514,24 @@ export default function StartListScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  // Define getSessionDetails after schedule is defined
+  const getSessionDetails = useCallback((sessionNumber: number) => {
+    if (!schedule) return null;
+    for (const day of schedule) {
+      const session = day.sessions.find((s) => s.number === sessionNumber);
+      if (session) {
+        return {
+          date: day.fullDate,
+          startTime: session.startTime,
+          weighInTime: session.weighInTime,
+          displayDate: day.date,
+          platforms: session.platforms
+        };
+      }
+    }
+    return null;
+  }, [schedule]);
 
   // Add back useEffect for starred clubs
   useEffect(() => {
@@ -533,20 +547,6 @@ export default function StartListScreen() {
     };
     loadStarredClubs();
   }, []);
-
-  // Add back toggleStarredClub function
-  const toggleStarredClub = async (club: string) => {
-    try {
-      const newStarredClubs = starredClubs.includes(club)
-        ? starredClubs.filter(c => c !== club)
-        : [...starredClubs, club];
-      
-      setStarredClubs(newStarredClubs);
-      await AsyncStorage.setItem('starredClubs', JSON.stringify(newStarredClubs));
-    } catch (error) {
-      console.error('Error saving starred clubs:', error);
-    }
-  };
 
   // Move weightClassOptions here, before any useEffect
   const weightClassOptions = useMemo(() => {
@@ -618,6 +618,9 @@ export default function StartListScreen() {
 
   // Update the filtered athletes logic
   const filteredAthletes = useMemo(() => {
+    console.log('Filtering athletes for meet:', selectedMeet);
+    console.log('Number of athletes:', liftingResults.length);
+    
     return liftingResults
       .filter(athlete => {
         const matchesWeightClass = weightClassFilter 
@@ -638,7 +641,7 @@ export default function StartListScreen() {
         return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup;
       })
       .sort(sortAthletes);
-  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs]);
+  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs, selectedMeet, liftingResults]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -783,8 +786,89 @@ export default function StartListScreen() {
     setExpandedSection(null);
   };
 
+  // Add back toggleStarredClub function
+  const toggleStarredClub = async (club: string) => {
+    try {
+      const newStarredClubs = starredClubs.includes(club)
+        ? starredClubs.filter(c => c !== club)
+        : [...starredClubs, club];
+      
+      setStarredClubs(newStarredClubs);
+      await AsyncStorage.setItem('starredClubs', JSON.stringify(newStarredClubs));
+    } catch (error) {
+      console.error('Error saving starred clubs:', error);
+    }
+  };
+
+  // Move createCalendarEvents here to access schedule
+  const createCalendarEvents = async (sessions: Array<{
+    date: string;
+    startTime: string;
+    weighInTime: string;
+    sessionNumber: string;
+    platform: string;
+    weightClass: string;
+  }>) => {
+    try {
+      let calendarId;
+
+      if (Platform.OS === 'ios') {
+        const calendar = await Calendar.getDefaultCalendarAsync();
+        calendarId = calendar.id;
+      } else {
+        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+        const primaryCalendar = calendars.find(cal => 
+          cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
+          cal.allowsModifications
+        );
+
+        if (!primaryCalendar) {
+          throw new Error('no_calendar');
+        }
+
+        calendarId = primaryCalendar.id;
+      }
+
+      for (const session of sessions) {
+        // Find session in schedule to get platform-specific time
+        const sessionDay = schedule.find((day: Schedule) => 
+          day.sessions.some((s: Session) => s.number === Number(session.sessionNumber))
+        );
+        
+        const scheduleSession = sessionDay?.sessions.find((s: Session) => 
+          s.number === Number(session.sessionNumber)
+        );
+
+        const platform = scheduleSession?.platforms.find((p: PlatformSchedule) => 
+          p.platform === session.platform
+        );
+
+        // Use platform-specific time if available
+        const startTime = platform?.platformStartTime || session.startTime;
+        const weighInTime = calculateWeighInTime(startTime);
+
+        const startDate = parseTimeString(startTime, sessionDay?.fullDate || session.date);
+        const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+
+        await Calendar.createEventAsync(calendarId, {
+          title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
+          location: getFullLocation(),
+          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
+          startDate: startDate,
+          endDate: endDate,
+          timeZone: 'America/New_York',
+          alarms: [{
+            relativeOffset: -60,
+          }],
+        });
+      }
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]} key={selectedMeet}>
       <View style={[styles.filterContainer, { 
         backgroundColor: colors.background,
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
@@ -853,10 +937,7 @@ export default function StartListScreen() {
             onPress={() => setShowSaveModal(true)}
           >
             <IconSymbol 
-              name={Platform.select({
-                ios: "square.and.arrow.down",
-                android: "download"
-              })} 
+              name={getSaveIcon()} 
               size={16} 
               color={colors.secondaryText} 
             />
@@ -876,6 +957,8 @@ export default function StartListScreen() {
             isExpanded={expandedId === item.name}
             onPress={() => handlePress(item.name)}
             router={router}
+            schedule={schedule}
+            getSessionDetails={getSessionDetails}
           />
         )}
         contentContainerStyle={[
@@ -1304,10 +1387,7 @@ export default function StartListScreen() {
                 onPress={() => setShowSaveModal(false)}
               >
                 <IconSymbol 
-                  name={Platform.select({
-                    ios: "xmark",
-                    android: "close"
-                  })}
+                  name={getCloseIcon()} 
                   size={20} 
                   color={colors.secondaryText} 
                 />
