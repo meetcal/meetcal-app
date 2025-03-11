@@ -111,7 +111,7 @@ export default function EventInfoScreen() {
             Disclaimer
           </ThemedText>
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
-            MeetCal is in no way affiliated with USA Weightlifting. All of the information on this app is accurate based on the information provided by the event organizers. 
+            MeetCal is in no way affiliated with USA Weightlifting (USAW) or USA Masters Weightlifting (USAMW). All of the information on this app is accurate based on the information provided by the event organizers. 
             The event organizers can and do occasionally change the location of sessions, please check their Instagram 
             for any platform or time changes.
           </ThemedText>
