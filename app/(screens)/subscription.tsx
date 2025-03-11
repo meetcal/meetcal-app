@@ -263,14 +263,23 @@ export default function SubscriptionScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
         options={{
-          headerShown: false,
+          headerShown: Platform.OS === 'android' && params.from === 'info',
+          headerTitle: Platform.OS === 'android' ? 'Subscription' : '',
+          headerLeft: Platform.OS === 'android' ? undefined : () => null,
           gestureEnabled: params.from === 'info',
           gestureDirection: 'horizontal',
-          animation: 'slide_from_right',
+          animation: Platform.select({
+            ios: 'slide_from_right',
+            android: 'slide_from_right'
+          }),
+          headerStyle: {
+            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+          },
+          headerTintColor: '#007AFF',
         }} 
       />
 
-      {params.from === 'info' && (
+      {Platform.OS === 'ios' && params.from === 'info' && (
         <View style={[styles.header, { marginTop: insets.top }]}>
           <Pressable
             style={styles.backButton}
