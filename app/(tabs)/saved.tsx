@@ -12,6 +12,25 @@ import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { MeetName } from '@/data/types/meet';
+import { getSchedule } from '@/data/meets/scheduleManager';
+import { Schedule } from '@/data/types/schedule';
+
+const SAVED_SESSIONS_KEY = '@saved_sessions';
+
+// Add function to generate unique session IDs
+function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
+  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
+}
+
+// Update SavedSession type to include meet
+declare module '@/hooks/useSavedSessions' {
+  interface SavedSession {
+    meet: MeetName;
+    id: string;  // Now we ensure ID is always present
+  }
+}
 
 // Add a type that extends SavedSession to include the legacy athleteName property
 interface LegacySavedSession extends SavedSession {
@@ -141,8 +160,20 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
+// Update migration helper to include proper IDs
+async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetName) {
+  return sessions.map(session => ({
+    ...session,
+    // If the session has a meet, keep it, otherwise assign to current meet
+    meet: session.meet || currentMeet,
+    // Regenerate ID to ensure uniqueness
+    id: generateSessionId(session.meet || currentMeet, session.sessionNumber, session.platform)
+  }));
+}
+
 export default function SavedScreen() {
-  const { savedSessions, refreshSessions } = useSavedSessions();
+  const { savedSessions, saveSession } = useSavedSessions();
+  const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [letterFilter, setLetterFilter] = useState('');
@@ -150,8 +181,7 @@ export default function SavedScreen() {
   const { currentTheme } = useTheme();
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [localSessions, setLocalSessions] = useState([]);
-  const [usingLocalSessions, setUsingLocalSessions] = useState(false);
+  const [hasMigrated, setHasMigrated] = useState(false);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -162,32 +192,71 @@ export default function SavedScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Extract unique letters from saved sessions
+  // Add migrateSessions function
+  const migrateSessions = useCallback(async () => {
+    try {
+      // Try all possible storage keys
+      const STORAGE_KEYS = ['@saved_sessions', 'savedSessions', '@savedSessions', 'sessions'];
+      let needsMigration = false;
+      
+      for (const key of STORAGE_KEYS) {
+        const storedData = await AsyncStorage.getItem(key);
+        if (storedData) {
+          try {
+            const parsed = JSON.parse(storedData);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              // Check if any session lacks meet info
+              needsMigration = parsed.some(session => !session.meet);
+              if (needsMigration) {
+                console.log(`Migrating ${parsed.length} sessions in ${key}`);
+                const migratedSessions = await migrateSessionsToMeetSpecific(parsed, selectedMeet);
+                
+                // Save migrated sessions back to storage
+                await AsyncStorage.setItem(key, JSON.stringify(migratedSessions));
+                
+                // Update context if using it
+                migratedSessions.forEach(session => {
+                  saveSession(session);
+                });
+              }
+            }
+          } catch (e) {
+            console.error(`Error migrating sessions in ${key}:`, e);
+          }
+        }
+      }
+      
+      setHasMigrated(true);
+    } catch (error) {
+      console.error('Error during session migration:', error);
+    }
+  }, [selectedMeet, saveSession]);
+
+  // Filter saved sessions by meet and letter - strict meet filtering
+  const filteredSessions = useMemo(() => {
+    const meetSessions = savedSessions.filter(session => session.meet === selectedMeet);
+    
+    if (!letterFilter) {
+      return meetSessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
+    }
+    return meetSessions
+      .filter(session => session.weightClass.slice(-1) === letterFilter)
+      .sort((a, b) => a.sessionNumber - b.sessionNumber);
+  }, [savedSessions, selectedMeet, letterFilter]);
+
+  // Extract unique letters from saved sessions for the current meet
   const filterOptions = useMemo(() => {
     const letterSet = new Set<string>();
-    savedSessions.forEach(session => {
+    const meetSessions = savedSessions.filter(session => session.meet === selectedMeet);
+    
+    meetSessions.forEach(session => {
       const lastChar = session.weightClass.slice(-1);
       if (/^[A-G]$/.test(lastChar)) {
         letterSet.add(lastChar);
       }
     });
     return Array.from(letterSet).sort();
-  }, [savedSessions]);
-
-  // Use local sessions if available, otherwise use context sessions
-  const displaySessions = usingLocalSessions ? localSessions : savedSessions;
-
-  // Filter saved sessions
-  const filteredSessions = useMemo(() => {
-    if (!letterFilter) {
-      return displaySessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
-    }
-    return displaySessions
-      .filter(session => 
-        session.weightClass.slice(-1) === letterFilter
-      )
-      .sort((a, b) => a.sessionNumber - b.sessionNumber);
-  }, [displaySessions, letterFilter]);
+  }, [savedSessions, selectedMeet]);
 
   const handleFilterSelect = (letter: string) => {
     setLetterFilter(letter);
@@ -218,16 +287,19 @@ export default function SavedScreen() {
                 return;
               }
 
-              const sessionsToAdd = filteredSessions.map(session => ({
-                date: schedule.find(day => 
-                  day.sessions.some(s => s.number === parseInt(session.sessionNumber.toString()))
-                )?.fullDate || '',
-                startTime: session.startTime,
-                weighInTime: session.weighInTime,
-                sessionNumber: session.sessionNumber.toString(),
-                platform: session.platform,
-                weightClass: session.weightClass
-              }));
+              const sessionsToAdd = filteredSessions.map(session => {
+                const meetSchedule = getSchedule(session.meet);
+                return {
+                  date: meetSchedule.find(day => 
+                    day.sessions.some(s => s.number === parseInt(session.sessionNumber.toString()))
+                  )?.fullDate || '',
+                  startTime: session.startTime,
+                  weighInTime: session.weighInTime,
+                  sessionNumber: session.sessionNumber.toString(),
+                  platform: session.platform,
+                  weightClass: session.weightClass
+                };
+              });
 
               await createCalendarEvents(sessionsToAdd);
               Alert.alert('Success', 'Sessions have been added to your calendar.');
@@ -243,6 +315,7 @@ export default function SavedScreen() {
 
   const renderSession = ({ item }: { item: LegacySavedSession }) => {
     // Find session in schedule to get platform-specific time
+    const schedule = getSchedule(item.meet || selectedMeet);
     const sessionDay = schedule.find(day => 
       day.sessions.some(s => s.number === parseInt(item.sessionNumber.toString()))
     );
@@ -278,6 +351,14 @@ export default function SavedScreen() {
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           Session {item.sessionNumber} • {sessionDay?.date}
         </ThemedText>
+
+        {/* Add meet name if different from selected meet */}
+        {item.meet && item.meet !== selectedMeet && (
+          <ThemedText style={[styles.meetName, { color: colors.secondaryText }]}>
+            {item.meet.replace(/-/g, ' ')}
+          </ThemedText>
+        )}
+
         <View style={styles.timeContainer}>
           <View style={styles.timeRow}>
             <View style={styles.timeBlock}>
@@ -355,66 +436,48 @@ export default function SavedScreen() {
     );
   };
 
-  // Add useEffect for calendar permissions
+  // Memoize forceLoadSessions
+  const forceLoadSessions = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    
+    try {
+      // Just trigger a context reload
+      const storedData = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
+      if (storedData) {
+        const parsed = JSON.parse(storedData);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(session => {
+            // Ensure each session has a proper unique ID
+            const sessionWithId = {
+              ...session,
+              id: generateSessionId(session.meet || selectedMeet, session.sessionNumber, session.platform)
+            };
+            saveSession(sessionWithId);
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [saveSession, refreshing, selectedMeet]);
+
+  // Only run migration on mount
+  useEffect(() => {
+    if (!hasMigrated) {
+      migrateSessions();
+    }
+  }, [hasMigrated]);
+
+  // Remove all other effects except calendar permissions
   useEffect(() => {
     (async () => {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
       setHasCalendarPermission(status === 'granted');
     })();
   }, []);
-
-  // Add a function to directly load sessions from AsyncStorage
-  const forceLoadSessions = async () => {
-    setRefreshing(true);
-    
-    try {
-      // Try all possible storage keys
-      const STORAGE_KEYS = ['@saved_sessions', 'savedSessions', '@savedSessions', 'sessions'];
-      let loadedSessions = null;
-      
-      for (const key of STORAGE_KEYS) {
-        const storedData = await AsyncStorage.getItem(key);
-        if (storedData) {
-          try {
-            const parsed = JSON.parse(storedData);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log(`Found ${parsed.length} sessions in ${key}`);
-              loadedSessions = parsed;
-              break;
-            }
-          } catch (e) {
-            console.error(`Error parsing data from ${key}:`, e);
-          }
-        }
-      }
-      
-      // If we found sessions, display them directly
-      if (loadedSessions && loadedSessions.length > 0) {
-        // Create a local state to hold the sessions
-        setLocalSessions(loadedSessions);
-        setUsingLocalSessions(true);
-      } else {
-        setUsingLocalSessions(false);
-      }
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-      setUsingLocalSessions(false);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // Call forceLoadSessions when the component mounts
-  useEffect(() => {
-    forceLoadSessions();
-  }, []);
-
-  // Also refresh when the screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      forceLoadSessions();
-    }, [])
-  );
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -700,5 +763,11 @@ const styles = StyleSheet.create({
   athleteMoreText: {
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  meetName: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginLeft: 16,
+    marginTop: 4,
   },
 }); 
