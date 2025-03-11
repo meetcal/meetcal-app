@@ -10,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { MeetName } from '@/data/types/meet';
 
 const showReviewPrompt = () => {
   Alert.alert(
@@ -33,37 +35,11 @@ const showReviewPrompt = () => {
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
   const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
-  const [selectedMeet, setSelectedMeet] = useState('USAW Master\'s Nationals');
+  const { selectedMeet, setSelectedMeet, isLoading } = useSelectedMeet();
   const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
-
-  // Load selected meet from storage
-  useEffect(() => {
-    const loadSelectedMeet = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('@selected_meet');
-        if (stored) {
-          setSelectedMeet(stored);
-        }
-      } catch (error) {
-        console.error('Error loading selected meet:', error);
-      }
-    };
-    loadSelectedMeet();
-  }, []);
-
-  // Save selected meet to storage
-  const handleMeetSelect = async (meet: string) => {
-    try {
-      await AsyncStorage.setItem('@selected_meet', meet);
-      setSelectedMeet(meet);
-      setShowMeetModal(false);
-    } catch (error) {
-      console.error('Error saving selected meet:', error);
-    }
-  };
 
   // Sync the switch state with theme changes
   useEffect(() => {
@@ -157,6 +133,15 @@ export default function InfoScreen() {
         }
       ]
     );
+  };
+
+  const handleMeetSelect = async (meet: MeetName) => {
+    try {
+      await setSelectedMeet(meet);
+      setShowMeetModal(false);
+    } catch (error) {
+      console.error('Error saving selected meet:', error);
+    }
   };
 
   return (
@@ -425,7 +410,7 @@ export default function InfoScreen() {
                   selectedMeet === meet && { backgroundColor: colors.pressed },
                   pressed && { opacity: 0.8 }
                 ]}
-                onPress={() => handleMeetSelect(meet)}
+                onPress={() => handleMeetSelect(meet as MeetName)}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
