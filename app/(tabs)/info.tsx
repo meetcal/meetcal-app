@@ -163,8 +163,13 @@ export default function InfoScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: 20, paddingTop: 20 }
+          { 
+            paddingHorizontal: 20, 
+            paddingTop: 20,
+            paddingBottom: Math.max(80, insets.bottom + 60)
+          }
         ]}
+        showsVerticalScrollIndicator={false}
       >
         
         {/* Records and Standards */}
@@ -439,7 +444,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
   },
   card: {
     borderRadius: 12,
