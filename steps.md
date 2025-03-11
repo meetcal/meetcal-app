@@ -43,13 +43,14 @@
 ## 4. Component Updates
 1. Update schedule-details.tsx: (In Progress)
    - Add meet-specific athlete handling
-   - Update calendar integration
-   - Modify session display logic
+   - Update session display logic
+   - Modify platform handling
 
-2. Update saved.tsx:
-   - Modify session storage format
-   - Update calendar integration
-   - Add meet context to saved sessions
+2. Update saved.tsx: (In Progress)
+   - Add meet information to session storage
+   - Update session display for meet context
+   - Modify filtering for meet-specific data
+   - Update session refresh logic
 
 3. Update start-list.tsx:
    - Add meet-specific athlete handling
@@ -61,8 +62,27 @@
    - Update calculation logic
    - Modify display formatting
 
-## 5. Calendar Integration
-1. Create time zone utilities:
+## 5. Testing and Validation
+1. Create test data for each meet
+2. Validate data integrity across meets
+3. Test UI components with different meets
+4. Verify session management
+5. Test filtering and display logic
+
+## 6. Documentation
+1. Document meet data structure
+2. Update component documentation
+3. Create meet addition guide
+4. Document meet-specific features
+
+## 7. Future-Proofing
+1. Create meet addition template
+2. Document meet integration process
+3. Create meet validation tools
+4. Establish meet update process
+
+## 8. Calendar Integration
+1. Update calendar utilities:
    - Meet-specific time zone handling
    - Time conversion functions
    - Calendar event formatting
@@ -72,21 +92,7 @@
    - Handle platform-specific times
    - Update event details format
 
-## 6. Testing and Validation
-1. Create test data for each meet
-2. Validate data integrity across meets
-3. Test time zone handling
-4. Verify calendar integration
-5. Test UI components with different meets
-
-## 7. Documentation
-1. Document meet data structure
-2. Update component documentation
-3. Create meet addition guide
-4. Document time zone handling
-
-## 8. Future-Proofing
-1. Create meet addition template
-2. Document meet integration process
-3. Create meet validation tools
-4. Establish meet update process
+3. Test calendar integration:
+   - Verify time zone handling
+   - Test event creation
+   - Validate event details

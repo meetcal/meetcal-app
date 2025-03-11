@@ -299,6 +299,11 @@ const checkAndShowReviewPrompt = async () => {
   }
 };
 
+// Function to generate unique session IDs
+function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
+  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
+}
+
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
@@ -314,6 +319,7 @@ export default function SessionDetailsScreen() {
     weighInTime?: string;
     date?: string;
     athleteName?: string;
+    meet?: MeetName;
   }>();
 
   // Ensure required params have values
@@ -326,12 +332,20 @@ export default function SessionDetailsScreen() {
     weighInTime: rawParams.weighInTime || '',
     date: rawParams.date || '',
     athleteName: rawParams.athleteName,
+    meet: rawParams.meet || selectedMeet, // Use provided meet or current selected meet
   };
+
+  // Generate the correct session ID using the meet information
+  const sessionId = useMemo(() => 
+    generateSessionId(params.meet, params.sessionNumber, params.platform),
+    [params.meet, params.sessionNumber, params.platform]
+  );
 
   const { currentTheme } = useTheme();
   const platformColors = getPlatformColors();
 
-  const isSaved = isSessionSaved(params.id);
+  // Use the generated sessionId instead of params.id
+  const isSaved = isSessionSaved(sessionId);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -411,11 +425,11 @@ export default function SessionDetailsScreen() {
 
   const handleSavePress = () => {
     if (isSaved) {
-      removeSession(params.id);
+      removeSession(sessionId);
       showSaveAlert('remove');
     } else {
       saveSession({
-        id: params.id,
+        id: sessionId,
         sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
         weightClass: sessionWeightClass || params.weightClass,
@@ -423,6 +437,7 @@ export default function SessionDetailsScreen() {
         weighInTime: params.weighInTime,
         date: params.date,
         athleteNames: params.athleteName ? [params.athleteName] : undefined,
+        meet: params.meet, // Include meet information
       });
       showSaveAlert('save');
       checkAndShowReviewPrompt();
