@@ -1,4 +1,4 @@
-import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert, ActivityIndicator, Modal } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -33,9 +33,37 @@ const showReviewPrompt = () => {
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
   const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
+  const [selectedMeet, setSelectedMeet] = useState('USAW Master\'s Nationals');
+  const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
+
+  // Load selected meet from storage
+  useEffect(() => {
+    const loadSelectedMeet = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@selected_meet');
+        if (stored) {
+          setSelectedMeet(stored);
+        }
+      } catch (error) {
+        console.error('Error loading selected meet:', error);
+      }
+    };
+    loadSelectedMeet();
+  }, []);
+
+  // Save selected meet to storage
+  const handleMeetSelect = async (meet: string) => {
+    try {
+      await AsyncStorage.setItem('@selected_meet', meet);
+      setSelectedMeet(meet);
+      setShowMeetModal(false);
+    } catch (error) {
+      console.error('Error saving selected meet:', error);
+    }
+  };
 
   // Sync the switch state with theme changes
   useEffect(() => {
@@ -166,13 +194,42 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
+            onPress={() => setShowMeetModal(true)}
+          >
+            <View style={styles.linkRow}>
+              <View>
+                <ThemedText style={[styles.label, { color: colors.text }]}>
+                  Select Your Meet
+                </ThemedText>
+                <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]}>
+                  {selectedMeet}
+                </ThemedText>
+              </View>
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20} 
+                color={colors.link} 
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
             onPress={() => router.push('/(screens)/event-info')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Event Info
               </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20} 
+                color={colors.link} 
+              />
             </View>
           </Pressable>
 
@@ -324,6 +381,67 @@ export default function InfoScreen() {
           © 2025 CoachHub
         </ThemedText>
       </ScrollView>
+
+      {/* Meet Selection Modal */}
+      <Modal
+        visible={showMeetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMeetModal(false)}
+      >
+        <Pressable 
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
+          onPress={() => setShowMeetModal(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
+                Select Your Meet
+              </ThemedText>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => setShowMeetModal(false)}
+              >
+                <IconSymbol 
+                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
+                  size={20} 
+                  color={colors.secondaryText} 
+                />
+              </Pressable>
+            </View>
+            
+            {['USAW Master\'s Nationals', 'USAMW Master\'s Nationals'].map((meet) => (
+              <Pressable
+                key={meet}
+                style={({ pressed }) => [
+                  styles.modalOption,
+                  { borderBottomColor: colors.border },
+                  selectedMeet === meet && { backgroundColor: colors.pressed },
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => handleMeetSelect(meet)}
+              >
+                <ThemedText style={[
+                  styles.modalOptionText,
+                  { color: colors.text },
+                  selectedMeet === meet && { color: '#007AFF' }
+                ]}>
+                  {meet}
+                </ThemedText>
+                {selectedMeet === meet && (
+                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -464,5 +582,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 8,
+  },
+  meetValue: {
+    fontSize: 15,
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginHorizontal: 16,
+  },
+  modalHeader: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    padding: 4,
+    zIndex: 1,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalOptionText: {
+    fontSize: 17,
   },
 }); 

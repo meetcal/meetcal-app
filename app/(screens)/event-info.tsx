@@ -3,12 +3,44 @@ import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { venueConfig } from '@/config/venue';
+import { getVenueConfig, getFullAddress } from '@/config/venue';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Linking, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function EventInfoScreen() {
   const { currentTheme } = useTheme();
+  const [selectedMeet, setSelectedMeet] = useState('USAW Master\'s Nationals');
+
+  // Meet configuration mapping
+  const meetConfig = {
+    'USAW Master\'s Nationals': {
+      timeZone: 'Eastern Time'
+    },
+    'USAMW Master\'s Nationals': {
+      timeZone: 'Mountain Time'
+    }
+  };
+
+  // Load selected meet from storage
+  useEffect(() => {
+    const loadSelectedMeet = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@selected_meet');
+        if (stored) {
+          setSelectedMeet(stored);
+        }
+      } catch (error) {
+        console.error('Error loading selected meet:', error);
+      }
+    };
+    loadSelectedMeet();
+  }, []);
+
+  // Get current meet config
+  const currentMeetConfig = meetConfig[selectedMeet as keyof typeof meetConfig] || meetConfig['USAW Master\'s Nationals'];
+  const venue = getVenueConfig(selectedMeet as keyof typeof meetConfig);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -22,7 +54,7 @@ export default function EventInfoScreen() {
   };
 
   const handleAddressPress = () => {
-    const address = "2000 Convention Center Concourse, College Park, GA 30337";
+    const address = getFullAddress(venue);
     const encodedAddress = encodeURIComponent(address);
     
     const mapsUrl = Platform.select({
@@ -58,7 +90,7 @@ export default function EventInfoScreen() {
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
-            USAW Masters Nationals
+            {selectedMeet}
           </ThemedText>
         </View>
         
@@ -79,13 +111,13 @@ export default function EventInfoScreen() {
             <View style={styles.addressContainer}>
               <View>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.name}
+                  {venue.name}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.address.street}
+                  {venue.address.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venueConfig.address.city}, {venueConfig.address.state} {venueConfig.address.zip}
+                  {venue.address.city}, {venue.address.state} {venue.address.zip}
                 </ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
@@ -100,7 +132,7 @@ export default function EventInfoScreen() {
             Venue Time Zone
           </ThemedText>
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
-            Eastern Time
+            {currentMeetConfig.timeZone}
           </ThemedText>
         </View>
       </View>
