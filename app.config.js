@@ -28,7 +28,7 @@ export default ({ config }) => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/MeetCal.png',
+      foregroundImage: './assets/images/MeetCal-android.png',
       backgroundColor: '#ffffff',
       dark: {
         foregroundImage: './assets/images/MeetCal-no-bg.png',
