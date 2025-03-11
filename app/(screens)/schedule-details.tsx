@@ -1,3 +1,4 @@
+import React from 'react';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, View, Pressable, Platform, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -17,6 +18,10 @@ import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { getSchedule } from '@/data/meets/scheduleManager';
+import { getAthletesBySession } from '@/data/meets/athletesManager';
+import { MeetName } from '@/data/types/meet';
 
 type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
 
@@ -35,39 +40,19 @@ type SessionAthlete = {
   entryTotal: number;
 };
 
-function getSessionAthletes(sessionNumber: number, platform: string) {
-  // Get session data first
-  const sessionDay = schedule.find(day => 
-    day.sessions.some(s => s.number === sessionNumber)
-  );
+function getSessionAthletes(meetName: MeetName, sessionNumber: number, platform: string) {
+  // Get athletes for this session and platform
+  const athletes = getAthletesBySession(meetName, sessionNumber, platform);
   
-  const session = sessionDay?.sessions.find(s => 
-    s.number === sessionNumber
-  );
-
-  // Get athletes but only take the fields we need
-  return liftingResults
-    .filter(athlete => 
-      athlete.session?.number === sessionNumber && 
-      athlete.session?.platform === platform
-    )
-    .sort((a, b) => b.entryTotal - a.entryTotal)
-    .reduce((platforms, athlete) => {
-      const platform = athlete.session!.platform;
-      if (!platforms[platform]) {
-        platforms[platform] = [];
-      }
-      
-      // Only include the specific fields we need, no weightClass
-      platforms[platform].push({
-        name: athlete.name,
-        age: athlete.age,
-        club: athlete.club,
-        entryTotal: athlete.entryTotal,
-      });
-      
-      return platforms;
-    }, {} as Record<string, SessionAthlete[]>);
+  // Convert to platform-grouped format
+  return {
+    [platform]: athletes.map(athlete => ({
+      name: athlete.name,
+      age: athlete.age,
+      club: athlete.club,
+      entryTotal: athlete.entryTotal,
+    }))
+  };
 }
 
 async function getAthleteBests(name: string): Promise<SupabaseBests> {
@@ -98,6 +83,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
 }) {
   const router = useRouter();
   const { currentTheme } = useTheme();
+  const { selectedMeet } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
 
@@ -109,8 +95,8 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   };
 
   const athletes = useMemo(() => 
-    getSessionAthletes(sessionNumber, platform), 
-    [sessionNumber, platform]
+    getSessionAthletes(selectedMeet, sessionNumber, platform), 
+    [selectedMeet, sessionNumber, platform]
   );
 
   useEffect(() => {
@@ -225,10 +211,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
                     See All Meet Results
                   </ThemedText>
                   <IconSymbol 
-                    name={Platform.select({
-                      ios: "chevron.right",
-                      android: "chevron-forward"
-                    })} 
+                    name={Platform.OS === 'ios' ? "chevron.right" : "chevron-forward"}
                     size={13} 
                     color="#007AFF"
                   />
@@ -320,16 +303,31 @@ export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
-  const params = useLocalSearchParams<{
-    id: string;
-    sessionNumber: string;
-    platform: string;
-    weightClass: string;
-    startTime: string;
-    weighInTime: string;
-    date: string;
+  const { selectedMeet } = useSelectedMeet();
+  const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const rawParams = useLocalSearchParams<{
+    id?: string;
+    sessionNumber?: string;
+    platform?: string;
+    weightClass?: string;
+    startTime?: string;
+    weighInTime?: string;
+    date?: string;
     athleteName?: string;
   }>();
+
+  // Ensure required params have values
+  const params = {
+    id: rawParams.id || '',
+    sessionNumber: rawParams.sessionNumber || '',
+    platform: rawParams.platform || '',
+    weightClass: rawParams.weightClass || '',
+    startTime: rawParams.startTime || '',
+    weighInTime: rawParams.weighInTime || '',
+    date: rawParams.date || '',
+    athleteName: rawParams.athleteName,
+  };
+
   const { currentTheme } = useTheme();
   const platformColors = getPlatformColors();
 
