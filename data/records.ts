@@ -418,6 +418,9 @@ export const americanRecords: RecordsData = {
     ],
   },
   "Masters 85-89": {
+    women: [
+  
+    ],
     men: [
       { weightClass: '55kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
       { weightClass: '61kg', snatchRecord: 37, cjRecord: 50, totalRecord: 87 },
@@ -432,6 +435,9 @@ export const americanRecords: RecordsData = {
     ],
   },
   "Masters +90": {
+    women: [
+  
+    ],
     men: [
       { weightClass: '55kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
       { weightClass: '61kg', snatchRecord: 35, cjRecord: 45, totalRecord: 80 },
