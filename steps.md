@@ -1,90 +1,187 @@
-# Meet-Specific Data Implementation Plan
+# Migration Plan: Database-Driven with Robust Offline Support
 
-## 1. Data Structure Reorganization ✅
-1. Create a new `meets` directory in the data folder ✅
-2. Create subdirectories for each meet: ✅
-   - `meets/usaw-masters-nationals` ✅
-   - `meets/usamw-masters-nationals` ✅
-3. Create a shared types directory for common interfaces ✅
-4. Define meet configuration type for meet-specific settings ✅
+## Phase 1: Database and Local Storage Setup
+1. Create Supabase tables
+   - Add version tracking columns
+     ```sql
+     - last_updated TIMESTAMP
+     - version INTEGER
+     ```
 
-## 2. Data File Migration
-1. Move and split schedule.ts: ✅
-   - Create meet-specific schedule files ✅
-   - Update schedule types for meet variations ✅
-   - Create schedule utility functions ✅
+2. Create Local Storage Structure
+   ```typescript
+   interface LocalStorageSchema {
+     meets: {
+       [meetName: string]: {
+         schedule: Schedule;
+         athletes: LiftResult[];
+         lastSynced: number;
+         version: number;
+       }
+     }
+     savedSessions: SavedSession[];
+     preferences: UserPreferences;
+   }
+   ```
 
-2. Split athletes.ts:
-   - Separate athlete lists by meet ✅
-   - Maintain common athlete interfaces ✅
-   - Update athlete utility functions ✅
+## Phase 2: Offline-First Data Layer
+1. Create `lib/database/offline-store.ts`
+   ```typescript
+   - initializeOfflineStore()
+   - getMeetData(meet: MeetName)
+   - saveMeetData(meet: MeetName, data: MeetData)
+   - getSavedSessions()
+   - getLastSyncTime(meet: MeetName)
+   ```
 
-3. Split qualifying.ts:
-   - Create meet-specific qualifying standards
-   - Share common qualifying interfaces
-   - Update qualifying utility functions
+2. Create `lib/database/sync-manager.ts`
+   ```typescript
+   - syncMeetData(meet: MeetName)
+   - shouldSync(meet: MeetName): boolean
+   - handleSyncConflicts()
+   - markAsSynced(meet: MeetName)
+   ```
 
-4. Split americanRecords.ts:
-   - Create meet-specific record files
-   - Maintain shared record interfaces
-   - Update record utility functions
+3. Create `lib/database/network-status.ts`
+   ```typescript
+   - isOnline(): boolean
+   - onNetworkStatusChange(callback)
+   - getLastSuccessfulSync()
+   ```
 
-## 3. Access Pattern Updates
-1. Create a meet configuration manager: ✅
-   - Meet selection state management ✅
-   - Meet-specific settings access ✅
-   - Time zone handling ✅
+## Phase 3: Enhanced Data Access Layer
+1. Update `lib/database/queries.ts`
+   ```typescript
+   - getScheduleByMeet(meet: MeetName, forceRefresh?: boolean)
+   - getAthletesByMeet(meet: MeetName, forceRefresh?: boolean)
+   - getSessionDetails(meet: MeetName, sessionId: number)
+   ```
 
-2. Update data access utilities:
-   - Create meet-specific data loaders ✅
-   - Update helper functions for meet context ✅
-   - Implement data validation ✅
+2. Create Background Sync Service
+   ```typescript
+   - setupPeriodicSync()
+   - syncWhenOnline()
+   - handleSyncErrors()
+   ```
 
-## 4. Component Updates
-1. Update schedule-details.tsx: ✅
-   - Add meet-specific athlete handling ✅
-   - Update session display logic ✅
-   - Modify platform handling ✅
-   - Update calendar integration with time zones ✅
+## Phase 4: UI Components for Offline Status
+1. Create offline indicators
+   ```typescript
+   - OfflineIndicator
+   - LastSyncedIndicator
+   - SyncStatusBadge
+   ```
 
-2. Update saved.tsx: ✅
-   - Add meet information to session storage ✅
-   - Update session display for meet context ✅
-   - Modify filtering for meet-specific data ✅
-   - Update session refresh logic ✅
-   - Update calendar integration with time zones ✅
+2. Create sync controls
+   ```typescript
+   - ManualSyncButton
+   - SyncSettingsPanel
+   ```
 
-3. Update start-list.tsx: ✅
-   - Add meet-specific athlete handling ✅
-   - Update filtering logic ✅
-   - Modify display formatting ✅
-   - Fix meet switching functionality ✅
-   - Update calendar integration with time zones ✅
+## Phase 5: Update Components with Offline Support
 
-4. Update qualifying-totals.tsx:
-   - Implement meet-specific standards
-   - Update calculation logic
-   - Modify display formatting
+1. Update schedule.tsx
+   ```typescript
+   - Use offline-first data fetching
+   - Add sync status indicator
+   - Add pull-to-refresh with offline awareness
+   - Show last synced timestamp
+   ```
 
-## 7. Future-Proofing
-1. Create meet addition template
-2. Document meet integration process
-3. Create meet validation tools
-4. Establish meet update process
+2. Update schedule-details.tsx
+   ```typescript
+   - Cache session details locally
+   - Show offline indicator when using cached data
+   - Enable manual refresh when online
+   ```
 
-## 8. Calendar Integration
-1. Update calendar utilities: ✅
-   - Meet-specific time zone handling ✅
-   - Time conversion functions ✅
-   - Calendar event formatting ✅
+3. Update saved.tsx
+   ```typescript
+   - Store complete session data locally
+   - Work entirely offline
+   - Sync new saves when online
+   ```
 
-2. Update calendar event creation: ✅
-   - Add meet-specific time zones ✅
-   - Handle platform-specific times ✅
-   - Update event details format ✅
-   - Update saved.tsx calendar integration ✅
+4. Update start-list.tsx
+   ```typescript
+   - Cache athlete data locally
+   - Show data freshness indicator
+   - Enable background sync
+   ```
 
-3. Test calendar integration:
-   - Verify time zone handling
-   - Test event creation
-   - Validate event details
+## Phase 6: Meet Switching with Offline Support
+1. Update SelectedMeetContext
+   ```typescript
+   - Preload and cache meet data
+   - Handle meet switching offline
+   - Queue data sync for new meet when online
+   ```
+
+2. Create Meet Data Prefetch
+   ```typescript
+   - prefetchMeetData(meetName: MeetName)
+   - cleanupOldMeetData()
+   - manageCacheSize()
+   ```
+
+## Phase 7: Storage Management
+1. Create storage cleanup utilities
+   ```typescript
+   - cleanupOldData()
+   - calculateStorageUsage()
+   - optimizeCacheSize()
+   ```
+
+2. Implement data retention policies
+   ```typescript
+   - keepLastNMeets(n: number)
+   - removeOldVersions()
+   - compressOldData()
+   ```
+
+## Phase 8: Testing with Network Conditions
+1. Test offline scenarios
+   - Complete offline usage
+   - Intermittent connectivity
+   - Slow network conditions
+   - Data sync conflicts
+   - Storage limits
+
+2. Test sync functionality
+   - Background sync
+   - Manual sync
+   - Conflict resolution
+   - Data versioning
+   - Error recovery
+
+## Phase 9: User Experience Enhancements
+1. Add offline mode indicators
+   - Sync status in UI
+   - Last synced timestamp
+   - Network status
+   - Data freshness badges
+
+2. Add sync controls
+   - Manual sync option
+   - Sync preferences
+   - Storage management
+   - Data usage settings
+
+## Phase 10: Deployment with Offline Support
+1. Deploy database changes
+2. Implement data migration
+3. Add analytics for sync issues
+4. Monitor offline usage
+5. Track sync success rates
+
+## Notes:
+- Always prefer local data first, then fetch updates
+- Show clear indicators for data freshness
+- Implement progressive enhancement
+- Handle storage limitations gracefully
+- Provide manual sync options
+- Consider battery and data usage
+- Implement proper error recovery
+- Use service workers for web version
+- Consider implementing conflict resolution UI
+- Add proper logging for sync issues
