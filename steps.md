@@ -45,18 +45,21 @@
    - Add meet-specific athlete handling ✅
    - Update session display logic ✅
    - Modify platform handling ✅
+   - Update calendar integration with time zones ✅
 
 2. Update saved.tsx: ✅
    - Add meet information to session storage ✅
    - Update session display for meet context ✅
    - Modify filtering for meet-specific data ✅
    - Update session refresh logic ✅
+   - Update calendar integration with time zones ✅
 
 3. Update start-list.tsx: ✅
    - Add meet-specific athlete handling ✅
    - Update filtering logic ✅
    - Modify display formatting ✅
    - Fix meet switching functionality ✅
+   - Update calendar integration with time zones ✅
 
 4. Update qualifying-totals.tsx:
    - Implement meet-specific standards
@@ -70,15 +73,16 @@
 4. Establish meet update process
 
 ## 8. Calendar Integration
-1. Update calendar utilities:
-   - Meet-specific time zone handling
-   - Time conversion functions
-   - Calendar event formatting
+1. Update calendar utilities: ✅
+   - Meet-specific time zone handling ✅
+   - Time conversion functions ✅
+   - Calendar event formatting ✅
 
-2. Update calendar event creation:
-   - Add meet-specific time zones
-   - Handle platform-specific times
-   - Update event details format
+2. Update calendar event creation: ✅
+   - Add meet-specific time zones ✅
+   - Handle platform-specific times ✅
+   - Update event details format ✅
+   - Update saved.tsx calendar integration ✅
 
 3. Test calendar integration:
    - Verify time zone handling

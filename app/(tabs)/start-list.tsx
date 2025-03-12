@@ -14,7 +14,7 @@ import { schedule as usawSchedule } from '@/data/meets/usaw-masters-nationals/sc
 import { schedule as usamwSchedule } from '@/data/meets/usamw-masters-nationals/schedule';
 import { LiftResult } from '@/data/meets/usaw-masters-nationals/athletes';
 import * as Calendar from 'expo-calendar';
-import { getFullLocation } from '@/config/venue';
+import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,6 +113,7 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
   const { currentTheme } = useTheme();
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
+  const { selectedMeet } = useSelectedMeet();
   
   const colors = {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -220,13 +221,16 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
                   </ThemedText>
                   <ThemedText style={styles.detailValue}>
                     {getSessionDetails(athlete.session.number)?.displayDate} • {
-                      schedule.find(day => 
-                        day.sessions.some(s => s.number === athlete.session?.number)
-                      )?.sessions.find(s => 
-                        s.number === athlete.session?.number
-                      )?.platforms.find(p => 
-                        p.platform === athlete.session?.platform
-                      )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
+                      formatTimeWithZone(
+                        schedule.find(day => 
+                          day.sessions.some(s => s.number === athlete.session?.number)
+                        )?.sessions.find(s => 
+                          s.number === athlete.session?.number
+                        )?.platforms.find(p => 
+                          p.platform === athlete.session?.platform
+                        )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime || '',
+                        selectedMeet
+                      )
                     }
                   </ThemedText>
                 </View>
@@ -361,24 +365,6 @@ function sortAthletes(a: LiftResult, b: LiftResult): number {
 async function requestCalendarPermissions() {
   const { status } = await Calendar.requestCalendarPermissionsAsync();
   return status === 'granted';
-}
-
-// Helper function to parse time string (same as in schedule-details.tsx)
-function parseTimeString(timeStr: string, dateStr: string) {
-  const [time, period] = timeStr.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  let adjustedHours = hours;
-  if (period === 'PM' && hours !== 12) {
-    adjustedHours += 12;
-  } else if (period === 'AM' && hours === 12) {
-    adjustedHours = 0;
-  }
-
-  const [year, month, day] = dateStr.split('-').map(Number);
-  
-  // Create Date object in UTC, adding 4 hours for EDT
-  return new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
 }
 
 // Add special value for starred clubs filter
@@ -800,7 +786,7 @@ export default function StartListScreen() {
     }
   };
 
-  // Move createCalendarEvents here to access schedule
+  // Update createCalendarEvents function
   const createCalendarEvents = async (sessions: Array<{
     date: string;
     startTime: string;
@@ -847,16 +833,19 @@ export default function StartListScreen() {
         const startTime = platform?.platformStartTime || session.startTime;
         const weighInTime = calculateWeighInTime(startTime);
 
-        const startDate = parseTimeString(startTime, sessionDay?.fullDate || session.date);
-        const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+        // Convert times to UTC using the meet's time zone
+        const startDate = convertToUTC(startTime, sessionDay?.fullDate || session.date, selectedMeet);
+        const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+
+        const meetConfig = getMeetConfig(selectedMeet);
 
         await Calendar.createEventAsync(calendarId, {
           title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-          location: getFullLocation(),
-          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
+          location: getMeetVenueLocation(selectedMeet),
+          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, selectedMeet)}`,
           startDate: startDate,
           endDate: endDate,
-          timeZone: 'America/New_York',
+          timeZone: meetConfig.time.timeZoneIdentifier,
           alarms: [{
             relativeOffset: -60,
           }],

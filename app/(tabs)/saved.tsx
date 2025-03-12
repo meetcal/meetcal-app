@@ -16,6 +16,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { Schedule } from '@/data/types/schedule';
+import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 
 const SAVED_SESSIONS_KEY = '@saved_sessions';
 
@@ -49,6 +50,7 @@ async function createCalendarEvents(sessions: Array<{
   sessionNumber: string;
   platform: string;
   weightClass: string;
+  meet: MeetName;
 }>) {
   try {
     let calendarId;
@@ -88,30 +90,19 @@ async function createCalendarEvents(sessions: Array<{
       const startTime = platform?.platformStartTime || session.startTime;
       const weighInTime = calculateWeighInTime(startTime);
 
-      // Parse time strings
-      const [timeStr, period] = startTime.split(' ');
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      
-      let adjustedHours = hours;
-      if (period === 'PM' && hours !== 12) {
-        adjustedHours += 12;
-      } else if (period === 'AM' && hours === 12) {
-        adjustedHours = 0;
-      }
+      // Convert times to UTC using the meet's time zone
+      const startDate = convertToUTC(startTime, session.date, session.meet);
+      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
-      const [year, month, day] = session.date.split('-').map(Number);
-      
-      // Create Date object in UTC
-      const startDate = new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
-      const endDate = new Date(startDate.getTime() + (2 * 60 * 60 * 1000));
+      const meetConfig = getMeetConfig(session.meet);
 
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-        location: getFullLocation(),
-        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${weighInTime}`,
+        location: getMeetVenueLocation(session.meet),
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, session.meet)}`,
         startDate: startDate,
         endDate: endDate,
-        timeZone: 'America/New_York',
+        timeZone: meetConfig.time.timeZoneIdentifier,
         alarms: [{
           relativeOffset: -60,
         }],
@@ -297,7 +288,8 @@ export default function SavedScreen() {
                   weighInTime: session.weighInTime,
                   sessionNumber: session.sessionNumber.toString(),
                   platform: session.platform,
-                  weightClass: session.weightClass
+                  weightClass: session.weightClass,
+                  meet: session.meet || selectedMeet
                 };
               });
 
@@ -331,6 +323,7 @@ export default function SavedScreen() {
     // Use platform-specific time if available, otherwise fall back to session time
     const startTime = platform?.platformStartTime || item.startTime;
     const weighInTime = calculateWeighInTime(startTime);
+    const meetConfig = getMeetConfig(item.meet || selectedMeet);
 
     return (
       <Pressable
@@ -366,7 +359,7 @@ export default function SavedScreen() {
                 Weigh-in:
               </ThemedText>
               <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {weighInTime} EST
+                {formatTimeWithZone(weighInTime, item.meet || selectedMeet)}
               </ThemedText>
             </View>
             <View style={styles.timeSeparator} />
@@ -375,7 +368,7 @@ export default function SavedScreen() {
                 Start:
               </ThemedText>
               <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {startTime} EST
+                {formatTimeWithZone(startTime, item.meet || selectedMeet)}
               </ThemedText>
             </View>
           </View>

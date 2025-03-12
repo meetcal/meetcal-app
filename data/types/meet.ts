@@ -1,29 +1,35 @@
 // Meet configuration types
 export type MeetName = 'USAW Master\'s Nationals' | 'USAMW Master\'s Nationals';
 
-export interface VenueConfig {
-  name: string;
-  address: {
-    street: string;
-    city: string;
-    state: string;
-    zip: string;
-  };
+interface Address {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
 }
 
-export interface TimeConfig {
+interface Venue {
+  name: string;
+  address: Address;
+}
+
+interface TimeConfig {
   timeZone: string;
-  timeZoneIdentifier: string; // e.g., 'America/New_York'
+  timeZoneIdentifier: string;
+  abbreviation: string;
+  utcOffset: number;
+}
+
+interface DateRange {
+  start: string;
+  end: string;
 }
 
 export interface MeetConfig {
   name: MeetName;
-  venue: VenueConfig;
+  venue: Venue;
   time: TimeConfig;
-  dates: {
-    start: string;
-    end: string;
-  };
+  dates: DateRange;
   // Additional meet-specific settings can be added here
   settings?: {
     [key: string]: unknown;
