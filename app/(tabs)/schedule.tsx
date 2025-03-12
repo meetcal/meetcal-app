@@ -13,6 +13,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { getSchedule } from '@/data/meets/scheduleManager';
+import { getMeetConfig } from '@/data/meets/config';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -41,7 +42,7 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
-function SessionView({ session, letterFilter }: { session: Session; letterFilter: string }) {
+function SessionView({ session, letterFilter, timeZone }: { session: Session; letterFilter: string; timeZone: string }) {
   const router = useRouter();
   const platformColors = getPlatformColors();
   const { currentTheme } = useTheme();
@@ -111,7 +112,7 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
                   {platform.weightClass}
                 </ThemedText>
                 <ThemedText style={[styles.platformTimeText, { color: colors.secondaryText }]}>
-                  Start: {platform.platformStartTime || session.startTime} EST
+                  Start: {platform.platformStartTime || session.startTime} {timeZone}
                 </ThemedText>
               </View>
             </View>
@@ -127,7 +128,7 @@ function SessionView({ session, letterFilter }: { session: Session; letterFilter
   );
 }
 
-function DayView({ day, letterFilter }: { day: DaySchedule; letterFilter: string }) {
+function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilter: string; timeZone: string }) {
   const filteredSessions = useMemo(() => {
     if (!letterFilter) return day.sessions;
     return day.sessions.filter(session => 
@@ -145,6 +146,7 @@ function DayView({ day, letterFilter }: { day: DaySchedule; letterFilter: string
         <SessionView 
           session={item} 
           letterFilter={letterFilter}
+          timeZone={timeZone}
         />
       )}
       showsVerticalScrollIndicator={false}
@@ -174,6 +176,7 @@ export default function ScheduleScreen() {
   const navigation = useNavigation();
   const { selectedMeet, isLoading: isMeetLoading } = useSelectedMeet();
   const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const meetConfig = useMemo(() => getMeetConfig(selectedMeet), [selectedMeet]);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -274,7 +277,11 @@ export default function ScheduleScreen() {
           keyExtractor={item => item.date}
           renderItem={({ item }) => (
             <View style={[styles.pageContainer, { width }]}>
-              <DayView day={item} letterFilter={letterFilter} />
+              <DayView 
+                day={item} 
+                letterFilter={letterFilter} 
+                timeZone={meetConfig.time.timeZone}
+              />
             </View>
           )}
           getItemLayout={(data, index) => ({
