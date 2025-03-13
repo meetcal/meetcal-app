@@ -474,97 +474,59 @@ export default function StartListScreen() {
       setLoading(true);
       console.log('Loading athletes for meet:', selectedMeet);
       
-      // Try to get cached data first
-      if (!forceRefresh) {
+      // Try Supabase first
+      try {
+        const { data, error } = await supabase
+          .from('athletes')
+          .select('*')
+          .eq('meet', selectedMeet);
+
+        if (error) throw error;
+        
+        // Transform the data (even if empty)
+        const transformedAthletes = (data || []).map(athlete => ({
+          memberId: athlete.member_id || '',
+          name: athlete.name,
+          age: athlete.age || 0,
+          club: athlete.club || '',
+          gender: athlete.gender || '',
+          weightClass: athlete.weight_class || '',
+          entryTotal: athlete.entry_total || 0,
+          session: athlete.session_number ? {
+            number: Number(athlete.session_number),
+            platform: athlete.session_platform || ''
+          } : undefined
+        })) as LiftResult[];
+
+        // Always save to cache and update UI, even if empty
+        console.log('Got data from Supabase, count:', transformedAthletes.length);
+        await saveMeetAthletes(selectedMeet, transformedAthletes);
+        setAthletes(transformedAthletes);
+        setLoading(false);
+        return;
+        
+      } catch (supabaseError) {
+        console.log('Supabase error, falling back to cache:', supabaseError);
+        
+        // Only use cache on actual Supabase errors
         const meetData = await syncManager.getMeetData();
         if (meetData.athletes.length > 0) {
-          console.log('Using cached data, athlete count:', meetData.athletes.length);
+          console.log('Using cached data, count:', meetData.athletes.length);
           setAthletes(meetData.athletes);
-          setLoading(false);
-          return;
+        } else {
+          console.log('No data in cache');
+          setAthletes([]);
         }
       }
       
-      // If no cached data or force refresh, get from Supabase
-      const { data, error } = await supabase
-        .from('athletes')
-        .select('*')
-        .eq('meet', selectedMeet);
-
-      if (error) {
-        console.error('Error fetching athletes:', error);
-        // If we have cached data, use it instead of showing error
-        const meetData = await syncManager.getMeetData();
-        if (meetData.athletes.length > 0) {
-          console.log('Error occurred, using cached data, count:', meetData.athletes.length);
-          setAthletes(meetData.athletes);
-          Alert.alert(
-            'Connection Error',
-            'Could not refresh data. Showing cached data instead.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert(
-            'Error',
-            'Could not load athletes. Please check your connection and try again.',
-            [{ text: 'OK' }]
-          );
-        }
-        return;
-      }
-
-      console.log('Raw data from Supabase:', data?.length);
-      console.log('Sample athlete:', data?.[0]);
-
-      // Transform the data
-      const transformedAthletes = data.map(athlete => ({
-        memberId: athlete.member_id || '',
-        name: athlete.name,
-        age: athlete.age,
-        club: athlete.club,
-        gender: athlete.gender || '',
-        weightClass: athlete.weight_class || '',
-        entryTotal: athlete.entry_total,
-        session: athlete.session_number ? {
-          number: athlete.session_number,
-          platform: athlete.session_platform
-        } : null
-      }));
-
-      console.log('Transformed athletes count:', transformedAthletes.length);
-      console.log('Sample transformed athlete:', transformedAthletes[0]);
-
-      // Save to offline store
-      await saveMeetAthletes(selectedMeet, transformedAthletes);
-      setAthletes(transformedAthletes);
     } catch (error) {
       console.error('Error loading athletes:', error);
-      // Try to get cached data as fallback
-      try {
-        const meetData = await syncManager.getMeetData();
-        if (meetData.athletes.length > 0) {
-          console.log('Error occurred, using cached data, count:', meetData.athletes.length);
-          setAthletes(meetData.athletes);
-          Alert.alert(
-            'Connection Error',
-            'Could not refresh data. Showing cached data instead.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert(
-            'Error',
-            'Could not load athletes. Please check your connection and try again.',
-            [{ text: 'OK' }]
-          );
-        }
-      } catch (fallbackError) {
-        console.error('Error getting cached data:', fallbackError);
-        Alert.alert(
-          'Error',
-          'Could not load athletes. Please check your connection and try again.',
-          [{ text: 'OK' }]
-        );
-      }
+      setAthletes([]);
+      Alert.alert(
+        'Error',
+        'Could not load athletes. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
