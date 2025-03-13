@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
-import type { LiftResult } from '@/data/types/athletes';
+import type { LiftResult, Platform } from '@/data/types/athletes';
+import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 
 const STORE_KEY = 'meetcal_offline_store';
+const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
 
 export interface MeetData {
   schedule: Schedule | null;
+  scheduleKey: string;
   athletes: LiftResult[];
   lastSyncTime: number;
 }
@@ -15,6 +18,16 @@ interface OfflineStore {
   meets: {
     [meetId: string]: MeetData;
   };
+}
+
+interface DbSession {
+  id: number;
+  session_id: number;
+  platform: string;
+  weight_class: string;
+  start_time: string;
+  weigh_in_time: string;
+  meet: string;
 }
 
 // Initialize store if it doesn't exist
@@ -37,34 +50,111 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
     const store = await getStore();
     if (!store.meets[meetId]) {
+      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
       store.meets[meetId] = {
         schedule: null,
+        scheduleKey,
         athletes: [],
         lastSyncTime: 0
       };
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
     }
-    return store.meets[meetId];
+    
+    // Get the schedule if it exists
+    const scheduleKey = store.meets[meetId].scheduleKey;
+    let schedule: Schedule | null = null;
+    
+    if (scheduleKey) {
+      const scheduleString = await AsyncStorage.getItem(scheduleKey);
+      if (scheduleString) {
+        schedule = JSON.parse(scheduleString);
+      }
+    }
+    
+    return {
+      schedule,
+      scheduleKey: store.meets[meetId].scheduleKey,
+      athletes: store.meets[meetId].athletes,
+      lastSyncTime: store.meets[meetId].lastSyncTime
+    };
   } catch (error) {
     console.error('Error getting meet data:', error);
     throw error;
   }
 }
 
+// Validate and convert platform string to Platform type
+function validatePlatform(platform: string): Platform {
+  const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
+  const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
+  
+  if (validPlatforms.includes(normalizedPlatform as Platform)) {
+    return normalizedPlatform as Platform;
+  }
+  console.warn(`Invalid platform "${platform}", defaulting to "Blue"`);
+  return 'Blue';
+}
+
 // Save meet schedule to store
 export async function saveMeetSchedule(meetId: string, schedule: Schedule): Promise<void> {
   try {
+    console.log('Saving meet schedule to store for meet:', meetId);
+    
+    // Log the schedule structure before processing
+    console.log('Schedule structure before save:', JSON.stringify({
+      numberOfDays: schedule.length,
+      sampleDay: schedule[0] ? {
+        date: schedule[0].date,
+        fullDate: schedule[0].fullDate,
+        numberOfSessions: schedule[0].sessions.length,
+        sampleSession: schedule[0].sessions[0]
+      } : null
+    }, null, 2));
+
+    // Save schedule separately
+    const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+    const scheduleString = JSON.stringify(schedule);
+    console.log('Saving schedule with length:', scheduleString.length);
+    await AsyncStorage.setItem(scheduleKey, scheduleString);
+
+    // Get current store state
     const store = await getStore();
-    if (!store.meets[meetId]) {
-      store.meets[meetId] = {
-        schedule: null,
-        athletes: [],
-        lastSyncTime: Date.now()
-      };
+    
+    // Create or update meet data without schedule
+    const meetData = {
+      schedule,
+      scheduleKey,
+      athletes: store.meets[meetId]?.athletes || [],
+      lastSyncTime: Date.now()
+    };
+    
+    // Update store with new meet data
+    store.meets[meetId] = meetData;
+    
+    // Save the store metadata
+    const storeString = JSON.stringify(store);
+    await AsyncStorage.setItem(STORE_KEY, storeString);
+    
+    // Verify the saves
+    const savedSchedule = await AsyncStorage.getItem(scheduleKey);
+    const savedStore = await AsyncStorage.getItem(STORE_KEY);
+    
+    if (!savedSchedule || !savedStore) {
+      throw new Error('Failed to save data');
     }
-    store.meets[meetId].schedule = schedule;
-    store.meets[meetId].lastSyncTime = Date.now();
-    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+    
+    // Parse and verify the saved schedule
+    const parsedSchedule = JSON.parse(savedSchedule);
+    if (!Array.isArray(parsedSchedule) || parsedSchedule.length === 0) {
+      throw new Error('Invalid schedule data saved');
+    }
+    
+    console.log('Save successful:', {
+      scheduleLength: parsedSchedule.length,
+      firstDayDate: parsedSchedule[0].date,
+      numberOfSessions: parsedSchedule[0].sessions.length
+    });
+    
   } catch (error) {
     console.error('Error saving meet schedule:', error);
     throw error;
@@ -97,7 +187,17 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
     const store = await AsyncStorage.getItem(STORE_KEY);
     if (store) {
       const data: OfflineStore = JSON.parse(store);
-      delete data.meets[meet];
+      const scheduleKey = data.meets[meet]?.scheduleKey;
+      if (scheduleKey) {
+        await AsyncStorage.removeItem(scheduleKey);
+      }
+      const emptyMeetData: MeetData = {
+        schedule: null,
+        scheduleKey: `${SCHEDULE_KEY_PREFIX}${meet}`,
+        athletes: [],
+        lastSyncTime: 0
+      };
+      data.meets[meet] = emptyMeetData;
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(data));
     }
   } catch (error) {

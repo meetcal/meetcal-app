@@ -1,9 +1,9 @@
 import React from 'react';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { StyleSheet, View, Pressable, Platform, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, Alert, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Linking } from 'react-native';
 import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -12,6 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { getSchedule } from '@/data/meets/scheduleManager';
+import { SyncStatusBadge, LastSyncedIndicator } from '@/app/components/offline';
+import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -40,19 +42,40 @@ type SessionAthlete = {
   entryTotal: number;
 };
 
-function getSessionAthletes(meetName: MeetName, sessionNumber: number, platform: string) {
-  // Get athletes for this session and platform
-  const athletes = getAthletesBySession(meetName, sessionNumber, platform);
-  
-  // Convert to platform-grouped format
-  return {
-    [platform]: athletes.map(athlete => ({
+// Extended type for athlete data from sync manager
+interface CachedAthlete extends SessionAthlete {
+  sessionNumber: number;
+  platformName: string;
+}
+
+async function getSessionAthletes(sessionNumber: number, platform: string) {
+  try {
+    const { data, error } = await supabase
+      .from('athletes')
+      .select('*')
+      .eq('session_number', sessionNumber)
+      .eq('session_platform', platform);
+
+    if (error) {
+      console.error('Error fetching athletes:', error);
+      return {};
+    }
+
+    // Transform the data to match our expected format
+    const athletes = data.map(athlete => ({
       name: athlete.name,
       age: athlete.age,
       club: athlete.club,
-      entryTotal: athlete.entryTotal,
-    }))
-  };
+      entryTotal: athlete.entry_total
+    }));
+
+    return {
+      [platform]: athletes
+    };
+  } catch (error) {
+    console.error('Error in getSessionAthletes:', error);
+    return {};
+  }
 }
 
 async function getAthleteBests(name: string): Promise<SupabaseBests> {
@@ -86,6 +109,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   const { selectedMeet } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
+  const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>({});
 
   const colors = {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
@@ -94,28 +118,32 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
   };
 
-  const athletes = useMemo(() => 
-    getSessionAthletes(selectedMeet, sessionNumber, platform), 
-    [selectedMeet, sessionNumber, platform]
-  );
-
   useEffect(() => {
-    const fetchAthleteBests = async () => {
+    const loadAthletes = async () => {
       setLoading(true);
-      const bests: Record<string, SupabaseBests> = {};
-      
-      for (const [_, platformAthletes] of Object.entries(athletes)) {
-        for (const athlete of platformAthletes) {
-          bests[athlete.name] = await getAthleteBests(athlete.name);
+      try {
+        // Fetch athletes from Supabase
+        const sessionAthletes = await getSessionAthletes(sessionNumber, platform);
+        setAthletes(sessionAthletes);
+
+        // Fetch athlete bests
+        const bests: Record<string, SupabaseBests> = {};
+        for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
+          for (const athlete of platformAthletes) {
+            bests[athlete.name] = await getAthleteBests(athlete.name);
+          }
         }
+        setAthleteBests(bests);
+      } catch (error) {
+        console.error('Error loading athletes:', error);
+        setAthletes({});
+      } finally {
+        setLoading(false);
       }
-      
-      setAthleteBests(bests);
-      setLoading(false);
     };
 
-    fetchAthleteBests();
-  }, [athletes]);
+    loadAthletes();
+  }, [sessionNumber, platform]);
 
   const handleAthletePress = (athleteName: string) => {
     router.push({
@@ -125,6 +153,23 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   };
 
   if (!athletes[platform]?.length) {
+    if (loading) {
+      return (
+        <View style={styles.athletesContainer}>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View style={[styles.titleSection, { borderBottomColor: colors.border }]}>
+              <ThemedText style={styles.athletesTitle}>Session Athletes</ThemedText>
+            </View>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.secondaryText} />
+              <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
+                Loading athletes...
+              </ThemedText>
+            </View>
+          </View>
+        </View>
+      );
+    }
     return null;
   }
 
@@ -327,7 +372,11 @@ export default function SessionDetailsScreen() {
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
+  const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sessionData, setSessionData] = useState<Session | null>(null);
   const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+
   const rawParams = useLocalSearchParams<{
     id?: string;
     sessionNumber?: string;
@@ -379,6 +428,27 @@ export default function SessionDetailsScreen() {
       setHasCalendarPermission(status === 'granted');
     })();
   }, []);
+
+  useEffect(() => {
+    const loadSessionData = async () => {
+      setIsLoading(true);
+      try {
+        // Get session data from the schedule
+        const defaultSchedule = getSchedule(selectedMeet);
+        const day = defaultSchedule.find(day => 
+          day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+        );
+        const session = day?.sessions.find(s => s.number === parseInt(params.sessionNumber)) || null;
+        setSessionData(session);
+      } catch (error) {
+        console.error('Error loading session data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSessionData();
+  }, [selectedMeet, params.sessionNumber]);
 
   // Get the correct weight class from schedule.ts
   const sessionWeightClass = useMemo(() => {
@@ -577,6 +647,23 @@ export default function SessionDetailsScreen() {
     }
   };
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Reload session data
+      const defaultSchedule = getSchedule(selectedMeet);
+      const day = defaultSchedule.find(day => 
+        day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+      );
+      const session = day?.sessions.find(s => s.number === parseInt(params.sessionNumber)) || null;
+      setSessionData(session);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [selectedMeet, params.sessionNumber]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
@@ -597,8 +684,15 @@ export default function SessionDetailsScreen() {
       <ScrollView 
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: 16 } // Add consistent padding at top
+          { paddingTop: 16 }
         ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+          />
+        }
       >
         <View style={[styles.content, { backgroundColor: colors.background }]}>
           <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -691,37 +785,86 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 32,
   },
   content: {
-    padding: 16,
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
   },
   card: {
-    borderRadius: 12,
+    borderRadius: 10,
+    marginBottom: 16,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   section: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  lastSection: {
-    borderBottomWidth: 0,
-  },
   label: {
-    fontSize: 15,
+    fontSize: 13,
     marginBottom: 4,
   },
   value: {
     fontSize: 17,
+  },
+  athletesContainer: {
+    marginTop: 16,
+  },
+  athletesTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  titleSection: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  athleteSection: {
+    padding: 16,
+  },
+  athleteName: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  athleteDetail: {
+    fontSize: 15,
+    marginBottom: 2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 16,
+  },
+  statItem: {
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  meetResultsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  meetResultsText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#007AFF',
+  },
+  loadingContainer: {
+    padding: 32,
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 15,
   },
   platformRow: {
     flexDirection: 'row',
@@ -769,65 +912,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  athletesContainer: {
-    marginTop: 16,
-  },
-  titleSection: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  athletesTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  athleteSection: {
-    padding: 16,
-  },
-  athleteNameButton: {
-    marginBottom: 4,
-  },
-  athleteNamePressed: {
-    opacity: 0.7,
-  },
-  athleteName: {
-    fontSize: 17,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  athleteDetail: {
-    fontSize: 15,
-    marginBottom: 2,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 16,
-  },
-  statItem: {
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  statValue: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  meetResultsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 12,
-  },
-  meetResultsText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#007AFF',
+  lastSection: {
+    borderBottomWidth: 0,
   },
 }); 

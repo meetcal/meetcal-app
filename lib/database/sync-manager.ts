@@ -1,5 +1,4 @@
-import { isOnline } from './network-status';
-import { getMeetData, saveMeetSchedule, saveMeetAthletes, getLastSyncTime, needsSync } from './offline-store';
+import { getMeetData, saveMeetSchedule, saveMeetAthletes } from './offline-store';
 import { fetchSchedule, fetchAthletes } from './queries';
 import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
@@ -27,59 +26,48 @@ export class SyncManager {
   }
 
   public async syncIfNeeded(): Promise<void> {
-    if (this.isSyncing || !isOnline() || !await needsSync(this.meetId)) {
+    if (this.isSyncing) {
+      console.log('Already syncing, skipping...');
       return;
     }
 
     try {
       this.isSyncing = true;
+      console.log('Starting sync for meet:', this.meetId);
       
       const [schedule, athletes] = await Promise.all([
-        fetchSchedule(),
-        fetchAthletes()
+        fetchSchedule(this.meetId),
+        fetchAthletes(this.meetId)
       ]);
 
+      console.log('Sync successful, saving data...');
+      console.log('Schedule data:', schedule);
+      
       await Promise.all([
         saveMeetSchedule(this.meetId, schedule),
         saveMeetAthletes(this.meetId, athletes)
       ]);
 
+      console.log('Sync completed successfully');
     } catch (error) {
-      console.error('Sync failed:', error);
-    } finally {
-      this.isSyncing = false;
-    }
-  }
-
-  public async forceSync(): Promise<void> {
-    if (this.isSyncing || !isOnline()) {
-      return;
-    }
-
-    try {
-      this.isSyncing = true;
-      
-      const [schedule, athletes] = await Promise.all([
-        fetchSchedule(),
-        fetchAthletes()
-      ]);
-
-      await Promise.all([
-        saveMeetSchedule(this.meetId, schedule),
-        saveMeetAthletes(this.meetId, athletes)
-      ]);
-
-    } catch (error) {
-      console.error('Force sync failed:', error);
-      throw error;
+      console.error('Sync failed, will use cached data:', error);
     } finally {
       this.isSyncing = false;
     }
   }
 
   public async getMeetData(): Promise<MeetData> {
-    await this.syncIfNeeded();
-    return getMeetData(this.meetId);
+    try {
+      // Always try to sync first
+      await this.syncIfNeeded();
+    } catch (error) {
+      console.log('Sync failed, using cached data');
+    }
+    
+    // Get data from cache (whether sync succeeded or failed)
+    const data = await getMeetData(this.meetId);
+    console.log('Returning data:', data);
+    return data;
   }
 
   public stopSync() {
