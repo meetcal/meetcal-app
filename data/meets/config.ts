@@ -86,9 +86,36 @@ export function convertToUTC(
   return new Date(Date.UTC(year, month - 1, day, adjustedHours + config.time.utcOffset, minutes));
 }
 
+// Convert 24-hour time to 12-hour time without seconds
+function formatTo12Hour(timeStr: string): string {
+  // If already in 12-hour format with AM/PM, just remove seconds
+  if (timeStr.includes('AM') || timeStr.includes('PM')) {
+    const [time, period] = timeStr.split(' ');
+    const [hours, minutes] = time.split(':');
+    return `${hours}:${minutes} ${period}`;
+  }
+
+  // Convert from 24-hour format
+  const [hours, minutes] = timeStr.split(':');
+  const hour = parseInt(hours, 10);
+  let period = 'AM';
+  let hour12 = hour;
+
+  if (hour === 0) {
+    hour12 = 12;
+  } else if (hour === 12) {
+    period = 'PM';
+  } else if (hour > 12) {
+    hour12 = hour - 12;
+    period = 'PM';
+  }
+
+  return `${hour12}:${minutes} ${period}`;
+}
+
 export function formatTimeWithZone(timeStr: string, meet: MeetName): string {
   const config = getMeetConfig(meet);
-  return `${timeStr} ${config.time.abbreviation}`;
+  return `${formatTo12Hour(timeStr)} ${config.time.abbreviation}`;
 }
 
 export function getMeetVenueLocation(meet: MeetName): string {

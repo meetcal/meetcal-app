@@ -95,10 +95,25 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
       .from('athletes')
       .select('*')
       .eq('session_number', sessionNumber)
-      .eq('session_platform', platform);
+      .eq('session_platform', platform)
+      .eq('meet', meetId);
 
     if (error) {
       console.error('Error fetching athletes:', error);
+      return {};
+    }
+
+    // If no athletes found for this meet/session/platform, return empty and clear cache
+    if (!data || data.length === 0) {
+      // Clear any cached data for this meet/session/platform
+      const syncManager = new SyncManager(meetId);
+      const meetData = await syncManager.getMeetData();
+      const updatedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
+        athlete.session?.number !== sessionNumber || 
+        athlete.session?.platform !== platform
+      );
+      await saveMeetAthletes(meetId, updatedAthletes);
+      
       return {};
     }
 
@@ -140,8 +155,9 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
   }
 }
 
-async function getAthleteBests(name: string): Promise<SupabaseBests> {
+async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
   try {
+    console.log(`Fetching bests for athlete: ${name}`);
     const { data, error } = await supabase
       .from('lifting_results')
       .select('snatch_best, cj_best, total')
@@ -150,13 +166,25 @@ async function getAthleteBests(name: string): Promise<SupabaseBests> {
       .limit(1);
 
     if (error) {
-      console.error('Error fetching athlete bests:', error);
+      console.error('Supabase error fetching athlete bests:', error);
       return { snatch_best: 0, cj_best: 0, total: 0 };
     }
 
-    return data?.[0] || { snatch_best: 0, cj_best: 0, total: 0 };
+    if (!data || data.length === 0) {
+      console.log(`No lifting results found for athlete: ${name}`);
+      return { snatch_best: 0, cj_best: 0, total: 0 };
+    }
+
+    // Ensure we have valid numbers or default to 0
+    const result = {
+      snatch_best: data[0].snatch_best || 0,
+      cj_best: data[0].cj_best || 0,
+      total: data[0].total || 0
+    };
+    console.log(`Found bests for ${name}:`, result);
+    return result;
   } catch (error) {
-    console.error('Error in getAthleteBests:', error);
+    console.error('Unexpected error in getAthleteBests:', error);
     return { snatch_best: 0, cj_best: 0, total: 0 };
   }
 }
@@ -185,15 +213,14 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
     const loadAthletes = async () => {
       setLoading(true);
       try {
-        // Force fresh data from Supabase on refresh
         const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet, refreshKey > 0);
         setAthletes(sessionAthletes);
 
-        // Fetch athlete bests
+        // Fetch athlete bests with meet
         const bests: Record<string, SupabaseBests> = {};
         for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
           for (const athlete of platformAthletes) {
-            bests[athlete.name] = await getAthleteBests(athlete.name);
+            bests[athlete.name] = await getAthleteBests(athlete.name, selectedMeet);
           }
         }
         setAthleteBests(bests);
@@ -206,7 +233,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
     };
 
     loadAthletes();
-  }, [sessionNumber, platform, refreshKey]);
+  }, [sessionNumber, platform, refreshKey, selectedMeet]);
 
   const handleAthletePress = (athleteName: string) => {
     router.push({
