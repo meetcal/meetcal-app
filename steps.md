@@ -1,6 +1,6 @@
 # Migration Plan: Database-Driven with Robust Offline Support
 
-## Phase 1: Database and Local Storage Setup
+## Phase 1: Database and Local Storage Setup ✅
 1. Create Supabase tables
    - Add version tracking columns
      ```sql
@@ -8,7 +8,7 @@
      - version INTEGER
      ```
 
-2. Create Local Storage Structure
+2. Create Local Storage Structure ✅
    ```typescript
    interface LocalStorageSchema {
      meets: {
@@ -24,62 +24,54 @@
    }
    ```
 
-## Phase 2: Offline-First Data Layer
-1. Create `lib/database/offline-store.ts`
+## Phase 2: Offline-First Data Layer ✅
+1. Create `lib/database/offline-store.ts` ✅
+   - initStore() ✅
+   - getMeetData(meet: MeetName) ✅
+   - saveMeetSchedule(meet: MeetName, schedule: Schedule) ✅
+   - saveMeetAthletes(meet: MeetName, athletes: LiftResult[]) ✅
+   - getLastSyncTime(meet: MeetName) ✅
+   - needsSync(meet: MeetName) ✅
+
+2. Create `lib/database/sync-manager.ts` ✅
+   - syncIfNeeded() ✅
+   - forceSync() ✅
+   - startPeriodicSync() ✅
+   - stopSync() ✅
+
+3. Create `lib/database/network-status.ts` ✅
+   - isOnline(): boolean ✅
+   - onNetworkStatusChange(callback) ✅
+
+## Phase 3: Enhanced Data Access Layer (In Progress)
+1. Update `lib/database/queries.ts` (Partially Complete)
    ```typescript
-   - initializeOfflineStore()
-   - getMeetData(meet: MeetName)
-   - saveMeetData(meet: MeetName, data: MeetData)
-   - getSavedSessions()
-   - getLastSyncTime(meet: MeetName)
+   - getScheduleByMeet(meet: MeetName, forceRefresh?: boolean) ❌
+   - getAthletesByMeet(meet: MeetName, forceRefresh?: boolean) ❌
+   - getSessionDetails(meet: MeetName, sessionId: number) ❌
    ```
 
-2. Create `lib/database/sync-manager.ts`
+2. Create Background Sync Service ✅
+   - Implemented within SyncManager class
+   - setupPeriodicSync() ✅
+   - syncWhenOnline() ✅
+   - handleSyncErrors() ✅
+
+## Phase 4: UI Components for Offline Status ✅
+1. Create offline indicators ✅
    ```typescript
-   - syncMeetData(meet: MeetName)
-   - shouldSync(meet: MeetName): boolean
-   - handleSyncConflicts()
-   - markAsSynced(meet: MeetName)
+   - OfflineIndicator ✅
+   - LastSyncedIndicator ✅
+   - SyncStatusBadge ✅
    ```
 
-3. Create `lib/database/network-status.ts`
+2. Create sync controls ✅
    ```typescript
-   - isOnline(): boolean
-   - onNetworkStatusChange(callback)
-   - getLastSuccessfulSync()
+   - ManualSyncButton ✅
+   - SyncSettingsPanel ✅
    ```
 
-## Phase 3: Enhanced Data Access Layer
-1. Update `lib/database/queries.ts`
-   ```typescript
-   - getScheduleByMeet(meet: MeetName, forceRefresh?: boolean)
-   - getAthletesByMeet(meet: MeetName, forceRefresh?: boolean)
-   - getSessionDetails(meet: MeetName, sessionId: number)
-   ```
-
-2. Create Background Sync Service
-   ```typescript
-   - setupPeriodicSync()
-   - syncWhenOnline()
-   - handleSyncErrors()
-   ```
-
-## Phase 4: UI Components for Offline Status
-1. Create offline indicators
-   ```typescript
-   - OfflineIndicator
-   - LastSyncedIndicator
-   - SyncStatusBadge
-   ```
-
-2. Create sync controls
-   ```typescript
-   - ManualSyncButton
-   - SyncSettingsPanel
-   ```
-
-## Phase 5: Update Components with Offline Support
-
+## Phase 5: Update Components with Offline Support (Next Up) 🔄
 1. Update schedule.tsx
    ```typescript
    - Use offline-first data fetching
