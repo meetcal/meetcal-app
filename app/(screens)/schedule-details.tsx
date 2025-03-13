@@ -158,29 +158,37 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
 async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
   try {
     console.log(`Fetching bests for athlete: ${name}`);
-    const { data, error } = await supabase
+    // First get max snatch
+    const { data: snatchData } = await supabase
       .from('lifting_results')
-      .select('snatch_best, cj_best, total')
+      .select('snatch_best')
       .eq('name', name)
-      .order('date', { ascending: false })
+      .order('snatch_best', { ascending: false })
       .limit(1);
 
-    if (error) {
-      console.error('Supabase error fetching athlete bests:', error);
-      return { snatch_best: 0, cj_best: 0, total: 0 };
-    }
+    // Then max C&J
+    const { data: cjData } = await supabase
+      .from('lifting_results')
+      .select('cj_best')
+      .eq('name', name)
+      .order('cj_best', { ascending: false })
+      .limit(1);
 
-    if (!data || data.length === 0) {
-      console.log(`No lifting results found for athlete: ${name}`);
-      return { snatch_best: 0, cj_best: 0, total: 0 };
-    }
+    // Finally max total
+    const { data: totalData } = await supabase
+      .from('lifting_results')
+      .select('total')
+      .eq('name', name)
+      .order('total', { ascending: false })
+      .limit(1);
 
-    // Ensure we have valid numbers or default to 0
+    // Combine results
     const result = {
-      snatch_best: data[0].snatch_best || 0,
-      cj_best: data[0].cj_best || 0,
-      total: data[0].total || 0
+      snatch_best: (snatchData && snatchData[0]?.snatch_best) || 0,
+      cj_best: (cjData && cjData[0]?.cj_best) || 0,
+      total: (totalData && totalData[0]?.total) || 0
     };
+
     console.log(`Found bests for ${name}:`, result);
     return result;
   } catch (error) {
