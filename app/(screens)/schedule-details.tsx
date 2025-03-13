@@ -5,27 +5,40 @@ import * as Haptics from 'expo-haptics';
 import * as Calendar from 'expo-calendar';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Linking } from 'react-native';
-import { format } from 'date-fns';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors, getSessionTimeRange, getPlatformStartTime } from '@/data/schedule';
+import { getPlatformColors } from '@/data/schedule';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { getSchedule } from '@/data/meets/scheduleManager';
-import { SyncStatusBadge, LastSyncedIndicator } from '@/app/components/offline';
-import { SyncManager } from '@/lib/database/sync-manager';
-
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
-import { schedule } from '@/data/schedule';
-import { liftingResults } from '@/data/athletes';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getAthletesBySession } from '@/data/meets/athletesManager';
 import { MeetName } from '@/data/types/meet';
+import { Platform as PlatformType } from '@/data/types/athletes';
+import { SyncManager } from '@/lib/database/sync-manager';
+import { LiftResult } from '@/data/types/athletes';
+import { saveMeetAthletes } from '@/lib/database/offline-store';
 
-type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+// Update interface names
+interface SessionPlatformDetails {
+  platform: string;
+  platformStartTime?: string;
+  weightClass?: string;
+}
+
+interface Session {
+  number: number;
+  platforms: SessionPlatformDetails[];
+}
+
+interface ScheduleDay {
+  date: string;
+  fullDate: string;
+  sessions: Session[];
+}
 
 // Add interface for Supabase results
 interface SupabaseBests {
@@ -48,8 +61,36 @@ interface CachedAthlete extends SessionAthlete {
   platformName: string;
 }
 
-async function getSessionAthletes(sessionNumber: number, platform: string) {
+async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName, forceRefresh?: boolean) {
   try {
+    // If not forcing refresh, try offline store first
+    if (!forceRefresh) {
+      const syncManager = new SyncManager(meetId);
+      const meetData = await syncManager.getMeetData();
+      
+      const cachedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
+        athlete.session?.number === sessionNumber && 
+        athlete.session?.platform === platform
+      );
+
+      if (cachedAthletes.length > 0) {
+        // Sort cached athletes by entry total
+        const sortedAthletes = [...cachedAthletes].sort((a, b) => 
+          (b.entryTotal || 0) - (a.entryTotal || 0)
+        );
+
+        return {
+          [platform]: sortedAthletes.map((athlete: LiftResult) => ({
+            name: athlete.name,
+            age: athlete.age,
+            club: athlete.club,
+            entryTotal: athlete.entryTotal
+          }))
+        };
+      }
+    }
+
+    // Get fresh data from Supabase
     const { data, error } = await supabase
       .from('athletes')
       .select('*')
@@ -61,16 +102,37 @@ async function getSessionAthletes(sessionNumber: number, platform: string) {
       return {};
     }
 
-    // Transform the data to match our expected format
+    // Transform and sort the data
     const athletes = data.map(athlete => ({
+      memberId: athlete.member_id || '',
       name: athlete.name,
       age: athlete.age,
       club: athlete.club,
-      entryTotal: athlete.entry_total
-    }));
+      gender: athlete.gender || '',
+      weightClass: athlete.weight_class || '',
+      entryTotal: athlete.entry_total,
+      session: {
+        number: sessionNumber,
+        platform: platform
+      }
+    } as LiftResult));
+
+    // Sort athletes by entry total
+    const sortedAthletes = [...athletes].sort((a, b) => 
+      (b.entryTotal || 0) - (a.entryTotal || 0)
+    );
+
+    // Save to offline store
+    const syncManager = new SyncManager(meetId);
+    await saveMeetAthletes(meetId, sortedAthletes);
 
     return {
-      [platform]: athletes
+      [platform]: sortedAthletes.map(athlete => ({
+        name: athlete.name,
+        age: athlete.age,
+        club: athlete.club,
+        entryTotal: athlete.entryTotal
+      }))
     };
   } catch (error) {
     console.error('Error in getSessionAthletes:', error);
@@ -99,10 +161,11 @@ async function getAthleteBests(name: string): Promise<SupabaseBests> {
   }
 }
 
-function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: { 
+function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshKey }: { 
   sessionNumber: number;
   platform: string;
   sessionWeightClass: string;
+  refreshKey: number;
 }) {
   const router = useRouter();
   const { currentTheme } = useTheme();
@@ -122,8 +185,8 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
     const loadAthletes = async () => {
       setLoading(true);
       try {
-        // Fetch athletes from Supabase
-        const sessionAthletes = await getSessionAthletes(sessionNumber, platform);
+        // Force fresh data from Supabase on refresh
+        const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet, refreshKey > 0);
         setAthletes(sessionAthletes);
 
         // Fetch athlete bests
@@ -143,7 +206,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
     };
 
     loadAthletes();
-  }, [sessionNumber, platform]);
+  }, [sessionNumber, platform, refreshKey]);
 
   const handleAthletePress = (athleteName: string) => {
     router.push({
@@ -270,9 +333,9 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   );
 }
 
-function PlatformBadge({ platform }: { platform: SessionPlatform }) {
+function PlatformBadge({ platform }: { platform: string }) {
   const platformColors = getPlatformColors();
-  const backgroundColor = platformColors[platform];
+  const backgroundColor = platformColors[platform as PlatformType] || '#808080';
   
   return (
     <View style={[styles.platformBadge, { backgroundColor }]}>
@@ -349,24 +412,6 @@ function generateSessionId(meet: MeetName, sessionNumber: number | string, platf
   return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
 }
 
-// Update interface names
-interface SessionPlatformDetails {
-  platform: string;
-  platformStartTime?: string;
-  weightClass?: string;
-}
-
-interface Session {
-  number: number;
-  platforms: SessionPlatformDetails[];
-}
-
-interface ScheduleDay {
-  date: string;
-  fullDate: string;
-  sessions: Session[];
-}
-
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
@@ -376,6 +421,7 @@ export default function SessionDetailsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
   const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const rawParams = useLocalSearchParams<{
     id?: string;
@@ -650,13 +696,14 @@ export default function SessionDetailsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Reload session data
       const defaultSchedule = getSchedule(selectedMeet);
       const day = defaultSchedule.find(day => 
         day.sessions.some(s => s.number === parseInt(params.sessionNumber))
       );
       const session = day?.sessions.find(s => s.number === parseInt(params.sessionNumber)) || null;
       setSessionData(session);
+      // Increment refresh key to trigger athlete reload
+      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -710,7 +757,7 @@ export default function SessionDetailsScreen() {
                 Platform
               </ThemedText>
               <View style={styles.platformRow}>
-                <PlatformBadge platform={params.platform as SessionPlatform} />
+                <PlatformBadge platform={params.platform} />
               </View>
             </View>
 
@@ -772,6 +819,7 @@ export default function SessionDetailsScreen() {
             sessionNumber={parseInt(params.sessionNumber)} 
             platform={params.platform}
             sessionWeightClass={sessionWeightClass || params.weightClass}
+            refreshKey={refreshKey}
           />
         </View>
       </ScrollView>
