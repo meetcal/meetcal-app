@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
+import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -81,7 +82,9 @@ export default function RootLayout() {
         <CustomThemeProvider>
           <SubscriptionProvider>
             <SavedSessionsProvider>
-              <AppContent />
+              <SelectedMeetProvider>
+                <AppContent />
+              </SelectedMeetProvider>
             </SavedSessionsProvider>
           </SubscriptionProvider>
         </CustomThemeProvider>

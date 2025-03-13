@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { schedule } from '@/data/schedule';
 import { LiftResult } from '@/data/athletes';
+import { MeetName } from '@/data/types/meet';
 
 const SAVED_SESSIONS_KEY = '@saved_sessions';
+
+// Function to generate unique session IDs
+function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
+  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
+}
 
 export interface SavedSession {
   id: string;
@@ -14,6 +20,7 @@ export interface SavedSession {
   weighInTime: string;
   date: string;
   athleteNames?: string[];
+  meet: MeetName;
 }
 
 function getSessionPlatformDetails(sessionNumber: number, platformName: string) {
@@ -46,7 +53,10 @@ export function useSavedSessions() {
     try {
       const saved = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
       if (saved) {
-        setSavedSessions(JSON.parse(saved));
+        const parsedSessions = JSON.parse(saved);
+        // Ensure all sessions have meet information
+        const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
+        setSavedSessions(validSessions);
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
@@ -55,14 +65,14 @@ export function useSavedSessions() {
     }
   };
 
-  const saveSessionsFromAthletes = async (athletes: LiftResult[]) => {
+  const saveSessionsFromAthletes = async (athletes: LiftResult[], meet: MeetName) => {
     try {
       const sessionMap = new Map<string, { session: any, athletes: string[] }>();
       
       athletes
         .filter(athlete => athlete.session)
         .forEach(athlete => {
-          const sessionId = `session-${athlete.session!.number}-${athlete.session!.platform}`;
+          const sessionId = generateSessionId(meet, athlete.session!.number, athlete.session!.platform);
           
           if (!sessionMap.has(sessionId)) {
             const platformDetails = getSessionPlatformDetails(
@@ -80,7 +90,8 @@ export function useSavedSessions() {
                   startTime: platformDetails.startTime,
                   weighInTime: platformDetails.weighInTime,
                   date: platformDetails.date,
-                  athleteNames: []
+                  athleteNames: [],
+                  meet,
                 },
                 athletes: []
               });
@@ -111,7 +122,8 @@ export function useSavedSessions() {
           
           allSessions[existingSessionIndex] = {
             ...existingSession,
-            athleteNames: [...new Set([...existingNames, ...newNames])]
+            athleteNames: [...new Set([...existingNames, ...newNames])],
+            meet: session.meet,
           };
         } else {
           allSessions.push(session);
@@ -129,11 +141,28 @@ export function useSavedSessions() {
 
   const saveSession = async (session: SavedSession) => {
     try {
-      if (savedSessions.some(s => s.id === session.id)) {
+      if (!session.meet) {
+        console.error('Cannot save session without meet information');
+        return false;
+      }
+
+      // Load current sessions to ensure we have the complete list
+      const currentSaved = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
+      let currentSessions: SavedSession[] = [];
+      if (currentSaved) {
+        currentSessions = JSON.parse(currentSaved);
+      }
+
+      if (currentSessions.some(s => s.id === session.id)) {
+        const updatedSessions = currentSessions.map(s => 
+          s.id === session.id ? { ...s, meet: session.meet } : s
+        );
+        await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(updatedSessions));
+        setSavedSessions(updatedSessions);
         return true;
       }
 
-      const updatedSessions = [...savedSessions, session];
+      const updatedSessions = [...currentSessions, session];
       await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(updatedSessions));
       setSavedSessions(updatedSessions);
       return true;

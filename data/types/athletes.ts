@@ -1,0 +1,43 @@
+export type Platform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+
+export interface LiftResult {
+  memberId: string;
+  name: string;
+  age: number;
+  club: string;
+  gender: string;
+  weightClass: string;
+  entryTotal: number;
+  session?: {
+    number: number;
+    platform: Platform;
+  };
+}
+
+export interface SupabaseLiftResult {
+  id: number;
+  event_id: string;
+  meet: string;
+  date: string;
+  name: string;
+  age: number;
+  body_weight: number;
+  snatch1: number;
+  snatch2: number;
+  snatch3: number;
+  snatch_best: number;
+  cj1: number;
+  cj2: number;
+  cj3: number;
+  cj_best: number;
+  total: number;
+}
+
+export interface SupabaseBests {
+  snatch_best: number;
+  cj_best: number;
+  total: number;
+}
+
+export type Gender = 'Men' | 'Women';
+export type AgeGroup = 'Senior' | 'U25' | 'U23' | 'Junior' | 'U17' | 'U15' | 'U13' | 'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 'Masters 55-59' | 'Masters 60-64' | 'Masters 65-69' | 'Masters 70-74' | 'Masters 75-79' | 'Masters 80-84' | 'Masters 85-89' | 'Masters +90'; 

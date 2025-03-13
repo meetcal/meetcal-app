@@ -28,7 +28,7 @@ export default ({ config }) => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/MeetCal.png',
+      foregroundImage: './assets/images/MeetCal-android.png',
       backgroundColor: '#ffffff',
       dark: {
         foregroundImage: './assets/images/MeetCal-no-bg.png',
@@ -53,8 +53,8 @@ export default ({ config }) => ({
         },
         android: {
           compileSdkVersion: 35,
-          targetSdkVersion: 33,
-          buildToolsVersion: '33.0.0',
+          targetSdkVersion: 34,
+          buildToolsVersion: '34.0.0',
         },
       },
     ],
