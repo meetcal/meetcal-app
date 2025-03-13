@@ -1,3 +1,4 @@
+import React from 'react';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { StyleSheet, View, Pressable, Platform, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -9,14 +10,18 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors, getSessionTimeRange, getPlatformStartTime } from '@/data/schedule';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
+import { getSchedule } from '@/data/meets/scheduleManager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
-import { getFullLocation } from '@/config/venue';
 import { schedule } from '@/data/schedule';
 import { liftingResults } from '@/data/athletes';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { getAthletesBySession } from '@/data/meets/athletesManager';
+import { MeetName } from '@/data/types/meet';
 
 type SessionPlatform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
 
@@ -35,39 +40,19 @@ type SessionAthlete = {
   entryTotal: number;
 };
 
-function getSessionAthletes(sessionNumber: number, platform: string) {
-  // Get session data first
-  const sessionDay = schedule.find(day => 
-    day.sessions.some(s => s.number === sessionNumber)
-  );
+function getSessionAthletes(meetName: MeetName, sessionNumber: number, platform: string) {
+  // Get athletes for this session and platform
+  const athletes = getAthletesBySession(meetName, sessionNumber, platform);
   
-  const session = sessionDay?.sessions.find(s => 
-    s.number === sessionNumber
-  );
-
-  // Get athletes but only take the fields we need
-  return liftingResults
-    .filter(athlete => 
-      athlete.session?.number === sessionNumber && 
-      athlete.session?.platform === platform
-    )
-    .sort((a, b) => b.entryTotal - a.entryTotal)
-    .reduce((platforms, athlete) => {
-      const platform = athlete.session!.platform;
-      if (!platforms[platform]) {
-        platforms[platform] = [];
-      }
-      
-      // Only include the specific fields we need, no weightClass
-      platforms[platform].push({
-        name: athlete.name,
-        age: athlete.age,
-        club: athlete.club,
-        entryTotal: athlete.entryTotal,
-      });
-      
-      return platforms;
-    }, {} as Record<string, SessionAthlete[]>);
+  // Convert to platform-grouped format
+  return {
+    [platform]: athletes.map(athlete => ({
+      name: athlete.name,
+      age: athlete.age,
+      club: athlete.club,
+      entryTotal: athlete.entryTotal,
+    }))
+  };
 }
 
 async function getAthleteBests(name: string): Promise<SupabaseBests> {
@@ -98,6 +83,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
 }) {
   const router = useRouter();
   const { currentTheme } = useTheme();
+  const { selectedMeet } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
 
@@ -109,8 +95,8 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
   };
 
   const athletes = useMemo(() => 
-    getSessionAthletes(sessionNumber, platform), 
-    [sessionNumber, platform]
+    getSessionAthletes(selectedMeet, sessionNumber, platform), 
+    [selectedMeet, sessionNumber, platform]
   );
 
   useEffect(() => {
@@ -225,10 +211,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass }: {
                     See All Meet Results
                   </ThemedText>
                   <IconSymbol 
-                    name={Platform.select({
-                      ios: "chevron.right",
-                      android: "chevron-forward"
-                    })} 
+                    name={Platform.OS === 'ios' ? "chevron.right" : "chevron-forward"}
                     size={13} 
                     color="#007AFF"
                   />
@@ -316,24 +299,71 @@ const checkAndShowReviewPrompt = async () => {
   }
 };
 
+// Function to generate unique session IDs
+function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
+  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
+}
+
+// Update interface names
+interface SessionPlatformDetails {
+  platform: string;
+  platformStartTime?: string;
+  weightClass?: string;
+}
+
+interface Session {
+  number: number;
+  platforms: SessionPlatformDetails[];
+}
+
+interface ScheduleDay {
+  date: string;
+  fullDate: string;
+  sessions: Session[];
+}
+
 export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
-  const params = useLocalSearchParams<{
-    id: string;
-    sessionNumber: string;
-    platform: string;
-    weightClass: string;
-    startTime: string;
-    weighInTime: string;
-    date: string;
+  const { selectedMeet } = useSelectedMeet();
+  const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const rawParams = useLocalSearchParams<{
+    id?: string;
+    sessionNumber?: string;
+    platform?: string;
+    weightClass?: string;
+    startTime?: string;
+    weighInTime?: string;
+    date?: string;
     athleteName?: string;
+    meet?: MeetName;
   }>();
+
+  // Ensure required params have values
+  const params = {
+    id: rawParams.id || '',
+    sessionNumber: rawParams.sessionNumber || '',
+    platform: rawParams.platform || '',
+    weightClass: rawParams.weightClass || '',
+    startTime: rawParams.startTime || '',
+    weighInTime: rawParams.weighInTime || '',
+    date: rawParams.date || '',
+    athleteName: rawParams.athleteName,
+    meet: rawParams.meet || selectedMeet, // Use provided meet or current selected meet
+  };
+
+  // Generate the correct session ID using the meet information
+  const sessionId = useMemo(() => 
+    generateSessionId(params.meet, params.sessionNumber, params.platform),
+    [params.meet, params.sessionNumber, params.platform]
+  );
+
   const { currentTheme } = useTheme();
   const platformColors = getPlatformColors();
 
-  const isSaved = isSessionSaved(params.id);
+  // Use the generated sessionId instead of params.id
+  const isSaved = isSessionSaved(sessionId);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -413,11 +443,11 @@ export default function SessionDetailsScreen() {
 
   const handleSavePress = () => {
     if (isSaved) {
-      removeSession(params.id);
+      removeSession(sessionId);
       showSaveAlert('remove');
     } else {
       saveSession({
-        id: params.id,
+        id: sessionId,
         sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
         weightClass: sessionWeightClass || params.weightClass,
@@ -425,6 +455,7 @@ export default function SessionDetailsScreen() {
         weighInTime: params.weighInTime,
         date: params.date,
         athleteNames: params.athleteName ? [params.athleteName] : undefined,
+        meet: params.meet, // Include meet information
       });
       showSaveAlert('save');
       checkAndShowReviewPrompt();
@@ -458,29 +489,11 @@ export default function SessionDetailsScreen() {
       setHasCalendarPermission(true);
     }
 
-    // Parse time strings (assuming format like "8:00 AM")
-    const parseTimeString = (timeStr: string, dateStr: string) => {
-      const [time, period] = timeStr.split(' ');
-      const [hours, minutes] = time.split(':').map(Number);
-      
-      let adjustedHours = hours;
-      if (period === 'PM' && hours !== 12) {
-        adjustedHours += 12;
-      } else if (period === 'AM' && hours === 12) {
-        adjustedHours = 0;
-      }
-
-      const [year, month, day] = dateStr.split('-').map(Number);
-      
-      // Create Date object in UTC, adding 4 hours for EDT (Eastern Daylight Time)
-      return new Date(Date.UTC(year, month - 1, day, adjustedHours + 4, minutes));
-    };
-
     // Find the session and get platform-specific time
-    const sessionDay = schedule.find(day => 
-      day.sessions.some(session => 
+    const sessionDay = schedule.find((day: ScheduleDay) => 
+      day.sessions.some((session: Session) => 
         session.number === parseInt(params.sessionNumber) &&
-        session.platforms.some(platform => platform.platform === params.platform)
+        session.platforms.some((platform: SessionPlatformDetails) => platform.platform === params.platform)
       )
     );
 
@@ -505,16 +518,17 @@ export default function SessionDetailsScreen() {
     const startTime = platform?.platformStartTime || params.startTime;
     const weighInTime = calculateWeighInTime(startTime);
 
-    const startDate = parseTimeString(startTime, sessionDay.fullDate);
+    // Convert times to UTC using the meet's time zone
+    const startDate = convertToUTC(startTime, sessionDay.fullDate, params.meet);
     const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
     const eventDetails = {
       title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
-      location: getFullLocation(),
-      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${weighInTime}`,
+      location: getMeetVenueLocation(params.meet),
+      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, params.meet)}`,
       startDate: startDate,
       endDate: endDate,
-      timeZone: 'America/New_York',
+      timeZone: getMeetConfig(params.meet).time.timeZoneIdentifier,
       alarms: [{
         relativeOffset: -60,
       }],
@@ -620,7 +634,7 @@ export default function SessionDetailsScreen() {
                 Weigh-in Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {platformWeighInTime} EST
+                {formatTimeWithZone(platformWeighInTime, params.meet)}
               </ThemedText>
             </View>
 
@@ -629,7 +643,7 @@ export default function SessionDetailsScreen() {
                 Start Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {platformStartTime} EST
+                {formatTimeWithZone(platformStartTime, params.meet)}
               </ThemedText>
             </View>
 

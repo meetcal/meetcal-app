@@ -138,7 +138,7 @@ const ONBOARDING_SCREENS = [
   },
   {
     title: 'View All Entries',
-    description: 'See all athletes, their entry totals, and 2024 competitions PRs in one place',
+    description: 'See all athletes, their entry totals, and all competitions PRs in one place',
     mainContent: ({ colors }: { colors: any }) => (
       <Animated.View style={styles.demoContainer}>
         <View style={styles.entryListDemo}>
