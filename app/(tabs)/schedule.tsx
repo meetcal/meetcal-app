@@ -1,9 +1,11 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
-import { useCallback, useRef, useState, useMemo } from 'react';
+import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { SyncStatusBadge, LastSyncedIndicator } from '@/app/components/offline';
+import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -14,6 +16,7 @@ import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { getMeetConfig } from '@/data/meets/config';
+import { initStore } from '@/lib/database/offline-store';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -129,6 +132,26 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
 }
 
 function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilter: string; timeZone: string }) {
+  const { selectedMeet } = useSelectedMeet();
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const { currentTheme } = useTheme();
+
+  const colors = {
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await syncManager.forceSync();
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [syncManager]);
+
   const filteredSessions = useMemo(() => {
     if (!letterFilter) return day.sessions;
     return day.sessions.filter(session => 
@@ -151,6 +174,13 @@ function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilt
       )}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.text}
+        />
+      }
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
           <ThemedText style={styles.emptyText}>
@@ -175,7 +205,9 @@ export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
   const { selectedMeet, isLoading: isMeetLoading } = useSelectedMeet();
-  const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const [schedule, setSchedule] = useState<Schedule>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const meetConfig = useMemo(() => getMeetConfig(selectedMeet), [selectedMeet]);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
@@ -191,6 +223,35 @@ export default function ScheduleScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  useEffect(() => {
+    const initializeAndLoad = async () => {
+      setIsLoading(true);
+      try {
+        // Initialize store first
+        await initStore();
+        
+        // Try to get data from sync manager
+        const meetData = await syncManager.getMeetData();
+        if (meetData.schedule) {
+          setSchedule(meetData.schedule);
+        } else {
+          // Fallback to default schedule if no offline data
+          const defaultSchedule = getSchedule(selectedMeet);
+          setSchedule(defaultSchedule);
+        }
+      } catch (error) {
+        console.error('Failed to load schedule:', error);
+        // Fallback to default schedule on error
+        const defaultSchedule = getSchedule(selectedMeet);
+        setSchedule(defaultSchedule);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAndLoad();
+  }, [selectedMeet, syncManager]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -249,59 +310,67 @@ export default function ScheduleScreen() {
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
       }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.filterButton,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border 
-            },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-          </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-        </Pressable>
+        <View style={styles.filterRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.contentContainer}>
-        <FlatList
-          ref={flatListRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          data={schedule}
-          keyExtractor={item => item.date}
-          renderItem={({ item }) => (
-            <View style={[styles.pageContainer, { width }]}>
-              <DayView 
-                day={item} 
-                letterFilter={letterFilter} 
-                timeZone={meetConfig.time.timeZone}
-              />
-            </View>
-          )}
-          getItemLayout={(data, index) => ({
-            length: width,
-            offset: width * index,
-            index,
-          })}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          contentContainerStyle={styles.flatListContent}
-        />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading schedule...</ThemedText>
+        </View>
+      ) : (
+        <View style={styles.contentContainer}>
+          <FlatList
+            ref={flatListRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            data={schedule}
+            keyExtractor={item => item.date}
+            renderItem={({ item }) => (
+              <View style={[styles.pageContainer, { width }]}>
+                <DayView 
+                  day={item} 
+                  letterFilter={letterFilter} 
+                  timeZone={meetConfig.time.timeZone}
+                />
+              </View>
+            )}
+            getItemLayout={(data, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.flatListContent}
+          />
 
-        <PageIndicator 
-          count={schedule.length}
-          currentPage={currentPage}
-          onPageChange={handlePageChange}
-        />
-      </View>
+          <PageIndicator 
+            count={schedule.length}
+            currentPage={currentPage}
+            onPageChange={handlePageChange}
+          />
+        </View>
+      )}
 
       <Modal
         visible={showFilterModal}
@@ -472,7 +541,11 @@ const styles = StyleSheet.create({
   filterContainer: {
     padding: 16,
   },
+  filterRow: {
+    width: '100%',
+  },
   filterButton: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -541,5 +614,15 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingBottom: 100,
+  },
+  syncInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 
