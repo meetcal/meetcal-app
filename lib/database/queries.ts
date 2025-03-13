@@ -27,6 +27,33 @@ function validatePlatform(platform: string): Platform {
   return 'Blue';
 }
 
+// Convert 24-hour time to 12-hour time without seconds
+function formatTo12Hour(timeStr: string): string {
+  // If already in 12-hour format with AM/PM, just remove seconds
+  if (timeStr.includes('AM') || timeStr.includes('PM')) {
+    const [time, period] = timeStr.split(' ');
+    const [hours, minutes] = time.split(':');
+    return `${hours}:${minutes} ${period}`;
+  }
+
+  // Convert from 24-hour format
+  const [hours, minutes] = timeStr.split(':');
+  const hour = parseInt(hours, 10);
+  let period = 'AM';
+  let hour12 = hour;
+
+  if (hour === 0) {
+    hour12 = 12;
+  } else if (hour === 12) {
+    period = 'PM';
+  } else if (hour > 12) {
+    hour12 = hour - 12;
+    period = 'PM';
+  }
+
+  return `${hour12}:${minutes} ${period}`;
+}
+
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
   console.log('Fetching schedule from Supabase for meet:', meet);
   
@@ -110,8 +137,8 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
       dayData.sessions.set(row.session_id, {
         id: row.session_id.toString(),
         number: row.session_id,
-        startTime: row.start_time,
-        weighInTime: row.weigh_in_time,
+        startTime: formatTo12Hour(row.start_time),
+        weighInTime: formatTo12Hour(row.weigh_in_time),
         platforms: []
       });
     }
@@ -120,7 +147,7 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
     session.platforms.push({
       platform: validatePlatform(row.platform),
       weightClass: row.weight_class,
-      platformStartTime: row.start_time // Include platform-specific start time
+      platformStartTime: formatTo12Hour(row.start_time) // Format platform-specific time
     });
   });
 
