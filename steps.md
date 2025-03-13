@@ -71,23 +71,25 @@
    - SyncSettingsPanel ✅
    ```
 
-## Phase 5: Update Components with Offline Support (Next Up) 🔄
-1. Update schedule.tsx
+## Phase 5: Update Components with Offline Support (In Progress) 🔄
+1. Update schedule.tsx ✅
    ```typescript
-   - Use offline-first data fetching
-   - Add sync status indicator
-   - Add pull-to-refresh with offline awareness
-   - Show last synced timestamp
+   - Use offline-first data fetching ✅
+   - Add sync status indicator ✅
+   - Add pull-to-refresh with offline awareness ✅
+   - Show last synced timestamp ✅
    ```
 
-2. Update schedule-details.tsx
+2. Update schedule-details.tsx ✅
    ```typescript
-   - Cache session details locally
-   - Show offline indicator when using cached data
-   - Enable manual refresh when online
+   - Cache session details locally ✅
+   - Show offline indicator when using cached data ✅
+   - Enable manual refresh when online ✅
+   - Add pull-to-refresh functionality ✅
+   - Show loading states appropriately ✅
    ```
 
-3. Update saved.tsx
+3. Update saved.tsx (Next Up)
    ```typescript
    - Store complete session data locally
    - Work entirely offline

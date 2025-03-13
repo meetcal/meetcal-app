@@ -4,7 +4,6 @@ import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { SyncStatusBadge, LastSyncedIndicator } from '@/app/components/offline';
 import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -14,7 +13,6 @@ import { Session, Platform, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getSchedule } from '@/data/meets/scheduleManager';
 import { getMeetConfig } from '@/data/meets/config';
 import { initStore } from '@/lib/database/offline-store';
 
@@ -131,11 +129,17 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   );
 }
 
-function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilter: string; timeZone: string }) {
+function DayView({ day, letterFilter, timeZone, onRefreshComplete }: { 
+  day: DaySchedule; 
+  letterFilter: string; 
+  timeZone: string;
+  onRefreshComplete?: () => void;
+}) {
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
   const [syncManager] = useState(() => new SyncManager(selectedMeet));
   const { currentTheme } = useTheme();
+  const [scheduleData, setScheduleData] = useState(day);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -144,22 +148,31 @@ function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilt
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await syncManager.forceSync();
+      const meetData = await syncManager.getMeetData();
+      if (meetData.schedule) {
+        // Find and update the current day's data
+        const updatedDay = meetData.schedule.find(d => d.date === day.date);
+        if (updatedDay) {
+          setScheduleData(updatedDay);
+        }
+      }
+      // Notify parent component to reload full schedule
+      onRefreshComplete?.();
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [syncManager]);
+  }, [syncManager, day.date, onRefreshComplete]);
 
   const filteredSessions = useMemo(() => {
-    if (!letterFilter) return day.sessions;
-    return day.sessions.filter(session => 
+    if (!letterFilter) return scheduleData.sessions;
+    return scheduleData.sessions.filter(session => 
       session.platforms.some(platform => 
         platform.weightClass.slice(-1) === letterFilter
       )
     );
-  }, [day.sessions, letterFilter]);
+  }, [scheduleData.sessions, letterFilter]);
 
   return (
     <FlatList
@@ -224,34 +237,40 @@ export default function ScheduleScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
+  const loadScheduleData = async () => {
+    console.log('Loading schedule data for meet:', selectedMeet);
+    const syncManager = new SyncManager(selectedMeet);
+    try {
+      const meetData = await syncManager.getMeetData();
+      console.log('Meet data:', meetData);
+      setSchedule(meetData.schedule || []);
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+      setSchedule([]);
+    }
+  };
+
+  useEffect(() => {
+    console.log('Schedule state updated:', schedule);
+  }, [schedule]);
+
   useEffect(() => {
     const initializeAndLoad = async () => {
       setIsLoading(true);
       try {
-        // Initialize store first
+        console.log('Initializing store...');
         await initStore();
-        
-        // Try to get data from sync manager
-        const meetData = await syncManager.getMeetData();
-        if (meetData.schedule) {
-          setSchedule(meetData.schedule);
-        } else {
-          // Fallback to default schedule if no offline data
-          const defaultSchedule = getSchedule(selectedMeet);
-          setSchedule(defaultSchedule);
-        }
+        await loadScheduleData();
       } catch (error) {
-        console.error('Failed to load schedule:', error);
-        // Fallback to default schedule on error
-        const defaultSchedule = getSchedule(selectedMeet);
-        setSchedule(defaultSchedule);
+        console.error('Failed to initialize and load:', error);
+        setSchedule([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeAndLoad();
-  }, [selectedMeet, syncManager]);
+  }, [selectedMeet]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -303,6 +322,18 @@ export default function ScheduleScreen() {
     setCurrentPage(newPage);
   }, [width]);
 
+  // Pass loadScheduleData to DayView
+  const renderDayView = useCallback(({ item }: { item: DaySchedule }) => (
+    <View style={[styles.pageContainer, { width }]}>
+      <DayView 
+        day={item} 
+        letterFilter={letterFilter} 
+        timeZone={meetConfig.time.timeZone}
+        onRefreshComplete={loadScheduleData}
+      />
+    </View>
+  ), [width, letterFilter, meetConfig.time.timeZone, loadScheduleData]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -334,6 +365,10 @@ export default function ScheduleScreen() {
         <View style={styles.loadingContainer}>
           <ThemedText>Loading schedule...</ThemedText>
         </View>
+      ) : !schedule || schedule.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText>No schedule data available</ThemedText>
+        </View>
       ) : (
         <View style={styles.contentContainer}>
           <FlatList
@@ -343,15 +378,7 @@ export default function ScheduleScreen() {
             showsHorizontalScrollIndicator={false}
             data={schedule}
             keyExtractor={item => item.date}
-            renderItem={({ item }) => (
-              <View style={[styles.pageContainer, { width }]}>
-                <DayView 
-                  day={item} 
-                  letterFilter={letterFilter} 
-                  timeZone={meetConfig.time.timeZone}
-                />
-              </View>
-            )}
+            renderItem={renderDayView}
             getItemLayout={(data, index) => ({
               length: width,
               offset: width * index,
@@ -362,13 +389,22 @@ export default function ScheduleScreen() {
             onScroll={onScroll}
             scrollEventThrottle={16}
             contentContainerStyle={styles.flatListContent}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <ThemedText style={styles.emptyText}>
+                  No schedule data available
+                </ThemedText>
+              </View>
+            )}
           />
 
-          <PageIndicator 
-            count={schedule.length}
-            currentPage={currentPage}
-            onPageChange={handlePageChange}
-          />
+          {schedule.length > 0 && (
+            <PageIndicator 
+              count={schedule.length}
+              currentPage={currentPage}
+              onPageChange={handlePageChange}
+            />
+          )}
         </View>
       )}
 
