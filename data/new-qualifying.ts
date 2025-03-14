@@ -18,7 +18,7 @@ interface Event {
 }
 
 interface QualifyingTotals {
-  Nationals: Event;
+  'USAW Nationals': Event;
   'Virus Series'?: Event;
   'Virus Finals'?: Event;
   'IMWA Worlds'?: Event;
@@ -26,7 +26,7 @@ interface QualifyingTotals {
 }
 
 export const qualifyingTotals: QualifyingTotals = {
-  Nationals: {
+  'USAW Nationals': {
     Men: {
       ageCategories: [
         {
