@@ -8,8 +8,8 @@ import { useState } from 'react';
 import { qualifyingTotals } from '@/data/new-qualifying';
 
 type Gender = 'Men' | 'Women';
-type Event = 'Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
-type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11' | 'Masters 30' | 'Masters 35' | 'Masters 45' | 'Masters 55' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
+type Event = 'USAW Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
+type AgeGroup =  'U11' |'U13' | 'U15' | 'U17' | 'Junior' | 'University' | 'U23' | 'U25' | 'Senior' | 'Masters 30' | 'Masters 35' | 'Masters 40' | 'Masters 45' | 'Masters 50' | 'Masters 55' | 'Masters 60' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
 
 interface Filters {
   event: Event;
@@ -23,7 +23,7 @@ const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 export default function QualifyingTotalsScreen() {
   const { currentTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({
-    event: 'Nationals',
+    event: 'USAW Nationals',
     gender: 'Men',
     ageGroup: 'Senior'
   });
@@ -200,7 +200,7 @@ export default function QualifyingTotalsScreen() {
                   {expandedSection === 'event' && (
                     <ScrollView style={styles.filterOptions} bounces={false}>
                       {[
-                        { id: 'Nationals', label: 'Nationals' },
+                        { id: 'USAW Nationals', label: 'USAW Nationals' },
                         { id: 'Virus Series', label: 'Virus Series' },
                         { id: 'Virus Finals', label: 'Virus Finals' },
                         { id: 'IMWA Worlds', label: 'IMWA Worlds' },
@@ -336,15 +336,15 @@ export default function QualifyingTotalsScreen() {
                       bounces={false}
                     >
                       {[
+                         { id: 'U11', label: 'U11' },
+                         { id: 'U13', label: 'U13' },
+                         { id: 'U15', label: 'U15' },
+                         { id: 'U17', label: 'U17' },
+                         { id: 'Junior', label: 'Junior' },
+                         { id: 'University', label: 'University' },
+                         { id: 'U23', label: 'U23' },
+                         { id: 'U25', label: 'U25' },
                         { id: 'Senior', label: 'Senior' },
-                        { id: 'U25', label: 'U25' },
-                        { id: 'U23', label: 'U23' },
-                        { id: 'University', label: 'University' },
-                        { id: 'Junior', label: 'Junior' },
-                        { id: 'U17', label: 'U17' },
-                        { id: 'U15', label: 'U15' },
-                        { id: 'U13', label: 'U13' },
-                        { id: 'U11', label: 'U11' },
                         { id: 'Masters 30', label: 'Masters 30' },
                         { id: 'Masters 35', label: 'Masters 35' },
                         { id: 'Masters 40', label: 'Masters 40' },

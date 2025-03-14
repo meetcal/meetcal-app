@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { qualifyingTotals } from '@/data/qualifying';
 
 type Gender = 'Men' | 'Women';
-type Event = 'Nationals';
+type Event = 'USAW Nationals';
 type AgeGroup = 'Senior' | 'U25' | 'U23' | 'Junior' | 'U17' | 'U15' | 'U13';
 
 interface Filters {
@@ -23,7 +23,7 @@ const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 export default function QualifyingTotalsScreen() {
   const { currentTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({
-    event: 'Nationals',
+    event: 'USAW Nationals',
     gender: 'Men',
     ageGroup: 'Senior'
   });
@@ -200,7 +200,7 @@ export default function QualifyingTotalsScreen() {
                   {expandedSection === 'event' && (
                     <ScrollView style={styles.filterOptions} bounces={false}>
                       {[
-                        { id: 'Nationals', label: 'Nationals' }
+                        { id: 'USAW Nationals', label: 'USAW Nationals' }
                       ].map((event) => (
                         <Pressable
                           key={event.id}
