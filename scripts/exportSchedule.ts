@@ -1,5 +1,5 @@
 import { writeFileSync } from 'fs';
-import { schedule } from '../data/meets/usaw-masters-nationals/schedule';
+import { schedule } from '../data/meets/usamw-masters-nationals/schedule';
 
 // Convert 12-hour time to 24-hour format
 function convertTo24Hour(time12h: string): string {
@@ -37,7 +37,7 @@ const rows = schedule.flatMap(day =>
                 convertTo24Hour(session.weighInTime),
                 escapeCsvValue(platform.platform),
                 escapeCsvValue(platform.weightClass),
-                'USAW'
+                'USAMW'
             ];
             return values.join(',');
         })
@@ -56,5 +56,5 @@ function escapeCsvValue(value: string): string {
 const csvContent = [headers, ...rows].join('\n');
 
 // Write to file
-writeFileSync('session_schedule.csv', '\ufeff' + csvContent, 'utf-8');
-console.log('CSV file has been saved as session_schedule.csv'); 
+writeFileSync('scripts/usamw_schedule.csv', '\ufeff' + csvContent, 'utf-8');
+console.log('CSV file has been saved as usamw_schedule.csv'); 

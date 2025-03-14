@@ -18,11 +18,11 @@ interface Event {
 }
 
 interface QualifyingTotals {
-  Nationals: Event;
+  'USAW Nationals': Event;
 }
 
 export const qualifyingTotals: QualifyingTotals = {
-  Nationals: {
+  'USAW Nationals': {
     Men: {
       ageCategories: [
         {

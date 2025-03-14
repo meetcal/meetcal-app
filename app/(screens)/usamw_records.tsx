@@ -4,14 +4,13 @@ import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { americanRecords } from '@/data/records';
+import { usamwRecords } from '@/data/usamw_records';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState } from 'react';
-import { WeightClassRecord } from '@/types/records';
+import { WeightClassRecord } from '@/types/usamw_records';
 
 type Gender = 'men' | 'women';
-type AgeGroup = 'senior' | 'junior' | 'collegiate' | 'u17' | 'u15' | 'u13' | 
-  'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 
+type AgeGroup = 'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 
   'Masters 55-59' | 'Masters 60-64' | 'Masters 65-69' | 'Masters 70-74' |
   'Masters 75-79' | 'Masters 80-84' | 'Masters 85-89' | 'Masters +90';
 
@@ -24,7 +23,7 @@ export default function RecordsScreen() {
   const { currentTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({
     gender: 'men',
-    ageGroup: 'senior'
+    ageGroup: 'Masters 35-39'
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterType, setFilterType] = useState<'gender' | 'ageGroup'>('gender');
@@ -60,7 +59,7 @@ export default function RecordsScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ 
-        title: "USAW American Records",
+        title: "USAMW American Records",
         headerBackTitle: "Back",
         headerShown: true,
         gestureEnabled: true,
@@ -132,13 +131,13 @@ export default function RecordsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {americanRecords[filters.ageGroup]?.[filters.gender]?.length > 0 ? (
-            americanRecords[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
+          {usamwRecords[filters.ageGroup]?.[filters.gender]?.length > 0 ? (
+            usamwRecords[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
               <View 
                 key={record.weightClass}
                 style={[
                   styles.row,
-                  index < americanRecords[filters.ageGroup][filters.gender].length - 1 && {
+                  index < usamwRecords[filters.ageGroup][filters.gender].length - 1 && {
                     borderBottomWidth: StyleSheet.hairlineWidth,
                     borderBottomColor: colors.border
                   }
@@ -221,7 +220,6 @@ export default function RecordsScreen() {
                       bounces={false}
                     >
                       {([
-                        'u13', 'u15', 'u17', 'collegiate', 'junior', 'senior',
                         'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
                         'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
                         'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
@@ -241,10 +239,19 @@ export default function RecordsScreen() {
                             { color: colors.text },
                             filters.ageGroup === ageGroup && { color: '#007AFF' }
                           ]}>
-                            {ageGroup === 'u13' ? 'U13' :
-                             ageGroup === 'u15' ? 'U15' :
-                             ageGroup === 'u17' ? 'U17' :
-                             ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1)}
+                            {ageGroup === 'Masters 35-39' ? 'Masters 35-39' :
+                             ageGroup === 'Masters 40-44' ? 'Masters 40-44' :
+                             ageGroup === 'Masters 45-49' ? 'Masters 45-49' :
+                             ageGroup === 'Masters 50-54' ? 'Masters 50-54' :
+                             ageGroup === 'Masters 55-59' ? 'Masters 55-59' :
+                             ageGroup === 'Masters 60-64' ? 'Masters 60-64' :
+                             ageGroup === 'Masters 65-69' ? 'Masters 65-69' :
+                             ageGroup === 'Masters 70-74' ? 'Masters 70-74' :
+                             ageGroup === 'Masters 75-79' ? 'Masters 75-79' :
+                             ageGroup === 'Masters 80-84' ? 'Masters 80-84' :
+                             ageGroup === 'Masters 85-89' ? 'Masters 85-89' :
+                             ageGroup === 'Masters +90' ? 'Masters +90' :
+                             ageGroup}
                           </ThemedText>
                           {filters.ageGroup === ageGroup && (
                             <IconSymbol name="checkmark" size={16} color="#007AFF" />

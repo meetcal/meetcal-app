@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -8,17 +8,17 @@ import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { liftingResults as usawLiftingResults } from '@/data/meets/usaw-masters-nationals/athletes';
-import { liftingResults as usamwLiftingResults } from '@/data/meets/usamw-masters-nationals/athletes';
 import { schedule as usawSchedule } from '@/data/meets/usaw-masters-nationals/schedule';
 import { schedule as usamwSchedule } from '@/data/meets/usamw-masters-nationals/schedule';
-import { LiftResult } from '@/data/meets/usaw-masters-nationals/athletes';
+import { LiftResult } from '@/data/types/athletes';
 import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutAnimation } from 'react-native';
+import { SyncManager } from '@/lib/database/sync-manager';
+import { saveMeetAthletes } from '@/lib/database/offline-store';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -463,34 +463,92 @@ export default function StartListScreen() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const { selectedMeet } = useSelectedMeet();
+  const [loading, setLoading] = useState(true);
+  const [athletes, setAthletes] = useState<LiftResult[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   
-  // Monitor selectedMeet changes
-  useEffect(() => {
-    console.log('selectedMeet changed to:', selectedMeet);
-    console.log('selectedMeet type:', typeof selectedMeet);
-    console.log('selectedMeet exact value:', JSON.stringify(selectedMeet));
-    console.log('comparison result:', selectedMeet === 'USAW Master\'s Nationals');
+  // Load athletes with offline-first approach
+  const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
+    const syncManager = new SyncManager(selectedMeet);
+    try {
+      setLoading(true);
+      console.log('Loading athletes for meet:', selectedMeet);
+      
+      // Try Supabase first
+      try {
+        const { data, error } = await supabase
+          .from('athletes')
+          .select('*')
+          .eq('meet', selectedMeet);
+
+        if (error) throw error;
+        
+        // Transform the data (even if empty)
+        const transformedAthletes = (data || []).map(athlete => ({
+          memberId: athlete.member_id || '',
+          name: athlete.name,
+          age: athlete.age || 0,
+          club: athlete.club || '',
+          gender: athlete.gender || '',
+          weightClass: athlete.weight_class || '',
+          entryTotal: athlete.entry_total || 0,
+          session: athlete.session_number ? {
+            number: Number(athlete.session_number),
+            platform: athlete.session_platform || ''
+          } : undefined
+        })) as LiftResult[];
+
+        // Always save to cache and update UI, even if empty
+        console.log('Got data from Supabase, count:', transformedAthletes.length);
+        await saveMeetAthletes(selectedMeet, transformedAthletes);
+        setAthletes(transformedAthletes);
+        setLoading(false);
+        return;
+        
+      } catch (supabaseError) {
+        console.log('Supabase error, falling back to cache:', supabaseError);
+        
+        // Only use cache on actual Supabase errors
+        const meetData = await syncManager.getMeetData();
+        if (meetData.athletes.length > 0) {
+          console.log('Using cached data, count:', meetData.athletes.length);
+          setAthletes(meetData.athletes);
+        } else {
+          console.log('No data in cache');
+          setAthletes([]);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error loading athletes:', error);
+      setAthletes([]);
+      Alert.alert(
+        'Error',
+        'Could not load athletes. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoading(false);
+    }
   }, [selectedMeet]);
-  
-  // Get meet-specific schedule and athletes
+
+  // Load athletes on mount and meet change
+  useEffect(() => {
+    loadAthletes();
+  }, [loadAthletes, selectedMeet]);
+
+  // Handle refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadAthletes(true);
+    setRefreshing(false);
+  }, [loadAthletes]);
+
+  // Get meet-specific schedule
   const schedule = useMemo(() => {
-    console.log('Schedule comparison:', {
-      selectedMeet,
-      isUSAW: selectedMeet === 'USAW Master\'s Nationals',
-      scheduleToUse: selectedMeet === 'USAW Master\'s Nationals' ? 'USAW' : 'USAMW'
-    });
     return selectedMeet === 'USAW Master\'s Nationals' ? usawSchedule : usamwSchedule;
   }, [selectedMeet]);
-  
-  const liftingResults = useMemo(() => {
-    console.log('Athletes comparison:', {
-      selectedMeet,
-      isUSAW: selectedMeet === 'USAW Master\'s Nationals',
-      resultsToUse: selectedMeet === 'USAW Master\'s Nationals' ? 'USAW' : 'USAMW'
-    });
-    return selectedMeet === 'USAW Master\'s Nationals' ? usawLiftingResults : usamwLiftingResults;
-  }, [selectedMeet]);
-  
+
   // Add back the colors object
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -538,7 +596,7 @@ export default function StartListScreen() {
   const weightClassOptions = useMemo(() => {
     const weightClasses = new Set<string>();
     
-    liftingResults.forEach(athlete => {
+    athletes.forEach(athlete => {
       if (athlete.weightClass) {
         const parsed = parseWeightClasses(athlete.weightClass);
         parsed.forEach(wc => weightClasses.add(wc));
@@ -564,7 +622,7 @@ export default function StartListScreen() {
 
   // Move clubOptions and sortedClubOptions here
   const clubOptions = Array.from(
-    new Set(liftingResults.map(athlete => athlete.club))
+    new Set(athletes.map(athlete => athlete.club))
   ).sort();
 
   const sortedClubOptions = useMemo(() => {
@@ -605,9 +663,9 @@ export default function StartListScreen() {
   // Update the filtered athletes logic
   const filteredAthletes = useMemo(() => {
     console.log('Filtering athletes for meet:', selectedMeet);
-    console.log('Number of athletes:', liftingResults.length);
+    console.log('Number of athletes:', athletes.length);
     
-    return liftingResults
+    return athletes
       .filter(athlete => {
         const matchesWeightClass = weightClassFilter 
           ? parseWeightClasses(athlete.weightClass).includes(weightClassFilter)
@@ -627,7 +685,7 @@ export default function StartListScreen() {
         return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup;
       })
       .sort(sortAthletes);
-  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs, selectedMeet, liftingResults]);
+  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs, athletes, selectedMeet]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -856,6 +914,19 @@ export default function StartListScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.secondaryText} />
+          <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
+            Loading athletes...
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]} key={selectedMeet}>
       <View style={[styles.filterContainer, { 
@@ -955,6 +1026,13 @@ export default function StartListScreen() {
           { paddingBottom: 80 + insets.bottom }
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+          />
+        }
       />
 
       <Modal
@@ -1765,5 +1843,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     color: '#007AFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginTop: 12,
   },
 }); 
