@@ -8,8 +8,8 @@ import { useState } from 'react';
 import { qualifyingTotals } from '@/data/new-qualifying';
 
 type Gender = 'Men' | 'Women';
-type Event = 'Nationals' | 'Virus Series' | 'Virus Finals';
-type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11' | 'Masters 35' | 'Masters 45' | 'Masters 55' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
+type Event = 'Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
+type AgeGroup = 'Senior' | 'U25' | 'U23' | 'University' | 'Junior' | 'U17' | 'U15' | 'U13' | 'U11' | 'Masters 30' | 'Masters 35' | 'Masters 45' | 'Masters 55' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
 
 interface Filters {
   event: Event;
@@ -203,6 +203,8 @@ export default function QualifyingTotalsScreen() {
                         { id: 'Nationals', label: 'Nationals' },
                         { id: 'Virus Series', label: 'Virus Series' },
                         { id: 'Virus Finals', label: 'Virus Finals' },
+                        { id: 'IMWA Worlds', label: 'IMWA Worlds' },
+                        { id: 'Master\'s Pan Ams', label: 'Master\'s Pan Ams' },
                       ].map((event) => (
                         <Pressable
                           key={event.id}
@@ -343,6 +345,7 @@ export default function QualifyingTotalsScreen() {
                         { id: 'U15', label: 'U15' },
                         { id: 'U13', label: 'U13' },
                         { id: 'U11', label: 'U11' },
+                        { id: 'Masters 30', label: 'Masters 30' },
                         { id: 'Masters 35', label: 'Masters 35' },
                         { id: 'Masters 40', label: 'Masters 40' },
                         { id: 'Masters 45', label: 'Masters 45' },
