@@ -1,9 +1,10 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
-import { useCallback, useRef, useState, useMemo } from 'react';
+import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -12,8 +13,8 @@ import { Session, Platform, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getSchedule } from '@/data/meets/scheduleManager';
 import { getMeetConfig } from '@/data/meets/config';
+import { initStore } from '@/lib/database/offline-store';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -128,15 +129,50 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   );
 }
 
-function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilter: string; timeZone: string }) {
+function DayView({ day, letterFilter, timeZone, onRefreshComplete }: { 
+  day: DaySchedule; 
+  letterFilter: string; 
+  timeZone: string;
+  onRefreshComplete?: () => void;
+}) {
+  const { selectedMeet } = useSelectedMeet();
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const { currentTheme } = useTheme();
+  const [scheduleData, setScheduleData] = useState(day);
+
+  const colors = {
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const meetData = await syncManager.getMeetData();
+      if (meetData.schedule) {
+        // Find and update the current day's data
+        const updatedDay = meetData.schedule.find(d => d.date === day.date);
+        if (updatedDay) {
+          setScheduleData(updatedDay);
+        }
+      }
+      // Notify parent component to reload full schedule
+      onRefreshComplete?.();
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [syncManager, day.date, onRefreshComplete]);
+
   const filteredSessions = useMemo(() => {
-    if (!letterFilter) return day.sessions;
-    return day.sessions.filter(session => 
+    if (!letterFilter) return scheduleData.sessions;
+    return scheduleData.sessions.filter(session => 
       session.platforms.some(platform => 
         platform.weightClass.slice(-1) === letterFilter
       )
     );
-  }, [day.sessions, letterFilter]);
+  }, [scheduleData.sessions, letterFilter]);
 
   return (
     <FlatList
@@ -151,6 +187,13 @@ function DayView({ day, letterFilter, timeZone }: { day: DaySchedule; letterFilt
       )}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.text}
+        />
+      }
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
           <ThemedText style={styles.emptyText}>
@@ -175,7 +218,9 @@ export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
   const { selectedMeet, isLoading: isMeetLoading } = useSelectedMeet();
-  const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const [schedule, setSchedule] = useState<Schedule>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const meetConfig = useMemo(() => getMeetConfig(selectedMeet), [selectedMeet]);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
@@ -191,6 +236,41 @@ export default function ScheduleScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  const loadScheduleData = async () => {
+    console.log('Loading schedule data for meet:', selectedMeet);
+    const syncManager = new SyncManager(selectedMeet);
+    try {
+      const meetData = await syncManager.getMeetData();
+      console.log('Meet data:', meetData);
+      setSchedule(meetData.schedule || []);
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+      setSchedule([]);
+    }
+  };
+
+  useEffect(() => {
+    console.log('Schedule state updated:', schedule);
+  }, [schedule]);
+
+  useEffect(() => {
+    const initializeAndLoad = async () => {
+      setIsLoading(true);
+      try {
+        console.log('Initializing store...');
+        await initStore();
+        await loadScheduleData();
+      } catch (error) {
+        console.error('Failed to initialize and load:', error);
+        setSchedule([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAndLoad();
+  }, [selectedMeet]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -242,6 +322,18 @@ export default function ScheduleScreen() {
     setCurrentPage(newPage);
   }, [width]);
 
+  // Pass loadScheduleData to DayView
+  const renderDayView = useCallback(({ item }: { item: DaySchedule }) => (
+    <View style={[styles.pageContainer, { width }]}>
+      <DayView 
+        day={item} 
+        letterFilter={letterFilter} 
+        timeZone={meetConfig.time.timeZone}
+        onRefreshComplete={loadScheduleData}
+      />
+    </View>
+  ), [width, letterFilter, meetConfig.time.timeZone, loadScheduleData]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
@@ -249,59 +341,72 @@ export default function ScheduleScreen() {
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
       }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.filterButton,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border 
-            },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-            {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-          </ThemedText>
-          <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-        </Pressable>
+        <View style={styles.filterRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButton,
+              { 
+                backgroundColor: colors.card,
+                borderColor: colors.border 
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
+            </ThemedText>
+            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.contentContainer}>
-        <FlatList
-          ref={flatListRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          data={schedule}
-          keyExtractor={item => item.date}
-          renderItem={({ item }) => (
-            <View style={[styles.pageContainer, { width }]}>
-              <DayView 
-                day={item} 
-                letterFilter={letterFilter} 
-                timeZone={meetConfig.time.timeZone}
-              />
-            </View>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading schedule...</ThemedText>
+        </View>
+      ) : !schedule || schedule.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ThemedText>No schedule data available</ThemedText>
+        </View>
+      ) : (
+        <View style={styles.contentContainer}>
+          <FlatList
+            ref={flatListRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            data={schedule}
+            keyExtractor={item => item.date}
+            renderItem={renderDayView}
+            getItemLayout={(data, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.flatListContent}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <ThemedText style={styles.emptyText}>
+                  No schedule data available
+                </ThemedText>
+              </View>
+            )}
+          />
+
+          {schedule.length > 0 && (
+            <PageIndicator 
+              count={schedule.length}
+              currentPage={currentPage}
+              onPageChange={handlePageChange}
+            />
           )}
-          getItemLayout={(data, index) => ({
-            length: width,
-            offset: width * index,
-            index,
-          })}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          contentContainerStyle={styles.flatListContent}
-        />
-
-        <PageIndicator 
-          count={schedule.length}
-          currentPage={currentPage}
-          onPageChange={handlePageChange}
-        />
-      </View>
+        </View>
+      )}
 
       <Modal
         visible={showFilterModal}
@@ -472,7 +577,11 @@ const styles = StyleSheet.create({
   filterContainer: {
     padding: 16,
   },
+  filterRow: {
+    width: '100%',
+  },
   filterButton: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -541,5 +650,15 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingBottom: 100,
+  },
+  syncInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 

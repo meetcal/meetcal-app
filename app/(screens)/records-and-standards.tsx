@@ -115,18 +115,35 @@ export default function RecordsAndStandardsScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.section,
-            styles.lastSection,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
             pressed && { backgroundColor: colors.pressed }
           ]}
           onPress={() => router.push('/(screens)/records')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              American Records
+              USAW American Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
         </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            styles.lastSection,
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/usamw_records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              USAMW American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
       </View>
     </ThemedView>
   )
