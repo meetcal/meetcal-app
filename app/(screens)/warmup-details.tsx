@@ -184,6 +184,20 @@ export default function WarmupDetailsScreen() {
                   {warmup.athlete.cleanAndJerkPR}
                 </ThemedText>
               </View>
+
+              {/* See All Results Button */}
+              <Pressable
+                style={[styles.infoRow, { borderBottomColor: colors.border }]}
+                onPress={() => router.push({
+                  pathname: '/athlete-results',
+                  params: { name: warmup.athlete.name }
+                })}
+              >
+                <ThemedText style={[styles.value, { color: colors.link }]}>
+                  See All Meet Results
+                </ThemedText>
+                <IconSymbol name="chevron.right" size={16} color={colors.link} />
+              </Pressable>
             </View>
 
             {/* Warmup Table */}
