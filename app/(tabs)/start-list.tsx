@@ -334,21 +334,14 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
 }
 
 function sortWeightClasses(a: string, b: string): number {
-  // First split by gender
-  const aIsFemale = a.startsWith('Female');
-  const bIsFemale = b.startsWith('Female');
-  
-  if (aIsFemale && !bIsFemale) return -1;
-  if (!aIsFemale && bIsFemale) return 1;
-  
-  // Extract numeric values for comparison
-  const aNum = parseInt(a.match(/\d+/)?.[0] || '0');
-  const bNum = parseInt(b.match(/\d+/)?.[0] || '0');
+  // Extract numeric values, removing 'kg' and handling '+' classes
+  const aNum = parseInt(a.replace(/[^\d]/g, ''));
+  const bNum = parseInt(b.replace(/[^\d]/g, ''));
   
   // If numbers are different, sort by number
   if (aNum !== bNum) return aNum - bNum;
   
-  // If numbers are the same, put the + version after the regular version
+  // If numbers are the same, put the + version after
   const aHasPlus = a.includes('+');
   const bHasPlus = b.includes('+');
   
@@ -438,12 +431,11 @@ function parseWeightClasses(weightClass: string): string[] {
   const classes = weightClass.split(' / ');
   const weightClasses = new Set<string>();
   
-  // Look at first 2-3 classes max
-  classes.slice(0, 3).forEach(classStr => {
-    // Match pattern: M or W followed by a number (possibly with +)
-    const match = classStr.match(/([MW])\s*(\d+\+?)/);
-    if (match && match[1] && match[2]) {
-      weightClasses.add(`${match[1]} ${match[2]}`);
+  classes.forEach(classStr => {
+    // Match pattern: number followed by kg (possibly with +)
+    const match = classStr.match(/(\d+)(?:\+)?kg/);
+    if (match && match[1]) {
+      weightClasses.add(`${match[1]}${classStr.includes('+') ? '+' : ''}kg`);
     }
   });
   
@@ -603,22 +595,8 @@ export default function StartListScreen() {
       }
     });
     
-    return Array.from(weightClasses).sort((a, b) => {
-      const [genderA, numberA] = a.split(' ');
-      const [genderB, numberB] = b.split(' ');
-      
-      if (genderA !== genderB) {
-        return genderA === 'W' ? -1 : 1;
-      }
-      
-      const numA = parseInt(numberA.replace('+', ''));
-      const numB = parseInt(numberB.replace('+', ''));
-      if (numA === numB) {
-        return numberA.includes('+') ? 1 : -1;
-      }
-      return numA - numB;
-    });
-  }, []);
+    return Array.from(weightClasses).sort(sortWeightClasses);
+  }, [athletes]);
 
   // Move clubOptions and sortedClubOptions here
   const clubOptions = Array.from(
@@ -1233,7 +1211,7 @@ export default function StartListScreen() {
                             { color: colors.text },
                             tempWeightClassFilter === weightClass && { color: '#007AFF' }
                           ]}>
-                            {weightClass}kg
+                            {weightClass.replace('kg', '')}kg
                           </ThemedText>
                           {tempWeightClassFilter === weightClass && (
                             <IconSymbol name="checkmark" size={16} color="#007AFF" />
