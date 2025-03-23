@@ -477,7 +477,7 @@ export default function SavedScreen() {
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
           <Pressable
-            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => setShowFilterModal(true)}
           >
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
@@ -487,7 +487,7 @@ export default function SavedScreen() {
           </Pressable>
           
           <Pressable
-            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
           >
             <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
@@ -496,6 +496,16 @@ export default function SavedScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push('/(screens)/warmups')}
+        >
+          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+            Saved Warmups
+          </ThemedText>
+        </Pressable>
       </View>
 
       <FlatList
@@ -599,13 +609,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#C6C6C8',
+    gap: 12,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 16,
   },
   button: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -762,5 +772,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginLeft: 16,
     marginTop: 4,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
   },
 }); 
