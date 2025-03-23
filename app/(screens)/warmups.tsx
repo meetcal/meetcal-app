@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler'
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
 
 const SAVED_WARMUPS_KEY = '@saved_warmups'
 
@@ -15,14 +16,25 @@ interface AthleteWarmup {
   id: string
   name: string
   lastModified: string
+  meet: string
 }
 
 export default function WarmupsScreen() {
   const { currentTheme } = useTheme()
+  const { selectedMeet } = useSelectedMeet()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const [savedWarmups, setSavedWarmups] = useState<AthleteWarmup[]>([])
   const [refreshing, setRefreshing] = useState(false)
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: '2-digit'
+    })
+  }
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -36,13 +48,15 @@ export default function WarmupsScreen() {
 
   useEffect(() => {
     loadSavedWarmups()
-  }, [])
+  }, [selectedMeet])
 
   const loadSavedWarmups = async () => {
     try {
       const storedWarmups = await AsyncStorage.getItem(SAVED_WARMUPS_KEY)
       if (storedWarmups) {
-        setSavedWarmups(JSON.parse(storedWarmups))
+        const allWarmups = JSON.parse(storedWarmups)
+        const meetWarmups = allWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
+        setSavedWarmups(meetWarmups)
       }
     } catch (error) {
       console.error('Error loading warmups:', error)
@@ -53,7 +67,7 @@ export default function WarmupsScreen() {
     setRefreshing(true)
     await loadSavedWarmups()
     setRefreshing(false)
-  }, [])
+  }, [selectedMeet])
 
   const deleteWarmup = async (id: string) => {
     try {
@@ -134,10 +148,16 @@ export default function WarmupsScreen() {
           </Pressable>
 
           <View style={[styles.card, { backgroundColor: colors.card }]}>
-            {savedWarmups.length === 0 ? (
+            {!selectedMeet ? (
               <View style={styles.emptyState}>
                 <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-                  No saved warmups
+                  Select a meet to view warmups
+                </ThemedText>
+              </View>
+            ) : savedWarmups.length === 0 ? (
+              <View style={styles.emptyState}>
+                <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+                  No saved warmups for this meet
                 </ThemedText>
               </View>
             ) : (
@@ -168,7 +188,7 @@ export default function WarmupsScreen() {
                         {warmup.name}
                       </ThemedText>
                       <ThemedText style={[styles.lastModified, { color: colors.secondaryText }]}>
-                        Last modified {warmup.lastModified}
+                        Last modified {formatDate(warmup.lastModified)}
                       </ThemedText>
                     </View>
                     <IconSymbol name="chevron.right" size={20} color={colors.link} />
