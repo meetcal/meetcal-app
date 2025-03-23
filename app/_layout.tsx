@@ -9,11 +9,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
+
+// Get RevenueCat keys from environment
+const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
+const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID!;
+
+if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
+  throw new Error('RevenueCat API keys are required');
+}
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -31,10 +40,12 @@ export default function RootLayout() {
     const initializeRevenueCat = async () => {
       try {
         if (Platform.OS === 'ios') {
-          await Purchases.configure({ apiKey: 'appl_UriFuFjiRHwcmgkTgoAgENezgcv' });
+          await Purchases.configure({ 
+            apiKey: REVENUECAT_IOS_KEY
+          });
         } else if (Platform.OS === 'android') {
           await Purchases.configure({ 
-            apiKey: 'goog_tUXAGSdnOuHiTVFNSvQKHxNTbpI',
+            apiKey: REVENUECAT_ANDROID_KEY,
             appUserID: null, // RevenueCat will generate a random ID
           });
         }
