@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
+import { getSimulatedSubscriptionStatus } from '@/config/development';
 
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
   setSubscribed: (value: boolean) => Promise<void>;
   isLoading: boolean;
   restorePurchases: () => Promise<boolean>;
+  checkSubscriptionStatus: () => Promise<void>;
 };
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -28,17 +30,26 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const checkSubscriptionStatus = async () => {
     try {
-      console.log('Fetching customer info...');
-      const customerInfo = await Purchases.getCustomerInfo();
-      console.log('Raw customer info:', customerInfo);
+      console.log('Checking subscription status...');
       
-      const hasActiveSubscription = await checkEntitlementStatus(customerInfo);
-      console.log('Final subscription status:', hasActiveSubscription);
+      // Check for simulated subscription first
+      const simulatedStatus = getSimulatedSubscriptionStatus();
+      if (simulatedStatus !== null) {
+        console.log('Using simulated subscription status:', simulatedStatus);
+        setIsSubscribed(simulatedStatus);
+        return;
+      }
+
+      // If no simulation, check real subscription
+      const customerInfo = await Purchases.getCustomerInfo();
+      const hasActiveSubscription = customerInfo.entitlements.active['Subscriptions'] != null;
+      console.log('Real subscription status:', hasActiveSubscription);
       
       await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
       setIsSubscribed(hasActiveSubscription);
     } catch (error) {
       console.error('Failed to check subscription status:', error);
+      // On error, try to get status from AsyncStorage
       const status = await AsyncStorage.getItem('subscriptionStatus');
       setIsSubscribed(status === 'true');
     } finally {
@@ -103,7 +114,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       isSubscribed, 
       setSubscribed, 
       isLoading,
-      restorePurchases 
+      restorePurchases,
+      checkSubscriptionStatus
     }}>
       {children}
     </SubscriptionContext.Provider>

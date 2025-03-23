@@ -173,6 +173,11 @@ export default function SavedScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
+  const [savedWarmups, setSavedWarmups] = useState<Array<{
+    id: string,
+    name: string,
+    meet: string
+  }>>([])
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -181,6 +186,7 @@ export default function SavedScreen() {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+    link: '#007AFF',
   };
 
   // Add migrateSessions function
@@ -305,6 +311,26 @@ export default function SavedScreen() {
     );
   };
 
+  // Add function to load saved warmups
+  const loadSavedWarmups = useCallback(async () => {
+    try {
+      const storedWarmups = await AsyncStorage.getItem('@saved_warmups')
+      if (storedWarmups) {
+        const warmups = JSON.parse(storedWarmups)
+        setSavedWarmups(warmups)
+      }
+    } catch (error) {
+      console.error('Error loading warmups:', error)
+    }
+  }, [])
+
+  // Load saved warmups when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      loadSavedWarmups()
+    }, [loadSavedWarmups])
+  )
+
   const renderSession = ({ item }: { item: LegacySavedSession }) => {
     // Find session in schedule to get platform-specific time
     const schedule = getSchedule(item.meet || selectedMeet);
@@ -324,6 +350,22 @@ export default function SavedScreen() {
     const startTime = platform?.platformStartTime || item.startTime;
     const weighInTime = calculateWeighInTime(startTime);
     const meetConfig = getMeetConfig(item.meet || selectedMeet);
+
+    // Check if there's a warmup for any of the athletes
+    const hasWarmup = item.athleteNames?.some(name => 
+      savedWarmups.some(warmup => 
+        warmup.name === name && warmup.meet === selectedMeet
+      )
+    ) || (item.athleteName && savedWarmups.some(warmup => 
+      warmup.name === item.athleteName && warmup.meet === selectedMeet
+    ))
+
+    // Find the warmup ID if it exists
+    const warmupId = item.athleteNames?.[0] 
+      ? savedWarmups.find(w => w.name === item.athleteNames![0] && w.meet === selectedMeet)?.id
+      : item.athleteName 
+        ? savedWarmups.find(w => w.name === item.athleteName && w.meet === selectedMeet)?.id
+        : null
 
     return (
       <Pressable
@@ -396,14 +438,35 @@ export default function SavedScreen() {
             </ThemedText>
             <View style={styles.athleteNamesContainer}>
               {item.athleteNames.slice(0, 3).map((name, index) => (
-                <ThemedText 
-                  key={index} 
-                  style={[styles.athleteName, { color: colors.text }]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {name}
-                </ThemedText>
+                <View key={index} style={styles.athleteRow}>
+                  <ThemedText 
+                    style={[styles.athleteName, { color: colors.text }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {name}
+                  </ThemedText>
+                  {hasWarmup && index === 0 && warmupId && (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation()
+                        router.push({
+                          pathname: '/warmup-details',
+                          params: { id: warmupId }
+                        })
+                      }}
+                      style={({ pressed }) => [
+                        styles.warmupLink,
+                        pressed && { opacity: 0.7 }
+                      ]}
+                    >
+                      <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                        Warmups
+                      </ThemedText>
+                      <IconSymbol name="chevron.right" size={12} color={colors.link} />
+                    </Pressable>
+                  )}
+                </View>
               ))}
               {item.athleteNames.length > 3 && (
                 <ThemedText style={[styles.athleteMoreText, { color: colors.secondaryText }]}>
@@ -420,9 +483,31 @@ export default function SavedScreen() {
             <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
               Athlete:
             </ThemedText>
-            <ThemedText style={[styles.athleteName, { color: colors.text }]}>
-              {item.athleteName}
-            </ThemedText>
+            <View style={styles.athleteRow}>
+              <ThemedText style={[styles.athleteName, { color: colors.text }]}>
+                {item.athleteName}
+              </ThemedText>
+              {hasWarmup && warmupId && (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation()
+                    router.push({
+                      pathname: '/warmup-details',
+                      params: { id: warmupId }
+                    })
+                  }}
+                  style={({ pressed }) => [
+                    styles.warmupLink,
+                    pressed && { opacity: 0.7 }
+                  ]}
+                >
+                  <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                    Warmups
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={12} color={colors.link} />
+                </Pressable>
+              )}
+            </View>
           </View>
         )}
       </Pressable>
@@ -477,7 +562,7 @@ export default function SavedScreen() {
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
           <Pressable
-            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => setShowFilterModal(true)}
           >
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
@@ -487,7 +572,7 @@ export default function SavedScreen() {
           </Pressable>
           
           <Pressable
-            style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
           >
             <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
@@ -496,6 +581,16 @@ export default function SavedScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push('/(screens)/warmups')}
+        >
+          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+            Saved Warmups
+          </ThemedText>
+        </Pressable>
       </View>
 
       <FlatList
@@ -599,13 +694,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#C6C6C8',
+    gap: 12,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 16,
   },
   button: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -762,5 +857,28 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginLeft: 16,
     marginTop: 4,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  athleteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  warmupLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  warmupLinkText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 }); 
