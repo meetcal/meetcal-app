@@ -45,5 +45,3 @@ android/keystores/release.jks
 
 # Credentials
 credentials.json
-
-config/development.ts
