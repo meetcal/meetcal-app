@@ -47,6 +47,25 @@ interface SupabaseBests {
   total: number;
 }
 
+// Add interface for saved warmups
+interface SavedWarmup {
+  id: string;
+  name: string;
+  lastModified: string;
+  athlete: {
+    name: string;
+    club: string;
+    snatchPR: number;
+    cleanAndJerkPR: number;
+  };
+  warmupRows: {
+    minutesOut: string | number;
+    snatch: string | number;
+    cleanAndJerk: string | number;
+  }[];
+  meet: string;
+}
+
 // Type for just the athlete data we need
 type SessionAthlete = {
   name: string;
@@ -209,12 +228,36 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>({});
+  const [athleteWarmups, setAthleteWarmups] = useState<Record<string, boolean>>({});
 
   const colors = {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    link: '#007AFF',
+  };
+
+  // Check for saved warmups
+  const checkForWarmups = async () => {
+    try {
+      const savedWarmups = await AsyncStorage.getItem('@saved_warmups');
+      if (savedWarmups) {
+        const warmups = JSON.parse(savedWarmups);
+        const warmupsByAthlete: Record<string, boolean> = {};
+        
+        // Check each athlete for warmups
+        warmups.forEach((warmup: SavedWarmup) => {
+          if (warmup.meet === selectedMeet) {
+            warmupsByAthlete[warmup.athlete.name] = true;
+          }
+        });
+        
+        setAthleteWarmups(warmupsByAthlete);
+      }
+    } catch (error) {
+      console.error('Error checking warmups:', error);
+    }
   };
 
   useEffect(() => {
@@ -232,6 +275,9 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
           }
         }
         setAthleteBests(bests);
+        
+        // Check for warmups after loading athletes
+        await checkForWarmups();
       } catch (error) {
         console.error('Error loading athletes:', error);
         setAthletes({});
@@ -291,7 +337,39 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                   }
                 ]}
               >
-                <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
+                <View style={styles.athleteHeader}>
+                  <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
+                  {athleteWarmups[athlete.name] && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.headerLink,
+                        pressed && { opacity: 0.8 }
+                      ]}
+                      onPress={() => {
+                        const savedWarmups = AsyncStorage.getItem('@saved_warmups')
+                          .then(data => {
+                            if (data) {
+                              const warmups = JSON.parse(data);
+                              const warmup = warmups.find((w: SavedWarmup) => 
+                                w.athlete.name === athlete.name && w.meet === selectedMeet
+                              );
+                              if (warmup) {
+                                router.push({
+                                  pathname: '/warmup-details',
+                                  params: { id: warmup.id }
+                                });
+                              }
+                            }
+                          });
+                      }}
+                    >
+                      <ThemedText style={[styles.linkText, { color: colors.link }]}>
+                        Warmups
+                      </ThemedText>
+                      <IconSymbol name="chevron.right" size={13} color={colors.link} />
+                    </Pressable>
+                  )}
+                </View>
                 <ThemedText style={[styles.athleteDetail, { color: colors.secondaryText }]}>
                   Age: {athlete.age}
                 </ThemedText>
@@ -342,7 +420,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
 
                 <Pressable
                   style={({ pressed }) => [
-                    styles.meetResultsButton,
+                    styles.linkButton,
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => router.push({
@@ -350,14 +428,10 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     params: { name: athlete.name }
                   })}
                 >
-                  <ThemedText style={styles.meetResultsText}>
+                  <ThemedText style={[styles.linkText, { color: colors.link }]}>
                     See All Meet Results
                   </ThemedText>
-                  <IconSymbol 
-                    name={Platform.OS === 'ios' ? "chevron.right" : "chevron-forward"}
-                    size={13} 
-                    color="#007AFF"
-                  />
+                  <IconSymbol name="chevron.right" size={13} color={colors.link} />
                 </Pressable>
               </View>
             ))}
@@ -904,10 +978,31 @@ const styles = StyleSheet.create({
   athleteSection: {
     padding: 16,
   },
+  athleteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   athleteName: {
     fontSize: 17,
     fontWeight: '600',
-    marginBottom: 4,
+  },
+  headerLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  linkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  linkText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   athleteDetail: {
     fontSize: 15,
@@ -997,5 +1092,9 @@ const styles = StyleSheet.create({
   },
   lastSection: {
     borderBottomWidth: 0,
+  },
+  linksContainer: {
+    marginTop: 12,
+    gap: 8,
   },
 }); 
