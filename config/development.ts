@@ -18,15 +18,14 @@ export const DEV_CONFIG = {
 } as const;
 
 /**
- * Helper to check if we should use simulated subscription
- */
-export const shouldUseSimulatedSubscription = () => {
-  return __DEV__ && DEV_CONFIG.SIMULATE_SUBSCRIPTION;
-};
-
-/**
  * Helper to get the simulated subscription status
+ * Returns:
+ * - true/false if simulation is enabled in dev mode
+ * - null if simulation is disabled or in production
  */
-export const getSimulatedSubscriptionStatus = () => {
-  return shouldUseSimulatedSubscription() ? true : null;
-}; 
+export function getSimulatedSubscriptionStatus(): boolean | null {
+  if (__DEV__ && DEV_CONFIG.SIMULATE_SUBSCRIPTION !== undefined) {
+    return DEV_CONFIG.SIMULATE_SUBSCRIPTION;
+  }
+  return null;
+} 
