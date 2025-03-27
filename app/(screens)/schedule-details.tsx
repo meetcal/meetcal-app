@@ -43,9 +43,9 @@ interface ScheduleDay {
 
 // Add interface for Supabase results
 interface SupabaseBests {
-  snatch_best: number;
-  cj_best: number;
-  total: number;
+  snatch_best: number | null;
+  cj_best: number | null;
+  total: number | null;
 }
 
 // Add interface for saved warmups
@@ -178,39 +178,44 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
 async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
   try {
     console.log(`Fetching bests for athlete: ${name}`);
-    // First get max snatch
-    const { data: snatchData } = await supabase
-      .from('lifting_results')
-      .select('snatch_best')
-      .eq('name', name)
-      .order('snatch_best', { ascending: false })
-      .limit(1);
-
-    // Then max C&J
-    const { data: cjData } = await supabase
-      .from('lifting_results')
-      .select('cj_best')
-      .eq('name', name)
-      .order('cj_best', { ascending: false })
-      .limit(1);
-
-    // Finally max total
-    const { data: totalData } = await supabase
-      .from('lifting_results')
-      .select('total')
-      .eq('name', name)
-      .order('total', { ascending: false })
-      .limit(1);
-
-    // Combine results
-    const result = {
-      snatch_best: (snatchData && snatchData[0]?.snatch_best) || 0,
-      cj_best: (cjData && cjData[0]?.cj_best) || 0,
-      total: (totalData && totalData[0]?.total) || 0
+    
+    // Initialize result with null values
+    const result: SupabaseBests = {
+      snatch_best: null,
+      cj_best: null,
+      total: null
     };
 
-    console.log(`Found bests for ${name}:`, result);
-    return result;
+    // Fetch all results for the athlete
+    const { data: liftingResults } = await supabase
+      .from('lifting_results')
+      .select('snatch_best, cj_best, total')
+      .eq('name', name);
+
+    if (liftingResults && liftingResults.length > 0) {
+      // Process each result to find the bests
+      liftingResults.forEach(record => {
+        // Update snatch best if it's higher than current
+        if (record.snatch_best && (result.snatch_best === null || record.snatch_best > result.snatch_best)) {
+          result.snatch_best = record.snatch_best;
+        }
+        // Update C&J best if it's higher than current
+        if (record.cj_best && (result.cj_best === null || record.cj_best > result.cj_best)) {
+          result.cj_best = record.cj_best;
+        }
+        // Update total if it's higher than current
+        if (record.total && (result.total === null || record.total > result.total)) {
+          result.total = record.total;
+        }
+      });
+    }
+
+    // Convert null values to 0 for display
+    return {
+      snatch_best: result.snatch_best || 0,
+      cj_best: result.cj_best || 0,
+      total: result.total || 0
+    };
   } catch (error) {
     console.error('Unexpected error in getAthleteBests:', error);
     return { snatch_best: 0, cj_best: 0, total: 0 };
@@ -230,6 +235,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>({});
   const [athleteWarmups, setAthleteWarmups] = useState<Record<string, boolean>>({});
+  const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
 
   const colors = {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
@@ -268,14 +274,30 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
         const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet, refreshKey > 0);
         setAthletes(sessionAthletes);
 
-        // Fetch athlete bests with meet
-        const bests: Record<string, SupabaseBests> = {};
+        // Initialize loading states for each athlete
+        const newLoadingBests: Record<string, boolean> = {};
         for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
           for (const athlete of platformAthletes) {
-            bests[athlete.name] = await getAthleteBests(athlete.name, selectedMeet);
+            newLoadingBests[athlete.name] = true;
           }
         }
-        setAthleteBests(bests);
+        setLoadingBests(newLoadingBests);
+
+        // Fetch athlete bests independently
+        for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
+          for (const athlete of platformAthletes) {
+            getAthleteBests(athlete.name, selectedMeet).then(bests => {
+              setAthleteBests(prev => ({
+                ...prev,
+                [athlete.name]: bests
+              }));
+              setLoadingBests(prev => ({
+                ...prev,
+                [athlete.name]: false
+              }));
+            });
+          }
+        }
         
         // Check for warmups after loading athletes
         await checkForWarmups();
@@ -387,7 +409,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                       {athlete.entryTotal}kg
                     </ThemedText>
                   </View>
-                  {loading ? (
+                  {loadingBests[athlete.name] ? (
                     <ActivityIndicator size="small" color={colors.secondaryText} />
                   ) : (
                     <>
