@@ -1,4 +1,4 @@
-import { StyleSheet, View, Pressable, ScrollView, RefreshControl, Animated } from 'react-native'
+import { StyleSheet, View, Pressable, ScrollView, RefreshControl, Animated, KeyboardAvoidingView, Platform } from 'react-native'
 import { ThemedText } from '@/components/ThemedText'
 import { ThemedView } from '@/components/ThemedView'
 import { IconSymbol } from '@/components/ui/IconSymbol'
@@ -124,81 +124,89 @@ export default function WarmupsScreen() {
         }}
       />
 
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ScrollView 
-          style={[styles.content, { paddingBottom: insets.bottom }]}
-          contentContainerStyle={{ gap: 16, padding: 16 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.text}
-              colors={[colors.link]}
-            />
-          }
-        >
-          <Pressable
-            style={[styles.createButton, { backgroundColor: colors.link }]}
-            onPress={() => router.push('/create-warmup')}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <ScrollView 
+            style={[styles.content, { paddingBottom: insets.bottom }]}
+            contentContainerStyle={{ gap: 16, padding: 16 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.text}
+                colors={[colors.link]}
+              />
+            }
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
-            <IconSymbol name="plus" size={20} color="#FFFFFF" />
-            <ThemedText style={[styles.createButtonText, { color: '#FFFFFF' }]}>
-              Create New Warmup
-            </ThemedText>
-          </Pressable>
+            <Pressable
+              style={[styles.createButton, { backgroundColor: colors.link }]}
+              onPress={() => router.push('/create-warmup')}
+            >
+              <IconSymbol name="plus" size={20} color="#FFFFFF" />
+              <ThemedText style={[styles.createButtonText, { color: '#FFFFFF' }]}>
+                Create New Warmup
+              </ThemedText>
+            </Pressable>
 
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            {!selectedMeet ? (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-                  Select a meet to view warmups
-                </ThemedText>
-              </View>
-            ) : savedWarmups.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-                  No saved warmups for this meet
-                </ThemedText>
-              </View>
-            ) : (
-              savedWarmups.map((warmup, index) => (
-                <Swipeable
-                  key={warmup.id}
-                  renderRightActions={(progress, dragX) => 
-                    renderRightActions(progress, dragX, () => deleteWarmup(warmup.id))
-                  }
-                  overshootRight={false}
-                >
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.warmupRow,
-                      index !== savedWarmups.length - 1 && { 
-                        borderBottomWidth: StyleSheet.hairlineWidth,
-                        borderBottomColor: colors.border 
-                      },
-                      pressed && { backgroundColor: colors.pressed }
-                    ]}
-                    onPress={() => router.push({
-                      pathname: '/warmup-details',
-                      params: { id: warmup.id }
-                    })}
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              {!selectedMeet ? (
+                <View style={styles.emptyState}>
+                  <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+                    Select a meet to view warmups
+                  </ThemedText>
+                </View>
+              ) : savedWarmups.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+                    No saved warmups for this meet
+                  </ThemedText>
+                </View>
+              ) : (
+                savedWarmups.map((warmup, index) => (
+                  <Swipeable
+                    key={warmup.id}
+                    renderRightActions={(progress, dragX) => 
+                      renderRightActions(progress, dragX, () => deleteWarmup(warmup.id))
+                    }
+                    overshootRight={false}
                   >
-                    <View>
-                      <ThemedText style={[styles.athleteName, { color: colors.text }]}>
-                        {warmup.name}
-                      </ThemedText>
-                      <ThemedText style={[styles.lastModified, { color: colors.secondaryText }]}>
-                        Last modified {formatDate(warmup.lastModified)}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol name="chevron.right" size={20} color={colors.link} />
-                  </Pressable>
-                </Swipeable>
-              ))
-            )}
-          </View>
-        </ScrollView>
-      </GestureHandlerRootView>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.warmupRow,
+                        index !== savedWarmups.length - 1 && { 
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: colors.border 
+                        },
+                        pressed && { backgroundColor: colors.pressed }
+                      ]}
+                      onPress={() => router.push({
+                        pathname: '/warmup-details',
+                        params: { id: warmup.id }
+                      })}
+                    >
+                      <View>
+                        <ThemedText style={[styles.athleteName, { color: colors.text }]}>
+                          {warmup.name}
+                        </ThemedText>
+                        <ThemedText style={[styles.lastModified, { color: colors.secondaryText }]}>
+                          Last modified {formatDate(warmup.lastModified)}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol name="chevron.right" size={20} color={colors.link} />
+                    </Pressable>
+                  </Swipeable>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </GestureHandlerRootView>
+      </KeyboardAvoidingView>
     </ThemedView>
   )
 }
