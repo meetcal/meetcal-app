@@ -646,13 +646,13 @@ export default function StartListScreen() {
     
     return athletes
       .filter(athlete => {
-        const matchesWeightClass = weightClassFilter 
-          ? parseWeightClasses(athlete.weightClass).includes(weightClassFilter)
+        const matchesWeightClass = tempWeightClassFilter 
+          ? parseWeightClasses(athlete.weightClass).includes(tempWeightClassFilter)
           : true;
-        const matchesClub = clubFilter 
-          ? clubFilter === STARRED_CLUBS_FILTER 
+        const matchesClub = tempClubFilter 
+          ? tempClubFilter === STARRED_CLUBS_FILTER 
             ? starredClubs.includes(athlete.club)
-            : athlete.club === clubFilter
+            : athlete.club === tempClubFilter
           : true;
         const matchesSearch = searchQuery 
           ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -664,7 +664,7 @@ export default function StartListScreen() {
         return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup;
       })
       .sort(sortAthletes);
-  }, [weightClassFilter, clubFilter, searchQuery, tempAgeGroupFilter, starredClubs, athletes, selectedMeet]);
+  }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, starredClubs, athletes, selectedMeet]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
