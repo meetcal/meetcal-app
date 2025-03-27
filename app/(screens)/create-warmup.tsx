@@ -91,7 +91,7 @@ export default function CreateWarmupScreen() {
   }
 
   // Debounced search function
-  const searchAthletes = debounce(async (query: string) => {
+  const searchAthletes = debounce(async (query: string, shouldUpdateQuery = true) => {
     if (!query.trim() || query.trim().length < 3) {
       setSearchResults([])
       setShowResults(false)
@@ -118,7 +118,6 @@ export default function CreateWarmupScreen() {
       // Get PRs for each athlete
       const athleteResults = await Promise.all(
         athletes.map(async (athlete) => {
-          // Get max values for snatch and clean & jerk
           const { data: prs, error: prsError } = await supabase
             .from('lifting_results')
             .select(`
@@ -141,7 +140,6 @@ export default function CreateWarmupScreen() {
             }
           }
 
-          // Get the highest values
           const bestLifts = prs?.[0] || { snatch_best: 0, cj_best: 0 }
 
           return {
@@ -153,7 +151,9 @@ export default function CreateWarmupScreen() {
       )
 
       setSearchResults(athleteResults)
-      setShowResults(true)
+      if (shouldUpdateQuery) {
+        setShowResults(true)
+      }
     } catch (error) {
       console.error('Error searching athletes:', error)
     } finally {
@@ -161,15 +161,19 @@ export default function CreateWarmupScreen() {
     }
   }, 300)
 
-  const handleAthleteSelect = (athlete: SearchResult) => {
+  const handleAthleteSelect = async (athlete: SearchResult) => {
+    // Set the athlete and search query in one step
     setSelectedAthlete({
       name: athlete.name,
       club: athlete.club,
       snatchPR: athlete.snatch_best,
       cleanAndJerkPR: athlete.cj_best,
     })
+    // Update search query without triggering a new search
     setSearchQuery(athlete.name)
+    // Immediately hide results
     setShowResults(false)
+    setSearchResults([])
   }
 
   const handleMinutesOutChange = (index: number, value: string) => {
@@ -203,8 +207,20 @@ export default function CreateWarmupScreen() {
   }
 
   useEffect(() => {
-    searchAthletes(searchQuery)
+    if (!selectedAthlete && searchQuery.length >= 3) {
+      searchAthletes(searchQuery)
+    } else if (searchQuery.length < 3) {
+      setSearchResults([])
+      setShowResults(false)
+    }
   }, [searchQuery])
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text)
+    if (selectedAthlete) {
+      setSelectedAthlete(null)
+    }
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -252,7 +268,7 @@ export default function CreateWarmupScreen() {
                   placeholder="Search Athlete Name"
                   placeholderTextColor={colors.secondaryText}
                   value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  onChangeText={handleSearchChange}
                 />
                 {isSearching && <ActivityIndicator size="small" color={colors.secondaryText} />}
               </View>
