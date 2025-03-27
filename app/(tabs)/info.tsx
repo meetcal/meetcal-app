@@ -136,11 +136,13 @@ export default function InfoScreen() {
   };
 
   const handleMeetSelect = async (meet: MeetName) => {
+    setShowMeetModal(false); // Close modal immediately
     try {
       await setSelectedMeet(meet);
-      setShowMeetModal(false);
     } catch (error) {
       console.error('Error saving selected meet:', error);
+      // Show error alert if meet selection fails
+      Alert.alert('Error', 'Failed to update selected meet.');
     }
   };
 
