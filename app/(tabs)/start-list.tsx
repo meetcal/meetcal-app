@@ -448,6 +448,7 @@ export default function StartListScreen() {
   const [weightClassFilter, setWeightClassFilter] = useState('');
   const [clubFilter, setClubFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [clubSearchQuery, setClubSearchQuery] = useState('');
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1275,6 +1276,54 @@ export default function StartListScreen() {
                       ]}
                       bounces={false}
                     >
+                      {/* Add search bar for clubs */}
+                      <View style={[styles.filterSearchContainer, { borderBottomColor: colors.border }]}>
+                        <View style={[
+                          styles.filterSearchBar,
+                          { 
+                            backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F2F2F7',
+                            borderColor: colors.border
+                          }
+                        ]}>
+                          <IconSymbol 
+                            name={Platform.select({
+                              ios: "magnifyingglass",
+                              android: "search"
+                            }) || "magnifyingglass"}
+                            size={16} 
+                            color={colors.secondaryText}
+                          />
+                          <TextInput
+                            style={[
+                              styles.filterSearchInput,
+                              { color: colors.text }
+                            ]}
+                            placeholder="Search clubs..."
+                            placeholderTextColor={colors.secondaryText}
+                            value={clubSearchQuery}
+                            onChangeText={setClubSearchQuery}
+                          />
+                          {clubSearchQuery.length > 0 && (
+                            <Pressable
+                              onPress={() => setClubSearchQuery('')}
+                              style={({ pressed }) => [
+                                styles.clearButton,
+                                pressed && { opacity: 0.7 }
+                              ]}
+                            >
+                              <IconSymbol 
+                                name={Platform.select({
+                                  ios: "xmark.circle.fill",
+                                  android: "close"
+                                }) || "xmark.circle.fill"}
+                                size={16} 
+                                color={colors.secondaryText}
+                              />
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+
                       {/* All Clubs option */}
                       <Pressable
                         style={({ pressed }) => [
@@ -1334,51 +1383,55 @@ export default function StartListScreen() {
                         </Pressable>
                       )}
 
-                      {/* Individual club options */}
-                      {sortedClubOptions.map((club) => (
-                        <Pressable
-                          key={club}
-                          style={({ pressed }) => [
-                            styles.filterOption,
-                            { borderBottomColor: colors.border },
-                            tempClubFilter === club && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
-                          ]}
-                          onPress={() => {
-                            setTempClubFilter(club);
-                            setExpandedSection(null);
-                          }}
-                        >
-                          <ThemedText 
-                            style={[
-                              styles.filterOptionText,
-                              { color: colors.text },
-                              tempClubFilter === club && { color: '#007AFF' }
+                      {/* Filter clubs based on search query */}
+                      {sortedClubOptions
+                        .filter(club => 
+                          club.toLowerCase().includes(clubSearchQuery.toLowerCase())
+                        )
+                        .map((club) => (
+                          <Pressable
+                            key={club}
+                            style={({ pressed }) => [
+                              styles.filterOption,
+                              { borderBottomColor: colors.border },
+                              tempClubFilter === club && { backgroundColor: colors.pressed },
+                              pressed && { opacity: 0.8 }
                             ]}
-                            numberOfLines={2}
+                            onPress={() => {
+                              setTempClubFilter(club);
+                              setExpandedSection(null);
+                            }}
                           >
-                            {club}
-                          </ThemedText>
-                          <View style={styles.filterOptionRight}>
-                            {tempClubFilter === club && (
-                              <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                            )}
-                            <Pressable
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                toggleStarredClub(club);
-                              }}
-                              style={styles.starButton}
+                            <ThemedText 
+                              style={[
+                                styles.filterOptionText,
+                                { color: colors.text },
+                                tempClubFilter === club && { color: '#007AFF' }
+                              ]}
+                              numberOfLines={2}
                             >
-                              <IconSymbol
-                                name={starredClubs.includes(club) ? 'star.fill' : 'star'}
-                                size={22}
-                                color={starredClubs.includes(club) ? '#FFB340' : colors.secondaryText}
-                              />
-                            </Pressable>
-                          </View>
-                        </Pressable>
-                      ))}
+                              {club}
+                            </ThemedText>
+                            <View style={styles.filterOptionRight}>
+                              {tempClubFilter === club && (
+                                <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                              )}
+                              <Pressable
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  toggleStarredClub(club);
+                                }}
+                                style={styles.starButton}
+                              >
+                                <IconSymbol
+                                  name={starredClubs.includes(club) ? 'star.fill' : 'star'}
+                                  size={22}
+                                  color={starredClubs.includes(club) ? '#FFB340' : colors.secondaryText}
+                                />
+                              </Pressable>
+                            </View>
+                          </Pressable>
+                        ))}
                     </ScrollView>
                   )}
                 </View>
@@ -1853,5 +1906,24 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
     marginRight: -4,
+  },
+  filterSearchContainer: {
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 8,
+  },
+  filterSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    padding: 0,
+    height: 24,
+    marginRight: 8,
   },
 }); 
