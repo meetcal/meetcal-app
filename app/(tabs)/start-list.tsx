@@ -937,8 +937,25 @@ export default function StartListScreen() {
               placeholderTextColor={colors.secondaryText}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              clearButtonMode="while-editing"
             />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => setSearchQuery('')}
+                style={({ pressed }) => [
+                  styles.clearButton,
+                  pressed && { opacity: 0.7 }
+                ]}
+              >
+                <IconSymbol 
+                  name={Platform.select({
+                    ios: "xmark.circle.fill",
+                    android: "close"
+                  }) || "xmark.circle.fill"}
+                  size={16} 
+                  color={colors.secondaryText}
+                />
+              </Pressable>
+            )}
           </View>
         </View>
         <View style={styles.buttonRow}>
@@ -1663,6 +1680,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     padding: 0, // Remove default padding on iOS
     height: 24, // Match the height of other buttons
+    marginRight: 8, // Add space for the clear button
   },
   modalScrollContent: {
     flexGrow: 1,
@@ -1831,5 +1849,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     marginTop: 12,
+  },
+  clearButton: {
+    padding: 4,
+    marginRight: -4,
   },
 }); 
