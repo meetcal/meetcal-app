@@ -529,8 +529,9 @@ export default function SessionDetailsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
-  const schedule = useMemo(() => getSchedule(selectedMeet), [selectedMeet]);
+  const [currentSchedule, setCurrentSchedule] = useState(() => getSchedule(selectedMeet));
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncManager] = useState(() => new SyncManager(selectedMeet));
 
   const rawParams = useLocalSearchParams<{
     id?: string;
@@ -605,9 +606,9 @@ export default function SessionDetailsScreen() {
     loadSessionData();
   }, [selectedMeet, params.sessionNumber]);
 
-  // Get the correct weight class from schedule.ts
+  // Get the correct weight class from current schedule
   const sessionWeightClass = useMemo(() => {
-    const sessionDay = schedule.find(day => 
+    const sessionDay = currentSchedule.find(day => 
       day.sessions.some(s => s.number === parseInt(params.sessionNumber))
     );
     
@@ -619,19 +620,19 @@ export default function SessionDetailsScreen() {
       p.platform === params.platform
     );
 
-    return platformData?.weightClass;
-  }, [params.sessionNumber, params.platform]);
+    return platformData?.weightClass || params.weightClass;
+  }, [currentSchedule, params.sessionNumber, params.platform, params.weightClass]);
 
   const sessionDate = useMemo(() => {
-    const sessionDay = schedule.find(day => 
+    const sessionDay = currentSchedule.find(day => 
       day.sessions.some(s => s.number === parseInt(params.sessionNumber))
     );
     return sessionDay?.date || `Session ${params.sessionNumber}`;
-  }, [params.sessionNumber]);
+  }, [currentSchedule, params.sessionNumber]);
 
   // Get the platform-specific start time and calculate weigh-in time
   const platformStartTime = useMemo(() => {
-    const sessionDay = schedule.find(day => 
+    const sessionDay = currentSchedule.find(day => 
       day.sessions.some(s => s.number === parseInt(params.sessionNumber))
     );
     
@@ -644,7 +645,7 @@ export default function SessionDetailsScreen() {
     );
 
     return platformData?.platformStartTime || params.startTime;
-  }, [params.sessionNumber, params.platform, params.startTime]);
+  }, [currentSchedule, params.sessionNumber, params.platform, params.startTime]);
 
   // Calculate weigh-in time based on platform start time
   const platformWeighInTime = useMemo(() => {
@@ -715,7 +716,7 @@ export default function SessionDetailsScreen() {
     }
 
     // Find the session and get platform-specific time
-    const sessionDay = schedule.find((day: ScheduleDay) => 
+    const sessionDay = currentSchedule.find((day: ScheduleDay) => 
       day.sessions.some((session: Session) => 
         session.number === parseInt(params.sessionNumber) &&
         session.platforms.some((platform: SessionPlatformDetails) => platform.platform === params.platform)
@@ -805,20 +806,27 @@ export default function SessionDetailsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const defaultSchedule = getSchedule(selectedMeet);
-      const day = defaultSchedule.find(day => 
-        day.sessions.some(s => s.number === parseInt(params.sessionNumber))
-      );
-      const session = day?.sessions.find(s => s.number === parseInt(params.sessionNumber)) || null;
-      setSessionData(session);
-      // Increment refresh key to trigger athlete reload
+      // Get fresh data from SyncManager
+      const meetData = await syncManager.getMeetData();
+      if (meetData.schedule) {
+        const day = meetData.schedule.find(day => 
+          day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+        );
+        const session = day?.sessions.find(s => 
+          s.number === parseInt(params.sessionNumber)
+        ) || null;
+        setSessionData(session);
+        // Update the current schedule with fresh data
+        setCurrentSchedule(meetData.schedule);
+      }
+      // Trigger athlete data refresh
       setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [selectedMeet, params.sessionNumber]);
+  }, [syncManager, params.sessionNumber]);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -875,7 +883,7 @@ export default function SessionDetailsScreen() {
                 Weight Class
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {sessionWeightClass || params.weightClass}
+                {sessionWeightClass}
               </ThemedText>
             </View>
 
