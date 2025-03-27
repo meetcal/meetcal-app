@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { schedule } from '@/data/schedule';
-import { LiftResult } from '@/data/athletes';
+import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
+import { getSchedule } from '@/data/meets/scheduleManager';
+import { calculateWeighInTime } from '@/utils/time';
 
 const SAVED_SESSIONS_KEY = '@saved_sessions';
 
@@ -13,6 +14,7 @@ function generateSessionId(meet: MeetName, sessionNumber: number | string, platf
 
 export interface SavedSession {
   id: string;
+  meet: MeetName;
   sessionNumber: number;
   platform: string;
   weightClass: string;
@@ -20,25 +22,7 @@ export interface SavedSession {
   weighInTime: string;
   date: string;
   athleteNames?: string[];
-  meet: MeetName;
-}
-
-function getSessionPlatformDetails(sessionNumber: number, platformName: string) {
-  for (const day of schedule) {
-    const session = day.sessions.find(s => s.number === sessionNumber);
-    if (session) {
-      const platform = session.platforms.find(p => p.platform === platformName);
-      if (platform) {
-        return {
-          weightClass: platform.weightClass,
-          date: day.fullDate,
-          startTime: session.startTime,
-          weighInTime: session.weighInTime,
-        };
-      }
-    }
-  }
-  return null;
+  athleteName?: string; // For backward compatibility
 }
 
 export function useSavedSessions() {
@@ -67,7 +51,8 @@ export function useSavedSessions() {
 
   const saveSessionsFromAthletes = async (athletes: LiftResult[], meet: MeetName) => {
     try {
-      const sessionMap = new Map<string, { session: any, athletes: string[] }>();
+      const sessionMap = new Map<string, { session: SavedSession, athletes: string[] }>();
+      const schedule = getSchedule(meet);
       
       athletes
         .filter(athlete => athlete.session)
@@ -75,23 +60,35 @@ export function useSavedSessions() {
           const sessionId = generateSessionId(meet, athlete.session!.number, athlete.session!.platform);
           
           if (!sessionMap.has(sessionId)) {
-            const platformDetails = getSessionPlatformDetails(
-              athlete.session!.number,
-              athlete.session!.platform
+            // Find session details in schedule
+            const sessionDay = schedule.find(day => 
+              day.sessions.some(s => s.number === athlete.session?.number)
             );
             
-            if (platformDetails) {
+            const scheduleSession = sessionDay?.sessions.find(s => 
+              s.number === athlete.session?.number
+            );
+            
+            const platform = scheduleSession?.platforms.find(p => 
+              p.platform === athlete.session?.platform
+            );
+            
+            if (sessionDay && scheduleSession) {
+              // Use platform-specific time if available
+              const startTime = platform?.platformStartTime || scheduleSession.startTime;
+              const weighInTime = calculateWeighInTime(startTime);
+              
               sessionMap.set(sessionId, {
                 session: {
                   id: sessionId,
+                  meet,
                   sessionNumber: athlete.session!.number,
                   platform: athlete.session!.platform,
-                  weightClass: platformDetails.weightClass,
-                  startTime: platformDetails.startTime,
-                  weighInTime: platformDetails.weighInTime,
-                  date: platformDetails.date,
-                  athleteNames: [],
-                  meet,
+                  weightClass: athlete.weightClass,
+                  startTime,
+                  weighInTime,
+                  date: sessionDay.fullDate,
+                  athleteNames: []
                 },
                 athletes: []
               });
