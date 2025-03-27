@@ -681,7 +681,7 @@ export default function StartListScreen() {
           text: 'Save',
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(filteredAthletes);
+              const success = await saveSessionsFromAthletes(filteredAthletes, selectedMeet);
               if (success) {
                 Alert.alert(
                   'Success', 
