@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View, ScrollView, TextInput, Pressable } from 'react-native'
+import { StyleSheet, View, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native'
 import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
@@ -147,125 +147,145 @@ export default function WarmupDetailsScreen() {
         }}
       />
 
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: insets.bottom + 100 }
-        ]}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
-        {warmup && (
-          <>
-            <View style={[styles.card, { backgroundColor: colors.card }]}>
-              {/* Athlete Info */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                  Club
-                </ThemedText>
-                <ThemedText style={[styles.value, { color: colors.text }]}>
-                  {warmup.athlete.club}
-                </ThemedText>
-              </View>
-
-              {/* PRs */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                  Snatch PR
-                </ThemedText>
-                <ThemedText style={[styles.value, { color: colors.text }]}>
-                  {warmup.athlete.snatchPR}
-                </ThemedText>
-              </View>
-              <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                  Clean & Jerk PR
-                </ThemedText>
-                <ThemedText style={[styles.value, { color: colors.text }]}>
-                  {warmup.athlete.cleanAndJerkPR}
-                </ThemedText>
-              </View>
-
-              {/* See All Results Button */}
-              <Pressable
-                style={[styles.infoRow, { borderBottomColor: colors.border }]}
-                onPress={() => router.push({
-                  pathname: '/athlete-results',
-                  params: { name: warmup.athlete.name }
-                })}
-              >
-                <ThemedText style={[styles.value, { color: colors.link }]}>
-                  See All Meet Results
-                </ThemedText>
-                <IconSymbol name="chevron.right" size={16} color={colors.link} />
-              </Pressable>
-            </View>
-
-            {/* Warmup Table */}
-            <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-              <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
-                <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                  Minutes Out
-                </ThemedText>
-                <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                  Snatch
-                </ThemedText>
-                <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                  C&J
-                </ThemedText>
-              </View>
-
-              {warmupRows.map((row, index) => (
-                <View 
-                  key={index} 
-                  style={[
-                    styles.tableRow, 
-                    index < warmupRows.length - 1 && { borderBottomColor: colors.border },
-                    index < 3 && { backgroundColor: colors.highlight }
-                  ]}
-                >
-                  <TextInput
-                    style={[styles.tableCell, { color: colors.text }]}
-                    value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
-                    editable={index >= 3}
-                    keyboardType="numeric"
-                    onChangeText={(value) => handleMinutesOutChange(index, value)}
-                    placeholder="—"
-                    placeholderTextColor={colors.secondaryText}
-                  />
-                  <TextInput
-                    style={[styles.tableCell, { color: colors.text }]}
-                    value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
-                    placeholder="—"
-                    placeholderTextColor={colors.secondaryText}
-                    keyboardType="numeric"
-                    onChangeText={(value) => handleSnatchChange(index, value)}
-                  />
-                  <TextInput
-                    style={[styles.tableCell, { color: colors.text }]}
-                    value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
-                    placeholder="—"
-                    placeholderTextColor={colors.secondaryText}
-                    keyboardType="numeric"
-                    onChangeText={(value) => handleCleanAndJerkChange(index, value)}
-                  />
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 32 }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={true}
+        >
+          {warmup && (
+            <>
+              <View style={[styles.card, { backgroundColor: colors.card }]}>
+                {/* Athlete Info */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                    Club
+                  </ThemedText>
+                  <ThemedText style={[styles.value, { color: colors.text }]}>
+                    {warmup.athlete.club}
+                  </ThemedText>
                 </View>
-              ))}
-            </View>
 
-            {/* Save Button */}
-            <View style={[styles.saveButtonContainer, { marginTop: 24 }]}>
-              <Pressable
-                style={[styles.saveButton, { backgroundColor: colors.link }]}
-                onPress={handleSave}
-              >
-                <ThemedText style={styles.saveButtonText}>
-                  Save Changes
-                </ThemedText>
-              </Pressable>
-            </View>
-          </>
+                {/* PRs */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                    Snatch PR
+                  </ThemedText>
+                  <ThemedText style={[styles.value, { color: colors.text }]}>
+                    {warmup.athlete.snatchPR}
+                  </ThemedText>
+                </View>
+                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                    Clean & Jerk PR
+                  </ThemedText>
+                  <ThemedText style={[styles.value, { color: colors.text }]}>
+                    {warmup.athlete.cleanAndJerkPR}
+                  </ThemedText>
+                </View>
+
+                {/* See All Results Button */}
+                <Pressable
+                  style={[styles.infoRow, { borderBottomColor: colors.border }]}
+                  onPress={() => router.push({
+                    pathname: '/athlete-results',
+                    params: { name: warmup.athlete.name }
+                  })}
+                >
+                  <ThemedText style={[styles.value, { color: colors.link }]}>
+                    See All Meet Results
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                </Pressable>
+              </View>
+
+              {/* Warmup Table */}
+              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
+                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                    Minutes Out
+                  </ThemedText>
+                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                    Snatch
+                  </ThemedText>
+                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                    C&J
+                  </ThemedText>
+                </View>
+
+                {warmupRows.map((row, index) => (
+                  <View 
+                    key={index} 
+                    style={[
+                      styles.tableRow, 
+                      index < warmupRows.length - 1 && { borderBottomColor: colors.border },
+                      index < 3 && { backgroundColor: colors.highlight }
+                    ]}
+                  >
+                    <TextInput
+                      style={[styles.tableCell, { color: colors.text }]}
+                      value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
+                      editable={index >= 3}
+                      keyboardType="numeric"
+                      onChangeText={(value) => handleMinutesOutChange(index, value)}
+                      placeholder="—"
+                      placeholderTextColor={colors.secondaryText}
+                    />
+                    <TextInput
+                      style={[styles.tableCell, { color: colors.text }]}
+                      value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
+                      placeholder="—"
+                      placeholderTextColor={colors.secondaryText}
+                      keyboardType="numeric"
+                      onChangeText={(value) => handleSnatchChange(index, value)}
+                    />
+                    <TextInput
+                      style={[styles.tableCell, { color: colors.text }]}
+                      value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
+                      placeholder="—"
+                      placeholderTextColor={colors.secondaryText}
+                      keyboardType="numeric"
+                      onChangeText={(value) => handleCleanAndJerkChange(index, value)}
+                    />
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+        </ScrollView>
+
+        {/* Save Button - Fixed to bottom */}
+        {warmup && (
+          <View style={[
+            styles.saveButtonContainer, 
+            { 
+              backgroundColor: colors.background,
+              paddingBottom: Math.max(insets.bottom, 12),
+              paddingTop: 12,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.border
+            }
+          ]}>
+            <Pressable
+              style={[styles.saveButton, { backgroundColor: colors.link }]}
+              onPress={handleSave}
+            >
+              <ThemedText style={styles.saveButtonText}>
+                Save Changes
+              </ThemedText>
+            </Pressable>
+          </View>
         )}
-      </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   )
 }
@@ -329,10 +349,19 @@ const styles = StyleSheet.create({
   },
   saveButtonContainer: {
     paddingHorizontal: 16,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
   },
   saveButton: {
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

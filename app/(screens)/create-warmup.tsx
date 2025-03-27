@@ -1,4 +1,4 @@
-import { StyleSheet, View, TextInput, ScrollView, Pressable, ActivityIndicator } from 'react-native'
+import { StyleSheet, View, TextInput, ScrollView, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native'
 import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useRouter } from 'expo-router'
@@ -227,157 +227,175 @@ export default function CreateWarmupScreen() {
         }}
       />
 
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: insets.bottom + 100 }
-        ]}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          {/* Search Bar */}
-          <View style={[styles.searchContainer, { backgroundColor: colors.searchBackground }]}>
-            <View style={styles.searchInputContainer}>
-              <IconSymbol name="magnifyingglass" size={20} color={colors.secondaryText} />
-              <TextInput
-                style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Search Athlete Name"
-                placeholderTextColor={colors.secondaryText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {isSearching && <ActivityIndicator size="small" color={colors.secondaryText} />}
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 32 }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={true}
+        >
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            {/* Search Bar */}
+            <View style={[styles.searchContainer, { backgroundColor: colors.searchBackground }]}>
+              <View style={styles.searchInputContainer}>
+                <IconSymbol name="magnifyingglass" size={20} color={colors.secondaryText} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.text }]}
+                  placeholder="Search Athlete Name"
+                  placeholderTextColor={colors.secondaryText}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {isSearching && <ActivityIndicator size="small" color={colors.secondaryText} />}
+              </View>
+
+              {/* Search Results */}
+              {showResults && searchResults.length > 0 && (
+                <View style={[styles.searchResults, { borderTopColor: colors.border }]}>
+                  {searchResults.map((result) => (
+                    <Pressable
+                      key={result.name}
+                      style={({ pressed }) => [
+                        styles.resultItem,
+                        pressed && { backgroundColor: colors.pressed }
+                      ]}
+                      onPress={() => handleAthleteSelect(result)}
+                    >
+                      <ThemedText style={[styles.resultName, { color: colors.text }]}>
+                        {result.name}
+                      </ThemedText>
+                      <ThemedText style={[styles.resultClub, { color: colors.secondaryText }]}>
+                        {result.club}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
-            {/* Search Results */}
-            {showResults && searchResults.length > 0 && (
-              <View style={[styles.searchResults, { borderTopColor: colors.border }]}>
-                {searchResults.map((result) => (
-                  <Pressable
-                    key={result.name}
-                    style={({ pressed }) => [
-                      styles.resultItem,
-                      pressed && { backgroundColor: colors.pressed }
-                    ]}
-                    onPress={() => handleAthleteSelect(result)}
-                  >
-                    <ThemedText style={[styles.resultName, { color: colors.text }]}>
-                      {result.name}
-                    </ThemedText>
-                    <ThemedText style={[styles.resultClub, { color: colors.secondaryText }]}>
-                      {result.club}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
+            {/* Club Info */}
+            <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Club
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {selectedAthlete?.club || '—'}
+              </ThemedText>
+            </View>
+
+            {/* PRs */}
+            <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Snatch PR
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {selectedAthlete?.snatchPR || '—'}
+              </ThemedText>
+            </View>
+            <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                Clean & Jerk PR
+              </ThemedText>
+              <ThemedText style={[styles.value, { color: colors.text }]}>
+                {selectedAthlete?.cleanAndJerkPR || '—'}
+              </ThemedText>
+            </View>
+
+            {/* Meet Results Link */}
+            {selectedAthlete && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.meetResultsButton,
+                  { borderTopColor: colors.border },
+                  pressed && { backgroundColor: colors.pressed }
+                ]}
+                onPress={() => router.push({
+                  pathname: '/athlete-results',
+                  params: { name: selectedAthlete.name }
+                })}
+              >
+                <View style={styles.meetResultsContent}>
+                  <ThemedText style={[styles.meetResultsText, { color: colors.link }]}>
+                    See All Meet Results
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={20} color={colors.link} />
+                </View>
+              </Pressable>
             )}
           </View>
 
-          {/* Club Info */}
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Club
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {selectedAthlete?.club || '—'}
-            </ThemedText>
-          </View>
-
-          {/* PRs */}
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Snatch PR
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {selectedAthlete?.snatchPR || '—'}
-            </ThemedText>
-          </View>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-              Clean & Jerk PR
-            </ThemedText>
-            <ThemedText style={[styles.value, { color: colors.text }]}>
-              {selectedAthlete?.cleanAndJerkPR || '—'}
-            </ThemedText>
-          </View>
-
-          {/* Meet Results Link */}
-          {selectedAthlete && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.meetResultsButton,
-                { borderTopColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
-              ]}
-              onPress={() => router.push({
-                pathname: '/athlete-results',
-                params: { name: selectedAthlete.name }
-              })}
-            >
-              <View style={styles.meetResultsContent}>
-                <ThemedText style={[styles.meetResultsText, { color: colors.link }]}>
-                  See All Meet Results
-                </ThemedText>
-                <IconSymbol name="chevron.right" size={20} color={colors.link} />
-              </View>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Warmup Table */}
-        <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-          <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-              Minutes Out
-            </ThemedText>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-              Snatch
-            </ThemedText>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-              C&J
-            </ThemedText>
-          </View>
-
-          {warmupRows.map((row, index) => (
-            <View 
-              key={index} 
-              style={[
-                styles.tableRow, 
-                index < warmupRows.length - 1 && { borderBottomColor: colors.border },
-                index < 3 && { backgroundColor: colors.highlight }
-              ]}
-            >
-              <TextInput
-                style={[styles.tableCell, { color: colors.text }]}
-                value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
-                editable={index >= 3}
-                keyboardType="numeric"
-                onChangeText={(value) => handleMinutesOutChange(index, value)}
-                placeholder="—"
-                placeholderTextColor={colors.secondaryText}
-              />
-              <TextInput
-                style={[styles.tableCell, { color: colors.text }]}
-                value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
-                placeholder="—"
-                placeholderTextColor={colors.secondaryText}
-                keyboardType="numeric"
-                onChangeText={(value) => handleSnatchChange(index, value)}
-              />
-              <TextInput
-                style={[styles.tableCell, { color: colors.text }]}
-                value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
-                placeholder="—"
-                placeholderTextColor={colors.secondaryText}
-                keyboardType="numeric"
-                onChangeText={(value) => handleCleanAndJerkChange(index, value)}
-              />
+          {/* Warmup Table */}
+          <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+            <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                Minutes Out
+              </ThemedText>
+              <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                Snatch
+              </ThemedText>
+              <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                C&J
+              </ThemedText>
             </View>
-          ))}
-        </View>
 
-        {/* Save Button */}
-        <View style={[styles.saveButtonContainer, { marginTop: 24 }]}>
+            {warmupRows.map((row, index) => (
+              <View 
+                key={index} 
+                style={[
+                  styles.tableRow, 
+                  index < warmupRows.length - 1 && { borderBottomColor: colors.border },
+                  index < 3 && { backgroundColor: colors.highlight }
+                ]}
+              >
+                <TextInput
+                  style={[styles.tableCell, { color: colors.text }]}
+                  value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
+                  editable={index >= 3}
+                  keyboardType="numeric"
+                  onChangeText={(value) => handleMinutesOutChange(index, value)}
+                  placeholder="—"
+                  placeholderTextColor={colors.secondaryText}
+                />
+                <TextInput
+                  style={[styles.tableCell, { color: colors.text }]}
+                  value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
+                  placeholder="—"
+                  placeholderTextColor={colors.secondaryText}
+                  keyboardType="numeric"
+                  onChangeText={(value) => handleSnatchChange(index, value)}
+                />
+                <TextInput
+                  style={[styles.tableCell, { color: colors.text }]}
+                  value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
+                  placeholder="—"
+                  placeholderTextColor={colors.secondaryText}
+                  keyboardType="numeric"
+                  onChangeText={(value) => handleCleanAndJerkChange(index, value)}
+                />
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        {/* Save Button - Fixed to bottom */}
+        <View style={[
+          styles.saveButtonContainer, 
+          { 
+            backgroundColor: colors.background,
+            paddingBottom: Math.max(insets.bottom, 12),
+            paddingTop: 12,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.border
+          }
+        ]}>
           <Pressable
             style={[
               styles.saveButton,
@@ -394,7 +412,7 @@ export default function CreateWarmupScreen() {
             </ThemedText>
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   )
 }
@@ -473,10 +491,19 @@ const styles = StyleSheet.create({
   },
   saveButtonContainer: {
     paddingHorizontal: 16,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
   },
   saveButton: {
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
