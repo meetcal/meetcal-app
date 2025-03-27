@@ -15,6 +15,7 @@ import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
+import { getSimulatedSubscriptionStatus } from '@/config/development';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -30,15 +31,14 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   
-  // Load any fonts you need here
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
   useEffect(() => {
-    // Initialize RevenueCat
-    const initializeRevenueCat = async () => {
+    async function prepare() {
       try {
+        // Initialize RevenueCat first
         if (Platform.OS === 'ios') {
           await Purchases.configure({ 
             apiKey: REVENUECAT_IOS_KEY
@@ -46,29 +46,19 @@ export default function RootLayout() {
         } else if (Platform.OS === 'android') {
           await Purchases.configure({ 
             apiKey: REVENUECAT_ANDROID_KEY,
-            appUserID: null, // RevenueCat will generate a random ID
+            appUserID: null,
           });
         }
 
         if (__DEV__) {
           Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
         }
-      } catch (error) {
-        console.error('Failed to initialize RevenueCat:', error);
-      }
-    };
 
-    initializeRevenueCat();
-  }, []);
-
-  useEffect(() => {
-    async function prepare() {
-      try {
-        // Pre-load any resources, make API calls, etc.
-        // For example, initialize services, load initial data, etc.
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Optional delay for smoother transition
+        // Optional: Add a small delay for smoother transition
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
-        console.warn(e);
+        console.warn('Initialization error:', e);
+        // On error, we'll still proceed but may need to check subscription status later
       } finally {
         setAppIsReady(true);
       }
@@ -77,36 +67,30 @@ export default function RootLayout() {
     prepare();
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appIsReady && fontsLoaded) {
-      await SplashScreen.hideAsync();
-    }
-  }, [appIsReady, fontsLoaded]);
-
   if (!appIsReady || !fontsLoaded) {
     return null;
   }
 
   return (
-    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <NavigationThemeProvider value={DefaultTheme}>
-        <CustomThemeProvider>
-          <SubscriptionProvider>
-            <SavedSessionsProvider>
-              <SelectedMeetProvider>
-                <AppContent />
-              </SelectedMeetProvider>
-            </SavedSessionsProvider>
-          </SubscriptionProvider>
-        </CustomThemeProvider>
-      </NavigationThemeProvider>
-    </View>
+    <NavigationThemeProvider value={DefaultTheme}>
+      <CustomThemeProvider>
+        <SubscriptionProvider>
+          <SavedSessionsProvider>
+            <SelectedMeetProvider>
+              <AppContent fontsLoaded={fontsLoaded} />
+            </SelectedMeetProvider>
+          </SavedSessionsProvider>
+        </SubscriptionProvider>
+      </CustomThemeProvider>
+    </NavigationThemeProvider>
   );
 }
 
-function AppContent() {
+function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isSubscribed, isLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
+  const hasAttemptedSplashHide = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     async function initialize() {
@@ -122,31 +106,34 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (isInitialized && !isLoading) {
-      SplashScreen.hideAsync();
+    async function hideSplash() {
+      if (!hasAttemptedSplashHide.current && isInitialized && !isLoading && fontsLoaded) {
+        hasAttemptedSplashHide.current = true;
+        // Wait for subscription status to be determined before hiding splash
+        if (isSubscribed !== null) {
+          await SplashScreen.hideAsync();
+          // Immediately navigate to the correct screen
+          if (isSubscribed) {
+            router.replace('/(tabs)/schedule');
+          } else {
+            router.replace('/(onboarding)');
+          }
+        }
+      }
     }
-  }, [isInitialized, isLoading]);
 
-  if (!isInitialized || isLoading) {
+    hideSplash();
+  }, [isInitialized, isLoading, fontsLoaded, isSubscribed, router]);
+
+  if (!isInitialized || isLoading || isSubscribed === null) {
     return null;
   }
 
   return <RootLayoutNav isSubscribed={isSubscribed} />;
 }
 
-function RootLayoutNav({ isSubscribed }: { isSubscribed: boolean }) {
+function RootLayoutNav({ isSubscribed }: { isSubscribed: boolean | null }) {
   const { currentTheme } = useTheme();
-  const router = useRouter();
-
-  useEffect(() => {
-    // Redirect based on subscription status
-    if (!isSubscribed) {
-      router.replace('/(onboarding)');
-    } else {
-      router.replace('/(tabs)/schedule');
-    }
-  }, [isSubscribed, router]);
-
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
   return (

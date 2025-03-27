@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Purchases from 'react-native-purchases';
+import Purchases, { CustomerInfo } from 'react-native-purchases';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 
 type SubscriptionContextType = {
@@ -18,7 +18,14 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
 
   // Helper function to check subscription status consistently
-  const checkEntitlementStatus = async (customerInfo: Purchases.CustomerInfo): Promise<boolean> => {
+  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<boolean> => {
+    // Check for simulated subscription first
+    const simulatedStatus = getSimulatedSubscriptionStatus();
+    if (simulatedStatus !== null) {
+      console.log('Using simulated subscription status:', simulatedStatus);
+      return simulatedStatus;
+    }
+
     const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
     console.log('Checking entitlement status:', {
       hasActiveEntitlement,
@@ -31,18 +38,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const checkSubscriptionStatus = async () => {
     try {
       console.log('Checking subscription status...');
+      setIsLoading(true);
       
       // Check for simulated subscription first
       const simulatedStatus = getSimulatedSubscriptionStatus();
       if (simulatedStatus !== null) {
         console.log('Using simulated subscription status:', simulatedStatus);
+        await AsyncStorage.setItem('subscriptionStatus', simulatedStatus.toString());
         setIsSubscribed(simulatedStatus);
         return;
       }
 
       // If no simulation, check real subscription
       const customerInfo = await Purchases.getCustomerInfo();
-      const hasActiveSubscription = customerInfo.entitlements.active['Subscriptions'] != null;
+      const hasActiveSubscription = await checkEntitlementStatus(customerInfo);
       console.log('Real subscription status:', hasActiveSubscription);
       
       await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
@@ -57,30 +66,68 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  // Initialize subscription status
   useEffect(() => {
-    let customerInfoUpdateListener: { remove: () => void } | undefined;
-
-    const setupListener = async () => {
+    const initializeStatus = async () => {
+      setIsLoading(true);
       try {
-        customerInfoUpdateListener = Purchases.addCustomerInfoUpdateListener(async (info) => {
-          console.log('Customer info updated:', info);
-          const hasActiveSubscription = await checkEntitlementStatus(info);
-          console.log('Subscription update received:', hasActiveSubscription);
-          await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
-          setIsSubscribed(hasActiveSubscription);
-        });
+        // First check if we have a simulated status
+        const simulatedStatus = getSimulatedSubscriptionStatus();
+        if (simulatedStatus !== null) {
+          console.log('Initializing with simulated status:', simulatedStatus);
+          setIsSubscribed(simulatedStatus);
+          setIsLoading(false);
+          return;
+        }
+
+        // Then check AsyncStorage
+        const storedStatus = await AsyncStorage.getItem('subscriptionStatus');
+        if (storedStatus !== null) {
+          console.log('Found stored subscription status:', storedStatus);
+          setIsSubscribed(storedStatus === 'true');
+        }
+        
+        // Finally check live status
+        await checkSubscriptionStatus();
       } catch (error) {
-        console.error('Failed to setup customer info listener:', error);
+        console.error('Failed to initialize subscription status:', error);
+        setIsLoading(false);
       }
     };
 
-    // Initial setup
+    initializeStatus();
+  }, []);
+
+  useEffect(() => {
+    let customerInfoUpdateListener: (() => void) | undefined;
+
+    const setupListener = async () => {
+      try {
+        const listener = (info: CustomerInfo) => {
+          console.log('Customer info updated:', info);
+          setIsLoading(true);
+          checkEntitlementStatus(info).then(hasActiveSubscription => {
+            console.log('Subscription update received:', hasActiveSubscription);
+            AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString()).then(() => {
+              setIsSubscribed(hasActiveSubscription);
+              setIsLoading(false);
+            });
+          });
+        };
+
+        Purchases.addCustomerInfoUpdateListener(listener);
+        customerInfoUpdateListener = () => Purchases.removeCustomerInfoUpdateListener(listener);
+      } catch (error) {
+        console.error('Failed to setup customer info listener:', error);
+        setIsLoading(false);
+      }
+    };
+
     setupListener();
-    checkSubscriptionStatus();
 
     return () => {
-      if (customerInfoUpdateListener?.remove) {
-        customerInfoUpdateListener.remove();
+      if (customerInfoUpdateListener) {
+        customerInfoUpdateListener();
       }
     };
   }, []);
