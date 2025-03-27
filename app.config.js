@@ -72,10 +72,10 @@ export default ({ config }) => ({
   },
   scheme: 'meetcal',
   owner: 'memohnsen',
-  runtimeVersion: {
-    policy: 'sdkVersion'
-  },
+  runtimeVersion: "2.1.0",
   updates: {
-    url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f'
+    url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
+    enabled: true,
+    fallbackToCacheTimeout: 0
   }
 }); 
