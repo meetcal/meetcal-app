@@ -21,6 +21,7 @@ import { Platform as PlatformType } from '@/data/types/athletes';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { LiftResult } from '@/data/types/athletes';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
+import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 
 // Update interface names
 interface SessionPlatformDetails {
@@ -529,7 +530,7 @@ export default function SessionDetailsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
-  const [currentSchedule, setCurrentSchedule] = useState(() => getSchedule(selectedMeet));
+  const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncManager] = useState(() => new SyncManager(selectedMeet));
 
@@ -555,7 +556,7 @@ export default function SessionDetailsScreen() {
     weighInTime: rawParams.weighInTime || '',
     date: rawParams.date || '',
     athleteName: rawParams.athleteName,
-    meet: rawParams.meet || selectedMeet, // Use provided meet or current selected meet
+    meet: rawParams.meet || selectedMeet,
   };
 
   // Generate the correct session ID using the meet information
@@ -585,38 +586,51 @@ export default function SessionDetailsScreen() {
     })();
   }, []);
 
-  useEffect(() => {
-    const loadSessionData = async () => {
-      setIsLoading(true);
-      try {
-        // Get session data from the schedule
-        const defaultSchedule = getSchedule(selectedMeet);
-        const day = defaultSchedule.find(day => 
+  // Load session data from SyncManager
+  const loadSessionData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Get fresh data from SyncManager
+      const meetData = await syncManager.getMeetData();
+      if (meetData.schedule) {
+        setCurrentSchedule(meetData.schedule);
+        
+        // Find the session in the schedule
+        const day = meetData.schedule.find(day => 
           day.sessions.some(s => s.number === parseInt(params.sessionNumber))
         );
-        const session = day?.sessions.find(s => s.number === parseInt(params.sessionNumber)) || null;
-        setSessionData(session);
-      } catch (error) {
-        console.error('Error loading session data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        
+        const session = day?.sessions.find(s => 
+          s.number === parseInt(params.sessionNumber)
+        );
 
+        if (session) {
+          setSessionData(session);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading session data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncManager, params.sessionNumber]);
+
+  // Initial load
+  useEffect(() => {
     loadSessionData();
-  }, [selectedMeet, params.sessionNumber]);
+  }, [loadSessionData]);
 
   // Get the correct weight class from current schedule
   const sessionWeightClass = useMemo(() => {
-    const sessionDay = currentSchedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    const sessionDay = currentSchedule.find((day: DaySchedule) => 
+      day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
     );
     
-    const session = sessionDay?.sessions.find(s => 
+    const session = sessionDay?.sessions.find((s: Session) => 
       s.number === parseInt(params.sessionNumber)
     );
 
-    const platformData = session?.platforms.find(p => 
+    const platformData = session?.platforms.find((p: PlatformDetails) => 
       p.platform === params.platform
     );
 
@@ -624,23 +638,23 @@ export default function SessionDetailsScreen() {
   }, [currentSchedule, params.sessionNumber, params.platform, params.weightClass]);
 
   const sessionDate = useMemo(() => {
-    const sessionDay = currentSchedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    const sessionDay = currentSchedule.find((day: DaySchedule) => 
+      day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
     );
     return sessionDay?.date || `Session ${params.sessionNumber}`;
   }, [currentSchedule, params.sessionNumber]);
 
   // Get the platform-specific start time and calculate weigh-in time
   const platformStartTime = useMemo(() => {
-    const sessionDay = currentSchedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+    const sessionDay = currentSchedule.find((day: DaySchedule) => 
+      day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
     );
     
-    const session = sessionDay?.sessions.find(s => 
+    const session = sessionDay?.sessions.find((s: Session) => 
       s.number === parseInt(params.sessionNumber)
     );
 
-    const platformData = session?.platforms.find(p => 
+    const platformData = session?.platforms.find((p: PlatformDetails) => 
       p.platform === params.platform
     );
 
@@ -716,7 +730,7 @@ export default function SessionDetailsScreen() {
     }
 
     // Find the session and get platform-specific time
-    const sessionDay = currentSchedule.find((day: ScheduleDay) => 
+    const sessionDay = currentSchedule.find((day: DaySchedule) => 
       day.sessions.some((session: Session) => 
         session.number === parseInt(params.sessionNumber) &&
         session.platforms.some((platform: SessionPlatformDetails) => platform.platform === params.platform)
@@ -806,19 +820,7 @@ export default function SessionDetailsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Get fresh data from SyncManager
-      const meetData = await syncManager.getMeetData();
-      if (meetData.schedule) {
-        const day = meetData.schedule.find(day => 
-          day.sessions.some(s => s.number === parseInt(params.sessionNumber))
-        );
-        const session = day?.sessions.find(s => 
-          s.number === parseInt(params.sessionNumber)
-        ) || null;
-        setSessionData(session);
-        // Update the current schedule with fresh data
-        setCurrentSchedule(meetData.schedule);
-      }
+      await loadSessionData();
       // Trigger athlete data refresh
       setRefreshKey(prev => prev + 1);
     } catch (error) {
@@ -826,7 +828,7 @@ export default function SessionDetailsScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [syncManager, params.sessionNumber]);
+  }, [loadSessionData]);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
