@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Redirect, Stack, Slot } from 'expo-router';
+import { Redirect, Stack, Slot, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -10,12 +10,14 @@ import Purchases from 'react-native-purchases';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
+import { PostHogProvider } from 'posthog-react-native';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
 import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
+import { posthog } from '@/lib/posthog';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -27,6 +29,21 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// PostHog page view tracking component
+function PostHogPageView() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname) {
+      posthog?.capture('$pageview', {
+        $current_url: pathname,
+      });
+    }
+  }, [pathname]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
@@ -72,17 +89,20 @@ export default function RootLayout() {
   }
 
   return (
-    <NavigationThemeProvider value={DefaultTheme}>
+    <PostHogProvider client={posthog}>
       <CustomThemeProvider>
-        <SubscriptionProvider>
-          <SavedSessionsProvider>
-            <SelectedMeetProvider>
-              <AppContent fontsLoaded={fontsLoaded} />
-            </SelectedMeetProvider>
-          </SavedSessionsProvider>
-        </SubscriptionProvider>
+        <NavigationThemeProvider value={DefaultTheme}>
+          <SubscriptionProvider>
+            <SavedSessionsProvider>
+              <SelectedMeetProvider>
+                <PostHogPageView />
+                <AppContent fontsLoaded={fontsLoaded} />
+              </SelectedMeetProvider>
+            </SavedSessionsProvider>
+          </SubscriptionProvider>
+        </NavigationThemeProvider>
       </CustomThemeProvider>
-    </NavigationThemeProvider>
+    </PostHogProvider>
   );
 }
 
