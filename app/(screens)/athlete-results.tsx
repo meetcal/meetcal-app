@@ -1,3 +1,4 @@
+import React from 'react';
 import { StyleSheet, View, ScrollView, ActivityIndicator } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
@@ -25,6 +26,170 @@ interface SupabaseLiftResult {
   cj3: number | null;
   cj_best: number | null;
   total: number | null;
+}
+
+// Add new interface for stats
+interface AthleteStats {
+  snatchMakeRate: number;
+  cjMakeRate: number;
+  totalSnatchAttempts: number;
+  totalCJAttempts: number;
+  snatchAttemptRates: {
+    attempt1: { makes: number; total: number; rate: number };
+    attempt2: { makes: number; total: number; rate: number };
+    attempt3: { makes: number; total: number; rate: number };
+  };
+  cjAttemptRates: {
+    attempt1: { makes: number; total: number; rate: number };
+    attempt2: { makes: number; total: number; rate: number };
+    attempt3: { makes: number; total: number; rate: number };
+  };
+}
+
+function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colors: any }) {
+  const stats = useMemo(() => {
+    let snatchAttempts = 0;
+    let snatchMakes = 0;
+    let cjAttempts = 0;
+    let cjMakes = 0;
+
+    // Initialize attempt-specific counters
+    const snatchAttemptsByNumber = {
+      attempt1: { makes: 0, total: 0 },
+      attempt2: { makes: 0, total: 0 },
+      attempt3: { makes: 0, total: 0 },
+    };
+
+    const cjAttemptsByNumber = {
+      attempt1: { makes: 0, total: 0 },
+      attempt2: { makes: 0, total: 0 },
+      attempt3: { makes: 0, total: 0 },
+    };
+
+    results.forEach(result => {
+      // Count snatch attempts
+      [result.snatch1, result.snatch2, result.snatch3].forEach((attempt, index) => {
+        if (attempt !== null && attempt !== 0) {
+          snatchAttempts++;
+          if (attempt > 0) snatchMakes++;
+          
+          // Count attempt-specific stats
+          const attemptKey = `attempt${index + 1}` as keyof typeof snatchAttemptsByNumber;
+          snatchAttemptsByNumber[attemptKey].total++;
+          if (attempt > 0) snatchAttemptsByNumber[attemptKey].makes++;
+        }
+      });
+
+      // Count clean & jerk attempts
+      [result.cj1, result.cj2, result.cj3].forEach((attempt, index) => {
+        if (attempt !== null && attempt !== 0) {
+          cjAttempts++;
+          if (attempt > 0) cjMakes++;
+          
+          // Count attempt-specific stats
+          const attemptKey = `attempt${index + 1}` as keyof typeof cjAttemptsByNumber;
+          cjAttemptsByNumber[attemptKey].total++;
+          if (attempt > 0) cjAttemptsByNumber[attemptKey].makes++;
+        }
+      });
+    });
+
+    // Calculate rates for each attempt
+    const calculateRates = (attempts: typeof snatchAttemptsByNumber) => {
+      return {
+        attempt1: {
+          ...attempts.attempt1,
+          rate: attempts.attempt1.total > 0 ? (attempts.attempt1.makes / attempts.attempt1.total) * 100 : 0
+        },
+        attempt2: {
+          ...attempts.attempt2,
+          rate: attempts.attempt2.total > 0 ? (attempts.attempt2.makes / attempts.attempt2.total) * 100 : 0
+        },
+        attempt3: {
+          ...attempts.attempt3,
+          rate: attempts.attempt3.total > 0 ? (attempts.attempt3.makes / attempts.attempt3.total) * 100 : 0
+        }
+      };
+    };
+
+    return {
+      snatchMakeRate: snatchAttempts > 0 ? (snatchMakes / snatchAttempts) * 100 : 0,
+      cjMakeRate: cjAttempts > 0 ? (cjMakes / cjAttempts) * 100 : 0,
+      totalSnatchAttempts: snatchAttempts,
+      totalCJAttempts: cjAttempts,
+      snatchAttemptRates: calculateRates(snatchAttemptsByNumber),
+      cjAttemptRates: calculateRates(cjAttemptsByNumber),
+    };
+  }, [results]);
+
+  const AttemptRateRow = ({ 
+    attemptNumber, 
+    rates, 
+    colors 
+  }: { 
+    attemptNumber: number, 
+    rates: { makes: number; total: number; rate: number },
+    colors: any 
+  }) => (
+    <View style={styles.attemptRateRow}>
+      <ThemedText style={[styles.attemptRateLabel, { color: colors.secondaryText }]}>
+        {attemptNumber}
+      </ThemedText>
+      <ThemedText style={styles.attemptRateValue}>
+        {rates.rate.toFixed(1)}%
+      </ThemedText>
+      <ThemedText style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}>
+        {rates.makes}/{rates.total}
+      </ThemedText>
+    </View>
+  );
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <ThemedText style={styles.meetName}>Success Rates</ThemedText>
+      </View>
+      
+      <View style={styles.statsGrid}>
+        {/* Snatch Column */}
+        <View style={styles.statsColumn}>
+          <View style={styles.liftHeader}>
+            <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+              Snatch
+            </ThemedText>
+            <ThemedText style={styles.statsValue}>
+              {stats.snatchMakeRate.toFixed(1)}%
+            </ThemedText>
+          </View>
+          <View style={styles.attemptRatesContainer}>
+            <AttemptRateRow attemptNumber={1} rates={stats.snatchAttemptRates.attempt1} colors={colors} />
+            <AttemptRateRow attemptNumber={2} rates={stats.snatchAttemptRates.attempt2} colors={colors} />
+            <AttemptRateRow attemptNumber={3} rates={stats.snatchAttemptRates.attempt3} colors={colors} />
+          </View>
+        </View>
+
+        {/* Vertical Divider */}
+        <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />
+
+        {/* Clean & Jerk Column */}
+        <View style={styles.statsColumn}>
+          <View style={styles.liftHeader}>
+            <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+              C&J
+            </ThemedText>
+            <ThemedText style={styles.statsValue}>
+              {stats.cjMakeRate.toFixed(1)}%
+            </ThemedText>
+          </View>
+          <View style={styles.attemptRatesContainer}>
+            <AttemptRateRow attemptNumber={1} rates={stats.cjAttemptRates.attempt1} colors={colors} />
+            <AttemptRateRow attemptNumber={2} rates={stats.cjAttemptRates.attempt2} colors={colors} />
+            <AttemptRateRow attemptNumber={3} rates={stats.cjAttemptRates.attempt3} colors={colors} />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function AthleteResultsScreen() {
@@ -124,58 +289,61 @@ export default function AthleteResultsScreen() {
             </View>
           </View>
         ) : (
-          athleteResults.map((result) => (
-            <View 
-              key={`${result.meet}-${result.date}`}
-              style={[
-                styles.card,
-                { backgroundColor: colors.card },
-                athleteResults.indexOf(result) === 0 && { marginTop: 16 }
-              ]}
-            >
-              <View style={[styles.section, { borderBottomColor: colors.border }]}>
-                <ThemedText style={styles.meetName}>{result.meet}</ThemedText>
-                <ThemedText style={[styles.meetDate, { color: colors.secondaryText }]}>
-                  Date: {new Date(result.date).toLocaleDateString()}
-                </ThemedText>
-                <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
-                  {result.age}
-                </ThemedText>
-              </View>
-
-              <View style={[styles.section, { borderBottomColor: colors.border }]}>
-                <View style={styles.liftRow}>
-                  <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
-                    Snatch
+          <>
+            <AthleteStats results={athleteResults} colors={colors} />
+            {athleteResults.map((result) => (
+              <View 
+                key={`${result.meet}-${result.date}`}
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card },
+                  athleteResults.indexOf(result) === 0 && { marginTop: 16 }
+                ]}
+              >
+                <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                  <ThemedText style={styles.meetName}>{result.meet}</ThemedText>
+                  <ThemedText style={[styles.meetDate, { color: colors.secondaryText }]}>
+                    Date: {new Date(result.date).toLocaleDateString()}
                   </ThemedText>
-                  <View style={styles.attempts}>
-                    <AttemptDisplay attempt={result.snatch1} colors={colors} />
-                    <AttemptDisplay attempt={result.snatch2} colors={colors} />
-                    <AttemptDisplay attempt={result.snatch3} colors={colors} />
+                  <ThemedText style={[styles.weightClass, { color: colors.secondaryText }]}>
+                    {result.age}
+                  </ThemedText>
+                </View>
+
+                <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                  <View style={styles.liftRow}>
+                    <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+                      Snatch
+                    </ThemedText>
+                    <View style={styles.attempts}>
+                      <AttemptDisplay attempt={result.snatch1} colors={colors} />
+                      <AttemptDisplay attempt={result.snatch2} colors={colors} />
+                      <AttemptDisplay attempt={result.snatch3} colors={colors} />
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={[styles.section, { borderBottomColor: colors.border }]}>
-                <View style={styles.liftRow}>
-                  <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
-                    Clean & Jerk
-                  </ThemedText>
-                  <View style={styles.attempts}>
-                    <AttemptDisplay attempt={result.cj1} colors={colors} />
-                    <AttemptDisplay attempt={result.cj2} colors={colors} />
-                    <AttemptDisplay attempt={result.cj3} colors={colors} />
+                <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                  <View style={styles.liftRow}>
+                    <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+                      Clean & Jerk
+                    </ThemedText>
+                    <View style={styles.attempts}>
+                      <AttemptDisplay attempt={result.cj1} colors={colors} />
+                      <AttemptDisplay attempt={result.cj2} colors={colors} />
+                      <AttemptDisplay attempt={result.cj3} colors={colors} />
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.section}>
-                <ThemedText style={styles.total}>
-                  {result.snatch_best ?? '—'}/{result.cj_best ?? '—'}/{result.total ?? '—'}
-                </ThemedText>
+                <View style={styles.section}>
+                  <ThemedText style={styles.total}>
+                    {result.snatch_best ?? '—'}/{result.cj_best ?? '—'}/{result.total ?? '—'}
+                  </ThemedText>
+                </View>
               </View>
-            </View>
-          ))
+            ))}
+          </>
         )}
       </ScrollView>
     </ThemedView>
@@ -235,9 +403,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   liftName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
-    minWidth: 100,
+    flex: 1,
   },
   attempts: {
     flexDirection: 'row',
@@ -273,5 +441,54 @@ const styles = StyleSheet.create({
     padding: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+  },
+  statsColumn: {
+    flex: 1,
+    paddingHorizontal: 4,
+  },
+  liftHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  statsValue: {
+    fontSize: 20,
+    fontWeight: '600',
+    minWidth: 70,
+    textAlign: 'right',
+  },
+  attemptRatesContainer: {
+    gap: 4,
+  },
+  attemptRateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  attemptRateLabel: {
+    fontSize: 13,
+    minWidth: 15,
+  },
+  attemptRateValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    minWidth: 45,
+    textAlign: 'center',
+  },
+  attemptRateSubtext: {
+    fontSize: 13,
+    minWidth: 45,
+    textAlign: 'right',
+  },
+  verticalDivider: {
+    width: StyleSheet.hairlineWidth,
+    marginVertical: 4,
   },
 }); 
