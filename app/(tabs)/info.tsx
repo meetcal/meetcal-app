@@ -5,13 +5,13 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { venueConfig, getFullAddress } from '@/config/venue';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
+import { useClerk, useAuth } from '@clerk/clerk-expo';
 
 const showReviewPrompt = () => {
   Alert.alert(
@@ -34,6 +34,8 @@ const showReviewPrompt = () => {
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
+  const { signOut } = useClerk();
+  const { isSignedIn } = useAuth();
   const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
   const { selectedMeet, setSelectedMeet, isLoading } = useSelectedMeet();
   const [showMeetModal, setShowMeetModal] = useState(false);
@@ -146,6 +148,24 @@ export default function InfoScreen() {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // The auth layout will automatically redirect to sign-in
+    } catch (err) {
+      console.error('Error signing out:', err);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
+  const handleAuthAction = () => {
+    if (isSignedIn) {
+      handleSignOut();
+    } else {
+      router.push('/(auth)/sign-in');
+    }
+  };
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
@@ -174,6 +194,33 @@ export default function InfoScreen() {
         showsVerticalScrollIndicator={false}
       >
         
+        {/* Authentication Card */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            Authentication
+          </ThemedText>
+          
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleAuthAction}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                {isSignedIn ? 'Sign Out' : 'Sign In'}
+              </ThemedText>
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20} 
+                color={colors.link} 
+              />
+            </View>
+          </Pressable>
+        </View>
+
         {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>

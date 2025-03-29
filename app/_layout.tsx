@@ -11,6 +11,9 @@ import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
+import { ClerkProvider } from '@clerk/clerk-expo'
+import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import * as SecureStore from 'expo-secure-store'
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -75,7 +78,6 @@ export default function RootLayout() {
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
         console.warn('Initialization error:', e);
-        // On error, we'll still proceed but may need to check subscription status later
       } finally {
         setAppIsReady(true);
       }
@@ -89,20 +91,25 @@ export default function RootLayout() {
   }
 
   return (
-    <PostHogProvider client={posthog}>
-      <CustomThemeProvider>
-        <NavigationThemeProvider value={DefaultTheme}>
-          <SubscriptionProvider>
-            <SavedSessionsProvider>
-              <SelectedMeetProvider>
-                <PostHogPageView />
-                <AppContent fontsLoaded={fontsLoaded} />
-              </SelectedMeetProvider>
-            </SavedSessionsProvider>
-          </SubscriptionProvider>
-        </NavigationThemeProvider>
-      </CustomThemeProvider>
-    </PostHogProvider>
+    <CustomThemeProvider>
+      <NavigationThemeProvider value={DefaultTheme}>
+        <ClerkProvider 
+          publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
+          tokenCache={tokenCache}
+        >
+          <PostHogProvider client={posthog}>
+            <SubscriptionProvider>
+              <SavedSessionsProvider>
+                <SelectedMeetProvider>
+                  <PostHogPageView />
+                  <AppContent fontsLoaded={fontsLoaded} />
+                </SelectedMeetProvider>
+              </SavedSessionsProvider>
+            </SubscriptionProvider>
+          </PostHogProvider>
+        </ClerkProvider>
+      </NavigationThemeProvider>
+    </CustomThemeProvider>
   );
 }
 
