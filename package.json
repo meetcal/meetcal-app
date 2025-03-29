@@ -15,6 +15,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@clerk/clerk-expo": "^2.9.6",
     "@expo/vector-icons": "^14.0.2",
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@react-native-community/netinfo": "^11.4.1",
@@ -41,6 +42,7 @@
     "expo-localization": "~16.0.1",
     "expo-notifications": "~0.29.13",
     "expo-router": "~4.0.17",
+    "expo-secure-store": "^14.0.1",
     "expo-sharing": "~13.0.1",
     "expo-splash-screen": "~0.29.21",
     "expo-status-bar": "~2.0.1",
@@ -62,7 +64,9 @@
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5",
-    "resend": "^4.1.2"
+    "resend": "^4.1.2",
+    "expo-crypto": "~14.0.2",
+    "expo-auth-session": "~6.0.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
