@@ -370,7 +370,7 @@ export default function InfoScreen() {
 
         <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 32 }]} />
         <ThemedText style={[styles.copyright, { color: colors.secondaryText }]}>
-          © 2025 CoachHub
+          © 2025 CoachHub LLC
         </ThemedText>
       </ScrollView>
 
