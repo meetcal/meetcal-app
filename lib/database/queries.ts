@@ -3,6 +3,7 @@ import type { Schedule, Session } from '@/types/schedule';
 import type { Platform } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import type { LiftResult } from '@/data/types/athletes';
+import { getMeetConfig } from '@/data/meets/config';
 
 type DbSchedule = {
   id: number;
@@ -121,11 +122,19 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
   dbSchedule.forEach(row => {
     console.log('Processing row:', row);
     if (!scheduleMap.has(row.date)) {
+      // Create a date object in UTC
+      const utcDate = new Date(row.date);
+      
+      // Format the date in the meet's timezone
+      const meetConfig = getMeetConfig(row.meet as MeetName);
+      const meetDate = new Date(utcDate.getTime() + (meetConfig.time.utcOffset * 60 * 60 * 1000));
+      
       scheduleMap.set(row.date, {
-        date: new Date(row.date).toLocaleDateString('en-US', { 
+        date: meetDate.toLocaleDateString('en-US', { 
           month: 'long', 
           day: 'numeric', 
-          year: 'numeric' 
+          year: 'numeric',
+          timeZone: meetConfig.time.timeZoneIdentifier
         }),
         fullDate: row.date,
         sessions: new Map()
