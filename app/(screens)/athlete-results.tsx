@@ -122,6 +122,12 @@ function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colo
     };
   }, [results]);
 
+  const getRateColor = (rate: number) => {
+    if (rate >= 80) return colors.success;
+    if (rate < 70) return colors.fail;
+    return '#FF9500'; // Amber color
+  };
+
   const AttemptRateRow = ({ 
     attemptNumber, 
     rates, 
@@ -135,7 +141,7 @@ function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colo
       <ThemedText style={[styles.attemptRateLabel, { color: colors.secondaryText }]}>
         {attemptNumber}
       </ThemedText>
-      <ThemedText style={styles.attemptRateValue}>
+      <ThemedText style={[styles.attemptRateValue, { color: getRateColor(rates.rate) }]}>
         {rates.rate.toFixed(1)}%
       </ThemedText>
       <ThemedText style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}>
@@ -157,7 +163,7 @@ function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colo
             <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
               Snatch
             </ThemedText>
-            <ThemedText style={styles.statsValue}>
+            <ThemedText style={[styles.statsValue, { color: getRateColor(stats.snatchMakeRate) }]}>
               {stats.snatchMakeRate.toFixed(1)}%
             </ThemedText>
           </View>
@@ -177,7 +183,7 @@ function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colo
             <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
               C&J
             </ThemedText>
-            <ThemedText style={styles.statsValue}>
+            <ThemedText style={[styles.statsValue, { color: getRateColor(stats.cjMakeRate) }]}>
               {stats.cjMakeRate.toFixed(1)}%
             </ThemedText>
           </View>
