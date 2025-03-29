@@ -5,6 +5,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
+import { posthog } from '@/lib/posthog';
 
 // Update the sponsor type
 type Sponsor = {
@@ -75,7 +76,14 @@ export default function SponsorsScreen() {
     bronze: '#CD7F32',
   };
 
-  const handleOpenWebsite = (url: string) => {
+  const handleOpenWebsite = (url: string, sponsorName: string) => {
+    // Track the sponsor click event
+    posthog.capture('sponsor_clicked', {
+      sponsor_name: sponsorName,
+      sponsor_url: url
+    });
+    
+    // Open the website
     Linking.openURL(url);
   };
 
@@ -114,7 +122,7 @@ export default function SponsorsScreen() {
               { backgroundColor: colors.card },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handleOpenWebsite(sponsor.website)}
+            onPress={() => handleOpenWebsite(sponsor.website, sponsor.name)}
           >
             <Image 
               source={sponsor.image}
