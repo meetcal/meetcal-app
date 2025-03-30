@@ -194,23 +194,25 @@ export default function InfoScreen() {
         showsVerticalScrollIndicator={false}
       >
         
-        {/* Authentication Card */}
+        {/* Authentication/Profile Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Authentication
-          </ThemedText>
-          
           <Pressable
             style={({ pressed }) => [
               styles.section,
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={handleAuthAction}
+            onPress={() => {
+              if (isSignedIn) {
+                router.push('/(screens)/profile');
+              } else {
+                router.push('/(auth)/sign-in');
+              }
+            }}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                {isSignedIn ? 'Sign Out' : 'Sign In'}
+                {isSignedIn ? 'My Profile' : 'Sign In To Your Account'}
               </ThemedText>
               <IconSymbol 
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
