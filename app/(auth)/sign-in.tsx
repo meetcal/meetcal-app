@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser'
 import * as AuthSession from 'expo-auth-session'
 import { useSSO } from '@clerk/clerk-expo'
 import { IconSymbol } from '@/components/ui/IconSymbol'
+import { useTheme } from '@/contexts/ThemeContext'
 
 // Warm up the browser for better performance
 export const useWarmUpBrowser = () => {
@@ -19,15 +20,27 @@ export const useWarmUpBrowser = () => {
 
 WebBrowser.maybeCompleteAuthSession()
 
-export default function Page() {
+export default function SignInScreen() {
   const { signIn, setActive, isLoaded } = useSignIn()
   const { startSSOFlow } = useSSO()
   const router = useRouter()
+  const { currentTheme } = useTheme()
 
   useWarmUpBrowser()
 
   const [emailAddress, setEmailAddress] = React.useState('')
   const [password, setPassword] = React.useState('')
+
+  // Define theme colors to match other screens
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+    link: '#007AFF',
+  }
 
   const navigateToInfo = useCallback(() => {
     console.log('Attempting to navigate to info');
@@ -251,7 +264,7 @@ export default function Page() {
   }, [navigateToInfo]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
           headerTitle: "Sign In",
@@ -263,32 +276,39 @@ export default function Page() {
               <IconSymbol
                 name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow-back'}
                 size={24}
-                color="#007AFF"
+                color={colors.link}
               />
             </TouchableOpacity>
           ),
           headerStyle: {
-            backgroundColor: '#FFFFFF',
+            backgroundColor: colors.card,
           },
           headerShadowVisible: false,
+          headerTintColor: colors.text,
         }}
       />
-
-      <View style={styles.content}>
-        <Text style={styles.title}>Sign in</Text>
-        
-        {/* Email/Password Sign In */}
+      <View style={[styles.content, { backgroundColor: colors.background }]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { 
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            color: colors.text,
+          }]}
           autoCapitalize="none"
           value={emailAddress}
           placeholder="Enter email"
-          onChangeText={(emailAddress) => setEmailAddress(emailAddress)}
+          placeholderTextColor={colors.secondaryText}
+          onChangeText={(email) => setEmailAddress(email)}
         />
         <TextInput
-          style={styles.input}
+          style={[styles.input, { 
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            color: colors.text,
+          }]}
           value={password}
           placeholder="Enter password"
+          placeholderTextColor={colors.secondaryText}
           secureTextEntry={true}
           onChangeText={(password) => setPassword(password)}
         />
@@ -296,16 +316,17 @@ export default function Page() {
           <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
 
-        {/* Divider */}
         <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
+          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+          <Text style={[styles.dividerText, { color: colors.secondaryText }]}>or</Text>
+          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
         </View>
 
-        {/* OAuth Buttons */}
         <TouchableOpacity
-          style={[styles.button, styles.googleButton]}
+          style={[styles.button, styles.googleButton, { 
+            backgroundColor: currentTheme === 'dark' ? '#FFFFFF' : colors.card,
+            borderColor: colors.border 
+          }]}
           onPress={onGooglePress}
         >
           <View style={styles.googleIconContainer}>
@@ -314,33 +335,39 @@ export default function Page() {
               style={styles.googleIcon}
             />
           </View>
-          <Text style={[styles.buttonText, styles.googleButtonText]}>
+          <Text style={[styles.buttonText, styles.googleButtonText, { 
+            color: currentTheme === 'dark' ? '#000000' : colors.text 
+          }]}>
             Continue with Google
           </Text>
         </TouchableOpacity>
 
         {Platform.OS === 'ios' && (
           <TouchableOpacity 
-            style={[styles.button, styles.appleButton]} 
+            style={[styles.button, styles.appleButton, {
+              backgroundColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000'
+            }]} 
             onPress={onApplePress}
           >
             <View style={styles.iconContainer}>
               <IconSymbol
                 name="apple.logo"
                 size={22}
-                color="#FFFFFF"
+                color={currentTheme === 'dark' ? '#000000' : '#FFFFFF'}
               />
             </View>
-            <Text style={[styles.buttonText, styles.appleButtonText]}>
+            <Text style={[styles.buttonText, styles.appleButtonText, {
+              color: currentTheme === 'dark' ? '#000000' : '#FFFFFF'
+            }]}>
               Continue with Apple
             </Text>
           </TouchableOpacity>
         )}
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account?</Text>
+          <Text style={[styles.footerText, { color: colors.secondaryText }]}>Don't have an account?</Text>
           <Link href="/sign-up" style={styles.link}>
-            <Text style={styles.linkText}>Sign up</Text>
+            <Text style={[styles.linkText, { color: colors.link }]}>Sign up</Text>
           </Link>
         </View>
       </View>
@@ -351,7 +378,6 @@ export default function Page() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   content: {
     flex: 1,
@@ -361,14 +387,8 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: Platform.OS === 'ios' ? -8 : 0,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
     padding: 15,
     borderRadius: 8,
     marginBottom: 15,
@@ -385,25 +405,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    gap: 5,
-  },
-  footerText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  link: {
-    marginLeft: 5,
-  },
-  linkText: {
-    fontSize: 16,
-    color: '#007AFF',
-    fontWeight: '600',
-  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,22 +413,18 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#ddd',
   },
   dividerText: {
     marginHorizontal: 10,
-    color: '#666',
   },
   googleButton: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#dadce0',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 50,
     borderRadius: 12,
     paddingHorizontal: 16,
+    borderWidth: 1,
   },
   googleIconContainer: {
     marginRight: 8,
@@ -437,14 +434,12 @@ const styles = StyleSheet.create({
     height: 18,
   },
   googleButtonText: {
-    color: '#3c4043',
     fontSize: 15,
     fontWeight: '500',
     letterSpacing: 0.25,
     fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
   },
   appleButton: {
-    backgroundColor: '#000000',
     marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -457,10 +452,26 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   appleButtonText: {
-    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '500',
     letterSpacing: 0.25,
     fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    gap: 5,
+  },
+  footerText: {
+    fontSize: 16,
+  },
+  link: {
+    marginLeft: 5,
+  },
+  linkText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
