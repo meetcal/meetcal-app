@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   dangerZone: {
-    marginTop: 16,
+    marginTop: 8,
     alignItems: 'center',
   },
   resetButton: {
