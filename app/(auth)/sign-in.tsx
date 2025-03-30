@@ -1,6 +1,6 @@
 import { useSignIn } from '@clerk/clerk-expo'
 import { Link, useRouter, Stack } from 'expo-router'
-import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform } from 'react-native'
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform, Image } from 'react-native'
 import React, { useCallback, useEffect } from 'react'
 import * as WebBrowser from 'expo-web-browser'
 import * as AuthSession from 'expo-auth-session'
@@ -304,12 +304,18 @@ export default function Page() {
         </View>
 
         {/* OAuth Buttons */}
-        <TouchableOpacity 
-          style={[styles.button, styles.googleButton]} 
+        <TouchableOpacity
+          style={[styles.button, styles.googleButton]}
           onPress={onGooglePress}
         >
+          <View style={styles.googleIconContainer}>
+            <Image
+              source={require('@/assets/images/ios_light_sq_na.png')}
+              style={styles.googleIcon}
+            />
+          </View>
           <Text style={[styles.buttonText, styles.googleButtonText]}>
-            Sign in with Google
+            Continue with Google
           </Text>
         </TouchableOpacity>
 
@@ -318,8 +324,15 @@ export default function Page() {
             style={[styles.button, styles.appleButton]} 
             onPress={onApplePress}
           >
+            <View style={styles.iconContainer}>
+              <IconSymbol
+                name="apple.logo"
+                size={22}
+                color="#FFFFFF"
+              />
+            </View>
             <Text style={[styles.buttonText, styles.appleButtonText]}>
-              Sign in with Apple
+              Continue with Apple
             </Text>
           </TouchableOpacity>
         )}
@@ -364,13 +377,13 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#007AFF',
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '500',
   },
   footer: {
     flexDirection: 'row',
@@ -406,18 +419,48 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   googleButton: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#dadce0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  googleIconContainer: {
+    marginRight: 8,
+  },
+  googleIcon: {
+    width: 18,
+    height: 18,
   },
   googleButtonText: {
-    color: '#000',
+    color: '#3c4043',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.25,
+    fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
   },
   appleButton: {
-    backgroundColor: '#000',
+    backgroundColor: '#000000',
     marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  iconContainer: {
+    marginRight: 8,
   },
   appleButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.25,
+    fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
   },
 });
