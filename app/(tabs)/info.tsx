@@ -296,27 +296,6 @@ export default function InfoScreen() {
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             App Information
           </ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push({
-              pathname: '/(screens)/subscription',
-              params: { from: 'info' }
-            })}
-          >
-            <View style={styles.subscriptionContainer}>
-              <View style={styles.subscriptionInfo}>
-                <ThemedText style={[styles.label, { color: colors.text }]}>
-                  Manage Subscription
-                </ThemedText>
-              </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
@@ -367,38 +346,6 @@ export default function InfoScreen() {
                 trackColor={{ false: '#E1E1E1', true: '#34C759' }}
                 thumbColor="#FFFFFF"
               />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => handlePress('https://meetcal.app/privacy')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                Privacy Policy & Terms of Use
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => handlePress('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                End User License Agreement
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView, Linking } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -7,8 +7,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Stack, useRouter } from 'expo-router';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabase';
 
 type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
+type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
 
 export default function ProfileScreen() {
   const { currentTheme } = useTheme();
@@ -16,11 +18,89 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const router = useRouter();
   const [role, setRole] = useState('Athlete');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('free');
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // Fetch user data from Supabase on mount
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserData();
+    }
+  }, [user?.id]);
+
+  const fetchUserData = async () => {
+    if (!user?.id) return;
+
+    try {
+      console.log('Fetching user data for ID:', user.id);
+      
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Supabase fetch error details:', error);
+        throw error;
+      }
+
+      if (data) {
+        console.log('Retrieved user data:', data);
+        setRole(data.role || 'Athlete');
+        setSubscriptionStatus(data.subscription_status || 'free');
+      } else {
+        console.log('No existing user data found, creating new record');
+        await syncUserToSupabase();
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      // Don't show alert for fetch errors, just try to create the user
+      await syncUserToSupabase();
+    }
+  };
+
+  const syncUserToSupabase = async () => {
+    if (!user?.id) return;
+
+    try {
+      // Validate required fields
+      const userData = {
+        id: user.id,
+        first_name: user.firstName || '',
+        last_name: user.lastName || '',
+        email: user.primaryEmailAddress?.emailAddress || '',
+        role: role || 'Athlete',
+        subscription_status: subscriptionStatus || 'free',
+      };
+
+      // Log the data being sent for debugging
+      console.log('Syncing user data to Supabase:', userData);
+
+      const { data, error } = await supabase
+        .from('users')
+        .upsert(userData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
+
+      console.log('Successfully synced user data:', data);
+    } catch (error) {
+      console.error('Error syncing user to Supabase:', error);
+      Alert.alert(
+        'Error',
+        'Failed to sync user data. Please try again later.'
+      );
+    }
+  };
 
   // Define theme colors to match other screens
   const colors = {
@@ -74,11 +154,13 @@ export default function ProfileScreen() {
           await user.update({
             firstName: editValue,
           });
+          await syncUserToSupabase();
           break;
         case 'lastName':
           await user.update({
             lastName: editValue,
           });
+          await syncUserToSupabase();
           break;
         case 'email':
           const email = await user.createEmailAddress({
@@ -87,14 +169,15 @@ export default function ProfileScreen() {
           await email.prepareVerification({
             strategy: 'email_code',
           });
+          await syncUserToSupabase();
           Alert.alert(
             'Verification Required',
             'Please check your email to verify your new email address.'
           );
           break;
         case 'role':
-          // Role would be handled by your backend
           setRole(editValue as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
+          await syncUserToSupabase();
           break;
       }
       setIsEditing(false);
@@ -105,6 +188,13 @@ export default function ProfileScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSubscription = () => {
+    router.push({
+      pathname: '/(screens)/subscription',
+      params: { from: 'profile' }
+    });
   };
 
   const formatTitle = (field: string) => {
@@ -183,6 +273,50 @@ export default function ProfileScreen() {
           {renderField('Last Name', user?.lastName || '', 'lastName')}
           {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
           {renderField('Role', role, 'role')}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { 
+                backgroundColor: colors.card
+              },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleSubscription}
+          >
+            <View style={styles.fieldRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Manage Subscription
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+        </View>
+
+        <View style={styles.legalLinks}>
+          <Pressable onPress={() => Linking.openURL('https://meetcal.app/privacy')}>
+            <ThemedText style={[styles.legalText, { color: colors.link }]}>
+              Privacy Policy
+            </ThemedText>
+          </Pressable>
+          <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
+          <Pressable onPress={() => Linking.openURL('https://meetcal.app/terms')}>
+            <ThemedText style={[styles.legalText, { color: colors.link }]}>
+              Terms of Use
+            </ThemedText>
+          </Pressable>
+          <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
+          <Pressable onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+            <ThemedText style={[styles.legalText, { color: colors.link }]}>
+              User Agreement
+            </ThemedText>
+          </Pressable>
         </View>
 
         <TouchableOpacity
@@ -423,5 +557,18 @@ const styles = StyleSheet.create({
   roleOptionText: {
     fontSize: 17,
     lineHeight: 22,
+  },
+  link: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  legalText: {
+    fontSize: 14,
   },
 }); 
