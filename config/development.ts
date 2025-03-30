@@ -3,6 +3,8 @@
  * IMPORTANT: These values are only used in development mode (__DEV__ === true)
  */
 
+import { flatMap } from "lodash";
+
 export const DEV_CONFIG = {
   /**
    * Set to true to simulate an active subscription

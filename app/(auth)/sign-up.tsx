@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol'
 import { supabase } from '@/lib/supabase'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/contexts/ThemeContext'
+import Purchases from 'react-native-purchases'
 
 export default function SignUpScreen() {
   const { isLoaded, signUp, setActive } = useSignUp()
@@ -117,14 +118,13 @@ export default function SignUpScreen() {
     if (!isLoaded) return
 
     try {
-      // Use the code the user provided to attempt verification
       const signUpAttempt = await signUp.attemptEmailAddressVerification({
         code,
       })
 
-      // If verification was completed, set the session to active
-      // and save additional data to Supabase
-      if (signUpAttempt.status === 'complete') {
+      if (signUpAttempt.status === 'complete' && 
+          signUpAttempt.createdSessionId && 
+          signUpAttempt.createdUserId) {
         await setActive({ session: signUpAttempt.createdSessionId })
         
         // Save user data to Supabase
@@ -140,15 +140,20 @@ export default function SignUpScreen() {
           console.error('Error saving to Supabase:', error)
         }
 
+        // Sync user with RevenueCat
+        try {
+          await Purchases.setEmail(emailAddress);
+          await Purchases.logIn(signUpAttempt.createdUserId);
+        } catch (error) {
+          console.error('Error syncing with RevenueCat:', error);
+          // Continue with navigation even if RevenueCat sync fails
+        }
+
         router.replace('/schedule')
       } else {
-        // If the status is not complete, check why. User may need to
-        // complete further steps.
         console.error(JSON.stringify(signUpAttempt, null, 2))
       }
     } catch (err) {
-      // See https://clerk.com/docs/custom-flows/error-handling
-      // for more info on error handling
       console.error(JSON.stringify(err, null, 2))
     }
   }
