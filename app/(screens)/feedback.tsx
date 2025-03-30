@@ -1,4 +1,4 @@
-import { StyleSheet, View, TextInput, ScrollView, ActivityIndicator, Modal, Pressable } from 'react-native'
+import { StyleSheet, View, TextInput, ScrollView, ActivityIndicator, Modal, Pressable, TouchableOpacity } from 'react-native'
 import { useState, useEffect } from 'react'
 import { Stack, router } from 'expo-router'
 import { ThemedText } from '@/components/ThemedText'
@@ -9,10 +9,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sendFeedback } from '../api/feedback'
 import { supabase } from '@/lib/supabase'
 import type { UserProfile } from '@/lib/profile'
+import { IconSymbol } from '@/components/ui/IconSymbol'
+import { Platform } from 'react-native'
+import { useUser } from '@clerk/clerk-expo'
+
+// Define the shape of user metadata
+interface UserMetadata {
+  role?: UserProfile['role'];
+}
 
 export default function FeedbackScreen() {
   const { currentTheme } = useTheme()
   const insets = useSafeAreaInsets()
+  const { user, isLoaded: isUserLoaded } = useUser()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<UserProfile['role']>('Athlete')
@@ -22,13 +31,35 @@ export default function FeedbackScreen() {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showRolePicker, setShowRolePicker] = useState(false)
 
+  // Auto-fill user information when available
+  useEffect(() => {
+    if (isUserLoaded && user) {
+      // Set name from user's full name or first + last name
+      const fullName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+      setName(fullName)
+      
+      // Set email from user's primary email
+      if (user.primaryEmailAddress) {
+        setEmail(user.primaryEmailAddress.emailAddress)
+      }
+      
+      // Set role from user's public metadata if available
+      const metadata = user.publicMetadata as UserMetadata
+      if (metadata.role) {
+        setRole(metadata.role)
+      }
+    }
+  }, [isUserLoaded, user])
+
   const colors = {
-    background: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
-    card: currentTheme === 'dark' ? '#0A1A2F' : '#F0F7FF',
-    input: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+    link: '#007AFF',
+    input: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
   }
 
   const handleSubmit = async () => {
@@ -62,7 +93,7 @@ export default function FeedbackScreen() {
           headerShown: true,
           headerTitle: 'Submit Feedback',
           headerBackTitle: 'Back',
-          headerTintColor: '#007AFF',
+          headerTintColor: colors.link,
           headerTitleStyle: {
             color: colors.text,
           },
@@ -80,70 +111,96 @@ export default function FeedbackScreen() {
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: 20 }
+          { 
+            paddingHorizontal: 20,
+            paddingBottom: Math.max(80, insets.bottom + 60)
+          }
         ]}
+        showsVerticalScrollIndicator={false}
       >
         {error && (
           <ThemedText style={styles.error}>{error}</ThemedText>
         )}
 
-        <View style={styles.formContainer}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.inputContainer}>
-            <ThemedText style={styles.label}>Name</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Name</ThemedText>
             <TextInput
-              style={[styles.input, { 
-                borderColor: colors.border,
-                color: colors.text,
-                backgroundColor: colors.input
-              }]}
+              style={[
+                styles.input, 
+                { 
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: colors.input,
+                  opacity: isUserLoaded && user ? 0.7 : 1
+                }
+              ]}
               value={name}
               onChangeText={setName}
               placeholder="Enter your name"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={colors.secondaryText}
+              editable={!(isUserLoaded && user)}
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <ThemedText style={styles.label}>Email</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Email</ThemedText>
             <TextInput
-              style={[styles.input, { 
-                borderColor: colors.border,
-                color: colors.text,
-                backgroundColor: colors.input
-              }]}
+              style={[
+                styles.input, 
+                { 
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: colors.input,
+                  opacity: isUserLoaded && user ? 0.7 : 1
+                }
+              ]}
               value={email}
               onChangeText={setEmail}
               placeholder="Enter your email"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={colors.secondaryText}
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!(isUserLoaded && user)}
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <ThemedText style={styles.label}>Role</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Role</ThemedText>
             <Pressable
               style={({ pressed }) => [
                 styles.roleButton,
                 { 
                   backgroundColor: colors.input,
                   borderColor: colors.border,
-                  opacity: pressed ? 0.8 : 1
+                  opacity: (isUserLoaded && (user?.publicMetadata as UserMetadata)?.role) ? 0.7 : pressed ? 0.8 : 1
                 }
               ]}
               onPress={() => setShowRolePicker(true)}
+              disabled={isUserLoaded && !!(user?.publicMetadata as UserMetadata)?.role}
             >
-              <ThemedText style={[
-                styles.roleText,
-                { color: colors.text }
-              ]}>
-                {role}
-              </ThemedText>
+              <View style={styles.roleButtonContent}>
+                <ThemedText style={[styles.roleText, { color: colors.text }]}>
+                  {role}
+                </ThemedText>
+                {!(isUserLoaded && (user?.publicMetadata as UserMetadata)?.role) && (
+                  <IconSymbol
+                    name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                    size={20}
+                    color={colors.link}
+                  />
+                )}
+              </View>
             </Pressable>
+            {isUserLoaded && (user?.publicMetadata as UserMetadata)?.role && (
+              <ThemedText style={[styles.autoFilledText, { color: colors.secondaryText }]}>
+                Auto-filled from your profile
+              </ThemedText>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
-            <ThemedText style={styles.label}>Description</ThemedText>
+            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Description</ThemedText>
             <TextInput
               style={[styles.textArea, { 
                 borderColor: colors.border,
@@ -153,22 +210,14 @@ export default function FeedbackScreen() {
               value={description}
               onChangeText={setDescription}
               placeholder="Describe your feedback"
-              placeholderTextColor={colors.text + '80'}
+              placeholderTextColor={colors.secondaryText}
               multiline
               numberOfLines={6}
               textAlignVertical="top"
             />
           </View>
         </View>
-      </ScrollView>
 
-      <View style={[
-        styles.buttonWrapper,
-        { 
-          paddingBottom: insets.bottom + 20,
-          backgroundColor: colors.background 
-        }
-      ]}>
         <ThemedButton
           onPress={handleSubmit}
           disabled={loading}
@@ -176,14 +225,17 @@ export default function FeedbackScreen() {
         >
           {loading ? 'Submitting...' : 'Submit Feedback'}
         </ThemedButton>
-      </View>
+      </ScrollView>
 
       <Modal
         visible={showSuccessModal}
         transparent
         animationType="fade"
       >
-        <View style={styles.successModalOverlay}>
+        <View style={[
+          styles.successModalOverlay,
+          { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+        ]}>
           <View style={[styles.successModalContent, { backgroundColor: colors.card }]}>
             <ThemedText style={[styles.successModalText, { color: colors.text }]}>
               Feedback Submitted Successfully
@@ -195,45 +247,67 @@ export default function FeedbackScreen() {
       <Modal
         visible={showRolePicker}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowRolePicker(false)}
       >
         <Pressable 
-          style={styles.modalOverlay}
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
           onPress={() => setShowRolePicker(false)}
         >
           <View 
             style={[
               styles.modalContent, 
               { 
-                backgroundColor: colors.input,
+                backgroundColor: colors.card,
                 paddingBottom: insets.bottom + 20
               }
             ]}
           >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
+                Select Role
+              </ThemedText>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowRolePicker(false)}
+              >
+                <IconSymbol 
+                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
+                  size={20} 
+                  color={colors.secondaryText} 
+                />
+              </TouchableOpacity>
+            </View>
+
             {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
               <Pressable
                 key={option}
                 style={({ pressed }) => [
                   styles.roleOption,
                   {
-                    backgroundColor: pressed ? colors.border : 'transparent',
+                    backgroundColor: pressed ? colors.pressed : 'transparent',
                     borderBottomColor: colors.border,
                   }
                 ]}
                 onPress={() => {
-                  setRole(option as UserProfile['role'])
-                  setShowRolePicker(false)
+                  setRole(option as UserProfile['role']);
+                  setShowRolePicker(false);
                 }}
               >
                 <ThemedText 
                   style={[
                     styles.roleOptionText,
-                    { color: option === role ? '#007AFF' : colors.text }
+                    { color: option === role ? colors.link : colors.text }
                   ]}
                 >
                   {option}
                 </ThemedText>
+                {option === role && (
+                  <IconSymbol name="checkmark" size={16} color={colors.link} />
+                )}
               </Pressable>
             ))}
           </View>
@@ -252,12 +326,19 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 20,
-    paddingBottom: 100,
   },
-  formContainer: {
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
+  card: {
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   inputContainer: {
     marginBottom: 20,
@@ -280,27 +361,70 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 120,
   },
-  buttonWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
   button: {
     marginTop: 20,
   },
   error: {
-    color: 'red',
+    color: '#FF3B30',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  roleButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 50,
+    justifyContent: 'center',
+  },
+  roleButtonContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roleText: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  modalHeader: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    padding: 4,
+  },
+  roleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  roleOptionText: {
+    fontSize: 17,
+    lineHeight: 22,
   },
   successModalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   successModalContent: {
     padding: 20,
@@ -321,37 +445,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  roleButton: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 50,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  roleText: {
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  roleOption: {
-    padding: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  roleOptionText: {
-    fontSize: 18,
-    lineHeight: 22,
+  autoFilledText: {
+    fontSize: 13,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 }) 
