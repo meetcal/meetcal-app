@@ -11,7 +11,7 @@ import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
-import { ClerkProvider } from '@clerk/clerk-expo'
+import { ClerkProvider, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as SecureStore from 'expo-secure-store'
 
@@ -118,7 +118,8 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-
+  const { isLoaded: isUserLoaded, user } = useUser();
+  
   useEffect(() => {
     async function initialize() {
       try {
@@ -131,6 +132,28 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     initialize();
   }, []);
+
+  // Effect to sync Clerk user with RevenueCat
+  useEffect(() => {
+    async function syncUserWithRevenueCat() {
+      if (isUserLoaded && user) {
+        try {
+          // Set the RevenueCat user identifier to the user's email
+          const email = user.primaryEmailAddress?.emailAddress;
+          if (email) {
+            console.log('Syncing user email with RevenueCat:', email);
+            await Purchases.setEmail(email);
+            // Also set the appUserID to ensure consistent tracking
+            await Purchases.logIn(user.id);
+          }
+        } catch (error) {
+          console.error('Error syncing user with RevenueCat:', error);
+        }
+      }
+    }
+
+    syncUserWithRevenueCat();
+  }, [isUserLoaded, user]);
 
   useEffect(() => {
     async function hideSplash() {
