@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView, Linking } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView, Linking, KeyboardAvoidingView, Keyboard } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -345,120 +345,138 @@ export default function ProfileScreen() {
         animationType="fade"
         onRequestClose={() => setIsEditing(false)}
       >
-        <Pressable 
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-          ]}
-          onPress={() => setIsEditing(false)}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
         >
-          <View 
+          <Pressable 
             style={[
-              styles.modalContent, 
-              { 
-                backgroundColor: colors.card,
-                paddingBottom: insets.bottom + 20
-              }
+              styles.modalOverlay,
+              { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
             ]}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsEditing(false);
+            }}
           >
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                Edit {editingField ? formatTitle(editingField) : ''}
-              </ThemedText>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setIsEditing(false)}
-              >
-                <IconSymbol 
-                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                  size={20} 
-                  color={colors.secondaryText} 
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              {editingField === 'role' ? (
-                <ScrollView>
-                  {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
-                    <Pressable
-                      key={option}
-                      style={({ pressed }) => [
-                        styles.roleOption,
-                        {
-                          backgroundColor: pressed ? colors.pressed : 'transparent',
-                          borderBottomColor: colors.border,
-                        }
-                      ]}
-                      onPress={async () => {
-                        try {
-                          setIsLoading(true);
-                          // Update local state
-                          setEditValue(option);
-                          setRole(option as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
-                          
-                          // Sync to Supabase with the new role value
-                          await syncUserToSupabase(option);
-                          
-                          // Close modal
-                          setIsEditing(false);
-                          setEditingField(null);
-                        } catch (error) {
-                          console.error('Error updating role:', error);
-                          Alert.alert('Error', 'Failed to update role. Please try again.');
-                        } finally {
-                          setIsLoading(false);
-                        }
-                      }}
-                    >
-                      <ThemedText 
-                        style={[
-                          styles.roleOptionText,
-                          { color: option === editValue ? colors.link : colors.text }
-                        ]}
-                      >
-                        {option}
-                      </ThemedText>
-                      {option === editValue && (
-                        <IconSymbol name="checkmark" size={16} color={colors.link} />
-                      )}
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              ) : (
-                <>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        color: colors.text,
-                        backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    value={editValue}
-                    onChangeText={setEditValue}
-                    placeholder={`Enter ${formatTitle(editingField || '')}`}
-                    placeholderTextColor={colors.secondaryText}
-                    autoCapitalize={editingField === 'email' ? 'none' : 'words'}
-                    keyboardType={editingField === 'email' ? 'email-address' : 'default'}
-                    autoFocus
+            <View 
+              style={[
+                styles.modalContent, 
+                { 
+                  backgroundColor: colors.card,
+                  paddingBottom: insets.bottom + 20,
+                  maxHeight: '80%'
+                }
+              ]}
+            >
+              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
+                  Edit {editingField ? formatTitle(editingField) : ''}
+                </ThemedText>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setIsEditing(false);
+                  }}
+                >
+                  <IconSymbol 
+                    name={Platform.OS === 'ios' ? 'xmark' : 'close'}
+                    size={20} 
+                    color={colors.secondaryText} 
                   />
+                </TouchableOpacity>
+              </View>
 
-                  <TouchableOpacity
-                    style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
-                    onPress={handleSave}
-                    disabled={isLoading}
-                  >
-                    <ThemedText style={styles.saveButtonText}>
-                      Save Changes
-                    </ThemedText>
-                  </TouchableOpacity>
-                </>
-              )}
+              <ScrollView 
+                style={styles.modalBody}
+                keyboardShouldPersistTaps="handled"
+              >
+                {editingField === 'role' ? (
+                  <ScrollView>
+                    {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
+                      <Pressable
+                        key={option}
+                        style={({ pressed }) => [
+                          styles.roleOption,
+                          {
+                            backgroundColor: pressed ? colors.pressed : 'transparent',
+                            borderBottomColor: colors.border,
+                          }
+                        ]}
+                        onPress={async () => {
+                          try {
+                            setIsLoading(true);
+                            // Update local state
+                            setEditValue(option);
+                            setRole(option as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
+                            
+                            // Sync to Supabase with the new role value
+                            await syncUserToSupabase(option);
+                            
+                            // Close modal
+                            setIsEditing(false);
+                            setEditingField(null);
+                          } catch (error) {
+                            console.error('Error updating role:', error);
+                            Alert.alert('Error', 'Failed to update role. Please try again.');
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        }}
+                      >
+                        <ThemedText 
+                          style={[
+                            styles.roleOptionText,
+                            { color: option === editValue ? colors.link : colors.text }
+                          ]}
+                        >
+                          {option}
+                        </ThemedText>
+                        {option === editValue && (
+                          <IconSymbol name="checkmark" size={16} color={colors.link} />
+                        )}
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          color: colors.text,
+                          backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      value={editValue}
+                      onChangeText={setEditValue}
+                      placeholder={`Enter ${formatTitle(editingField || '')}`}
+                      placeholderTextColor={colors.secondaryText}
+                      autoCapitalize={editingField === 'email' ? 'none' : 'words'}
+                      keyboardType={editingField === 'email' ? 'email-address' : 'default'}
+                      autoFocus
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        handleSave();
+                      }}
+                      disabled={isLoading}
+                    >
+                      <ThemedText style={styles.saveButtonText}>
+                        Save Changes
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </ScrollView>
             </View>
-          </View>
-        </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </ThemedView>
   );
