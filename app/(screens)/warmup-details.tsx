@@ -8,6 +8,10 @@ import { useState, useEffect } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { IconSymbol } from '@/components/ui/IconSymbol'
+import { useUser } from '@clerk/clerk-expo'
+
+// Update storage key to be user-specific
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 interface WarmupRow {
   minutesOut: string | number
@@ -32,6 +36,7 @@ interface SavedWarmup {
 }
 
 export default function WarmupDetailsScreen() {
+  const { user } = useUser();
   const { currentTheme } = useTheme()
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
@@ -52,12 +57,16 @@ export default function WarmupDetailsScreen() {
   }
 
   useEffect(() => {
-    loadWarmup()
-  }, [id])
+    if (user?.id) {
+      loadWarmup()
+    }
+  }, [id, user?.id])
 
   const loadWarmup = async () => {
+    if (!user?.id) return;
+    
     try {
-      const savedWarmups = await AsyncStorage.getItem('@saved_warmups')
+      const savedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id))
       if (savedWarmups) {
         const warmups = JSON.parse(savedWarmups)
         const selectedWarmup = warmups.find((w: SavedWarmup) => w.id === id)
@@ -102,10 +111,10 @@ export default function WarmupDetailsScreen() {
   }
 
   const handleSave = async () => {
-    if (!warmup) return
+    if (!warmup || !user?.id) return
 
     try {
-      const savedWarmups = await AsyncStorage.getItem('@saved_warmups')
+      const savedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id))
       if (savedWarmups) {
         const warmups = JSON.parse(savedWarmups)
         const updatedWarmups = warmups.map((w: SavedWarmup) => {
@@ -118,7 +127,7 @@ export default function WarmupDetailsScreen() {
           }
           return w
         })
-        await AsyncStorage.setItem('@saved_warmups', JSON.stringify(updatedWarmups))
+        await AsyncStorage.setItem(getSavedWarmupsKey(user.id), JSON.stringify(updatedWarmups))
         router.back()
       }
     } catch (error) {
