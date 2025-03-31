@@ -4,13 +4,15 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { calculateWeighInTime } from '@/utils/time';
-
-const SAVED_SESSIONS_KEY = '@saved_sessions';
+import { useUser } from '@clerk/clerk-expo';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
   return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
 }
+
+// Function to get user-specific storage key
+const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
 
 export interface SavedSession {
   id: string;
@@ -26,30 +28,53 @@ export interface SavedSession {
 }
 
 export function useSavedSessions() {
+  const { user } = useUser();
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Clear sessions when user logs out
   useEffect(() => {
-    loadSavedSessions();
-  }, []);
+    if (!user?.id) {
+      setSavedSessions([]);
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  // Load sessions when user logs in
+  useEffect(() => {
+    if (user?.id) {
+      loadSavedSessions();
+    }
+  }, [user?.id]);
 
   const loadSavedSessions = async () => {
+    if (!user?.id) {
+      setSavedSessions([]);
+      setIsLoading(false);
+      return;
+    }
+    
     try {
-      const saved = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
+      const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
       if (saved) {
         const parsedSessions = JSON.parse(saved);
         // Ensure all sessions have meet information
         const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
         setSavedSessions(validSessions);
+      } else {
+        setSavedSessions([]);
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
+      setSavedSessions([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const saveSessionsFromAthletes = async (athletes: LiftResult[], meet: MeetName) => {
+    if (!user?.id) return false;
+    
     try {
       const sessionMap = new Map<string, { session: SavedSession, athletes: string[] }>();
       const schedule = getSchedule(meet);
@@ -73,9 +98,9 @@ export function useSavedSessions() {
               p.platform === athlete.session?.platform
             );
             
-            if (sessionDay && scheduleSession) {
+            if (sessionDay && scheduleSession && platform) {
               // Use platform-specific time if available
-              const startTime = platform?.platformStartTime || scheduleSession.startTime;
+              const startTime = platform.platformStartTime || scheduleSession.startTime;
               const weighInTime = calculateWeighInTime(startTime);
               
               sessionMap.set(sessionId, {
@@ -84,7 +109,7 @@ export function useSavedSessions() {
                   meet,
                   sessionNumber: athlete.session!.number,
                   platform: athlete.session!.platform,
-                  weightClass: athlete.weightClass,
+                  weightClass: platform.weightClass,
                   startTime,
                   weighInTime,
                   date: sessionDay.fullDate,
@@ -121,13 +146,14 @@ export function useSavedSessions() {
             ...existingSession,
             athleteNames: [...new Set([...existingNames, ...newNames])],
             meet: session.meet,
+            weightClass: session.weightClass,
           };
         } else {
           allSessions.push(session);
         }
       });
 
-      await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(allSessions));
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(allSessions));
       setSavedSessions(allSessions);
       return true;
     } catch (error) {
@@ -137,6 +163,8 @@ export function useSavedSessions() {
   };
 
   const saveSession = async (session: SavedSession) => {
+    if (!user?.id) return false;
+    
     try {
       if (!session.meet) {
         console.error('Cannot save session without meet information');
@@ -144,7 +172,7 @@ export function useSavedSessions() {
       }
 
       // Load current sessions to ensure we have the complete list
-      const currentSaved = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
+      const currentSaved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
       let currentSessions: SavedSession[] = [];
       if (currentSaved) {
         currentSessions = JSON.parse(currentSaved);
@@ -154,13 +182,13 @@ export function useSavedSessions() {
         const updatedSessions = currentSessions.map(s => 
           s.id === session.id ? { ...s, meet: session.meet } : s
         );
-        await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(updatedSessions));
+        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
         setSavedSessions(updatedSessions);
         return true;
       }
 
       const updatedSessions = [...currentSessions, session];
-      await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(updatedSessions));
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
       setSavedSessions(updatedSessions);
       return true;
     } catch (error) {
@@ -170,13 +198,16 @@ export function useSavedSessions() {
   };
 
   const isSessionSaved = (sessionId: string) => {
+    if (!user?.id) return false;
     return savedSessions.some(session => session.id === sessionId);
   };
 
   const removeSession = async (sessionId: string) => {
+    if (!user?.id) return false;
+    
     try {
       const updatedSessions = savedSessions.filter(session => session.id !== sessionId);
-      await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(updatedSessions));
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
       setSavedSessions(updatedSessions);
       return true;
     } catch (error) {
@@ -186,8 +217,10 @@ export function useSavedSessions() {
   };
 
   const resetAllSessions = async () => {
+    if (!user?.id) return false;
+    
     try {
-      await AsyncStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify([]));
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify([]));
       setSavedSessions([]);
       return true;
     } catch (error) {

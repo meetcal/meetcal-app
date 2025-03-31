@@ -11,7 +11,11 @@ import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
-import { useClerk, useAuth } from '@clerk/clerk-expo';
+import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
+
+// Function to get user-specific storage key
+const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 const showReviewPrompt = () => {
   Alert.alert(
@@ -42,6 +46,7 @@ export default function InfoScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
+  const { user } = useUser();
 
   // Sync the switch state with theme changes
   useEffect(() => {
@@ -90,6 +95,8 @@ export default function InfoScreen() {
   };
 
   const handleResetSessions = () => {
+    if (!user?.id) return;
+    
     Alert.alert(
       'Reset Saved Sessions',
       'Are you sure you want to remove all saved sessions? This cannot be undone.',
@@ -109,12 +116,12 @@ export default function InfoScreen() {
                 success = await resetAllSessions();
               }
               
-              // Also manually clear all possible storage keys
+              // Also manually clear all possible storage keys for this user
               const STORAGE_KEYS = [
-                '@saved_sessions',
-                'savedSessions',
-                '@savedSessions',
-                'sessions'
+                getSavedSessionsKey(user.id),
+                `savedSessions_${user.id}`,
+                `@savedSessions_${user.id}`,
+                `sessions_${user.id}`
               ];
               
               for (const key of STORAGE_KEYS) {
@@ -122,7 +129,7 @@ export default function InfoScreen() {
               }
               
               // Set a flag to notify other components that sessions were reset
-              await AsyncStorage.setItem('@sessions_reset', Date.now().toString());
+              await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
               
               // Show success message
               Alert.alert('Success', 'All saved sessions have been reset.');
@@ -130,6 +137,52 @@ export default function InfoScreen() {
             } catch (error) {
               console.error('Error resetting sessions:', error);
               Alert.alert('Error', 'Failed to reset saved sessions.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleResetWarmups = () => {
+    if (!user?.id) return;
+    
+    Alert.alert(
+      'Reset Saved Warmups',
+      'Are you sure you want to reset all saved warmups? This cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear warmups using all possible storage keys
+              const STORAGE_KEYS = [
+                getSavedWarmupsKey(user.id),
+                `@saved_warmups_${user.id}`,  // Main key used in warmups.tsx
+                `@saved_warmups`,             // Key used in saved.tsx
+                `warmups_${user.id}`,         // Backup keys in case of legacy data
+                `@warmups_${user.id}`
+              ];
+              
+              for (const key of STORAGE_KEYS) {
+                await AsyncStorage.setItem(key, JSON.stringify([]));
+              }
+              
+              // Set flags to notify both screens that data was reset
+              await AsyncStorage.setItem(`@warmups_reset_${user.id}`, Date.now().toString());
+              await AsyncStorage.setItem(`@saved_warmups_reset_${user.id}`, Date.now().toString());
+              
+              // Show success message
+              Alert.alert('Success', 'All saved warmups have been reset.');
+              
+            } catch (error) {
+              console.error('Error resetting warmups:', error);
+              Alert.alert('Error', 'Failed to reset warmups.');
             }
           }
         }
@@ -297,7 +350,7 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* App Info */}
+        {/* App Info Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             App Information
@@ -356,17 +409,50 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.dangerZone}>
+        {/* Danger Zone Card */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: '#FF3B30' }]}>
+            Danger Zone
+          </ThemedText>
+
           <Pressable
             style={({ pressed }) => [
-              styles.resetButton,
-              pressed && { opacity: 0.8 }
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={handleResetSessions}
           >
-            <ThemedText style={styles.resetButtonText}>
-              Reset Saved Sessions
-            </ThemedText>
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
+                Reset Saved Sessions
+              </ThemedText>
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
+                size={20} 
+                color="#FF3B30" 
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={handleResetWarmups}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
+                Reset Saved Warmups
+              </ThemedText>
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
+                size={20} 
+                color="#FF3B30" 
+              />
+            </View>
           </Pressable>
         </View>
 
