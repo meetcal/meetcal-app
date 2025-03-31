@@ -64,7 +64,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const syncUserToSupabase = async () => {
+  const syncUserToSupabase = async (newRole?: string) => {
     if (!user?.id) return;
 
     try {
@@ -74,7 +74,7 @@ export default function ProfileScreen() {
         first_name: user.firstName || '',
         last_name: user.lastName || '',
         email: user.primaryEmailAddress?.emailAddress || '',
-        role: role || 'Athlete',
+        role: newRole || role || 'Athlete',
         subscription_status: subscriptionStatus || 'free',
       };
 
@@ -93,12 +93,14 @@ export default function ProfileScreen() {
       }
 
       console.log('Successfully synced user data:', data);
+      return data;
     } catch (error) {
       console.error('Error syncing user to Supabase:', error);
       Alert.alert(
         'Error',
         'Failed to sync user data. Please try again later.'
       );
+      throw error;
     }
   };
 
@@ -176,8 +178,10 @@ export default function ProfileScreen() {
           );
           break;
         case 'role':
+          console.log('Updating role to:', editValue);
           setRole(editValue as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
           await syncUserToSupabase();
+          console.log('Role updated and synced to Supabase');
           break;
       }
       setIsEditing(false);
@@ -386,9 +390,25 @@ export default function ProfileScreen() {
                           borderBottomColor: colors.border,
                         }
                       ]}
-                      onPress={() => {
-                        setEditValue(option);
-                        handleSave();
+                      onPress={async () => {
+                        try {
+                          setIsLoading(true);
+                          // Update local state
+                          setEditValue(option);
+                          setRole(option as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
+                          
+                          // Sync to Supabase with the new role value
+                          await syncUserToSupabase(option);
+                          
+                          // Close modal
+                          setIsEditing(false);
+                          setEditingField(null);
+                        } catch (error) {
+                          console.error('Error updating role:', error);
+                          Alert.alert('Error', 'Failed to update role. Please try again.');
+                        } finally {
+                          setIsLoading(false);
+                        }
                       }}
                     >
                       <ThemedText 
