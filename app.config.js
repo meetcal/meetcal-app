@@ -15,7 +15,7 @@ export default ({ config }) => ({
   ],
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'com.meetcal.app',
+    bundleIdentifier: 'com.memohnsen.meetcal',
     buildNumber: '1',
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",

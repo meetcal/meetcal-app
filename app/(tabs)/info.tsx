@@ -162,7 +162,10 @@ export default function InfoScreen() {
     if (isSignedIn) {
       handleSignOut();
     } else {
-      router.push('/(auth)/sign-in');
+      router.push({
+        pathname: '/(auth)/sign-in',
+        params: { from: 'info' }
+      });
     }
   };
 
@@ -206,7 +209,10 @@ export default function InfoScreen() {
               if (isSignedIn) {
                 router.push('/(screens)/profile');
               } else {
-                router.push('/(auth)/sign-in');
+                router.push({
+                  pathname: '/(auth)/sign-in',
+                  params: { from: 'info' }
+                });
               }
             }}
           >
@@ -296,22 +302,6 @@ export default function InfoScreen() {
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             App Information
           </ThemedText>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/paywall')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Premium Features
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
