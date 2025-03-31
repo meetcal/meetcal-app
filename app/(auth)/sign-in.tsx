@@ -1,12 +1,13 @@
 import { useSignIn } from '@clerk/clerk-expo'
-import { Link, useRouter, Stack } from 'expo-router'
-import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform, Image } from 'react-native'
+import { Link, useRouter, Stack, useLocalSearchParams } from 'expo-router'
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform, Image, Dimensions } from 'react-native'
 import React, { useCallback, useEffect } from 'react'
 import * as WebBrowser from 'expo-web-browser'
 import * as AuthSession from 'expo-auth-session'
 import { useSSO } from '@clerk/clerk-expo'
 import { IconSymbol } from '@/components/ui/IconSymbol'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useSubscription } from '@/contexts/SubscriptionContext'
 import Purchases from 'react-native-purchases'
 
 // Warm up the browser for better performance
@@ -26,6 +27,9 @@ export default function SignInScreen() {
   const { startSSOFlow } = useSSO()
   const router = useRouter()
   const { currentTheme } = useTheme()
+  const { from } = useLocalSearchParams<{ from?: string }>()
+  const isFromInfo = from === 'info'
+  const { isSubscribed } = useSubscription()
 
   useWarmUpBrowser()
 
@@ -43,10 +47,15 @@ export default function SignInScreen() {
     link: '#007AFF',
   }
 
-  const navigateToInfo = useCallback(() => {
-    console.log('Attempting to navigate to info');
-    router.replace('/info');
-  }, [router]);
+  const handlePostSignIn = useCallback(() => {
+    if (from === 'info') {
+      router.back();
+    } else if (isSubscribed) {
+      router.replace('/(tabs)/schedule');
+    } else {
+      router.replace('/paywall');
+    }
+  }, [from, isSubscribed, router]);
 
   // Handle the submission of the sign-in form
   const onSignInPress = async () => {
@@ -70,7 +79,7 @@ export default function SignInScreen() {
           // Continue with navigation even if RevenueCat sync fails
         }
         
-        navigateToInfo()
+        handlePostSignIn();
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2))
       }
@@ -96,7 +105,7 @@ export default function SignInScreen() {
       if (result.createdSessionId) {
         console.log('Session created directly:', result.createdSessionId);
         await result.setActive!({ session: result.createdSessionId });
-        navigateToInfo();
+        handlePostSignIn();
       } else if (result.signUp) {
         console.log('Sign up flow initiated:', result.signUp.status);
         const signUp = result.signUp;
@@ -125,7 +134,7 @@ export default function SignInScreen() {
           if (completeSignUp.createdSessionId) {
             console.log('Session created after sign up:', completeSignUp.createdSessionId);
             await result.setActive!({ session: completeSignUp.createdSessionId });
-            navigateToInfo();
+            handlePostSignIn();
           } else {
             console.log('No session created after sign up completion');
             // If sign up didn't create a session, try to sign in
@@ -138,7 +147,7 @@ export default function SignInScreen() {
               
               if (signInAttempt.createdSessionId) {
                 await result.setActive!({ session: signInAttempt.createdSessionId });
-                navigateToInfo();
+                handlePostSignIn();
               }
             }
           }
@@ -158,7 +167,7 @@ export default function SignInScreen() {
           if (signInAttempt.createdSessionId) {
             console.log('Session created from sign in:', signInAttempt.createdSessionId);
             await result.setActive!({ session: signInAttempt.createdSessionId });
-            navigateToInfo();
+            handlePostSignIn();
           } else {
             console.log('No session created from sign in');
           }
@@ -171,7 +180,7 @@ export default function SignInScreen() {
     } catch (err) {
       console.error('OAuth error:', JSON.stringify(err, null, 2));
     }
-  }, [navigateToInfo]);
+  }, [handlePostSignIn]);
 
   // Handle Apple OAuth
   const onApplePress = useCallback(async () => {
@@ -190,7 +199,7 @@ export default function SignInScreen() {
       if (result.createdSessionId) {
         console.log('Session created directly:', result.createdSessionId);
         await result.setActive!({ session: result.createdSessionId });
-        navigateToInfo();
+        handlePostSignIn();
       } else if (result.signUp) {
         console.log('Sign up flow initiated:', result.signUp.status);
         const signUp = result.signUp;
@@ -219,7 +228,7 @@ export default function SignInScreen() {
           if (completeSignUp.createdSessionId) {
             console.log('Session created after sign up:', completeSignUp.createdSessionId);
             await result.setActive!({ session: completeSignUp.createdSessionId });
-            navigateToInfo();
+            handlePostSignIn();
           } else {
             console.log('No session created after sign up completion');
             // If sign up didn't create a session, try to sign in
@@ -232,7 +241,7 @@ export default function SignInScreen() {
               
               if (signInAttempt.createdSessionId) {
                 await result.setActive!({ session: signInAttempt.createdSessionId });
-                navigateToInfo();
+                handlePostSignIn();
               }
             }
           }
@@ -252,7 +261,7 @@ export default function SignInScreen() {
           if (signInAttempt.createdSessionId) {
             console.log('Session created from sign in:', signInAttempt.createdSessionId);
             await result.setActive!({ session: signInAttempt.createdSessionId });
-            navigateToInfo();
+            handlePostSignIn();
           } else {
             console.log('No session created from sign in');
           }
@@ -265,14 +274,14 @@ export default function SignInScreen() {
     } catch (err) {
       console.error('OAuth error:', JSON.stringify(err, null, 2));
     }
-  }, [navigateToInfo]);
+  }, [handlePostSignIn]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
-          headerTitle: "Sign In",
-          headerLeft: () => (
+          headerTitle: "",
+          headerLeft: isFromInfo ? () => (
             <TouchableOpacity 
               onPress={() => router.back()}
               style={styles.backButton}
@@ -283,47 +292,23 @@ export default function SignInScreen() {
                 color={colors.link}
               />
             </TouchableOpacity>
-          ),
+          ) : undefined,
           headerStyle: {
-            backgroundColor: colors.card,
+            backgroundColor: colors.background,
           },
           headerShadowVisible: false,
           headerTintColor: colors.text,
         }}
       />
       <View style={[styles.content, { backgroundColor: colors.background }]}>
-        <TextInput
-          style={[styles.input, { 
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-            color: colors.text,
-          }]}
-          autoCapitalize="none"
-          value={emailAddress}
-          placeholder="Enter email"
-          placeholderTextColor={colors.secondaryText}
-          onChangeText={(email) => setEmailAddress(email)}
-        />
-        <TextInput
-          style={[styles.input, { 
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-            color: colors.text,
-          }]}
-          value={password}
-          placeholder="Enter password"
-          placeholderTextColor={colors.secondaryText}
-          secureTextEntry={true}
-          onChangeText={(password) => setPassword(password)}
-        />
-        <TouchableOpacity style={styles.button} onPress={onSignInPress}>
-          <Text style={styles.buttonText}>Continue</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider}>
-          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.secondaryText }]}>or</Text>
-          <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+        <View style={styles.titleContainer}>
+          <Image 
+            source={require('@/assets/images/MeetCal-no-bg.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.title, { color: colors.text }]}>Welcome to MeetCal</Text>
+          <Text style={[styles.subtitle, { color: colors.secondaryText }]}>Please Sign In to Continue</Text>
         </View>
 
         <TouchableOpacity
@@ -367,13 +352,6 @@ export default function SignInScreen() {
             </Text>
           </TouchableOpacity>
         )}
-
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.secondaryText }]}>Don't have an account?</Text>
-          <Link href="/sign-up" style={styles.link}>
-            <Text style={[styles.linkText, { color: colors.link }]}>Sign up</Text>
-          </Link>
-        </View>
       </View>
     </View>
   )
@@ -477,5 +455,25 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  titleContainer: {
+    marginBottom: 32,
+    alignItems: 'center',
+    width: '100%',
+  },
+  logo: {
+    width: Dimensions.get('window').width * 0.5, // 50% of screen width
+    height: Dimensions.get('window').width * 0.5 * 0.5, // Maintain aspect ratio (2:1)
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
   },
 });

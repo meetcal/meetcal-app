@@ -8,7 +8,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-
+import RevenueCatUI from 'react-native-purchases-ui';
 type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
 type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
 
@@ -276,25 +276,26 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
+        <Pressable
             style={({ pressed }) => [
               styles.section,
-              { 
-                backgroundColor: colors.card
-              },
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={handleSubscription}
+            onPress={async () => {
+              try {
+                await RevenueCatUI.presentCustomerCenter();
+              } catch (error) {
+                console.error('Error opening Customer Center:', error);
+                Alert.alert('Error', 'Unable to open Customer Center. Please try again later.');
+              }
+            }}
           >
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                Manage Subscription
+                Customer Support
               </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
         </View>
@@ -312,7 +313,11 @@ export default function ProfileScreen() {
             </ThemedText>
           </Pressable>
           <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
-          <Pressable onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+          <Pressable onPress={() => Linking.openURL(
+            Platform.OS === 'ios' 
+              ? 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'
+              : 'https://meetcal.app/eula'
+          )}>
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               User Agreement
             </ThemedText>

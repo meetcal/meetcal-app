@@ -114,11 +114,11 @@ export default function RootLayout() {
 }
 
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const { isSubscribed, isLoading } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-  const { isLoaded: isUserLoaded, user } = useUser();
+  const { isLoaded: isUserLoaded, isSignedIn, user } = useUser();
   
   useEffect(() => {
     async function initialize() {
@@ -138,12 +138,10 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     async function syncUserWithRevenueCat() {
       if (isUserLoaded && user) {
         try {
-          // Set the RevenueCat user identifier to the user's email
           const email = user.primaryEmailAddress?.emailAddress;
           if (email) {
             console.log('Syncing user email with RevenueCat:', email);
             await Purchases.setEmail(email);
-            // Also set the appUserID to ensure consistent tracking
             await Purchases.logIn(user.id);
           }
         } catch (error) {
@@ -157,41 +155,41 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   useEffect(() => {
     async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && !isLoading && fontsLoaded) {
+      if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
         hasAttemptedSplashHide.current = true;
-        // Wait for subscription status to be determined before hiding splash
-        if (isSubscribed !== null) {
-          await SplashScreen.hideAsync();
-          // Immediately navigate to the correct screen
-          if (isSubscribed) {
-            router.replace('/(tabs)/schedule');
-          } else {
-            router.replace('/(onboarding)');
-          }
+        await SplashScreen.hideAsync();
+        
+        // Implement new routing logic
+        if (!isSignedIn) {
+          router.replace('/sign-in');
+        } else if (!isSubscribed) {
+          router.replace('/paywall');
+        } else {
+          router.replace('/(tabs)/schedule');
         }
       }
     }
 
     hideSplash();
-  }, [isInitialized, isLoading, fontsLoaded, isSubscribed, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, isSubscribed, router]);
 
-  if (!isInitialized || isLoading || isSubscribed === null) {
+  if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
     return null;
   }
 
-  return <RootLayoutNav isSubscribed={isSubscribed} />;
+  return <RootLayoutNav />;
 }
 
-function RootLayoutNav({ isSubscribed }: { isSubscribed: boolean | null }) {
+function RootLayoutNav() {
   const { currentTheme } = useTheme();
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(screens)" />
+        <Stack.Screen name="sign-in" options={{ animation: 'none' }} />
+        <Stack.Screen name="paywall" options={{ animation: 'none' }} />
+        <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>
