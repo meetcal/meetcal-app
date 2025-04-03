@@ -644,15 +644,15 @@ export default function SavedScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Filter By Session
-            </ThemedText>
-            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-          </Pressable>
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push('/(screens)/warmups')}
+        >
+          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+            Saved Warmups
+          </ThemedText>
+        </Pressable>
           
           <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
@@ -664,16 +664,6 @@ export default function SavedScreen() {
             </ThemedText>
           </Pressable>
         </View>
-
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => router.push('/(screens)/warmups')}
-        >
-          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
-          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-            Saved Warmups
-          </ThemedText>
-        </Pressable>
       </View>
 
       <FlatList
