@@ -21,7 +21,7 @@ const sponsors: Sponsor[] = [
   {
     id: '1',
     name: 'War Games',
-    description: 'Weightlifting Competition Simulator',
+    description: 'Better Coaches, Better Athletes',
     website: 'https://wl-wargames.com',
     discount: 'Use code MEETCAL20 for 20% off!',
     image: require('@/assets/images/wg-ad.png') // Use your image
@@ -91,7 +91,7 @@ export default function SponsorsScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
         options={{
-          headerTitle: 'Sponsors',
+          headerTitle: 'Partners',
           headerTitleStyle: {
             color: colors.text,
           },
@@ -111,7 +111,7 @@ export default function SponsorsScreen() {
       >
         
         <ThemedText style={[styles.subHeaderText, { color: colors.secondaryText }]}>
-          Support the businesses that support weightlifting
+          Support the businesses that support weightlifting. For the community, by the community.
         </ThemedText>
         
         {sponsors.map((sponsor) => (
@@ -157,7 +157,7 @@ export default function SponsorsScreen() {
         ))}
         
         <ThemedText style={[styles.footerText, { color: colors.secondaryText }]}>
-          Interested in sponsoring? Contact us at maddisen@meetcal.app
+          Interested in partnering with us? Contact us at maddisen@meetcal.app
         </ThemedText>
       </ScrollView>
     </ThemedView>
@@ -233,7 +233,6 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 24,
     marginBottom: 40,
   },
 }); 
