@@ -11,6 +11,9 @@ import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
+import { ClerkProvider, useUser } from '@clerk/clerk-expo'
+import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import * as SecureStore from 'expo-secure-store'
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -75,7 +78,6 @@ export default function RootLayout() {
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
         console.warn('Initialization error:', e);
-        // On error, we'll still proceed but may need to check subscription status later
       } finally {
         setAppIsReady(true);
       }
@@ -89,29 +91,35 @@ export default function RootLayout() {
   }
 
   return (
-    <PostHogProvider client={posthog}>
-      <CustomThemeProvider>
-        <NavigationThemeProvider value={DefaultTheme}>
-          <SubscriptionProvider>
-            <SavedSessionsProvider>
-              <SelectedMeetProvider>
-                <PostHogPageView />
-                <AppContent fontsLoaded={fontsLoaded} />
-              </SelectedMeetProvider>
-            </SavedSessionsProvider>
-          </SubscriptionProvider>
-        </NavigationThemeProvider>
-      </CustomThemeProvider>
-    </PostHogProvider>
+    <CustomThemeProvider>
+      <NavigationThemeProvider value={DefaultTheme}>
+        <ClerkProvider 
+          publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
+          tokenCache={tokenCache}
+        >
+          <PostHogProvider client={posthog}>
+            <SubscriptionProvider>
+              <SavedSessionsProvider>
+                <SelectedMeetProvider>
+                  <PostHogPageView />
+                  <AppContent fontsLoaded={fontsLoaded} />
+                </SelectedMeetProvider>
+              </SavedSessionsProvider>
+            </SubscriptionProvider>
+          </PostHogProvider>
+        </ClerkProvider>
+      </NavigationThemeProvider>
+    </CustomThemeProvider>
   );
 }
 
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const { isSubscribed, isLoading } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-
+  const { isLoaded: isUserLoaded, isSignedIn, user } = useUser();
+  
   useEffect(() => {
     async function initialize() {
       try {
@@ -125,43 +133,63 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     initialize();
   }, []);
 
+  // Effect to sync Clerk user with RevenueCat
+  useEffect(() => {
+    async function syncUserWithRevenueCat() {
+      if (isUserLoaded && user) {
+        try {
+          const email = user.primaryEmailAddress?.emailAddress;
+          if (email) {
+            console.log('Syncing user email with RevenueCat:', email);
+            await Purchases.setEmail(email);
+            await Purchases.logIn(user.id);
+          }
+        } catch (error) {
+          console.error('Error syncing user with RevenueCat:', error);
+        }
+      }
+    }
+
+    syncUserWithRevenueCat();
+  }, [isUserLoaded, user]);
+
   useEffect(() => {
     async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && !isLoading && fontsLoaded) {
+      if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
         hasAttemptedSplashHide.current = true;
-        // Wait for subscription status to be determined before hiding splash
-        if (isSubscribed !== null) {
-          await SplashScreen.hideAsync();
-          // Immediately navigate to the correct screen
-          if (isSubscribed) {
-            router.replace('/(tabs)/schedule');
-          } else {
-            router.replace('/(onboarding)');
-          }
+        await SplashScreen.hideAsync();
+        
+        // Implement new routing logic
+        if (!isSignedIn) {
+          router.replace('/sign-in');
+        } else if (!isSubscribed) {
+          router.replace('/paywall');
+        } else {
+          router.replace('/(tabs)/schedule');
         }
       }
     }
 
     hideSplash();
-  }, [isInitialized, isLoading, fontsLoaded, isSubscribed, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, isSubscribed, router]);
 
-  if (!isInitialized || isLoading || isSubscribed === null) {
+  if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
     return null;
   }
 
-  return <RootLayoutNav isSubscribed={isSubscribed} />;
+  return <RootLayoutNav />;
 }
 
-function RootLayoutNav({ isSubscribed }: { isSubscribed: boolean | null }) {
+function RootLayoutNav() {
   const { currentTheme } = useTheme();
   const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
 
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(onboarding)" options={{ animation: 'none' }} />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(screens)" />
+        <Stack.Screen name="sign-in" options={{ animation: 'none' }} />
+        <Stack.Screen name="paywall" options={{ animation: 'none' }} />
+        <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>

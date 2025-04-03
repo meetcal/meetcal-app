@@ -5,13 +5,17 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { venueConfig, getFullAddress } from '@/config/venue';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
+import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
+
+// Function to get user-specific storage key
+const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 const showReviewPrompt = () => {
   Alert.alert(
@@ -34,12 +38,15 @@ const showReviewPrompt = () => {
 
 export default function InfoScreen() {
   const { currentTheme, setTheme } = useTheme();
+  const { signOut } = useClerk();
+  const { isSignedIn } = useAuth();
   const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
   const { selectedMeet, setSelectedMeet, isLoading } = useSelectedMeet();
   const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { savedSessions, resetAllSessions } = useSavedSessions();
+  const { user } = useUser();
 
   // Sync the switch state with theme changes
   useEffect(() => {
@@ -88,6 +95,8 @@ export default function InfoScreen() {
   };
 
   const handleResetSessions = () => {
+    if (!user?.id) return;
+    
     Alert.alert(
       'Reset Saved Sessions',
       'Are you sure you want to remove all saved sessions? This cannot be undone.',
@@ -107,12 +116,12 @@ export default function InfoScreen() {
                 success = await resetAllSessions();
               }
               
-              // Also manually clear all possible storage keys
+              // Also manually clear all possible storage keys for this user
               const STORAGE_KEYS = [
-                '@saved_sessions',
-                'savedSessions',
-                '@savedSessions',
-                'sessions'
+                getSavedSessionsKey(user.id),
+                `savedSessions_${user.id}`,
+                `@savedSessions_${user.id}`,
+                `sessions_${user.id}`
               ];
               
               for (const key of STORAGE_KEYS) {
@@ -120,7 +129,7 @@ export default function InfoScreen() {
               }
               
               // Set a flag to notify other components that sessions were reset
-              await AsyncStorage.setItem('@sessions_reset', Date.now().toString());
+              await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
               
               // Show success message
               Alert.alert('Success', 'All saved sessions have been reset.');
@@ -128,6 +137,52 @@ export default function InfoScreen() {
             } catch (error) {
               console.error('Error resetting sessions:', error);
               Alert.alert('Error', 'Failed to reset saved sessions.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleResetWarmups = () => {
+    if (!user?.id) return;
+    
+    Alert.alert(
+      'Reset Saved Warmups',
+      'Are you sure you want to reset all saved warmups? This cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear warmups using all possible storage keys
+              const STORAGE_KEYS = [
+                getSavedWarmupsKey(user.id),
+                `@saved_warmups_${user.id}`,  // Main key used in warmups.tsx
+                `@saved_warmups`,             // Key used in saved.tsx
+                `warmups_${user.id}`,         // Backup keys in case of legacy data
+                `@warmups_${user.id}`
+              ];
+              
+              for (const key of STORAGE_KEYS) {
+                await AsyncStorage.setItem(key, JSON.stringify([]));
+              }
+              
+              // Set flags to notify both screens that data was reset
+              await AsyncStorage.setItem(`@warmups_reset_${user.id}`, Date.now().toString());
+              await AsyncStorage.setItem(`@saved_warmups_reset_${user.id}`, Date.now().toString());
+              
+              // Show success message
+              Alert.alert('Success', 'All saved warmups have been reset.');
+              
+            } catch (error) {
+              console.error('Error resetting warmups:', error);
+              Alert.alert('Error', 'Failed to reset warmups.');
             }
           }
         }
@@ -143,6 +198,27 @@ export default function InfoScreen() {
       console.error('Error saving selected meet:', error);
       // Show error alert if meet selection fails
       Alert.alert('Error', 'Failed to update selected meet.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // The auth layout will automatically redirect to sign-in
+    } catch (err) {
+      console.error('Error signing out:', err);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
+  const handleAuthAction = () => {
+    if (isSignedIn) {
+      handleSignOut();
+    } else {
+      router.push({
+        pathname: '/(auth)/sign-in',
+        params: { from: 'info' }
+      });
     }
   };
 
@@ -174,29 +250,29 @@ export default function InfoScreen() {
         showsVerticalScrollIndicator={false}
       >
         
-        {/* Records and Standards */}
+        {/* Authentication/Profile Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Weightlifting Information
-          </ThemedText>
-          
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => setShowMeetModal(true)}
+            onPress={() => {
+              if (isSignedIn) {
+                router.push('/(screens)/profile');
+              } else {
+                router.push({
+                  pathname: '/(auth)/sign-in',
+                  params: { from: 'info' }
+                });
+              }
+            }}
           >
             <View style={styles.linkRow}>
-              <View>
-                <ThemedText style={[styles.label, { color: colors.text }]}>
-                  Select Your Meet
-                </ThemedText>
-                <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]}>
-                  {selectedMeet}
-                </ThemedText>
-              </View>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                {isSignedIn ? 'My Profile' : 'Sign In To Your Account'}
+              </ThemedText>
               <IconSymbol 
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
                 size={20} 
@@ -204,6 +280,13 @@ export default function InfoScreen() {
               />
             </View>
           </Pressable>
+        </View>
+
+        {/* Records and Standards */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            Competition Information
+          </ThemedText>
 
           <Pressable
             style={({ pressed }) => [
@@ -242,32 +325,11 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* App Info */}
+        {/* App Info Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             App Information
           </ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push({
-              pathname: '/(screens)/subscription',
-              params: { from: 'info' }
-            })}
-          >
-            <View style={styles.subscriptionContainer}>
-              <View style={styles.subscriptionInfo}>
-                <ThemedText style={[styles.label, { color: colors.text }]}>
-                  Manage Subscription
-                </ThemedText>
-              </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
@@ -320,6 +382,10 @@ export default function InfoScreen() {
               />
             </View>
           </Pressable>
+        </View>
+
+        {/* Danger Zone Card */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
 
           <Pressable
             style={({ pressed }) => [
@@ -327,13 +393,17 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://meetcal.app/privacy')}
+            onPress={handleResetSessions}
           >
             <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                Privacy Policy & Terms of Use
+              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
+                Reset Saved Sessions
               </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
+                size={20} 
+                color="#FF3B30" 
+              />
             </View>
           </Pressable>
 
@@ -343,28 +413,18 @@ export default function InfoScreen() {
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => handlePress('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
+            onPress={handleResetWarmups}
           >
             <View style={styles.linkRow}>
-              <ThemedText style={[styles.link, { color: colors.link }]}>
-                End User License Agreement
+              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
+                Reset Saved Warmups
               </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              <IconSymbol 
+                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
+                size={20} 
+                color="#FF3B30" 
+              />
             </View>
-          </Pressable>
-        </View>
-
-        <View style={styles.dangerZone}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.resetButton,
-              pressed && { opacity: 0.8 }
-            ]}
-            onPress={handleResetSessions}
-          >
-            <ThemedText style={styles.resetButtonText}>
-              Reset Saved Sessions
-            </ThemedText>
           </Pressable>
         </View>
 
@@ -538,7 +598,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   dangerZone: {
-    marginTop: 16,
+    marginTop: 8,
     alignItems: 'center',
   },
   resetButton: {

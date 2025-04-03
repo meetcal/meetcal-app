@@ -1,7 +1,7 @@
 export default ({ config }) => ({
   name: 'MeetCal',
   slug: 'meetcal',
-  version: '2.2.1',
+  version: '2.3.0',
   orientation: 'portrait',
   icon: './assets/images/MeetCal.png',
   userInterfaceStyle: 'automatic',
@@ -15,7 +15,7 @@ export default ({ config }) => ({
   ],
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'com.meetcal.app',
+    bundleIdentifier: 'com.memohnsen.meetcal',
     buildNumber: '1',
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
@@ -72,7 +72,7 @@ export default ({ config }) => ({
   },
   scheme: 'meetcal',
   owner: 'memohnsen',
-  runtimeVersion: "2.2.1",
+  runtimeVersion: "2.3.0",
   updates: {
     url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
     enabled: true,

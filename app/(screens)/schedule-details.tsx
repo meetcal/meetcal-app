@@ -22,6 +22,7 @@ import { SyncManager } from '@/lib/database/sync-manager';
 import { LiftResult } from '@/data/types/athletes';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
+import { useUser } from '@clerk/clerk-expo'
 
 // Update interface names
 interface SessionPlatformDetails {
@@ -80,6 +81,9 @@ interface CachedAthlete extends SessionAthlete {
   sessionNumber: number;
   platformName: string;
 }
+
+// Function to get user-specific storage key
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName, forceRefresh?: boolean) {
   try {
@@ -228,6 +232,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   sessionWeightClass: string;
   refreshKey: number;
 }) {
+  const { user } = useUser();
   const router = useRouter();
   const { currentTheme } = useTheme();
   const { selectedMeet } = useSelectedMeet();
@@ -247,8 +252,11 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
 
   // Check for saved warmups
   const checkForWarmups = async () => {
+    if (!user?.id) return;
+    
     try {
-      const savedWarmups = await AsyncStorage.getItem('@saved_warmups');
+      const key = getSavedWarmupsKey(user.id);
+      const savedWarmups = await AsyncStorage.getItem(key);
       if (savedWarmups) {
         const warmups = JSON.parse(savedWarmups);
         const warmupsByAthlete: Record<string, boolean> = {};
@@ -312,11 +320,27 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
     loadAthletes();
   }, [sessionNumber, platform, refreshKey, selectedMeet]);
 
-  const handleAthletePress = (athleteName: string) => {
-    router.push({
-      pathname: '/athlete-results',
-      params: { name: athleteName }
-    });
+  const handleWarmupPress = async (athleteName: string) => {
+    if (!user?.id) return;
+    
+    try {
+      const key = getSavedWarmupsKey(user.id);
+      const savedWarmups = await AsyncStorage.getItem(key);
+      if (savedWarmups) {
+        const warmups = JSON.parse(savedWarmups);
+        const warmup = warmups.find((w: SavedWarmup) => 
+          w.athlete.name === athleteName && w.meet === selectedMeet
+        );
+        if (warmup) {
+          router.push({
+            pathname: '/warmup-details',
+            params: { id: warmup.id }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading warmup:', error);
+    }
   };
 
   if (!athletes[platform]?.length) {
@@ -368,23 +392,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                         styles.headerLink,
                         pressed && { opacity: 0.8 }
                       ]}
-                      onPress={() => {
-                        const savedWarmups = AsyncStorage.getItem('@saved_warmups')
-                          .then(data => {
-                            if (data) {
-                              const warmups = JSON.parse(data);
-                              const warmup = warmups.find((w: SavedWarmup) => 
-                                w.athlete.name === athlete.name && w.meet === selectedMeet
-                              );
-                              if (warmup) {
-                                router.push({
-                                  pathname: '/warmup-details',
-                                  params: { id: warmup.id }
-                                });
-                              }
-                            }
-                          });
-                      }}
+                      onPress={() => handleWarmupPress(athlete.name)}
                     >
                       <ThemedText style={[styles.linkText, { color: colors.link }]}>
                         Warmups
