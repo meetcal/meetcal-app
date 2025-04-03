@@ -279,7 +279,7 @@ export default function SubscriptionScreen() {
         }} 
       />
 
-      {Platform.OS === 'ios' && params.from === 'info' && (
+      {Platform.OS === 'ios' && params.from === 'profile' && (
         <View style={[styles.header, { marginTop: insets.top }]}>
           <Pressable
             style={styles.backButton}
@@ -304,7 +304,7 @@ export default function SubscriptionScreen() {
           styles.card, 
           { 
             backgroundColor: colors.card,
-            marginTop: params.from === 'info' ? 16 : insets.top + 20
+            marginTop: params.from === 'profile' ? 16 : insets.top + 20
           }
         ]}>
           <View style={styles.contentHeader}>

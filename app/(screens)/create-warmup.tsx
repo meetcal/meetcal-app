@@ -10,6 +10,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '@/lib/supabase'
 import { IconSymbol } from '@/components/ui/IconSymbol'
 import debounce from 'lodash/debounce'
+import { useUser } from '@clerk/clerk-expo'
+
+// Function to get user-specific storage key
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 interface WarmupRow {
   minutesOut: string | number
@@ -32,6 +36,7 @@ interface AthleteInfo {
 }
 
 export default function CreateWarmupScreen() {
+  const { user } = useUser();
   const { currentTheme } = useTheme()
   const { selectedMeet } = useSelectedMeet()
   const router = useRouter()
@@ -62,11 +67,15 @@ export default function CreateWarmupScreen() {
   }
 
   const handleSave = async () => {
-    if (!selectedAthlete) return
+    if (!selectedAthlete || !user?.id) return
 
     try {
+      console.log('Saving warmup for user:', user.id);
+      const key = getSavedWarmupsKey(user.id);
+      console.log('Storage key:', key);
+      
       // Get existing warmups
-      const existingWarmupsStr = await AsyncStorage.getItem('@saved_warmups')
+      const existingWarmupsStr = await AsyncStorage.getItem(key)
       const existingWarmups = existingWarmupsStr ? JSON.parse(existingWarmupsStr) : []
 
       // Create new warmup
@@ -79,9 +88,12 @@ export default function CreateWarmupScreen() {
         meet: selectedMeet
       }
 
+      console.log('New warmup:', newWarmup);
+      
       // Add to existing warmups
       const updatedWarmups = [...existingWarmups, newWarmup]
-      await AsyncStorage.setItem('@saved_warmups', JSON.stringify(updatedWarmups))
+      await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
+      console.log('Warmup saved successfully');
 
       // Navigate back
       router.back()

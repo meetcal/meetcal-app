@@ -17,8 +17,11 @@ import { MeetName } from '@/data/types/meet';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { Schedule } from '@/data/types/schedule';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
+import { useUser } from '@clerk/clerk-expo';
 
-const SAVED_SESSIONS_KEY = '@saved_sessions';
+// Function to get user-specific storage key
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
+const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
 
 // Add function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -163,6 +166,7 @@ async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetN
 }
 
 export default function SavedScreen() {
+  const { user } = useUser();
   const { savedSessions, saveSession } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
@@ -189,30 +193,37 @@ export default function SavedScreen() {
     link: '#007AFF',
   };
 
-  // Add migrateSessions function
+  // Update migrateSessions function to use user-specific storage
   const migrateSessions = useCallback(async () => {
+    if (!user?.id) return;
+
     try {
-      // Try all possible storage keys
-      const STORAGE_KEYS = ['@saved_sessions', 'savedSessions', '@savedSessions', 'sessions'];
+      console.log('Starting session migration');
+      const STORAGE_KEYS = [
+        getSavedSessionsKey(user.id),  // Changed from getSavedWarmupsKey
+        `savedSessions_${user.id}`,
+        `@savedSessions_${user.id}`,
+        `sessions_${user.id}`
+      ];
       let needsMigration = false;
       
       for (const key of STORAGE_KEYS) {
+        console.log('Checking storage key:', key);
         const storedData = await AsyncStorage.getItem(key);
         if (storedData) {
           try {
             const parsed = JSON.parse(storedData);
+            console.log('Found data in', key, ':', parsed);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              // Check if any session lacks meet info
               needsMigration = parsed.some(session => !session.meet);
               if (needsMigration) {
                 console.log(`Migrating ${parsed.length} sessions in ${key}`);
                 const migratedSessions = await migrateSessionsToMeetSpecific(parsed, selectedMeet);
                 
-                // Save migrated sessions back to storage
-                await AsyncStorage.setItem(key, JSON.stringify(migratedSessions));
+                await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(migratedSessions));
                 
-                // Update context if using it
                 migratedSessions.forEach(session => {
+                  console.log('Saving migrated session:', session);
                   saveSession(session);
                 });
               }
@@ -227,7 +238,7 @@ export default function SavedScreen() {
     } catch (error) {
       console.error('Error during session migration:', error);
     }
-  }, [selectedMeet, saveSession]);
+  }, [selectedMeet, saveSession, user?.id]);
 
   // Filter saved sessions by meet and letter - strict meet filtering
   const filteredSessions = useMemo(() => {
@@ -237,7 +248,12 @@ export default function SavedScreen() {
       return meetSessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
     }
     return meetSessions
-      .filter(session => session.weightClass.slice(-1) === letterFilter)
+      .filter(session => {
+        // Add null check for weightClass
+        if (!session.weightClass) return false;
+        const lastChar = session.weightClass.slice(-1);
+        return lastChar === letterFilter;
+      })
       .sort((a, b) => a.sessionNumber - b.sessionNumber);
   }, [savedSessions, selectedMeet, letterFilter]);
 
@@ -247,9 +263,12 @@ export default function SavedScreen() {
     const meetSessions = savedSessions.filter(session => session.meet === selectedMeet);
     
     meetSessions.forEach(session => {
-      const lastChar = session.weightClass.slice(-1);
-      if (/^[A-G]$/.test(lastChar)) {
-        letterSet.add(lastChar);
+      // Add null check for weightClass
+      if (session.weightClass) {
+        const lastChar = session.weightClass.slice(-1);
+        if (/^[A-G]$/.test(lastChar)) {
+          letterSet.add(lastChar);
+        }
       }
     });
     return Array.from(letterSet).sort();
@@ -311,18 +330,75 @@ export default function SavedScreen() {
     );
   };
 
-  // Add function to load saved warmups
-  const loadSavedWarmups = useCallback(async () => {
+  // Update forceLoadSessions to use correct storage key
+  const forceLoadSessions = useCallback(async () => {
+    if (refreshing || !user?.id) return;
+    setRefreshing(true);
+    
     try {
-      const storedWarmups = await AsyncStorage.getItem('@saved_warmups')
-      if (storedWarmups) {
-        const warmups = JSON.parse(storedWarmups)
-        setSavedWarmups(warmups)
+      console.log('Force loading sessions');
+      const storedData = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+      if (storedData) {
+        const parsed = JSON.parse(storedData);
+        console.log('Found stored sessions:', parsed);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(session => {
+            const sessionWithId = {
+              ...session,
+              id: generateSessionId(session.meet || selectedMeet, session.sessionNumber, session.platform)
+            };
+            console.log('Saving session with ID:', sessionWithId);
+            saveSession(sessionWithId);
+          });
+        }
       }
     } catch (error) {
-      console.error('Error loading warmups:', error)
+      console.error('Error loading sessions:', error);
+    } finally {
+      setRefreshing(false);
     }
-  }, [])
+  }, [saveSession, refreshing, selectedMeet, user?.id]);
+
+  // Add logging to loadSavedWarmups
+  const loadSavedWarmups = useCallback(async () => {
+    try {
+      console.log('Loading saved warmups');
+      // Check if warmups were reset
+      if (user?.id) {
+        const resetTimestamp = await AsyncStorage.getItem(`@saved_warmups_reset_${user.id}`);
+        if (resetTimestamp) {
+          console.log('Found reset timestamp, clearing warmups');
+          // Clear the reset flag
+          await AsyncStorage.removeItem(`@saved_warmups_reset_${user.id}`);
+          setSavedWarmups([]);
+          return;
+        }
+
+        // Load warmups from user-specific storage
+        const storedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id));
+        if (storedWarmups) {
+          console.log('Found stored warmups:', storedWarmups);
+          const warmups = JSON.parse(storedWarmups);
+          setSavedWarmups(warmups);
+          return;
+        }
+
+        // Fallback to legacy storage
+        const legacyWarmups = await AsyncStorage.getItem('@saved_warmups');
+        if (legacyWarmups) {
+          console.log('Found legacy warmups:', legacyWarmups);
+          const warmups = JSON.parse(legacyWarmups);
+          setSavedWarmups(warmups);
+          // Migrate to user-specific storage
+          await AsyncStorage.setItem(getSavedWarmupsKey(user.id), legacyWarmups);
+        } else {
+          console.log('No warmups found');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading warmups:', error);
+    }
+  }, [user?.id]);
 
   // Load saved warmups when screen focuses
   useFocusEffect(
@@ -332,40 +408,75 @@ export default function SavedScreen() {
   )
 
   const renderSession = ({ item }: { item: LegacySavedSession }) => {
+    if (!item) {
+      console.log('Received undefined item in renderSession');
+      return null;
+    }
+
+    console.log('Rendering session:', item);
+    console.log('Current saved warmups:', savedWarmups);
+
+    // Ensure we have the required properties
+    const sessionNumber = item.sessionNumber?.toString() || '';
+    const platform = item.platform || '';
+    const weightClass = item.weightClass || '';
+    const meet = item.meet || selectedMeet;
+
     // Find session in schedule to get platform-specific time
-    const schedule = getSchedule(item.meet || selectedMeet);
+    const schedule = getSchedule(meet);
     const sessionDay = schedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(item.sessionNumber.toString()))
+      day.sessions.some(s => s.number === parseInt(sessionNumber))
     );
     
     const scheduleSession = sessionDay?.sessions.find(s => 
-      s.number === parseInt(item.sessionNumber.toString())
+      s.number === parseInt(sessionNumber)
     );
 
-    const platform = scheduleSession?.platforms.find(p => 
-      p.platform === item.platform
+    const platformInfo = scheduleSession?.platforms.find(p => 
+      p.platform === platform
     );
 
     // Use platform-specific time if available, otherwise fall back to session time
-    const startTime = platform?.platformStartTime || item.startTime;
-    const weighInTime = calculateWeighInTime(startTime);
-    const meetConfig = getMeetConfig(item.meet || selectedMeet);
+    const startTime = platformInfo?.platformStartTime || item.startTime || '';
+    const weighInTime = startTime ? calculateWeighInTime(startTime) : '';
+    const meetConfig = getMeetConfig(meet);
 
-    // Check if there's a warmup for any of the athletes
-    const hasWarmup = item.athleteNames?.some(name => 
-      savedWarmups.some(warmup => 
-        warmup.name === name && warmup.meet === selectedMeet
-      )
-    ) || (item.athleteName && savedWarmups.some(warmup => 
-      warmup.name === item.athleteName && warmup.meet === selectedMeet
-    ))
+    // Add logging for athlete names
+    console.log('Athlete names:', item.athleteNames);
+    console.log('Legacy athlete name:', item.athleteName);
 
-    // Find the warmup ID if it exists
-    const warmupId = item.athleteNames?.[0] 
-      ? savedWarmups.find(w => w.name === item.athleteNames![0] && w.meet === selectedMeet)?.id
-      : item.athleteName 
-        ? savedWarmups.find(w => w.name === item.athleteName && w.meet === selectedMeet)?.id
-        : null
+    // Check if there's a warmup for any of the athletes - with logging
+    let hasWarmup = false;
+    let warmupId = null;
+
+    if (item.athleteNames && Array.isArray(item.athleteNames)) {
+      console.log('Checking warmups for multiple athletes:', item.athleteNames);
+      hasWarmup = item.athleteNames.some(name => {
+        if (!name) return false;
+        const found = savedWarmups.some(warmup => 
+          warmup?.name === name && warmup?.meet === selectedMeet
+        );
+        console.log(`Checking warmup for ${name}:`, found);
+        return found;
+      });
+
+      // Find the warmup ID if it exists
+      if (item.athleteNames.length > 0) {
+        const warmup = savedWarmups.find(w => 
+          w?.name === item.athleteNames![0] && w?.meet === selectedMeet
+        );
+        warmupId = warmup?.id;
+        console.log('Found warmup ID for first athlete:', warmupId);
+      }
+    } else if (item.athleteName) {
+      console.log('Checking warmup for legacy athlete:', item.athleteName);
+      const warmup = savedWarmups.find(w => 
+        w?.name === item.athleteName && w?.meet === selectedMeet
+      );
+      hasWarmup = !!warmup;
+      warmupId = warmup?.id;
+      console.log('Found warmup for legacy athlete:', hasWarmup, warmupId);
+    }
 
     return (
       <Pressable
@@ -384,13 +495,13 @@ export default function SavedScreen() {
         })}
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-          Session {item.sessionNumber} • {sessionDay?.date}
+          Session {sessionNumber} {sessionDay?.date ? `• ${sessionDay.date}` : ''}
         </ThemedText>
 
         {/* Add meet name if different from selected meet */}
-        {item.meet && item.meet !== selectedMeet && (
+        {meet && meet !== selectedMeet && (
           <ThemedText style={[styles.meetName, { color: colors.secondaryText }]}>
-            {item.meet.replace(/-/g, ' ')}
+            {meet.replace(/-/g, ' ')}
           </ThemedText>
         )}
 
@@ -401,7 +512,7 @@ export default function SavedScreen() {
                 Weigh-in:
               </ThemedText>
               <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {formatTimeWithZone(weighInTime, item.meet || selectedMeet)}
+                {weighInTime ? formatTimeWithZone(weighInTime, meet) : 'TBD'}
               </ThemedText>
             </View>
             <View style={styles.timeSeparator} />
@@ -410,7 +521,7 @@ export default function SavedScreen() {
                 Start:
               </ThemedText>
               <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {formatTimeWithZone(startTime, item.meet || selectedMeet)}
+                {startTime ? formatTimeWithZone(startTime, meet) : 'TBD'}
               </ThemedText>
             </View>
           </View>
@@ -419,19 +530,19 @@ export default function SavedScreen() {
         <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
           <View style={[
             styles.platformIndicator,
-            { backgroundColor: getPlatformColors()[item.platform as keyof ReturnType<typeof getPlatformColors>] }
+            { backgroundColor: getPlatformColors()[platform as keyof ReturnType<typeof getPlatformColors>] }
           ]}>
             <ThemedText style={styles.platformText}>
-              {item.platform}
+              {platform}
             </ThemedText>
           </View>
           <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
-            {item.weightClass}
+            {weightClass}
           </ThemedText>
         </View>
         
         {/* Display athlete names if available (saved from start list) */}
-        {item.athleteNames && item.athleteNames.length > 0 && (
+        {item.athleteNames && Array.isArray(item.athleteNames) && item.athleteNames.length > 0 && (
           <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
             <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
               {item.athleteNames.length === 1 ? 'Athlete:' : 'Athletes:'}
@@ -514,34 +625,6 @@ export default function SavedScreen() {
     );
   };
 
-  // Memoize forceLoadSessions
-  const forceLoadSessions = useCallback(async () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    
-    try {
-      // Just trigger a context reload
-      const storedData = await AsyncStorage.getItem(SAVED_SESSIONS_KEY);
-      if (storedData) {
-        const parsed = JSON.parse(storedData);
-        if (Array.isArray(parsed)) {
-          parsed.forEach(session => {
-            // Ensure each session has a proper unique ID
-            const sessionWithId = {
-              ...session,
-              id: generateSessionId(session.meet || selectedMeet, session.sessionNumber, session.platform)
-            };
-            saveSession(sessionWithId);
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [saveSession, refreshing, selectedMeet]);
-
   // Only run migration on mount
   useEffect(() => {
     if (!hasMigrated) {
@@ -561,29 +644,8 @@ export default function SavedScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Filter By Session
-            </ThemedText>
-            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
-          </Pressable>
-          
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={handleSaveToCalendar}
-          >
-            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Add to Calendar
-            </ThemedText>
-          </Pressable>
-        </View>
-
         <Pressable
-          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => router.push('/(screens)/warmups')}
         >
           <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
@@ -591,6 +653,17 @@ export default function SavedScreen() {
             Saved Warmups
           </ThemedText>
         </Pressable>
+          
+        <Pressable
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={handleSaveToCalendar}
+          >
+            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+              Add to Calendar
+            </ThemedText>
+        </Pressable>
+        </View>
       </View>
 
       <FlatList

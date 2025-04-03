@@ -9,8 +9,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
+import { useUser } from '@clerk/clerk-expo'
 
-const SAVED_WARMUPS_KEY = '@saved_warmups'
+const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 interface AthleteWarmup {
   id: string
@@ -20,6 +21,7 @@ interface AthleteWarmup {
 }
 
 export default function WarmupsScreen() {
+  const { user } = useUser();
   const { currentTheme } = useTheme()
   const { selectedMeet } = useSelectedMeet()
   const router = useRouter()
@@ -47,33 +49,83 @@ export default function WarmupsScreen() {
   }
 
   useEffect(() => {
-    loadSavedWarmups()
-  }, [selectedMeet])
+    console.log('Effect triggered - User ID:', user?.id, 'Selected Meet:', selectedMeet);
+    if (user?.id) {
+      loadSavedWarmups();
+      
+      // Check if warmups were reset from info screen
+      const checkReset = async () => {
+        try {
+          const resetTimestamp = await AsyncStorage.getItem(`@warmups_reset_${user.id}`);
+          if (resetTimestamp) {
+            // Clear the reset flag
+            await AsyncStorage.removeItem(`@warmups_reset_${user.id}`);
+            // Reload warmups
+            loadSavedWarmups();
+          }
+        } catch (error) {
+          console.error('Error checking warmups reset:', error);
+        }
+      };
+      
+      checkReset();
+    }
+  }, [selectedMeet, user?.id])
 
   const loadSavedWarmups = async () => {
+    if (!user?.id) {
+      console.log('No user ID, returning early');
+      return;
+    }
+    
     try {
-      const storedWarmups = await AsyncStorage.getItem(SAVED_WARMUPS_KEY)
+      console.log('Loading warmups for user:', user.id);
+      const key = getSavedWarmupsKey(user.id);
+      console.log('Storage key:', key);
+      const storedWarmups = await AsyncStorage.getItem(key)
+      console.log('Stored warmups raw:', storedWarmups);
+      
       if (storedWarmups) {
         const allWarmups = JSON.parse(storedWarmups)
-        const meetWarmups = allWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
-        setSavedWarmups(meetWarmups)
+        console.log('All warmups:', allWarmups);
+        const filteredWarmups = selectedMeet 
+          ? allWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
+          : allWarmups;
+        console.log('Filtered warmups:', filteredWarmups);
+        setSavedWarmups(filteredWarmups)
+      } else {
+        console.log('No stored warmups found');
+        setSavedWarmups([])
       }
     } catch (error) {
       console.error('Error loading warmups:', error)
+      setSavedWarmups([])
     }
   }
 
   const onRefresh = useCallback(async () => {
+    if (!user?.id) return;
     setRefreshing(true)
     await loadSavedWarmups()
     setRefreshing(false)
-  }, [selectedMeet])
+  }, [selectedMeet, user?.id])
 
   const deleteWarmup = async (id: string) => {
+    if (!user?.id) return;
+    
     try {
-      const updatedWarmups = savedWarmups.filter(warmup => warmup.id !== id)
-      await AsyncStorage.setItem(SAVED_WARMUPS_KEY, JSON.stringify(updatedWarmups))
-      setSavedWarmups(updatedWarmups)
+      const key = getSavedWarmupsKey(user.id);
+      // First load all warmups to make sure we don't lose data
+      const storedWarmups = await AsyncStorage.getItem(key)
+      const allWarmups = storedWarmups ? JSON.parse(storedWarmups) : []
+      const updatedWarmups = allWarmups.filter((warmup: AthleteWarmup) => warmup.id !== id)
+      await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
+      
+      // Update the filtered view
+      const filteredWarmups = selectedMeet 
+        ? updatedWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
+        : updatedWarmups;
+      setSavedWarmups(filteredWarmups)
     } catch (error) {
       console.error('Error deleting warmup:', error)
     }
