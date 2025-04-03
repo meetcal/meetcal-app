@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -9,12 +9,13 @@ import { SyncManager } from '@/lib/database/sync-manager';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { getPlatformColors } from '@/data/schedule';
-import { Session, Platform, DaySchedule, Schedule } from '@/types/schedule';
+import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { getMeetConfig } from '@/data/meets/config';
 import { initStore } from '@/lib/database/offline-store';
+import { MeetName } from '@/data/types/meet';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -62,7 +63,7 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
     ? session.platforms.filter(platform => platform.weightClass.slice(-1) === letterFilter)
     : session.platforms;
   
-  const handlePlatformPress = (platform: Platform) => {
+  const handlePlatformPress = (platform: PlatformType) => {
     router.push({
       pathname: '/(screens)/schedule-details',
       params: {
@@ -217,7 +218,7 @@ type Colors = {
 export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
-  const { selectedMeet, isLoading: isMeetLoading } = useSelectedMeet();
+  const { selectedMeet, isLoading: isMeetLoading, setSelectedMeet } = useSelectedMeet();
   const [syncManager] = useState(() => new SyncManager(selectedMeet));
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -277,7 +278,7 @@ export default function ScheduleScreen() {
     const letterSet = new Set<string>();
     schedule.forEach((day: DaySchedule) => {
       day.sessions.forEach((session: Session) => {
-        session.platforms.forEach((platform: Platform) => {
+        session.platforms.forEach((platform: PlatformType) => {
           const lastChar = platform.weightClass.slice(-1);
           if (/^[A-G]$/.test(lastChar)) {
             letterSet.add(lastChar);
@@ -353,9 +354,14 @@ export default function ScheduleScreen() {
             ]}
             onPress={() => setShowFilterModal(true)}
           >
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
-              {letterFilter ? `${letterFilter} Sessions` : 'Filter By Session'}
-            </ThemedText>
+            <View>
+              <ThemedText style={[styles.filterButtonText, { color: colors.text }]}>
+                Selected Meet
+              </ThemedText>
+              <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]}>
+                {selectedMeet}
+              </ThemedText>
+            </View>
             <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
           </Pressable>
         </View>
@@ -415,53 +421,59 @@ export default function ScheduleScreen() {
         onRequestClose={() => setShowFilterModal(false)}
       >
         <Pressable 
-          style={[styles.modalOverlay, { 
-            backgroundColor: currentTheme === 'dark' 
-              ? 'rgba(0,0,0,0.6)' 
-              : 'rgba(0,0,0,0.4)' 
-          }]}
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          ]}
           onPress={() => setShowFilterModal(false)}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.modalOption,
-                { borderBottomColor: colors.border },
-                letterFilter === '' && { backgroundColor: colors.pressed },
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={() => handleFilterSelect('')}
-            >
-              <ThemedText style={[
-                styles.modalOptionText,
-                { color: colors.text },
-                letterFilter === '' && { color: '#007AFF' }
-              ]}>
-                All Sessions
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
+                Select Your Meet
               </ThemedText>
-              {letterFilter === '' && (
-                <IconSymbol name="checkmark" size={16} color="#007AFF" />
-              )}
-            </Pressable>
-            {filterOptions.map(letter => (
               <Pressable
-                key={letter}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && { opacity: 0.8 }
+                ]}
+                onPress={() => setShowFilterModal(false)}
+              >
+                <IconSymbol 
+                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
+                  size={20} 
+                  color={colors.secondaryText} 
+                />
+              </Pressable>
+            </View>
+            
+            {['USAW Master\'s Nationals', 'USAMW Master\'s Nationals'].map((meet) => (
+              <Pressable
+                key={meet}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },
-                  letterFilter === letter && { backgroundColor: colors.pressed },
+                  selectedMeet === meet && { backgroundColor: colors.pressed },
                   pressed && { opacity: 0.8 }
                 ]}
-                onPress={() => handleFilterSelect(letter)}
+                onPress={async () => {
+                  setShowFilterModal(false);
+                  try {
+                    await setSelectedMeet(meet as MeetName);
+                  } catch (error) {
+                    console.error('Error saving selected meet:', error);
+                    Alert.alert('Error', 'Failed to update selected meet.');
+                  }
+                }}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
                   { color: colors.text },
-                  letterFilter === letter && { color: '#007AFF' }
+                  selectedMeet === meet && { color: '#007AFF' }
                 ]}>
-                  {letter} Session
+                  {meet}
                 </ThemedText>
-                {letterFilter === letter && (
+                {selectedMeet === meet && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />
                 )}
               </Pressable>
@@ -584,7 +596,7 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -613,6 +625,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',
+    marginHorizontal: 16,
+  },
+  modalHeader: {
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    padding: 4,
+    zIndex: 1,
   },
   modalOption: {
     flexDirection: 'row',
@@ -620,20 +650,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E1E1',
-  },
-  modalOptionSelected: {
-    backgroundColor: '#F5F5F5',
-  },
-  modalOptionPressed: {
-    opacity: 0.8,
   },
   modalOptionText: {
     fontSize: 17,
-    color: '#000000',
   },
-  modalOptionTextSelected: {
-    color: '#007AFF',
+  meetValue: {
+    fontSize: 15,
+    marginTop: 2,
   },
   emptyContainer: {
     padding: 16,

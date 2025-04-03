@@ -285,33 +285,8 @@ export default function InfoScreen() {
         {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Weightlifting Information
+            Competition Information
           </ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => setShowMeetModal(true)}
-          >
-            <View style={styles.linkRow}>
-              <View>
-                <ThemedText style={[styles.label, { color: colors.text }]}>
-                  Select Your Meet
-                </ThemedText>
-                <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]}>
-                  {selectedMeet}
-                </ThemedText>
-              </View>
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20} 
-                color={colors.link} 
-              />
-            </View>
-          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
@@ -411,9 +386,6 @@ export default function InfoScreen() {
 
         {/* Danger Zone Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: '#FF3B30' }]}>
-            Danger Zone
-          </ThemedText>
 
           <Pressable
             style={({ pressed }) => [
