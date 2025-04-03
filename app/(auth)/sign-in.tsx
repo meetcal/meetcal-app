@@ -48,12 +48,12 @@ export default function SignInScreen() {
   }
 
   const handlePostSignIn = useCallback(() => {
-    if (from === 'info') {
-      router.back();
-    } else if (isSubscribed) {
-      router.replace('/(tabs)/schedule');
-    } else {
+    if (!isSubscribed) {
       router.replace('/paywall');
+    } else if (from === 'info') {
+      router.back();
+    } else {
+      router.replace('/(tabs)/schedule');
     }
   }, [from, isSubscribed, router]);
 
