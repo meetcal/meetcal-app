@@ -645,7 +645,7 @@ export default function SavedScreen() {
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
         <Pressable
-          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => router.push('/(screens)/warmups')}
         >
           <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
@@ -654,7 +654,7 @@ export default function SavedScreen() {
           </ThemedText>
         </Pressable>
           
-          <Pressable
+        <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
           >
@@ -662,7 +662,7 @@ export default function SavedScreen() {
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
               Add to Calendar
             </ThemedText>
-          </Pressable>
+        </Pressable>
         </View>
       </View>
 
