@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -15,9 +15,10 @@ export default function PaywallScreen() {
     const getOffering = async () => {
       try {
         const offerings = await Purchases.default.getOfferings();
-        if (offerings.current) {
-          setOffering(offerings.current);
-        }
+        // Get the offering based on platform
+        const offeringId = Platform.OS === 'android' ? 'android' : 'default';
+        const platformOffering = offerings.all[offeringId];
+        setOffering(platformOffering || offerings.current);
       } catch (e) {
         console.error('Error fetching offerings:', e);
       }
