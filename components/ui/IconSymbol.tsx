@@ -17,6 +17,8 @@ const iconMap: Record<string, string> = {
   'info.circle.fill': 'information-circle',
   'list.bullet': 'list',
   'checkmark': 'checkmark',
+  'plus': 'add',
+  'magnifyingglass': 'search',
 };
 
 type IconSymbolProps = {
