@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 50,
+    height: 52,
     borderRadius: 12,
     paddingHorizontal: 16,
     borderWidth: 1,
