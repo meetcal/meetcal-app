@@ -9,13 +9,13 @@ const venues = {
       zip: '30337',
     },
   },
-  'USAMW Master\'s Nationals': {
-    name: 'Boise Expo Center',
+  'Florida WSO Champs': {
+    name: 'Lake Wales High School',
     address: {
-      street: '5610 North Glenwood Street',
-      city: 'Boise',
-      state: 'ID',
-      zip: '83714',
+      street: '1 Highlander Way',
+      city: 'Lake Wales',
+      state: 'FL',
+      zip: '33853',
     },
   }
 } as const;

@@ -20,7 +20,7 @@ interface MeetCacheInfo {
 const EMPTY_CACHE: MeetCacheInfo = {
   meets: {
     'USAW Master\'s Nationals': undefined,
-    'USAMW Master\'s Nationals': undefined
+    'Florida WSO Champs': undefined
   },
   totalSize: 0
 };
