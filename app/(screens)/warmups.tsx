@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
 import { useUser } from '@clerk/clerk-expo'
+import { useFocusEffect } from '@react-navigation/native'
 
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
@@ -47,6 +48,14 @@ export default function WarmupsScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
     link: '#007AFF',
   }
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        loadSavedWarmups();
+      }
+    }, [user?.id, selectedMeet])
+  );
 
   useEffect(() => {
     console.log('Effect triggered - User ID:', user?.id, 'Selected Meet:', selectedMeet);
