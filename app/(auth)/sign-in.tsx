@@ -92,7 +92,10 @@ export default function SignInScreen() {
   const onGooglePress = useCallback(async () => {
     try {
       console.log('Starting Google OAuth flow...');
-      const redirectUrl = AuthSession.makeRedirectUri();
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: 'meetcal',
+        path: 'oauth-native-callback'
+      });
       console.log('Redirect URL:', redirectUrl);
 
       console.log('Calling startSSOFlow...');
