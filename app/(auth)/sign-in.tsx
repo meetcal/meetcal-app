@@ -49,7 +49,7 @@ export default function SignInScreen() {
 
   const handlePostSignIn = useCallback(() => {
     if (!isSubscribed) {
-      router.replace('/paywall');
+      router.replace('/(screens)/paywall');
     } else if (from === 'info') {
       router.back();
     } else {
