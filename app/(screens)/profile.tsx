@@ -68,7 +68,27 @@ export default function ProfileScreen() {
     if (!user?.id) return;
 
     try {
-      // Validate required fields
+      // First check if user exists by email
+      const email = user.primaryEmailAddress?.emailAddress;
+      if (email) {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', email)
+          .single();
+
+        if (existingUser) {
+          // If user exists with this email but different ID, update their ID
+          if (existingUser.id !== user.id) {
+            await supabase
+              .from('users')
+              .update({ id: user.id })
+              .eq('email', email);
+          }
+        }
+      }
+
+      // Now proceed with upsert
       const userData = {
         id: user.id,
         first_name: user.firstName || '',
@@ -78,12 +98,11 @@ export default function ProfileScreen() {
         subscription_status: subscriptionStatus || 'free',
       };
 
-      // Log the data being sent for debugging
       console.log('Syncing user data to Supabase:', userData);
 
       const { data, error } = await supabase
         .from('users')
-        .upsert(userData)
+        .upsert(userData, { onConflict: 'id' })
         .select()
         .single();
 
