@@ -23,26 +23,26 @@ export const meetConfigs: { [K in MeetName]: MeetConfig } = {
       end: '2025-04-06',
     },
   },
-  'USAMW Master\'s Nationals': {
-    name: 'USAMW Master\'s Nationals',
+  'Florida WSO Champs': {
+    name: 'Florida WSO Champs',
     venue: {
-      name: 'Boise Expo Center',
+      name: 'Lake Wales High School',
       address: {
-        street: '5610 North Glenwood Street',
-        city: 'Boise',
-        state: 'ID',
-        zip: '83714',
+        street: '1 Highlander Way',
+        city: 'Lake Wales',
+        state: 'FL',
+        zip: '33853',
       },
     },
     time: {
-      timeZone: 'Mountain Time',
-      timeZoneIdentifier: 'America/Boise',
-      abbreviation: 'MDT',
-      utcOffset: 6, // MDT (UTC-6)
+      timeZone: 'Eastern Time',
+      timeZoneIdentifier: 'America/New_York',
+      abbreviation: 'EDT',
+      utcOffset: 4, // EDT (UTC-4)
     },
     dates: {
-      start: '2025-03-26',
-      end: '2025-03-30',
+      start: '2025-04-25',
+      end: '2025-04-27',
     },
   },
 };

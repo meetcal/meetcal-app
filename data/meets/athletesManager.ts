@@ -5,7 +5,7 @@ import { liftingResults as usamwAthletes } from './usamw-masters-nationals/athle
 
 const athletesData: { [K in MeetName]: LiftResult[] } = {
   'USAW Master\'s Nationals': usawAthletes,
-  'USAMW Master\'s Nationals': usamwAthletes,
+  'Florida WSO Champs': usamwAthletes,
 };
 
 export function getAthletes(meetName: MeetName): LiftResult[] {

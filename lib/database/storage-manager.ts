@@ -35,7 +35,7 @@ const EMPTY_STORAGE: StorageInfo = {
   lastCleanup: Date.now(),
   meets: {
     'USAW Master\'s Nationals': undefined,
-    'USAMW Master\'s Nationals': undefined
+    'Florida WSO Champs': undefined
   },
   totalSize: 0
 };

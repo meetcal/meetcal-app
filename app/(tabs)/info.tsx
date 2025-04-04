@@ -468,7 +468,7 @@ export default function InfoScreen() {
               </Pressable>
             </View>
             
-            {['USAW Master\'s Nationals', 'USAMW Master\'s Nationals'].map((meet) => (
+            {['USAW Master\'s Nationals', 'Florida WSO Champs'].map((meet) => (
               <Pressable
                 key={meet}
                 style={({ pressed }) => [

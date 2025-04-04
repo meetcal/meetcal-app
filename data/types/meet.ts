@@ -1,5 +1,5 @@
 // Meet configuration types
-export type MeetName = 'USAW Master\'s Nationals' | 'USAMW Master\'s Nationals';
+export type MeetName = 'USAW Master\'s Nationals' | 'Florida WSO Champs';
 
 interface Address {
   street: string;

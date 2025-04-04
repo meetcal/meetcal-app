@@ -18,8 +18,8 @@ export default function EventInfoScreen() {
     'USAW Master\'s Nationals': {
       timeZone: 'Eastern Time'
     },
-    'USAMW Master\'s Nationals': {
-      timeZone: 'Mountain Time'
+    'Florida WSO Champs': {
+      timeZone: 'Eastern Time'
     }
   };
 

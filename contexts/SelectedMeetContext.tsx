@@ -37,7 +37,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         setIsLoading(true);
         // Load selected meet from storage
         const stored = await AsyncStorage.getItem('@selected_meet');
-        if (stored && (stored === 'USAW Master\'s Nationals' || stored === 'USAMW Master\'s Nationals')) {
+        if (stored && (stored === 'USAW Master\'s Nationals' || stored === 'Florida WSO Champs')) {
           setSelectedMeetState(stored as MeetName);
         }
 

@@ -5,7 +5,7 @@ import { schedule as usamwSchedule } from './usamw-masters-nationals/schedule';
 
 const schedules: { [K in MeetName]: Schedule } = {
   'USAW Master\'s Nationals': usawSchedule,
-  'USAMW Master\'s Nationals': usamwSchedule,
+  'Florida WSO Champs': usamwSchedule,
 };
 
 export function getSchedule(meetName: MeetName): Schedule {
