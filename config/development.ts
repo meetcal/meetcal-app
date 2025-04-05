@@ -10,7 +10,7 @@ export const DEV_CONFIG = {
    * Set to true to simulate an active subscription
    * This will bypass the real RevenueCat subscription check
    */
-  SIMULATE_SUBSCRIPTION: true,
+  SIMULATE_SUBSCRIPTION: false,
 
   /**
    * Additional development flags can be added here

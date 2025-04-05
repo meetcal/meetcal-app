@@ -189,7 +189,7 @@ export default function SignInScreen() {
   const onApplePress = useCallback(async () => {
     try {
       console.log('Starting Apple OAuth flow...');
-      const redirectUrl = AuthSession.makeRedirectUri();
+      const redirectUrl = 'https://clerk.meetcal.app/v1/oauth_callback';
       console.log('Redirect URL:', redirectUrl);
 
       console.log('Calling startSSOFlow...');
