@@ -716,16 +716,26 @@ export default function SessionDetailsScreen() {
       removeSession(sessionId);
       showSaveAlert('remove');
     } else {
+      // Find the session day in the current schedule
+      const sessionDay = currentSchedule.find((day: DaySchedule) => 
+        day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
+      );
+
+      if (!sessionDay) {
+        console.error('Session day not found in schedule');
+        return;
+      }
+
       saveSession({
         id: sessionId,
         sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
         weightClass: sessionWeightClass || params.weightClass,
-        startTime: params.startTime,
-        weighInTime: params.weighInTime,
-        date: params.date,
+        startTime: platformStartTime,
+        weighInTime: platformWeighInTime,
+        date: sessionDay.fullDate,
         athleteNames: params.athleteName ? [params.athleteName] : undefined,
-        meet: params.meet, // Include meet information
+        meet: params.meet,
       });
       showSaveAlert('save');
       checkAndShowReviewPrompt();

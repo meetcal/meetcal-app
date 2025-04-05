@@ -495,7 +495,7 @@ export default function SavedScreen() {
         })}
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-          Session {sessionNumber} {sessionDay?.date ? `• ${sessionDay.date}` : ''}
+          Session {sessionNumber} {item.date ? `• ${new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: meetConfig.time.timeZoneIdentifier })}` : ''}
         </ThemedText>
 
         {/* Add meet name if different from selected meet */}
