@@ -8,7 +8,7 @@
       "light": "./assets/images/MeetCal.png",
       "dark": "./assets/images/MeetCal-no-bg.png"
     },
-    "scheme": "myapp",
+    "scheme": "meetcal",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "runtimeVersion": "2.3.0",
