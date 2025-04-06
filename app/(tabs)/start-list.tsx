@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
+import { MeetName } from '@/data/types/meet';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -113,8 +114,21 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
   const { currentTheme } = useTheme();
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, meetDetails } = useSelectedMeet();
   
+  // Add type guard check
+  const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
+
+  // Get time zone abbreviation
+  const timeZoneAbbr = useMemo(() => {
+    if (!meetDetails?.time.timeZoneIdentifier) return '';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: meetDetails.time.timeZoneIdentifier,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
+
   const colors = {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
@@ -171,6 +185,11 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
     });
   };
 
+  const formatSessionTime = (time: string | undefined | null) => {
+    if (!time || !validMeet) return 'TBD';
+    return `${time} ${timeZoneAbbr}`;
+  };
+
   return (
     <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
       <Pressable
@@ -221,15 +240,14 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
                   </ThemedText>
                   <ThemedText style={styles.detailValue}>
                     {getSessionDetails(athlete.session.number)?.displayDate} • {
-                      formatTimeWithZone(
+                      formatSessionTime(
                         schedule.find(day => 
                           day.sessions.some(s => s.number === athlete.session?.number)
                         )?.sessions.find(s => 
                           s.number === athlete.session?.number
                         )?.platforms.find(p => 
                           p.platform === athlete.session?.platform
-                        )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime || '',
-                        selectedMeet
+                        )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
                       )
                     }
                   </ThemedText>
@@ -442,6 +460,11 @@ function parseWeightClasses(weightClass: string): string[] {
   return Array.from(weightClasses);
 }
 
+// Add type guard function
+function isMeetName(meet: string | null): meet is MeetName {
+  return meet !== null;
+}
+
 export default function StartListScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -462,17 +485,25 @@ export default function StartListScreen() {
   
   // Load athletes with offline-first approach
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
-    const syncManager = new SyncManager(selectedMeet);
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      console.warn('No valid meet selected');
+      setAthletes([]);
+      setLoading(false);
+      return;
+    }
+
+    const validMeet = selectedMeet;
+    const syncManager = new SyncManager(validMeet);
     try {
       setLoading(true);
-      console.log('Loading athletes for meet:', selectedMeet);
+      console.log('Loading athletes for meet:', validMeet);
       
       // Try Supabase first
       try {
         const { data, error } = await supabase
           .from('athletes')
           .select('*')
-          .eq('meet', selectedMeet);
+          .eq('meet', validMeet);
 
         if (error) throw error;
         
@@ -493,7 +524,7 @@ export default function StartListScreen() {
 
         // Always save to cache and update UI, even if empty
         console.log('Got data from Supabase, count:', transformedAthletes.length);
-        await saveMeetAthletes(selectedMeet, transformedAthletes);
+        await saveMeetAthletes(validMeet, transformedAthletes);
         setAthletes(transformedAthletes);
         setLoading(false);
         return;
@@ -670,6 +701,13 @@ export default function StartListScreen() {
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 
   const handleSaveAll = async () => {
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      Alert.alert('Error', 'Please select a meet before saving sessions.');
+      return;
+    }
+
+    const validMeet = selectedMeet;
+
     Alert.alert(
       'Save Sessions',
       `Save sessions from ${filteredAthletes.length} athlete${filteredAthletes.length === 1 ? '' : 's'} to your saved list?`,
@@ -682,7 +720,7 @@ export default function StartListScreen() {
           text: 'Save',
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(filteredAthletes, selectedMeet);
+              const success = await saveSessionsFromAthletes(filteredAthletes, validMeet);
               if (success) {
                 Alert.alert(
                   'Success', 
@@ -711,6 +749,13 @@ export default function StartListScreen() {
   };
 
   const handleSaveToCalendar = async () => {
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      Alert.alert('Error', 'Please select a meet before adding events to calendar.');
+      return;
+    }
+
+    const validMeet = selectedMeet; // This is now typed as MeetName
+
     // Get unique sessions from filtered athletes
     const sessionsToAdd = filteredAthletes
       .filter(athlete => athlete.session)
@@ -824,15 +869,19 @@ export default function StartListScreen() {
   };
 
   // Update createCalendarEvents function
-  const createCalendarEvents = async (sessions: Array<{
+  async function createCalendarEvents(sessions: Array<{
     date: string;
     startTime: string;
     weighInTime: string;
     sessionNumber: string;
     platform: string;
     weightClass: string;
-  }>) => {
+  }>) {
     try {
+      if (!selectedMeet || !isMeetName(selectedMeet)) {
+        throw new Error('No meet selected');
+      }
+
       let calendarId;
 
       if (Platform.OS === 'ios') {
@@ -852,34 +901,20 @@ export default function StartListScreen() {
         calendarId = primaryCalendar.id;
       }
 
+      const validMeet = selectedMeet; // This is now typed as MeetName
+
       for (const session of sessions) {
-        // Find session in schedule to get platform-specific time
-        const sessionDay = schedule.find((day: Schedule) => 
-          day.sessions.some((s: Session) => s.number === Number(session.sessionNumber))
-        );
-        
-        const scheduleSession = sessionDay?.sessions.find((s: Session) => 
-          s.number === Number(session.sessionNumber)
-        );
-
-        const platform = scheduleSession?.platforms.find((p: PlatformSchedule) => 
-          p.platform === session.platform
-        );
-
-        // Use platform-specific time if available
-        const startTime = platform?.platformStartTime || session.startTime;
-        const weighInTime = calculateWeighInTime(startTime);
+        // Get meet config first
+        const meetConfig = await getMeetConfig(validMeet);
 
         // Convert times to UTC using the meet's time zone
-        const startDate = convertToUTC(startTime, sessionDay?.fullDate || session.date, selectedMeet);
+        const startDate = convertToUTC(session.startTime, session.date, validMeet);
         const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-
-        const meetConfig = getMeetConfig(selectedMeet);
 
         await Calendar.createEventAsync(calendarId, {
           title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-          location: getMeetVenueLocation(selectedMeet),
-          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, selectedMeet)}`,
+          location: getMeetVenueLocation(validMeet),
+          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(session.weighInTime, validMeet)}`,
           startDate: startDate,
           endDate: endDate,
           timeZone: meetConfig.time.timeZoneIdentifier,
@@ -889,9 +924,25 @@ export default function StartListScreen() {
         });
       }
     } catch (error) {
-      throw error;
+      console.error('Error creating calendar events:', error);
+      
+      if (error instanceof Error) {
+        if (error.message === 'no_calendar') {
+          throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
+        } else if (error.message === 'No meet selected') {
+          throw new Error('Please select a meet before adding events to calendar.');
+        }
+      }
+      
+      const errorMessage = Platform.select({
+        ios: 'Could not add events to calendar. Please try again.',
+        android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
+        default: 'Could not add events to calendar. Please try again.'
+      });
+      
+      throw new Error(errorMessage);
     }
-  };
+  }
 
   if (loading) {
     return (
