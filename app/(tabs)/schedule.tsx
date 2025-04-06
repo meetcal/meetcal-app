@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -242,6 +242,7 @@ export default function ScheduleScreen() {
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isChangingMeet, setIsChangingMeet] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -284,12 +285,11 @@ export default function ScheduleScreen() {
     }
   };
 
-  useEffect(() => {
-    console.log('Schedule state updated:', schedule);
-  }, [schedule]);
-
+  // Initialize store and load data
   useEffect(() => {
     const initializeAndLoad = async () => {
+      if (!selectedMeet || !meetDetails) return;
+      
       setIsLoading(true);
       try {
         console.log('Initializing store...');
@@ -303,9 +303,7 @@ export default function ScheduleScreen() {
       }
     };
 
-    if (selectedMeet && meetDetails) {
-      initializeAndLoad();
-    }
+    initializeAndLoad();
   }, [selectedMeet, meetDetails]);
 
   // Extract unique letters from all weight classes
@@ -370,11 +368,39 @@ export default function ScheduleScreen() {
     </View>
   ), [width, letterFilter, meetDetails, loadScheduleData]);
 
+  if (isMeetLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
+            Loading meets...
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
   if (!selectedMeet || !meetDetails) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ThemedText>Please select a meet to view the schedule</ThemedText>
+          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
+            Please select a meet to view the schedule
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  if (isLoading || isChangingMeet) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
+            Loading schedule...
+          </ThemedText>
         </View>
       </ThemedView>
     );
@@ -412,11 +438,7 @@ export default function ScheduleScreen() {
         </View>
       </View>
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ThemedText>Loading schedule...</ThemedText>
-        </View>
-      ) : !schedule || schedule.length === 0 ? (
+      {!schedule || schedule.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ThemedText>No schedule data available</ThemedText>
         </View>
@@ -496,11 +518,15 @@ export default function ScheduleScreen() {
                 ]}
                 onPress={async () => {
                   setShowFilterModal(false);
+                  if (meet.name === selectedMeet) return;
+                  setIsChangingMeet(true);
                   try {
                     await setSelectedMeet(meet.name);
                   } catch (error) {
                     console.error('Error saving selected meet:', error);
                     Alert.alert('Error', 'Failed to update selected meet.');
+                  } finally {
+                    setIsChangingMeet(false);
                   }
                 }}
               >
@@ -729,5 +755,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    textAlign: 'center',
   },
 }); 
