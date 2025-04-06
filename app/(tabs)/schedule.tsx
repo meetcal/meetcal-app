@@ -439,9 +439,23 @@ export default function ScheduleScreen() {
       </View>
 
       {!schedule || schedule.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ThemedText>No schedule data available</ThemedText>
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.loadingContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={loadScheduleData}
+              tintColor={colors.text}
+            />
+          }
+        >
+          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
+            No schedule data available
+          </ThemedText>
+          <ThemedText style={[styles.loadingText, { color: colors.secondaryText, marginTop: 8, fontSize: 14 }]}>
+            Pull down to refresh
+          </ThemedText>
+        </ScrollView>
       ) : (
         <View style={styles.contentContainer}>
           <FlatList
