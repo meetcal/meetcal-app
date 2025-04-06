@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MeetName } from '@/data/types/meet';
+import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { needsSync } from '@/lib/database/offline-store';
-import { prefetchMeetData, updateMeetAccess } from '@/lib/database/meet-manager';
+import { prefetchMeetData, updateMeetAccess, fetchMeets, fetchMeetByName } from '@/lib/database/meet-manager';
 
 type SelectedMeetContextType = {
-  selectedMeet: MeetName;
+  selectedMeet: MeetName | null;
+  meetDetails: Meet | null;
+  availableMeets: Meet[];
   setSelectedMeet: (meet: MeetName) => Promise<void>;
   isLoading: boolean;
   isSyncing: boolean;
@@ -18,56 +20,60 @@ type SelectedMeetContextType = {
 const SelectedMeetContext = createContext<SelectedMeetContextType | undefined>(undefined);
 
 export function SelectedMeetProvider({ children }: { children: React.ReactNode }) {
-  const [selectedMeet, setSelectedMeetState] = useState<MeetName>('USAW Master\'s Nationals');
+  const [selectedMeet, setSelectedMeetState] = useState<MeetName | null>(null);
+  const [meetDetails, setMeetDetails] = useState<Meet | null>(null);
+  const [availableMeets, setAvailableMeets] = useState<Meet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
 
-  // Initialize SyncManager when meet changes
+  // Load available meets
   useEffect(() => {
-    setSyncManager(new SyncManager(selectedMeet));
-  }, [selectedMeet]);
-
-  // Load initial meet data
-  useEffect(() => {
-    const loadInitialData = async () => {
+    const loadMeets = async () => {
       try {
-        setIsLoading(true);
-        // Load selected meet from storage
-        const stored = await AsyncStorage.getItem('@selected_meet');
-        if (stored && (stored === 'USAW Master\'s Nationals' || stored === 'Florida WSO Champs')) {
-          setSelectedMeetState(stored as MeetName);
-        }
+        console.log('Fetching available meets...');
+        const meets = await fetchMeets();
+        console.log('Available meets:', meets);
+        setAvailableMeets(meets);
 
-        // Initialize sync manager
-        const manager = new SyncManager(selectedMeet);
-        setSyncManager(manager);
+        // If no meet is selected yet, try to load from storage
+        if (!selectedMeet) {
+          const stored = await AsyncStorage.getItem('@selected_meet');
+          console.log('Stored meet from AsyncStorage:', stored);
 
-        // Check if we need to sync
-        const shouldSync = await needsSync(selectedMeet);
-        if (shouldSync) {
-          setIsSyncing(true);
-          setSyncStatus('syncing');
-          await prefetchMeetData(selectedMeet);
-          setLastSynced(Date.now());
-          setSyncStatus('idle');
-        } else {
-          // Update access time even if we don't sync
-          await updateMeetAccess(selectedMeet);
+          if (stored) {
+            // Only use stored meet if it still exists in available meets
+            const meetData = meets.find(m => m.name === stored);
+            if (meetData) {
+              console.log('Setting initial meet to stored meet:', stored);
+              setSelectedMeetState(stored);
+              setMeetDetails(meetData);
+            } else {
+              // Clear stored meet if it no longer exists
+              await AsyncStorage.removeItem('@selected_meet');
+              console.log('Stored meet no longer exists, cleared from storage');
+            }
+          }
         }
       } catch (error) {
-        console.error('Error loading initial meet data:', error);
-        setSyncStatus('error');
+        console.error('Error loading available meets:', error);
       } finally {
         setIsLoading(false);
-        setIsSyncing(false);
       }
     };
-
-    loadInitialData();
+    loadMeets();
   }, []);
+
+  // Initialize SyncManager when meet changes
+  useEffect(() => {
+    if (selectedMeet) {
+      setSyncManager(new SyncManager(selectedMeet));
+    } else {
+      setSyncManager(null);
+    }
+  }, [selectedMeet]);
 
   // Enhanced setSelectedMeet function
   const setSelectedMeet = async (meet: MeetName) => {
@@ -75,21 +81,40 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       setIsSyncing(true);
       setSyncStatus('syncing');
       
+      // Clear existing data first
+      setSelectedMeetState(null);
+      setMeetDetails(null);
+      setSyncManager(null);
+      
+      // Find meet details from available meets
+      const meetData = availableMeets.find(m => m.name === meet);
+      if (!meetData) {
+        throw new Error('Selected meet not found in available meets');
+      }
+
       // Save to storage first
       await AsyncStorage.setItem('@selected_meet', meet);
       setSelectedMeetState(meet);
+      setMeetDetails(meetData);
       
       // Create new sync manager for the meet
       const manager = new SyncManager(meet);
       setSyncManager(manager);
       
-      // Prefetch data for the new meet (includes cache management)
-      await prefetchMeetData(meet);
-      setLastSynced(Date.now());
+      // Prefetch data for the new meet
+      if (manager) {
+        await prefetchMeetData(meet);
+        setLastSynced(Date.now());
+      }
       setSyncStatus('idle');
     } catch (error) {
       console.error('Error saving selected meet:', error);
       setSyncStatus('error');
+      // Clear everything on error
+      setSelectedMeetState(null);
+      setMeetDetails(null);
+      setSyncManager(null);
+      await AsyncStorage.removeItem('@selected_meet');
       throw error;
     } finally {
       setIsSyncing(false);
@@ -98,7 +123,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Force sync function
   const forceSync = async () => {
-    if (!syncManager) return;
+    if (!syncManager || !selectedMeet) return;
     
     try {
       setIsSyncing(true);
@@ -117,7 +142,9 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   return (
     <SelectedMeetContext.Provider 
       value={{ 
-        selectedMeet, 
+        selectedMeet,
+        meetDetails,
+        availableMeets,
         setSelectedMeet,
         isLoading,
         isSyncing,

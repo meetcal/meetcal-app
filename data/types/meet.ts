@@ -1,35 +1,33 @@
 // Meet configuration types
-export type MeetName = 'USAW Master\'s Nationals' | 'Florida WSO Champs';
+export type MeetName = string;
 
-interface Address {
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-}
-
-interface Venue {
+export interface Venue {
   name: string;
-  address: Address;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
 }
 
-interface TimeConfig {
+export interface TimeConfig {
   timeZone: string;
   timeZoneIdentifier: string;
-  abbreviation: string;
-  utcOffset: number;
 }
 
-interface DateRange {
+export interface DateRange {
   start: string;
   end: string;
 }
 
-export interface MeetConfig {
+export interface Meet {
+  id: string;
   name: MeetName;
   venue: Venue;
   time: TimeConfig;
   dates: DateRange;
+  status: 'upcoming' | 'ongoing' | 'completed';
   // Additional meet-specific settings can be added here
   settings?: {
     [key: string]: unknown;
@@ -38,7 +36,7 @@ export interface MeetConfig {
 
 // Utility type for meet-specific data
 export type MeetSpecificData<T> = {
-  [K in MeetName]: T;
+  [key: string]: T;
 };
 
 // Helper type for accessing meet-specific data

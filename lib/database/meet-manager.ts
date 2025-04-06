@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MeetName } from '@/data/types/meet';
+import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from './sync-manager';
 import { clearMeetData, getMeetData } from './offline-store';
+import { supabase } from '@/lib/supabase';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -13,15 +14,12 @@ interface MeetInfo {
 }
 
 interface MeetCacheInfo {
-  meets: Record<MeetName, MeetInfo | undefined>;
+  meets: Record<string, MeetInfo | undefined>;
   totalSize: number;
 }
 
 const EMPTY_CACHE: MeetCacheInfo = {
-  meets: {
-    'USAW Master\'s Nationals': undefined,
-    'Florida WSO Champs': undefined
-  },
+  meets: {},
   totalSize: 0
 };
 
@@ -48,12 +46,118 @@ async function saveCacheInfo(info: MeetCacheInfo) {
   }
 }
 
-// Calculate size of meet data
+// Fetch all meets from Supabase
+export async function fetchMeets(): Promise<Meet[]> {
+  try {
+    console.log('Fetching all meets from Supabase...');
+    
+    // First check what tables we have access to
+    const { data: tables } = await supabase
+      .from('pg_catalog.pg_tables')
+      .select('tablename')
+      .eq('schemaname', 'public');
+    console.log('Available tables:', tables);
+
+    const { data: meetsData, error } = await supabase
+      .from('meets')
+      .select('*')
+      .order('start_date', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching meets:', error);
+      console.error('Error details:', error.message);
+      console.error('Error code:', error.code);
+      throw error;
+    }
+
+    console.log('Successfully fetched meets:', meetsData);
+    
+    return meetsData.map(meet => ({
+      id: meet.id,
+      name: meet.name,
+      venue: {
+        name: meet.venue_name,
+        address: {
+          street: meet.venue_street,
+          city: meet.venue_city,
+          state: meet.venue_state,
+          zip: meet.venue_zip
+        }
+      },
+      time: {
+        timeZone: meet.time_zone,
+        timeZoneIdentifier: meet.time_zone
+      },
+      dates: {
+        start: meet.start_date,
+        end: meet.end_date
+      },
+      status: meet.status
+    }));
+  } catch (error) {
+    console.error('Error in fetchMeets:', error);
+    throw error;
+  }
+}
+
+// Fetch a single meet by name
+export async function fetchMeetByName(name: string): Promise<Meet | null> {
+  try {
+    console.log('Fetching meet by name:', name);
+    
+    const { data: meet, error } = await supabase
+      .from('meets')
+      .select('*')
+      .eq('name', name)
+      .single();
+
+    if (error) {
+      console.error('Error fetching meet by name:', error);
+      console.error('Error details:', error.message);
+      console.error('Error code:', error.code);
+      throw error;
+    }
+
+    if (!meet) {
+      console.log('No meet found with name:', name);
+      return null;
+    }
+
+    console.log('Successfully fetched meet:', meet);
+
+    return {
+      id: meet.id,
+      name: meet.name,
+      venue: {
+        name: meet.venue_name,
+        address: {
+          street: meet.venue_street,
+          city: meet.venue_city,
+          state: meet.venue_state,
+          zip: meet.venue_zip
+        }
+      },
+      time: {
+        timeZone: meet.time_zone,
+        timeZoneIdentifier: meet.time_zone
+      },
+      dates: {
+        start: meet.start_date,
+        end: meet.end_date
+      },
+      status: meet.status
+    };
+  } catch (error) {
+    console.error('Error in fetchMeetByName:', error);
+    throw error;
+  }
+}
+
+// Calculate meet size
 async function calculateMeetSize(meet: MeetName): Promise<number> {
   try {
     const data = await getMeetData(meet);
-    const size = new TextEncoder().encode(JSON.stringify(data)).length;
-    return size;
+    return new Blob([JSON.stringify(data)]).size;
   } catch (error) {
     console.error('Error calculating meet size:', error);
     return 0;
@@ -61,7 +165,7 @@ async function calculateMeetSize(meet: MeetName): Promise<number> {
 }
 
 // Update meet access time and size
-async function updateMeetAccess(meet: MeetName) {
+export async function updateMeetAccess(meet: MeetName) {
   const info = await getCacheInfo();
   const size = await calculateMeetSize(meet);
   
@@ -92,10 +196,9 @@ async function cleanupOldMeetData() {
   // Keep only recent meets
   const meetsToRemove = meets.slice(MAX_CACHED_MEETS);
   
-  for (const [meet, meetInfo] of meetsToRemove) {
+  for (const [meet] of meetsToRemove) {
     await clearMeetData(meet);
     delete info.meets[meet];
-    info.totalSize -= meetInfo.size;
   }
   
   await saveCacheInfo(info);
@@ -112,41 +215,25 @@ async function manageCacheSize() {
   const meets = Object.entries(info.meets) as [MeetName, MeetInfo][];
   meets.sort(([, a], [, b]) => b.lastAccessed - a.lastAccessed);
   
-  // Remove oldest meets until under size limit
-  for (const [meet, meetInfo] of meets.slice(MAX_CACHED_MEETS)) {
-    if (info.totalSize <= CACHE_SIZE_LIMIT) break;
-    
+  for (const [meet] of meets.slice(1)) {
     await clearMeetData(meet);
-    info.totalSize -= meetInfo.size;
+    const meetInfo = info.meets[meet];
+    if (meetInfo) {
+      info.totalSize -= meetInfo.size;
+    }
     delete info.meets[meet];
+    
+    if (info.totalSize <= CACHE_SIZE_LIMIT) {
+      break;
+    }
   }
   
   await saveCacheInfo(info);
 }
 
 // Prefetch meet data
-export async function prefetchMeetData(meet: MeetName): Promise<void> {
+export async function prefetchMeetData(meet: MeetName) {
   const syncManager = new SyncManager(meet);
-  
-  try {
-    // Sync data
-    await syncManager.syncIfNeeded();
-    
-    // Update cache info
-    await updateMeetAccess(meet);
-    
-    // Clean up if needed
-    await cleanupOldMeetData();
-    await manageCacheSize();
-  } catch (error) {
-    console.error('Error prefetching meet data:', error);
-    throw error;
-  }
-}
-
-// Export other functions that might be needed
-export {
-  cleanupOldMeetData,
-  manageCacheSize,
-  updateMeetAccess
-}; 
+  await syncManager.syncIfNeeded();
+  await updateMeetAccess(meet);
+} 

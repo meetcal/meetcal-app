@@ -1,4 +1,4 @@
-import { getMeetData, saveMeetSchedule, saveMeetAthletes } from './offline-store';
+import { getMeetData, saveMeetSchedule, saveMeetAthletes, clearMeetData } from './offline-store';
 import { fetchSchedule, fetchAthletes } from './queries';
 import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
@@ -35,6 +35,9 @@ export class SyncManager {
       this.isSyncing = true;
       console.log('Starting sync for meet:', this.meetId);
       
+      // Clear existing data first
+      await clearMeetData(this.meetId);
+      
       const [schedule, athletes] = await Promise.all([
         fetchSchedule(this.meetId),
         fetchAthletes(this.meetId)
@@ -43,14 +46,19 @@ export class SyncManager {
       console.log('Sync successful, saving data...');
       console.log('Schedule data:', schedule);
       
-      await Promise.all([
-        saveMeetSchedule(this.meetId, schedule),
-        saveMeetAthletes(this.meetId, athletes)
-      ]);
+      // Only save if we have data
+      if (schedule.length > 0) {
+        await saveMeetSchedule(this.meetId, schedule);
+      }
+
+      // Save athletes even if empty (to clear old cache)
+      await saveMeetAthletes(this.meetId, athletes);
 
       console.log('Sync completed successfully');
     } catch (error) {
-      console.error('Sync failed, will use cached data:', error);
+      console.error('Sync failed:', error);
+      // Clear data on error
+      await clearMeetData(this.meetId);
     } finally {
       this.isSyncing = false;
     }
@@ -61,7 +69,9 @@ export class SyncManager {
       // Always try to sync first
       await this.syncIfNeeded();
     } catch (error) {
-      console.log('Sync failed, using cached data');
+      console.log('Sync failed:', error);
+      // Clear data on error
+      await clearMeetData(this.meetId);
     }
     
     // Get data from cache (whether sync succeeded or failed)
