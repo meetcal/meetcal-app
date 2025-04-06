@@ -13,11 +13,12 @@ import { getFullLocation } from '@/config/venue';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { MeetName } from '@/data/types/meet';
+import { MeetName, MeetConfig } from '@/data/types/meet';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { Schedule } from '@/data/types/schedule';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { useUser } from '@clerk/clerk-expo';
+import React from 'react';
 
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -39,6 +40,11 @@ declare module '@/hooks/useSavedSessions' {
 // Add a type that extends SavedSession to include the legacy athleteName property
 interface LegacySavedSession extends SavedSession {
   athleteName?: string;
+}
+
+// Add type guard at the top of the file
+function isMeetName(meet: string | null): meet is MeetName {
+  return typeof meet === 'string';
 }
 
 async function requestCalendarPermissions() {
@@ -76,33 +82,22 @@ async function createCalendarEvents(sessions: Array<{
     }
 
     for (const session of sessions) {
-      // Find session in schedule to get platform-specific time
-      const sessionDay = schedule.find(day => 
-        day.sessions.some(s => s.number === parseInt(session.sessionNumber))
-      );
-      
-      const scheduleSession = sessionDay?.sessions.find(s => 
-        s.number === parseInt(session.sessionNumber)
-      );
+      if (!session.meet) {
+        console.warn('Skipping session with no meet:', session);
+        continue;
+      }
 
-      const platform = scheduleSession?.platforms.find(p => 
-        p.platform === session.platform
-      );
-
-      // Use platform-specific time if available
-      const startTime = platform?.platformStartTime || session.startTime;
-      const weighInTime = calculateWeighInTime(startTime);
+      // Get meet config first
+      const meetConfig = await getMeetConfig(session.meet);
 
       // Convert times to UTC using the meet's time zone
-      const startDate = convertToUTC(startTime, session.date, session.meet);
+      const startDate = convertToUTC(session.startTime, session.date, session.meet);
       const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-
-      const meetConfig = getMeetConfig(session.meet);
 
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
         location: getMeetVenueLocation(session.meet),
-        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, session.meet)}`,
+        notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(session.weighInTime, session.meet)}`,
         startDate: startDate,
         endDate: endDate,
         timeZone: meetConfig.time.timeZoneIdentifier,
@@ -164,6 +159,250 @@ async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetN
     id: generateSessionId(session.meet || currentMeet, session.sessionNumber, session.platform)
   }));
 }
+
+// Create a separate SessionCard component
+const SessionCard = React.memo(({ 
+  item, 
+  selectedMeet,
+  onPress,
+  router,
+  savedWarmups
+}: { 
+  item: LegacySavedSession; 
+  selectedMeet: MeetName | null;
+  onPress: () => void;
+  router: ReturnType<typeof useRouter>;
+  savedWarmups: Array<{ id: string; name: string; meet: string; }>;
+}) => {
+  const { currentTheme } = useTheme();
+  const { meetDetails } = useSelectedMeet();
+
+  // Ensure meet is defined before using it
+  const meet = item.meet || selectedMeet;
+  if (!meet || !isMeetName(meet)) {
+    console.warn('No valid meet information available for session:', item);
+    return null;
+  }
+
+  const sessionNumber = item.sessionNumber?.toString() || '';
+  const platform = item.platform || '';
+  const weightClass = item.weightClass || '';
+
+  // Find session in schedule to get platform-specific time
+  const schedule = getSchedule(meet);
+  const sessionDay = schedule.find(day => 
+    day.sessions.some(s => s.number === parseInt(sessionNumber))
+  );
+  
+  const scheduleSession = sessionDay?.sessions.find(s => 
+    s.number === parseInt(sessionNumber)
+  );
+
+  const platformInfo = scheduleSession?.platforms.find(p => 
+    p.platform === platform
+  );
+
+  // Use platform-specific time if available, otherwise fall back to session time
+  const startTime = platformInfo?.platformStartTime || item.startTime || '';
+  const weighInTime = startTime ? calculateWeighInTime(startTime) : '';
+
+  // Get time zone abbreviation
+  const timeZoneAbbr = useMemo(() => {
+    if (!meetDetails?.time.timeZoneIdentifier) return '';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: meetDetails.time.timeZoneIdentifier,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
+
+  const colors = {
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+    link: '#007AFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+  };
+
+  // Format time with the correct timezone abbreviation
+  const formatTime = (time: string) => {
+    if (!time || !timeZoneAbbr) return 'TBD';
+    const [timeStr, period] = time.split(' ');  // Split into time and AM/PM
+    return `${timeStr} ${period} ${timeZoneAbbr}`;
+  };
+
+  // Check if there's a warmup for any of the athletes
+  let hasWarmup = false;
+  let warmupId = null;
+
+  if (item.athleteNames && Array.isArray(item.athleteNames)) {
+    hasWarmup = item.athleteNames.some(name => {
+      if (!name) return false;
+      return savedWarmups.some(warmup => 
+        warmup?.name === name && warmup?.meet === meet
+      );
+    });
+
+    // Find the warmup ID if it exists
+    if (item.athleteNames.length > 0) {
+      const warmup = savedWarmups.find(w => 
+        w?.name === item.athleteNames![0] && w?.meet === meet
+      );
+      warmupId = warmup?.id;
+    }
+  } else if (item.athleteName) {
+    const warmup = savedWarmups.find(w => 
+      w?.name === item.athleteName && w?.meet === meet
+    );
+    hasWarmup = !!warmup;
+    warmupId = warmup?.id;
+  }
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.sessionContainer,
+        { backgroundColor: colors.card },
+        pressed && { backgroundColor: colors.pressed }
+      ]}
+      onPress={onPress}
+    >
+      <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
+        Session {sessionNumber} {item.date && meetDetails?.time.timeZoneIdentifier ? 
+          `• ${new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', { 
+            month: 'long', 
+            day: 'numeric', 
+            year: 'numeric', 
+            timeZone: meetDetails.time.timeZoneIdentifier 
+          })}` : ''}
+      </ThemedText>
+
+      {meet && meet !== selectedMeet && (
+        <ThemedText style={[styles.meetName, { color: colors.secondaryText }]}>
+          {meet.replace(/-/g, ' ')}
+        </ThemedText>
+      )}
+
+      <View style={styles.timeContainer}>
+        <View style={styles.timeRow}>
+          <View style={styles.timeBlock}>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Weigh-in:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {formatTime(weighInTime)}
+            </ThemedText>
+          </View>
+          <View style={styles.timeSeparator} />
+          <View style={styles.timeBlock}>
+            <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
+              Start:
+            </ThemedText>
+            <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
+              {formatTime(startTime)}
+            </ThemedText>
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
+        <View style={[
+          styles.platformIndicator,
+          { backgroundColor: getPlatformColors()[platform as keyof ReturnType<typeof getPlatformColors>] }
+        ]}>
+          <ThemedText style={styles.platformText}>
+            {platform}
+          </ThemedText>
+        </View>
+        <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
+          {weightClass}
+        </ThemedText>
+      </View>
+
+      {/* Display athlete names if available (saved from start list) */}
+      {item.athleteNames && Array.isArray(item.athleteNames) && item.athleteNames.length > 0 && (
+        <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
+          <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
+            {item.athleteNames.length === 1 ? 'Athlete:' : 'Athletes:'}
+          </ThemedText>
+          <View style={styles.athleteNamesContainer}>
+            {item.athleteNames.slice(0, 3).map((name, index) => (
+              <View key={index} style={styles.athleteRow}>
+                <ThemedText 
+                  style={[styles.athleteName, { color: colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {name}
+                </ThemedText>
+                {hasWarmup && index === 0 && warmupId && (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      router.push({
+                        pathname: '/warmup-details',
+                        params: { id: warmupId }
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.warmupLink,
+                      pressed && { opacity: 0.7 }
+                    ]}
+                  >
+                    <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                      Warmups
+                    </ThemedText>
+                    <IconSymbol name="chevron.right" size={12} color={colors.link} />
+                  </Pressable>
+                )}
+              </View>
+            ))}
+            {item.athleteNames.length > 3 && (
+              <ThemedText style={[styles.athleteMoreText, { color: colors.secondaryText }]}>
+                +{item.athleteNames.length - 3} more
+              </ThemedText>
+            )}
+          </View>
+        </View>
+      )}
+      
+      {/* For backward compatibility with old saved sessions */}
+      {!item.athleteNames && item.athleteName && (
+        <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
+          <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
+            Athlete:
+          </ThemedText>
+          <View style={styles.athleteRow}>
+            <ThemedText style={[styles.athleteName, { color: colors.text }]}>
+              {item.athleteName}
+            </ThemedText>
+            {hasWarmup && warmupId && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push({
+                    pathname: '/warmup-details',
+                    params: { id: warmupId }
+                  });
+                }}
+                style={({ pressed }) => [
+                  styles.warmupLink,
+                  pressed && { opacity: 0.7 }
+                ]}
+              >
+                <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                  Warmups
+                </ThemedText>
+                <IconSymbol name="chevron.right" size={12} color={colors.link} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+});
 
 export default function SavedScreen() {
   const { user } = useUser();
@@ -303,7 +542,15 @@ export default function SavedScreen() {
                 return;
               }
 
-              const sessionsToAdd = filteredSessions.map(session => {
+              // Filter out sessions without meet information
+              const validSessions = filteredSessions.filter(session => session.meet) as Array<SavedSession & { meet: MeetName }>;
+
+              if (validSessions.length === 0) {
+                Alert.alert('Error', 'No valid sessions found with meet information.');
+                return;
+              }
+
+              const sessionsToAdd = validSessions.map(session => {
                 const meetSchedule = getSchedule(session.meet);
                 return {
                   date: meetSchedule.find(day => 
@@ -314,7 +561,7 @@ export default function SavedScreen() {
                   sessionNumber: session.sessionNumber.toString(),
                   platform: session.platform,
                   weightClass: session.weightClass,
-                  meet: session.meet || selectedMeet
+                  meet: session.meet
                 };
               });
 
@@ -407,223 +654,24 @@ export default function SavedScreen() {
     }, [loadSavedWarmups])
   )
 
-  const renderSession = ({ item }: { item: LegacySavedSession }) => {
-    if (!item) {
-      console.log('Received undefined item in renderSession');
-      return null;
-    }
-
-    console.log('Rendering session:', item);
-    console.log('Current saved warmups:', savedWarmups);
-
-    // Ensure we have the required properties
-    const sessionNumber = item.sessionNumber?.toString() || '';
-    const platform = item.platform || '';
-    const weightClass = item.weightClass || '';
-    const meet = item.meet || selectedMeet;
-
-    // Find session in schedule to get platform-specific time
-    const schedule = getSchedule(meet);
-    const sessionDay = schedule.find(day => 
-      day.sessions.some(s => s.number === parseInt(sessionNumber))
-    );
-    
-    const scheduleSession = sessionDay?.sessions.find(s => 
-      s.number === parseInt(sessionNumber)
-    );
-
-    const platformInfo = scheduleSession?.platforms.find(p => 
-      p.platform === platform
-    );
-
-    // Use platform-specific time if available, otherwise fall back to session time
-    const startTime = platformInfo?.platformStartTime || item.startTime || '';
-    const weighInTime = startTime ? calculateWeighInTime(startTime) : '';
-    const meetConfig = getMeetConfig(meet);
-
-    // Add logging for athlete names
-    console.log('Athlete names:', item.athleteNames);
-    console.log('Legacy athlete name:', item.athleteName);
-
-    // Check if there's a warmup for any of the athletes - with logging
-    let hasWarmup = false;
-    let warmupId = null;
-
-    if (item.athleteNames && Array.isArray(item.athleteNames)) {
-      console.log('Checking warmups for multiple athletes:', item.athleteNames);
-      hasWarmup = item.athleteNames.some(name => {
-        if (!name) return false;
-        const found = savedWarmups.some(warmup => 
-          warmup?.name === name && warmup?.meet === selectedMeet
-        );
-        console.log(`Checking warmup for ${name}:`, found);
-        return found;
-      });
-
-      // Find the warmup ID if it exists
-      if (item.athleteNames.length > 0) {
-        const warmup = savedWarmups.find(w => 
-          w?.name === item.athleteNames![0] && w?.meet === selectedMeet
-        );
-        warmupId = warmup?.id;
-        console.log('Found warmup ID for first athlete:', warmupId);
-      }
-    } else if (item.athleteName) {
-      console.log('Checking warmup for legacy athlete:', item.athleteName);
-      const warmup = savedWarmups.find(w => 
-        w?.name === item.athleteName && w?.meet === selectedMeet
-      );
-      hasWarmup = !!warmup;
-      warmupId = warmup?.id;
-      console.log('Found warmup for legacy athlete:', hasWarmup, warmupId);
-    }
-
+  const renderSession = useCallback(({ item }: { item: LegacySavedSession }) => {
     return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.sessionContainer,
-          { backgroundColor: colors.card },
-          pressed && { backgroundColor: colors.pressed }
-        ]}
+      <SessionCard 
+        item={item} 
+        selectedMeet={selectedMeet}
         onPress={() => router.push({
           pathname: '/(screens)/schedule-details',
           params: {
             ...item,
-            startTime,
-            weighInTime,
+            startTime: item.startTime,
+            weighInTime: item.weighInTime,
           }
         })}
-      >
-        <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-          Session {sessionNumber} {item.date ? `• ${new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: meetConfig.time.timeZoneIdentifier })}` : ''}
-        </ThemedText>
-
-        {/* Add meet name if different from selected meet */}
-        {meet && meet !== selectedMeet && (
-          <ThemedText style={[styles.meetName, { color: colors.secondaryText }]}>
-            {meet.replace(/-/g, ' ')}
-          </ThemedText>
-        )}
-
-        <View style={styles.timeContainer}>
-          <View style={styles.timeRow}>
-            <View style={styles.timeBlock}>
-              <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-                Weigh-in:
-              </ThemedText>
-              <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {weighInTime ? formatTimeWithZone(weighInTime, meet) : 'TBD'}
-              </ThemedText>
-            </View>
-            <View style={styles.timeSeparator} />
-            <View style={styles.timeBlock}>
-              <ThemedText style={[styles.timeLabel, { color: colors.secondaryText }]}>
-                Start:
-              </ThemedText>
-              <ThemedText style={[styles.timeText, { color: colors.secondaryText }]}>
-                {startTime ? formatTimeWithZone(startTime, meet) : 'TBD'}
-              </ThemedText>
-            </View>
-          </View>
-        </View>
-        
-        <View style={[styles.platformContainer, { backgroundColor: colors.card }]}>
-          <View style={[
-            styles.platformIndicator,
-            { backgroundColor: getPlatformColors()[platform as keyof ReturnType<typeof getPlatformColors>] }
-          ]}>
-            <ThemedText style={styles.platformText}>
-              {platform}
-            </ThemedText>
-          </View>
-          <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
-            {weightClass}
-          </ThemedText>
-        </View>
-        
-        {/* Display athlete names if available (saved from start list) */}
-        {item.athleteNames && Array.isArray(item.athleteNames) && item.athleteNames.length > 0 && (
-          <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
-            <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
-              {item.athleteNames.length === 1 ? 'Athlete:' : 'Athletes:'}
-            </ThemedText>
-            <View style={styles.athleteNamesContainer}>
-              {item.athleteNames.slice(0, 3).map((name, index) => (
-                <View key={index} style={styles.athleteRow}>
-                  <ThemedText 
-                    style={[styles.athleteName, { color: colors.text }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {name}
-                  </ThemedText>
-                  {hasWarmup && index === 0 && warmupId && (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation()
-                        router.push({
-                          pathname: '/warmup-details',
-                          params: { id: warmupId }
-                        })
-                      }}
-                      style={({ pressed }) => [
-                        styles.warmupLink,
-                        pressed && { opacity: 0.7 }
-                      ]}
-                    >
-                      <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
-                        Warmups
-                      </ThemedText>
-                      <IconSymbol name="chevron.right" size={12} color={colors.link} />
-                    </Pressable>
-                  )}
-                </View>
-              ))}
-              {item.athleteNames.length > 3 && (
-                <ThemedText style={[styles.athleteMoreText, { color: colors.secondaryText }]}>
-                  +{item.athleteNames.length - 3} more
-                </ThemedText>
-              )}
-            </View>
-          </View>
-        )}
-        
-        {/* For backward compatibility with old saved sessions */}
-        {!item.athleteNames && item.athleteName && (
-          <View style={[styles.athleteContainer, { borderTopColor: colors.border }]}>
-            <ThemedText style={[styles.athleteLabel, { color: colors.secondaryText }]}>
-              Athlete:
-            </ThemedText>
-            <View style={styles.athleteRow}>
-              <ThemedText style={[styles.athleteName, { color: colors.text }]}>
-                {item.athleteName}
-              </ThemedText>
-              {hasWarmup && warmupId && (
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation()
-                    router.push({
-                      pathname: '/warmup-details',
-                      params: { id: warmupId }
-                    })
-                  }}
-                  style={({ pressed }) => [
-                    styles.warmupLink,
-                    pressed && { opacity: 0.7 }
-                  ]}
-                >
-                  <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
-                    Warmups
-                  </ThemedText>
-                  <IconSymbol name="chevron.right" size={12} color={colors.link} />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        )}
-      </Pressable>
+        router={router}
+        savedWarmups={savedWarmups}
+      />
     );
-  };
+  }, [selectedMeet, router, savedWarmups]);
 
   // Only run migration on mount
   useEffect(() => {
