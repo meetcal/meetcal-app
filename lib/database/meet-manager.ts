@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MeetName, Meet } from '@/data/types/meet';
+import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/types/meet';
 import { SyncManager } from './sync-manager';
 import { clearMeetData, getMeetData } from './offline-store';
 import { supabase } from '@/lib/supabase';
@@ -13,32 +13,52 @@ interface MeetInfo {
   size: number;
 }
 
-interface MeetCacheInfo {
-  meets: Record<string, MeetInfo | undefined>;
+interface CacheInfo {
   totalSize: number;
+  meets: { [key: string]: MeetInfo };
 }
 
-const EMPTY_CACHE: MeetCacheInfo = {
-  meets: {},
-  totalSize: 0
-};
+// Helper function to determine if a date is in DST
+function isDateInDST(date: Date, timeZoneIdentifier: USTimeZoneIdentifier): boolean {
+  // Phoenix and Honolulu don't observe DST
+  if (timeZoneIdentifier === 'America/Phoenix' || timeZoneIdentifier === 'Pacific/Honolulu') {
+    return false;
+  }
+
+  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
+  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+  const dst = Math.max(jan, jul) !== date.getTimezoneOffset();
+  return dst;
+}
+
+// Helper function to get UTC offset for a timezone at a specific date
+function getUTCOffsetForDate(timeZoneIdentifier: USTimeZoneIdentifier, date: Date): number {
+  const isDST = isDateInDST(date, timeZoneIdentifier);
+  return timezoneOffsets[timeZoneIdentifier][isDST ? 'dst' : 'standard'];
+}
 
 // Initialize or get cache info
-async function getCacheInfo(): Promise<MeetCacheInfo> {
+async function getCacheInfo(): Promise<CacheInfo> {
   try {
     const info = await AsyncStorage.getItem(MEET_CACHE_KEY);
     if (info) {
       return JSON.parse(info);
     }
-    return EMPTY_CACHE;
+    return {
+      totalSize: 0,
+      meets: {}
+    };
   } catch (error) {
     console.error('Error getting cache info:', error);
-    return EMPTY_CACHE;
+    return {
+      totalSize: 0,
+      meets: {}
+    };
   }
 }
 
 // Save cache info
-async function saveCacheInfo(info: MeetCacheInfo) {
+async function saveCacheInfo(info: CacheInfo) {
   try {
     await AsyncStorage.setItem(MEET_CACHE_KEY, JSON.stringify(info));
   } catch (error) {
@@ -51,13 +71,6 @@ export async function fetchMeets(): Promise<Meet[]> {
   try {
     console.log('Fetching all meets from Supabase...');
     
-    // First check what tables we have access to
-    const { data: tables } = await supabase
-      .from('pg_catalog.pg_tables')
-      .select('tablename')
-      .eq('schemaname', 'public');
-    console.log('Available tables:', tables);
-
     const { data: meetsData, error } = await supabase
       .from('meets')
       .select('*')
@@ -66,35 +79,38 @@ export async function fetchMeets(): Promise<Meet[]> {
 
     if (error) {
       console.error('Error fetching meets:', error);
-      console.error('Error details:', error.message);
-      console.error('Error code:', error.code);
       throw error;
     }
 
-    console.log('Successfully fetched meets:', meetsData);
-    
-    return meetsData.map(meet => ({
-      id: meet.id,
-      name: meet.name,
-      venue: {
-        name: meet.venue_name,
-        address: {
-          street: meet.venue_street,
-          city: meet.venue_city,
-          state: meet.venue_state,
-          zip: meet.venue_zip
-        }
-      },
-      time: {
-        timeZone: meet.time_zone,
-        timeZoneIdentifier: meet.time_zone
-      },
-      dates: {
-        start: meet.start_date,
-        end: meet.end_date
-      },
-      status: meet.status
-    }));
+    return meetsData.map(meet => {
+      const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
+      const startDate = new Date(meet.start_date);
+      
+      return {
+        id: meet.id,
+        name: meet.name,
+        venue: {
+          name: meet.venue_name,
+          address: {
+            street: meet.venue_street,
+            city: meet.venue_city,
+            state: meet.venue_state,
+            zip: meet.venue_zip
+          }
+        },
+        time: {
+          timeZone: meet.time_zone,
+          timeZoneIdentifier: timeZoneIdentifier,
+          abbreviation: meet.time_zone_abbr || 'EST', // Fallback to EST if not provided
+          utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
+        },
+        dates: {
+          start: meet.start_date,
+          end: meet.end_date
+        },
+        status: meet.status
+      };
+    });
   } catch (error) {
     console.error('Error in fetchMeets:', error);
     throw error;
@@ -114,8 +130,6 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
 
     if (error) {
       console.error('Error fetching meet by name:', error);
-      console.error('Error details:', error.message);
-      console.error('Error code:', error.code);
       throw error;
     }
 
@@ -124,7 +138,8 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
       return null;
     }
 
-    console.log('Successfully fetched meet:', meet);
+    const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
+    const startDate = new Date(meet.start_date);
 
     return {
       id: meet.id,
@@ -140,7 +155,9 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
       },
       time: {
         timeZone: meet.time_zone,
-        timeZoneIdentifier: meet.time_zone
+        timeZoneIdentifier: timeZoneIdentifier,
+        abbreviation: meet.time_zone_abbr || 'EST', // Fallback to EST if not provided
+        utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
       },
       dates: {
         start: meet.start_date,

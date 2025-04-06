@@ -812,29 +812,32 @@ export default function SessionDetailsScreen() {
       return;
     }
 
-    // Use platform-specific start time if available, otherwise use session start time
-    const session = sessionDay.sessions.find(s => s.number === parseInt(params.sessionNumber));
-    const platform = session?.platforms.find(p => p.platform === params.platform);
-    const startTime = platform?.platformStartTime || params.startTime;
-    const weighInTime = calculateWeighInTime(startTime);
-
-    // Convert times to UTC using the meet's time zone
-    const startDate = convertToUTC(startTime, sessionDay.fullDate, params.meet);
-    const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-
-    const eventDetails = {
-      title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
-      location: getMeetVenueLocation(params.meet),
-      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, params.meet)}`,
-      startDate: startDate,
-      endDate: endDate,
-      timeZone: getMeetConfig(params.meet).time.timeZoneIdentifier,
-      alarms: [{
-        relativeOffset: -60,
-      }],
-    };
-
     try {
+      // Get meet config first
+      const meetConfig = await getMeetConfig(params.meet);
+
+      // Use platform-specific start time if available, otherwise use session start time
+      const session = sessionDay.sessions.find(s => s.number === parseInt(params.sessionNumber));
+      const platform = session?.platforms.find(p => p.platform === params.platform);
+      const startTime = platform?.platformStartTime || params.startTime;
+      const weighInTime = calculateWeighInTime(startTime);
+
+      // Convert times to UTC using the meet's time zone
+      const startDate = convertToUTC(startTime, sessionDay.fullDate, params.meet);
+      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+
+      const eventDetails = {
+        title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
+        location: getMeetVenueLocation(params.meet),
+        notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, params.meet)}`,
+        startDate: startDate,
+        endDate: endDate,
+        timeZone: meetConfig.time.timeZoneIdentifier,
+        alarms: [{
+          relativeOffset: -60,
+        }],
+      };
+
       let calendarId;
 
       if (Platform.OS === 'ios') {

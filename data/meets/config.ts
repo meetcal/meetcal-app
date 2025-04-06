@@ -1,62 +1,32 @@
 import { MeetConfig, MeetName } from '../types/meet';
+import { fetchMeetByName } from '@/lib/database/meet-manager';
 
-export const meetConfigs: { [K in MeetName]: MeetConfig } = {
-  'USAW Master\'s Nationals': {
-    name: 'USAW Master\'s Nationals',
-    venue: {
-      name: 'Georgia International Convention Center',
-      address: {
-        street: '2000 Convention Center Concourse',
-        city: 'College Park',
-        state: 'GA',
-        zip: '30337',
-      },
-    },
-    time: {
-      timeZone: 'Eastern Time',
-      timeZoneIdentifier: 'America/New_York',
-      abbreviation: 'EDT',
-      utcOffset: 4, // EDT (UTC-4)
-    },
-    dates: {
-      start: '2025-04-03',
-      end: '2025-04-06',
-    },
-  },
-  'Florida WSO Champs': {
-    name: 'Florida WSO Champs',
-    venue: {
-      name: 'Lake Wales High School',
-      address: {
-        street: '1 Highlander Way',
-        city: 'Lake Wales',
-        state: 'FL',
-        zip: '33853',
-      },
-    },
-    time: {
-      timeZone: 'Eastern Time',
-      timeZoneIdentifier: 'America/New_York',
-      abbreviation: 'EDT',
-      utcOffset: 4, // EDT (UTC-4)
-    },
-    dates: {
-      start: '2025-04-25',
-      end: '2025-04-27',
-    },
-  },
-};
+// Cache for meet configs to avoid repeated fetches
+const meetConfigCache: { [key: string]: MeetConfig } = {};
 
-export function getMeetConfig(meetName: MeetName): MeetConfig {
-  return meetConfigs[meetName];
-}
+export async function getMeetConfig(meetName: MeetName): Promise<MeetConfig> {
+  // Check cache first
+  if (meetConfigCache[meetName]) {
+    return meetConfigCache[meetName];
+  }
 
-export function getDefaultMeet(): MeetName {
-  return 'USAW Master\'s Nationals';
-}
+  // Fetch from Supabase
+  const meet = await fetchMeetByName(meetName);
+  if (!meet) {
+    throw new Error(`Meet not found: ${meetName}`);
+  }
 
-export function isValidMeet(meetName: string): meetName is MeetName {
-  return meetName in meetConfigs;
+  // Create config from meet data
+  const config: MeetConfig = {
+    name: meet.name,
+    venue: meet.venue,
+    time: meet.time,
+    dates: meet.dates,
+  };
+
+  // Cache the config
+  meetConfigCache[meetName] = config;
+  return config;
 }
 
 // Time zone utility functions
@@ -65,7 +35,10 @@ export function convertToUTC(
   dateStr: string,
   meet: MeetName
 ): Date {
-  const config = getMeetConfig(meet);
+  const config = meetConfigCache[meet];
+  if (!config) {
+    throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
+  }
   
   // Parse time string (format: "8:00 AM")
   const [time, period] = timeStr.split(' ');
@@ -114,12 +87,18 @@ function formatTo12Hour(timeStr: string): string {
 }
 
 export function formatTimeWithZone(timeStr: string, meet: MeetName): string {
-  const config = getMeetConfig(meet);
+  const config = meetConfigCache[meet];
+  if (!config) {
+    throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
+  }
   return `${formatTo12Hour(timeStr)} ${config.time.abbreviation}`;
 }
 
 export function getMeetVenueLocation(meet: MeetName): string {
-  const config = getMeetConfig(meet);
+  const config = meetConfigCache[meet];
+  if (!config) {
+    throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
+  }
   const { venue } = config;
   const { address } = venue;
   
