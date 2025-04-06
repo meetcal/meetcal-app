@@ -29,52 +29,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
 
-  // Load available meets
-  useEffect(() => {
-    const loadMeets = async () => {
-      try {
-        console.log('Fetching available meets...');
-        const meets = await fetchMeets();
-        console.log('Available meets:', meets);
-        setAvailableMeets(meets);
-
-        // If no meet is selected yet, try to load from storage
-        if (!selectedMeet) {
-          const stored = await AsyncStorage.getItem('@selected_meet');
-          console.log('Stored meet from AsyncStorage:', stored);
-
-          if (stored) {
-            // Only use stored meet if it still exists in available meets
-            const meetData = meets.find(m => m.name === stored);
-            if (meetData) {
-              console.log('Setting initial meet to stored meet:', stored);
-              setSelectedMeetState(stored);
-              setMeetDetails(meetData);
-            } else {
-              // Clear stored meet if it no longer exists
-              await AsyncStorage.removeItem('@selected_meet');
-              console.log('Stored meet no longer exists, cleared from storage');
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading available meets:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadMeets();
-  }, []);
-
-  // Initialize SyncManager when meet changes
-  useEffect(() => {
-    if (selectedMeet) {
-      setSyncManager(new SyncManager(selectedMeet));
-    } else {
-      setSyncManager(null);
-    }
-  }, [selectedMeet]);
-
   // Enhanced setSelectedMeet function
   const setSelectedMeet = async (meet: MeetName) => {
     try {
@@ -120,6 +74,78 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       setIsSyncing(false);
     }
   };
+
+  // Initialize meet data
+  const initializeMeetData = async (meet: MeetName, meetData: Meet) => {
+    try {
+      setIsSyncing(true);
+      setSyncStatus('syncing');
+
+      // Set meet state
+      setSelectedMeetState(meet);
+      setMeetDetails(meetData);
+
+      // Create and set sync manager
+      const manager = new SyncManager(meet);
+      setSyncManager(manager);
+
+      // Prefetch data
+      await prefetchMeetData(meet);
+      setLastSynced(Date.now());
+      setSyncStatus('idle');
+    } catch (error) {
+      console.error('Error initializing meet data:', error);
+      setSyncStatus('error');
+      // Don't clear meet state on initial load error
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Load available meets
+  useEffect(() => {
+    const loadMeets = async () => {
+      try {
+        console.log('Fetching available meets...');
+        const meets = await fetchMeets();
+        console.log('Available meets:', meets);
+        setAvailableMeets(meets);
+
+        if (meets.length === 0) {
+          console.log('No meets available');
+          setIsLoading(false);
+          return;
+        }
+
+        // Try to load stored meet
+        const stored = await AsyncStorage.getItem('@selected_meet');
+        console.log('Stored meet from AsyncStorage:', stored);
+
+        if (stored) {
+          // Only use stored meet if it still exists in available meets
+          const meetData = meets.find(m => m.name === stored);
+          if (meetData) {
+            console.log('Initializing stored meet:', stored);
+            await initializeMeetData(stored, meetData);
+          } else {
+            // Clear stored meet if it no longer exists
+            await AsyncStorage.removeItem('@selected_meet');
+            console.log('Stored meet no longer exists, using first available meet');
+            await initializeMeetData(meets[0].name, meets[0]);
+          }
+        } else {
+          // No stored meet, use first available
+          console.log('No stored meet, using first available meet:', meets[0].name);
+          await initializeMeetData(meets[0].name, meets[0]);
+        }
+      } catch (error) {
+        console.error('Error loading available meets:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadMeets();
+  }, []);
 
   // Force sync function
   const forceSync = async () => {
