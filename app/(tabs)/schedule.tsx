@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -13,7 +13,6 @@ import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/type
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getMeetConfig } from '@/data/meets/config';
 import { initStore } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 
@@ -138,15 +137,36 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
 }) {
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
-  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const { currentTheme } = useTheme();
   const [scheduleData, setScheduleData] = useState(day);
+
+  // Get time zone abbreviation
+  const timeZoneAbbreviation = useMemo(() => {
+    if (!selectedMeet) return 'Local';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
+  }, [selectedMeet, timeZone]);
+
+  // Initialize sync manager when selectedMeet changes
+  useEffect(() => {
+    if (selectedMeet) {
+      setSyncManager(new SyncManager(selectedMeet));
+    } else {
+      setSyncManager(null);
+    }
+  }, [selectedMeet]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
 
   const onRefresh = useCallback(async () => {
+    if (!syncManager) return;
+
     setRefreshing(true);
     try {
       const meetData = await syncManager.getMeetData();
@@ -183,7 +203,7 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
         <SessionView 
           session={item} 
           letterFilter={letterFilter}
-          timeZone={timeZone}
+          timeZone={timeZoneAbbreviation}
         />
       )}
       showsVerticalScrollIndicator={false}
@@ -218,11 +238,11 @@ type Colors = {
 export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
-  const { selectedMeet, isLoading: isMeetLoading, setSelectedMeet } = useSelectedMeet();
-  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets } = useSelectedMeet();
+  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const meetConfig = useMemo(() => getMeetConfig(selectedMeet), [selectedMeet]);
+  const [isChangingMeet, setIsChangingMeet] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -238,9 +258,23 @@ export default function ScheduleScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
+  // Initialize sync manager when selectedMeet changes
+  useEffect(() => {
+    if (selectedMeet && typeof selectedMeet === 'string') {
+      setSyncManager(new SyncManager(selectedMeet));
+    } else {
+      setSyncManager(null);
+    }
+  }, [selectedMeet]);
+
   const loadScheduleData = async () => {
+    if (!selectedMeet || !syncManager) {
+      console.log('No selected meet or sync manager');
+      setSchedule([]);
+      return;
+    }
+
     console.log('Loading schedule data for meet:', selectedMeet);
-    const syncManager = new SyncManager(selectedMeet);
     try {
       const meetData = await syncManager.getMeetData();
       console.log('Meet data:', meetData);
@@ -251,12 +285,11 @@ export default function ScheduleScreen() {
     }
   };
 
-  useEffect(() => {
-    console.log('Schedule state updated:', schedule);
-  }, [schedule]);
-
+  // Initialize store and load data
   useEffect(() => {
     const initializeAndLoad = async () => {
+      if (!selectedMeet || !meetDetails) return;
+      
       setIsLoading(true);
       try {
         console.log('Initializing store...');
@@ -271,7 +304,7 @@ export default function ScheduleScreen() {
     };
 
     initializeAndLoad();
-  }, [selectedMeet]);
+  }, [selectedMeet, meetDetails]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -329,11 +362,49 @@ export default function ScheduleScreen() {
       <DayView 
         day={item} 
         letterFilter={letterFilter} 
-        timeZone={meetConfig.time.timeZone}
+        timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
         onRefreshComplete={loadScheduleData}
       />
     </View>
-  ), [width, letterFilter, meetConfig.time.timeZone, loadScheduleData]);
+  ), [width, letterFilter, meetDetails, loadScheduleData]);
+
+  if (isMeetLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
+            Loading meets...
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  if (!selectedMeet || !meetDetails) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
+            Please select a meet to view the schedule
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  if (isLoading || isChangingMeet) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
+            Loading schedule...
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -367,14 +438,24 @@ export default function ScheduleScreen() {
         </View>
       </View>
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ThemedText>Loading schedule...</ThemedText>
-        </View>
-      ) : !schedule || schedule.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ThemedText>No schedule data available</ThemedText>
-        </View>
+      {!schedule || schedule.length === 0 ? (
+        <ScrollView
+          contentContainerStyle={styles.loadingContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={loadScheduleData}
+              tintColor={colors.text}
+            />
+          }
+        >
+          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
+            No schedule data available
+          </ThemedText>
+          <ThemedText style={[styles.loadingText, { color: colors.secondaryText, marginTop: 8, fontSize: 14 }]}>
+            Pull down to refresh
+          </ThemedText>
+        </ScrollView>
       ) : (
         <View style={styles.contentContainer}>
           <FlatList
@@ -395,13 +476,6 @@ export default function ScheduleScreen() {
             onScroll={onScroll}
             scrollEventThrottle={16}
             contentContainerStyle={styles.flatListContent}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <ThemedText style={styles.emptyText}>
-                  No schedule data available
-                </ThemedText>
-              </View>
-            )}
           />
 
           {schedule.length > 0 && (
@@ -447,37 +521,49 @@ export default function ScheduleScreen() {
               </Pressable>
             </View>
             
-            {['USAW Master\'s Nationals', 'Florida WSO Champs'].map((meet) => (
+            {availableMeets.map((meet) => (
               <Pressable
-                key={meet}
+                key={meet.name}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },
-                  selectedMeet === meet && { backgroundColor: colors.pressed },
+                  selectedMeet === meet.name && { backgroundColor: colors.pressed },
                   pressed && { opacity: 0.8 }
                 ]}
                 onPress={async () => {
                   setShowFilterModal(false);
+                  if (meet.name === selectedMeet) return;
+                  setIsChangingMeet(true);
                   try {
-                    await setSelectedMeet(meet as MeetName);
+                    await setSelectedMeet(meet.name);
                   } catch (error) {
                     console.error('Error saving selected meet:', error);
                     Alert.alert('Error', 'Failed to update selected meet.');
+                  } finally {
+                    setIsChangingMeet(false);
                   }
                 }}
               >
                 <ThemedText style={[
                   styles.modalOptionText,
                   { color: colors.text },
-                  selectedMeet === meet && { color: '#007AFF' }
+                  selectedMeet === meet.name && { color: '#007AFF' }
                 ]}>
-                  {meet}
+                  {meet.name}
                 </ThemedText>
-                {selectedMeet === meet && (
+                {selectedMeet === meet.name && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />
                 )}
               </Pressable>
             ))}
+            
+            {availableMeets.length === 0 && (
+              <View style={styles.emptyContainer}>
+                <ThemedText style={styles.emptyText}>
+                  No meets available
+                </ThemedText>
+              </View>
+            )}
           </View>
         </Pressable>
       </Modal>
@@ -683,5 +769,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    textAlign: 'center',
   },
 }); 

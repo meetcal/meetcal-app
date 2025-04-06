@@ -235,12 +235,63 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const { user } = useUser();
   const router = useRouter();
   const { currentTheme } = useTheme();
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, meetDetails } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<Record<string, SupabaseBests>>({});
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>({});
   const [athleteWarmups, setAthleteWarmups] = useState<Record<string, boolean>>({});
   const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
+
+  const loadAthletes = async () => {
+    setLoading(true);
+    try {
+      const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet || '', refreshKey > 0);
+      setAthletes(sessionAthletes);
+
+      // Initialize loading states for each athlete
+      const newLoadingBests: Record<string, boolean> = {};
+      for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
+        for (const athlete of platformAthletes) {
+          newLoadingBests[athlete.name] = true;
+        }
+      }
+      setLoadingBests(newLoadingBests);
+
+      // Fetch athlete bests independently
+      for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
+        for (const athlete of platformAthletes) {
+          getAthleteBests(athlete.name, selectedMeet || '').then(bests => {
+            setAthleteBests(prev => ({
+              ...prev,
+              [athlete.name]: bests
+            }));
+            setLoadingBests(prev => ({
+              ...prev,
+              [athlete.name]: false
+            }));
+          });
+        }
+      }
+      
+      // Check for warmups after loading athletes
+      await checkForWarmups();
+    } catch (error) {
+      console.error('Error loading athletes:', error);
+      setAthletes({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get time zone abbreviation
+  const timeZoneAbbr = useMemo(() => {
+    const timeZoneId = meetDetails?.time.timeZoneIdentifier || 'America/Denver';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZoneId,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
 
   const colors = {
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
@@ -276,47 +327,6 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   };
 
   useEffect(() => {
-    const loadAthletes = async () => {
-      setLoading(true);
-      try {
-        const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet, refreshKey > 0);
-        setAthletes(sessionAthletes);
-
-        // Initialize loading states for each athlete
-        const newLoadingBests: Record<string, boolean> = {};
-        for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
-          for (const athlete of platformAthletes) {
-            newLoadingBests[athlete.name] = true;
-          }
-        }
-        setLoadingBests(newLoadingBests);
-
-        // Fetch athlete bests independently
-        for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
-          for (const athlete of platformAthletes) {
-            getAthleteBests(athlete.name, selectedMeet).then(bests => {
-              setAthleteBests(prev => ({
-                ...prev,
-                [athlete.name]: bests
-              }));
-              setLoadingBests(prev => ({
-                ...prev,
-                [athlete.name]: false
-              }));
-            });
-          }
-        }
-        
-        // Check for warmups after loading athletes
-        await checkForWarmups();
-      } catch (error) {
-        console.error('Error loading athletes:', error);
-        setAthletes({});
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadAthletes();
   }, [sessionNumber, platform, refreshKey, selectedMeet]);
 
@@ -556,13 +566,23 @@ export default function SessionDetailsScreen() {
   const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, meetDetails } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [syncManager] = useState(() => new SyncManager(selectedMeet));
+  const [syncManager] = useState(() => new SyncManager(selectedMeet || ''));
+
+  // Get time zone abbreviation
+  const timeZoneAbbr = useMemo(() => {
+    const timeZoneId = meetDetails?.time.timeZoneIdentifier || 'America/Denver';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZoneId,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
 
   const rawParams = useLocalSearchParams<{
     id?: string;
@@ -586,7 +606,7 @@ export default function SessionDetailsScreen() {
     weighInTime: rawParams.weighInTime || '',
     date: rawParams.date || '',
     athleteName: rawParams.athleteName,
-    meet: rawParams.meet || selectedMeet,
+    meet: rawParams.meet || selectedMeet || '',
   };
 
   // Generate the correct session ID using the meet information
@@ -792,29 +812,32 @@ export default function SessionDetailsScreen() {
       return;
     }
 
-    // Use platform-specific start time if available, otherwise use session start time
-    const session = sessionDay.sessions.find(s => s.number === parseInt(params.sessionNumber));
-    const platform = session?.platforms.find(p => p.platform === params.platform);
-    const startTime = platform?.platformStartTime || params.startTime;
-    const weighInTime = calculateWeighInTime(startTime);
-
-    // Convert times to UTC using the meet's time zone
-    const startDate = convertToUTC(startTime, sessionDay.fullDate, params.meet);
-    const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-
-    const eventDetails = {
-      title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
-      location: getMeetVenueLocation(params.meet),
-      notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, params.meet)}`,
-      startDate: startDate,
-      endDate: endDate,
-      timeZone: getMeetConfig(params.meet).time.timeZoneIdentifier,
-      alarms: [{
-        relativeOffset: -60,
-      }],
-    };
-
     try {
+      // Get meet config first
+      const meetConfig = await getMeetConfig(params.meet);
+
+      // Use platform-specific start time if available, otherwise use session start time
+      const session = sessionDay.sessions.find(s => s.number === parseInt(params.sessionNumber));
+      const platform = session?.platforms.find(p => p.platform === params.platform);
+      const startTime = platform?.platformStartTime || params.startTime;
+      const weighInTime = calculateWeighInTime(startTime);
+
+      // Convert times to UTC using the meet's time zone
+      const startDate = convertToUTC(startTime, sessionDay.fullDate, params.meet);
+      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+
+      const eventDetails = {
+        title: `Session ${params.sessionNumber} - Platform ${params.platform}`,
+        location: getMeetVenueLocation(params.meet),
+        notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, params.meet)}`,
+        startDate: startDate,
+        endDate: endDate,
+        timeZone: meetConfig.time.timeZoneIdentifier,
+        alarms: [{
+          relativeOffset: -60,
+        }],
+      };
+
       let calendarId;
 
       if (Platform.OS === 'ios') {
@@ -934,7 +957,7 @@ export default function SessionDetailsScreen() {
                 Weigh-in Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {formatTimeWithZone(platformWeighInTime, params.meet)}
+                {platformWeighInTime} {timeZoneAbbr}
               </ThemedText>
             </View>
 
@@ -943,7 +966,7 @@ export default function SessionDetailsScreen() {
                 Start Time
               </ThemedText>
               <ThemedText style={[styles.value, { color: colors.text }]}>
-                {formatTimeWithZone(platformStartTime, params.meet)}
+                {platformStartTime} {timeZoneAbbr}
               </ThemedText>
             </View>
 
