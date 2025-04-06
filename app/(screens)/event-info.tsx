@@ -6,10 +6,21 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Linking, Platform } from 'react-native';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { useMemo } from 'react';
 
 export default function EventInfoScreen() {
   const { currentTheme } = useTheme();
   const { selectedMeet, meetDetails, isLoading } = useSelectedMeet();
+
+  // Get full time zone name
+  const timeZoneName = useMemo(() => {
+    if (!meetDetails?.time.timeZoneIdentifier) return 'Local Time';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: meetDetails.time.timeZoneIdentifier,
+      timeZoneName: 'long'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local Time';
+  }, [meetDetails?.time.timeZoneIdentifier]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -129,7 +140,7 @@ export default function EventInfoScreen() {
             Venue Time Zone
           </ThemedText>
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
-            {meetDetails.time.timeZone}
+            {timeZoneName}
           </ThemedText>
         </View>
       </View>

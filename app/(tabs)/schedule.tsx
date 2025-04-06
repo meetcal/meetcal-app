@@ -141,6 +141,16 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
   const { currentTheme } = useTheme();
   const [scheduleData, setScheduleData] = useState(day);
 
+  // Get time zone abbreviation
+  const timeZoneAbbreviation = useMemo(() => {
+    if (!selectedMeet) return 'Local';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
+  }, [selectedMeet, timeZone]);
+
   // Initialize sync manager when selectedMeet changes
   useEffect(() => {
     if (selectedMeet) {
@@ -193,7 +203,7 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
         <SessionView 
           session={item} 
           letterFilter={letterFilter}
-          timeZone={timeZone}
+          timeZone={timeZoneAbbreviation}
         />
       )}
       showsVerticalScrollIndicator={false}
@@ -354,7 +364,7 @@ export default function ScheduleScreen() {
       <DayView 
         day={item} 
         letterFilter={letterFilter} 
-        timeZone={meetDetails?.time.timeZone || 'Local Time'}
+        timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
         onRefreshComplete={loadScheduleData}
       />
     </View>
