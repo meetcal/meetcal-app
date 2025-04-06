@@ -100,6 +100,17 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
   try {
     console.log('Saving meet schedule to store for meet:', meetId);
     
+    // Validate schedule structure
+    if (!Array.isArray(schedule)) {
+      console.error('Invalid schedule format: not an array');
+      throw new Error('Invalid schedule format');
+    }
+
+    if (schedule.length === 0) {
+      console.error('Invalid schedule: empty array');
+      throw new Error('Empty schedule');
+    }
+
     // Log the schedule structure before processing
     console.log('Schedule structure before save:', JSON.stringify({
       numberOfDays: schedule.length,
@@ -110,6 +121,21 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
         sampleSession: schedule[0].sessions[0]
       } : null
     }, null, 2));
+
+    // Validate each day's structure
+    schedule.forEach((day, index) => {
+      if (!day.date || !day.fullDate || !Array.isArray(day.sessions)) {
+        console.error(`Invalid day structure at index ${index}:`, day);
+        throw new Error(`Invalid day structure at index ${index}`);
+      }
+
+      day.sessions.forEach((session, sessionIndex) => {
+        if (!session.id || !session.number || !session.startTime || !session.weighInTime || !Array.isArray(session.platforms)) {
+          console.error(`Invalid session structure at day ${index}, session ${sessionIndex}:`, session);
+          throw new Error(`Invalid session structure at day ${index}, session ${sessionIndex}`);
+        }
+      });
+    });
 
     // Save schedule separately
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
@@ -140,21 +166,18 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
     const savedStore = await AsyncStorage.getItem(STORE_KEY);
     
     if (!savedSchedule || !savedStore) {
+      console.error('Failed to save data - savedSchedule or savedStore is null');
       throw new Error('Failed to save data');
     }
     
     // Parse and verify the saved schedule
     const parsedSchedule = JSON.parse(savedSchedule);
     if (!Array.isArray(parsedSchedule) || parsedSchedule.length === 0) {
+      console.error('Invalid schedule data saved:', parsedSchedule);
       throw new Error('Invalid schedule data saved');
     }
-    
-    console.log('Save successful:', {
-      scheduleLength: parsedSchedule.length,
-      firstDayDate: parsedSchedule[0].date,
-      numberOfSessions: parsedSchedule[0].sessions.length
-    });
-    
+
+    console.log('Successfully saved schedule data');
   } catch (error) {
     console.error('Error saving meet schedule:', error);
     throw error;
@@ -166,8 +189,10 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
   try {
     const store = await getStore();
     if (!store.meets[meetId]) {
+      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
       store.meets[meetId] = {
         schedule: null,
+        scheduleKey,
         athletes: [],
         lastSyncTime: Date.now()
       };
