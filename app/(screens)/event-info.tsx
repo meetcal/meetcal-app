@@ -3,44 +3,13 @@ import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getVenueConfig, getFullAddress } from '@/config/venue';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Linking, Platform } from 'react-native';
-import { useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 
 export default function EventInfoScreen() {
   const { currentTheme } = useTheme();
-  const [selectedMeet, setSelectedMeet] = useState('USAW Master\'s Nationals');
-
-  // Meet configuration mapping
-  const meetConfig = {
-    'USAW Master\'s Nationals': {
-      timeZone: 'Eastern Time'
-    },
-    'Florida WSO Champs': {
-      timeZone: 'Eastern Time'
-    }
-  };
-
-  // Load selected meet from storage
-  useEffect(() => {
-    const loadSelectedMeet = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('@selected_meet');
-        if (stored) {
-          setSelectedMeet(stored);
-        }
-      } catch (error) {
-        console.error('Error loading selected meet:', error);
-      }
-    };
-    loadSelectedMeet();
-  }, []);
-
-  // Get current meet config
-  const currentMeetConfig = meetConfig[selectedMeet as keyof typeof meetConfig] || meetConfig['USAW Master\'s Nationals'];
-  const venue = getVenueConfig(selectedMeet as keyof typeof meetConfig);
+  const { selectedMeet, meetDetails, isLoading } = useSelectedMeet();
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -54,7 +23,9 @@ export default function EventInfoScreen() {
   };
 
   const handleAddressPress = () => {
-    const address = getFullAddress(venue);
+    if (!meetDetails?.venue) return;
+    
+    const address = `${meetDetails.venue.name}, ${meetDetails.venue.address.street}, ${meetDetails.venue.address.city}, ${meetDetails.venue.address.state} ${meetDetails.venue.address.zip}`;
     const encodedAddress = encodeURIComponent(address);
     
     const mapsUrl = Platform.select({
@@ -71,6 +42,32 @@ export default function EventInfoScreen() {
       }
     });
   };
+
+  if (isLoading || !meetDetails) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen options={{ 
+          title: "Event Info",
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          animation: 'slide_from_right',
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerShadowVisible: false,
+        }} />
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={styles.section}>
+            <ThemedText style={[styles.sectionText, { color: colors.secondaryText }]}>
+              {isLoading ? "Loading..." : "No meet selected"}
+            </ThemedText>
+          </View>
+        </View>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -90,7 +87,7 @@ export default function EventInfoScreen() {
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
-            {selectedMeet}
+            {meetDetails.name}
           </ThemedText>
         </View>
         
@@ -111,13 +108,13 @@ export default function EventInfoScreen() {
             <View style={styles.addressContainer}>
               <View>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venue.name}
+                  {meetDetails.venue.name}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venue.address.street}
+                  {meetDetails.venue.address.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {venue.address.city}, {venue.address.state} {venue.address.zip}
+                  {meetDetails.venue.address.city}, {meetDetails.venue.address.state} {meetDetails.venue.address.zip}
                 </ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
@@ -132,7 +129,7 @@ export default function EventInfoScreen() {
             Venue Time Zone
           </ThemedText>
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
-            {currentMeetConfig.timeZone}
+            {meetDetails.time.timeZone}
           </ThemedText>
         </View>
       </View>

@@ -21,38 +21,34 @@ function validatePlatform(platform: string): Platform {
   const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
   const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
   
-  if (validPlatforms.includes(normalizedPlatform as Platform)) {
-    return normalizedPlatform as Platform;
+  if (!validPlatforms.includes(normalizedPlatform as Platform)) {
+    console.warn(`Invalid platform name: ${platform}, using Red as default`);
+    return 'Red';
   }
-  console.warn(`Invalid platform "${platform}", defaulting to "Blue"`);
-  return 'Blue';
+  
+  return normalizedPlatform as Platform;
 }
 
 // Convert 24-hour time to 12-hour time without seconds
-function formatTo12Hour(timeStr: string): string {
-  // If already in 12-hour format with AM/PM, just remove seconds
-  if (timeStr.includes('AM') || timeStr.includes('PM')) {
-    const [time, period] = timeStr.split(' ');
-    const [hours, minutes] = time.split(':');
-    return `${hours}:${minutes} ${period}`;
+function formatTo12Hour(time: string): string {
+  if (!time) return '';
+  
+  try {
+    // Split time into hours and minutes
+    const [hours, minutes] = time.split(':').map(Number);
+    
+    // Determine period
+    const period = hours >= 12 ? 'PM' : 'AM';
+    
+    // Convert hours to 12-hour format
+    const displayHours = hours % 12 || 12;
+    
+    // Format the time string
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return time;
   }
-
-  // Convert from 24-hour format
-  const [hours, minutes] = timeStr.split(':');
-  const hour = parseInt(hours, 10);
-  let period = 'AM';
-  let hour12 = hour;
-
-  if (hour === 0) {
-    hour12 = 12;
-  } else if (hour === 12) {
-    period = 'PM';
-  } else if (hour > 12) {
-    hour12 = hour - 12;
-    period = 'PM';
-  }
-
-  return `${hour12}:${minutes} ${period}`;
 }
 
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
@@ -69,6 +65,7 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
     } else {
       const uniqueMeets = [...new Set(allRecords.map(r => r.meet))];
       console.log('Available meets in database:', uniqueMeets);
+      console.log('Looking for meet:', meet);
     }
 
     // Now try to fetch all records without any filters first
@@ -99,8 +96,15 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       throw error;
     }
 
-    console.log('Successfully fetched schedule. Records:', data?.length || 0);
-    return data || [];
+    if (!data || data.length === 0) {
+      console.error('No schedule data found for meet:', meet);
+      return [];
+    }
+
+    console.log('Successfully fetched schedule. Records:', data.length);
+    console.log('First record:', data[0]);
+    console.log('Last record:', data[data.length - 1]);
+    return data;
   } catch (error) {
     console.error('Error in fetchScheduleFromDb:', error);
     throw error;
@@ -110,6 +114,7 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 // Transform DB data to match our Schedule type
 export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
   console.log('Transforming schedule data, received records:', dbSchedule.length);
+  console.log('Sample DB record:', dbSchedule[0]);
   
   const platformOrder: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
   
@@ -127,6 +132,7 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
       
       // Format the date in the meet's timezone
       const meetConfig = getMeetConfig(row.meet as MeetName);
+      console.log('Meet config:', meetConfig);
       const meetDate = new Date(utcDate.getTime() + (meetConfig.time.utcOffset * 60 * 60 * 1000));
       
       scheduleMap.set(row.date, {
@@ -182,7 +188,16 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
     };
   });
 
-  console.log('Transformed schedule:', transformedSchedule);
+  console.log('Transformed schedule structure:', {
+    numberOfDays: transformedSchedule.length,
+    sampleDay: transformedSchedule[0] ? {
+      date: transformedSchedule[0].date,
+      fullDate: transformedSchedule[0].fullDate,
+      numberOfSessions: transformedSchedule[0].sessions.length,
+      sampleSession: transformedSchedule[0].sessions[0]
+    } : null
+  });
+  
   return transformedSchedule;
 }
 
