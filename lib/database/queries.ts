@@ -112,7 +112,7 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 }
 
 // Transform DB data to match our Schedule type
-export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
+export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<Schedule> {
   console.log('Transforming schedule data, received records:', dbSchedule.length);
   console.log('Sample DB record:', dbSchedule[0]);
   
@@ -124,14 +124,13 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
     sessions: Map<number, Session>;
   }>();
 
-  dbSchedule.forEach(row => {
-    console.log('Processing row:', row);
+  for (const row of dbSchedule) {
     if (!scheduleMap.has(row.date)) {
       // Create a date object in UTC
       const utcDate = new Date(row.date);
       
       // Format the date in the meet's timezone
-      const meetConfig = getMeetConfig(row.meet as MeetName);
+      const meetConfig = await getMeetConfig(row.meet as MeetName);
       console.log('Meet config:', meetConfig);
       const meetDate = new Date(utcDate.getTime() + (meetConfig.time.utcOffset * 60 * 60 * 1000));
       
@@ -164,41 +163,20 @@ export function transformScheduleData(dbSchedule: DbSchedule[]): Schedule {
       weightClass: row.weight_class,
       platformStartTime: formatTo12Hour(row.start_time) // Format platform-specific time
     });
-  });
+  }
 
-  const transformedSchedule = Array.from(scheduleMap.values()).map(day => {
-    // Sort sessions by their platforms
-    const sortedSessions = Array.from(day.sessions.values()).map(session => {
-      // Sort platforms according to platformOrder
-      const sortedPlatforms = session.platforms.sort((a, b) => {
-        const indexA = platformOrder.indexOf(a.platform);
-        const indexB = platformOrder.indexOf(b.platform);
-        return indexA - indexB;
-      });
-      
-      return {
-        ...session,
-        platforms: sortedPlatforms
-      };
+  // Convert map to array and sort sessions
+  const schedule: Schedule = [];
+  for (const [_, dayData] of scheduleMap) {
+    const sessions = Array.from(dayData.sessions.values()).sort((a, b) => a.number - b.number);
+    schedule.push({
+      date: dayData.date,
+      fullDate: dayData.fullDate,
+      sessions
     });
-    
-    return {
-      ...day,
-      sessions: sortedSessions
-    };
-  });
+  }
 
-  console.log('Transformed schedule structure:', {
-    numberOfDays: transformedSchedule.length,
-    sampleDay: transformedSchedule[0] ? {
-      date: transformedSchedule[0].date,
-      fullDate: transformedSchedule[0].fullDate,
-      numberOfSessions: transformedSchedule[0].sessions.length,
-      sampleSession: transformedSchedule[0].sessions[0]
-    } : null
-  });
-  
-  return transformedSchedule;
+  return schedule;
 }
 
 export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
