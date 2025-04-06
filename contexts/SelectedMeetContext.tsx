@@ -117,26 +117,37 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           return;
         }
 
-        // Try to load stored meet
-        const stored = await AsyncStorage.getItem('@selected_meet');
-        console.log('Stored meet from AsyncStorage:', stored);
+        // If we have a selected meet that's no longer in the available meets (e.g. became completed),
+        // switch to the first available meet
+        if (selectedMeet && !meets.find(m => m.name === selectedMeet)) {
+          console.log('Selected meet no longer available, switching to first available meet');
+          await AsyncStorage.removeItem('@selected_meet');
+          await initializeMeetData(meets[0].name, meets[0]);
+          return;
+        }
 
-        if (stored) {
-          // Only use stored meet if it still exists in available meets
-          const meetData = meets.find(m => m.name === stored);
-          if (meetData) {
-            console.log('Initializing stored meet:', stored);
-            await initializeMeetData(stored, meetData);
+        // Try to load stored meet if we don't have one selected
+        if (!selectedMeet) {
+          const stored = await AsyncStorage.getItem('@selected_meet');
+          console.log('Stored meet from AsyncStorage:', stored);
+
+          if (stored) {
+            // Only use stored meet if it still exists in available meets
+            const meetData = meets.find(m => m.name === stored);
+            if (meetData) {
+              console.log('Initializing stored meet:', stored);
+              await initializeMeetData(stored, meetData);
+            } else {
+              // Clear stored meet if it no longer exists
+              await AsyncStorage.removeItem('@selected_meet');
+              console.log('Stored meet no longer exists, using first available meet');
+              await initializeMeetData(meets[0].name, meets[0]);
+            }
           } else {
-            // Clear stored meet if it no longer exists
-            await AsyncStorage.removeItem('@selected_meet');
-            console.log('Stored meet no longer exists, using first available meet');
+            // No stored meet, use first available
+            console.log('No stored meet, using first available meet:', meets[0].name);
             await initializeMeetData(meets[0].name, meets[0]);
           }
-        } else {
-          // No stored meet, use first available
-          console.log('No stored meet, using first available meet:', meets[0].name);
-          await initializeMeetData(meets[0].name, meets[0]);
         }
       } catch (error) {
         console.error('Error loading available meets:', error);
@@ -144,8 +155,16 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         setIsLoading(false);
       }
     };
+
+    // Initial load
     loadMeets();
-  }, []);
+
+    // Set up periodic refresh every 5 minutes
+    const refreshInterval = setInterval(loadMeets, 5 * 60 * 1000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(refreshInterval);
+  }, [selectedMeet]); // Added selectedMeet as dependency since we use it in the effect
 
   // Force sync function
   const forceSync = async () => {

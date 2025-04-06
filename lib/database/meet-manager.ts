@@ -61,6 +61,7 @@ export async function fetchMeets(): Promise<Meet[]> {
     const { data: meetsData, error } = await supabase
       .from('meets')
       .select('*')
+      .neq('status', 'completed')
       .order('start_date', { ascending: true });
 
     if (error) {
