@@ -400,6 +400,18 @@ const SessionCard = React.memo(({
           </View>
         </View>
       )}
+
+      {/* Display notes if available */}
+      {item.notes && (
+        <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
+          <ThemedText style={[styles.notesLabel, { color: colors.secondaryText }]}>
+            Notes:
+          </ThemedText>
+          <ThemedText style={[styles.notesText, { color: colors.text }]}>
+            {item.notes}
+          </ThemedText>
+        </View>
+      )}
     </Pressable>
   );
 });
@@ -1011,5 +1023,17 @@ const styles = StyleSheet.create({
   warmupLinkText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  notesContainer: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  notesLabel: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  notesText: {
+    fontSize: 15,
+    lineHeight: 20,
   },
 }); 
