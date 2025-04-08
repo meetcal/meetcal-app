@@ -23,6 +23,7 @@ export interface SavedSession {
   startTime: string;
   weighInTime: string;
   date: string;
+  notes?: string;
   athleteNames?: string[];
   athleteName?: string; // For backward compatibility
 }
