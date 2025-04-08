@@ -148,7 +148,7 @@ export default function CreateSessionScreen() {
       // Set start time
       setStartTime(scheduleSession.startTime);
       
-      // Set date from the session day
+      // Set date from the session day and format it as MM-DD-YY
       if (sessionDay) {
         setDate(sessionDay.fullDate);
       }
@@ -221,7 +221,7 @@ export default function CreateSessionScreen() {
         >
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Session Number
               </ThemedText>
               <TextInput
@@ -234,7 +234,7 @@ export default function CreateSessionScreen() {
             </View>
 
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Platform
               </ThemedText>
               <Dropdown
@@ -246,20 +246,20 @@ export default function CreateSessionScreen() {
             </View>
 
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Weight Class
               </ThemedText>
               <TextInput
                 value={weightClass}
                 onChangeText={setWeightClass}
-                placeholder="Enter weight class"
+                placeholder="Autofilled from schedule"
                 style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
                 editable={false}
               />
             </View>
 
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Start Time
               </ThemedText>
               <TextInput
@@ -271,7 +271,7 @@ export default function CreateSessionScreen() {
             </View>
 
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Date
               </ThemedText>
               <TextInput
@@ -283,7 +283,7 @@ export default function CreateSessionScreen() {
             </View>
 
             <View style={[styles.formRow, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
                 Notes
               </ThemedText>
               <TextInput
