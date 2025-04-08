@@ -1,6 +1,6 @@
 import { useSignIn } from '@clerk/clerk-expo'
 import { Link, useRouter, Stack, useLocalSearchParams } from 'expo-router'
-import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform, Image, Dimensions } from 'react-native'
+import { Text, TextInput, TouchableOpacity, View, StyleSheet, Platform, Image, Dimensions, Modal, Pressable, ScrollView, Alert } from 'react-native'
 import React, { useCallback, useEffect } from 'react'
 import * as WebBrowser from 'expo-web-browser'
 import * as AuthSession from 'expo-auth-session'
@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useSubscription } from '@/contexts/SubscriptionContext'
 import Purchases from 'react-native-purchases'
+import { cacheAuthState } from '@/lib/authCache'
 
 // Warm up the browser for better performance
 export const useWarmUpBrowser = () => {
@@ -69,6 +70,9 @@ export default function SignInScreen() {
 
       if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
         await setActive({ session: signInAttempt.createdSessionId })
+        
+        // Cache the auth state
+        await cacheAuthState(true)
         
         // Sync user with RevenueCat after successful sign-in
         try {
