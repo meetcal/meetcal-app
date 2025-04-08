@@ -706,14 +706,14 @@ export default function SavedScreen() {
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/(screens)/warmups')}
+            onPress={() => router.push('/(screens)/create-session')}
           >
-            <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+            <IconSymbol name="plus" size={16} color={colors.secondaryText} />
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Saved Warmups
+              Create Session
             </ThemedText>
-          </Pressable>
-          
+          </Pressable>     
+
           <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
@@ -723,17 +723,17 @@ export default function SavedScreen() {
               Add to Calendar
             </ThemedText>
           </Pressable>
-
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/(screens)/create-session')}
-          >
-            <IconSymbol name="plus" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Create Session
-            </ThemedText>
-          </Pressable>
         </View>
+
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push('/(screens)/warmups')}
+        >
+          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
+          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+            Saved Warmups
+          </ThemedText>
+        </Pressable>
       </View>
 
       <FlatList
