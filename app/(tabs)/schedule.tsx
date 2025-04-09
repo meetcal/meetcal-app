@@ -153,12 +153,31 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
 
   // Initialize sync manager when selectedMeet changes
   useEffect(() => {
-    if (selectedMeet) {
-      setSyncManager(new SyncManager(selectedMeet));
+    if (selectedMeet && typeof selectedMeet === 'string') {
+      const manager = new SyncManager(selectedMeet);
+      setSyncManager(manager);
+      
+      // Load schedule data immediately when sync manager is created
+      const loadData = async () => {
+        setRefreshing(true);
+        try {
+          const meetData = await manager.getMeetData();
+          console.log('Meet data loaded:', meetData);
+          setScheduleData(meetData.schedule.find(d => d.date === day.date) || day);
+        } catch (error) {
+          console.error('Error loading schedule:', error);
+          setScheduleData(day);
+        } finally {
+          setRefreshing(false);
+        }
+      };
+      
+      loadData();
     } else {
       setSyncManager(null);
+      setScheduleData(day);
     }
-  }, [selectedMeet]);
+  }, [selectedMeet, day.date]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -261,50 +280,52 @@ export default function ScheduleScreen() {
   // Initialize sync manager when selectedMeet changes
   useEffect(() => {
     if (selectedMeet && typeof selectedMeet === 'string') {
-      setSyncManager(new SyncManager(selectedMeet));
+      const manager = new SyncManager(selectedMeet);
+      setSyncManager(manager);
+      
+      // Load schedule data immediately when sync manager is created
+      const loadData = async () => {
+        setIsLoading(true);
+        try {
+          const meetData = await manager.getMeetData();
+          console.log('Meet data loaded:', meetData);
+          if (meetData?.schedule) {  // Use optional chaining
+            setSchedule(meetData.schedule);
+          } else {
+            console.warn('No schedule data in meet data');
+            setSchedule([]);
+          }
+        } catch (error) {
+          console.error('Error loading schedule:', error);
+          setSchedule([]);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      loadData();
     } else {
       setSyncManager(null);
+      setSchedule([]);
     }
   }, [selectedMeet]);
 
-  const loadScheduleData = async () => {
-    if (!selectedMeet || !syncManager) {
-      console.log('No selected meet or sync manager');
-      setSchedule([]);
-      return;
-    }
-
-    console.log('Loading schedule data for meet:', selectedMeet);
+  // Add a refresh handler for manual refreshes
+  const handleRefresh = useCallback(async () => {
+    if (!syncManager) return;
+    
+    setIsLoading(true);
     try {
       const meetData = await syncManager.getMeetData();
-      console.log('Meet data:', meetData);
-      setSchedule(meetData.schedule || []);
-    } catch (error) {
-      console.error('Error loading schedule:', error);
-      setSchedule([]);
-    }
-  };
-
-  // Initialize store and load data
-  useEffect(() => {
-    const initializeAndLoad = async () => {
-      if (!selectedMeet || !meetDetails) return;
-      
-      setIsLoading(true);
-      try {
-        console.log('Initializing store...');
-        await initStore();
-        await loadScheduleData();
-      } catch (error) {
-        console.error('Failed to initialize and load:', error);
-        setSchedule([]);
-      } finally {
-        setIsLoading(false);
+      if (meetData?.schedule) {  // Use optional chaining
+        setSchedule(meetData.schedule);
       }
-    };
-
-    initializeAndLoad();
-  }, [selectedMeet, meetDetails]);
+    } catch (error) {
+      console.error('Error refreshing schedule:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncManager]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -356,17 +377,17 @@ export default function ScheduleScreen() {
     setCurrentPage(newPage);
   }, [width]);
 
-  // Pass loadScheduleData to DayView
+  // Update the renderDayView to use handleRefresh
   const renderDayView = useCallback(({ item }: { item: DaySchedule }) => (
     <View style={[styles.pageContainer, { width }]}>
       <DayView 
         day={item} 
         letterFilter={letterFilter} 
         timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
-        onRefreshComplete={loadScheduleData}
+        onRefreshComplete={handleRefresh}
       />
     </View>
-  ), [width, letterFilter, meetDetails, loadScheduleData]);
+  ), [width, letterFilter, meetDetails, handleRefresh]);
 
   if (isMeetLoading) {
     return (
@@ -444,7 +465,7 @@ export default function ScheduleScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
-              onRefresh={loadScheduleData}
+              onRefresh={() => {}}
               tintColor={colors.text}
             />
           }
