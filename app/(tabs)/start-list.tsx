@@ -20,6 +20,7 @@ import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -115,6 +116,7 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
   const { selectedMeet, meetDetails } = useSelectedMeet();
+  const { isSubscribed } = useSubscription();
   
   // Add type guard check
   const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
@@ -288,53 +290,61 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
             <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
           </View>
 
-          <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
-            <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
-              Bests From The Last Year
-            </ThemedText>
-            <View style={styles.statsRow}>
-              {loadingBests ? (
-                <ActivityIndicator size="small" color={colors.secondaryText} />
-              ) : (
-                <>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      Snatch
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      CJ
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      Total
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                </>
-              )}
+          {isSubscribed && (
+            <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
+              <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
+                Bests From The Last Year
+              </ThemedText>
+              <View style={styles.statsRow}>
+                {loadingBests ? (
+                  <ActivityIndicator size="small" color={colors.secondaryText} />
+                ) : (
+                  <>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        Snatch
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        CJ
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        Total
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                  </>
+                )}
+              </View>
             </View>
-          </View>
+          )}
 
           <Pressable
             style={({ pressed }) => [
               styles.meetResultsButton,
               pressed && { opacity: 0.8 }
             ]}
-            onPress={() => router.push({
-              pathname: '/(screens)/athlete-results',
-              params: { name: athlete.name }
-            })}
+            onPress={() => {
+              if (isSubscribed) {
+                router.push({
+                  pathname: '/(screens)/athlete-results',
+                  params: { name: athlete.name }
+                });
+              } else {
+                router.push('/paywall');
+              }
+            }}
           >
             <ThemedText style={styles.meetResultsText}>
               See All Meet Results
@@ -1906,6 +1916,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
   },
   statsTitle: {
     fontSize: 16,
@@ -1976,5 +1987,22 @@ const styles = StyleSheet.create({
     padding: 0,
     height: 24,
     marginRight: 8,
+  },
+  premiumOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8, // Add slight rounding to match the container
+  },
+  premiumBadge: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  premiumText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 
