@@ -708,7 +708,13 @@ export default function SavedScreen() {
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/(screens)/create-session')}
+            onPress={() => {
+              if (isSubscribed) {
+                router.push('/(screens)/create-session');
+              } else {
+                router.push('/paywall');
+              }
+            }}
           >
             <IconSymbol name="plus" size={16} color={colors.secondaryText} />
             <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
