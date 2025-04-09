@@ -159,11 +159,9 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
         
-        // Implement new routing logic
+        // Only route to sign-in or schedule, no automatic paywall redirect
         if (!isSignedIn) {
           router.replace('/sign-in');
-        } else if (!isSubscribed) {
-          router.replace('/paywall');
         } else {
           router.replace('/(tabs)/schedule');
         }
@@ -171,7 +169,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, isSubscribed, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, router]);
 
   if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
     return null;
