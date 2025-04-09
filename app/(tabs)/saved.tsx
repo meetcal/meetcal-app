@@ -18,6 +18,7 @@ import { getSchedule } from '@/data/meets/scheduleManager';
 import { Schedule } from '@/data/types/schedule';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { useUser } from '@clerk/clerk-expo';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
 
 // Function to get user-specific storage key
@@ -432,7 +433,8 @@ export default function SavedScreen() {
     id: string,
     name: string,
     meet: string
-  }>>([])
+  }>>([]);
+  const { isSubscribed } = useSubscription();
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -727,7 +729,13 @@ export default function SavedScreen() {
 
         <Pressable
           style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => router.push('/(screens)/warmups')}
+          onPress={() => {
+            if (isSubscribed) {
+              router.push('/(screens)/warmups');
+            } else {
+              router.push('/paywall');
+            }
+          }}
         >
           <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
           <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
