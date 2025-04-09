@@ -403,14 +403,21 @@ const SessionCard = React.memo(({
       )}
 
       {/* Display notes if available */}
-      {item.notes && (
+      {item.notes && item.notes.length > 0 && (
         <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
           <ThemedText style={[styles.notesLabel, { color: colors.secondaryText }]}>
             Notes:
           </ThemedText>
-          <ThemedText style={[styles.notesText, { color: colors.text }]}>
-            {item.notes}
-          </ThemedText>
+          {item.notes.split('\n\n').filter(note => note.trim().length > 0).map((note, index, array) => (
+            <View key={index} style={styles.noteBlock}>
+              <ThemedText style={[styles.notesText, { color: colors.text }]}>
+                {note.trim()}
+              </ThemedText>
+              {index < array.length - 1 && (
+                <View style={[styles.noteDivider, { backgroundColor: colors.border }]} />
+              )}
+            </View>
+          ))}
         </View>
       )}
     </Pressable>
@@ -448,7 +455,7 @@ export default function SavedScreen() {
 
   // Update migrateSessions function to use user-specific storage
   const migrateSessions = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !selectedMeet) return;
 
     try {
       console.log('Starting session migration');
@@ -1044,10 +1051,18 @@ const styles = StyleSheet.create({
   },
   notesLabel: {
     fontSize: 14,
-    marginBottom: 4,
+    marginBottom: 12,
+    color: '#8E8E93',
   },
   notesText: {
     fontSize: 15,
     lineHeight: 20,
+  },
+  noteBlock: {
+    marginBottom: 12,
+  },
+  noteDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 12,
   },
 }); 
