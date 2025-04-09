@@ -25,7 +25,7 @@ export default function CreateSessionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currentTheme } = useTheme();
-  const { saveSession } = useSavedSessions();
+  const { saveSession, savedSessions } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
 
   const [sessionNumber, setSessionNumber] = useState('');
@@ -177,6 +177,19 @@ export default function CreateSessionScreen() {
       notes,
       weighInTime: '', // Empty string for weigh-in time as per requirements
     };
+
+    // Check if session already exists and merge notes if needed
+    const existingSession = savedSessions.find(s => s.id === newSession.id);
+    if (existingSession && notes) {
+      // If both sessions have notes, combine them
+      if (existingSession.notes) {
+        newSession.notes = `${existingSession.notes}\n\n${notes}`;
+      }
+      // If existing session has athlete names, preserve them
+      if (existingSession.athleteNames) {
+        newSession.athleteNames = existingSession.athleteNames;
+      }
+    }
 
     await saveSession(newSession);
     router.back();

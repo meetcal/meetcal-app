@@ -179,18 +179,26 @@ export function useSavedSessions() {
         currentSessions = JSON.parse(currentSaved);
       }
 
-      if (currentSessions.some(s => s.id === session.id)) {
-        const updatedSessions = currentSessions.map(s => 
-          s.id === session.id ? { ...s, meet: session.meet } : s
-        );
-        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
-        setSavedSessions(updatedSessions);
-        return true;
+      const existingSessionIndex = currentSessions.findIndex(s => s.id === session.id);
+      if (existingSessionIndex >= 0) {
+        const existingSession = currentSessions[existingSessionIndex];
+        // Merge notes if both sessions have them
+        if (session.notes && existingSession.notes) {
+          session.notes = `${existingSession.notes}\n\n${session.notes}`;
+        } else if (!session.notes) {
+          session.notes = existingSession.notes;
+        }
+        // Preserve athlete names
+        if (existingSession.athleteNames && !session.athleteNames) {
+          session.athleteNames = existingSession.athleteNames;
+        }
+        currentSessions[existingSessionIndex] = { ...existingSession, ...session };
+      } else {
+        currentSessions.push(session);
       }
 
-      const updatedSessions = [...currentSessions, session];
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
-      setSavedSessions(updatedSessions);
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(currentSessions));
+      setSavedSessions(currentSessions);
       return true;
     } catch (error) {
       console.error('Error saving session:', error);
