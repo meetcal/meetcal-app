@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Switch, StyleSheet, Alert, Platform, Linking } from 'react-native';
+import { View, Switch, StyleSheet, Alert, Platform, Linking, Pressable } from 'react-native';
 import { ThemedText } from './ThemedText';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { IconSymbol } from './ui/IconSymbol';
+import { SubscriptionStatus } from '@/app/(screens)/profile';
 
 interface NotificationSettingsProps {
   colors: {
@@ -12,13 +14,16 @@ interface NotificationSettingsProps {
     card: string;
     pressed: string;
   };
+  subscriptionStatus: SubscriptionStatus;
 }
 
 const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
-export function NotificationSettings({ colors }: NotificationSettingsProps) {
+export function NotificationSettings({ colors, subscriptionStatus }: NotificationSettingsProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const isSubscribed = subscriptionStatus !== 'free';
 
   useEffect(() => {
     loadNotificationSettings();
@@ -58,6 +63,17 @@ export function NotificationSettings({ colors }: NotificationSettingsProps) {
   };
 
   const handleToggle = async () => {
+    if (!isSubscribed) {
+       Alert.alert(
+         'Premium Feature',
+         'Session reminders are available for subscribed users. Please upgrade your plan to enable this feature.',
+         [
+            { text: 'OK', style: 'cancel' },
+         ]
+       );
+      return;
+    }
+
     const newEnabledState = !isEnabled;
 
     try {
@@ -123,11 +139,22 @@ export function NotificationSettings({ colors }: NotificationSettingsProps) {
   }
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.border }]}>
+    <Pressable
+      style={[styles.container, { borderBottomColor: colors.border }]}
+      disabled={!isSubscribed}
+      onPress={!isSubscribed ? handleToggle : undefined}
+    >
       <View style={styles.row}>
-        <View>
+        <View style={styles.textContainer}>
           <ThemedText style={[styles.label, { color: colors.text }]}>
-            Session Reminders
+            Session Reminders{' '}
+            {!isSubscribed && (
+              <IconSymbol 
+                name="crown.fill"
+                size={16} 
+                color="#FFD700"
+              />
+            )}
           </ThemedText>
           <ThemedText style={[styles.description, { color: colors.secondaryText }]}>
             Get notified 1 hour before your sessions
@@ -135,13 +162,14 @@ export function NotificationSettings({ colors }: NotificationSettingsProps) {
         </View>
         <Switch
           trackColor={{ false: '#767577', true: '#81b0ff' }}
-          thumbColor={isEnabled ? '#007AFF' : '#f4f3f4'}
+          thumbColor={isEnabled && isSubscribed ? '#007AFF' : '#f4f3f4'}
           ios_backgroundColor="#3e3e3e"
           onValueChange={handleToggle}
-          value={isEnabled}
+          value={isEnabled && isSubscribed}
+          disabled={!isSubscribed || isLoading}
         />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -155,6 +183,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+    marginRight: 8,
   },
   label: {
     fontSize: 17,
