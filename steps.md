@@ -2,10 +2,41 @@
 
 ## 1. Database Schema (Already Implemented)
 - Tables created with proper RLS policies
-- Using Clerk user IDs for authentication
+- Using Clerk user IDs for authentication and id in db
 - Proper timestamps and data types
 
 ## 2. Implementation Steps
+
+SQL
+-- Table for saved sessions
+create table public.saved_sessions (
+  id text primary key,
+  user_id text not null,
+  meet text not null,
+  session_number integer not null,
+  platform text not null,
+  weight_class text,
+  start_time text,
+  notes text,
+  athlete_names text[],
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Table for saved warmups
+create table public.saved_warmups (
+  id text primary key,
+  user_id text not null,
+  meet text not null,
+  name text not null,
+  warmup_data jsonb not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Create indexes for faster querying by user_id
+create index saved_sessions_user_id_idx on public.saved_sessions(user_id);
+create index saved_warmups_user_id_idx on public.saved_warmups(user_id);
 
 ### 2.1 Create Supabase Sync Service
 Create `lib/supabase/sync-service.ts`:

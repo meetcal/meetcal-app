@@ -11,6 +11,7 @@ import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
 import { useUser } from '@clerk/clerk-expo'
 import { useFocusEffect } from '@react-navigation/native'
+import { supabase } from '@/lib/supabase'
 
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
@@ -83,34 +84,68 @@ export default function WarmupsScreen() {
 
   const loadSavedWarmups = async () => {
     if (!user?.id) {
-      console.log('No user ID, returning early');
+      console.log('No user ID, clearing warmups');
+      setSavedWarmups([]); // Clear warmups if no user
       return;
     }
     
     try {
-      console.log('Loading warmups for user:', user.id);
+      console.log('Loading warmups for user:', user.id, 'Meet:', selectedMeet);
       const key = getSavedWarmupsKey(user.id);
-      console.log('Storage key:', key);
-      const storedWarmups = await AsyncStorage.getItem(key)
-      console.log('Stored warmups raw:', storedWarmups);
-      
-      if (storedWarmups) {
-        const allWarmups = JSON.parse(storedWarmups)
-        console.log('All warmups:', allWarmups);
-        const filteredWarmups = selectedMeet 
-          ? allWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
-          : allWarmups;
-        console.log('Filtered warmups:', filteredWarmups);
-        setSavedWarmups(filteredWarmups)
+
+      // --- Fetch from Supabase --- 
+      let query = supabase
+        .from('saved_warmups')
+        .select('id, name, meet, updated_at') // Fetch only needed fields for list view
+        .eq('user_id', user.id);
+
+      if (selectedMeet) {
+        query = query.eq('meet', selectedMeet);
+      }
+
+      const { data: supabaseWarmups, error: supabaseError } = await query;
+
+      if (supabaseError) {
+        console.error('Error fetching warmups from Supabase:', supabaseError);
+        // Fallback to local storage
+        const storedWarmups = await AsyncStorage.getItem(key);
+        if (storedWarmups) {
+          const allWarmups = JSON.parse(storedWarmups);
+          const filteredWarmups = selectedMeet 
+            ? allWarmups.filter((warmup: any) => warmup.meet === selectedMeet)
+            : allWarmups;
+          setSavedWarmups(filteredWarmups.map((w: any) => ({ ...w, lastModified: w.lastModified || new Date().toISOString() }))); // Ensure lastModified exists
+        } else {
+          setSavedWarmups([]);
+        }
+      } else if (supabaseWarmups) {
+        console.log('Supabase warmups fetched:', supabaseWarmups);
+        // Map Supabase data
+        const formattedWarmups = supabaseWarmups.map(w => ({
+          id: w.id,
+          name: w.name,
+          meet: w.meet,
+          lastModified: w.updated_at || new Date().toISOString(), // Use updated_at as lastModified
+        }));
+
+        // Update local state
+        setSavedWarmups(formattedWarmups);
+
+        // Optionally: Update AsyncStorage based on Supabase data for offline use?
+        // This requires fetching *all* user warmups from Supabase, not just filtered
+        // For now, we only update the state based on the current filter.
+        // A full sync mechanism would handle this better.
+
       } else {
-        console.log('No stored warmups found');
-        setSavedWarmups([])
+        console.log('No warmups found in Supabase for this filter');
+        setSavedWarmups([]);
+        // Optionally clear relevant portion of AsyncStorage if needed
       }
     } catch (error) {
-      console.error('Error loading warmups:', error)
-      setSavedWarmups([])
+      console.error('Error loading warmups:', error);
+      setSavedWarmups([]);
     }
-  }
+  };
 
   const onRefresh = useCallback(async () => {
     if (!user?.id) return;
@@ -124,21 +159,38 @@ export default function WarmupsScreen() {
     
     try {
       const key = getSavedWarmupsKey(user.id);
-      // First load all warmups to make sure we don't lose data
+      
+      // 1. Update local state optimistically 
+      const previousWarmups = savedWarmups;
+      setSavedWarmups(prevWarmups => prevWarmups.filter(warmup => warmup.id !== id));
+
+      // 2. Delete from AsyncStorage (update the whole list)
       const storedWarmups = await AsyncStorage.getItem(key)
       const allWarmups = storedWarmups ? JSON.parse(storedWarmups) : []
       const updatedWarmups = allWarmups.filter((warmup: AthleteWarmup) => warmup.id !== id)
       await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
+      console.log('Warmup deleted locally');
+
+      // 3. Delete from Supabase
+      const { error: supabaseError } = await supabase
+        .from('saved_warmups')
+        .delete()
+        .match({ id: id, user_id: user.id });
+
+      if (supabaseError) {
+        console.error('Error deleting warmup from Supabase:', supabaseError);
+        // Revert local state if Supabase delete failed
+        setSavedWarmups(previousWarmups);
+        // Optionally show an error message
+      } else {
+        console.log('Warmup deleted from Supabase');
+      }
       
-      // Update the filtered view
-      const filteredWarmups = selectedMeet 
-        ? updatedWarmups.filter((warmup: AthleteWarmup) => warmup.meet === selectedMeet)
-        : updatedWarmups;
-      setSavedWarmups(filteredWarmups)
     } catch (error) {
       console.error('Error deleting warmup:', error)
+      // Potentially revert local state if AsyncStorage failed before Supabase call
     }
-  }
+  };
 
   const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>, onDelete: () => void) => {
     const trans = dragX.interpolate({
