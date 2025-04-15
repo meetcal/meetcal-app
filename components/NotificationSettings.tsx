@@ -2,9 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { View, Switch, StyleSheet, Alert, Platform, Linking } from 'react-native';
 import { ThemedText } from './ThemedText';
 import * as Notifications from 'expo-notifications';
-import { useUser } from '@clerk/clerk-expo';
-import { getNotificationPreferences, toggleNotifications, updateNotificationTimeBefore } from '@/lib/notifications';
-import { scheduleSessionNotifications } from '@/utils/notificationScheduler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface NotificationSettingsProps {
@@ -17,21 +14,20 @@ interface NotificationSettingsProps {
   };
 }
 
+const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
+
 export function NotificationSettings({ colors }: NotificationSettingsProps) {
-  const { user } = useUser();
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadNotificationSettings();
-  }, [user?.id]);
+  }, []);
 
   const loadNotificationSettings = async () => {
-    if (!user?.id) return;
-
     try {
-      const prefs = await getNotificationPreferences(user.id);
-      setIsEnabled(prefs?.notification_enabled ?? false);
+      const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+      setIsEnabled(enabled === 'true');
     } catch (error) {
       console.error('Error loading notification settings:', error);
       setIsEnabled(false);
@@ -62,8 +58,6 @@ export function NotificationSettings({ colors }: NotificationSettingsProps) {
   };
 
   const handleToggle = async () => {
-    if (!user?.id) return;
-
     const newEnabledState = !isEnabled;
 
     try {
@@ -109,23 +103,18 @@ export function NotificationSettings({ colors }: NotificationSettingsProps) {
       // Update the UI state first for better UX
       setIsEnabled(newEnabledState);
 
-      // Update the database
-      const result = await toggleNotifications(user.id, newEnabledState);
-      
-      if (!result) {
-        // If the database update failed, revert the UI
-        setIsEnabled(!newEnabledState);
-        throw new Error('Failed to update notification preferences');
-      }
+      // Save to AsyncStorage
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, String(newEnabledState));
 
-      if (newEnabledState) {
-        // Schedule notifications for existing sessions when enabling
-        await scheduleSessionNotifications(user.id);
+      if (!newEnabledState) {
+        // Cancel all scheduled notifications when disabling
+        await Notifications.cancelAllScheduledNotificationsAsync();
       }
     } catch (error) {
       console.error('Error toggling notifications:', error);
       Alert.alert('Error', 'Failed to update notification settings. Please try again.');
-      // UI state has already been reverted if needed
+      // Revert UI state if there was an error
+      setIsEnabled(!newEnabledState);
     }
   };
 
