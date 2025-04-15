@@ -7,13 +7,15 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
-import { Platform, View } from 'react-native';
+import { Platform, View, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as SecureStore from 'expo-secure-store'
+import * as Notifications from 'expo-notifications';
+import { supabase } from '@/lib/supabase';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -48,6 +50,30 @@ function PostHogPageView() {
   return null;
 }
 
+async function requestNotificationPermissions() {
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  
+  if (existingStatus === 'granted') return true;
+  
+  if (existingStatus === 'denied') {
+    Alert.alert(
+      'Notifications Required',
+      'To receive session reminders, please enable notifications in your device settings.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Open Settings', 
+          onPress: () => Linking.openSettings()
+        }
+      ]
+    );
+    return false;
+  }
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   
@@ -72,6 +98,23 @@ export default function RootLayout() {
 
         if (__DEV__) {
           Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+        }
+
+        // Request notification permissions
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+          });
+        }
+        
+        // Request notification permissions early
+        const hasCheckedNotifications = await AsyncStorage.getItem('hasCheckedNotifications');
+        if (!hasCheckedNotifications) {
+          await requestNotificationPermissions();
+          await AsyncStorage.setItem('hasCheckedNotifications', 'true');
         }
 
         // Optional: Add a small delay for smoother transition
@@ -151,6 +194,46 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     syncUserWithRevenueCat();
+  }, [isUserLoaded, user]);
+
+  // Effect to sync Clerk user with Supabase
+  useEffect(() => {
+    async function syncUserWithSupabase() {
+      if (isUserLoaded && user) {
+        try {
+          const email = user.primaryEmailAddress?.emailAddress;
+          if (email) {
+            console.log('Syncing user with Supabase:', user.id);
+            
+            // Check if user exists first
+            const { data: existingUser } = await supabase
+              .from('users')
+              .select('id')
+              .eq('id', user.id)
+              .single();
+
+            if (!existingUser) {
+              // User doesn't exist in Supabase, create them
+              const { error } = await supabase.from('users').insert({
+                id: user.id,
+                first_name: user.firstName || '',
+                last_name: user.lastName || '',
+                email: email,
+                role: 'Athlete', // Default role
+              });
+
+              if (error) {
+                console.error('Error creating user in Supabase:', error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error syncing user with Supabase:', error);
+        }
+      }
+    }
+
+    syncUserWithSupabase();
   }, [isUserLoaded, user]);
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import RevenueCatUI from 'react-native-purchases-ui';
+import { NotificationSettings } from '@/components/NotificationSettings';
 type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
 type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
 
@@ -296,6 +297,10 @@ export default function ProfileScreen() {
           {renderField('Last Name', user?.lastName || '', 'lastName')}
           {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
           {renderField('Role', role, 'role')}
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <NotificationSettings colors={colors} />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
