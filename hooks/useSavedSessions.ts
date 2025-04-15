@@ -5,6 +5,7 @@ import { MeetName } from '@/data/types/meet';
 import { getSchedule } from '@/data/meets/scheduleManager';
 import { calculateWeighInTime } from '@/utils/time';
 import { useUser } from '@clerk/clerk-expo';
+import { supabase } from '@/lib/supabase'; // Import supabase client
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -55,19 +56,66 @@ export function useSavedSessions() {
       return;
     }
     
+    setIsLoading(true); // Set loading true at the start
     try {
-      const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-      if (saved) {
-        const parsedSessions = JSON.parse(saved);
-        // Ensure all sessions have meet information
-        const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
-        setSavedSessions(validSessions);
+      // Fetch from Supabase first
+      const { data: supabaseSessions, error: supabaseError } = await supabase
+        .from('saved_sessions')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (supabaseError) {
+        console.error('Error fetching saved sessions from Supabase:', supabaseError);
+        // Fallback to local storage if Supabase fails? Or show error?
+        // For now, load local as a fallback
+        const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+        if (saved) {
+          const parsedSessions = JSON.parse(saved);
+          const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
+          setSavedSessions(validSessions);
+        } else {
+          setSavedSessions([]);
+        }
+      } else if (supabaseSessions) {
+        // Map Supabase data to SavedSession interface
+        const formattedSessions = supabaseSessions.map(s => ({
+          id: s.id,
+          meet: s.meet as MeetName,
+          sessionNumber: s.session_number,
+          platform: s.platform,
+          weightClass: s.weight_class,
+          startTime: s.start_time,
+          // Assuming weighInTime is derived or needs calculation if not stored
+          weighInTime: calculateWeighInTime(s.start_time), 
+          date: s.date || '', // Make sure 'date' is fetched if needed, or derived
+          notes: s.notes,
+          athleteNames: s.athlete_names,
+        }));
+
+        // Update local storage with Supabase data
+        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(formattedSessions));
+        setSavedSessions(formattedSessions);
       } else {
-        setSavedSessions([]);
+         // No sessions in Supabase, clear local storage too?
+         await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
+         setSavedSessions([]);
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
-      setSavedSessions([]);
+      // Attempt to load from local storage as a final fallback
+      try {
+        const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+        if (saved) {
+          const parsedSessions = JSON.parse(saved);
+          const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
+          setSavedSessions(validSessions);
+        } else {
+          setSavedSessions([]);
+        }
+      } catch (localError) {
+        console.error('Error loading saved sessions from AsyncStorage fallback:', localError);
+        setSavedSessions([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -172,7 +220,7 @@ export function useSavedSessions() {
         return false;
       }
 
-      // Load current sessions to ensure we have the complete list
+      // 1. Update local state and AsyncStorage
       const currentSaved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
       let currentSessions: SavedSession[] = [];
       if (currentSaved) {
@@ -180,26 +228,44 @@ export function useSavedSessions() {
       }
 
       const existingSessionIndex = currentSessions.findIndex(s => s.id === session.id);
+      let updatedSession: SavedSession;
       if (existingSessionIndex >= 0) {
         const existingSession = currentSessions[existingSessionIndex];
-        // Merge notes if both sessions have them
-        if (session.notes && existingSession.notes) {
-          session.notes = `${existingSession.notes}\n\n${session.notes}`;
-        } else if (!session.notes) {
-          session.notes = existingSession.notes;
-        }
-        // Preserve athlete names
-        if (existingSession.athleteNames && !session.athleteNames) {
-          session.athleteNames = existingSession.athleteNames;
-        }
-        currentSessions[existingSessionIndex] = { ...existingSession, ...session };
+        updatedSession = { ...existingSession, ...session }; // Merge new data over existing
+        currentSessions[existingSessionIndex] = updatedSession;
       } else {
-        currentSessions.push(session);
+        updatedSession = session;
+        currentSessions.push(updatedSession);
       }
 
       await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(currentSessions));
       setSavedSessions(currentSessions);
-      return true;
+
+      // 2. Upsert to Supabase
+      const { error: supabaseError } = await supabase
+        .from('saved_sessions')
+        .upsert({
+          id: updatedSession.id,
+          user_id: user.id,
+          meet: updatedSession.meet,
+          session_number: updatedSession.sessionNumber,
+          platform: updatedSession.platform,
+          weight_class: updatedSession.weightClass,
+          start_time: updatedSession.startTime,
+          // date: updatedSession.date, // Ensure 'date' exists in your SavedSession type if you store it
+          notes: updatedSession.notes,
+          athlete_names: updatedSession.athleteNames,
+          // Add created_at and updated_at if managed by client? DB defaults usually handle this.
+        });
+
+      if (supabaseError) {
+        console.error('Error saving session to Supabase:', supabaseError);
+        // Handle error - maybe revert local changes or show message?
+        // For now, just log the error. The local save already succeeded.
+        return false; // Indicate partial failure
+      }
+
+      return true; // Indicate success
     } catch (error) {
       console.error('Error saving session:', error);
       return false;
@@ -215,10 +281,25 @@ export function useSavedSessions() {
     if (!user?.id) return false;
     
     try {
+      // 1. Update local state and AsyncStorage
       const updatedSessions = savedSessions.filter(session => session.id !== sessionId);
       await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
       setSavedSessions(updatedSessions);
-      return true;
+
+      // 2. Delete from Supabase
+      const { error: supabaseError } = await supabase
+        .from('saved_sessions')
+        .delete()
+        .match({ id: sessionId, user_id: user.id }); // Match both id and user_id
+
+      if (supabaseError) {
+        console.error('Error removing session from Supabase:', supabaseError);
+        // Handle error - maybe revert local changes or show message?
+        // For now, just log the error. The local removal already succeeded.
+        return false; // Indicate partial failure
+      }
+
+      return true; // Indicate success
     } catch (error) {
       console.error('Error removing session:', error);
       return false;
