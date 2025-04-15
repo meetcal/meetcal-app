@@ -3,13 +3,13 @@
 ## Overview
 This document outlines the steps to implement notifications for calendar sessions using Expo Notifications, sending reminders 1 hour before the session start time.
 
-## Step 1: Set Up Expo Notifications
-- [ ] Install required dependencies:
+## Step 1: Set Up Expo Notifications ✅
+- [x] Install required dependencies:
   ```bash
   expo install expo-notifications
   expo install expo-device
   ```
-- [ ] Configure app.json for notifications:
+- [x] Configure app.json for notifications:
   ```json
   {
     "expo": {
@@ -26,59 +26,61 @@ This document outlines the steps to implement notifications for calendar session
     }
   }
   ```
-- [ ] Set up notification permissions handling
-- [ ] Create notification service utilities
+- [x] Set up notification permissions handling
+- [x] Create notification service utilities
 
-## Step 2: Database Modifications
-- [ ] Add notification preferences table to Supabase
-  - Fields needed:
-    - user_id (foreign key)
+## Step 2: Database Modifications ✅
+- [x] Add notification preferences table to Supabase with Clerk user ID integration
+  - Fields implemented:
+    - user_id (TEXT, references Clerk user ID)
     - notification_enabled (boolean)
     - notification_time_before (integer, default: 60 minutes)
     - expo_push_token (string, nullable)
-- [ ] Create API endpoints for managing notification preferences
+- [x] Create API endpoints for managing notification preferences:
+  - getNotificationPreferences
+  - updateNotificationPreferences
+  - updateExpoPushToken
+  - toggleNotifications
+  - updateNotificationTimeBefore
 
-## Step 3: Notification Scheduling System
-- [ ] Implement Expo notification scheduling:
-  ```typescript
-  // Example notification scheduling
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: "Upcoming Session",
-      body: "Your session starts in 1 hour",
-      data: { sessionId: "123" },
-    },
-    trigger: {
-      hour: sessionStartHour,
-      minute: sessionStartMinute,
-      repeats: false,
-    },
-  });
-  ```
-- [ ] Create background task to:
+## Step 3: Notification Scheduling System (In Progress)
+- [x] Create notification scheduler service with core functionality:
   - Query sessions from Supabase
-  - Filter sessions that are starting within the notification window
-  - Schedule notifications for eligible sessions
-- [ ] Handle edge cases:
-  - Multiple sessions in the same time window
-  - Cancelled sessions
-  - Updated session times
+  - Filter sessions within notification window
+  - Basic notification scheduling structure
+- [x] Handle edge cases:
+  - Multiple sessions in the same time window:
+    - Group sessions by hour
+    - Create combined notifications for overlapping sessions
+    - Show platform information for multiple sessions
+  - Cancelled sessions:
+    - Added is_cancelled field to session tracking
+    - Filter out cancelled sessions before scheduling
+    - Reschedule notifications when sessions are cancelled
+  - Updated session times:
+    - Reschedule all notifications when any session is updated
+    - Maintain proper ordering of notifications
+  - Timezone considerations:
+    - Use ISO string format for consistent time handling
+    - Store notification times in UTC
+- [ ] Resolve Expo Notifications TypeScript issues:
+  - Properly type the notification trigger
+  - Ensure compatibility with Expo's scheduling system
+- [ ] Implement robust error handling:
+  - Handle failed notification scheduling
+  - Retry logic for failed attempts
+  - Logging for debugging
 
-## Step 4: User Interface
-- [ ] Add notification settings to user profile
-- [ ] Create UI components for:
-  - Toggle notifications on/off
-  - Set notification time preference
-  - View scheduled notifications
-- [ ] Implement Expo notification permission request flow:
-  ```typescript
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  ```
+## Step 4: User Interface (In Progress)
+- [x] Add notification settings to user profile:
+  - Created NotificationSettings component
+  - Added toggle for enabling/disabling notifications
+  - Added description of notification timing
+  - Integrated with profile page layout
+- [x] Implement Expo notification permission request flow:
+  - Added permission request on toggle
+  - Added fallback to device settings
+  - Handle both iOS and Android platforms
 
 ## Step 5: Testing
 - [ ] Test notification delivery in development
@@ -102,7 +104,6 @@ This document outlines the steps to implement notifications for calendar session
 - Consider offline scenarios
 - Implement proper cleanup of old notifications
 - Handle Expo push token updates
-- Implement proper error handling for notification scheduling
 
 ## Future Enhancements
 - Custom notification sounds
