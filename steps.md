@@ -1,206 +1,96 @@
-# Migration Plan: Database-Driven with Robust Offline Support
+# Plan for Syncing Saved Sessions and Warmups with Supabase
 
-## Phase 1: Database and Local Storage Setup ✅
-1. Create Supabase tables
-   - Add version tracking columns
-     ```sql
-     - last_updated TIMESTAMP
-     - version INTEGER
-     ```
+## 1. Database Schema (Already Implemented)
+- Tables created with proper RLS policies
+- Using Clerk user IDs for authentication
+- Proper timestamps and data types
 
-2. Create Local Storage Structure ✅
-   ```typescript
-   interface LocalStorageSchema {
-     meets: {
-       [meetName: string]: {
-         schedule: Schedule;
-         athletes: LiftResult[];
-         lastSynced: number;
-         version: number;
-       }
-     }
-     savedSessions: SavedSession[];
-     preferences: UserPreferences;
-   }
-   ```
+## 2. Implementation Steps
 
-## Phase 2: Offline-First Data Layer ✅
-1. Create `lib/database/offline-store.ts` ✅
-   - initStore() ✅
-   - getMeetData(meet: MeetName) ✅
-   - saveMeetSchedule(meet: MeetName, schedule: Schedule) ✅
-   - saveMeetAthletes(meet: MeetName, athletes: LiftResult[]) ✅
-   - getLastSyncTime(meet: MeetName) ✅
-   - needsSync(meet: MeetName) ✅
+### 2.1 Create Supabase Sync Service
+Create `lib/supabase/sync-service.ts`:
+```typescript
+interface SyncService {
+  // Initial sync on app launch
+  initializeSync(userId: string): Promise<void>;
+  
+  // Sync operations
+  syncSessions(userId: string): Promise<void>;
+  syncWarmups(userId: string): Promise<void>;
+  
+  // Conflict resolution
+  resolveSessionConflict(local: SavedSession, remote: SavedSession): SavedSession;
+  resolveWarmupConflict(local: SavedWarmup, remote: SavedWarmup): SavedWarmup;
+  
+  // Offline support
+  queueSyncOperation(operation: SyncOperation): Promise<void>;
+  processSyncQueue(): Promise<void>;
+}
+```
 
-2. Create `lib/database/sync-manager.ts` ✅
-   - syncIfNeeded() ✅
-   - forceSync() ✅
-   - startPeriodicSync() ✅
-   - stopSync() ✅
+### 2.2 Update useSavedSessions Hook
+Modify `hooks/useSavedSessions.ts`:
+1. Add sync functionality
+2. Implement offline queue
+3. Add conflict resolution
+4. Add sync status tracking
 
-3. Create `lib/database/network-status.ts` ✅
-   - isOnline(): boolean ✅
-   - onNetworkStatusChange(callback) ✅
+### 2.3 Update Warmup Hooks
+Modify warmup-related hooks:
+1. Add sync functionality
+2. Implement offline queue
+3. Add conflict resolution
+4. Add sync status tracking
 
-## Phase 3: Enhanced Data Access Layer (In Progress)
-1. Update `lib/database/queries.ts` (Partially Complete)
-   ```typescript
-   - getScheduleByMeet(meet: MeetName, forceRefresh?: boolean) ❌
-   - getAthletesByMeet(meet: MeetName, forceRefresh?: boolean) ❌
-   - getSessionDetails(meet: MeetName, sessionId: number) ❌
-   ```
+### 2.4 Migration Script
+Create `scripts/migrate-to-supabase.ts`:
+1. Read existing AsyncStorage data
+2. Transform data to match Supabase schema
+3. Upload to Supabase
+4. Handle conflicts
+5. Clean up old data
 
-2. Create Background Sync Service ✅
-   - Implemented within SyncManager class
-   - setupPeriodicSync() ✅
-   - syncWhenOnline() ✅
-   - handleSyncErrors() ✅
+## 3. Testing Plan
 
-## Phase 4: UI Components for Offline Status ✅
-1. Create offline indicators ✅
-   ```typescript
-   - OfflineIndicator ✅
-   - LastSyncedIndicator ✅
-   - SyncStatusBadge ✅
-   ```
+### 3.1 Unit Tests
+1. Test sync service functionality
+2. Test conflict resolution
+3. Test offline mode
+4. Test migration script
 
-2. Create sync controls ✅
-   ```typescript
-   - ManualSyncButton ✅
-   - SyncSettingsPanel ✅
-   ```
+### 3.2 Integration Tests
+1. Test multi-device sync
+2. Test offline/online transitions
+3. Test data migration
+4. Test RLS policies
 
-## Phase 5: Update Components with Offline Support (In Progress) 🔄
-1. Update schedule.tsx ✅
-   ```typescript
-   - Use offline-first data fetching ✅
-   - Add sync status indicator ✅
-   - Add pull-to-refresh with offline awareness ✅
-   - Show last synced timestamp ✅
-   ```
+### 3.3 User Testing
+1. Test with multiple devices
+2. Test offline functionality
+3. Test sync performance
+4. Test migration process
 
-2. Update schedule-details.tsx ✅
-   ```typescript
-   - Cache session details locally ✅
-   - Show offline indicator when using cached data ✅
-   - Enable manual refresh when online ✅
-   - Add pull-to-refresh functionality ✅
-   - Show loading states appropriately ✅
-   ```
+## 4. Rollout Strategy
 
-3. Update saved.tsx ✅
-   ```typescript
-   - Store complete session data locally ✅
-   - Work entirely offline ✅
-   - Sync new saves when online ✅
-   ```
+1. Deploy sync service
+2. Release app update with sync functionality
+3. Monitor sync performance
+4. Gather user feedback
+5. Address any issues
 
-4. Update start-list.tsx ✅
-   ```typescript
-   - Cache athlete data locally ✅
-   - Show loading states ✅
-   - Enable offline-first data fetching ✅
-   - Add pull-to-refresh functionality ✅
-   - Handle empty data states ✅
-   ```
+## 5. Monitoring and Maintenance
 
-## Phase 6: Meet Switching with Offline Support ✅
-1. Update SelectedMeetContext ✅
-   ```typescript
-   - Preload and cache meet data ✅
-   - Handle meet switching offline ✅
-   - Queue data sync for new meet when online ✅
-   ```
+1. Add sync performance metrics
+2. Monitor error rates
+3. Track sync success rates
+4. Set up alerts for sync failures
 
-2. Create Meet Data Prefetch ✅
-   ```typescript
-   - prefetchMeetData(meetName: MeetName) ✅
-   - cleanupOldMeetData() ✅
-   - manageCacheSize() ✅
-   ```
+## 6. Implementation Order
 
-Implementation Details:
-- Created meet-manager.ts for cache management
-- Set 50MB cache size limit
-- Keep max 3 recent meets
-- Track meet data sizes and access times
-- Auto-cleanup of old meet data
-- Integrated with SelectedMeetContext
-- Added sync status tracking
-- Enhanced error handling
-
-## Phase 7: Storage Management ✅
-1. Create storage cleanup utilities ✅
-   ```typescript
-   - cleanupOldData() ✅
-   - calculateStorageUsage() ✅
-   - optimizeCacheSize() ✅
-   ```
-
-2. Implement data retention policies ✅
-   ```typescript
-   - keepLastNMeets(n: number) ✅
-   - removeOldVersions() ✅
-   - compressOldData() ✅
-   ```
-
-Implementation Details:
-- Created storage-manager.ts for comprehensive storage management
-- Added version tracking for meet data
-- Implemented data compression for old/large data
-- Set up automatic cleanup policies:
-  - Keep max 2 versions per meet
-  - Remove versions older than 1 week
-  - Compress data older than 1 day
-  - Maintain total storage under limits
-- Added storage usage tracking
-- Integrated with meet-manager.ts
-- Enhanced error handling and logging
-
-## Phase 8: Testing with Network Conditions
-1. Test offline scenarios
-   - Complete offline usage
-   - Intermittent connectivity
-   - Slow network conditions
-   - Data sync conflicts
-   - Storage limits
-
-2. Test sync functionality
-   - Background sync
-   - Manual sync
-   - Conflict resolution
-   - Data versioning
-   - Error recovery
-
-## Phase 9: User Experience Enhancements
-1. Add offline mode indicators
-   - Sync status in UI
-   - Last synced timestamp
-   - Network status
-   - Data freshness badges
-
-2. Add sync controls
-   - Manual sync option
-   - Sync preferences
-   - Storage management
-   - Data usage settings
-
-## Phase 10: Deployment with Offline Support
-1. Deploy database changes
-2. Implement data migration
-3. Add analytics for sync issues
-4. Monitor offline usage
-5. Track sync success rates
-
-## Notes:
-- Always prefer local data first, then fetch updates
-- Show clear indicators for data freshness
-- Implement progressive enhancement
-- Handle storage limitations gracefully
-- Provide manual sync options
-- Consider battery and data usage
-- Implement proper error recovery
-- Use service workers for web version
-- Consider implementing conflict resolution UI
-- Add proper logging for sync issues
+1. Create sync service
+2. Update useSavedSessions hook
+3. Update warmup hooks
+4. Create migration script
+5. Add offline support
+6. Implement testing
+7. Deploy and monitor

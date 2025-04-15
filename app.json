@@ -55,7 +55,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/MeetCal-android.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.memohnsen.meetcal"
