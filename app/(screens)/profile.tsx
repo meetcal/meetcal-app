@@ -10,8 +10,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
+
 type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
-type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
+export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
 
 export default function ProfileScreen() {
   const { currentTheme } = useTheme();
@@ -300,7 +301,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <NotificationSettings colors={colors} />
+          <NotificationSettings colors={colors} subscriptionStatus={subscriptionStatus} />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
