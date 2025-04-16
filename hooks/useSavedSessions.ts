@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
-import { getSchedule } from '@/data/meets/scheduleManager';
+import { getSchedule, getSessionById } from '@/data/meets/scheduleManager';
 import { calculateWeighInTime } from '@/utils/time';
 import { useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase'; // Import supabase client
+import { scheduleNotification } from '@/utils/notifications';
+import { getPlatformStartTime } from '@/data/types/schedule';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -14,6 +16,8 @@ function generateSessionId(meet: MeetName, sessionNumber: number | string, platf
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
+
+const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
 export interface SavedSession {
   id: string;
@@ -263,6 +267,51 @@ export function useSavedSessions() {
         // Handle error - maybe revert local changes or show message?
         // For now, just log the error. The local save already succeeded.
         return false; // Indicate partial failure
+      }
+
+      // 3. Schedule local notification 1 hour before session start time if notifications are enabled
+      try {
+        const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+        if (notificationsEnabled === 'true') {
+          // Always fetch canonical session info from schedule
+          const meetName = updatedSession.meet;
+          const sessionNumber = updatedSession.sessionNumber;
+          const platform = updatedSession.platform;
+          const schedule = getSchedule(meetName);
+          let foundSession = null;
+          let sessionDayDate = '';
+          for (const day of schedule) {
+            const session = day.sessions.find(s => s.number === sessionNumber);
+            if (session) {
+              foundSession = session;
+              sessionDayDate = day.fullDate; // YYYY-MM-DD
+              break;
+            }
+          }
+          if (foundSession && sessionDayDate) {
+            // Get platform-specific start time if available
+            const startTime = getPlatformStartTime(foundSession, platform);
+            // Combine date and time into a Date object (local time)
+            // startTime is in 'h:mm AM/PM', sessionDayDate is 'YYYY-MM-DD'
+            const [time, period] = startTime.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            if (period === 'PM' && hours !== 12) hours += 12;
+            if (period === 'AM' && hours === 12) hours = 0;
+            const sessionDate = new Date(sessionDayDate);
+            sessionDate.setHours(hours, minutes, 0, 0);
+            // Schedule notification 1 hour before
+            const triggerDate = new Date(sessionDate.getTime() - 60 * 60 * 1000);
+            if (triggerDate > new Date()) {
+              await scheduleNotification(
+                `Session Reminder`,
+                `Session ${updatedSession.sessionNumber} on Platform ${updatedSession.platform} starts in 1 hour.`,
+                triggerDate
+              );
+            }
+          }
+        }
+      } catch (notifError) {
+        console.error('Error scheduling session notification:', notifError);
       }
 
       return true; // Indicate success
