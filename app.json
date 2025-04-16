@@ -2,7 +2,7 @@
   "expo": {
     "name": "MeetCal",
     "slug": "meetcal",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "orientation": "portrait",
     "icon": {
       "light": "./assets/images/MeetCal.png",
@@ -11,7 +11,7 @@
     "scheme": "meetcal",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "runtimeVersion": "2.3.0",
+    "runtimeVersion": "2.4.0",
     "updates": {
       "url": "https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f",
       "enabled": true,
