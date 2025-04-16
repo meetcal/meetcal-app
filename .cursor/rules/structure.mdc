@@ -3,4 +3,6 @@ description:
 globs: 
 alwaysApply: true
 ---
-This app gets all schedule and athlete data from supabase db. Never attempt to have any of that data be hardcoded. There are files that exist where it is hardcoded, but these are outdated and should never be used for new files. These files are everything in data/meets
+This app gets all schedule and athlete data from supabase db. Never attempt to have any of that data be hardcoded. There are files that exist where it is hardcoded, but these are outdated and should never be used for new files. These files are everything in data/meets.
+
+Never make assumptions, always search or ask for the correct answer.
