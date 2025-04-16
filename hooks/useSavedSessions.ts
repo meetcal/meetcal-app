@@ -306,12 +306,40 @@ export function useSavedSessions() {
     }
   };
 
-  const resetAllSessions = async () => {
+  const resetAllSessions = async (meet?: MeetName) => {
     if (!user?.id) return false;
-    
     try {
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify([]));
-      setSavedSessions([]);
+      if (meet) {
+        // Filter out sessions for the selected meet locally
+        const currentSaved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+        let currentSessions: SavedSession[] = [];
+        if (currentSaved) {
+          currentSessions = JSON.parse(currentSaved);
+        }
+        const filteredSessions = currentSessions.filter(s => s.meet !== meet);
+        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(filteredSessions));
+        setSavedSessions(filteredSessions);
+        // Delete only sessions for this meet from Supabase
+        const { error: supabaseError } = await supabase
+          .from('saved_sessions')
+          .delete()
+          .match({ user_id: user.id, meet });
+        if (supabaseError) {
+          console.error('Error deleting sessions for meet from Supabase:', supabaseError);
+        }
+      } else {
+        // 1. Clear all local storage and state
+        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify([]));
+        setSavedSessions([]);
+        // 2. Delete all sessions for this user from Supabase
+        const { error: supabaseError } = await supabase
+          .from('saved_sessions')
+          .delete()
+          .match({ user_id: user.id });
+        if (supabaseError) {
+          console.error('Error deleting sessions from Supabase:', supabaseError);
+        }
+      }
       return true;
     } catch (error) {
       console.error('Error resetting sessions:', error);
