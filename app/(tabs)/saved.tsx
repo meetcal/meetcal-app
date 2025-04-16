@@ -189,12 +189,37 @@ const SessionCard = React.memo(({
   const platform = item.platform || '';
   const weightClass = item.weightClass || '';
 
-  // Find session in schedule to get platform-specific time
+  // --- Add Logging Here ---
+  console.log(`[SessionCard] Rendering item:`, JSON.stringify(item, null, 2));
+  console.log(`[SessionCard] Using meet: ${meet}, sessionNumber: ${sessionNumber}`);
+  // --- End Logging ---
+
+  // Find session in schedule to get platform-specific time AND date
   const schedule = getSchedule(meet);
-  const sessionDay = schedule.find(day => 
-    day.sessions.some(s => s.number === parseInt(sessionNumber))
-  );
-  
+
+  // --- Add Logging Here ---
+  console.log(`[SessionCard] Found schedule:`, schedule);
+  // --- End Logging ---
+
+  // Add a check to ensure schedule is valid before calling find
+  const sessionDay = schedule && Array.isArray(schedule) ? schedule.find(day =>
+    day.sessions.some(s => {
+      // --- Add Logging Here ---
+      // console.log(`[SessionCard] Comparing item session ${sessionNumber} (type: ${typeof sessionNumber}) with schedule session ${s.number} (type: ${typeof s.number})`);
+      // --- End Logging ---
+      // Ensure robust comparison, converting both to string might be safer if types vary
+      return s.number.toString() === sessionNumber;
+    })
+  ) : undefined; // If schedule is invalid, sessionDay will be undefined
+
+  // --- Add Logging Here ---
+  // console.log(`[SessionCard] Found sessionDay:`, sessionDay); // Moved logging inside check or removed redundant parts
+  if (!sessionDay) {
+    console.warn(`[SessionCard] Could not find sessionDay for meet: ${meet}, sessionNumber: ${sessionNumber}. Schedule data might be missing or invalid.`);
+  }
+  console.log(`[SessionCard] sessionDay?.fullDate:`, sessionDay?.fullDate);
+  // --- End Logging ---
+
   const scheduleSession = sessionDay?.sessions.find(s => 
     s.number === parseInt(sessionNumber)
   );
@@ -206,6 +231,12 @@ const SessionCard = React.memo(({
   // Use platform-specific time if available, otherwise fall back to session time
   const startTime = platformInfo?.platformStartTime || item.startTime || '';
   const weighInTime = startTime ? calculateWeighInTime(startTime) : '';
+
+  // --- Add Logging Here ---
+  console.log(`[SessionCard] Found schedule:`, schedule);
+  console.log(`[SessionCard] Found sessionDay:`, sessionDay);
+  console.log(`[SessionCard] sessionDay?.fullDate:`, sessionDay?.fullDate);
+  // --- End Logging ---
 
   // Get time zone abbreviation
   const timeZoneAbbr = useMemo(() => {
