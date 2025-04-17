@@ -272,15 +272,18 @@ export function useSavedSessions() {
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
       try {
         const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+        console.log('Notification Scheduling Check - Enabled:', notificationsEnabled);
+
         if (notificationsEnabled === 'true') {
-          // Always fetch canonical session info from schedule
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
+          console.log(`Notification Scheduling - Fetching schedule for: ${meetName}, Session ${sessionNumber}, Platform ${platform}`);
           const schedule = await fetchSchedule(meetName);
+          console.log('Notification Scheduling - Schedule fetched:', schedule ? `${schedule.length} days` : 'null or empty');
 
           if (!schedule || schedule.length === 0) {
-             console.error(`Could not fetch or schedule is empty for meet: ${meetName}`);
+             console.error(`Notification Scheduling - Could not fetch or schedule is empty for meet: ${meetName}`);
              return true; // Still return true as the session was saved
           }
 
@@ -294,30 +297,51 @@ export function useSavedSessions() {
               break;
             }
           }
+          console.log('Notification Scheduling - Session found:', foundSession ? `Yes (Date: ${sessionDayDate})` : 'No');
+
           if (foundSession && sessionDayDate) {
-            // Get platform-specific start time if available
             const startTime = getPlatformStartTime(foundSession, platform);
-            // Combine date and time into a Date object (local time)
-            // startTime is in 'h:mm AM/PM', sessionDayDate is 'YYYY-MM-DD'
+            console.log(`Notification Scheduling - Start time found: ${startTime}`);
+            
             const [time, period] = startTime.split(' ');
             let [hours, minutes] = time.split(':').map(Number);
             if (period === 'PM' && hours !== 12) hours += 12;
             if (period === 'AM' && hours === 12) hours = 0;
+            
+            console.log(`Notification Scheduling - Parsing Date/Time: Date='${sessionDayDate}', H=${hours}, M=${minutes}`);
+
             const sessionDate = new Date(sessionDayDate);
-            sessionDate.setHours(hours, minutes, 0, 0);
-            // Schedule notification 1 hour before
+            // Ensure date part is correct (avoid potential UTC issues with new Date(string))
+            const [year, month, day] = sessionDayDate.split('-').map(Number);
+            sessionDate.setFullYear(year, month - 1, day); // Use setFullYear for clarity
+            sessionDate.setHours(hours, minutes, 0, 0); 
+
             const triggerDate = new Date(sessionDate.getTime() - 60 * 60 * 1000);
-            if (triggerDate > new Date()) {
+            const now = new Date();
+            console.log(`Notification Scheduling - Session Date: ${sessionDate.toISOString()}`);
+            console.log(`Notification Scheduling - Trigger Date: ${triggerDate.toISOString()}`);
+            console.log(`Notification Scheduling - Current Time: ${now.toISOString()}`);
+            console.log(`Notification Scheduling - triggerDate > now: ${triggerDate > now}`);
+
+            if (triggerDate > now) {
+              console.log('Notification Scheduling - Condition met, attempting to schedule...');
               await scheduleNotification(
                 `Session Reminder`,
-                `Session ${updatedSession.sessionNumber} on Platform ${updatedSession.platform} starts in 1 hour.`,
+                `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
                 triggerDate
               );
+              console.log('Notification Scheduling - scheduleNotification called successfully.');
+            } else {
+              console.log('Notification Scheduling - Trigger date is in the past, not scheduling.');
             }
+          } else {
+            console.log('Notification Scheduling - Session not found or date missing, cannot schedule.');
           }
+        } else {
+          console.log('Notification Scheduling - Notifications are disabled in settings.');
         }
       } catch (notifError) {
-        console.error('Error scheduling session notification:', notifError);
+        console.error('Notification Scheduling - Error caught during scheduling block:', notifError);
       }
 
       return true; // Indicate success
