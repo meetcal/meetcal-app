@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
-import { getSchedule, getSessionById } from '@/data/meets/scheduleManager';
 import { calculateWeighInTime } from '@/utils/time';
 import { useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase'; // Import supabase client
 import { scheduleNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
+import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -130,7 +130,7 @@ export function useSavedSessions() {
     
     try {
       const sessionMap = new Map<string, { session: SavedSession, athletes: string[] }>();
-      const schedule = getSchedule(meet);
+      const schedule = await fetchSchedule(meet);
       
       athletes
         .filter(athlete => athlete.session)
@@ -277,14 +277,20 @@ export function useSavedSessions() {
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
-          const schedule = getSchedule(meetName);
+          const schedule = await fetchSchedule(meetName);
+
+          if (!schedule || schedule.length === 0) {
+             console.error(`Could not fetch or schedule is empty for meet: ${meetName}`);
+             return true; // Still return true as the session was saved
+          }
+
           let foundSession = null;
           let sessionDayDate = '';
           for (const day of schedule) {
             const session = day.sessions.find(s => s.number === sessionNumber);
             if (session) {
               foundSession = session;
-              sessionDayDate = day.fullDate; // YYYY-MM-DD
+              sessionDayDate = day.fullDate; // YYYY-MM-DD from transformed data
               break;
             }
           }
@@ -399,6 +405,7 @@ export function useSavedSessions() {
   return {
     savedSessions,
     isLoading,
+    loadSavedSessions,
     saveSessionsFromAthletes,
     saveSession,
     removeSession,
