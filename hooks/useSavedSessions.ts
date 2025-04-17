@@ -256,7 +256,7 @@ export function useSavedSessions() {
           platform: updatedSession.platform,
           weight_class: updatedSession.weightClass,
           start_time: updatedSession.startTime,
-          // date: updatedSession.date, // Ensure 'date' exists in your SavedSession type if you store it
+          date: updatedSession.date, // Ensure 'date' is saved to Supabase
           notes: updatedSession.notes,
           athlete_names: updatedSession.athleteNames,
           // Add created_at and updated_at if managed by client? DB defaults usually handle this.
