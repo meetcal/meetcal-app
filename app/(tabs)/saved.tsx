@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors, schedule } from '@/data/schedule';
+import { getPlatformColors } from '@/data/schedule';
 import * as Calendar from 'expo-calendar';
 import { getFullLocation } from '@/config/venue';
 import { SavedSession } from '@/hooks/useSavedSessions';
@@ -457,7 +457,7 @@ const SessionCard = React.memo(({
 
 export default function SavedScreen() {
   const { user } = useUser();
-  const { savedSessions, saveSession } = useSavedSessions();
+  const { savedSessions, saveSession, loadSavedSessions } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -629,34 +629,22 @@ export default function SavedScreen() {
     );
   };
 
-  // Update forceLoadSessions to use correct storage key
+  // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
-    if (refreshing || !user?.id) return;
+    if (refreshing) return;
     setRefreshing(true);
-    
     try {
-      console.log('Force loading sessions');
-      const storedData = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-      if (storedData) {
-        const parsed = JSON.parse(storedData);
-        console.log('Found stored sessions:', parsed);
-        if (Array.isArray(parsed)) {
-          parsed.forEach(session => {
-            const sessionWithId = {
-              ...session,
-              id: generateSessionId(session.meet || selectedMeet, session.sessionNumber, session.platform)
-            };
-            console.log('Saving session with ID:', sessionWithId);
-            saveSession(sessionWithId);
-          });
-        }
-      }
+      console.log('Force reloading sessions from source...');
+      // REMOVE: Old implementation reading from AsyncStorage and calling saveSession
+      // ADD: Call loadSavedSessions from the hook
+      await loadSavedSessions();
     } catch (error) {
-      console.error('Error loading sessions:', error);
+      console.error('Error force reloading sessions:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [saveSession, refreshing, selectedMeet, user?.id]);
+    // ADD: loadSavedSessions to dependency array
+  }, [refreshing, loadSavedSessions]);
 
   // Add logging to loadSavedWarmups
   const loadSavedWarmups = useCallback(async () => {
