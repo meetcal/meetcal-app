@@ -300,7 +300,6 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             Competition Information
@@ -327,20 +326,52 @@ export default function InfoScreen() {
           </Pressable>
 
           <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/records-and-standards')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Totals, Standards, & Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/new-qualifying-totals')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              Qualifying Totals
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/new-standards')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              A/B Standards
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            styles.lastSection,
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
         </View>
 
         {/* App Info Card */}
@@ -451,67 +482,6 @@ export default function InfoScreen() {
           © 2025 CoachHub LLC
         </ThemedText>
       </ScrollView>
-
-      {/* Meet Selection Modal */}
-      <Modal
-        visible={showMeetModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowMeetModal(false)}
-      >
-        <Pressable 
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-          ]}
-          onPress={() => setShowMeetModal(false)}
-        >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                Select Your Meet
-              </ThemedText>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={() => setShowMeetModal(false)}
-              >
-                <IconSymbol 
-                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                  size={20} 
-                  color={colors.secondaryText} 
-                />
-              </Pressable>
-            </View>
-            
-            {['USAW Master\'s Nationals', 'Florida WSO Champs'].map((meet) => (
-              <Pressable
-                key={meet}
-                style={({ pressed }) => [
-                  styles.modalOption,
-                  { borderBottomColor: colors.border },
-                  selectedMeet === meet && { backgroundColor: colors.pressed },
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={() => handleMeetSelect(meet as MeetName)}
-              >
-                <ThemedText style={[
-                  styles.modalOptionText,
-                  { color: colors.text },
-                  selectedMeet === meet && { color: '#007AFF' }
-                ]}>
-                  {meet}
-                </ThemedText>
-                {selectedMeet === meet && (
-                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
     </ThemedView>
   );
 }
