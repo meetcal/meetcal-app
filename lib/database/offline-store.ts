@@ -98,7 +98,6 @@ function validatePlatform(platform: string): Platform {
 // Save meet schedule to store
 export async function saveMeetSchedule(meetId: string, schedule: Schedule): Promise<void> {
   try {
-    console.log('Saving meet schedule to store for meet:', meetId);
     
     // Validate schedule structure
     if (!Array.isArray(schedule)) {
@@ -110,17 +109,6 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       console.error('Invalid schedule: empty array');
       throw new Error('Empty schedule');
     }
-
-    // Log the schedule structure before processing
-    console.log('Schedule structure before save:', JSON.stringify({
-      numberOfDays: schedule.length,
-      sampleDay: schedule[0] ? {
-        date: schedule[0].date,
-        fullDate: schedule[0].fullDate,
-        numberOfSessions: schedule[0].sessions.length,
-        sampleSession: schedule[0].sessions[0]
-      } : null
-    }, null, 2));
 
     // Validate each day's structure
     schedule.forEach((day, index) => {
@@ -140,7 +128,6 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
     // Save schedule separately
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
     const scheduleString = JSON.stringify(schedule);
-    console.log('Saving schedule with length:', scheduleString.length);
     await AsyncStorage.setItem(scheduleKey, scheduleString);
 
     // Get current store state
@@ -177,7 +164,6 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       throw new Error('Invalid schedule data saved');
     }
 
-    console.log('Successfully saved schedule data');
   } catch (error) {
     console.error('Error saving meet schedule:', error);
     throw error;

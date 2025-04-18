@@ -6,11 +6,10 @@ import * as Calendar from 'expo-calendar';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
-import { getSchedule } from '@/data/meets/scheduleManager';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
@@ -182,7 +181,6 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
 
 async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
   try {
-    console.log(`Fetching bests for athlete: ${name}`);
     
     // Initialize result with null values
     const result: SupabaseBests = {

@@ -70,9 +70,7 @@ export default function CreateWarmupScreen() {
     if (!selectedAthlete || !user?.id) return
 
     try {
-      console.log('Saving warmup for user:', user.id);
       const key = getSavedWarmupsKey(user.id);
-      console.log('Storage key:', key);
       
       // --- Local Save (AsyncStorage) ---
       const existingWarmupsStr = await AsyncStorage.getItem(key)
@@ -91,12 +89,10 @@ export default function CreateWarmupScreen() {
         meet: selectedMeet
       }
 
-      console.log('New warmup (local):', newWarmupLocal);
       
       // Add to existing warmups
       const updatedWarmups = [...existingWarmups, newWarmupLocal]
       await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
-      console.log('Warmup saved locally');
 
       // --- Remote Save (Supabase) ---
       const warmupDataForSupabase = {

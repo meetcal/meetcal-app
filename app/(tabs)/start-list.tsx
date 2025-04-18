@@ -8,8 +8,6 @@ import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { schedule as usawSchedule } from '@/data/meets/usaw-masters-nationals/schedule';
-import { schedule as usamwSchedule } from '@/data/meets/usamw-masters-nationals/schedule';
 import { LiftResult } from '@/data/types/athletes';
 import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
@@ -21,6 +19,8 @@ import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import type { Schedule as ScheduleType } from '@/types/schedule';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -48,7 +48,7 @@ interface AthleteItemProps {
   isExpanded: boolean;
   onPress: () => void;
   router: ReturnType<typeof useRouter>;
-  schedule: Schedule[];
+  schedule: ScheduleType;
   getSessionDetails: (sessionNumber: number) => {
     date: string;
     startTime: string;
@@ -492,6 +492,8 @@ export default function StartListScreen() {
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(true);
   
   // Load athletes with offline-first approach
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
@@ -506,7 +508,6 @@ export default function StartListScreen() {
     const syncManager = new SyncManager(validMeet);
     try {
       setLoading(true);
-      console.log('Loading athletes for meet:', validMeet);
       
       // Try Supabase first
       try {
@@ -571,17 +572,54 @@ export default function StartListScreen() {
     loadAthletes();
   }, [loadAthletes, selectedMeet]);
 
+  // Add useEffect to fetch schedule data
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!selectedMeet || !isMeetName(selectedMeet)) {
+        setScheduleData([]);
+        setIsScheduleLoading(false);
+        return;
+      }
+
+      setIsScheduleLoading(true);
+      try {
+        const dbSchedule = await fetchScheduleFromDb(selectedMeet);
+        const transformedSchedule = await transformScheduleData(dbSchedule);
+        setScheduleData(transformedSchedule);
+      } catch (error) {
+        console.error('Error fetching or transforming schedule:', error);
+        Alert.alert('Error', 'Could not load schedule data.');
+        setScheduleData([]); // Set empty schedule on error
+      } finally {
+        setIsScheduleLoading(false);
+      }
+    };
+
+    fetchSchedule();
+  }, [selectedMeet]);
+
   // Handle refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadAthletes(true);
+    // Also refresh schedule data on pull-to-refresh
+    if (selectedMeet && isMeetName(selectedMeet)) {
+        setIsScheduleLoading(true); // Show schedule loading indicator
+        try {
+            const dbSchedule = await fetchScheduleFromDb(selectedMeet);
+            const transformedSchedule = await transformScheduleData(dbSchedule);
+            setScheduleData(transformedSchedule);
+        } catch (error) {
+            console.error('Error refreshing schedule:', error);
+            Alert.alert('Error', 'Could not refresh schedule data.');
+        } finally {
+            setIsScheduleLoading(false);
+        }
+    }
+    await loadAthletes(true); // Refresh athletes
     setRefreshing(false);
-  }, [loadAthletes]);
+  }, [loadAthletes, selectedMeet]); // Add selectedMeet dependency
 
-  // Get meet-specific schedule
-  const schedule = useMemo(() => {
-    return selectedMeet === 'USAW Master\'s Nationals' ? usawSchedule : usamwSchedule;
-  }, [selectedMeet]);
+
 
   // Add back the colors object
   const colors = {
@@ -593,10 +631,11 @@ export default function StartListScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Define getSessionDetails after schedule is defined
+  // Define getSessionDetails after scheduleData state is defined
   const getSessionDetails = useCallback((sessionNumber: number) => {
-    if (!schedule) return null;
-    for (const day of schedule) {
+    // Use scheduleData state variable
+    if (!scheduleData || scheduleData.length === 0 || isScheduleLoading) return null;
+    for (const day of scheduleData) {
       const session = day.sessions.find((s) => s.number === sessionNumber);
       if (session) {
         return {
@@ -609,7 +648,7 @@ export default function StartListScreen() {
       }
     }
     return null;
-  }, [schedule]);
+  }, [scheduleData, isScheduleLoading]);
 
   // Add back useEffect for starred clubs
   useEffect(() => {
@@ -682,8 +721,6 @@ export default function StartListScreen() {
 
   // Update the filtered athletes logic
   const filteredAthletes = useMemo(() => {
-    console.log('Filtering athletes for meet:', selectedMeet);
-    console.log('Number of athletes:', athletes.length);
     
     return athletes
       .filter(athlete => {
@@ -770,7 +807,7 @@ export default function StartListScreen() {
     const sessionsToAdd = filteredAthletes
       .filter(athlete => athlete.session)
       .map(athlete => ({
-        date: schedule.find(day => 
+        date: scheduleData.find(day => 
           day.sessions.some(s => s.number === athlete.session?.number)
         )?.fullDate || '',
         startTime: getSessionDetails(athlete.session?.number || 0)?.startTime || '',
@@ -954,13 +991,13 @@ export default function StartListScreen() {
     }
   }
 
-  if (loading) {
+  if (loading || isScheduleLoading) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.secondaryText} />
           <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
-            Loading athletes...
+            {loading ? 'Loading Athletes...' : 'Loading Schedule...'}
           </ThemedText>
         </View>
       </ThemedView>
@@ -1074,7 +1111,7 @@ export default function StartListScreen() {
             isExpanded={expandedId === item.name}
             onPress={() => handlePress(item.name)}
             router={router}
-            schedule={schedule}
+            schedule={scheduleData}
             getSessionDetails={getSessionDetails}
           />
         )}

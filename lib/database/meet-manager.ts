@@ -69,7 +69,6 @@ async function saveCacheInfo(info: CacheInfo) {
 // Fetch all meets from Supabase
 export async function fetchMeets(): Promise<Meet[]> {
   try {
-    console.log('Fetching all meets from Supabase...');
     
     const { data: meetsData, error } = await supabase
       .from('meets')
@@ -120,7 +119,6 @@ export async function fetchMeets(): Promise<Meet[]> {
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
-    console.log('Fetching meet by name:', name);
     
     const { data: meet, error } = await supabase
       .from('meets')
