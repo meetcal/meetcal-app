@@ -18,7 +18,7 @@ type DbSchedule = {
 
 // Validate and convert platform string to Platform type
 function validatePlatform(platform: string): Platform {
-  const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
+  const validPlatforms: Platform[] = ['Red', 'White', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
   const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
   
   if (!validPlatforms.includes(normalizedPlatform as Platform)) {
@@ -52,7 +52,6 @@ function formatTo12Hour(time: string): string {
 }
 
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
-  console.log('Fetching schedule from Supabase for meet:', meet);
   
   try {
     // First check what meet names we have in the database
@@ -64,12 +63,9 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       console.error('Error fetching meet names:', meetError);
     } else {
       const uniqueMeets = [...new Set(allRecords.map(r => r.meet))];
-      console.log('Available meets in database:', uniqueMeets);
-      console.log('Looking for meet:', meet);
     }
 
     // Now try to fetch all records without any filters first
-    console.log('Fetching sample records...');
     const { data: sampleRecords, error: sampleError } = await supabase
       .from('session_schedule')
       .select('*')
@@ -79,10 +75,8 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       console.error('Error fetching sample records:', sampleError);
       throw sampleError;
     }
-    console.log('Sample records:', sampleRecords);
 
     // Now fetch the actual schedule with filters
-    console.log('Fetching filtered schedule for meet:', meet);
     const { data, error } = await supabase
       .from('session_schedule')
       .select('*')
@@ -97,13 +91,10 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
     }
 
     if (!data || data.length === 0) {
-      console.error('No schedule data found for meet:', meet);
+      console.log('No schedule data found for meet:', meet);
       return [];
     }
 
-    console.log('Successfully fetched schedule. Records:', data.length);
-    console.log('First record:', data[0]);
-    console.log('Last record:', data[data.length - 1]);
     return data;
   } catch (error) {
     console.error('Error in fetchScheduleFromDb:', error);
@@ -113,8 +104,6 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 
 // Transform DB data to match our Schedule type
 export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<Schedule> {
-  console.log('Transforming schedule data, received records:', dbSchedule.length);
-  console.log('Sample DB record:', dbSchedule[0]);
   
   const platformOrder: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
   
@@ -131,7 +120,6 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
       
       // Format the date in the meet's timezone
       const meetConfig = await getMeetConfig(row.meet as MeetName);
-      console.log('Meet config:', meetConfig);
       const meetDate = new Date(utcDate.getTime() + (meetConfig.time.utcOffset * 60 * 60 * 1000));
       
       scheduleMap.set(row.date, {
@@ -180,7 +168,6 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
 }
 
 export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
-  console.log('fetchSchedule called for meet:', meet);
   try {
     const dbSchedule = await fetchScheduleFromDb(meet);
     return transformScheduleData(dbSchedule);
@@ -191,7 +178,6 @@ export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
 }
 
 export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
-  console.log('Fetching athletes for meet:', meet);
   
   const { data, error } = await supabase
     .from('athletes')
@@ -203,6 +189,5 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
     throw error;
   }
 
-  console.log('Fetched athletes:', data);
   return data || [];
 } 

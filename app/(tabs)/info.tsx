@@ -2,7 +2,6 @@ import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Ale
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { venueConfig, getFullAddress } from '@/config/venue';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';

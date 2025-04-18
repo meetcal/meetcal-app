@@ -60,7 +60,6 @@ export default function CreateSessionScreen() {
   useEffect(() => {
     const loadScheduleData = async () => {
       if (!selectedMeet || !syncManager) {
-        console.log('No meet selected or sync manager not ready', { selectedMeet, syncManager: !!syncManager });
         setPlatformOptions([]);
         setPlatform('');
         setWeightClass('');
@@ -69,11 +68,8 @@ export default function CreateSessionScreen() {
       }
 
       try {
-        console.log('Loading schedule data for meet:', selectedMeet);
         const meetData = await syncManager.getMeetData();
-        console.log('Meet data loaded:', { hasMeetData: !!meetData, hasSchedule: !!meetData.schedule });
         const scheduleData = meetData.schedule || [];
-        console.log('Schedule data loaded, number of days:', scheduleData.length);
         setSchedule(scheduleData);
 
         // Get all unique platforms across all sessions
@@ -119,7 +115,6 @@ export default function CreateSessionScreen() {
           return a.localeCompare(b);
         });
 
-        console.log('Setting platform options:', platforms);
         setPlatformOptions(platforms);
       } catch (error) {
         console.error('Error loading schedule:', error);

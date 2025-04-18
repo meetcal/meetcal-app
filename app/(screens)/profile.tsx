@@ -38,7 +38,6 @@ export default function ProfileScreen() {
     if (!user?.id) return;
 
     try {
-      console.log('Fetching user data for ID:', user.id);
       
       const { data, error } = await supabase
         .from('users')
@@ -52,7 +51,6 @@ export default function ProfileScreen() {
       }
 
       if (data) {
-        console.log('Retrieved user data:', data);
         setRole(data.role || 'Athlete');
         setSubscriptionStatus(data.subscription_status || 'free');
       } else {

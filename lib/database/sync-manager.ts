@@ -33,7 +33,6 @@ export class SyncManager {
 
     try {
       this.isSyncing = true;
-      console.log('Starting sync for meet:', this.meetId);
       
       // Clear existing data first
       await clearMeetData(this.meetId);
@@ -43,8 +42,6 @@ export class SyncManager {
         fetchAthletes(this.meetId)
       ]);
 
-      console.log('Sync successful, saving data...');
-      console.log('Schedule data:', schedule);
       
       // Only save if we have data
       if (schedule.length > 0) {
@@ -54,7 +51,6 @@ export class SyncManager {
       // Save athletes even if empty (to clear old cache)
       await saveMeetAthletes(this.meetId, athletes);
 
-      console.log('Sync completed successfully');
     } catch (error) {
       console.error('Sync failed:', error);
       // Clear data on error
@@ -76,7 +72,6 @@ export class SyncManager {
     
     // Get data from cache (whether sync succeeded or failed)
     const data = await getMeetData(this.meetId);
-    console.log('Returning data:', data);
     return data;
   }
 

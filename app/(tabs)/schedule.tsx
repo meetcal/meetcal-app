@@ -8,7 +8,7 @@ import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors } from '@/constants/Colors';
 import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
@@ -162,8 +162,7 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
         setRefreshing(true);
         try {
           const meetData = await manager.getMeetData();
-          console.log('Meet data loaded:', meetData);
-          setScheduleData(meetData.schedule.find(d => d.date === day.date) || day);
+          setScheduleData(meetData.schedule?.find(d => d.date === day.date) || day);
         } catch (error) {
           console.error('Error loading schedule:', error);
           setScheduleData(day);
@@ -288,11 +287,10 @@ export default function ScheduleScreen() {
         setIsLoading(true);
         try {
           const meetData = await manager.getMeetData();
-          console.log('Meet data loaded:', meetData);
           if (meetData?.schedule) {  // Use optional chaining
             setSchedule(meetData.schedule);
           } else {
-            console.warn('No schedule data in meet data');
+            console.log('No schedule data in meet data');
             setSchedule([]);
           }
         } catch (error) {
