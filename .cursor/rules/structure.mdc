@@ -6,7 +6,6 @@ alwaysApply: true
 # Cursor Rules for meetcal
 
 - **Data Source:** All schedule and athlete data must be fetched from the Supabase database. Do not use or create hardcoded data for these entities.
-
 - **Best Practices:**
   - Never make assumptions about data structure or content. Always search the codebase or ask for the correct answer.
   - If unsure about data access patterns, look for existing Supabase queries or context providers.
