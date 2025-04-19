@@ -127,7 +127,6 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
 
     // Save schedule separately
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
-    console.log(`OfflineStore: Saving schedule to key: ${scheduleKey}`);
     const scheduleString = JSON.stringify(schedule);
     await AsyncStorage.setItem(scheduleKey, scheduleString);
 
@@ -144,11 +143,9 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
     };
     
     // Save the updated store metadata (now much smaller)
-    console.log(`OfflineStore: Saving metadata to key: ${STORE_KEY}`);
     const storeString = JSON.stringify(store);
     await AsyncStorage.setItem(STORE_KEY, storeString);
 
-    console.log(`OfflineStore: saveMeetSchedule completed for ${meetId}`);
 
   } catch (error) {
     console.error('Error saving meet schedule:', error);
