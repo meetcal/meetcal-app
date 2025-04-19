@@ -13,7 +13,8 @@ import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/type
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '../../components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { initStore } from '@/lib/database/offline-store';
+import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
+import { fetchSchedule } from '@/lib/database/queries';
 import { MeetName } from '@/data/types/meet';
 
 // Helper function to calculate weigh-in time
@@ -257,7 +258,6 @@ export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
   const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets } = useSelectedMeet();
-  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
@@ -276,54 +276,74 @@ export default function ScheduleScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Initialize sync manager when selectedMeet changes
-  useEffect(() => {
-    if (selectedMeet && typeof selectedMeet === 'string') {
-      const manager = new SyncManager(selectedMeet);
-      setSyncManager(manager);
-      
-      // Load schedule data immediately when sync manager is created
-      const loadData = async () => {
-        setIsLoading(true);
-        try {
-          const meetData = await manager.getMeetData();
-          if (meetData?.schedule) {  // Use optional chaining
-            setSchedule(meetData.schedule);
-          } else {
-            console.log('No schedule data in meet data');
-            setSchedule([]);
-          }
-        } catch (error) {
-          console.error('Error loading schedule:', error);
-          setSchedule([]);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      
-      loadData();
-    } else {
-      setSyncManager(null);
-      setSchedule([]);
-    }
-  }, [selectedMeet]);
-
-  // Add a refresh handler for manual refreshes
-  const handleRefresh = useCallback(async () => {
-    if (!syncManager) return;
-    
+  // Revised loadData function (Supabase-first, Cache-fallback)
+  const loadData = useCallback(async (meet: MeetName) => {
     setIsLoading(true);
+    let scheduleData: Schedule = [];
+    let loadedFromCache = false;
+
     try {
-      const meetData = await syncManager.getMeetData();
-      if (meetData?.schedule) {  // Use optional chaining
-        setSchedule(meetData.schedule);
+      // 1. Try fetching from Supabase
+      console.log(`ScheduleScreen: Attempting fetchSchedule for ${meet}`);
+      const freshSchedule = await fetchSchedule(meet);
+      console.log(`ScheduleScreen: fetchSchedule successful, ${freshSchedule.length} days found`);
+      scheduleData = freshSchedule;
+      // 2. Save successful fetch to cache (don't wait for it)
+      saveMeetSchedule(meet, freshSchedule).catch(err => 
+        console.error(`ScheduleScreen: Failed to save fresh schedule to cache for ${meet}:`, err)
+      );
+    } catch (fetchError) {
+      console.warn(`ScheduleScreen: fetchSchedule failed for ${meet}, attempting cache fallback:`, fetchError);
+      // 3. Fallback to cache if Supabase fetch fails
+      try {
+        const cachedMeetData = await getMeetData(meet);
+        if (cachedMeetData?.schedule) {
+          console.log(`ScheduleScreen: Loaded schedule from cache for ${meet}`);
+          scheduleData = cachedMeetData.schedule;
+          loadedFromCache = true;
+        } else {
+          console.log(`ScheduleScreen: No schedule found in cache for ${meet}`);
+        }
+      } catch (cacheError) {
+        console.error(`ScheduleScreen: Failed to load schedule from cache for ${meet}:`, cacheError);
+        Alert.alert('Error', 'Failed to load schedule data. Please check connection or try refreshing.');
       }
-    } catch (error) {
-      console.error('Error refreshing schedule:', error);
-    } finally {
-      setIsLoading(false);
     }
-  }, [syncManager]);
+
+    setSchedule(scheduleData); 
+    // If loaded from cache, maybe show an indicator?
+    // For now, just log it.
+    if (loadedFromCache) {
+        console.log("ScheduleScreen: Displaying data loaded from cache.");
+    }
+    setIsLoading(false);
+
+  }, []); // Dependencies managed by the calling useEffect
+
+  // Load data when selectedMeet changes
+  useEffect(() => {
+    // Initialize store once
+    initStore(); 
+
+    if (selectedMeet && typeof selectedMeet === 'string') {
+      // Ensure selectedMeet is treated as MeetName type
+      loadData(selectedMeet as MeetName);
+    } else {
+      // Clear schedule if no meet is selected
+      setSchedule([]);
+      setIsLoading(false); 
+    }
+  }, [selectedMeet, loadData]);
+
+  // Revised refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (selectedMeet && typeof selectedMeet === 'string') {
+      // Re-run the loadData logic on refresh
+      await loadData(selectedMeet as MeetName); 
+    } else {
+      console.log("Refresh skipped: No meet selected");
+    }
+  }, [selectedMeet, loadData]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {

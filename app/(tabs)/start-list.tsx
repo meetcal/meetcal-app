@@ -16,10 +16,10 @@ import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { saveMeetAthletes } from '@/lib/database/offline-store';
+import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
@@ -495,131 +495,117 @@ export default function StartListScreen() {
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
   const [isScheduleLoading, setIsScheduleLoading] = useState(true);
   
-  // Load athletes with offline-first approach
+  // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      console.warn('No valid meet selected');
+      console.warn('StartList: No valid meet selected for athletes');
       setAthletes([]);
       setLoading(false);
       return;
     }
 
     const validMeet = selectedMeet;
-    const syncManager = new SyncManager(validMeet);
+    setLoading(true);
+    let athleteData: LiftResult[] = [];
+    let loadedFromCache = false;
+
     try {
-      setLoading(true);
-      
-      // Try Supabase first
-      try {
-        const { data, error } = await supabase
-          .from('athletes')
-          .select('*')
-          .eq('meet', validMeet);
-
-        if (error) throw error;
-        
-        // Transform the data (even if empty)
-        const transformedAthletes = (data || []).map(athlete => ({
-          memberId: athlete.member_id || '',
-          name: athlete.name,
-          age: athlete.age || 0,
-          club: athlete.club || '',
-          gender: athlete.gender || '',
-          weightClass: athlete.weight_class || '',
-          entryTotal: athlete.entry_total || 0,
-          session: athlete.session_number ? {
-            number: Number(athlete.session_number),
-            platform: athlete.session_platform || ''
-          } : undefined
-        })) as LiftResult[];
-
-        // Always save to cache and update UI, even if empty
-        console.log('Got data from Supabase, count:', transformedAthletes.length);
-        await saveMeetAthletes(validMeet, transformedAthletes);
-        setAthletes(transformedAthletes);
-        setLoading(false);
-        return;
-        
-      } catch (supabaseError) {
-        console.log('Supabase error, falling back to cache:', supabaseError);
-        
-        // Only use cache on actual Supabase errors
-        const meetData = await syncManager.getMeetData();
-        if (meetData.athletes.length > 0) {
-          console.log('Using cached data, count:', meetData.athletes.length);
-          setAthletes(meetData.athletes);
-        } else {
-          console.log('No data in cache');
-          setAthletes([]);
-        }
-      }
-      
-    } catch (error) {
-      console.error('Error loading athletes:', error);
-      setAthletes([]);
-      Alert.alert(
-        'Error',
-        'Could not load athletes. Please check your connection and try again.',
-        [{ text: 'OK' }]
+      // 1. Try fetching from Supabase
+      console.log(`StartList: Attempting fetchAthletes for ${validMeet}`);
+      const freshAthletes = await fetchAthletes(validMeet);
+      console.log(`StartList: fetchAthletes successful, ${freshAthletes.length} athletes found`);
+      athleteData = freshAthletes;
+      // 2. Save successful fetch to cache (don't wait for it)
+      saveMeetAthletes(validMeet, freshAthletes).catch(err => 
+        console.error(`StartList: Failed to save fresh athletes to cache for ${validMeet}:`, err)
       );
-    } finally {
-      setLoading(false);
+    } catch (fetchError) {
+      console.warn(`StartList: fetchAthletes failed for ${validMeet}, attempting cache fallback:`, fetchError);
+      // 3. Fallback to cache if Supabase fetch fails
+      try {
+        // We still need getMeetData to retrieve from the combined offline store structure
+        const cachedMeetData = await getMeetData(validMeet);
+        if (cachedMeetData?.athletes) {
+          console.log(`StartList: Loaded ${cachedMeetData.athletes.length} athletes from cache for ${validMeet}`);
+          athleteData = cachedMeetData.athletes;
+          loadedFromCache = true;
+        } else {
+          console.log(`StartList: No athletes found in cache for ${validMeet}`);
+        }
+      } catch (cacheError) {
+        console.error(`StartList: Failed to load athletes from cache for ${validMeet}:`, cacheError);
+        Alert.alert('Error', 'Failed to load athlete data. Please check connection or try refreshing.');
+      }
     }
+    
+    setAthletes(athleteData);
+    if (loadedFromCache) {
+        console.log("StartList: Displaying athlete data loaded from cache.");
+    }
+    setLoading(false);
+
   }, [selectedMeet]);
 
-  // Load athletes on mount and meet change
-  useEffect(() => {
-    loadAthletes();
-  }, [loadAthletes, selectedMeet]);
-
-  // Add useEffect to fetch schedule data
-  useEffect(() => {
-    const fetchSchedule = async () => {
+  // Revised schedule fetching logic (Supabase-first, Cache-fallback)
+  const loadSchedule = useCallback(async () => {
       if (!selectedMeet || !isMeetName(selectedMeet)) {
+        console.warn('StartList: No valid meet selected for schedule');
         setScheduleData([]);
         setIsScheduleLoading(false);
         return;
       }
-
+      const validMeet = selectedMeet;
       setIsScheduleLoading(true);
-      try {
-        const dbSchedule = await fetchScheduleFromDb(selectedMeet);
-        const transformedSchedule = await transformScheduleData(dbSchedule);
-        setScheduleData(transformedSchedule);
-      } catch (error) {
-        console.error('Error fetching or transforming schedule:', error);
-        Alert.alert('Error', 'Could not load schedule data.');
-        setScheduleData([]); // Set empty schedule on error
-      } finally {
-        setIsScheduleLoading(false);
-      }
-    };
+      let scheduleResult: ScheduleType = [];
+      let loadedFromCache = false;
 
-    fetchSchedule();
+      try {
+        console.log(`StartList: Attempting fetchSchedule for ${validMeet}`);
+        const dbSchedule = await fetchScheduleFromDb(validMeet);
+        const transformedSchedule = await transformScheduleData(dbSchedule);
+        console.log(`StartList: fetchSchedule successful, ${transformedSchedule.length} days found`);
+        scheduleResult = transformedSchedule;
+        saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
+          console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
+        );
+      } catch (fetchError) {
+        console.warn(`StartList: fetchSchedule failed for ${validMeet}, attempting cache fallback:`, fetchError);
+        try {
+          const cachedMeetData = await getMeetData(validMeet);
+          if (cachedMeetData?.schedule) {
+            console.log(`StartList: Loaded schedule from cache for ${validMeet}`);
+            scheduleResult = cachedMeetData.schedule;
+            loadedFromCache = true;
+          } else {
+            console.log(`StartList: No schedule found in cache for ${validMeet}`);
+          }
+        } catch (cacheError) {
+          console.error(`StartList: Failed to load schedule from cache for ${validMeet}:`, cacheError);
+          // Don't alert here, athlete alert is enough
+        }
+      }
+
+      setScheduleData(scheduleResult);
+      if (loadedFromCache) {
+        console.log("StartList: Displaying schedule data loaded from cache.");
+      }
+      setIsScheduleLoading(false);
   }, [selectedMeet]);
 
-  // Handle refresh
+  // Load data on mount and meet change
+  useEffect(() => {
+    loadAthletes();
+    loadSchedule(); 
+  }, [loadAthletes, loadSchedule, selectedMeet]); // Add loadSchedule dependency
+
+  // Revised refresh handler
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Also refresh schedule data on pull-to-refresh
-    if (selectedMeet && isMeetName(selectedMeet)) {
-        setIsScheduleLoading(true); // Show schedule loading indicator
-        try {
-            const dbSchedule = await fetchScheduleFromDb(selectedMeet);
-            const transformedSchedule = await transformScheduleData(dbSchedule);
-            setScheduleData(transformedSchedule);
-        } catch (error) {
-            console.error('Error refreshing schedule:', error);
-            Alert.alert('Error', 'Could not refresh schedule data.');
-        } finally {
-            setIsScheduleLoading(false);
-        }
-    }
-    await loadAthletes(true); // Refresh athletes
+    // Refresh both athletes and schedule using the new logic
+    await loadAthletes(true); 
+    await loadSchedule();
     setRefreshing(false);
-  }, [loadAthletes, selectedMeet]); // Add selectedMeet dependency
-
-
+  }, [loadAthletes, loadSchedule]); // Add loadSchedule dependency
 
   // Add back the colors object
   const colors = {

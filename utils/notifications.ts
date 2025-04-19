@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import { updateExpoPushToken } from '../lib/notifications'; // Import the function
 
 // Configure notification handler
@@ -13,7 +13,6 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerForPushNotificationsAsync(userId: string | null | undefined) {
-  Alert.alert('Debug', 'Entering registerForPushNotificationsAsync. UserID provided: ' + (userId ? 'Yes' : 'No')); // Alert 1
   let token;
 
   if (Platform.OS === 'android') {
@@ -27,48 +26,41 @@ export async function registerForPushNotificationsAsync(userId: string | null | 
   }
 
   if (Device.isDevice) {
-    Alert.alert('Debug', 'Device.isDevice = true'); // Alert 2
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    Alert.alert('Debug', `Existing permission status: ${existingStatus}`); // Alert 3
     
     if (existingStatus !== 'granted') {
-      Alert.alert('Debug', 'Requesting notification permissions...'); // Alert 4
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
-      Alert.alert('Debug', `Requested permission status: ${finalStatus}`); // Alert 5
     }
     
     if (finalStatus !== 'granted') {
-      Alert.alert('Error', 'Failed to get push token permission! Status: ' + finalStatus); // Alert 6
+      console.log('Failed to get push token permission! Status:', finalStatus);
       return;
     }
     
     try {
-      Alert.alert('Debug', 'Attempting to get Expo push token...'); // Alert 7
       token = (await Notifications.getExpoPushTokenAsync({
         projectId: 'a0017b93-a31e-42b1-b36a-11cb5eedf11f', // Your Expo project ID
       })).data;
-      Alert.alert('Debug', 'Got token: ' + (token ? 'Yes (hidden)' : 'No')); // Alert 8 (Don't show full token)
     } catch (e: any) {
-        Alert.alert('Error', 'Failed to get Expo token: ' + e.message); // Alert 9
+        console.error('Failed to get Expo token:', e);
         return; // Exit if token fetch fails
     }
 
     // If we got a token and a userId, save it to Supabase
     if (token && userId) {
-      Alert.alert('Debug', 'Token and UserID present. Calling updateExpoPushToken...'); // Alert 10
       try {
         await updateExpoPushToken(userId, token);
-        Alert.alert('Success', 'updateExpoPushToken called. Check Supabase.'); // Alert 11
+        console.log('updateExpoPushToken called successfully for user:', userId);
       } catch (error: any) {
-        Alert.alert('Error', 'Failed to save token via updateExpoPushToken: ' + error.message); // Alert 12
+        console.error('Failed to save token via updateExpoPushToken:', error);
       }
     } else {
-      Alert.alert('Debug', 'Token or UserID missing. Token: ' + (token ? 'Yes' : 'No') + ', UserID: ' + (userId ? 'Yes' : 'No')); // Alert 13
+      console.warn('Token or UserID missing, cannot save to Supabase. Token:', !!token, 'UserID:', !!userId);
     }
   } else {
-    Alert.alert('Warning', 'Must use physical device for Push Notifications'); // Alert 14
+    console.log('Must use physical device for Push Notifications');
   }
 
   return token;
