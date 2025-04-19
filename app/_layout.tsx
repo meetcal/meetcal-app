@@ -11,11 +11,12 @@ import { Platform, View, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
-import { ClerkProvider, useUser } from '@clerk/clerk-expo'
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as SecureStore from 'expo-secure-store'
 import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
+import { registerForPushNotificationsAsync } from '@/utils/notifications';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -81,6 +82,9 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+
   useEffect(() => {
     async function prepare() {
       try {
@@ -129,6 +133,14 @@ export default function RootLayout() {
     prepare();
   }, []);
 
+  // Register for push notifications when user is loaded and has an ID
+  useEffect(() => {
+    if (user?.id) {
+      console.log(`RootLayout: Attempting push registration for user ${user.id}`);
+      registerForPushNotificationsAsync(user.id);
+    }
+  }, [user?.id]);
+
   if (!appIsReady || !fontsLoaded) {
     return null;
   }
@@ -161,7 +173,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-  const { isLoaded: isUserLoaded, isSignedIn, user } = useUser();
+  const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
   
   useEffect(() => {
     async function initialize() {
@@ -243,7 +255,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         await SplashScreen.hideAsync();
         
         // Only route to sign-in or schedule, no automatic paywall redirect
-        if (!isSignedIn) {
+        if (!isUserSignedIn) {
           router.replace('/sign-in');
         } else {
           router.replace('/(tabs)/schedule');
@@ -252,7 +264,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
 
   if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
     return null;
