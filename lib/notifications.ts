@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { useUser } from '@clerk/clerk-expo';
+import { Alert } from 'react-native';
+import { Clerk } from '@clerk/clerk-expo';
 
 export interface NotificationPreferences {
   id: string;
@@ -48,6 +50,31 @@ export async function updateNotificationPreferences(
 }
 
 export async function updateExpoPushToken(userId: string, token: string): Promise<NotificationPreferences | null> {
+  Alert.alert('Debug', 'Entering updateExpoPushToken');
+
+  let clerkToken = null;
+  try {
+    clerkToken = await Clerk.session?.getToken({ template: 'supabase' });
+    Alert.alert('Debug', `Clerk token available? ${clerkToken ? 'Yes (hidden)' : 'No'}`);
+  } catch (clerkError: any) {
+    Alert.alert('Error', `Failed to get Clerk token: ${clerkError.message}`);
+  }
+
+  let supabaseSessionResponse = null;
+  try {
+    supabaseSessionResponse = await supabase.auth.getSession();
+    const session = supabaseSessionResponse?.data?.session;
+    Alert.alert('Debug', `Supabase session before upsert: ${session ? 'Exists' : 'null'}`);
+    if (session) {
+      Alert.alert('Debug', `Supabase session User ID: ${session.user?.id}`);
+    } else if (supabaseSessionResponse?.error) {
+      Alert.alert('Warning', `Error getting Supabase session: ${supabaseSessionResponse.error.message}`);
+    }
+  } catch (authError: any) {
+    Alert.alert('Warning', `Exception getting Supabase session: ${authError.message}`);
+  }
+  
+  Alert.alert('Debug', 'Calling updateNotificationPreferences...');
   return updateNotificationPreferences(userId, { expo_push_token: token });
 }
 

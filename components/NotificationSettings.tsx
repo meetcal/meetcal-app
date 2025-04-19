@@ -29,6 +29,14 @@ export function NotificationSettings({ colors, subscriptionStatus }: Notificatio
     loadNotificationSettings();
   }, []);
 
+  // Automatically enable reminders if user becomes subscribed and reminders are currently off
+  useEffect(() => {
+    if (isSubscribed && !isEnabled && !isLoading) {
+      console.log('Subscription active and reminders off, attempting to enable automatically.');
+      handleToggle();
+    }
+  }, [isSubscribed, isEnabled, isLoading]);
+
   const loadNotificationSettings = async () => {
     try {
       const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
