@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { useUser } from '@clerk/clerk-expo';
 import { Alert } from 'react-native';
 import { Clerk } from '@clerk/clerk-expo';
+import { tokenCache } from '@clerk/clerk-expo/token-cache';
 
 export interface NotificationPreferences {
   id: string;
@@ -64,12 +65,27 @@ export async function updateNotificationPreferences(
 
 export async function updateExpoPushToken(userId: string, token: string): Promise<NotificationPreferences | null> {
   Alert.alert('Debug', 'Entering updateExpoPushToken');
+
   let clerkToken: string | null = null;
   try {
     clerkToken = await Clerk.session?.getToken({ template: 'supabase' });
-    Alert.alert('Debug', `Clerk token available? ${clerkToken ? 'Yes (obtained)' : 'No'}`);
+    Alert.alert('Debug', `Clerk.session.getToken result: ${clerkToken ? 'Yes (obtained)' : 'No/Null'}`);
   } catch (clerkError: any) {
     Alert.alert('Error', `Failed to get Clerk token: ${clerkError.message}`);
+  }
+
+  let cachedToken: string | null | undefined = undefined;
+  try {
+    if (tokenCache) {
+      Alert.alert('Debug', 'tokenCache object exists. Attempting tokenCache.getToken...');
+      const tokenCacheKey = `__clerk_client_jwt_supabase`;
+      cachedToken = await tokenCache.getToken(tokenCacheKey);
+      Alert.alert('Debug', `tokenCache.getToken result for key ${tokenCacheKey}: ${cachedToken ? 'Yes (obtained)' : 'No/Null/Undefined'}`);
+    } else {
+      Alert.alert('Error', 'tokenCache object is undefined!');
+    }
+  } catch (cacheError: any) {
+    Alert.alert('Error', `Error reading from tokenCache: ${cacheError.message}`);
   }
   
   Alert.alert('Debug', 'Calling updateNotificationPreferences...');
