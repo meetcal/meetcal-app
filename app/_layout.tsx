@@ -82,9 +82,6 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  const { isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
-
   useEffect(() => {
     async function prepare() {
       try {
@@ -132,14 +129,6 @@ export default function RootLayout() {
 
     prepare();
   }, []);
-
-  // Register for push notifications when user is loaded and has an ID
-  useEffect(() => {
-    if (user?.id) {
-      console.log(`RootLayout: Attempting push registration for user ${user.id}`);
-      registerForPushNotificationsAsync(user.id);
-    }
-  }, [user?.id]);
 
   if (!appIsReady || !fontsLoaded) {
     return null;
@@ -247,6 +236,17 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     syncUserWithSupabase();
   }, [isUserLoaded, user]);
+
+  // +++ ADD Push Notification Registration useEffect here +++
+  useEffect(() => {
+    // Check if user is loaded and has an ID before registering
+    if (isUserLoaded && user?.id) { 
+      console.log(`AppContent: Attempting push registration for user ${user.id}`);
+      registerForPushNotificationsAsync(user.id);
+    }
+    // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
+  }, [isUserLoaded, user?.id]); 
+  // +++ END ADD +++
 
   useEffect(() => {
     async function hideSplash() {
