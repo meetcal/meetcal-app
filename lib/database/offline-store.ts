@@ -127,42 +127,28 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
 
     // Save schedule separately
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+    console.log(`OfflineStore: Saving schedule to key: ${scheduleKey}`);
     const scheduleString = JSON.stringify(schedule);
     await AsyncStorage.setItem(scheduleKey, scheduleString);
 
     // Get current store state
     const store = await getStore();
     
-    // Create or update meet data without schedule
-    const meetData = {
-      schedule,
-      scheduleKey,
-      athletes: store.meets[meetId]?.athletes || [],
+    // Update meet metadata: ONLY store the key and sync time, NOT the full schedule object
+    const currentAthletes = store.meets[meetId]?.athletes || [];
+    store.meets[meetId] = {
+      schedule: null,
+      scheduleKey: scheduleKey,
+      athletes: currentAthletes,
       lastSyncTime: Date.now()
     };
     
-    // Update store with new meet data
-    store.meets[meetId] = meetData;
-    
-    // Save the store metadata
+    // Save the updated store metadata (now much smaller)
+    console.log(`OfflineStore: Saving metadata to key: ${STORE_KEY}`);
     const storeString = JSON.stringify(store);
     await AsyncStorage.setItem(STORE_KEY, storeString);
-    
-    // Verify the saves
-    const savedSchedule = await AsyncStorage.getItem(scheduleKey);
-    const savedStore = await AsyncStorage.getItem(STORE_KEY);
-    
-    if (!savedSchedule || !savedStore) {
-      console.error('Failed to save data - savedSchedule or savedStore is null');
-      throw new Error('Failed to save data');
-    }
-    
-    // Parse and verify the saved schedule
-    const parsedSchedule = JSON.parse(savedSchedule);
-    if (!Array.isArray(parsedSchedule) || parsedSchedule.length === 0) {
-      console.error('Invalid schedule data saved:', parsedSchedule);
-      throw new Error('Invalid schedule data saved');
-    }
+
+    console.log(`OfflineStore: saveMeetSchedule completed for ${meetId}`);
 
   } catch (error) {
     console.error('Error saving meet schedule:', error);
