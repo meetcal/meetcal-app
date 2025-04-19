@@ -33,10 +33,10 @@ export async function updateNotificationPreferences(
   preferences: Partial<Omit<NotificationPreferences, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
   clerkJwt?: string | null
 ): Promise<NotificationPreferences | null> {
-  Alert.alert('Debug', 'Entering updateNotificationPreferences. JWT provided: ' + (clerkJwt ? 'Yes' : 'No'));
+  Alert.alert('Debug', 'Entering updateNotificationPreferences.');
 
   try {
-    let queryBuilder = supabase
+    const { data, error } = await supabase
       .from('notification_preferences')
       .upsert({
         user_id: userId,
@@ -44,13 +44,6 @@ export async function updateNotificationPreferences(
       })
       .select()
       .single();
-
-    if (clerkJwt) {
-      Alert.alert('Debug', 'Setting Authorization header via options...');
-      queryBuilder = queryBuilder.options({ headers: { Authorization: `Bearer ${clerkJwt}` } });
-    }
-
-    const { data, error } = await queryBuilder;
 
     if (error) {
       Alert.alert('Error', `Supabase upsert error: ${error.message} (Code: ${error.code})`);
@@ -71,7 +64,6 @@ export async function updateNotificationPreferences(
 
 export async function updateExpoPushToken(userId: string, token: string): Promise<NotificationPreferences | null> {
   Alert.alert('Debug', 'Entering updateExpoPushToken');
-
   let clerkToken: string | null = null;
   try {
     clerkToken = await Clerk.session?.getToken({ template: 'supabase' });
@@ -80,7 +72,7 @@ export async function updateExpoPushToken(userId: string, token: string): Promis
     Alert.alert('Error', `Failed to get Clerk token: ${clerkError.message}`);
   }
   
-  Alert.alert('Debug', 'Calling updateNotificationPreferences and passing token...');
+  Alert.alert('Debug', 'Calling updateNotificationPreferences...');
   return updateNotificationPreferences(userId, { expo_push_token: token }, clerkToken);
 }
 
