@@ -30,58 +30,66 @@ export async function getNotificationPreferences(userId: string): Promise<Notifi
 
 export async function updateNotificationPreferences(
   userId: string,
-  preferences: Partial<Omit<NotificationPreferences, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+  preferences: Partial<Omit<NotificationPreferences, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  clerkJwt?: string | null
 ): Promise<NotificationPreferences | null> {
-  const { data, error } = await supabase
-    .from('notification_preferences')
-    .upsert({
-      user_id: userId,
-      ...preferences
-    })
-    .select()
-    .single();
+  Alert.alert('Debug', 'Entering updateNotificationPreferences. JWT provided: ' + (clerkJwt ? 'Yes' : 'No'));
 
-  if (error) {
-    console.error('Error updating notification preferences:', error);
+  try {
+    let queryBuilder = supabase
+      .from('notification_preferences')
+      .upsert({
+        user_id: userId,
+        ...preferences
+      })
+      .select()
+      .single();
+
+    if (clerkJwt) {
+      Alert.alert('Debug', 'Setting Authorization header via options...');
+      queryBuilder = queryBuilder.options({ headers: { Authorization: `Bearer ${clerkJwt}` } });
+    }
+
+    const { data, error } = await queryBuilder;
+
+    if (error) {
+      Alert.alert('Error', `Supabase upsert error: ${error.message} (Code: ${error.code})`);
+      console.error('Error updating notification preferences:', error);
+      if (error.code === '42501') {
+        Alert.alert('Error Details', 'RLS policy likely denied the request.');
+      }
+      return null;
+    }
+    
+    Alert.alert('Success', 'updateNotificationPreferences query executed successfully.');
+    return data;
+  } catch (e: any) {
+    Alert.alert('Error', `Exception in updateNotificationPreferences: ${e.message}`);
     return null;
   }
-
-  return data;
 }
 
 export async function updateExpoPushToken(userId: string, token: string): Promise<NotificationPreferences | null> {
   Alert.alert('Debug', 'Entering updateExpoPushToken');
 
-  let clerkToken = null;
+  let clerkToken: string | null = null;
   try {
     clerkToken = await Clerk.session?.getToken({ template: 'supabase' });
-    Alert.alert('Debug', `Clerk token available? ${clerkToken ? 'Yes (hidden)' : 'No'}`);
+    Alert.alert('Debug', `Clerk token available? ${clerkToken ? 'Yes (obtained)' : 'No'}`);
   } catch (clerkError: any) {
     Alert.alert('Error', `Failed to get Clerk token: ${clerkError.message}`);
   }
-
-  let supabaseSessionResponse = null;
-  try {
-    supabaseSessionResponse = await supabase.auth.getSession();
-    const session = supabaseSessionResponse?.data?.session;
-    Alert.alert('Debug', `Supabase session before upsert: ${session ? 'Exists' : 'null'}`);
-    if (session) {
-      Alert.alert('Debug', `Supabase session User ID: ${session.user?.id}`);
-    } else if (supabaseSessionResponse?.error) {
-      Alert.alert('Warning', `Error getting Supabase session: ${supabaseSessionResponse.error.message}`);
-    }
-  } catch (authError: any) {
-    Alert.alert('Warning', `Exception getting Supabase session: ${authError.message}`);
-  }
   
-  Alert.alert('Debug', 'Calling updateNotificationPreferences...');
-  return updateNotificationPreferences(userId, { expo_push_token: token });
+  Alert.alert('Debug', 'Calling updateNotificationPreferences and passing token...');
+  return updateNotificationPreferences(userId, { expo_push_token: token }, clerkToken);
 }
 
 export async function toggleNotifications(userId: string, enabled: boolean): Promise<NotificationPreferences | null> {
-  return updateNotificationPreferences(userId, { notification_enabled: enabled });
+  const clerkToken = await Clerk.session?.getToken({ template: 'supabase' }).catch(() => null);
+  return updateNotificationPreferences(userId, { notification_enabled: enabled }, clerkToken);
 }
 
 export async function updateNotificationTimeBefore(userId: string, minutes: number): Promise<NotificationPreferences | null> {
-  return updateNotificationPreferences(userId, { notification_time_before: minutes });
+  const clerkToken = await Clerk.session?.getToken({ template: 'supabase' }).catch(() => null);
+  return updateNotificationPreferences(userId, { notification_time_before: minutes }, clerkToken);
 } 
