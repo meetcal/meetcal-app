@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import { updateExpoPushToken } from '../lib/notifications'; // Import the function
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -11,7 +12,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPushNotificationsAsync() {
+export async function registerForPushNotificationsAsync(userId: string | null | undefined) {
   let token;
 
   if (Platform.OS === 'android') {
@@ -40,6 +41,16 @@ export async function registerForPushNotificationsAsync() {
     token = (await Notifications.getExpoPushTokenAsync({
       projectId: 'a0017b93-a31e-42b1-b36a-11cb5eedf11f', // Your Expo project ID
     })).data;
+
+    // If we got a token and a userId, save it to Supabase
+    if (token && userId) {
+      try {
+        await updateExpoPushToken(userId, token);
+        console.log('Expo Push Token saved to Supabase for user:', userId);
+      } catch (error) {
+        console.error('Failed to save Expo Push Token to Supabase:', error);
+      }
+    }
   } else {
     console.log('Must use physical device for Push Notifications');
   }
@@ -48,19 +59,31 @@ export async function registerForPushNotificationsAsync() {
 }
 
 export async function scheduleNotification(title: string, body: string, trigger: Date) {
+  // Calculate seconds (ensuring it's at least 0 or 1, depending on Expo requirements)
+  const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000)); 
+  
+  // Add a small check if seconds is zero, maybe Expo needs > 0?
+  if (seconds <= 0) {
+      console.log(`scheduleNotification: Calculated trigger time is in the past or now (${seconds}s). Not scheduling.`);
+      return; // Don't schedule if it's already passed
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
-      sound: true,
-      priority: Notifications.AndroidNotificationPriority.HIGH,
+      sound: true, // Keep sound true
+      priority: Notifications.AndroidNotificationPriority.HIGH, // Keep priority
     },
     trigger: {
-      type: 'timeInterval',
-      seconds: Math.floor((trigger.getTime() - Date.now()) / 1000),
-      repeats: false,
+      // Revert to the older structure
+      type: 'timeInterval', 
+      seconds: seconds, 
+      repeats: false, 
+      // channelId: 'default', // Remove channelId if using timeInterval type
     },
   });
+  console.log(`scheduleNotification: Notification scheduled to trigger in ${seconds} seconds.`);
 }
 
 export async function cancelAllNotifications() {
