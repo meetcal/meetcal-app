@@ -237,16 +237,22 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     syncUserWithSupabase();
   }, [isUserLoaded, user]);
 
-  // +++ ADD Push Notification Registration useEffect here +++
+  // Push Notification Registration useEffect 
   useEffect(() => {
     // Check if user is loaded and has an ID before registering
     if (isUserLoaded && user?.id) { 
-      console.log(`AppContent: Attempting push registration for user ${user.id}`);
-      registerForPushNotificationsAsync(user.id);
+      // Introduce a short delay (e.g., 1 second) before registering
+      const timer = setTimeout(() => {
+          console.log(`AppContent: Attempting push registration for user ${user.id} after delay`);
+          registerForPushNotificationsAsync(user.id);
+      }, 1000); // 1000ms = 1 second delay
+      
+      // Cleanup function to clear the timer if the component unmounts
+      // or if user state changes before the timer fires
+      return () => clearTimeout(timer);
     }
     // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
   }, [isUserLoaded, user?.id]); 
-  // +++ END ADD +++
 
   useEffect(() => {
     async function hideSplash() {
