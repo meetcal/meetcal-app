@@ -197,46 +197,6 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     syncUserWithRevenueCat();
   }, [isUserLoaded, user]);
 
-  // Effect to sync Clerk user with Supabase
-  useEffect(() => {
-    async function syncUserWithSupabase() {
-      if (isUserLoaded && user) {
-        try {
-          const email = user.primaryEmailAddress?.emailAddress;
-          if (email) {
-            console.log('Syncing user with Supabase:', user.id);
-            
-            // Check if user exists first
-            const { data: existingUser } = await supabase
-              .from('users')
-              .select('id')
-              .eq('id', user.id)
-              .single();
-
-            if (!existingUser) {
-              // User doesn't exist in Supabase, create them
-              const { error } = await supabase.from('users').insert({
-                id: user.id,
-                first_name: user.firstName || '',
-                last_name: user.lastName || '',
-                email: email,
-                role: 'Athlete', // Default role
-              });
-
-              if (error) {
-                console.error('Error creating user in Supabase:', error);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error syncing user with Supabase:', error);
-        }
-      }
-    }
-
-    syncUserWithSupabase();
-  }, [isUserLoaded, user]);
-
   // Push Notification Registration useEffect 
   useEffect(() => {
     // Check if user is loaded and has an ID before registering
