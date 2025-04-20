@@ -39,7 +39,6 @@ export const supabase = createClient<Database>(
         if (options.body && !('Content-Type' in (options.headers as Record<string, string>))) {
           (options.headers as Record<string, string>)['Content-Type'] = 'application/json';
         }
-        console.log('[Supabase fetch override] Request headers:', options.headers);
         return fetch(url, options);
       },
     },

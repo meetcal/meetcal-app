@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView, Linking, KeyboardAvoidingView, Keyboard } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
@@ -27,12 +27,19 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
 
-  // Fetch user data from Supabase on mount
-  useEffect(() => {
-    if (user?.id) {
-      fetchUserData();
-    }
-  }, [user?.id]);
+  // Fetch user data from Supabase on mount and when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Profile screen focused, fetching user data...');
+      if (user?.id) {
+        fetchUserData();
+      }
+      // Optional: Return a cleanup function if needed
+      return () => {
+        // console.log('Profile screen unfocused');
+      };
+    }, [user?.id]) // Re-run effect if user.id changes
+  );
 
   const fetchUserData = async () => {
     if (!user?.id) return;

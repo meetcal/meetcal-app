@@ -243,7 +243,6 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     if (isUserLoaded && user?.id) { 
       // Introduce a short delay (e.g., 1 second) before registering
       const timer = setTimeout(() => {
-          console.log(`AppContent: Attempting push registration for user ${user.id} after delay`);
           registerForPushNotificationsAsync(user.id);
       }, 1000); // 1000ms = 1 second delay
       
