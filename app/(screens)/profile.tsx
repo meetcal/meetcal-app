@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
 export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
@@ -20,12 +21,12 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const router = useRouter();
   const [role, setRole] = useState('Athlete');
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('free');
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
+  const { isSubscribed, subscriptionType } = useSubscription();
 
   // Fetch user data from Supabase on mount and when screen focuses
   useFocusEffect(
@@ -59,7 +60,6 @@ export default function ProfileScreen() {
 
       if (data) {
         setRole(data.role || 'Athlete');
-        setSubscriptionStatus(data.subscription_status || 'free');
       } else {
         console.log('No existing user data found, creating new record');
         await syncUserToSupabase();
@@ -102,7 +102,6 @@ export default function ProfileScreen() {
         last_name: user.lastName || '',
         email: user.primaryEmailAddress?.emailAddress || '',
         role: newRole || role || 'Athlete',
-        subscription_status: subscriptionStatus || 'free',
       };
 
       console.log('Syncing user data to Supabase:', userData);
@@ -306,7 +305,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <NotificationSettings colors={colors} subscriptionStatus={subscriptionStatus} />
+          <NotificationSettings colors={colors} subscriptionStatus={subscriptionType || 'free'} />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
