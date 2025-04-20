@@ -13,3 +13,4 @@ alwaysApply: true
 - **General Guidance:**
   - Prioritize maintainability and consistency with existing data-fetching patterns.
   - Document any new data access patterns or changes to the Supabase schema.
+  - Never ask for permission to make a chnage to the code, always take the action

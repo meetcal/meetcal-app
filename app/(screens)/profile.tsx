@@ -46,86 +46,77 @@ export default function ProfileScreen() {
     if (!user?.id) return;
 
     try {
-      
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (error) {
+      if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
         console.error('Supabase fetch error details:', error);
-        throw error;
+        // Optionally handle specific errors differently
+        Alert.alert('Error', 'Failed to fetch user data.');
+        return; // Stop execution if there was a fetch error other than not found
       }
 
       if (data) {
         setRole(data.role || 'Athlete');
       } else {
-        console.log('No existing user data found, creating new record');
-        await syncUserToSupabase();
+        // User not found in Supabase, attempt to create them
+        console.log('No existing user data found in Supabase, creating new record');
+        await createUserInSupabase();
       }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      // Don't show alert for fetch errors, just try to create the user
-      await syncUserToSupabase();
+    } catch (catchError) {
+      // Catch any unexpected errors during the process
+      console.error('Error during fetchUserData process:', catchError);
+      Alert.alert('Error', 'An unexpected error occurred while fetching user data.');
     }
   };
 
-  const syncUserToSupabase = async (newRole?: string) => {
+  // New function to create user in Supabase
+  const createUserInSupabase = async () => {
     if (!user?.id) return;
 
+    const userData = {
+      id: user.id,
+      first_name: user.firstName || '',
+      last_name: user.lastName || '',
+      email: user.primaryEmailAddress?.emailAddress || '',
+      role: role || 'Athlete', // Use current state role or default
+    };
+
+    console.log('Attempting to create user in Supabase:', userData);
+
     try {
-      // First check if user exists by email
-      const email = user.primaryEmailAddress?.emailAddress;
-      if (email) {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', email)
-          .single();
-
-        if (existingUser) {
-          // If user exists with this email but different ID, update their ID
-          if (existingUser.id !== user.id) {
-            await supabase
-              .from('users')
-              .update({ id: user.id })
-              .eq('email', email);
-          }
-        }
-      }
-
-      // Now proceed with upsert
-      const userData = {
-        id: user.id,
-        first_name: user.firstName || '',
-        last_name: user.lastName || '',
-        email: user.primaryEmailAddress?.emailAddress || '',
-        role: newRole || role || 'Athlete',
-      };
-
-      console.log('Syncing user data to Supabase:', userData);
-
       const { data, error } = await supabase
         .from('users')
-        .upsert(userData, { onConflict: 'id' })
+        .insert(userData)
         .select()
         .single();
 
       if (error) {
-        console.error('Supabase error details:', error);
-        throw error;
+        // Handle potential conflict if user was created between fetch and insert (rare)
+        if (error.code === '23505') { // Unique violation
+          console.warn('User likely created by another process, skipping insert.');
+          // Optionally re-fetch data here if needed
+        } else {
+          console.error('Supabase insert error details:', error);
+          throw error; // Re-throw other errors
+        }
       }
 
-      console.log('Successfully synced user data:', data);
-      return data;
+      if (data) {
+         console.log('Successfully created user data:', data);
+         setRole(data.role || 'Athlete'); // Update local role state
+      }
+
     } catch (error) {
-      console.error('Error syncing user to Supabase:', error);
+      console.error('Error creating user in Supabase:', error);
       Alert.alert(
         'Error',
-        'Failed to sync user data. Please try again later.'
+        'Failed to create user profile. Please try again later.'
       );
-      throw error;
+      // Do not re-throw here unless necessary upstream handling exists
     }
   };
 
@@ -181,22 +172,44 @@ export default function ProfileScreen() {
           await user.update({
             firstName: editValue,
           });
-          await syncUserToSupabase();
+          // Direct update to Supabase
+          const { error: firstNameError } = await supabase
+            .from('users')
+            .update({ first_name: editValue })
+            .eq('id', user.id);
+          if (firstNameError) throw firstNameError;
           break;
         case 'lastName':
           await user.update({
             lastName: editValue,
           });
-          await syncUserToSupabase();
+           // Direct update to Supabase
+           const { error: lastNameError } = await supabase
+            .from('users')
+            .update({ last_name: editValue })
+            .eq('id', user.id);
+          if (lastNameError) throw lastNameError;
           break;
         case 'email':
-          const email = await user.createEmailAddress({
+          // Ensure email is different before creating
+          if (editValue === user.primaryEmailAddress?.emailAddress) {
+            setIsEditing(false);
+            setEditingField(null);
+            return; // No change needed
+          }
+          const emailAddress = await user.createEmailAddress({
             email: editValue,
           });
-          await email.prepareVerification({
+          await emailAddress.prepareVerification({
             strategy: 'email_code',
           });
-          await syncUserToSupabase();
+          // Direct update to Supabase
+          const { error: emailError } = await supabase
+            .from('users')
+            .update({ email: editValue })
+            .eq('id', user.id);
+          if (emailError) throw emailError;
+
           Alert.alert(
             'Verification Required',
             'Please check your email to verify your new email address.'
@@ -205,8 +218,9 @@ export default function ProfileScreen() {
         case 'role':
           console.log('Updating role to:', editValue);
           setRole(editValue as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
-          await syncUserToSupabase();
-          console.log('Role updated and synced to Supabase');
+          // Direct update to Supabase - This case is handled in the modal directly now
+          // await syncUserToSupabase(); 
+          // console.log('Role updated and synced to Supabase');
           break;
       }
       setIsEditing(false);
@@ -440,8 +454,18 @@ export default function ProfileScreen() {
                             setEditValue(option);
                             setRole(option as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
                             
-                            // Sync to Supabase with the new role value
-                            await syncUserToSupabase(option);
+                            // Direct update to Supabase
+                            if (!user?.id) {
+                              throw new Error("User ID not available for role update.");
+                            }
+                            const { error: updateError } = await supabase
+                              .from('users')
+                              .update({ role: option })
+                              .eq('id', user.id);
+
+                            if (updateError) {
+                              throw updateError; // Let the catch block handle it
+                            }
                             
                             // Close modal
                             setIsEditing(false);

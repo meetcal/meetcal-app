@@ -189,5 +189,21 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
     throw error;
   }
 
-  return data || [];
+  // Explicitly map Supabase snake_case fields to LiftResult camelCase fields
+  const mappedData: LiftResult[] = (data || []).map(athlete => ({
+    memberId: athlete.member_id || '',
+    name: athlete.name,
+    age: athlete.age,
+    club: athlete.club,
+    gender: athlete.gender || '',
+    weightClass: athlete.weight_class || '', // Map weight_class to weightClass
+    entryTotal: athlete.entry_total,
+    session: athlete.session_number && athlete.session_platform ? {
+      number: athlete.session_number,
+      platform: validatePlatform(athlete.session_platform), // Also validate platform here
+    } : undefined,
+    // Add any other fields from LiftResult that need mapping
+  }));
+
+  return mappedData;
 } 
