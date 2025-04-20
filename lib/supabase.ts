@@ -28,11 +28,18 @@ export const supabase = createClient<Database>(
     global: {
       fetch: async (url, options = {}) => {
         const token = await Clerk.session?.getToken({ template: 'supabase' });
+        // Always use a plain object for headers
+        const originalHeaders = (options.headers && !(options.headers instanceof Headers) ? options.headers : {}) as Record<string, string>;
         options.headers = {
-          ...(options.headers || {}),
+          ...originalHeaders,
           apikey: supabaseAnonKey!,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         };
+        // Ensure Content-Type is set for requests with a body
+        if (options.body && !('Content-Type' in (options.headers as Record<string, string>))) {
+          (options.headers as Record<string, string>)['Content-Type'] = 'application/json';
+        }
+        console.log('[Supabase fetch override] Request headers:', options.headers);
         return fetch(url, options);
       },
     },
