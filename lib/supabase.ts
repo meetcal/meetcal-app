@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
 import { Database } from './database.types'
+import { Clerk } from '@clerk/clerk-expo'
 
 // Create a single supabase client for interacting with your database
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
@@ -23,6 +24,17 @@ export const supabase = createClient<Database>(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
+    },
+    global: {
+      fetch: async (url, options = {}) => {
+        const token = await Clerk.session?.getToken({ template: 'supabase' });
+        options.headers = {
+          ...(options.headers || {}),
+          apikey: supabaseAnonKey!,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+        return fetch(url, options);
+      },
     },
   }
 ) 

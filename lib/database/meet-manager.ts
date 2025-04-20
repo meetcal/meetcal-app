@@ -119,49 +119,51 @@ export async function fetchMeets(): Promise<Meet[]> {
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
-    
-    const { data: meet, error } = await supabase
+    const { data: meet, error, status } = await supabase
       .from('meets')
       .select('*')
       .eq('name', name)
       .single();
+
+
+    const actualMeet = Array.isArray(meet) ? meet[0] : meet;
 
     if (error) {
       console.error('Error fetching meet by name:', error);
       throw error;
     }
 
-    if (!meet) {
-      console.log('No meet found with name:', name);
+    if (!actualMeet) {
+      console.log('No meet found with name:', name, 'Supabase returned:', meet);
       return null;
     }
 
-    const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
-    const startDate = new Date(meet.start_date);
+    const timeZoneIdentifier = actualMeet.time_zone as USTimeZoneIdentifier;
+    const startDate = new Date(actualMeet.start_date);
 
     return {
-      id: meet.id,
-      name: meet.name,
+      id: actualMeet.id,
+      name: actualMeet.name,
       venue: {
-        name: meet.venue_name,
+        name: actualMeet.venue_name,
         address: {
-          street: meet.venue_street,
-          city: meet.venue_city,
-          state: meet.venue_state,
-          zip: meet.venue_zip
+          street: actualMeet.venue_street,
+          city: actualMeet.venue_city,
+          state: actualMeet.venue_state,
+          zip: actualMeet.venue_zip
         }
       },
       time: {
-        timeZone: meet.time_zone,
+        timeZone: actualMeet.time_zone,
         timeZoneIdentifier: timeZoneIdentifier,
-        abbreviation: meet.time_zone_abbr || 'EST', // Fallback to EST if not provided
+        abbreviation: actualMeet.time_zone_abbr || 'EST', // Fallback to EST if not provided
         utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
       },
       dates: {
-        start: meet.start_date,
-        end: meet.end_date
+        start: actualMeet.start_date,
+        end: actualMeet.end_date
       },
-      status: meet.status
+      status: actualMeet.status
     };
   } catch (error) {
     console.error('Error in fetchMeetByName:', error);
