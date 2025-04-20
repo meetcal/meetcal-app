@@ -131,19 +131,6 @@ export default function SignUpScreen() {
         // Cache the auth state
         await cacheAuthState(true)
         
-        // Save user data to Supabase
-        const { error } = await supabase.from('users').insert({
-          id: signUpAttempt.createdUserId,
-          first_name: firstName,
-          last_name: lastName,
-          email: emailAddress,
-          role: role,
-        })
-
-        if (error) {
-          console.error('Error saving to Supabase:', error)
-        }
-
         // Sync user with RevenueCat
         try {
           await Purchases.setEmail(emailAddress);

@@ -12,7 +12,7 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 
-type EditableField = 'firstName' | 'lastName' | 'email' | 'role';
+type EditableField = 'firstName' | 'lastName' | 'email';
 export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
 
 export default function ProfileScreen() {
@@ -20,105 +20,12 @@ export default function ProfileScreen() {
   const { signOut } = useClerk();
   const { user } = useUser();
   const router = useRouter();
-  const [role, setRole] = useState('Athlete');
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
-
-  // Fetch user data from Supabase on mount and when screen focuses
-  useFocusEffect(
-    useCallback(() => {
-      console.log('Profile screen focused, fetching user data...');
-      if (user?.id) {
-        fetchUserData();
-      }
-      // Optional: Return a cleanup function if needed
-      return () => {
-        // console.log('Profile screen unfocused');
-      };
-    }, [user?.id]) // Re-run effect if user.id changes
-  );
-
-  const fetchUserData = async () => {
-    if (!user?.id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
-        console.error('Supabase fetch error details:', error);
-        // Optionally handle specific errors differently
-        Alert.alert('Error', 'Failed to fetch user data.');
-        return; // Stop execution if there was a fetch error other than not found
-      }
-
-      if (data) {
-        setRole(data.role || 'Athlete');
-      } else {
-        // User not found in Supabase, attempt to create them
-        console.log('No existing user data found in Supabase, creating new record');
-        await createUserInSupabase();
-      }
-    } catch (catchError) {
-      // Catch any unexpected errors during the process
-      console.error('Error during fetchUserData process:', catchError);
-      Alert.alert('Error', 'An unexpected error occurred while fetching user data.');
-    }
-  };
-
-  // New function to create user in Supabase
-  const createUserInSupabase = async () => {
-    if (!user?.id) return;
-
-    const userData = {
-      id: user.id,
-      first_name: user.firstName || '',
-      last_name: user.lastName || '',
-      email: user.primaryEmailAddress?.emailAddress || '',
-      role: role || 'Athlete', // Use current state role or default
-    };
-
-    console.log('Attempting to create user in Supabase:', userData);
-
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .insert(userData)
-        .select()
-        .single();
-
-      if (error) {
-        // Handle potential conflict if user was created between fetch and insert (rare)
-        if (error.code === '23505') { // Unique violation
-          console.warn('User likely created by another process, skipping insert.');
-          // Optionally re-fetch data here if needed
-        } else {
-          console.error('Supabase insert error details:', error);
-          throw error; // Re-throw other errors
-        }
-      }
-
-      if (data) {
-         console.log('Successfully created user data:', data);
-         setRole(data.role || 'Athlete'); // Update local role state
-      }
-
-    } catch (error) {
-      console.error('Error creating user in Supabase:', error);
-      Alert.alert(
-        'Error',
-        'Failed to create user profile. Please try again later.'
-      );
-      // Do not re-throw here unless necessary upstream handling exists
-    }
-  };
 
   // Define theme colors to match other screens
   const colors = {
@@ -153,9 +60,6 @@ export default function ProfileScreen() {
       case 'email':
         currentValue = user?.primaryEmailAddress?.emailAddress || '';
         break;
-      case 'role':
-        currentValue = role;
-        break;
     }
     setEditValue(currentValue);
     setEditingField(field);
@@ -172,23 +76,11 @@ export default function ProfileScreen() {
           await user.update({
             firstName: editValue,
           });
-          // Direct update to Supabase
-          const { error: firstNameError } = await supabase
-            .from('users')
-            .update({ first_name: editValue })
-            .eq('id', user.id);
-          if (firstNameError) throw firstNameError;
           break;
         case 'lastName':
           await user.update({
             lastName: editValue,
           });
-           // Direct update to Supabase
-           const { error: lastNameError } = await supabase
-            .from('users')
-            .update({ last_name: editValue })
-            .eq('id', user.id);
-          if (lastNameError) throw lastNameError;
           break;
         case 'email':
           // Ensure email is different before creating
@@ -203,24 +95,11 @@ export default function ProfileScreen() {
           await emailAddress.prepareVerification({
             strategy: 'email_code',
           });
-          // Direct update to Supabase
-          const { error: emailError } = await supabase
-            .from('users')
-            .update({ email: editValue })
-            .eq('id', user.id);
-          if (emailError) throw emailError;
 
           Alert.alert(
             'Verification Required',
             'Please check your email to verify your new email address.'
           );
-          break;
-        case 'role':
-          console.log('Updating role to:', editValue);
-          setRole(editValue as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
-          // Direct update to Supabase - This case is handled in the modal directly now
-          // await syncUserToSupabase(); 
-          // console.log('Role updated and synced to Supabase');
           break;
       }
       setIsEditing(false);
@@ -315,7 +194,6 @@ export default function ProfileScreen() {
           {renderField('First Name', user?.firstName || '', 'firstName')}
           {renderField('Last Name', user?.lastName || '', 'lastName')}
           {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
-          {renderField('Role', role, 'role')}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -435,97 +313,38 @@ export default function ProfileScreen() {
                 style={styles.modalBody}
                 keyboardShouldPersistTaps="handled"
               >
-                {editingField === 'role' ? (
-                  <ScrollView>
-                    {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
-                      <Pressable
-                        key={option}
-                        style={({ pressed }) => [
-                          styles.roleOption,
-                          {
-                            backgroundColor: pressed ? colors.pressed : 'transparent',
-                            borderBottomColor: colors.border,
-                          }
-                        ]}
-                        onPress={async () => {
-                          try {
-                            setIsLoading(true);
-                            // Update local state
-                            setEditValue(option);
-                            setRole(option as 'Athlete' | 'Coach' | 'Spectator' | 'Official' | 'Vendor' | 'Media');
-                            
-                            // Direct update to Supabase
-                            if (!user?.id) {
-                              throw new Error("User ID not available for role update.");
-                            }
-                            const { error: updateError } = await supabase
-                              .from('users')
-                              .update({ role: option })
-                              .eq('id', user.id);
+                <>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.text,
+                        backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    value={editValue}
+                    onChangeText={setEditValue}
+                    placeholder={`Enter ${formatTitle(editingField || '')}`}
+                    placeholderTextColor={colors.secondaryText}
+                    autoCapitalize={editingField === 'email' ? 'none' : 'words'}
+                    keyboardType={editingField === 'email' ? 'email-address' : 'default'}
+                    autoFocus
+                  />
 
-                            if (updateError) {
-                              throw updateError; // Let the catch block handle it
-                            }
-                            
-                            // Close modal
-                            setIsEditing(false);
-                            setEditingField(null);
-                          } catch (error) {
-                            console.error('Error updating role:', error);
-                            Alert.alert('Error', 'Failed to update role. Please try again.');
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                      >
-                        <ThemedText 
-                          style={[
-                            styles.roleOptionText,
-                            { color: option === editValue ? colors.link : colors.text }
-                          ]}
-                        >
-                          {option}
-                        </ThemedText>
-                        {option === editValue && (
-                          <IconSymbol name="checkmark" size={16} color={colors.link} />
-                        )}
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          color: colors.text,
-                          backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      value={editValue}
-                      onChangeText={setEditValue}
-                      placeholder={`Enter ${formatTitle(editingField || '')}`}
-                      placeholderTextColor={colors.secondaryText}
-                      autoCapitalize={editingField === 'email' ? 'none' : 'words'}
-                      keyboardType={editingField === 'email' ? 'email-address' : 'default'}
-                      autoFocus
-                    />
-
-                    <TouchableOpacity
-                      style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        handleSave();
-                      }}
-                      disabled={isLoading}
-                    >
-                      <ThemedText style={styles.saveButtonText}>
-                        Save Changes
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </>
-                )}
+                  <TouchableOpacity
+                    style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleSave();
+                    }}
+                    disabled={isLoading}
+                  >
+                    <ThemedText style={styles.saveButtonText}>
+                      Save Changes
+                    </ThemedText>
+                  </TouchableOpacity>
+                </>
               </ScrollView>
             </View>
           </Pressable>
