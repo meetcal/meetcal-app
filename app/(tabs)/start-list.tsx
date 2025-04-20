@@ -456,14 +456,18 @@ function getAgeCategory(age: number): string {
 
 // Update the helper function to parse weight class numbers with gender
 function parseWeightClasses(weightClass: string): string[] {
+  if (!weightClass) return []; // Handle null or empty string
   const classes = weightClass.split(' / ');
   const weightClasses = new Set<string>();
   
   classes.forEach(classStr => {
-    // Match pattern: number followed by kg (possibly with +)
-    const match = classStr.match(/(\d+)(?:\+)?kg/);
+    const trimmedClass = classStr.trim();
+    // Match pattern: number (possibly with +) followed optionally by 'kg'
+    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
     if (match && match[1]) {
-      weightClasses.add(`${match[1]}${classStr.includes('+') ? '+' : ''}kg`);
+      const number = match[1];
+      const plus = match[2] ? '+' : '';
+      weightClasses.add(`${number}${plus}kg`);
     }
   });
   
@@ -511,9 +515,7 @@ export default function StartListScreen() {
 
     try {
       // 1. Try fetching from Supabase
-      console.log(`StartList: Attempting fetchAthletes for ${validMeet}`);
       const freshAthletes = await fetchAthletes(validMeet);
-      console.log(`StartList: fetchAthletes successful, ${freshAthletes.length} athletes found`);
       athleteData = freshAthletes;
       // 2. Save successful fetch to cache (don't wait for it)
       saveMeetAthletes(validMeet, freshAthletes).catch(err => 
@@ -526,14 +528,12 @@ export default function StartListScreen() {
         // We still need getMeetData to retrieve from the combined offline store structure
         const cachedMeetData = await getMeetData(validMeet);
         if (cachedMeetData?.athletes) {
-          console.log(`StartList: Loaded ${cachedMeetData.athletes.length} athletes from cache for ${validMeet}`);
           athleteData = cachedMeetData.athletes;
           loadedFromCache = true;
         } else {
           console.log(`StartList: No athletes found in cache for ${validMeet}`);
         }
       } catch (cacheError) {
-        console.error(`StartList: Failed to load athletes from cache for ${validMeet}:`, cacheError);
         Alert.alert('Error', 'Failed to load athlete data. Please check connection or try refreshing.');
       }
     }
@@ -662,7 +662,8 @@ export default function StartListScreen() {
       }
     });
     
-    return Array.from(weightClasses).sort(sortWeightClasses);
+    const options = Array.from(weightClasses).sort(sortWeightClasses);
+    return options;
   }, [athletes]);
 
   // Move clubOptions and sortedClubOptions here
