@@ -106,9 +106,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const loadMeets = async () => {
       try {
-        console.log('Fetching available meets...');
         const meets = await fetchMeets();
-        console.log('Available meets:', meets);
         setAvailableMeets(meets);
 
         if (meets.length === 0) {
@@ -135,7 +133,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             // Only use stored meet if it still exists in available meets
             const meetData = meets.find(m => m.name === stored);
             if (meetData) {
-              console.log('Initializing stored meet:', stored);
               await initializeMeetData(stored, meetData);
             } else {
               // Clear stored meet if it no longer exists

@@ -2,7 +2,6 @@ import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Ale
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { venueConfig, getFullAddress } from '@/config/venue';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -12,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
+import { supabase } from '@/lib/supabase';
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
@@ -110,30 +110,34 @@ export default function InfoScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Try to use the context's reset function first
+              // Try to use the context's reset function first, for the selected meet only
               let success = false;
               if (typeof resetAllSessions === 'function') {
-                success = await resetAllSessions();
+                success = await resetAllSessions(selectedMeet ?? undefined);
               }
-              
-              // Also manually clear all possible storage keys for this user
+              // Also manually clear all possible storage keys for this user for the selected meet only
               const STORAGE_KEYS = [
                 getSavedSessionsKey(user.id),
                 `savedSessions_${user.id}`,
                 `@savedSessions_${user.id}`,
                 `sessions_${user.id}`
               ];
-              
               for (const key of STORAGE_KEYS) {
-                await AsyncStorage.setItem(key, JSON.stringify([]));
+                // Remove only sessions for the selected meet from local storage
+                const stored = await AsyncStorage.getItem(key);
+                if (stored) {
+                  let sessions = [];
+                  try { sessions = JSON.parse(stored); } catch {}
+                  if (Array.isArray(sessions)) {
+                    const filtered = sessions.filter(s => s.meet !== selectedMeet);
+                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
+                  }
+                }
               }
-              
               // Set a flag to notify other components that sessions were reset
               await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
-              
               // Show success message
-              Alert.alert('Success', 'All saved sessions have been reset.');
-              
+              Alert.alert('Success', 'All saved sessions for this meet have been reset.');
             } catch (error) {
               console.error('Error resetting sessions:', error);
               Alert.alert('Error', 'Failed to reset saved sessions.');
@@ -160,26 +164,40 @@ export default function InfoScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Clear warmups using all possible storage keys
+              // Clear warmups using all possible storage keys, but only for the selected meet
               const STORAGE_KEYS = [
                 getSavedWarmupsKey(user.id),
-                `@saved_warmups_${user.id}`,  // Main key used in warmups.tsx
-                `@saved_warmups`,             // Key used in saved.tsx
-                `warmups_${user.id}`,         // Backup keys in case of legacy data
+                `@saved_warmups_${user.id}`,
+                `@saved_warmups`,
+                `warmups_${user.id}`,
                 `@warmups_${user.id}`
               ];
-              
               for (const key of STORAGE_KEYS) {
-                await AsyncStorage.setItem(key, JSON.stringify([]));
+                const stored = await AsyncStorage.getItem(key);
+                if (stored) {
+                  let warmups = [];
+                  try { warmups = JSON.parse(stored); } catch {}
+                  if (Array.isArray(warmups)) {
+                    const filtered = warmups.filter(w => w.meet !== selectedMeet);
+                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
+                  }
+                }
               }
-              
+              // Delete from Supabase for this user and meet only
+              if (selectedMeet) {
+                const { error: supabaseError } = await supabase
+                  .from('saved_warmups')
+                  .delete()
+                  .match({ user_id: user.id, meet: selectedMeet });
+                if (supabaseError) {
+                  console.error('Error deleting warmups from Supabase:', supabaseError);
+                }
+              }
               // Set flags to notify both screens that data was reset
               await AsyncStorage.setItem(`@warmups_reset_${user.id}`, Date.now().toString());
               await AsyncStorage.setItem(`@saved_warmups_reset_${user.id}`, Date.now().toString());
-              
               // Show success message
-              Alert.alert('Success', 'All saved warmups have been reset.');
-              
+              Alert.alert('Success', 'All saved warmups for this meet have been reset.');
             } catch (error) {
               console.error('Error resetting warmups:', error);
               Alert.alert('Error', 'Failed to reset warmups.');
@@ -282,7 +300,6 @@ export default function InfoScreen() {
           </Pressable>
         </View>
 
-        {/* Records and Standards */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
             Competition Information
@@ -309,20 +326,52 @@ export default function InfoScreen() {
           </Pressable>
 
           <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/records-and-standards')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Totals, Standards, & Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/new-qualifying-totals')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              Qualifying Totals
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/new-standards')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              A/B Standards
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            styles.lastSection,
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
         </View>
 
         {/* App Info Card */}
@@ -433,67 +482,6 @@ export default function InfoScreen() {
           © 2025 CoachHub LLC
         </ThemedText>
       </ScrollView>
-
-      {/* Meet Selection Modal */}
-      <Modal
-        visible={showMeetModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowMeetModal(false)}
-      >
-        <Pressable 
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-          ]}
-          onPress={() => setShowMeetModal(false)}
-        >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                Select Your Meet
-              </ThemedText>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={() => setShowMeetModal(false)}
-              >
-                <IconSymbol 
-                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                  size={20} 
-                  color={colors.secondaryText} 
-                />
-              </Pressable>
-            </View>
-            
-            {['USAW Master\'s Nationals', 'Florida WSO Champs'].map((meet) => (
-              <Pressable
-                key={meet}
-                style={({ pressed }) => [
-                  styles.modalOption,
-                  { borderBottomColor: colors.border },
-                  selectedMeet === meet && { backgroundColor: colors.pressed },
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={() => handleMeetSelect(meet as MeetName)}
-              >
-                <ThemedText style={[
-                  styles.modalOptionText,
-                  { color: colors.text },
-                  selectedMeet === meet && { color: '#007AFF' }
-                ]}>
-                  {meet}
-                </ThemedText>
-                {selectedMeet === meet && (
-                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
     </ThemedView>
   );
 }

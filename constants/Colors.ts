@@ -24,3 +24,14 @@ export const Colors = {
     tabIconSelected: tintColorDark,
   },
 };
+
+export function getPlatformColors() {
+  return {
+    Red: '#FF6B6B',
+    White: '#4A4A4A',
+    Blue: '#4DABF7',
+    Stars: '#B8860B',  // Changed to a richer gold color (darkgoldenrod)
+    Stripes: '#9C27B0',  // Purple
+    Rogue: '#4CAF50',  // Green
+  } as const;
+}

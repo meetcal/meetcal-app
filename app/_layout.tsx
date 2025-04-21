@@ -7,13 +7,16 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
-import { Platform, View } from 'react-native';
+import { Platform, View, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
-import { ClerkProvider, useUser } from '@clerk/clerk-expo'
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as SecureStore from 'expo-secure-store'
+import * as Notifications from 'expo-notifications';
+import { supabase } from '@/lib/supabase';
+import { registerForPushNotificationsAsync } from '@/utils/notifications';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -48,6 +51,30 @@ function PostHogPageView() {
   return null;
 }
 
+async function requestNotificationPermissions() {
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  
+  if (existingStatus === 'granted') return true;
+  
+  if (existingStatus === 'denied') {
+    Alert.alert(
+      'Notifications Required',
+      'To receive session reminders, please enable notifications in your device settings.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Open Settings', 
+          onPress: () => Linking.openSettings()
+        }
+      ]
+    );
+    return false;
+  }
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   
@@ -72,6 +99,23 @@ export default function RootLayout() {
 
         if (__DEV__) {
           Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+        }
+
+        // Request notification permissions
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+          });
+        }
+        
+        // Request notification permissions early
+        const hasCheckedNotifications = await AsyncStorage.getItem('hasCheckedNotifications');
+        if (!hasCheckedNotifications) {
+          await requestNotificationPermissions();
+          await AsyncStorage.setItem('hasCheckedNotifications', 'true');
         }
 
         // Optional: Add a small delay for smoother transition
@@ -118,7 +162,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-  const { isLoaded: isUserLoaded, isSignedIn, user } = useUser();
+  const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
   
   useEffect(() => {
     async function initialize() {
@@ -153,17 +197,31 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     syncUserWithRevenueCat();
   }, [isUserLoaded, user]);
 
+  // Push Notification Registration useEffect 
+  useEffect(() => {
+    // Check if user is loaded and has an ID before registering
+    if (isUserLoaded && user?.id) { 
+      // Introduce a short delay (e.g., 1 second) before registering
+      const timer = setTimeout(() => {
+          registerForPushNotificationsAsync(user.id);
+      }, 1000); // 1000ms = 1 second delay
+      
+      // Cleanup function to clear the timer if the component unmounts
+      // or if user state changes before the timer fires
+      return () => clearTimeout(timer);
+    }
+    // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
+  }, [isUserLoaded, user?.id]); 
+
   useEffect(() => {
     async function hideSplash() {
       if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
         
-        // Implement new routing logic
-        if (!isSignedIn) {
+        // Only route to sign-in or schedule, no automatic paywall redirect
+        if (!isUserSignedIn) {
           router.replace('/sign-in');
-        } else if (!isSubscribed) {
-          router.replace('/paywall');
         } else {
           router.replace('/(tabs)/schedule');
         }
@@ -171,7 +229,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isSignedIn, isSubscribed, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
 
   if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
     return null;
