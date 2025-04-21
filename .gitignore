@@ -45,3 +45,5 @@ android/keystores/release.jks
 
 # Credentials
 credentials.json
+
+push-notification-send.md
