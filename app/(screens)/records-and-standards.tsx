@@ -48,21 +48,6 @@ export default function RecordsAndStandardsScreen() {
           marginTop: 16,
         }
       ]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/qualifying-totals')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Current Bodyweight Qualifying Totals
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
 
         <Pressable
           style={({ pressed }) => [
@@ -74,23 +59,7 @@ export default function RecordsAndStandardsScreen() {
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              New Bodyweight Qualifying Totals
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/current-standards')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Current Bodyweight Standards
+              Qualifying Totals
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
@@ -106,23 +75,7 @@ export default function RecordsAndStandardsScreen() {
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              New Bodyweight Standards
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/records')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              USAW American Records
+              A/B Standards
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
@@ -134,11 +87,11 @@ export default function RecordsAndStandardsScreen() {
             styles.lastSection,
             pressed && { backgroundColor: colors.pressed }
           ]}
-          onPress={() => router.push('/(screens)/usamw_records')}
+          onPress={() => router.push('/(screens)/records')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              USAMW American Records
+              American Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>

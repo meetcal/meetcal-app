@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/contexts/ThemeContext'
 import Purchases from 'react-native-purchases'
+import { cacheAuthState } from '@/lib/authCache'
 
 export default function SignUpScreen() {
   const { isLoaded, signUp, setActive } = useSignUp()
@@ -127,19 +128,9 @@ export default function SignUpScreen() {
           signUpAttempt.createdUserId) {
         await setActive({ session: signUpAttempt.createdSessionId })
         
-        // Save user data to Supabase
-        const { error } = await supabase.from('users').insert({
-          id: signUpAttempt.createdUserId,
-          first_name: firstName,
-          last_name: lastName,
-          email: emailAddress,
-          role: role,
-        })
-
-        if (error) {
-          console.error('Error saving to Supabase:', error)
-        }
-
+        // Cache the auth state
+        await cacheAuthState(true)
+        
         // Sync user with RevenueCat
         try {
           await Purchases.setEmail(emailAddress);

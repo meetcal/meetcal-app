@@ -6,11 +6,10 @@ import * as Calendar from 'expo-calendar';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors } from '@/data/schedule';
+import { getPlatformColors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
-import { getSchedule } from '@/data/meets/scheduleManager';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
@@ -23,6 +22,7 @@ import { LiftResult } from '@/data/types/athletes';
 import { saveMeetAthletes } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // Update interface names
 interface SessionPlatformDetails {
@@ -181,7 +181,6 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
 
 async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
   try {
-    console.log(`Fetching bests for athlete: ${name}`);
     
     // Initialize result with null values
     const result: SupabaseBests = {
@@ -241,6 +240,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>({});
   const [athleteWarmups, setAthleteWarmups] = useState<Record<string, boolean>>({});
   const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
+  const { isSubscribed } = useSubscription();
 
   const loadAthletes = async () => {
     setLoading(true);
@@ -427,52 +427,66 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                       {athlete.entryTotal}kg
                     </ThemedText>
                   </View>
-                  {loadingBests[athlete.name] ? (
-                    <ActivityIndicator size="small" color={colors.secondaryText} />
+                  {isSubscribed ? (
+                    loadingBests[athlete.name] ? (
+                      <ActivityIndicator size="small" color={colors.secondaryText} />
+                    ) : (
+                      <>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            Best Sn
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {athleteBests[athlete.name]?.snatch_best ?? '—'}kg
+                          </ThemedText>
+                        </View>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            Best CJ
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {athleteBests[athlete.name]?.cj_best ?? '—'}kg
+                          </ThemedText>
+                        </View>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            Best Total
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {athleteBests[athlete.name]?.total ?? '—'}kg
+                          </ThemedText>
+                        </View>
+                      </>
+                    )
                   ) : (
-                    <>
-                      <View style={styles.statItem}>
-                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                          Best Sn
-                        </ThemedText>
-                        <ThemedText style={styles.statValue}>
-                          {athleteBests[athlete.name]?.snatch_best ?? '—'}kg
-                        </ThemedText>
-                      </View>
-                      <View style={styles.statItem}>
-                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                          Best CJ
-                        </ThemedText>
-                        <ThemedText style={styles.statValue}>
-                          {athleteBests[athlete.name]?.cj_best ?? '—'}kg
-                        </ThemedText>
-                      </View>
-                      <View style={styles.statItem}>
-                        <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                          Best Total
-                        </ThemedText>
-                        <ThemedText style={styles.statValue}>
-                          {athleteBests[athlete.name]?.total ?? '—'}kg
-                        </ThemedText>
-                      </View>
-                    </>
+                    <Pressable 
+                      style={styles.premiumBadgeContainer}
+                      onPress={() => router.push('/paywall')}
+                    >
+                    </Pressable>
                   )}
                 </View>
 
                 <Pressable
                   style={({ pressed }) => [
-                    styles.linkButton,
+                    styles.meetResultsButton,
                     pressed && { opacity: 0.8 }
                   ]}
-                  onPress={() => router.push({
-                    pathname: '/athlete-results',
-                    params: { name: athlete.name }
-                  })}
+                  onPress={() => {
+                    if (isSubscribed) {
+                      router.push({
+                        pathname: '/athlete-results',
+                        params: { name: athlete.name }
+                      });
+                    } else {
+                      router.push('/paywall');
+                    }
+                  }}
                 >
-                  <ThemedText style={[styles.linkText, { color: colors.link }]}>
+                  <ThemedText style={styles.meetResultsText}>
                     See All Meet Results
                   </ThemedText>
-                  <IconSymbol name="chevron.right" size={13} color={colors.link} />
+                  <IconSymbol name="chevron.right" size={13} color="#007AFF" />
                 </Pressable>
               </View>
             ))}
@@ -1169,5 +1183,21 @@ const styles = StyleSheet.create({
   linksContainer: {
     marginTop: 12,
     gap: 8,
+  },
+  premiumBadgeContainer: {
+    flex: 1,
+    marginLeft: 16,
+    justifyContent: 'center',
+  },
+  premiumBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  premiumText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 

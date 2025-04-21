@@ -30,26 +30,44 @@ export default function FeedbackScreen() {
   const [error, setError] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showRolePicker, setShowRolePicker] = useState(false)
+  const [roleAutofilled, setRoleAutofilled] = useState(false)
 
   // Auto-fill user information when available
   useEffect(() => {
-    if (isUserLoaded && user) {
-      // Set name from user's full name or first + last name
-      const fullName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim()
-      setName(fullName)
-      
-      // Set email from user's primary email
-      if (user.primaryEmailAddress) {
-        setEmail(user.primaryEmailAddress.emailAddress)
-      }
-      
-      // Set role from user's public metadata if available
-      const metadata = user.publicMetadata as UserMetadata
-      if (metadata.role) {
-        setRole(metadata.role)
+    async function autofillUserInfo() {
+      if (isUserLoaded && user) {
+        // Set name from user's full name or first + last name
+        const fullName = user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        setName(fullName)
+
+        // Set email from user's primary email
+        if (user.primaryEmailAddress) {
+          setEmail(user.primaryEmailAddress.emailAddress)
+        }
+
+        // Fetch role from Supabase users table
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          if (error) throw error;
+          if (data && data.role) {
+            setRole(data.role);
+            setRoleAutofilled(true);
+          } else {
+            setRole('Athlete');
+            setRoleAutofilled(false);
+          }
+        } catch (e) {
+          setRole('Athlete');
+          setRoleAutofilled(false);
+        }
       }
     }
-  }, [isUserLoaded, user])
+    autofillUserInfo();
+  }, [isUserLoaded, user]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -177,7 +195,7 @@ export default function FeedbackScreen() {
                 }
               ]}
               onPress={() => setShowRolePicker(true)}
-              disabled={isUserLoaded && !!(user?.publicMetadata as UserMetadata)?.role}
+              disabled={false}
             >
               <View style={styles.roleButtonContent}>
                 <ThemedText style={[styles.roleText, { color: colors.text }]}>
@@ -192,11 +210,6 @@ export default function FeedbackScreen() {
                 )}
               </View>
             </Pressable>
-            {isUserLoaded && (user?.publicMetadata as UserMetadata)?.role && (
-              <ThemedText style={[styles.autoFilledText, { color: colors.secondaryText }]}>
-                Auto-filled from your profile
-              </ThemedText>
-            )}
           </View>
 
           <View style={styles.inputContainer}>
