@@ -7,18 +7,18 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { getPlatformColors, schedule } from '@/data/schedule';
+import { getPlatformColors } from '@/constants/Colors';
 import * as Calendar from 'expo-calendar';
-import { getFullLocation } from '@/config/venue';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName, MeetConfig } from '@/data/types/meet';
-import { getSchedule } from '@/data/meets/scheduleManager';
-import { Schedule } from '@/data/types/schedule';
+import { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { useUser } from '@clerk/clerk-expo';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
+import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
 
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -161,50 +161,67 @@ async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetN
 }
 
 // Create a separate SessionCard component
-const SessionCard = React.memo(({ 
-  item, 
+const SessionCard = React.memo(({
+  item,
   selectedMeet,
   onPress,
   router,
-  savedWarmups
-}: { 
-  item: LegacySavedSession; 
+  savedWarmups,
+  schedulesMap
+}: {
+  item: LegacySavedSession;
   selectedMeet: MeetName | null;
   onPress: () => void;
   router: ReturnType<typeof useRouter>;
   savedWarmups: Array<{ id: string; name: string; meet: string; }>;
+  schedulesMap: Map<MeetName, ScheduleType>;
 }) => {
   const { currentTheme } = useTheme();
   const { meetDetails } = useSelectedMeet();
 
   // Ensure meet is defined before using it
   const meet = item.meet || selectedMeet;
+  // Add a check for schedule existence in the map
+  const schedule = meet && isMeetName(meet) ? schedulesMap.get(meet) : undefined;
+
   if (!meet || !isMeetName(meet)) {
-    console.warn('No valid meet information available for session:', item);
-    return null;
+    console.warn('[SessionCard] No valid meet information available for session:', item);
+    return null; // Don't render if meet info is missing
   }
 
   const sessionNumber = item.sessionNumber?.toString() || '';
   const platform = item.platform || '';
   const weightClass = item.weightClass || '';
 
-  // Find session in schedule to get platform-specific time
-  const schedule = getSchedule(meet);
-  const sessionDay = schedule.find(day => 
-    day.sessions.some(s => s.number === parseInt(sessionNumber))
-  );
-  
-  const scheduleSession = sessionDay?.sessions.find(s => 
-    s.number === parseInt(sessionNumber)
+
+  // Add a check to ensure schedule is valid before calling find
+  const sessionDay = schedule && Array.isArray(schedule) ? schedule.find(day =>
+    day.sessions.some(s => {
+      return s.number.toString() === sessionNumber;
+    })
+  ) : undefined; // If schedule is invalid, sessionDay will be undefined
+
+  const scheduleSession = sessionDay?.sessions.find(s =>
+    // Use parseInt safely
+    s.number === parseInt(sessionNumber, 10)
   );
 
-  const platformInfo = scheduleSession?.platforms.find(p => 
+  const platformInfo = scheduleSession?.platforms.find(p =>
     p.platform === platform
   );
 
   // Use platform-specific time if available, otherwise fall back to session time
   const startTime = platformInfo?.platformStartTime || item.startTime || '';
-  const weighInTime = startTime ? calculateWeighInTime(startTime) : '';
+  // Calculate weighInTime based on the determined startTime
+  const weighInTime = startTime ? calculateWeighInTime(startTime) : item.weighInTime || '';
+
+  // Get date from sessionDay if available, otherwise fallback to item.date
+  const displayDate = sessionDay?.date || 
+    (item.date ? new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+        timeZone: meetDetails?.time.timeZoneIdentifier || 'UTC' // Fallback timezone
+      })
+    : 'Date TBD');
 
   // Get time zone abbreviation
   const timeZoneAbbr = useMemo(() => {
@@ -269,13 +286,8 @@ const SessionCard = React.memo(({
       onPress={onPress}
     >
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-        Session {sessionNumber} {item.date && meetDetails?.time.timeZoneIdentifier ? 
-          `• ${new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', { 
-            month: 'long', 
-            day: 'numeric', 
-            year: 'numeric', 
-            timeZone: meetDetails.time.timeZoneIdentifier 
-          })}` : ''}
+        {/* Use displayDate derived from schedule map */}
+        Session {sessionNumber} {displayDate !== 'Date TBD' ? `• ${displayDate}` : ''}
       </ThemedText>
 
       {meet && meet !== selectedMeet && (
@@ -400,13 +412,32 @@ const SessionCard = React.memo(({
           </View>
         </View>
       )}
+
+      {/* Display notes if available */}
+      {item.notes && item.notes.length > 0 && (
+        <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
+          <ThemedText style={[styles.notesLabel, { color: colors.secondaryText }]}>
+            Notes:
+          </ThemedText>
+          {item.notes.split('\n\n').filter(note => note.trim().length > 0).map((note, index, array) => (
+            <View key={index} style={styles.noteBlock}>
+              <ThemedText style={[styles.notesText, { color: colors.text }]}>
+                {note.trim()}
+              </ThemedText>
+              {index < array.length - 1 && (
+                <View style={[styles.noteDivider, { backgroundColor: colors.border }]} />
+              )}
+            </View>
+          ))}
+        </View>
+      )}
     </Pressable>
   );
 });
 
 export default function SavedScreen() {
   const { user } = useUser();
-  const { savedSessions, saveSession } = useSavedSessions();
+  const { savedSessions, saveSession, loadSavedSessions } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -420,7 +451,12 @@ export default function SavedScreen() {
     id: string,
     name: string,
     meet: string
-  }>>([])
+  }>>([]);
+  const { isSubscribed } = useSubscription();
+
+  // Add state for schedules map and loading
+  const [schedulesMap, setSchedulesMap] = useState<Map<MeetName, ScheduleType>>(new Map());
+  const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -434,7 +470,7 @@ export default function SavedScreen() {
 
   // Update migrateSessions function to use user-specific storage
   const migrateSessions = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !selectedMeet) return;
 
     try {
       console.log('Starting session migration');
@@ -447,22 +483,18 @@ export default function SavedScreen() {
       let needsMigration = false;
       
       for (const key of STORAGE_KEYS) {
-        console.log('Checking storage key:', key);
         const storedData = await AsyncStorage.getItem(key);
         if (storedData) {
           try {
             const parsed = JSON.parse(storedData);
-            console.log('Found data in', key, ':', parsed);
             if (Array.isArray(parsed) && parsed.length > 0) {
               needsMigration = parsed.some(session => !session.meet);
               if (needsMigration) {
-                console.log(`Migrating ${parsed.length} sessions in ${key}`);
                 const migratedSessions = await migrateSessionsToMeetSpecific(parsed, selectedMeet);
                 
                 await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(migratedSessions));
                 
                 migratedSessions.forEach(session => {
-                  console.log('Saving migrated session:', session);
                   saveSession(session);
                 });
               }
@@ -523,6 +555,11 @@ export default function SavedScreen() {
       Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
       return;
     }
+    // Check if schedules are still loading
+    if (isSchedulesLoading) {
+        Alert.alert('Loading', 'Schedule data is still loading, please wait a moment.');
+        return;
+    }
 
     Alert.alert(
       'Add to Calendar',
@@ -542,28 +579,50 @@ export default function SavedScreen() {
                 return;
               }
 
-              // Filter out sessions without meet information
-              const validSessions = filteredSessions.filter(session => session.meet) as Array<SavedSession & { meet: MeetName }>;
+              // Filter out sessions without meet information or missing schedules
+              const validSessions = filteredSessions.filter(session => {
+                if (!session.meet || !isMeetName(session.meet)) return false;
+                const schedule = schedulesMap.get(session.meet);
+                return schedule && schedule.length > 0; // Ensure schedule exists and is not empty
+              }) as Array<SavedSession & { meet: MeetName }>;
 
               if (validSessions.length === 0) {
-                Alert.alert('Error', 'No valid sessions found with meet information.');
+                Alert.alert('Error', 'No valid sessions found with complete schedule information.');
                 return;
               }
 
               const sessionsToAdd = validSessions.map(session => {
-                const meetSchedule = getSchedule(session.meet);
-                return {
-                  date: meetSchedule.find(day => 
+                // Get schedule from the map
+                const meetSchedule = schedulesMap.get(session.meet)!; // Non-null assertion ok due to filter above
+                // Find the specific day and platform info from the loaded schedule
+                const sessionDay = meetSchedule.find(day =>
                     day.sessions.some(s => s.number === parseInt(session.sessionNumber.toString()))
-                  )?.fullDate || '',
-                  startTime: session.startTime,
-                  weighInTime: session.weighInTime,
+                );
+                const scheduleSession = sessionDay?.sessions.find(s => s.number === parseInt(session.sessionNumber.toString()));
+                const platformInfo = scheduleSession?.platforms.find(p => p.platform === session.platform);
+                const startTime = platformInfo?.platformStartTime || session.startTime;
+                const weighInTime = startTime ? calculateWeighInTime(startTime) : session.weighInTime;
+
+                return {
+                  date: sessionDay?.fullDate || '', // Use fullDate from schedule
+                  startTime: startTime,
+                  weighInTime: weighInTime,
                   sessionNumber: session.sessionNumber.toString(),
                   platform: session.platform,
                   weightClass: session.weightClass,
                   meet: session.meet
                 };
-              });
+              }).filter(s => s.date && s.startTime && s.weighInTime); // Ensure critical info is present
+
+              if (sessionsToAdd.length !== validSessions.length) {
+                 console.warn('Some sessions were skipped due to missing schedule details (date/time).');
+                 // Optionally inform the user
+              }
+
+              if (sessionsToAdd.length === 0) {
+                  Alert.alert('Error', 'Could not extract necessary details for calendar events.');
+                  return;
+              }
 
               await createCalendarEvents(sessionsToAdd);
               Alert.alert('Success', 'Sessions have been added to your calendar.');
@@ -577,34 +636,22 @@ export default function SavedScreen() {
     );
   };
 
-  // Update forceLoadSessions to use correct storage key
+  // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
-    if (refreshing || !user?.id) return;
+    if (refreshing) return;
     setRefreshing(true);
-    
     try {
-      console.log('Force loading sessions');
-      const storedData = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-      if (storedData) {
-        const parsed = JSON.parse(storedData);
-        console.log('Found stored sessions:', parsed);
-        if (Array.isArray(parsed)) {
-          parsed.forEach(session => {
-            const sessionWithId = {
-              ...session,
-              id: generateSessionId(session.meet || selectedMeet, session.sessionNumber, session.platform)
-            };
-            console.log('Saving session with ID:', sessionWithId);
-            saveSession(sessionWithId);
-          });
-        }
-      }
+      console.log('Force reloading sessions from source...');
+      // REMOVE: Old implementation reading from AsyncStorage and calling saveSession
+      // ADD: Call loadSavedSessions from the hook
+      await loadSavedSessions();
     } catch (error) {
-      console.error('Error loading sessions:', error);
+      console.error('Error force reloading sessions:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [saveSession, refreshing, selectedMeet, user?.id]);
+    // ADD: loadSavedSessions to dependency array
+  }, [refreshing, loadSavedSessions]);
 
   // Add logging to loadSavedWarmups
   const loadSavedWarmups = useCallback(async () => {
@@ -624,7 +671,6 @@ export default function SavedScreen() {
         // Load warmups from user-specific storage
         const storedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id));
         if (storedWarmups) {
-          console.log('Found stored warmups:', storedWarmups);
           const warmups = JSON.parse(storedWarmups);
           setSavedWarmups(warmups);
           return;
@@ -669,9 +715,10 @@ export default function SavedScreen() {
         })}
         router={router}
         savedWarmups={savedWarmups}
+        schedulesMap={schedulesMap}
       />
     );
-  }, [selectedMeet, router, savedWarmups]);
+  }, [selectedMeet, router, savedWarmups, schedulesMap]);
 
   // Only run migration on mount
   useEffect(() => {
@@ -688,30 +735,90 @@ export default function SavedScreen() {
     })();
   }, []);
 
+  // Fetch schedules for all saved sessions
+  useEffect(() => {
+    const fetchAllSchedules = async () => {
+      if (savedSessions.length === 0) {
+        setSchedulesMap(new Map());
+        return;
+      }
+
+      setIsSchedulesLoading(true);
+      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter(isMeetName)));
+      const newSchedulesMap = new Map<MeetName, ScheduleType>();
+
+      try {
+        await Promise.all(meetNames.map(async (meetName) => {
+          try {
+            const dbSchedule = await fetchScheduleFromDb(meetName);
+            const transformedSchedule = await transformScheduleData(dbSchedule);
+            newSchedulesMap.set(meetName, transformedSchedule);
+          } catch (fetchError) {
+            console.error(`Error fetching schedule for ${meetName}:`, fetchError);
+            // Optionally set an empty array or null for this meet to indicate failure
+            newSchedulesMap.set(meetName, []); 
+          }
+        }));
+        console.log('[SavedScreen] Schedules map populated:', newSchedulesMap.size);
+        setSchedulesMap(newSchedulesMap);
+      } catch (error) {
+        console.error('Error fetching schedules:', error);
+        Alert.alert('Error', 'Could not load schedule data for all saved sessions.');
+      } finally {
+        setIsSchedulesLoading(false);
+      }
+    };
+
+    fetchAllSchedules();
+  }, [savedSessions]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={styles.buttonRow}>
+          <Pressable
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => {
+              if (isSubscribed) {
+                router.push('/(screens)/create-session');
+              } else {
+                router.push('/paywall');
+              }
+            }}
+          >
+            <IconSymbol name="plus" size={16} color={colors.secondaryText} />
+            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+              Create Session
+            </ThemedText>
+          </Pressable>     
+
+          <Pressable
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={handleSaveToCalendar}
+            disabled={isSchedulesLoading}
+          >
+            <IconSymbol name="calendar" size={16} color={isSchedulesLoading ? colors.border : colors.secondaryText} />
+            <ThemedText style={[styles.buttonText, { color: isSchedulesLoading ? colors.border : colors.secondaryText }]}>
+              {isSchedulesLoading ? 'Loading...' : 'Add to Calendar'}
+            </ThemedText>
+          </Pressable>
+        </View>
+
         <Pressable
-          style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => router.push('/(screens)/warmups')}
+          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => {
+            if (isSubscribed) {
+              router.push('/(screens)/warmups');
+            } else {
+              router.push('/paywall');
+            }
+          }}
         >
           <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
           <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
             Saved Warmups
           </ThemedText>
         </Pressable>
-          
-        <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={handleSaveToCalendar}
-          >
-            <IconSymbol name="calendar" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Add to Calendar
-            </ThemedText>
-        </Pressable>
-        </View>
       </View>
 
       <FlatList
@@ -1001,5 +1108,25 @@ const styles = StyleSheet.create({
   warmupLinkText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  notesContainer: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  notesLabel: {
+    fontSize: 14,
+    marginBottom: 12,
+    color: '#8E8E93',
+  },
+  notesText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  noteBlock: {
+    marginBottom: 12,
+  },
+  noteDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 12,
   },
 }); 

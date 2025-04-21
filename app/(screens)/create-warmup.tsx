@@ -70,17 +70,18 @@ export default function CreateWarmupScreen() {
     if (!selectedAthlete || !user?.id) return
 
     try {
-      console.log('Saving warmup for user:', user.id);
       const key = getSavedWarmupsKey(user.id);
-      console.log('Storage key:', key);
       
-      // Get existing warmups
+      // --- Local Save (AsyncStorage) ---
       const existingWarmupsStr = await AsyncStorage.getItem(key)
       const existingWarmups = existingWarmupsStr ? JSON.parse(existingWarmupsStr) : []
 
-      // Create new warmup
-      const newWarmup = {
-        id: Date.now().toString(),
+      // Generate a unique ID (consider UUID later if needed)
+      const newWarmupId = Date.now().toString(); 
+
+      // Create new warmup object for local storage
+      const newWarmupLocal = {
+        id: newWarmupId,
         name: selectedAthlete.name,
         lastModified: new Date().toISOString(),
         athlete: selectedAthlete,
@@ -88,17 +89,41 @@ export default function CreateWarmupScreen() {
         meet: selectedMeet
       }
 
-      console.log('New warmup:', newWarmup);
       
       // Add to existing warmups
-      const updatedWarmups = [...existingWarmups, newWarmup]
+      const updatedWarmups = [...existingWarmups, newWarmupLocal]
       await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
-      console.log('Warmup saved successfully');
 
-      // Navigate back
+      // --- Remote Save (Supabase) ---
+      const warmupDataForSupabase = {
+        athlete: selectedAthlete,
+        warmupRows: warmupRows
+      };
+
+      const { error: supabaseError } = await supabase
+        .from('saved_warmups')
+        .upsert({
+          id: newWarmupId,
+          user_id: user.id,
+          meet: selectedMeet || 'unknown', // Ensure meet is never null/undefined
+          name: selectedAthlete.name,
+          warmup_data: warmupDataForSupabase, // Store structured data as JSONB
+          // created_at and updated_at are handled by DB defaults
+        });
+
+      if (supabaseError) {
+        console.error('Error saving warmup to Supabase:', supabaseError);
+        // Optionally: Handle error - perhaps show a message to the user
+        // The local save succeeded, so the user has their data, but sync failed.
+      } else {
+        console.log('Warmup saved to Supabase successfully');
+      }
+
+      // Navigate back after both local and (attempted) remote save
       router.back()
     } catch (error) {
       console.error('Error saving warmup:', error)
+      // Handle general errors (e.g., AsyncStorage failure)
     }
   }
 

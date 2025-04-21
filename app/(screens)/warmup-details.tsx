@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { IconSymbol } from '@/components/ui/IconSymbol'
 import { useUser } from '@clerk/clerk-expo'
+import { supabase } from '@/lib/supabase'
 
 // Update storage key to be user-specific
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -63,22 +64,75 @@ export default function WarmupDetailsScreen() {
   }, [id, user?.id])
 
   const loadWarmup = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !id) {
+        console.log('User ID or Warmup ID missing');
+        setWarmup(null); // Clear warmup if IDs are missing
+        setWarmupRows([]);
+        return;
+    }
     
     try {
-      const savedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id))
-      if (savedWarmups) {
-        const warmups = JSON.parse(savedWarmups)
-        const selectedWarmup = warmups.find((w: SavedWarmup) => w.id === id)
-        if (selectedWarmup) {
-          setWarmup(selectedWarmup)
-          setWarmupRows(selectedWarmup.warmupRows)
+      console.log('Loading warmup details for ID:', id, 'User:', user.id);
+
+      // --- Try fetching from Supabase first ---
+      const { data: supabaseData, error: supabaseError } = await supabase
+        .from('saved_warmups')
+        .select('id, name, meet, warmup_data, updated_at') // Select all necessary fields
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single(); // Expecting a single result
+
+      if (supabaseError && supabaseError.code !== 'PGRST116') { // Ignore 'No rows found' error initially
+        console.error('Error fetching warmup from Supabase:', supabaseError);
+        // Fallback to AsyncStorage below
+      } else if (supabaseData) {
+        console.log('Warmup data fetched from Supabase');
+        const parsedWarmupData = supabaseData.warmup_data as { athlete: AthleteInfo; warmupRows: WarmupRow[] } | null;
+
+        if (parsedWarmupData) {
+          const loadedWarmup: SavedWarmup = {
+            id: supabaseData.id,
+            name: supabaseData.name,
+            meet: supabaseData.meet,
+            lastModified: supabaseData.updated_at || new Date().toISOString(),
+            athlete: parsedWarmupData.athlete,
+            warmupRows: parsedWarmupData.warmupRows || []
+          };
+          setWarmup(loadedWarmup);
+          setWarmupRows(loadedWarmup.warmupRows);
+
+          // Optionally update AsyncStorage here if needed for offline consistency
+          // This would involve fetching the full list, updating this item, and saving back
+
+          return; // Successfully loaded from Supabase
+        } else {
+            console.error('Supabase warmup_data is missing or invalid');
+            // Fallback to AsyncStorage
         }
       }
+
+      // --- Fallback to AsyncStorage if Supabase fetch failed or data invalid ---
+      console.log('Falling back to loading warmup from AsyncStorage');
+      const key = getSavedWarmupsKey(user.id);
+      const savedWarmups = await AsyncStorage.getItem(key);
+      if (savedWarmups) {
+        const warmups = JSON.parse(savedWarmups);
+        const selectedWarmup = warmups.find((w: SavedWarmup) => w.id === id);
+        if (selectedWarmup) {
+          setWarmup(selectedWarmup);
+          setWarmupRows(selectedWarmup.warmupRows || []); // Ensure warmupRows is always an array
+        }
+      } else {
+        console.log('Warmup not found in AsyncStorage either');
+        setWarmup(null);
+        setWarmupRows([]);
+      }
     } catch (error) {
-      console.error('Error loading warmup:', error)
+      console.error('Error loading warmup:', error);
+      setWarmup(null);
+      setWarmupRows([]);
     }
-  }
+  };
 
   const handleMinutesOutChange = (index: number, value: string) => {
     const newRows = [...warmupRows]
@@ -114,26 +168,58 @@ export default function WarmupDetailsScreen() {
     if (!warmup || !user?.id) return
 
     try {
-      const savedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id))
+      const key = getSavedWarmupsKey(user.id);
+      const updatedTimestamp = new Date().toISOString();
+
+      // 1. Update AsyncStorage
+      const savedWarmups = await AsyncStorage.getItem(key)
+      let updatedWarmupsLocal: SavedWarmup[] = [];
       if (savedWarmups) {
         const warmups = JSON.parse(savedWarmups)
-        const updatedWarmups = warmups.map((w: SavedWarmup) => {
+        updatedWarmupsLocal = warmups.map((w: SavedWarmup) => {
           if (w.id === id) {
             return {
               ...w,
-              warmupRows,
-              lastModified: new Date().toISOString()
+              warmupRows, // Use the updated rows from state
+              lastModified: updatedTimestamp
             }
           }
           return w
         })
-        await AsyncStorage.setItem(getSavedWarmupsKey(user.id), JSON.stringify(updatedWarmups))
-        router.back()
+        await AsyncStorage.setItem(key, JSON.stringify(updatedWarmupsLocal))
+        console.log('Warmup updated locally in AsyncStorage');
+      } else {
+        console.warn('Could not find warmup list in AsyncStorage to update.')
+        // Decide how to handle this - maybe save the single item?
       }
+
+      // 2. Update Supabase
+      const updatedWarmupDataForSupabase = {
+        athlete: warmup.athlete, // Keep original athlete info
+        warmupRows: warmupRows // Send the updated rows
+      };
+
+      const { error: supabaseError } = await supabase
+        .from('saved_warmups')
+        .update({
+          warmup_data: updatedWarmupDataForSupabase,
+          updated_at: updatedTimestamp // Explicitly set updated_at
+        })
+        .match({ id: id, user_id: user.id });
+
+      if (supabaseError) {
+        console.error('Error updating warmup in Supabase:', supabaseError);
+        // Handle error - revert local changes? Show message?
+      } else {
+        console.log('Warmup updated in Supabase successfully');
+      }
+      
+      // Navigate back after attempts
+      router.back()
     } catch (error) {
-      console.error('Error saving warmup:', error)
+      console.error('Error saving warmup changes:', error)
     }
-  }
+  };
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>

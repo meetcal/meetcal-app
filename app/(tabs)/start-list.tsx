@@ -8,8 +8,6 @@ import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { schedule as usawSchedule } from '@/data/meets/usaw-masters-nationals/schedule';
-import { schedule as usamwSchedule } from '@/data/meets/usamw-masters-nationals/schedule';
 import { LiftResult } from '@/data/types/athletes';
 import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
@@ -18,8 +16,11 @@ import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { saveMeetAthletes } from '@/lib/database/offline-store';
+import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import type { Schedule as ScheduleType } from '@/types/schedule';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -47,7 +48,7 @@ interface AthleteItemProps {
   isExpanded: boolean;
   onPress: () => void;
   router: ReturnType<typeof useRouter>;
-  schedule: Schedule[];
+  schedule: ScheduleType;
   getSessionDetails: (sessionNumber: number) => {
     date: string;
     startTime: string;
@@ -115,6 +116,7 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
   const { selectedMeet, meetDetails } = useSelectedMeet();
+  const { isSubscribed } = useSubscription();
   
   // Add type guard check
   const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
@@ -288,53 +290,61 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
             <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
           </View>
 
-          <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
-            <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
-              Bests From The Last Year
-            </ThemedText>
-            <View style={styles.statsRow}>
-              {loadingBests ? (
-                <ActivityIndicator size="small" color={colors.secondaryText} />
-              ) : (
-                <>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      Snatch
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      CJ
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statItem}>
-                    <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                      Total
-                    </ThemedText>
-                    <ThemedText style={styles.statValue}>
-                      {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                    </ThemedText>
-                  </View>
-                </>
-              )}
+          {isSubscribed && (
+            <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
+              <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
+                Bests From The Last Year
+              </ThemedText>
+              <View style={styles.statsRow}>
+                {loadingBests ? (
+                  <ActivityIndicator size="small" color={colors.secondaryText} />
+                ) : (
+                  <>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        Snatch
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        CJ
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                        Total
+                      </ThemedText>
+                      <ThemedText style={styles.statValue}>
+                        {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                      </ThemedText>
+                    </View>
+                  </>
+                )}
+              </View>
             </View>
-          </View>
+          )}
 
           <Pressable
             style={({ pressed }) => [
               styles.meetResultsButton,
               pressed && { opacity: 0.8 }
             ]}
-            onPress={() => router.push({
-              pathname: '/(screens)/athlete-results',
-              params: { name: athlete.name }
-            })}
+            onPress={() => {
+              if (isSubscribed) {
+                router.push({
+                  pathname: '/(screens)/athlete-results',
+                  params: { name: athlete.name }
+                });
+              } else {
+                router.push('/paywall');
+              }
+            }}
           >
             <ThemedText style={styles.meetResultsText}>
               See All Meet Results
@@ -446,14 +456,18 @@ function getAgeCategory(age: number): string {
 
 // Update the helper function to parse weight class numbers with gender
 function parseWeightClasses(weightClass: string): string[] {
+  if (!weightClass) return []; // Handle null or empty string
   const classes = weightClass.split(' / ');
   const weightClasses = new Set<string>();
   
   classes.forEach(classStr => {
-    // Match pattern: number followed by kg (possibly with +)
-    const match = classStr.match(/(\d+)(?:\+)?kg/);
+    const trimmedClass = classStr.trim();
+    // Match pattern: number (possibly with +) followed optionally by 'kg'
+    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
     if (match && match[1]) {
-      weightClasses.add(`${match[1]}${classStr.includes('+') ? '+' : ''}kg`);
+      const number = match[1];
+      const plus = match[2] ? '+' : '';
+      weightClasses.add(`${number}${plus}kg`);
     }
   });
   
@@ -482,96 +496,116 @@ export default function StartListScreen() {
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(true);
   
-  // Load athletes with offline-first approach
+  // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      console.warn('No valid meet selected');
+      console.warn('StartList: No valid meet selected for athletes');
       setAthletes([]);
       setLoading(false);
       return;
     }
 
     const validMeet = selectedMeet;
-    const syncManager = new SyncManager(validMeet);
+    setLoading(true);
+    let athleteData: LiftResult[] = [];
+    let loadedFromCache = false;
+
     try {
-      setLoading(true);
-      console.log('Loading athletes for meet:', validMeet);
-      
-      // Try Supabase first
+      // 1. Try fetching from Supabase
+      const freshAthletes = await fetchAthletes(validMeet);
+      athleteData = freshAthletes;
+      // 2. Save successful fetch to cache (don't wait for it)
+      saveMeetAthletes(validMeet, freshAthletes).catch(err => 
+        console.error(`StartList: Failed to save fresh athletes to cache for ${validMeet}:`, err)
+      );
+    } catch (fetchError) {
+      console.warn(`StartList: fetchAthletes failed for ${validMeet}, attempting cache fallback:`, fetchError);
+      // 3. Fallback to cache if Supabase fetch fails
       try {
-        const { data, error } = await supabase
-          .from('athletes')
-          .select('*')
-          .eq('meet', validMeet);
-
-        if (error) throw error;
-        
-        // Transform the data (even if empty)
-        const transformedAthletes = (data || []).map(athlete => ({
-          memberId: athlete.member_id || '',
-          name: athlete.name,
-          age: athlete.age || 0,
-          club: athlete.club || '',
-          gender: athlete.gender || '',
-          weightClass: athlete.weight_class || '',
-          entryTotal: athlete.entry_total || 0,
-          session: athlete.session_number ? {
-            number: Number(athlete.session_number),
-            platform: athlete.session_platform || ''
-          } : undefined
-        })) as LiftResult[];
-
-        // Always save to cache and update UI, even if empty
-        console.log('Got data from Supabase, count:', transformedAthletes.length);
-        await saveMeetAthletes(validMeet, transformedAthletes);
-        setAthletes(transformedAthletes);
-        setLoading(false);
-        return;
-        
-      } catch (supabaseError) {
-        console.log('Supabase error, falling back to cache:', supabaseError);
-        
-        // Only use cache on actual Supabase errors
-        const meetData = await syncManager.getMeetData();
-        if (meetData.athletes.length > 0) {
-          console.log('Using cached data, count:', meetData.athletes.length);
-          setAthletes(meetData.athletes);
+        // We still need getMeetData to retrieve from the combined offline store structure
+        const cachedMeetData = await getMeetData(validMeet);
+        if (cachedMeetData?.athletes) {
+          athleteData = cachedMeetData.athletes;
+          loadedFromCache = true;
         } else {
-          console.log('No data in cache');
-          setAthletes([]);
+          console.log(`StartList: No athletes found in cache for ${validMeet}`);
+        }
+      } catch (cacheError) {
+        Alert.alert('Error', 'Failed to load athlete data. Please check connection or try refreshing.');
+      }
+    }
+    
+    setAthletes(athleteData);
+    if (loadedFromCache) {
+        console.log("StartList: Displaying athlete data loaded from cache.");
+    }
+    setLoading(false);
+
+  }, [selectedMeet]);
+
+  // Revised schedule fetching logic (Supabase-first, Cache-fallback)
+  const loadSchedule = useCallback(async () => {
+      if (!selectedMeet || !isMeetName(selectedMeet)) {
+        console.warn('StartList: No valid meet selected for schedule');
+        setScheduleData([]);
+        setIsScheduleLoading(false);
+        return;
+      }
+      const validMeet = selectedMeet;
+      setIsScheduleLoading(true);
+      let scheduleResult: ScheduleType = [];
+      let loadedFromCache = false;
+
+      try {
+        console.log(`StartList: Attempting fetchSchedule for ${validMeet}`);
+        const dbSchedule = await fetchScheduleFromDb(validMeet);
+        const transformedSchedule = await transformScheduleData(dbSchedule);
+        console.log(`StartList: fetchSchedule successful, ${transformedSchedule.length} days found`);
+        scheduleResult = transformedSchedule;
+        saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
+          console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
+        );
+      } catch (fetchError) {
+        console.warn(`StartList: fetchSchedule failed for ${validMeet}, attempting cache fallback:`, fetchError);
+        try {
+          const cachedMeetData = await getMeetData(validMeet);
+          if (cachedMeetData?.schedule) {
+            console.log(`StartList: Loaded schedule from cache for ${validMeet}`);
+            scheduleResult = cachedMeetData.schedule;
+            loadedFromCache = true;
+          } else {
+            console.log(`StartList: No schedule found in cache for ${validMeet}`);
+          }
+        } catch (cacheError) {
+          console.error(`StartList: Failed to load schedule from cache for ${validMeet}:`, cacheError);
+          // Don't alert here, athlete alert is enough
         }
       }
-      
-    } catch (error) {
-      console.error('Error loading athletes:', error);
-      setAthletes([]);
-      Alert.alert(
-        'Error',
-        'Could not load athletes. Please check your connection and try again.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setLoading(false);
-    }
+
+      setScheduleData(scheduleResult);
+      if (loadedFromCache) {
+        console.log("StartList: Displaying schedule data loaded from cache.");
+      }
+      setIsScheduleLoading(false);
   }, [selectedMeet]);
 
-  // Load athletes on mount and meet change
+  // Load data on mount and meet change
   useEffect(() => {
     loadAthletes();
-  }, [loadAthletes, selectedMeet]);
+    loadSchedule(); 
+  }, [loadAthletes, loadSchedule, selectedMeet]); // Add loadSchedule dependency
 
-  // Handle refresh
+  // Revised refresh handler
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadAthletes(true);
+    // Refresh both athletes and schedule using the new logic
+    await loadAthletes(true); 
+    await loadSchedule();
     setRefreshing(false);
-  }, [loadAthletes]);
-
-  // Get meet-specific schedule
-  const schedule = useMemo(() => {
-    return selectedMeet === 'USAW Master\'s Nationals' ? usawSchedule : usamwSchedule;
-  }, [selectedMeet]);
+  }, [loadAthletes, loadSchedule]); // Add loadSchedule dependency
 
   // Add back the colors object
   const colors = {
@@ -583,10 +617,11 @@ export default function StartListScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Define getSessionDetails after schedule is defined
+  // Define getSessionDetails after scheduleData state is defined
   const getSessionDetails = useCallback((sessionNumber: number) => {
-    if (!schedule) return null;
-    for (const day of schedule) {
+    // Use scheduleData state variable
+    if (!scheduleData || scheduleData.length === 0 || isScheduleLoading) return null;
+    for (const day of scheduleData) {
       const session = day.sessions.find((s) => s.number === sessionNumber);
       if (session) {
         return {
@@ -599,7 +634,7 @@ export default function StartListScreen() {
       }
     }
     return null;
-  }, [schedule]);
+  }, [scheduleData, isScheduleLoading]);
 
   // Add back useEffect for starred clubs
   useEffect(() => {
@@ -627,7 +662,8 @@ export default function StartListScreen() {
       }
     });
     
-    return Array.from(weightClasses).sort(sortWeightClasses);
+    const options = Array.from(weightClasses).sort(sortWeightClasses);
+    return options;
   }, [athletes]);
 
   // Move clubOptions and sortedClubOptions here
@@ -672,8 +708,6 @@ export default function StartListScreen() {
 
   // Update the filtered athletes logic
   const filteredAthletes = useMemo(() => {
-    console.log('Filtering athletes for meet:', selectedMeet);
-    console.log('Number of athletes:', athletes.length);
     
     return athletes
       .filter(athlete => {
@@ -760,7 +794,7 @@ export default function StartListScreen() {
     const sessionsToAdd = filteredAthletes
       .filter(athlete => athlete.session)
       .map(athlete => ({
-        date: schedule.find(day => 
+        date: scheduleData.find(day => 
           day.sessions.some(s => s.number === athlete.session?.number)
         )?.fullDate || '',
         startTime: getSessionDetails(athlete.session?.number || 0)?.startTime || '',
@@ -944,13 +978,13 @@ export default function StartListScreen() {
     }
   }
 
-  if (loading) {
+  if (loading || isScheduleLoading) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.secondaryText} />
           <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
-            Loading athletes...
+            {loading ? 'Loading Athletes...' : 'Loading Schedule...'}
           </ThemedText>
         </View>
       </ThemedView>
@@ -1064,7 +1098,7 @@ export default function StartListScreen() {
             isExpanded={expandedId === item.name}
             onPress={() => handlePress(item.name)}
             router={router}
-            schedule={schedule}
+            schedule={scheduleData}
             getSessionDetails={getSessionDetails}
           />
         )}
@@ -1906,6 +1940,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+    position: 'relative',
   },
   statsTitle: {
     fontSize: 16,
@@ -1976,5 +2011,22 @@ const styles = StyleSheet.create({
     padding: 0,
     height: 24,
     marginRight: 8,
+  },
+  premiumOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8, // Add slight rounding to match the container
+  },
+  premiumBadge: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  premiumText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 
