@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
-import { supabase } from '@/lib/supabase';
 import { useUser } from '@clerk/clerk-expo';
 
 type SubscriptionContextType = {
@@ -21,22 +20,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [subscriptionType, setSubscriptionType] = useState<'free' | 'quarterly' | 'lifetime' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useUser();
-
-  // Helper function to sync subscription status with Supabase
-  const syncSubscriptionWithSupabase = async (status: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
-    if (!user?.id) return;
-
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ subscription_status: type })
-        .eq('id', user.id);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Failed to sync subscription with Supabase:', error);
-    }
-  };
 
   // Helper function to check subscription status consistently
   const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'quarterly' | 'lifetime']> => {
@@ -84,7 +67,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         await AsyncStorage.setItem('subscriptionType', type);
         setIsSubscribed(simulatedStatus);
         setSubscriptionType(type);
-        await syncSubscriptionWithSupabase(simulatedStatus, type);
+        setIsLoading(false);
         return;
       }
 
@@ -97,7 +80,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.setItem('subscriptionType', type);
       setIsSubscribed(hasActiveSubscription);
       setSubscriptionType(type);
-      await syncSubscriptionWithSupabase(hasActiveSubscription, type);
+      setIsLoading(false);
     } catch (error) {
       console.error('Failed to check subscription status:', error);
       // On error, try to get status from AsyncStorage
@@ -105,7 +88,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const type = await AsyncStorage.getItem('subscriptionType') as 'free' | 'quarterly' | 'lifetime' | null;
       setIsSubscribed(status === 'true');
       setSubscriptionType(type || 'free');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -122,7 +104,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           console.log('Initializing with simulated status:', { simulatedStatus, type });
           setIsSubscribed(simulatedStatus);
           setSubscriptionType(type);
-          await syncSubscriptionWithSupabase(simulatedStatus, type);
           setIsLoading(false);
           return;
         }
@@ -160,7 +141,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           
           await AsyncStorage.setItem('subscriptionStatus', hasActiveSubscription.toString());
           await AsyncStorage.setItem('subscriptionType', type);
-          await syncSubscriptionWithSupabase(hasActiveSubscription, type);
           
           setIsSubscribed(hasActiveSubscription);
           setSubscriptionType(type);
@@ -190,7 +170,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.setItem('subscriptionType', type);
       setIsSubscribed(value);
       setSubscriptionType(type);
-      await syncSubscriptionWithSupabase(value, type);
     } catch (e) {
       console.error('Failed to save subscription status:', e);
     }

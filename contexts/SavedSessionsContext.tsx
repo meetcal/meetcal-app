@@ -5,11 +5,12 @@ import { MeetName } from '@/data/types/meet';
 interface SavedSessionsContextType {
   savedSessions: SavedSession[];
   isLoading: boolean;
+  loadSavedSessions: () => Promise<void>;
   saveSessionsFromAthletes: (athletes: any[], meet: MeetName) => Promise<boolean>;
   saveSession: (session: SavedSession) => Promise<boolean>;
   removeSession: (sessionId: string) => Promise<boolean>;
   isSessionSaved: (sessionId: string) => boolean;
-  resetAllSessions: () => Promise<boolean>;
+  resetAllSessions: (meet?: MeetName) => Promise<boolean>;
 }
 
 const SavedSessionsContext = createContext<SavedSessionsContextType | undefined>(undefined);
