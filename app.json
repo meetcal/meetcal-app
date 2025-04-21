@@ -55,7 +55,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/MeetCal-android.png",
+        "foregroundImage": "./assets/images/ic_launcher_foreground.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.memohnsen.meetcal"
@@ -99,7 +99,10 @@
         {
           "icon": "./assets/images/MeetCal.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sounds/notification.wav"]
+          "sounds": ["./assets/sounds/notification.wav"],
+          "android": {
+             "icon": "./assets/images/ic_stat_meetcal_android.png"
+          }
         }
       ]
     ],
