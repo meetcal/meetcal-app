@@ -62,7 +62,16 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   const filteredPlatforms = letterFilter 
     ? session.platforms.filter(platform => platform.weightClass.slice(-1) === letterFilter)
     : session.platforms;
-  
+
+  // Custom sort order for platforms
+  const platformSortOrder = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
+  const sortedPlatforms = [...filteredPlatforms].sort((a, b) => {
+    const idxA = platformSortOrder.indexOf(a.platform);
+    const idxB = platformSortOrder.indexOf(b.platform);
+    // If not found, push to end
+    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+  });
+
   const handlePlatformPress = (platform: PlatformType) => {
     router.push({
       pathname: '/(screens)/schedule-details',
@@ -77,7 +86,7 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
     });
   };
   
-  if (filteredPlatforms.length === 0) return null;
+  if (sortedPlatforms.length === 0) return null;
   
   return (
     <View style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
@@ -85,14 +94,14 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
         Session {session.number}
       </ThemedText>
       
-      <View style={[styles.platformsContainer, { backgroundColor: colors.card }]}>
-        {filteredPlatforms.map((platform, index) => (
+      <View style={[styles.platformsContainer, { backgroundColor: colors.card }]}> 
+        {sortedPlatforms.map((platform, index) => (
           <Pressable
             key={platform.platform}
             style={({ pressed }) => [
               styles.platformCard,
               { backgroundColor: colors.card },
-              index < filteredPlatforms.length - 1 && [
+              index < sortedPlatforms.length - 1 && [
                 styles.platformCardBorder,
                 { borderBottomColor: colors.border }
               ],
@@ -110,10 +119,10 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
                 </ThemedText>
               </View>
               <View style={styles.platformInfo}>
-                <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}>
+                <ThemedText style={[styles.weightClassText, { color: colors.secondaryText }]}> 
                   {platform.weightClass}
                 </ThemedText>
-                <ThemedText style={[styles.platformTimeText, { color: colors.secondaryText }]}>
+                <ThemedText style={[styles.platformTimeText, { color: colors.secondaryText }]}> 
                   Start: {platform.platformStartTime || session.startTime} {timeZone}
                 </ThemedText>
               </View>
@@ -396,7 +405,7 @@ export default function ScheduleScreen() {
     <View style={[styles.pageContainer, { width }]}>
       <DayView 
         day={item} 
-        letterFilter={letterFilter} 
+        letterFilter={letterFilter}
         timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
         onRefreshComplete={handleRefresh}
       />
