@@ -5,7 +5,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fetchStandards } from '@/data/fetch-standards';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 type Gender = 'men' | 'women';
 type AgeGroup = 'senior' | 'junior' | 'youth' | 'u15';
@@ -35,20 +35,43 @@ export default function NewStandardsScreen() {
   const [filterType, setFilterType] = useState<'gender' | 'ageGroup'>('gender');
 
   const [standards, setStandards] = useState<StandardsData | null>(null);
+  const [allStandards, setAllStandards] = useState<StandardsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchStandards()
+    let cancelled = false;
+    setLoading(true);
+    setStandards(null);
+    setFetchError(null);
+
+    // Fetch only the current page first
+    fetchStandards(filters.ageGroup, filters.gender)
       .then((data) => {
-        setStandards(data);
-        setLoading(false);
+        if (!cancelled) {
+          setStandards(data);
+          setLoading(false);
+        }
       })
       .catch((err) => {
-        setFetchError(err.message || 'Failed to fetch standards');
-        setLoading(false);
+        if (!cancelled) {
+          setFetchError(err.message || 'Failed to fetch standards');
+          setLoading(false);
+        }
       });
-  }, []);
+
+    // Then fetch all standards in the background
+    fetchStandards()
+      .then((data) => {
+        if (!cancelled) setAllStandards(data);
+      });
+
+    return () => { cancelled = true; };
+  }, [filters.ageGroup, filters.gender]);
+
+  const standardsData = useMemo(() => {
+    return allStandards || standards || {};
+  }, [allStandards, standards]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -148,12 +171,12 @@ export default function NewStandardsScreen() {
           {fetchError && (
             <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
           )}
-          {standards && standards[filters.ageGroup][filters.gender].map((record, index) => (
+          {standardsData && standardsData[filters.ageGroup] && standardsData[filters.ageGroup][filters.gender].map((record, index) => (
             <View 
               key={record.weightClass}
               style={[
                 styles.row,
-                index < standards[filters.ageGroup][filters.gender].length - 1 && {
+                index < standardsData[filters.ageGroup][filters.gender].length - 1 && {
                   borderBottomWidth: StyleSheet.hairlineWidth,
                   borderBottomColor: colors.border
                 }

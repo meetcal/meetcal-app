@@ -1,15 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { americanRecords } from '@/data/records';
-import { usamwRecords } from '@/data/usamw_records';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState, useMemo } from 'react';
 import { WeightClassRecord, RecordsData } from '@/types/records';
-import { USAMWRecordsData } from '@/types/usamw_records';
+import { fetchRecords } from '@/data/fetch-records';
 
 type Federation = 'USAW' | 'USAMW';
 type Gender = 'men' | 'women';
@@ -49,6 +46,48 @@ export default function RecordsScreen() {
   const [expandedSection, setExpandedSection] = useState<'federation' | 'gender' | 'ageGroup' | null>(null);
   const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
+  const [records, setRecords] = useState<RecordsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Cache for all records for the selected federation
+  const [allRecords, setAllRecords] = useState<RecordsData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setRecords(null);
+    setFetchError(null);
+
+    // Fetch only the current page first
+    fetchRecords(filters.federation, filters.ageGroup, filters.gender)
+      .then((data) => {
+        if (!cancelled) {
+          setRecords(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.message || 'Failed to fetch records');
+          setLoading(false);
+        }
+      });
+
+    // Then fetch all records for the federation in the background
+    fetchRecords(filters.federation)
+      .then((data) => {
+        if (!cancelled) setAllRecords(data);
+      });
+
+    return () => { cancelled = true; };
+  }, [filters.federation, filters.ageGroup, filters.gender]);
+
+  // Use the full cache if available, otherwise just the current page
+  const recordsData = useMemo(() => {
+    return allRecords || records || {};
+  }, [allRecords, records]);
+
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -67,22 +106,16 @@ export default function RecordsScreen() {
     }
   }, [tempFilters.federation]);
 
-  const { currentRecordsData, availableAgeGroups } = useMemo(() => {
+  const { currentAvailableAgeGroups } = useMemo(() => {
     if (filters.federation === 'USAW') {
-      return {
-        currentRecordsData: americanRecords as RecordsData,
-        availableAgeGroups: USAW_AGE_GROUPS
-      };
+      return { currentAvailableAgeGroups: USAW_AGE_GROUPS };
     } else {
-      return {
-        currentRecordsData: usamwRecords as unknown as RecordsData,
-        availableAgeGroups: USAMW_AGE_GROUPS
-      };
+      return { currentAvailableAgeGroups: USAMW_AGE_GROUPS };
     }
   }, [filters.federation]);
 
-  const isAgeGroupValid = availableAgeGroups.includes(filters.ageGroup as any);
-  const displayAgeGroup = isAgeGroupValid ? filters.ageGroup : availableAgeGroups[0];
+  const isAgeGroupValid = currentAvailableAgeGroups.includes(filters.ageGroup as any);
+  const displayAgeGroup = isAgeGroupValid ? filters.ageGroup : currentAvailableAgeGroups[0];
 
   const getAgeGroupDisplayText = (ageGroup: AgeGroup) => {
     if (!ageGroup) return '';
@@ -168,13 +201,24 @@ export default function RecordsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {isAgeGroupValid && currentRecordsData[displayAgeGroup]?.[filters.gender]?.length > 0 ? (
-            currentRecordsData[displayAgeGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
+          {loading && (
+            <ThemedText style={{ textAlign: 'center', marginTop: 16 }}>Loading...</ThemedText>
+          )}
+          {fetchError && (
+            <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
+          )}
+          {!loading && recordsData[displayAgeGroup]?.[filters.gender]?.length === 0 && (
+            <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
+              No {filters.federation} records available for {filters.gender === 'men' ? 'men' : 'women'} in the {getAgeGroupDisplayText(displayAgeGroup)} age group.
+            </ThemedText>
+          )}
+          {!loading && recordsData[displayAgeGroup]?.[filters.gender]?.length > 0 && (
+            recordsData[displayAgeGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
               <View 
                 key={`${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}`}
                 style={[
                   styles.row,
-                  index < currentRecordsData[displayAgeGroup][filters.gender].length - 1 && {
+                  index < recordsData[displayAgeGroup][filters.gender].length - 1 && {
                     borderBottomWidth: StyleSheet.hairlineWidth,
                     borderBottomColor: colors.border
                   }
@@ -186,12 +230,6 @@ export default function RecordsScreen() {
                 <ThemedText style={styles.cell}>{record.totalRecord}kg</ThemedText>
               </View>
             ))
-          ) : (
-            <View style={styles.emptyStateContainer}>
-              <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
-                No {filters.federation} records available for {filters.gender === 'women' ? 'women' : 'men'} in the {getAgeGroupDisplayText(displayAgeGroup)} age group.
-              </ThemedText>
-            </View>
           )}
         </View>
       </ScrollView>

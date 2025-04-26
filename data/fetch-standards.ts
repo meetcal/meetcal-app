@@ -3,21 +3,25 @@ import { StandardsData, AgeGroupStandards, StandardRecord } from '@/types/standa
 
 /**
  * Fetches standards data from Supabase and organizes it into the StandardsData shape.
+ * If ageGroup and gender are provided, fetches only that subset.
  */
-export async function fetchStandards(): Promise<StandardsData> {
-  const { data, error } = await supabase
+export async function fetchStandards(
+  ageGroup?: string,
+  gender?: 'men' | 'women'
+): Promise<StandardsData> {
+  let query = supabase
     .from('standards')
     .select('*');
+  if (ageGroup) query = query.eq('age_category', ageGroup);
+  if (gender) query = query.eq('gender', gender);
 
+  const { data, error } = await query;
   if (error) throw error;
 
-  // Group and shape the data to fit StandardsData
-  const result: StandardsData = {
-    u15: { men: [], women: [] },
-    youth: { men: [], women: [] },
-    junior: { men: [], women: [] },
-    senior: { men: [], women: [] },
-  };
+  const ageGroups = ['u15', 'youth', 'junior', 'senior'];
+  const result: StandardsData = Object.fromEntries(
+    ageGroups.map((g) => [g, { men: [], women: [] }])
+  ) as StandardsData;
 
   (data || []).forEach((row) => {
     const ageKey = row.age_category as keyof StandardsData;
