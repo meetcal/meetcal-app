@@ -3,9 +3,9 @@ import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { newStandards } from '@/data/standards';
+import { fetchStandards } from '@/data/fetch-standards';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 type Gender = 'men' | 'women';
 type AgeGroup = 'senior' | 'junior' | 'youth' | 'u15';
@@ -13,6 +13,16 @@ type AgeGroup = 'senior' | 'junior' | 'youth' | 'u15';
 interface Filters {
   gender: Gender;
   ageGroup: AgeGroup;
+}
+
+interface StandardsData {
+  [ageGroup: string]: {
+    [gender: string]: {
+      weightClass: string;
+      a: number;
+      b: number;
+    }[];
+  };
 }
 
 export default function NewStandardsScreen() {
@@ -23,6 +33,22 @@ export default function NewStandardsScreen() {
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterType, setFilterType] = useState<'gender' | 'ageGroup'>('gender');
+
+  const [standards, setStandards] = useState<StandardsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchStandards()
+      .then((data) => {
+        setStandards(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setFetchError(err.message || 'Failed to fetch standards');
+        setLoading(false);
+      });
+  }, []);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -109,19 +135,25 @@ export default function NewStandardsScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}> 
+          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}> 
             <ThemedText style={[styles.headerCell, { flex: 2 }]}>Weight Class</ThemedText>
             <ThemedText style={styles.headerCell}>A</ThemedText>
             <ThemedText style={styles.headerCell}>B</ThemedText>
           </View>
 
-          {newStandards[filters.ageGroup][filters.gender].map((record, index) => (
+          {loading && (
+            <ThemedText style={{ textAlign: 'center', marginTop: 16 }}>Loading...</ThemedText>
+          )}
+          {fetchError && (
+            <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
+          )}
+          {standards && standards[filters.ageGroup][filters.gender].map((record, index) => (
             <View 
               key={record.weightClass}
               style={[
                 styles.row,
-                index < newStandards[filters.ageGroup][filters.gender].length - 1 && {
+                index < standards[filters.ageGroup][filters.gender].length - 1 && {
                   borderBottomWidth: StyleSheet.hairlineWidth,
                   borderBottomColor: colors.border
                 }
