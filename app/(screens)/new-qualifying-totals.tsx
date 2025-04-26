@@ -4,8 +4,8 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState } from 'react';
-import { qualifyingTotals } from '@/data/new-qualifying';
+import { useState, useEffect, useMemo } from 'react';
+import { fetchQualifyingTotals, QualifyingTotalsData } from '@/data/fetch-qualifying-totals';
 
 type Gender = 'Men' | 'Women';
 type Event = 'USAW Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
@@ -30,6 +30,45 @@ export default function QualifyingTotalsScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'event' | 'gender' | 'ageGroup' | null>(null);
   const [tempFilters, setTempFilters] = useState<Filters>(filters);
+  const [totals, setTotals] = useState<QualifyingTotalsData | null>(null);
+  const [allTotals, setAllTotals] = useState<QualifyingTotalsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setTotals(null);
+    setFetchError(null);
+
+    // Fetch only the current page first
+    fetchQualifyingTotals(filters.event, filters.ageGroup, filters.gender)
+      .then((data) => {
+        if (!cancelled) {
+          setTotals(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.message || 'Failed to fetch qualifying totals');
+          setLoading(false);
+        }
+      });
+
+    // Then fetch all totals in the background
+    fetchQualifyingTotals()
+      .then((data) => {
+        if (!cancelled) setAllTotals(data);
+      });
+
+    return () => { cancelled = true; };
+  }, [filters.event, filters.ageGroup, filters.gender]);
+
+  // Use the full cache if available, otherwise just the current page
+  const totalsData = useMemo(() => {
+    return allTotals || totals || {};
+  }, [allTotals, totals]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -55,18 +94,18 @@ export default function QualifyingTotalsScreen() {
   };
 
   const getCurrentTotals = () => {
-    const eventData = qualifyingTotals[filters.event];
+    // Defensive: check all keys exist
+    const eventData = totalsData[filters.event];
     if (!eventData) return [];
-    
-    const genderData = eventData[filters.gender];
+    const ageData = eventData[filters.ageGroup];
+    if (!ageData) return [];
+    const genderData = ageData[filters.gender];
     if (!genderData) return [];
-
-    const ageGroupData = genderData.ageCategories.find(
-      ag => ag.name === filters.ageGroup
-    );
-    if (!ageGroupData) return [];
-
-    return ageGroupData.weightClasses;
+    // genderData is now { [weightClass]: number }
+    return Object.entries(genderData).map(([weightClass, qt]) => ({
+      bodyweightDivision: weightClass,
+      qt
+    }));
   };
 
   return (
@@ -122,21 +161,31 @@ export default function QualifyingTotalsScreen() {
             <ThemedText style={styles.headerCell}>Total</ThemedText>
           </View>
 
-          {getCurrentTotals().map((record: WeightClass, index: number, array: WeightClass[]) => (
-            <View 
-              key={record.bodyweightDivision}
-              style={[
-                styles.row,
-                index < array.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border
-                }
-              ]}
-            >
-              <ThemedText style={[styles.cell, { flex: 2 }]}>{record.bodyweightDivision}</ThemedText>
-              <ThemedText style={styles.cell}>{record.qt}kg</ThemedText>
+          {loading ? (
+            <View style={[styles.row, { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 120 }]}> 
+              <ThemedText style={[styles.cell, { flex: 2, textAlign: 'center' }]}>Loading...</ThemedText>
             </View>
-          ))}
+          ) : fetchError ? (
+            <View style={styles.row}>
+              <ThemedText style={[styles.cell, { flex: 2 }]}>{fetchError}</ThemedText>
+            </View>
+          ) : (
+            getCurrentTotals().map((record, index, array) => (
+              <View 
+                key={record.bodyweightDivision}
+                style={[
+                  styles.row,
+                  index < array.length - 1 && {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: colors.border
+                  }
+                ]}
+              >
+                <ThemedText style={[styles.cell, { flex: 2 }]}>{record.bodyweightDivision}</ThemedText>
+                <ThemedText style={styles.cell}>{record.qt}kg</ThemedText>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
 
