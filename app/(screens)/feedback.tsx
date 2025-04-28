@@ -184,35 +184,6 @@ export default function FeedbackScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Role</ThemedText>
-            <Pressable
-              style={({ pressed }) => [
-                styles.roleButton,
-                { 
-                  backgroundColor: colors.input,
-                  borderColor: colors.border,
-                  opacity: (isUserLoaded && (user?.publicMetadata as UserMetadata)?.role) ? 0.7 : pressed ? 0.8 : 1
-                }
-              ]}
-              onPress={() => setShowRolePicker(true)}
-              disabled={false}
-            >
-              <View style={styles.roleButtonContent}>
-                <ThemedText style={[styles.roleText, { color: colors.text }]}>
-                  {role}
-                </ThemedText>
-                {!(isUserLoaded && (user?.publicMetadata as UserMetadata)?.role) && (
-                  <IconSymbol
-                    name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                    size={20}
-                    color={colors.link}
-                  />
-                )}
-              </View>
-            </Pressable>
-          </View>
-
-          <View style={styles.inputContainer}>
             <ThemedText style={[styles.label, { color: colors.secondaryText }]}>Description</ThemedText>
             <TextInput
               style={[styles.textArea, { 
@@ -255,76 +226,6 @@ export default function FeedbackScreen() {
             </ThemedText>
           </View>
         </View>
-      </Modal>
-
-      <Modal
-        visible={showRolePicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRolePicker(false)}
-      >
-        <Pressable 
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
-          ]}
-          onPress={() => setShowRolePicker(false)}
-        >
-          <View 
-            style={[
-              styles.modalContent, 
-              { 
-                backgroundColor: colors.card,
-                paddingBottom: insets.bottom + 20
-              }
-            ]}
-          >
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                Select Role
-              </ThemedText>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowRolePicker(false)}
-              >
-                <IconSymbol 
-                  name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                  size={20} 
-                  color={colors.secondaryText} 
-                />
-              </TouchableOpacity>
-            </View>
-
-            {['Athlete', 'Coach', 'Spectator', 'Official', 'Vendor', 'Media'].map((option) => (
-              <Pressable
-                key={option}
-                style={({ pressed }) => [
-                  styles.roleOption,
-                  {
-                    backgroundColor: pressed ? colors.pressed : 'transparent',
-                    borderBottomColor: colors.border,
-                  }
-                ]}
-                onPress={() => {
-                  setRole(option as UserProfile['role']);
-                  setShowRolePicker(false);
-                }}
-              >
-                <ThemedText 
-                  style={[
-                    styles.roleOptionText,
-                    { color: option === role ? colors.link : colors.text }
-                  ]}
-                >
-                  {option}
-                </ThemedText>
-                {option === role && (
-                  <IconSymbol name="checkmark" size={16} color={colors.link} />
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
       </Modal>
     </ThemedView>
   )

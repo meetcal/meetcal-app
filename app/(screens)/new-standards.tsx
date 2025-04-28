@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { fetchStandards } from '@/data/fetch-standards';
+import { fetchStandards } from '@/lib/database/fetch-standards';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
 

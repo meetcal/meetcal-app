@@ -50,7 +50,7 @@ export async function sendFeedback({ name, email, role, description }: {
         
         <div class="section">
           <div class="label">From:</div>
-          <div class="content">${name} (${email}) - ${role}</div>
+          <div class="content">${name} (${email})</div>
         </div>
         
         <div class="section">
@@ -64,7 +64,7 @@ export async function sendFeedback({ name, email, role, description }: {
   const { data, error } = await resend.emails.send({
     from: 'MeetCal Feedback <feedback@meetcal.app>',
     to: 'maddisen@meetcal.app',
-    subject: `MeetCal Feedback from ${name} (${role})`,
+    subject: `MeetCal Feedback from ${name}`,
     html: htmlContent,
     replyTo: email
   })

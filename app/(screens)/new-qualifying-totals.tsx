@@ -5,7 +5,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
-import { fetchQualifyingTotals, QualifyingTotalsData } from '@/data/fetch-qualifying-totals';
+import { fetchQualifyingTotals, QualifyingTotalsData } from '@/lib/database/fetch-qualifying-totals';
 
 type Gender = 'Men' | 'Women';
 type Event = 'USAW Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
