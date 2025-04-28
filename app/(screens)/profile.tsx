@@ -223,6 +223,38 @@ export default function ProfileScreen() {
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/feedback')}
+          >
+            <View style={styles.fieldRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Submit Feedback
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286')}
+          >
+            <View style={styles.fieldRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Leave a Review
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
         </View>
 
         <View style={styles.legalLinks}>

@@ -289,7 +289,7 @@ export default function InfoScreen() {
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                {isSignedIn ? 'My Profile' : 'Sign In To Your Account'}
+                {isSignedIn ? 'My Profile & Settings' : 'Sign In To Your Account'}
               </ThemedText>
               <IconSymbol 
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
@@ -382,23 +382,7 @@ export default function InfoScreen() {
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              American Records
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            styles.lastSection,
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/state-records')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              State Records
+              American & WSO Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
@@ -407,41 +391,6 @@ export default function InfoScreen() {
 
         {/* App Info Card */}
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            App Information
-          </ThemedText>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/feedback')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Submit Feedback
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => handlePress('https://apps.apple.com/us/app/meetcal/id6741133286')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Leave a Review
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
           
           <Pressable
             style={({ pressed }) => [
@@ -507,11 +456,6 @@ export default function InfoScreen() {
             </View>
           </Pressable>
         </View>
-
-        <View style={[styles.divider, { backgroundColor: colors.border, marginTop: 32 }]} />
-        <ThemedText style={[styles.copyright, { color: colors.secondaryText }]}>
-          © 2025 CoachHub LLC
-        </ThemedText>
       </ScrollView>
     </ThemedView>
   );

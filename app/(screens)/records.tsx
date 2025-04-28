@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { WeightClassRecord, RecordsData } from '@/types/records';
-import { fetchRecords } from '@/data/fetch-records';
+import { fetchRecords } from '@/lib/database/fetch-records';
 
 type Federation = 'USAW' | 'USAMW';
 type Gender = 'men' | 'women';
