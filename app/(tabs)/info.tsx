@@ -360,14 +360,45 @@ export default function InfoScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.section,
-            styles.lastSection,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
             pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/rankings')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              International Rankings
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
           ]}
           onPress={() => router.push('/(screens)/records')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
               American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            styles.lastSection,
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/state-records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              State Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
