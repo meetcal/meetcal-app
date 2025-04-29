@@ -213,7 +213,7 @@ export default function RecordsScreen() {
                   >
                     <ThemedText style={[styles.cell, { width: columnWidths.rank }]}>{ranking.ranking ?? ''}</ThemedText>
                     <ThemedText style={[styles.cell, { width: columnWidths.name }]}>{ranking.name ?? ''}</ThemedText>
-                    <ThemedText style={[styles.cell, { width: columnWidths.weightClass }]}>{ranking.weight_class ?? ''}</ThemedText>
+                    <ThemedText style={[styles.cell, { width: columnWidths.weightClass }]}>{ranking.weight_class ?? ''}kg</ThemedText>
                     <ThemedText style={[styles.cell, { width: columnWidths.total }]}>{ranking.total ?? ''}</ThemedText>
                     <ThemedText style={[styles.cell, { width: columnWidths.percentA }]}>{typeof ranking.percent_a === 'number' ? `${ranking.percent_a.toFixed(2)}%` : ''}</ThemedText>
                   </View>
