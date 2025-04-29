@@ -377,12 +377,28 @@ export default function InfoScreen() {
           style={({ pressed }) => [
             styles.section,
             { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
           ]}
           onPress={() => router.push('/(screens)/records')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              American & WSO Records
+              American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+          ]}
+          onPress={() => router.push('/(screens)/wso-records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              WSO Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
