@@ -19,6 +19,22 @@ const maxOptionsHeight = windowHeight * 0.4;
 // Number of rows to load initially
 const PAGE_SIZE = 30;
 
+// --- Define Fixed Column Widths ---
+// Adjust these values as needed for your content and desired layout
+const columnWidths = {
+  rank: 60,
+  name: 200, // Give more space for names
+  weightClass: 100,
+  total: 80,
+  percentA: 100,
+};
+
+// Calculate minimum total width based on fixed widths
+// Add paddingHorizontal * 2 from row/headerRow style if cells don't have their own padding
+const totalPadding = 16 * 2; // From styles.row/headerRow paddingHorizontal
+const minTableWidth = Object.values(columnWidths).reduce((sum, width) => sum + width, 0);
+
+
 export default function RecordsScreen() {
   const { currentTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({
@@ -125,7 +141,7 @@ export default function RecordsScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ 
+      <Stack.Screen options={{
         title: `International Rankings`,
         headerBackTitle: "Back",
         headerShown: true,
@@ -138,7 +154,7 @@ export default function RecordsScreen() {
         headerShadowVisible: false,
       }} />
 
-      <View style={[styles.filterContainer, { 
+      <View style={[styles.filterContainer, {
         backgroundColor: colors.background,
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
@@ -147,9 +163,9 @@ export default function RecordsScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.filterButton,
-              { 
+              {
                 backgroundColor: colors.card,
-                borderColor: colors.border 
+                borderColor: colors.border
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
@@ -167,50 +183,51 @@ export default function RecordsScreen() {
         </View>
       </View>
 
+      {/* --- TABLE SECTION START --- */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-          <View style={[styles.card, { backgroundColor: colors.card, minWidth: 600 }]}>
-            <View style={[styles.headerRow, { borderBottomColor: colors.border }]}> 
-              <ThemedText style={[styles.headerCell, { flex: 1 }]}>Rank</ThemedText>
-              <ThemedText style={[styles.headerCell, { flex: 2.5 }]}>Name</ThemedText>
-              <ThemedText style={[styles.headerCell, { flex: 2 }]}>Weight Class</ThemedText>
-              <ThemedText style={[styles.headerCell, { flex: 2 }]}>Total</ThemedText>
-              <ThemedText style={[styles.headerCell, { flex: 2 }]}>% of A</ThemedText>
+          {/* Apply minWidth to the container View */}
+          <View style={[styles.card, { backgroundColor: colors.card, minWidth: minTableWidth }]}>
+            {/* Header Row */}
+            <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.headerCell, { width: columnWidths.rank }]}>Rank</ThemedText>
+              <ThemedText style={[styles.headerCell, { width: columnWidths.name }]}>Name</ThemedText>
+              <ThemedText style={[styles.headerCell, { width: columnWidths.weightClass }]}>Weight Class</ThemedText>
+              <ThemedText style={[styles.headerCell, { width: columnWidths.total }]}>Total</ThemedText>
+              <ThemedText style={[styles.headerCell, { width: columnWidths.percentA }]}>% of A Standard</ThemedText>
             </View>
 
-            {loading && (
-              <ThemedText style={{ textAlign: 'center', marginTop: 16 }}>Loading...</ThemedText>
-            )}
-            {fetchError && (
-              <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
-            )}
-            {!loading && filteredRankings.length === 0 && (
-              <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
-                No rankings available.
-              </ThemedText>
-            )}
-            {!loading && filteredRankings.length > 0 && (
-              filteredRankings.map((ranking: IntlRanking, index: number) => (
-                <View 
-                  key={index}
-                  style={[styles.row, index < filteredRankings.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
-                >
-                  <ThemedText style={[styles.cell, { flex: 1 }]}>{ranking.ranking ?? ''}</ThemedText>
-                  <ThemedText style={[styles.cell, { flex: 2.5 }]}>{ranking.name ?? ''}</ThemedText>
-                  <ThemedText style={[styles.cell, { flex: 2 }]}>{ranking.weight_class ?? ''}</ThemedText>
-                  <ThemedText style={[styles.cell, { flex: 2 }]}>{ranking.total ?? ''}</ThemedText>
-                  <ThemedText style={[styles.cell, { flex: 2 }]}>{typeof ranking.percent_a === 'number' ? `${ranking.percent_a.toFixed(2)}%` : ''}</ThemedText>
-                </View>
-              ))
-            )}
-            {backgroundLoading && (
-              <ThemedText style={{ textAlign: 'center', marginTop: 8, color: colors.secondaryText }}>
-                Loading more results...
-              </ThemedText>
+            {/* Loading/Error/Empty/Data States (single ternary for exclusivity) */}
+            {loading ? (
+              <ThemedText style={styles.statusText}>Loading...</ThemedText>
+            ) : fetchError ? (
+              <ThemedText style={[styles.statusText, { color: 'red' }]}>{fetchError}</ThemedText>
+            ) : (!loading && filteredRankings.length === 0 && intlRankings.length > 0) ? (
+              <ThemedText style={[styles.statusText, { color: colors.secondaryText }]}>No rankings available.</ThemedText>
+            ) : (
+              <>
+                {filteredRankings.map((ranking: IntlRanking, index: number) => (
+                  <View
+                    key={index}
+                    style={[styles.row, index < filteredRankings.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
+                  >
+                    <ThemedText style={[styles.cell, { width: columnWidths.rank }]}>{ranking.ranking ?? ''}</ThemedText>
+                    <ThemedText style={[styles.cell, { width: columnWidths.name }]}>{ranking.name ?? ''}</ThemedText>
+                    <ThemedText style={[styles.cell, { width: columnWidths.weightClass }]}>{ranking.weight_class ?? ''}</ThemedText>
+                    <ThemedText style={[styles.cell, { width: columnWidths.total }]}>{ranking.total ?? ''}</ThemedText>
+                    <ThemedText style={[styles.cell, { width: columnWidths.percentA }]}>{typeof ranking.percent_a === 'number' ? `${ranking.percent_a.toFixed(2)}%` : ''}</ThemedText>
+                  </View>
+                ))}
+                {backgroundLoading && filteredRankings.length > 0 && (
+                  <ThemedText style={[styles.statusText, { marginTop: 8, color: colors.secondaryText }]}>Loading more results...</ThemedText>
+                )}
+              </>
             )}
           </View>
         </ScrollView>
       </ScrollView>
+      {/* --- TABLE SECTION END --- */}
+
 
       <Modal
         visible={showFilterModal}
@@ -221,11 +238,11 @@ export default function RecordsScreen() {
           setShowFilterModal(false);
         }}
       >
-        <Pressable 
-          style={[styles.modalOverlay, { 
-            backgroundColor: currentTheme === 'dark' 
-              ? 'rgba(0,0,0,0.6)' 
-              : 'rgba(0,0,0,0.4)' 
+        <Pressable
+          style={[styles.modalOverlay, {
+            backgroundColor: currentTheme === 'dark'
+              ? 'rgba(0,0,0,0.6)'
+              : 'rgba(0,0,0,0.4)'
           }]}
           onPress={() => {
             setExpandedSection(null);
@@ -233,8 +250,8 @@ export default function RecordsScreen() {
           }}
         >
           <View style={[
-            styles.modalContent, 
-            { 
+            styles.modalContent,
+            {
               backgroundColor: colors.card,
               maxHeight: windowHeight * 0.8
             }
@@ -259,7 +276,7 @@ export default function RecordsScreen() {
                       </View>
                     </Pressable>
                     {expandedSection === 'meet' && (
-                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
+                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border, maxHeight: maxOptionsHeight }]} bounces={false}>
                         {meetOptions.map((meet) => (
                           <Pressable
                             key={meet}
@@ -304,7 +321,7 @@ export default function RecordsScreen() {
                       </View>
                     </Pressable>
                     {expandedSection === 'age_category' && (
-                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
+                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border, maxHeight: maxOptionsHeight }]} bounces={false}>
                         {ageCategoryOptions.map((age_category) => (
                           <Pressable
                             key={age_category}
@@ -349,7 +366,7 @@ export default function RecordsScreen() {
                       </View>
                     </Pressable>
                     {expandedSection === 'gender' && (
-                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
+                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border, maxHeight: maxOptionsHeight }]} bounces={false}>
                         {genderOptions.map((gender) => (
                           <Pressable
                             key={gender}
@@ -381,7 +398,7 @@ export default function RecordsScreen() {
                   </View>
                 </ScrollView>
               </View>
-              
+
               <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
                 <Pressable
                   style={({ pressed }) => [
@@ -409,9 +426,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     padding: 16,
-    backgroundColor: '#F5F5F5',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#C6C6C8',
   },
   filterButtons: {
     flexDirection: 'row',
@@ -425,10 +440,8 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C6C6C8',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -446,7 +459,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingVertical: 16, // Keep vertical padding
+    paddingHorizontal: 0, // Remove horizontal padding here, apply to card/rows if needed
+    alignItems: 'flex-start', // Align the horizontal scrollview container to the start
   },
   card: {
     borderRadius: 12,
@@ -459,44 +474,50 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    marginHorizontal: 16, // Add horizontal margin to the card itself
+    // minWidth is set dynamically inline
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     minHeight: 44,
-    padding: 16,
+    // No paddingHorizontal here, width is controlled by cells
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(60, 60, 67, 0.03)',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     minHeight: 44,
-    padding: 16,
+    // No paddingHorizontal here, width is controlled by cells
+    paddingVertical: 12,
   },
   headerCell: {
     fontSize: 15,
     fontWeight: '600',
-    textAlign: 'center',
-    justifyContent: 'center',
-    alignItems: 'center',
+    textAlign: 'center', // Center text within the cell
+    paddingHorizontal: 4, // Add small horizontal padding within cells if needed
+    // width is applied inline
   },
   cell: {
     fontSize: 17,
+    textAlign: 'center', // Center text within the cell
+    paddingHorizontal: 4, // Add small horizontal padding within cells if needed
+    // width is applied inline
+  },
+  statusText: {
     textAlign: 'center',
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16, // Add padding to status text as it's outside the row structure
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     padding: 16,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     overflow: 'hidden',
     marginHorizontal: 24,
@@ -562,13 +583,4 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
   },
-  emptyStateContainer: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyStateText: {
-    fontSize: 17,
-    textAlign: 'center',
-  },
-}); 
+});
