@@ -26,7 +26,7 @@ export default function RecordsScreen() {
   const [availableAgeGroups, setAvailableAgeGroups] = useState<string[]>([]);
 
   const [filters, setFilters] = useState<Filters>({
-    wso: 'Florida',
+    wso: '',
     gender: 'Men',
     ageGroup: 'Senior',
   });
@@ -46,9 +46,11 @@ export default function RecordsScreen() {
         .select('wso', { count: 'exact', head: false })
         .neq('wso', null);
       if (error) return setFetchError('Failed to load WSOs');
-      const wsos = Array.from(new Set((data || []).map(row => row.wso))).sort((a, b) => a.localeCompare(b));
+      const wsos = Array.from(new Set((data || []).map(row => row.wso)))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
       setAvailableWSOs(wsos);
-      if (wsos.length > 0 && !filters.wso) {
+      if (wsos.length > 0) {
         setFilters(f => ({ ...f, wso: wsos[0] }));
         setTempFilters(f => ({ ...f, wso: wsos[0] }));
       }
