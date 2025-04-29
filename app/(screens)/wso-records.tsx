@@ -46,7 +46,7 @@ export default function RecordsScreen() {
         .select('wso', { count: 'exact', head: false })
         .neq('wso', null);
       if (error) return setFetchError('Failed to load WSOs');
-      const wsos = Array.from(new Set((data || []).map(row => row.wso)));
+      const wsos = Array.from(new Set((data || []).map(row => row.wso))).sort((a, b) => a.localeCompare(b));
       setAvailableWSOs(wsos);
       if (wsos.length > 0 && !filters.wso) {
         setFilters(f => ({ ...f, wso: wsos[0] }));
@@ -163,7 +163,7 @@ export default function RecordsScreen() {
     setExpandedSection(null);
   };
 
-  const genderOptions: Gender[] = ['Women', 'Men'];
+  const genderOptions = (['Men', 'Women'] as Gender[]).sort((a, b) => a.localeCompare(b));
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
