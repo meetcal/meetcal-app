@@ -57,23 +57,45 @@ export default function RecordsScreen() {
   }, []);
 
   useEffect(() => {
-    if (!filters.wso) return;
-    async function fetchAgeGroups() {
+    if (!tempFilters.wso) return;
+    async function fetchAgeGroupsForWSO() {
       const { data, error } = await supabase
         .from('wso_records')
         .select('age_category', { count: 'exact', head: false })
-        .eq('wso', filters.wso)
+        .eq('wso', tempFilters.wso)
         .neq('age_category', null);
       if (error) return setFetchError('Failed to load age groups');
-      const ageGroups = Array.from(new Set((data || []).map(row => row.age_category)));
+      let ageGroups = Array.from(new Set((data || []).map(row => row.age_category)));
+      const order = ['u11','u13', 'u15', 'u17', 'youth','junior', 'senior'];
+      ageGroups = ageGroups.sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const aIdx = order.indexOf(aLower);
+        const bIdx = order.indexOf(bLower);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        // Masters sort
+        const mastersA = aLower.startsWith('masters');
+        const mastersB = bLower.startsWith('masters');
+        if (mastersA && mastersB) {
+          // Extract number after 'Masters'
+          const numA = parseInt(aLower.replace(/[^0-9]/g, ''));
+          const numB = parseInt(bLower.replace(/[^0-9]/g, ''));
+          return numA - numB;
+        }
+        if (mastersA) return 1;
+        if (mastersB) return -1;
+        // Otherwise, alphabetical
+        return a.localeCompare(b);
+      });
       setAvailableAgeGroups(ageGroups);
-      if (ageGroups.length > 0 && !filters.ageGroup) {
-        setFilters(f => ({ ...f, ageGroup: ageGroups[0] }));
-        setTempFilters(f => ({ ...f, ageGroup: ageGroups[0] }));
+      if (ageGroups.length > 0 && !ageGroups.includes(tempFilters.ageGroup)) {
+        setTempFilters(prev => ({ ...prev, ageGroup: ageGroups[0] }));
       }
     }
-    fetchAgeGroups();
-  }, [filters.wso]);
+    fetchAgeGroupsForWSO();
+  }, [tempFilters.wso]);
 
   useEffect(() => {
     let cancelled = false;
