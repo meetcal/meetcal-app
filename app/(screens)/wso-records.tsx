@@ -301,7 +301,7 @@ export default function RecordsScreen() {
                       </View>
                     </Pressable>
                     {expandedSection === 'wso' && (
-                      <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
+                      <ScrollView style={[styles.filterOptions, { maxHeight: maxOptionsHeight, borderTopColor: colors.border }]} bounces={false}>
                         {availableWSOs.map((wso) => (
                           <Pressable
                             key={wso}
@@ -312,15 +312,17 @@ export default function RecordsScreen() {
                               pressed && { opacity: 0.8 }
                             ]}
                             onPress={() => {
-                              setTempFilters(prev => ({ ...prev, wso: wso }));
+                              setTempFilters(prev => ({ ...prev, wso }));
                               setExpandedSection(null);
                             }}
                           >
-                            <ThemedText style={[
-                              styles.filterOptionText,
-                              { color: colors.text },
-                              tempFilters.wso === wso && { color: colors.link }
-                            ]}>
+                            <ThemedText
+                              style={[
+                                styles.filterOptionText,
+                                { color: colors.text },
+                                tempFilters.wso === wso && { color: colors.link }
+                              ]}
+                            >
                               {wso}
                             </ThemedText>
                             {tempFilters.wso === wso && (

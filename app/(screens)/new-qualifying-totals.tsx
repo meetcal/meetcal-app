@@ -7,9 +7,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
 import { fetchQualifyingTotals, QualifyingTotalsData } from '@/lib/database/fetch-qualifying-totals';
 
-type Gender = 'Men' | 'Women';
-type Event = 'USAW Nationals' | 'Virus Series' | 'Virus Finals' | 'IMWA Worlds' | 'Master\'s Pan Ams';
-type AgeGroup =  'U11' |'U13' | 'U15' | 'U17' | 'Junior' | 'University' | 'U23' | 'U25' | 'Senior' | 'Masters 30' | 'Masters 35' | 'Masters 40' | 'Masters 45' | 'Masters 50' | 'Masters 55' | 'Masters 60' | 'Masters 65' | 'Masters 70' | 'Masters 75' | 'Masters 80' | 'Masters 85';
+type Gender = string;
+type Event = string;
+type AgeGroup = string;
 
 interface Filters {
   event: Event;
@@ -248,38 +248,35 @@ export default function QualifyingTotalsScreen() {
                   
                   {expandedSection === 'event' && (
                     <ScrollView style={styles.filterOptions} bounces={false}>
-                      {[
-                        { id: 'USAW Nationals', label: 'USAW Nationals' },
-                        { id: 'Virus Series', label: 'Virus Series' },
-                        { id: 'Virus Finals', label: 'Virus Finals' },
-                        { id: 'IMWA Worlds', label: 'IMWA Worlds' },
-                        { id: 'Master\'s Pan Ams', label: 'Master\'s Pan Ams' },
-                      ].map((event) => (
-                        <Pressable
-                          key={event.id}
-                          style={({ pressed }) => [
-                            styles.filterOption,
-                            { borderBottomColor: colors.border },
-                            tempFilters.event === event.id && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
-                          ]}
-                          onPress={() => {
-                            setTempFilters(prev => ({ ...prev, event: event.id as Event }));
-                            setExpandedSection(null);
-                          }}
-                        >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempFilters.event === event.id && { color: '#007AFF' }
-                          ]}>
-                            {event.label}
-                          </ThemedText>
-                          {tempFilters.event === event.id && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                          )}
-                        </Pressable>
-                      ))}
+                      {Object.keys(totalsData ?? {})
+                        .filter(e => typeof e === 'string')
+                        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+                        .map((event) => (
+                          <Pressable
+                            key={event}
+                            style={({ pressed }) => [
+                              styles.filterOption,
+                              { borderBottomColor: colors.border },
+                              tempFilters.event === event && { backgroundColor: colors.pressed },
+                              pressed && { opacity: 0.8 }
+                            ]}
+                            onPress={() => {
+                              setTempFilters(prev => ({ ...prev, event: event as Event }));
+                              setExpandedSection(null);
+                            }}
+                          >
+                            <ThemedText style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempFilters.event === event && { color: '#007AFF' }
+                            ]}>
+                              {event}
+                            </ThemedText>
+                            {tempFilters.event === event && (
+                              <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            )}
+                          </Pressable>
+                        ))}
                     </ScrollView>
                   )}
                 </View>

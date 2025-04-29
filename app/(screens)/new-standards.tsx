@@ -94,7 +94,7 @@ export default function NewStandardsScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ 
-        title: "New Standards",
+        title: "A/B Standards",
         headerBackTitle: "Back",
         headerShown: true,
         gestureEnabled: true,

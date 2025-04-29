@@ -103,9 +103,24 @@ export default function RecordsScreen() {
   }, [intlRankings.length, hasSetDefaultFilters]);
 
   // Dynamically build filter options from the fetched data
-  const meetOptions = useMemo(() => Array.from(new Set(intlRankings.map(r => typeof r.meet === 'string' ? r.meet : ''))).filter(Boolean), [intlRankings]);
-  const ageCategoryOptions = useMemo(() => Array.from(new Set(intlRankings.map(r => typeof r.age_category === 'string' ? r.age_category : ''))).filter(Boolean), [intlRankings]);
-  const genderOptions = useMemo(() => Array.from(new Set(intlRankings.map(r => typeof r.gender === 'string' ? r.gender : ''))).filter(Boolean), [intlRankings]);
+  const meetOptions = useMemo(
+    () => Array.from(new Set(intlRankings.map(r => typeof r.meet === 'string' ? r.meet : '')))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    [intlRankings]
+  );
+  const ageCategoryOptions = useMemo(
+    () => Array.from(new Set(intlRankings.map(r => typeof r.age_category === 'string' ? r.age_category : '')))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    [intlRankings]
+  );
+  const genderOptions = useMemo(
+    () => Array.from(new Set(intlRankings.map(r => typeof r.gender === 'string' ? r.gender : '')))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    [intlRankings]
+  );
 
   // Filter intlRankings based on selected filters
   const filteredRankings = useMemo(() => {
