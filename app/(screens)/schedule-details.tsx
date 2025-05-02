@@ -560,7 +560,11 @@ const checkAndShowReviewPrompt = async () => {
             text: 'Leave Review',
             onPress: async () => {
               await AsyncStorage.setItem('hasShownReview', 'true');
-              Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286');
+              Linking.openURL(
+                Platform.OS === 'ios' 
+                  ? 'https://apps.apple.com/us/app/meetcal/id6741133286' 
+                  : 'https://play.google.com/store/apps/details?id=com.memohnsen.meetcal'
+              );
             }
           }
         ]

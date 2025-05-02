@@ -246,7 +246,11 @@ export default function ProfileScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286')}
+            onPress={() => Linking.openURL(
+              Platform.OS === 'ios' 
+                ? 'https://apps.apple.com/us/app/meetcal/id6741133286' 
+                : 'https://play.google.com/store/apps/details?id=com.memohnsen.meetcal'
+            )}
           >
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
