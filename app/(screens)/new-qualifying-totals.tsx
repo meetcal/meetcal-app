@@ -588,6 +588,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     paddingHorizontal: 20,
     paddingVertical: 8,
+    width: '100%',
+    alignItems: 'center',
     borderRadius: 8,
   },
   applyButtonText: {
