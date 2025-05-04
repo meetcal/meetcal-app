@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { WeightClassRecord, RecordsData } from '@/types/records';
+import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records';
 import { fetchWSORecords } from '@/lib/database/fetch-wso-records';
 import { supabase } from '@/lib/supabase';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import PaywallScreen from './paywall';
 
 type Gender = 'Men' | 'Women';
 
@@ -24,6 +26,7 @@ export default function RecordsScreen() {
   const { currentTheme } = useTheme();
   const [availableWSOs, setAvailableWSOs] = useState<string[]>([]);
   const [availableAgeGroups, setAvailableAgeGroups] = useState<string[]>([]);
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
 
   const [filters, setFilters] = useState<Filters>({
     wso: '',
@@ -128,8 +131,8 @@ export default function RecordsScreen() {
     return () => { cancelled = true; };
   }, [filters.wso, filters.ageGroup, filters.gender]);
 
-  const recordsData = useMemo(() => {
-    return records || allRecords || {};
+  const recordsData = useMemo<RecordsData | null>(() => {
+    return records || allRecords || null;
   }, [records, allRecords]);
 
   const colors = {
@@ -141,6 +144,18 @@ export default function RecordsScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
     link: '#007AFF',
   };
+
+  if (isSubscriptionLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.link} />
+      </ThemedView>
+    );
+  }
+
+  if (!isSubscribed) {
+    return <PaywallScreen />;
+  }
 
   const getAgeGroupDisplayText = (ageGroup: string) => {
     if (!ageGroup) return '';
@@ -226,21 +241,26 @@ export default function RecordsScreen() {
           {loading && (
             <ThemedText style={{ textAlign: 'center', marginTop: 16 }}>Loading...</ThemedText>
           )}
-          {fetchError && (
+          {fetchError && !loading && (
             <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
           )}
-          {!loading && recordsData[filters.ageGroup]?.[filters.gender]?.length === 0 && (
+          {!loading && !fetchError && (
+            !recordsData || 
+            !recordsData[filters.ageGroup as keyof RecordsData] || 
+            recordsData[filters.ageGroup as keyof RecordsData]?.[filters.gender as keyof AgeGroupRecords]?.length === 0
+          ) && (
             <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
               No {filters.wso} records available for {filters.gender} in the {getAgeGroupDisplayText(filters.ageGroup)} age group.
             </ThemedText>
           )}
-          {!loading && recordsData[filters.ageGroup]?.[filters.gender]?.length > 0 && (
-            recordsData[filters.ageGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
+          {!loading && !fetchError && recordsData && 
+            recordsData[filters.ageGroup as keyof RecordsData]?.[filters.gender as keyof AgeGroupRecords]?.length > 0 && (
+            recordsData[filters.ageGroup as keyof RecordsData]?.[filters.gender as keyof AgeGroupRecords]?.map((record: WeightClassRecord, index: number) => (
               <View 
                 key={`${filters.wso}-${filters.ageGroup}-${filters.gender}-${record.weightClass}`}
                 style={[
                   styles.row,
-                  index < recordsData[filters.ageGroup][filters.gender].length - 1 && {
+                  index < (recordsData[filters.ageGroup as keyof RecordsData]?.[filters.gender as keyof AgeGroupRecords]?.length ?? 0) - 1 && {
                     borderBottomWidth: StyleSheet.hairlineWidth,
                     borderBottomColor: colors.border
                   }
