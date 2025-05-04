@@ -156,7 +156,6 @@ export default function RootLayout() {
     </CustomThemeProvider>
   );
 }
-
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
@@ -245,11 +244,10 @@ function RootLayoutNav() {
   return (
     <NavigationThemeProvider value={theme}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="sign-in" options={{ animation: 'none' }} />
-        <Stack.Screen name="paywall" options={{ animation: 'none' }} />
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>
   );
 }
+
