@@ -5,7 +5,7 @@ import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime } from '@/utils/time';
 import { useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase'; // Import supabase client
-import { scheduleNotification } from '@/utils/notifications';
+import { scheduleNotification, cancelNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 
@@ -340,7 +340,8 @@ export function useSavedSessions() {
               await scheduleNotification(
                 `Session Reminder`,
                 `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
-                triggerDate
+                triggerDate,
+                updatedSession.id
               );
               console.log('Notification Scheduling - scheduleNotification called successfully.');
             } else {
@@ -372,6 +373,9 @@ export function useSavedSessions() {
     if (!user?.id) return false;
     
     try {
+      // *** Find the session before filtering ***
+      const sessionToRemove = savedSessions.find(session => session.id === sessionId);
+
       // 1. Update local state and AsyncStorage
       const updatedSessions = savedSessions.filter(session => session.id !== sessionId);
       await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
@@ -388,6 +392,25 @@ export function useSavedSessions() {
         // Handle error - maybe revert local changes or show message?
         // For now, just log the error. The local removal already succeeded.
         return false; // Indicate partial failure
+      }
+
+      // *** Cancel notification ***
+      if (sessionToRemove) {
+        // Only attempt to cancel if the session was actually found
+        try {
+          const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+          if (notificationsEnabled === 'true') {
+             // Only cancel if notifications were potentially scheduled
+            await cancelNotification(sessionToRemove.id);
+          } else {
+            console.log(`removeSession: Notifications disabled, skipping cancellation for ${sessionToRemove.id}`);
+          }
+        } catch (cancelError) {
+          console.error(`removeSession: Failed to cancel notification for ${sessionToRemove.id}:`, cancelError);
+          // Continue with removal even if cancellation fails
+        }
+      } else {
+          console.warn(`removeSession: Could not find session ${sessionId} in state before removal to cancel notification.`);
       }
 
       return true; // Indicate success
