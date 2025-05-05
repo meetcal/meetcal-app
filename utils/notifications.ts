@@ -66,7 +66,7 @@ export async function registerForPushNotificationsAsync(userId: string | null | 
   return token;
 }
 
-export async function scheduleNotification(title: string, body: string, trigger: Date) {
+export async function scheduleNotification(title: string, body: string, trigger: Date, identifier?: string) {
   // Calculate seconds (ensuring it's at least 0 or 1, depending on Expo requirements)
   const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000)); 
   
@@ -76,22 +76,30 @@ export async function scheduleNotification(title: string, body: string, trigger:
       return; // Don't schedule if it's already passed
   }
 
-  await Notifications.scheduleNotificationAsync({
+  const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
       sound: true, // Keep sound true
       priority: Notifications.AndroidNotificationPriority.HIGH, // Keep priority
+      data: { identifier }, // Pass identifier in data if needed, or use request identifier if available
     },
     trigger: {
-      // Revert to the older structure
-      type: 'timeInterval', 
+      type: 'timeInterval',
       seconds: seconds, 
       repeats: false, 
-      // channelId: 'default', // Remove channelId if using timeInterval type
     },
+    identifier, // Use the identifier directly if supported at the top level
   });
-  console.log(`scheduleNotification: Notification scheduled to trigger in ${seconds} seconds.`);
+}
+
+export async function cancelNotification(identifier: string) {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(identifier);
+  } catch (error) {
+    console.error(`cancelNotification: Error cancelling notification with identifier ${identifier}:`, error);
+    // Decide if you need to re-throw or handle differently
+  }
 }
 
 export async function cancelAllNotifications() {

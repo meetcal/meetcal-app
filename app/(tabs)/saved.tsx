@@ -94,6 +94,9 @@ async function createCalendarEvents(sessions: Array<{
       const startDate = convertToUTC(session.startTime, session.date, session.meet);
       const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
+      // Construct the deep link URL
+      const deepLinkUrl = `meetcal://schedule-details?meet=${encodeURIComponent(session.meet)}&sessionNumber=${encodeURIComponent(session.sessionNumber)}&platform=${encodeURIComponent(session.platform)}`;
+
       await Calendar.createEventAsync(calendarId, {
         title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
         location: getMeetVenueLocation(session.meet),
@@ -101,6 +104,7 @@ async function createCalendarEvents(sessions: Array<{
         startDate: startDate,
         endDate: endDate,
         timeZone: meetConfig.time.timeZoneIdentifier,
+        url: deepLinkUrl,
         alarms: [{
           relativeOffset: -60,
         }],
