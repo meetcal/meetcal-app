@@ -284,6 +284,11 @@ export default function ProfileScreen() {
             </ThemedText>
           </Pressable>
         </View>
+        <Pressable onPress={() => Linking.openURL(`https://accounts.meetcal.app/sign-in`)} style={{ alignSelf: 'center', marginBottom: 8 }}>
+          <ThemedText style={[styles.legalText, { color: colors.link }]}>
+            Delete Your Account
+          </ThemedText>
+        </Pressable>
 
         <TouchableOpacity
           style={[styles.signOutButton]}
@@ -442,7 +447,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 14,
   },
   signOutButtonText: {
     color: '#FFFFFF',
