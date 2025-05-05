@@ -249,33 +249,6 @@ const SessionCard = React.memo(({
     return `${timeStr} ${period} ${timeZoneAbbr}`;
   };
 
-  // Check if there's a warmup for any of the athletes
-  let hasWarmup = false;
-  let warmupId = null;
-
-  if (item.athleteNames && Array.isArray(item.athleteNames)) {
-    hasWarmup = item.athleteNames.some(name => {
-      if (!name) return false;
-      return savedWarmups.some(warmup => 
-        warmup?.name === name && warmup?.meet === meet
-      );
-    });
-
-    // Find the warmup ID if it exists
-    if (item.athleteNames.length > 0) {
-      const warmup = savedWarmups.find(w => 
-        w?.name === item.athleteNames![0] && w?.meet === meet
-      );
-      warmupId = warmup?.id;
-    }
-  } else if (item.athleteName) {
-    const warmup = savedWarmups.find(w => 
-      w?.name === item.athleteName && w?.meet === meet
-    );
-    hasWarmup = !!warmup;
-    warmupId = warmup?.id;
-  }
-
   return (
     <Pressable
       style={({ pressed }) => [
@@ -339,37 +312,45 @@ const SessionCard = React.memo(({
             {item.athleteNames.length === 1 ? 'Athlete:' : 'Athletes:'}
           </ThemedText>
           <View style={styles.athleteNamesContainer}>
-            {item.athleteNames.slice(0, 3).map((name, index) => (
-              <View key={index} style={styles.athleteRow}>
-                <ThemedText 
-                  style={[styles.athleteName, { color: colors.text }]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {name}
-                </ThemedText>
-                {hasWarmup && index === 0 && warmupId && (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      router.push({
-                        pathname: '/warmup-details',
-                        params: { id: warmupId }
-                      });
-                    }}
-                    style={({ pressed }) => [
-                      styles.warmupLink,
-                      pressed && { opacity: 0.7 }
-                    ]}
+            {item.athleteNames.slice(0, 3).map((name, index) => {
+              // Find warmup for THIS specific athlete inside the map
+              const athleteWarmup = savedWarmups.find(w => 
+                w?.name === name && w?.meet === meet
+              );
+
+              return (
+                <View key={index} style={styles.athleteRow}>
+                  <ThemedText 
+                    style={[styles.athleteName, { color: colors.text }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
                   >
-                    <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
-                      Warmups
-                    </ThemedText>
-                    <IconSymbol name="chevron.right" size={12} color={colors.link} />
-                  </Pressable>
-                )}
-              </View>
-            ))}
+                    {name}
+                  </ThemedText>
+                  {/* Render link if a warmup exists for THIS athlete */}
+                  {athleteWarmup && (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        router.push({
+                          pathname: '/warmup-details',
+                          params: { id: athleteWarmup.id } // Use this athlete's warmup ID
+                        });
+                      }}
+                      style={({ pressed }) => [
+                        styles.warmupLink,
+                        pressed && { opacity: 0.7 }
+                      ]}
+                    >
+                      <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                        Warmups
+                      </ThemedText>
+                      <IconSymbol name="chevron.right" size={12} color={colors.link} />
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
             {item.athleteNames.length > 3 && (
               <ThemedText style={[styles.athleteMoreText, { color: colors.secondaryText }]}>
                 +{item.athleteNames.length - 3} more
@@ -389,26 +370,32 @@ const SessionCard = React.memo(({
             <ThemedText style={[styles.athleteName, { color: colors.text }]}>
               {item.athleteName}
             </ThemedText>
-            {hasWarmup && warmupId && (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  router.push({
-                    pathname: '/warmup-details',
-                    params: { id: warmupId }
-                  });
-                }}
-                style={({ pressed }) => [
-                  styles.warmupLink,
-                  pressed && { opacity: 0.7 }
-                ]}
-              >
-                <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
-                  Warmups
-                </ThemedText>
-                <IconSymbol name="chevron.right" size={12} color={colors.link} />
-              </Pressable>
-            )}
+            {/* Also fix backward compatibility section */}
+            {(() => {
+              const athleteWarmup = savedWarmups.find(w => 
+                w?.name === item.athleteName && w?.meet === meet
+              );
+              return athleteWarmup ? (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    router.push({
+                      pathname: '/warmup-details',
+                      params: { id: athleteWarmup.id }
+                    });
+                  }}
+                  style={({ pressed }) => [
+                    styles.warmupLink,
+                    pressed && { opacity: 0.7 }
+                  ]}
+                >
+                  <ThemedText style={[styles.warmupLinkText, { color: colors.link }]}>
+                    Warmups
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={12} color={colors.link} />
+                </Pressable>
+              ) : null;
+            })()}
           </View>
         </View>
       )}
