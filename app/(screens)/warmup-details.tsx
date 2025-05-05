@@ -85,16 +85,30 @@ export default function WarmupDetailsScreen() {
       if (supabaseError && supabaseError.code !== 'PGRST116') { // Ignore 'No rows found' error initially
         console.error('Error fetching warmup from Supabase:', supabaseError);
         // Fallback to AsyncStorage below
-      } else if (supabaseData) {
-        console.log('Warmup data fetched from Supabase');
-        const parsedWarmupData = supabaseData.warmup_data as { athlete: AthleteInfo; warmupRows: WarmupRow[] } | null;
+      } else if (supabaseData && Array.isArray(supabaseData) && supabaseData.length > 0) {
+        // Access the first element since the response is an array
+        const warmupRecord = supabaseData[0]; 
+        
+        let parsedWarmupData: { athlete: AthleteInfo; warmupRows: WarmupRow[] } | null = null;
+
+        try {
+          // Use warmupRecord instead of supabaseData
+          if (typeof warmupRecord.warmup_data === 'string') {
+            parsedWarmupData = JSON.parse(warmupRecord.warmup_data);
+          } else if (typeof warmupRecord.warmup_data === 'object' && warmupRecord.warmup_data !== null) {
+            // Assume it's already an object
+            parsedWarmupData = warmupRecord.warmup_data as { athlete: AthleteInfo; warmupRows: WarmupRow[] };
+          }
+        } catch (error) {
+          console.error('Error parsing warmup_data:', error);
+        }
 
         if (parsedWarmupData) {
           const loadedWarmup: SavedWarmup = {
-            id: supabaseData.id,
-            name: supabaseData.name,
-            meet: supabaseData.meet,
-            lastModified: supabaseData.updated_at || new Date().toISOString(),
+            id: warmupRecord.id,
+            name: warmupRecord.name,
+            meet: warmupRecord.meet,
+            lastModified: warmupRecord.updated_at || new Date().toISOString(),
             athlete: parsedWarmupData.athlete,
             warmupRows: parsedWarmupData.warmupRows || []
           };
@@ -106,26 +120,28 @@ export default function WarmupDetailsScreen() {
 
           return; // Successfully loaded from Supabase
         } else {
-            console.error('Supabase warmup_data is missing or invalid');
+            console.error('Supabase warmup_data processing failed. Data received:', JSON.stringify(warmupRecord?.warmup_data)); 
             // Fallback to AsyncStorage
         }
-      }
-
-      // --- Fallback to AsyncStorage if Supabase fetch failed or data invalid ---
-      console.log('Falling back to loading warmup from AsyncStorage');
-      const key = getSavedWarmupsKey(user.id);
-      const savedWarmups = await AsyncStorage.getItem(key);
-      if (savedWarmups) {
-        const warmups = JSON.parse(savedWarmups);
-        const selectedWarmup = warmups.find((w: SavedWarmup) => w.id === id);
-        if (selectedWarmup) {
-          setWarmup(selectedWarmup);
-          setWarmupRows(selectedWarmup.warmupRows || []); // Ensure warmupRows is always an array
-        }
       } else {
-        console.log('Warmup not found in AsyncStorage either');
-        setWarmup(null);
-        setWarmupRows([]);
+        // Handle case where supabaseData is null, not an array, or empty
+        console.log('[WarmupDetails] No valid data returned from Supabase query despite no error.');
+        // Fallback to AsyncStorage
+        console.log('Falling back to loading warmup from AsyncStorage');
+        const key = getSavedWarmupsKey(user.id);
+        const savedWarmups = await AsyncStorage.getItem(key);
+        if (savedWarmups) {
+          const warmups = JSON.parse(savedWarmups);
+          const selectedWarmup = warmups.find((w: SavedWarmup) => w.id === id);
+          if (selectedWarmup) {
+            setWarmup(selectedWarmup);
+            setWarmupRows(selectedWarmup.warmupRows || []); // Ensure warmupRows is always an array
+          }
+        } else {
+          console.log('Warmup not found in AsyncStorage either');
+          setWarmup(null);
+          setWarmupRows([]);
+        }
       }
     } catch (error) {
       console.error('Error loading warmup:', error);
