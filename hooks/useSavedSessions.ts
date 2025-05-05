@@ -179,36 +179,48 @@ export function useSavedSessions() {
           }
         });
       
-      const uniqueSessions = Array.from(sessionMap.values()).map(({ session, athletes }) => {
+      const uniqueSessionsToSave = Array.from(sessionMap.values()).map(({ session, athletes }) => {
+        // Ensure athleteNames has unique values
         return {
           ...session,
-          athleteNames: athletes
+          athleteNames: [...new Set(athletes)]
         };
       });
 
-      const allSessions = [...savedSessions];
-      uniqueSessions.forEach(session => {
-        const existingSessionIndex = allSessions.findIndex(saved => saved.id === session.id);
-        
-        if (existingSessionIndex >= 0) {
-          const existingSession = allSessions[existingSessionIndex];
-          const existingNames = existingSession.athleteNames || [];
-          const newNames = session.athleteNames || [];
-          
-          allSessions[existingSessionIndex] = {
-            ...existingSession,
-            athleteNames: [...new Set([...existingNames, ...newNames])],
-            meet: session.meet,
-            weightClass: session.weightClass,
-          };
-        } else {
-          allSessions.push(session);
-        }
-      });
+      // Use a temporary array to manage local state updates
+      let updatedLocalSessions = [...savedSessions];
 
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(allSessions));
-      setSavedSessions(allSessions);
-      return true;
+      // Loop through generated sessions and save each one (which handles local + Supabase)
+      let allSavesSucceeded = true;
+      for (const sessionToSave of uniqueSessionsToSave) {
+        // Find existing local session to potentially merge *before* calling saveSession
+        const existingLocalIndex = updatedLocalSessions.findIndex(s => s.id === sessionToSave.id);
+        let sessionWithMergedData = { ...sessionToSave };
+
+        if (existingLocalIndex >= 0) {
+          const existingLocalSession = updatedLocalSessions[existingLocalIndex];
+          // Merge athlete names from local and new data
+          const combinedNames = [...new Set([...(existingLocalSession.athleteNames || []), ...(sessionToSave.athleteNames || [])])];
+          sessionWithMergedData = {
+            ...existingLocalSession, // Keep existing notes, etc.
+            ...sessionToSave, // Overwrite with new schedule data (like time)
+            athleteNames: combinedNames, // Use the merged names
+          };
+        }
+
+        // Call saveSession for each session to handle upsert and local state
+        const success = await saveSession(sessionWithMergedData);
+        if (!success) {
+          allSavesSucceeded = false;
+          console.error(`Failed to save session ${sessionWithMergedData.id} from start list.`);
+          // Decide if you want to stop or continue saving others
+        }
+      }
+
+      // Note: saveSession already updates the main savedSessions state and AsyncStorage,
+      // so no need to call setSavedSessions or setItem here directly.
+
+      return allSavesSucceeded; // Indicate if all individual saves were successful
     } catch (error) {
       console.error('Error saving sessions:', error);
       return false;
