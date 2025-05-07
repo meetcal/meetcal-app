@@ -20,6 +20,14 @@ type Sponsor = {
 const sponsors: Sponsor[] = [
   {
     id: '1',
+    name: 'The Art of Barbell',
+    description: 'Capture The Moments That Matter Most',
+    website: 'https://nikkijeanphotography.pixieset.com/contact-form/cf_ZnYPcTFnBcJEyiV6tpsKab7NbOdQ',
+    discount: 'Use code MEETCAL for 20% off!',
+    image: require('@/assets/images/theartofbarbell.png') // Use your image
+  },
+  {
+    id: '2',
     name: 'War Games',
     description: 'Better Coaches, Better Athletes',
     website: 'https://wl-wargames.com',
@@ -27,7 +35,7 @@ const sponsors: Sponsor[] = [
     image: require('@/assets/images/wg-ad.png') // Use your image
   },
   {
-    id: '2',
+    id: '3',
     name: 'Power & Grace Performance',
     description: 'Data Driven Programming, Nation Wide',
     website: 'https://powerandgraceperformance.com/programming-2/',
