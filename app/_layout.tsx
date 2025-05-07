@@ -217,12 +217,23 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
-        
-        // Only route to sign-in or schedule, no automatic paywall redirect
-        if (!isUserSignedIn) {
-          router.replace('/sign-in');
+
+        const initialUrl = await Linking.getInitialURL();
+
+        if (initialUrl) {
+          console.log('[RootLayout] App launched with initial URL, letting router handle:', initialUrl);
+          if (!isUserSignedIn) {
+            if (!initialUrl.includes('/sign-in') && !initialUrl.includes('/sign-up')) { // Example check
+                router.replace('/sign-in');
+            }
+          }
         } else {
-          router.replace('/(tabs)/schedule');
+          // No deep link, proceed with default routing
+          if (!isUserSignedIn) {
+            router.replace('/sign-in');
+          } else {
+            router.replace('/(tabs)/schedule');
+          }
         }
       }
     }
