@@ -21,7 +21,7 @@ function weightClassSort(a: string, b: string): number {
  * If ageGroup and gender are provided, fetches only that subset.
  */
 export async function fetchRecords(
-  federation: 'USAW' | 'USAMW' = 'USAW',
+  federation: string = 'USAW',
   ageGroup?: string,
   gender?: 'men' | 'women'
 ): Promise<RecordsData> {
@@ -36,29 +36,25 @@ export async function fetchRecords(
 
   if (error) throw error;
 
-  // Known age groups (USAW and USAMW)
-  const ageGroups = federation === 'USAW'
-    ? [
-        'u13', 'u15', 'u17', 'collegiate', 'junior', 'senior',
-        'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
-        'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
-        'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
-      ]
-    : [
-        'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
-        'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
-        'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
-      ];
-
-  // Initialize result shape
-  const result: RecordsData = Object.fromEntries(
-    ageGroups.map((g) => [g, { men: [], women: [] }])
-  ) as RecordsData;
+  // Initialize result shape dynamically
+  const result: RecordsData = {};
 
   (data || []).forEach((row) => {
-    const ageKey = row.age_category as keyof RecordsData;
+    const ageKey = row.age_category as string; // keyof RecordsData removed as it's string now
     const genderKey = row.gender as 'men' | 'women';
-    if (!result[ageKey] || !result[ageKey][genderKey]) return;
+
+    // Ensure the age group object exists
+    if (!result[ageKey]) {
+      result[ageKey] = { men: [], women: [] };
+    }
+    
+    // Ensure the gender array within the age group object exists (should always be true due to above)
+    // This check might be redundant if result[ageKey] is always initialized with men/women arrays.
+    // For safety, keeping a check or ensuring initialization covers it.
+    if (!result[ageKey][genderKey]) {
+        result[ageKey][genderKey] = []; // Should not happen if initialized correctly
+    }
+
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
       snatchRecord: row.snatch_record ?? 0,
@@ -74,4 +70,73 @@ export async function fetchRecords(
   });
 
   return result;
+}
+
+export async function fetchFederations(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('records')
+    .select('record_type', { count: 'exact', head: false });
+
+  if (error) {
+    console.error('Error fetching federations:', error);
+    throw error;
+  }
+
+  // Get unique, non-null, sorted record_type values
+  const federations = Array.from(new Set((data || []).map(row => row.record_type)))
+    .filter(Boolean) 
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  
+  return federations as string[];
+}
+
+// Helper for sorting age groups
+function ageGroupSort(a: string, b: string): number {
+  const order = ['u11', 'u13', 'u15', 'u17', 'youth', 'collegiate', 'junior', 'senior'];
+  const aLower = a.toLowerCase();
+  const bLower = b.toLowerCase();
+
+  const aIdx = order.indexOf(aLower);
+  const bIdx = order.indexOf(bLower);
+
+  if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+  if (aIdx !== -1) return -1;
+  if (bIdx !== -1) return 1;
+
+  // Masters sort (e.g., "Masters 35-39", "Masters 90+", "Masters +90")
+  const mastersRegex = /^masters (?:\+)?(\d{2})(?:-(\d{2})|\+)?$/i;
+  
+  const matchA = aLower.match(mastersRegex);
+  const matchB = bLower.match(mastersRegex);
+
+  if (matchA && matchB) {
+    // matchA[1] will capture the first number (e.g., "35" from "35-39", "90" from "90+", or "90" from "+90")
+    const numA = parseInt(matchA[1]);
+    const numB = parseInt(matchB[1]);
+    return numA - numB;
+  }
+  if (matchA) return 1; // Masters typically come after non-masters if not in order array
+  if (matchB) return -1;
+  
+  return a.localeCompare(b, undefined, { sensitivity: 'base' });
+}
+
+export async function fetchAgeGroups(federation: string): Promise<string[]> {
+  if (!federation) return [];
+  const { data, error } = await supabase
+    .from('records')
+    .select('age_category')
+    .eq('record_type', federation)
+    .neq('age_category', null);
+
+  if (error) {
+    console.error(`Error fetching age groups for ${federation}:`, error);
+    throw error;
+  }
+
+  const ageGroups = Array.from(new Set((data || []).map(row => row.age_category)))
+    .filter(Boolean) 
+    .sort(ageGroupSort);
+  
+  return ageGroups as string[];
 }
