@@ -5,26 +5,16 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { WeightClassRecord, RecordsData } from '@/types/records';
-import { fetchRecords } from '@/lib/database/fetch-records';
+import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records';
+import { fetchRecords, fetchFederations, fetchAgeGroups } from '@/lib/database/fetch-records';
 
-type Federation = 'USAW' | 'USAMW';
+type Federation = string;
 type Gender = 'men' | 'women';
-const USAW_AGE_GROUPS = [
-  'u13', 'u15', 'u17', 'collegiate', 'junior', 'senior',
-  'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
-  'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
-  'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
-] as const;
-const USAMW_AGE_GROUPS = [
-  'Masters 35-39', 'Masters 40-44', 'Masters 45-49', 'Masters 50-54',
-  'Masters 55-59', 'Masters 60-64', 'Masters 65-69', 'Masters 70-74',
-  'Masters 75-79', 'Masters 80-84', 'Masters 85-89', 'Masters +90'
-] as const;
+type AgeGroup = string; // Changed from specific union
 
-type USAWAgeGroup = typeof USAW_AGE_GROUPS[number];
-type USAMWAgeGroup = typeof USAMW_AGE_GROUPS[number];
-type AgeGroup = USAWAgeGroup | USAMWAgeGroup;
+// Helper to create an empty RecordsData structure - this might need refinement
+// For now, an empty object will be used as RecordsData can have dynamic keys
+const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
 interface Filters {
   federation: Federation;
@@ -37,10 +27,14 @@ const maxOptionsHeight = windowHeight * 0.4;
 
 export default function RecordsScreen() {
   const { currentTheme } = useTheme();
+  const [availableFederations, setAvailableFederations] = useState<string[]>([]);
+  const [currentAvailableAgeGroupsList, setCurrentAvailableAgeGroupsList] = useState<string[]>([]);
+  const [modalFederationForAgeGroups, setModalFederationForAgeGroups] = useState<string | null>(null);
+  
   const [filters, setFilters] = useState<Filters>({
-    federation: 'USAW',
+    federation: '',
     gender: 'men',
-    ageGroup: 'senior'
+    ageGroup: '' 
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'federation' | 'gender' | 'ageGroup' | null>(null);
@@ -49,43 +43,174 @@ export default function RecordsScreen() {
   const [records, setRecords] = useState<RecordsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-
-  // Cache for all records for the selected federation
   const [allRecords, setAllRecords] = useState<RecordsData | null>(null);
 
+  // Effect for initial federation and age group loading
   useEffect(() => {
+    async function loadInitialFilters() {
+      setLoading(true);
+      try {
+        const fetchedFederations = await fetchFederations();
+        setAvailableFederations(fetchedFederations);
+        if (fetchedFederations.length > 0) {
+          const initialFederation = fetchedFederations.includes('USAW') ? 'USAW' : fetchedFederations[0];
+          
+          // Fetch initial age groups for the determined initialFederation
+          const fetchedAgeGroups = await fetchAgeGroups(initialFederation);
+          // setCurrentAvailableAgeGroupsList(fetchedAgeGroups); // This will be set by the modal-specific effect if modal opens
+          
+          const initialAgeGroup = fetchedAgeGroups.length > 0 ? fetchedAgeGroups[0] : '';
+
+          setFilters({ federation: initialFederation, gender: 'men', ageGroup: initialAgeGroup });
+          setTempFilters({ federation: initialFederation, gender: 'men', ageGroup: initialAgeGroup });
+          // setModalFederationForAgeGroups(initialFederation); // Set this so modal doesn't immediately reload if opened
+        } else {
+          setFetchError("No federations found.");
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch initial filter data';
+        setFetchError(errorMessage);
+      } finally {
+        // setLoading(false); // Loading for records fetch is separate
+      }
+    }
+    loadInitialFilters();
+  }, []);
+
+  // Effect for syncing tempFilters and preparing for modal age group loading when modal opens
+  useEffect(() => {
+    if (showFilterModal) {
+      setTempFilters(filters); // Sync with current applied filters
+      // If the modal is opening with a federation different from what age groups are loaded for,
+      // or if no age groups loaded for it yet, reset modalFederationForAgeGroups to trigger a load.
+      if (filters.federation !== modalFederationForAgeGroups) {
+        setModalFederationForAgeGroups(null); 
+      }
+    } else {
+      // Optionally clear modal-specific states when it closes
+      // setCurrentAvailableAgeGroupsList([]); 
+      // setModalFederationForAgeGroups(null);
+    }
+  }, [showFilterModal, filters]); // Re-evaluate if modal opens or if main filters change
+
+
+  // Effect for updating age groups in the modal when tempFilters.federation changes, or when modal needs initial load.
+  useEffect(() => {
+    if (!showFilterModal || !tempFilters.federation) {
+      // If modal is not shown, or no temp federation is selected, do nothing.
+      // Clearing list if modal closes can be done in the previous effect.
+      return;
+    }
+
+    // Fetch if the current temp federation is different from the one we last loaded age groups for.
+    if (tempFilters.federation !== modalFederationForAgeGroups) {
+      let isStale = false;
+      const federationToFetch = tempFilters.federation; 
+      
+      setCurrentAvailableAgeGroupsList([]); // Clear previous list, indicates loading
+      setLoading(true); // Use main loading indicator for now
+
+      fetchAgeGroups(federationToFetch)
+        .then((fetchedAgeGroups) => {
+          if (isStale || tempFilters.federation !== federationToFetch) return; 
+
+          setCurrentAvailableAgeGroupsList(fetchedAgeGroups);
+          setModalFederationForAgeGroups(federationToFetch); 
+
+          const newAgeGroup = fetchedAgeGroups.length > 0 ? fetchedAgeGroups[0] : '';
+          setTempFilters(prev => ({ ...prev, ageGroup: newAgeGroup }));
+        })
+        .catch((err) => {
+          if (isStale || tempFilters.federation !== federationToFetch) return;
+          console.error(`Failed to fetch age groups for ${federationToFetch} in modal`, err);
+          setCurrentAvailableAgeGroupsList([]); 
+          setModalFederationForAgeGroups(federationToFetch); // Mark attempt to prevent loops
+          // Optionally set a specific error message for the modal filter section
+        })
+        .finally(() => {
+          if (isStale || tempFilters.federation !== federationToFetch) return;
+          setLoading(false);
+        });
+
+      return () => { isStale = true; };
+    }
+  }, [showFilterModal, tempFilters.federation, modalFederationForAgeGroups]);
+
+  // Effect for fetching records when filters change
+  useEffect(() => {
+    if (!filters.federation || !filters.ageGroup) { // Don't fetch if essential filters are not set
+      // setLoading(false); // Stop loading if filters aren't ready
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setRecords(null);
+    setAllRecords(null);
     setFetchError(null);
 
-    // Fetch only the current page first
-    fetchRecords(filters.federation, filters.ageGroup, filters.gender)
-      .then((data) => {
-        if (!cancelled) {
-          setRecords(data);
-          setLoading(false);
+    // Fetch age groups for the *applied* federation if they haven't been loaded
+    // or if the federation has changed since last load.
+    // This ensures currentAvailableAgeGroupsList is up-to-date for the *applied* filters.
+    async function ensureAgeGroupsForAppliedFederation() {
+        try {
+            const fetchedAgeGroups = await fetchAgeGroups(filters.federation);
+            setCurrentAvailableAgeGroupsList(fetchedAgeGroups);
+            // If current filters.ageGroup is not in the new list, reset it.
+            if (!fetchedAgeGroups.includes(filters.ageGroup) && fetchedAgeGroups.length > 0) {
+                setFilters(prev => ({ ...prev, ageGroup: fetchedAgeGroups[0] }));
+                // This state change will re-trigger the records fetch effect.
+                // To avoid immediate re-fetch, we might return early or manage loading state carefully.
+                // For now, let it re-trigger, as filters.ageGroup has changed.
+                return false; // Indicate that filters changed and effect should re-run or stop current path
+            }
+            return true; // Indicate age groups are fine
+        } catch (err) {
+            console.error("Failed to fetch age groups for applied federation", err);
+            setFetchError("Failed to load age group data.");
+            return false; // Indicate failure
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFetchError(err.message || 'Failed to fetch records');
-          setLoading(false);
-        }
-      });
+    }
 
-    // Then fetch all records for the federation in the background
-    fetchRecords(filters.federation)
-      .then((data) => {
-        if (!cancelled) setAllRecords(data);
-      });
+    ensureAgeGroupsForAppliedFederation().then(ageGroupsAreValid => {
+        if (!ageGroupsAreValid || cancelled) {
+            setLoading(false);
+            return;
+        }
+
+        fetchRecords(filters.federation, filters.ageGroup, filters.gender)
+        .then((data) => {
+            if (!cancelled) {
+            setRecords(data);
+            }
+        })
+        .catch((err) => {
+            if (!cancelled) {
+            setFetchError(err.message || 'Failed to fetch records');
+            }
+        })
+        .finally(() => {
+            if(!cancelled) setLoading(false); // Combined loading state management
+        });
+
+        // Fetch all records for the federation in the background
+        // We should use the more specific filter set if available
+        fetchRecords(filters.federation, undefined, undefined) 
+        .then((data) => {
+            if (!cancelled) setAllRecords(data);
+        })
+        .catch((err) => {
+            // Silently fail or log, as this is background
+            console.warn("Failed to fetch all records for federation in background", err);
+        });
+    });
+
 
     return () => { cancelled = true; };
-  }, [filters.federation, filters.ageGroup, filters.gender]);
+  }, [filters.federation, filters.ageGroup, filters.gender]); // React to all filter changes
 
-  // Use the full cache if available, otherwise just the current page
   const recordsData = useMemo(() => {
-    return allRecords || records || {};
+    return allRecords || records || EMPTY_RECORDS_DATA;
   }, [allRecords, records]);
 
   const colors = {
@@ -98,52 +223,91 @@ export default function RecordsScreen() {
     link: '#007AFF',
   };
 
-  const { tempAvailableAgeGroups } = useMemo(() => {
-    if (tempFilters.federation === 'USAW') {
-      return { tempAvailableAgeGroups: USAW_AGE_GROUPS };
-    } else {
-      return { tempAvailableAgeGroups: USAMW_AGE_GROUPS };
-    }
-  }, [tempFilters.federation]);
+  // No longer need useMemo for tempAvailableAgeGroups, use currentAvailableAgeGroupsList directly in modal
+  // No longer need useMemo for currentAvailableAgeGroups, filters.ageGroup and currentAvailableAgeGroupsList are sources of truth
 
-  const { currentAvailableAgeGroups } = useMemo(() => {
-    if (filters.federation === 'USAW') {
-      return { currentAvailableAgeGroups: USAW_AGE_GROUPS };
-    } else {
-      return { currentAvailableAgeGroups: USAMW_AGE_GROUPS };
-    }
-  }, [filters.federation]);
+  const displayAgeGroup = useMemo(() => {
+      if (!filters.ageGroup && currentAvailableAgeGroupsList.length > 0) {
+          return currentAvailableAgeGroupsList[0];
+      }
+      if (currentAvailableAgeGroupsList.includes(filters.ageGroup)) {
+          return filters.ageGroup;
+      }
+      // Fallback if filters.ageGroup is somehow invalid and list has items
+      if (currentAvailableAgeGroupsList.length > 0) {
+          return currentAvailableAgeGroupsList[0];
+      }
+      return filters.ageGroup || ''; // Default to current or empty if list is empty
+  }, [filters.ageGroup, currentAvailableAgeGroupsList]);
 
-  const isAgeGroupValid = currentAvailableAgeGroups.includes(filters.ageGroup as any);
-  const displayAgeGroup = isAgeGroupValid ? filters.ageGroup : currentAvailableAgeGroups[0];
 
-  const getAgeGroupDisplayText = (ageGroup: AgeGroup) => {
+  const getAgeGroupDisplayText = (ageGroup: AgeGroup | undefined) => {
     if (!ageGroup) return '';
-    switch (ageGroup) {
-      case 'u13': return 'U13';
-      case 'u15': return 'U15';
-      case 'u17': return 'U17';
-      default: return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
+    // Simple display: capitalize first letter if not a 'u' category like 'u13'
+    if (ageGroup.startsWith('u') && ageGroup.length > 1 && !isNaN(Number(ageGroup.substring(1,3)))) {
+        return ageGroup.toUpperCase().replace('U', 'U'); // e.g. U13, U15
     }
+    return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
   };
 
   const getFilterDisplayText = () => {
-    const fed = filters.federation;
+    const fed = filters.federation || 'N/A';
     const gen = filters.gender === 'men' ? 'Men' : 'Women';
-    const age = getAgeGroupDisplayText(displayAgeGroup);
+    const age = getAgeGroupDisplayText(displayAgeGroup) || 'N/A';
     return `${fed} • ${gen} • ${age}`;
   };
 
-  const handleApplyFilters = () => {
-    const federationAgeGroups = filters.federation === 'USAW' ? USAW_AGE_GROUPS : USAMW_AGE_GROUPS;
-    if (!federationAgeGroups.includes(tempFilters.ageGroup as any)) {
-      setFilters({...tempFilters, ageGroup: federationAgeGroups[0]});
-    } else {
-      setFilters(tempFilters);
+  const handleApplyFilters = async () => {
+    let ageGroupToApply = tempFilters.ageGroup;
+    // Ensure age groups for the temp federation are loaded if not already
+    // This is a safeguard, ideally currentAvailableAgeGroupsList is already for tempFilters.federation
+    let ageGroupsForSelectedFed = currentAvailableAgeGroupsList;
+    if (!currentAvailableAgeGroupsList.find(ag => tempFilters.federation)) { // A bit of a guess, if list doesn't match temp fed
+        try {
+            setLoading(true);
+            ageGroupsForSelectedFed = await fetchAgeGroups(tempFilters.federation);
+            setCurrentAvailableAgeGroupsList(ageGroupsForSelectedFed); // Update list for modal consistency
+        } catch (err) {
+            console.error("Error fetching age groups on apply", err);
+            setLoading(false);
+            // Handle error, maybe don't apply filters
+            return;
+        } finally {
+            setLoading(false);
+        }
     }
+
+    if (!ageGroupsForSelectedFed.includes(tempFilters.ageGroup) && ageGroupsForSelectedFed.length > 0) {
+      ageGroupToApply = ageGroupsForSelectedFed[0];
+    } else if (ageGroupsForSelectedFed.length === 0) {
+      ageGroupToApply = ''; // No age groups for this fed
+    }
+    
+    setFilters({...tempFilters, ageGroup: ageGroupToApply});
     setShowFilterModal(false);
     setExpandedSection(null);
   };
+  
+  // Sync tempFilters with filters when modal is opened
+  // This is now handled by the useEffect dependent on [showFilterModal, filters]
+  /* useEffect(() => {
+    if (showFilterModal) {
+      setTempFilters(filters);
+      async function loadAgeGroupsForModal() {
+        if (filters.federation) {
+          try {
+            if(!currentAvailableAgeGroupsList.length && filters.federation){
+                 const groups = await fetchAgeGroups(filters.federation);
+                 setCurrentAvailableAgeGroupsList(groups);
+            }
+          } catch (e) {
+            console.error("Failed to load age groups on modal open", e)
+          }
+        }
+      }
+      loadAgeGroupsForModal();
+    }
+  }, [showFilterModal]); THIS IS REPLACED / INTEGRATED */
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -176,7 +340,7 @@ export default function RecordsScreen() {
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => {
-              setTempFilters(filters);
+              // tempFilters will be synced by useEffect [showFilterModal]
               setExpandedSection(null);
               setShowFilterModal(true);
             }}
@@ -207,15 +371,16 @@ export default function RecordsScreen() {
           {fetchError && (
             <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
           )}
-          {!loading && recordsData[displayAgeGroup]?.[filters.gender]?.length === 0 && (
+          {!loading && !fetchError && (!recordsData[displayAgeGroup] || recordsData[displayAgeGroup]?.[filters.gender]?.length === 0) && (
             <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
-              No {filters.federation} records available for {filters.gender === 'men' ? 'men' : 'women'} in the {getAgeGroupDisplayText(displayAgeGroup)} age group.
+              No {filters.federation} records available for {filters.gender === 'men' ? 'men' : 'women'} 
+              in the {getAgeGroupDisplayText(displayAgeGroup) || 'selected'} age group.
             </ThemedText>
           )}
-          {!loading && recordsData[displayAgeGroup]?.[filters.gender]?.length > 0 && (
+          {!loading && !fetchError && recordsData[displayAgeGroup]?.[filters.gender]?.length > 0 && (
             recordsData[displayAgeGroup][filters.gender].map((record: WeightClassRecord, index: number) => (
               <View 
-                key={`${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}`}
+                key={`${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}-${index}`} // Added index for more unique key
                 style={[
                   styles.row,
                   index < recordsData[displayAgeGroup][filters.gender].length - 1 && {
@@ -264,6 +429,7 @@ export default function RecordsScreen() {
             <Pressable onPress={(e) => e.stopPropagation()}>
               <View style={styles.modalScrollContent}>
                 <ScrollView bounces={false}>
+                  {/* Federation Section */}
                   <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
                     <Pressable
                       style={({ pressed }) => [
@@ -275,14 +441,14 @@ export default function RecordsScreen() {
                       <View style={styles.filterSectionButtonContent}>
                         <View>
                           <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>Federation</ThemedText>
-                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>{tempFilters.federation}</ThemedText>
+                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>{tempFilters.federation || 'Select...'}</ThemedText>
                         </View>
                         <IconSymbol name={expandedSection === 'federation' ? 'chevron.down' : 'chevron.right'} size={16} color={colors.secondaryText} />
                       </View>
                     </Pressable>
                     {expandedSection === 'federation' && (
                       <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
-                        {(['USAW', 'USAMW'] as Federation[]).map((federation) => (
+                        {availableFederations.map((federation) => (
                           <Pressable
                             key={federation}
                             style={({ pressed }) => [
@@ -292,9 +458,11 @@ export default function RecordsScreen() {
                               pressed && { opacity: 0.8 }
                             ]}
                             onPress={() => {
-                              const newAgeGroup = federation === 'USAW' ? 'senior' : 'Masters 35-39';
-                              setTempFilters(prev => ({ ...prev, federation: federation, ageGroup: newAgeGroup }));
-                              setExpandedSection(null);
+                              // When federation changes in modal, tempFilters.federation is set.
+                              // The useEffect for [showFilterModal, tempFilters.federation, modalFederationForAgeGroups]
+                              // will handle fetching new age groups and resetting tempFilters.ageGroup.
+                              setTempFilters(prev => ({ ...prev, federation: federation /* ageGroup will be reset by effect */ }));
+                              setExpandedSection(null); 
                             }}
                           >
                             <ThemedText style={[
@@ -313,6 +481,7 @@ export default function RecordsScreen() {
                     )}
                   </View>
 
+                  {/* Gender Section */}
                   <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
                     <Pressable
                       style={({ pressed }) => [styles.filterSectionButton, pressed && { opacity: 0.8 } ]}
@@ -358,22 +527,35 @@ export default function RecordsScreen() {
                     )}
                   </View>
 
+                  {/* Age Group Section */}
                   <View style={styles.filterSection}>
                     <Pressable
                       style={({ pressed }) => [styles.filterSectionButton, pressed && { opacity: 0.8 } ]}
-                      onPress={() => setExpandedSection(expandedSection === 'ageGroup' ? null : 'ageGroup')}
+                      onPress={() => {
+                        // Ensure age groups are loaded for tempFilters.federation if not already
+                        if (!tempFilters.federation) {
+                            // Maybe show a message to select federation first
+                            return;
+                        }
+                        // The useEffect for tempFilters.federation should have loaded these.
+                        // If not, it indicates a potential logic issue or race condition.
+                        setExpandedSection(expandedSection === 'ageGroup' ? null : 'ageGroup');
+                      }}
                     >
                       <View style={styles.filterSectionButtonContent}>
                         <View>
                           <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>Age Group</ThemedText>
-                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>{getAgeGroupDisplayText(tempFilters.ageGroup)}</ThemedText>
+                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                            {getAgeGroupDisplayText(tempFilters.ageGroup) || (tempFilters.federation ? 'Select...' : 'Select Federation First')}
+                          </ThemedText>
                         </View>
                         <IconSymbol name={expandedSection === 'ageGroup' ? 'chevron.down' : 'chevron.right'} size={16} color={colors.secondaryText} />
                       </View>
                     </Pressable>
-                    {expandedSection === 'ageGroup' && (
+                    {expandedSection === 'ageGroup' && tempFilters.federation && (
                       <ScrollView style={[styles.filterOptions, { maxHeight: maxOptionsHeight, borderTopColor: colors.border }]} bounces={false}>
-                        {tempAvailableAgeGroups.map((ageGroup) => (
+                        {currentAvailableAgeGroupsList.length === 0 && <ThemedText style={{padding: 16, color: colors.secondaryText}}>Loading age groups...</ThemedText>}
+                        {currentAvailableAgeGroupsList.map((ageGroup) => (
                           <Pressable
                             key={ageGroup}
                             style={({ pressed }) => [
