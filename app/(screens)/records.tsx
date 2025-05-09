@@ -49,29 +49,58 @@ export default function RecordsScreen() {
   useEffect(() => {
     async function loadInitialFilters() {
       setLoading(true);
+      let determinedFederation = '';
+      let determinedAgeGroup = '';
+      const defaultGender = 'men';
+
       try {
         const fetchedFederations = await fetchFederations();
         setAvailableFederations(fetchedFederations);
-        if (fetchedFederations.length > 0) {
-          const initialFederation = fetchedFederations.includes('USAW') ? 'USAW' : fetchedFederations[0];
-          
-          // Fetch initial age groups for the determined initialFederation
-          const fetchedAgeGroups = await fetchAgeGroups(initialFederation);
-          // setCurrentAvailableAgeGroupsList(fetchedAgeGroups); // This will be set by the modal-specific effect if modal opens
-          
-          const initialAgeGroup = fetchedAgeGroups.length > 0 ? fetchedAgeGroups[0] : '';
 
-          setFilters({ federation: initialFederation, gender: 'men', ageGroup: initialAgeGroup });
-          setTempFilters({ federation: initialFederation, gender: 'men', ageGroup: initialAgeGroup });
-          // setModalFederationForAgeGroups(initialFederation); // Set this so modal doesn't immediately reload if opened
+        const preferredFederation = 'USAW';
+        const preferredAgeGroup = 'Senior';
+
+        if (fetchedFederations.length > 0) {
+          if (fetchedFederations.includes(preferredFederation)) {
+            determinedFederation = preferredFederation;
+            const ageGroupsForPreferredFed = await fetchAgeGroups(determinedFederation);
+            // Find 'Senior' or its case variation, then fallback
+            const seniorEquivalent = ageGroupsForPreferredFed.find(ag => ag.toLowerCase() === preferredAgeGroup.toLowerCase());
+            if (seniorEquivalent) {
+              determinedAgeGroup = seniorEquivalent;
+            } else if (ageGroupsForPreferredFed.length > 0) {
+              determinedAgeGroup = ageGroupsForPreferredFed[0]; // Fallback to first if 'Senior' not found
+            } else {
+              determinedAgeGroup = ''; // No age groups for USAW
+            }
+          } else {
+            // USAW not available, use the first federation from the list
+            determinedFederation = fetchedFederations[0];
+            const ageGroupsForFirstFed = await fetchAgeGroups(determinedFederation);
+            if (ageGroupsForFirstFed.length > 0) {
+              determinedAgeGroup = ageGroupsForFirstFed[0];
+            } else {
+              determinedAgeGroup = ''; // No age groups for the first federation
+            }
+          }
         } else {
           setFetchError("No federations found.");
         }
+
+        setFilters({ federation: determinedFederation, gender: defaultGender, ageGroup: determinedAgeGroup });
+        setTempFilters({ federation: determinedFederation, gender: defaultGender, ageGroup: determinedAgeGroup });
+        // If modal were to open immediately, ensure its age groups are for determinedFederation
+        // This is handled by the modal opening effect logic now, by checking against modalFederationForAgeGroups
+
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch initial filter data';
         setFetchError(errorMessage);
+        // Set empty filters on error to prevent crashes, records effect will handle loading false
+        setFilters({ federation: '', gender: defaultGender, ageGroup: '' });
+        setTempFilters({ federation: '', gender: defaultGender, ageGroup: '' });
       } finally {
-        // setLoading(false); // Loading for records fetch is separate
+        // setLoading(false); // Loading is primarily for the records fetch, not initial filter setup.
+                           // The records fetch effect will set loading true/false.
       }
     }
     loadInitialFilters();
