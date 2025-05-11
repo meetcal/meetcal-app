@@ -274,8 +274,7 @@ export default function WarmupDetailsScreen() {
       // 2. Update Supabase
       const updatedWarmupDataForSupabase = {
         athlete: warmup.athlete, // Keep original athlete info
-        warmupRows: warmupRows, // Send the updated rows
-        notes: notes, // Add notes to Supabase update
+        warmupRows: warmupRows // Send the updated rows
       };
 
       const { error: supabaseError } = await supabase
@@ -390,6 +389,19 @@ export default function WarmupDetailsScreen() {
                 >
                   <ThemedText style={[styles.value, { color: colors.link }]}>
                     See All Meet Results
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                </Pressable>
+      
+                <Pressable
+                  style={[styles.infoRow, { borderBottomColor: colors.border }]}
+                  onPress={() => router.push({
+                    pathname: '/new-qualifying-totals',
+                    params: { name: warmup.athlete.name }
+                  })}
+                >
+                  <ThemedText style={[styles.value, { color: colors.link }]}>
+                    Qualifying Totals
                   </ThemedText>
                   <IconSymbol name="chevron.right" size={16} color={colors.link} />
                 </Pressable>
