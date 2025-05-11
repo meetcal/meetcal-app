@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Alert } from 'react-native'
+import { StyleSheet, View, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native'
 import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
@@ -13,6 +13,40 @@ import { supabase } from '@/lib/supabase'
 
 // Update storage key to be user-specific
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
+
+// Renamed and modified to fetch all-time bests
+async function getAthleteAllTimeBests(athleteName: string) {
+  if (!athleteName) return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+  // const oneYearAgo = new Date(); // No longer needed
+  // oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1); // No longer needed
+  
+  try {
+    const { data: athleteResults, error } = await supabase
+      .from('lifting_results')
+      .select('snatch_best, cj_best, total')
+      .eq('name', athleteName)
+      // .gte('date', oneYearAgo.toISOString()) // REMOVED to get all-time bests
+      .order('date', { ascending: false }); // Keep ordering for potential future use, though not strictly necessary for Math.max
+
+    if (error) {
+      console.error('Error fetching athlete all-time bests:', error);
+      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    }
+
+    if (!athleteResults || athleteResults.length === 0) {
+      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    }
+
+    return {
+      bestSnatch: Math.max(...athleteResults.map(r => r.snatch_best || 0)),
+      bestCJ: Math.max(...athleteResults.map(r => r.cj_best || 0)),
+      bestTotal: Math.max(...athleteResults.map(r => r.total || 0))
+    };
+  } catch (error) {
+    console.error('Error in getAthleteAllTimeBests for warmup details:', error);
+    return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+  }
+}
 
 interface WarmupRow {
   minutesOut: string | number
@@ -49,6 +83,8 @@ export default function WarmupDetailsScreen() {
   const [warmupRows, setWarmupRows] = useState<WarmupRow[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [notes, setNotes] = useState('')
+  const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+  const [loadingBests, setLoadingBests] = useState(true);
 
   // DEBUG: Log warmupRows changes
   useEffect(() => {
@@ -72,6 +108,18 @@ export default function WarmupDetailsScreen() {
       loadWarmup()
     }
   }, [id, user?.id])
+
+  useEffect(() => {
+    const loadBests = async () => {
+      if (warmup?.athlete?.name) {
+        setLoadingBests(true);
+        const bests = await getAthleteAllTimeBests(warmup.athlete.name);
+        setYearBests(bests);
+        setLoadingBests(false);
+      }
+    };
+    loadBests();
+  }, [warmup?.athlete?.name]);
 
   const loadWarmup = async () => {
     if (!user?.id || !id) {
@@ -362,49 +410,85 @@ export default function WarmupDetailsScreen() {
                 </View>
 
                 {/* PRs */}
-                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                    Snatch PR
-                  </ThemedText>
-                  <ThemedText style={[styles.value, { color: colors.text }]}>
-                    {warmup.athlete.snatchPR}
-                  </ThemedText>
+              {/* Bests From The Last Year Section */}
+              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                <View style={[
+                    styles.statsContainer, 
+                    { 
+                      borderTopColor: colors.border, 
+                      paddingTop: 0,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: colors.border
+                    }
+                  ]}>
+                  <View style={styles.statsRow}>
+                    {loadingBests ? (
+                      <ActivityIndicator size="small" color={colors.secondaryText} style={{flex: 1, paddingVertical: 10}} />
+                    ) : (
+                      <>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            Snatch
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            CJ
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.statItem}>
+                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                            Total
+                          </ThemedText>
+                          <ThemedText style={styles.statValue}>
+                            {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                          </ThemedText>
+                        </View>
+                      </>
+                    )}
+                  </View>
                 </View>
-                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                    Clean & Jerk PR
-                  </ThemedText>
-                  <ThemedText style={[styles.value, { color: colors.text }]}>
-                    {warmup.athlete.cleanAndJerkPR}
-                  </ThemedText>
-                </View>
+              </View>
 
-                {/* See All Results Button */}
-                <Pressable
-                  style={[styles.infoRow, { borderBottomColor: colors.border }]}
-                  onPress={() => router.push({
-                    pathname: '/athlete-results',
-                    params: { name: warmup.athlete.name }
-                  })}
-                >
-                  <ThemedText style={[styles.value, { color: colors.link }]}>
-                    See All Meet Results
-                  </ThemedText>
-                  <IconSymbol name="chevron.right" size={16} color={colors.link} />
-                </Pressable>
-      
-                <Pressable
-                  style={[styles.infoRow, { borderBottomColor: colors.border }]}
-                  onPress={() => router.push({
-                    pathname: '/new-qualifying-totals',
-                    params: { name: warmup.athlete.name }
-                  })}
-                >
-                  <ThemedText style={[styles.value, { color: colors.link }]}>
-                    Qualifying Totals
-                  </ThemedText>
-                  <IconSymbol name="chevron.right" size={16} color={colors.link} />
-                </Pressable>
+                {/* Combined Results and Qualifying Totals Row */}
+                <View style={[styles.combinedButtonRow, { borderBottomColor: colors.border }]}>
+                  {/* Meet Results Button */}
+                  <Pressable
+                    style={styles.combinedButton}
+                    onPress={() => router.push({
+                      pathname: '/athlete-results',
+                      params: { name: warmup.athlete.name }
+                    })}
+                  >
+                    <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
+                      Meet Results
+                    </ThemedText>
+                    <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                  </Pressable>
+
+                  {/* Vertical Separator */}
+                  <View style={[styles.verticalSeparator, { backgroundColor: colors.border }]} />
+
+                  {/* Qualifying Totals Button */}
+                  <Pressable
+                    style={styles.combinedButton}
+                    onPress={() => router.push({
+                      pathname: '/new-qualifying-totals',
+                      params: { name: warmup.athlete.name }
+                    })}
+                  >
+                    <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
+                      Qualifying Totals
+                    </ThemedText>
+                    <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                  </Pressable>
+                </View>
               </View>
 
               {/* Warmup Table */}
@@ -634,5 +718,56 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  combinedButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  combinedButton: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  combinedButtonText: {
+    fontSize: 16, // Kept original font size from value
+    fontWeight: '600', // Kept original font weight from value
+  },
+  verticalSeparator: {
+    width: StyleSheet.hairlineWidth,
+    height: '70%', // Adjust height as needed to not touch top/bottom of row padding
+    alignSelf: 'center',
+  },
+  statsContainer: {
+    paddingVertical: 12, // Adjusted padding
+    // Removed marginTop, paddingTop, borderTopWidth as it's now inside a card
+  },
+  statsTitle: {
+    fontSize: 15, // Adjusted from 16 to match notesHeader
+    fontWeight: '600',
+    marginBottom: 12, // Increased margin
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-around', // Use space-around for better distribution in this context
+    // paddingHorizontal: 16, // Removed as card has padding
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 13,
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  statValue: {
+    fontSize: 17, // Increased from 15 to match tableCell
+    fontWeight: '500',
+    textAlign: 'center',
   },
 }) 
