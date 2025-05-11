@@ -16,10 +16,11 @@ import { supabase } from '@/lib/supabase'
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 interface AthleteWarmup {
-  id: string
-  name: string
-  lastModified: string
-  meet: string
+  id: string;
+  name: string; // This is saved_warmups.name (which should match an athlete's name)
+  lastModified: string;
+  meet: string;
+  session_number?: number; // To hold athlete session number
 }
 
 export default function WarmupsScreen() {
@@ -94,16 +95,16 @@ export default function WarmupsScreen() {
       const key = getSavedWarmupsKey(user.id);
 
       // --- Fetch from Supabase --- 
-      let query = supabase
+      let savedWarmupsQuery = supabase
         .from('saved_warmups')
-        .select('id, name, meet, updated_at') // Fetch only needed fields for list view
+        .select('id, name, meet, updated_at') 
         .eq('user_id', user.id);
 
       if (selectedMeet) {
-        query = query.eq('meet', selectedMeet);
+        savedWarmupsQuery = savedWarmupsQuery.eq('meet', selectedMeet);
       }
 
-      const { data: supabaseWarmups, error: supabaseError } = await query;
+      const { data: supabaseWarmups, error: supabaseError } = await savedWarmupsQuery;
 
       if (supabaseError) {
         console.error('Error fetching warmups from Supabase:', supabaseError);
@@ -111,35 +112,82 @@ export default function WarmupsScreen() {
         const storedWarmups = await AsyncStorage.getItem(key);
         if (storedWarmups) {
           const allWarmups = JSON.parse(storedWarmups);
-          const filteredWarmups = selectedMeet 
+          let filteredWarmups = selectedMeet
             ? allWarmups.filter((warmup: any) => warmup.meet === selectedMeet)
             : allWarmups;
-          setSavedWarmups(filteredWarmups.map((w: any) => ({ ...w, lastModified: w.lastModified || new Date().toISOString() }))); // Ensure lastModified exists
+          
+          let mappedWarmups = filteredWarmups.map((w: any) => ({
+            id: w.id,
+            name: w.name,
+            meet: w.meet,
+            lastModified: w.lastModified || new Date().toISOString(),
+            session_number: undefined // No session number from AsyncStorage directly
+          }));
+
+          mappedWarmups.sort((a: AthleteWarmup, b: AthleteWarmup) => {
+            const sessionA = a.session_number ?? Infinity;
+            const sessionB = b.session_number ?? Infinity;
+            if (sessionA === sessionB) {
+                return a.name.localeCompare(b.name);
+            }
+            return sessionA - sessionB;
+          });
+          setSavedWarmups(mappedWarmups);
         } else {
           setSavedWarmups([]);
         }
       } else if (supabaseWarmups) {
         console.log('Supabase warmups fetched:', supabaseWarmups);
-        // Map Supabase data
-        const formattedWarmups = supabaseWarmups.map(w => ({
+
+        if (supabaseWarmups.length === 0) {
+          setSavedWarmups([]);
+          return;
+        }
+
+        // Extract unique athlete names from the fetched warmups
+        const athleteNames = [...new Set(supabaseWarmups.map(w => w.name).filter(name => name != null))] as string[];
+
+        let athleteSessionMap = new Map<string, number>();
+
+        if (athleteNames.length > 0) {
+          const { data: athletesData, error: athletesError } = await supabase
+            .from('athletes')
+            .select('name, session_number')
+            .in('name', athleteNames);
+
+          if (athletesError) {
+            console.error('Error fetching athletes data from Supabase:', athletesError);
+            // Proceed without session numbers, or handle error differently
+          } else if (athletesData) {
+            athletesData.forEach((athlete: { name: string; session_number: number | null }) => {
+              if (athlete.name && typeof athlete.session_number === 'number') {
+                athleteSessionMap.set(athlete.name, athlete.session_number);
+              }
+            });
+          }
+        }
+        
+        let combinedWarmups = supabaseWarmups.map(w => ({
           id: w.id,
           name: w.name,
           meet: w.meet,
-          lastModified: w.updated_at || new Date().toISOString(), // Use updated_at as lastModified
+          lastModified: w.updated_at || new Date().toISOString(),
+          session_number: athleteSessionMap.get(w.name) // Get session number from the map
         }));
 
-        // Update local state
-        setSavedWarmups(formattedWarmups);
+        combinedWarmups.sort((a, b) => {
+          const sessionA = a.session_number ?? Infinity;
+          const sessionB = b.session_number ?? Infinity;
+          if (sessionA === sessionB) {
+            return a.name.localeCompare(b.name);
+          }
+          return sessionA - sessionB;
+        });
 
-        // Optionally: Update AsyncStorage based on Supabase data for offline use?
-        // This requires fetching *all* user warmups from Supabase, not just filtered
-        // For now, we only update the state based on the current filter.
-        // A full sync mechanism would handle this better.
-
+        setSavedWarmups(combinedWarmups);
       } else {
         console.log('No warmups found in Supabase for this filter');
         setSavedWarmups([]);
-        // Optionally clear relevant portion of AsyncStorage if needed
       }
     } catch (error) {
       console.error('Error loading warmups:', error);
