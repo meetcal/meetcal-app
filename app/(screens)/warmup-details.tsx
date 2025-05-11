@@ -18,6 +18,8 @@ interface WarmupRow {
   minutesOut: string | number
   snatch: string | number
   cleanAndJerk: string | number
+  snatchCrossedOut?: boolean
+  cleanAndJerkCrossedOut?: boolean
 }
 
 interface AthleteInfo {
@@ -45,6 +47,11 @@ export default function WarmupDetailsScreen() {
   const [warmup, setWarmup] = useState<SavedWarmup | null>(null)
   const [warmupRows, setWarmupRows] = useState<WarmupRow[]>([])
   const [isEditing, setIsEditing] = useState(false)
+
+  // DEBUG: Log warmupRows changes
+  useEffect(() => {
+    console.log('[WarmupDetails] warmupRows updated:', JSON.stringify(warmupRows, null, 2));
+  }, [warmupRows]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -180,6 +187,50 @@ export default function WarmupDetailsScreen() {
     }
     setWarmupRows(newRows)
   }
+
+  const handleToggleCrossOut = async (rowIndex: number, liftType: 'snatch' | 'cleanAndJerk') => {
+    console.log(`[WarmupDetails] handleToggleCrossOut called. rowIndex: ${rowIndex}, liftType: ${liftType}, isEditing: ${isEditing}, warmup exists: ${!!warmup}, user ID exists: ${!!user?.id}`);
+    if (isEditing || !warmup || !user?.id) {
+      console.log('[WarmupDetails] handleToggleCrossOut returning early. isEditing:', isEditing, '!warmup:', !warmup, '!user?.id:', !user?.id);
+      return;
+    }
+
+    const newRows = warmupRows.map((row, index) => {
+      if (index === rowIndex) {
+        if (liftType === 'snatch') {
+          return { ...row, snatchCrossedOut: !row.snatchCrossedOut };
+        } else if (liftType === 'cleanAndJerk') {
+          return { ...row, cleanAndJerkCrossedOut: !row.cleanAndJerkCrossedOut };
+        }
+      }
+      return row;
+    });
+
+    setWarmupRows(newRows);
+
+    const updatedWarmupForAsyncStorage: SavedWarmup = {
+      ...warmup,
+      warmupRows: newRows,
+      lastModified: new Date().toISOString(),
+    };
+    setWarmup(updatedWarmupForAsyncStorage); // Keep local state consistent
+
+    // Persist to AsyncStorage
+    try {
+      const key = getSavedWarmupsKey(user.id);
+      const savedWarmups = await AsyncStorage.getItem(key);
+      let allWarmups: SavedWarmup[] = savedWarmups ? JSON.parse(savedWarmups) : [];
+      
+      const updatedWarmupsList = allWarmups.map(w => 
+        w.id === warmup.id ? updatedWarmupForAsyncStorage : w
+      );
+      
+      await AsyncStorage.setItem(key, JSON.stringify(updatedWarmupsList));
+      console.log('Warmup (cross-out) updated in AsyncStorage');
+    } catch (error) {
+      console.error('Error updating warmup (cross-out) in AsyncStorage:', error);
+    }
+  };
 
   const handleSave = async () => {
     if (!warmup || !user?.id) return
@@ -365,22 +416,42 @@ export default function WarmupDetailsScreen() {
                       placeholderTextColor={colors.secondaryText}
                     />
                     <TextInput
-                      style={[styles.tableCell, { color: colors.text }]}
+                      style={[
+                        styles.tableCell, 
+                        { color: colors.text },
+                        row.snatchCrossedOut && !isEditing && styles.crossedOutText
+                      ]}
                       value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
                       placeholder="—"
                       placeholderTextColor={colors.secondaryText}
                       keyboardType="numeric"
                       onChangeText={(value) => handleSnatchChange(index, value)}
                       editable={isEditing}
+                      onPress={() => {
+                        if (!isEditing) {
+                          console.log(`[WarmupDetails] Snatch TextInput pressed. Index: ${index}`);
+                          handleToggleCrossOut(index, 'snatch');
+                        }
+                      }}
                     />
                     <TextInput
-                      style={[styles.tableCell, { color: colors.text }]}
+                      style={[
+                        styles.tableCell,
+                        { color: colors.text },
+                        row.cleanAndJerkCrossedOut && !isEditing && styles.crossedOutText
+                      ]}
                       value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
                       placeholder="—"
                       placeholderTextColor={colors.secondaryText}
                       keyboardType="numeric"
                       onChangeText={(value) => handleCleanAndJerkChange(index, value)}
                       editable={isEditing}
+                      onPress={() => {
+                        if (!isEditing) {
+                          console.log(`[WarmupDetails] C&J TextInput pressed. Index: ${index}`);
+                          handleToggleCrossOut(index, 'cleanAndJerk');
+                        }
+                      }}
                     />
                   </View>
                 ))}
@@ -472,6 +543,10 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 17,
     textAlign: 'center',
+  },
+  crossedOutText: {
+    textDecorationLine: 'line-through',
+    color: '#8E8E93',
   },
   saveButtonContainer: {
     paddingHorizontal: 16,
