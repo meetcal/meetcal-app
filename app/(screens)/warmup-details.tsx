@@ -36,6 +36,7 @@ interface SavedWarmup {
   athlete: AthleteInfo
   warmupRows: WarmupRow[]
   meet: string
+  notes?: string
 }
 
 export default function WarmupDetailsScreen() {
@@ -47,6 +48,7 @@ export default function WarmupDetailsScreen() {
   const [warmup, setWarmup] = useState<SavedWarmup | null>(null)
   const [warmupRows, setWarmupRows] = useState<WarmupRow[]>([])
   const [isEditing, setIsEditing] = useState(false)
+  const [notes, setNotes] = useState('')
 
   // DEBUG: Log warmupRows changes
   useEffect(() => {
@@ -76,6 +78,7 @@ export default function WarmupDetailsScreen() {
         console.log('User ID or Warmup ID missing');
         setWarmup(null); // Clear warmup if IDs are missing
         setWarmupRows([]);
+        setNotes('');
         return;
     }
     
@@ -85,7 +88,7 @@ export default function WarmupDetailsScreen() {
       // --- Try fetching from Supabase first ---
       const { data: supabaseData, error: supabaseError } = await supabase
         .from('saved_warmups')
-        .select('id, name, meet, warmup_data, updated_at') // Select all necessary fields
+        .select('id, name, meet, warmup_data, updated_at, notes') // Select all necessary fields
         .eq('id', id)
         .eq('user_id', user.id)
         .single(); // Expecting a single result
@@ -118,10 +121,12 @@ export default function WarmupDetailsScreen() {
             meet: warmupRecord.meet,
             lastModified: warmupRecord.updated_at || new Date().toISOString(),
             athlete: parsedWarmupData.athlete,
-            warmupRows: parsedWarmupData.warmupRows || []
+            warmupRows: parsedWarmupData.warmupRows || [],
+            notes: warmupRecord.notes || '',
           };
           setWarmup(loadedWarmup);
           setWarmupRows(loadedWarmup.warmupRows);
+          setNotes(loadedWarmup.notes || '');
 
           // Optionally update AsyncStorage here if needed for offline consistency
           // This would involve fetching the full list, updating this item, and saving back
@@ -144,17 +149,20 @@ export default function WarmupDetailsScreen() {
           if (selectedWarmup) {
             setWarmup(selectedWarmup);
             setWarmupRows(selectedWarmup.warmupRows || []); // Ensure warmupRows is always an array
+            setNotes(selectedWarmup.notes || '');
           }
         } else {
           console.log('Warmup not found in AsyncStorage either');
           setWarmup(null);
           setWarmupRows([]);
+          setNotes('');
         }
       }
     } catch (error) {
       console.error('Error loading warmup:', error);
       setWarmup(null);
       setWarmupRows([]);
+      setNotes('');
     }
   };
 
@@ -211,6 +219,7 @@ export default function WarmupDetailsScreen() {
     const updatedWarmupForAsyncStorage: SavedWarmup = {
       ...warmup,
       warmupRows: newRows,
+      notes: notes,
       lastModified: new Date().toISOString(),
     };
     setWarmup(updatedWarmupForAsyncStorage); // Keep local state consistent
@@ -249,6 +258,7 @@ export default function WarmupDetailsScreen() {
             return {
               ...w,
               warmupRows, // Use the updated rows from state
+              notes: notes,
               lastModified: updatedTimestamp
             }
           }
@@ -264,14 +274,16 @@ export default function WarmupDetailsScreen() {
       // 2. Update Supabase
       const updatedWarmupDataForSupabase = {
         athlete: warmup.athlete, // Keep original athlete info
-        warmupRows: warmupRows // Send the updated rows
+        warmupRows: warmupRows, // Send the updated rows
+        notes: notes, // Add notes to Supabase update
       };
 
       const { error: supabaseError } = await supabase
         .from('saved_warmups')
         .update({
           warmup_data: updatedWarmupDataForSupabase,
-          updated_at: updatedTimestamp // Explicitly set updated_at
+          notes: notes,
+          updated_at: updatedTimestamp
         })
         .match({ id: id, user_id: user.id });
 
@@ -456,6 +468,26 @@ export default function WarmupDetailsScreen() {
                   </View>
                 ))}
               </View>
+
+              {/* Notes Section */} 
+              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                <ThemedText style={[styles.notesHeader, { color: colors.secondaryText, borderBottomColor: colors.border }]}>
+                  Notes
+                </ThemedText>
+                <TextInput
+                  style={[
+                    styles.notesInput,
+                    { color: colors.text, borderColor: colors.border }                  ]}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Add any notes here..."
+                  placeholderTextColor={colors.secondaryText}
+                  multiline
+                  numberOfLines={4} // Suggest a minimum height
+                  editable={isEditing}
+                  textAlignVertical="top" // Align text to the top for multiline
+                />
+              </View>
             </>
           )}
         </ScrollView>
@@ -543,6 +575,18 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 17,
     textAlign: 'center',
+  },
+  notesHeader: {
+    fontSize: 15,
+    fontWeight: '600',
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notesInput: {
+    padding: 12,
+    fontSize: 16,
+    minHeight: 100, // Ensure a decent default size
+    borderWidth: 0, // No border inside the card, relies on card border
   },
   crossedOutText: {
     textDecorationLine: 'line-through',
