@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native'
+import { StyleSheet, View, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Alert } from 'react-native'
 import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
@@ -44,6 +44,7 @@ export default function WarmupDetailsScreen() {
   const insets = useSafeAreaInsets()
   const [warmup, setWarmup] = useState<SavedWarmup | null>(null)
   const [warmupRows, setWarmupRows] = useState<WarmupRow[]>([])
+  const [isEditing, setIsEditing] = useState(false)
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -226,14 +227,26 @@ export default function WarmupDetailsScreen() {
       if (supabaseError) {
         console.error('Error updating warmup in Supabase:', supabaseError);
         // Handle error - revert local changes? Show message?
+        Alert.alert("Error", "Failed to save changes to the server.");
       } else {
         console.log('Warmup updated in Supabase successfully');
+        Alert.alert("Success", "Warmup changes saved successfully.");
       }
       
-      // Navigate back after attempts
-      router.back()
+      // Navigate back after attempts - REMOVED
+      // router.back()
     } catch (error) {
       console.error('Error saving warmup changes:', error)
+      Alert.alert("Error", "An unexpected error occurred while saving.");
+    }
+  };
+
+  const handleEditPress = () => {
+    if (isEditing) {
+      handleSave(); // Save is now async, but handleEditPress doesn't need to await it for setIsEditing
+      setIsEditing(false); // Set to false after initiating save
+    } else {
+      setIsEditing(true);
     }
   };
 
@@ -345,7 +358,7 @@ export default function WarmupDetailsScreen() {
                     <TextInput
                       style={[styles.tableCell, { color: colors.text }]}
                       value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
-                      editable={index >= 3}
+                      editable={index >= 3 && isEditing}
                       keyboardType="numeric"
                       onChangeText={(value) => handleMinutesOutChange(index, value)}
                       placeholder="—"
@@ -358,6 +371,7 @@ export default function WarmupDetailsScreen() {
                       placeholderTextColor={colors.secondaryText}
                       keyboardType="numeric"
                       onChangeText={(value) => handleSnatchChange(index, value)}
+                      editable={isEditing}
                     />
                     <TextInput
                       style={[styles.tableCell, { color: colors.text }]}
@@ -366,6 +380,7 @@ export default function WarmupDetailsScreen() {
                       placeholderTextColor={colors.secondaryText}
                       keyboardType="numeric"
                       onChangeText={(value) => handleCleanAndJerkChange(index, value)}
+                      editable={isEditing}
                     />
                   </View>
                 ))}
@@ -388,10 +403,10 @@ export default function WarmupDetailsScreen() {
           ]}>
             <Pressable
               style={[styles.saveButton, { backgroundColor: colors.link }]}
-              onPress={handleSave}
+              onPress={handleEditPress}
             >
               <ThemedText style={styles.saveButtonText}>
-                Save Changes
+                {isEditing ? 'Save Changes' : 'Edit'}
               </ThemedText>
             </Pressable>
           </View>
