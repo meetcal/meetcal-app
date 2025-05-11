@@ -4,12 +4,14 @@ import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { useTheme } from '@/contexts/ThemeContext'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { IconSymbol } from '@/components/ui/IconSymbol'
 import { useUser } from '@clerk/clerk-expo'
 import { supabase } from '@/lib/supabase'
+import { Gesture, GestureDetector, GestureHandlerRootView, Directions } from 'react-native-gesture-handler'
+import { runOnJS } from 'react-native-reanimated'
 
 // Update storage key to be user-specific
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -76,8 +78,12 @@ interface SavedWarmup {
 export default function WarmupDetailsScreen() {
   const { user } = useUser();
   const { currentTheme } = useTheme()
-  const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
+  const params = useLocalSearchParams<{ id: string, allWarmupIds?: string, currentIndex?: string }>();
+  const id = params.id;
+  const allWarmupIdsString = params.allWarmupIds;
+  const currentIndexString = params.currentIndex;
+
   const insets = useSafeAreaInsets()
   const [warmup, setWarmup] = useState<SavedWarmup | null>(null)
   const [warmupRows, setWarmupRows] = useState<WarmupRow[]>([])
@@ -85,6 +91,21 @@ export default function WarmupDetailsScreen() {
   const [notes, setNotes] = useState('')
   const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
   const [loadingBests, setLoadingBests] = useState(true);
+
+  const allWarmupIds = useMemo(() => {
+    try {
+      const parsed = allWarmupIdsString ? JSON.parse(allWarmupIdsString) as string[] : [];
+      return parsed;
+    } catch (e) {
+      return [];
+    }
+  }, [allWarmupIdsString]);
+
+  const currentIndex = useMemo(() => {
+    const idx = currentIndexString ? parseInt(currentIndexString, 10) : -1;
+    const result = isNaN(idx) ? -1 : idx;
+    return result;
+  }, [currentIndexString]);
 
   // DEBUG: Log warmupRows changes
   useEffect(() => {
@@ -104,10 +125,11 @@ export default function WarmupDetailsScreen() {
   }
 
   useEffect(() => {
+    console.log(`[WarmupDetails] EFFECT (id,cIdx,allIds): ID: ${id}, CurrentIndex: ${currentIndex}, AllIdsLength: ${allWarmupIds.length}`);
     if (user?.id) {
       loadWarmup()
     }
-  }, [id, user?.id])
+  }, [id, user?.id, currentIndex, allWarmupIds]);
 
   useEffect(() => {
     const loadBests = async () => {
@@ -120,6 +142,67 @@ export default function WarmupDetailsScreen() {
     };
     loadBests();
   }, [warmup?.athlete?.name]);
+
+  const handleNext = () => {
+    console.log(`[WarmupDetails] handleNext CALLED. CurrentIndex: ${currentIndex}, AllIds.length: ${allWarmupIds.length}`);
+    if (currentIndex === -1 || allWarmupIds.length === 0) {
+        return;
+    }
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < allWarmupIds.length) {
+      const nextWarmupId = allWarmupIds[nextIndex];
+      router.replace({ 
+        pathname: '/(screens)/warmup-details',
+        params: {
+          id: nextWarmupId,
+          allWarmupIds: JSON.stringify(allWarmupIds),
+          currentIndex: nextIndex.toString(),
+        },
+      });
+    } else {
+      console.log(`[WarmupDetails] handleNext: Already at the last warmup. nextIndex (${nextIndex}) >= allWarmupIds.length (${allWarmupIds.length})`);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentIndex === -1 || allWarmupIds.length === 0) {
+        return;
+    }
+    const prevIndex = currentIndex - 1;
+    if (prevIndex >= 0) {
+      const prevWarmupId = allWarmupIds[prevIndex];
+      router.replace({
+        pathname: '/(screens)/warmup-details',
+        params: {
+          id: prevWarmupId,
+          allWarmupIds: JSON.stringify(allWarmupIds),
+          currentIndex: prevIndex.toString(),
+        },
+      });
+    } else {
+      console.log(`[WarmupDetails] handlePrevious: Already at the first warmup. prevIndex (${prevIndex}) < 0`);
+    }
+  };
+
+  // Define separate fling gestures for left and right
+  const flingLeft = Gesture.Fling()
+    .direction(Directions.LEFT)
+    .onEnd(() => {
+      if (allWarmupIds.length > 1 && currentIndex !== -1) {
+        runOnJS(handleNext)();
+      }
+    });
+
+  const flingRight = Gesture.Fling()
+    .direction(Directions.RIGHT)
+    .onEnd(() => {
+      if (allWarmupIds.length > 1 && currentIndex !== -1) {
+        runOnJS(handlePrevious)();
+      }
+    });
+
+  // Combine gestures
+  const combinedFlingGesture = Gesture.Race(flingLeft, flingRight);
 
   const loadWarmup = async () => {
     if (!user?.id || !id) {
@@ -361,257 +444,261 @@ export default function WarmupDetailsScreen() {
   };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: warmup?.athlete.name || 'Warmup Details',
-          headerBackTitle: 'Back',
-          headerTitleStyle: {
-            color: colors.text,
-          },
-          headerTintColor: '#007AFF',
-          gestureEnabled: true,
-          gestureDirection: 'horizontal',
-          animation: 'slide_from_right',
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-        }}
-      />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureDetector gesture={combinedFlingGesture}>
+        <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+          <Stack.Screen
+            options={{
+              headerShown: true,
+              headerTitle: warmup?.athlete.name || 'Warmup Details',
+              headerBackTitle: 'Back',
+              headerTitleStyle: {
+                color: colors.text,
+              },
+              headerTintColor: '#007AFF',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+              animation: 'slide_from_right',
+              headerStyle: {
+                backgroundColor: colors.background,
+              },
+              headerShadowVisible: false,
+            }}
+          />
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      >
-        <ScrollView 
-          style={styles.scrollView} 
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: 32 }
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={true}
-        >
-          {warmup && (
-            <>
-              <View style={[styles.card, { backgroundColor: colors.card }]}>
-                {/* Athlete Info */}
-                <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-                  <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                    Club
-                  </ThemedText>
-                  <ThemedText style={[styles.value, { color: colors.text }]}>
-                    {warmup.athlete.club}
-                  </ThemedText>
-                </View>
-
-                {/* PRs */}
-              {/* Bests From The Last Year Section */}
-              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-                <View style={[
-                    styles.statsContainer, 
-                    { 
-                      borderTopColor: colors.border, 
-                      paddingTop: 0,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                      borderBottomColor: colors.border
-                    }
-                  ]}>
-                  <View style={styles.statsRow}>
-                    {loadingBests ? (
-                      <ActivityIndicator size="small" color={colors.secondaryText} style={{flex: 1, paddingVertical: 10}} />
-                    ) : (
-                      <>
-                        <View style={styles.statItem}>
-                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                            Snatch
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                            CJ
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                            Total
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                          </ThemedText>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                </View>
-              </View>
-
-                {/* Combined Results and Qualifying Totals Row */}
-                <View style={[styles.combinedButtonRow, { borderBottomColor: colors.border }]}>
-                  {/* Meet Results Button */}
-                  <Pressable
-                    style={styles.combinedButton}
-                    onPress={() => router.push({
-                      pathname: '/athlete-results',
-                      params: { name: warmup.athlete.name }
-                    })}
-                  >
-                    <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
-                      Meet Results
-                    </ThemedText>
-                    <IconSymbol name="chevron.right" size={16} color={colors.link} />
-                  </Pressable>
-
-                  {/* Vertical Separator */}
-                  <View style={[styles.verticalSeparator, { backgroundColor: colors.border }]} />
-
-                  {/* Qualifying Totals Button */}
-                  <Pressable
-                    style={styles.combinedButton}
-                    onPress={() => router.push({
-                      pathname: '/new-qualifying-totals',
-                      params: { name: warmup.athlete.name }
-                    })}
-                  >
-                    <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
-                      Qualifying Totals
-                    </ThemedText>
-                    <IconSymbol name="chevron.right" size={16} color={colors.link} />
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Warmup Table */}
-              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-                <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
-                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                    Minutes Out
-                  </ThemedText>
-                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                    Snatch
-                  </ThemedText>
-                  <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
-                    C&J
-                  </ThemedText>
-                </View>
-
-                {warmupRows.map((row, index) => (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.tableRow, 
-                      index < warmupRows.length - 1 && { borderBottomColor: colors.border },
-                      index < 3 && { backgroundColor: colors.highlight }
-                    ]}
-                  >
-                    <TextInput
-                      style={[styles.tableCell, { color: colors.text }]}
-                      value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
-                      editable={index >= 3 && isEditing}
-                      keyboardType="numeric"
-                      onChangeText={(value) => handleMinutesOutChange(index, value)}
-                      placeholder="—"
-                      placeholderTextColor={colors.secondaryText}
-                    />
-                    <TextInput
-                      style={[
-                        styles.tableCell, 
-                        { color: colors.text },
-                        row.snatchCrossedOut && !isEditing && styles.crossedOutText
-                      ]}
-                      value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
-                      placeholder="—"
-                      placeholderTextColor={colors.secondaryText}
-                      keyboardType="numeric"
-                      onChangeText={(value) => handleSnatchChange(index, value)}
-                      editable={isEditing}
-                      onPress={() => {
-                        if (!isEditing) {
-                          console.log(`[WarmupDetails] Snatch TextInput pressed. Index: ${index}`);
-                          handleToggleCrossOut(index, 'snatch');
-                        }
-                      }}
-                    />
-                    <TextInput
-                      style={[
-                        styles.tableCell,
-                        { color: colors.text },
-                        row.cleanAndJerkCrossedOut && !isEditing && styles.crossedOutText
-                      ]}
-                      value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
-                      placeholder="—"
-                      placeholderTextColor={colors.secondaryText}
-                      keyboardType="numeric"
-                      onChangeText={(value) => handleCleanAndJerkChange(index, value)}
-                      editable={isEditing}
-                      onPress={() => {
-                        if (!isEditing) {
-                          console.log(`[WarmupDetails] C&J TextInput pressed. Index: ${index}`);
-                          handleToggleCrossOut(index, 'cleanAndJerk');
-                        }
-                      }}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              {/* Notes Section */} 
-              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-                <ThemedText style={[styles.notesHeader, { color: colors.secondaryText, borderBottomColor: colors.border }]}>
-                  Notes
-                </ThemedText>
-                <TextInput
-                  style={[
-                    styles.notesInput,
-                    { color: colors.text, borderColor: colors.border }                  ]}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Add any notes here..."
-                  placeholderTextColor={colors.secondaryText}
-                  multiline
-                  numberOfLines={4} // Suggest a minimum height
-                  editable={isEditing}
-                  textAlignVertical="top" // Align text to the top for multiline
-                />
-              </View>
-            </>
-          )}
-        </ScrollView>
-
-        {/* Save Button - Fixed to bottom */}
-        {warmup && (
-          <View style={[
-            styles.saveButtonContainer, 
-            { 
-              backgroundColor: colors.background,
-              paddingBottom: Math.max(insets.bottom, 12),
-              paddingTop: 12,
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: colors.border
-            }
-          ]}>
-            <Pressable
-              style={[styles.saveButton, { backgroundColor: colors.link }]}
-              onPress={handleEditPress}
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+          >
+            <ScrollView 
+              style={styles.scrollView} 
+              contentContainerStyle={[
+                styles.content,
+                { paddingBottom: 32 }
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={true}
             >
-              <ThemedText style={styles.saveButtonText}>
-                {isEditing ? 'Save Changes' : 'Edit'}
-              </ThemedText>
-            </Pressable>
-          </View>
-        )}
-      </KeyboardAvoidingView>
-    </ThemedView>
+              {warmup && (
+                <>
+                  <View style={[styles.card, { backgroundColor: colors.card }]}>
+                    {/* Athlete Info */}
+                    <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+                      <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
+                        Club
+                      </ThemedText>
+                      <ThemedText style={[styles.value, { color: colors.text }]}>
+                        {warmup.athlete.club}
+                      </ThemedText>
+                    </View>
+
+                    {/* PRs */}
+                  {/* Bests From The Last Year Section */}
+                  <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                    <View style={[
+                        styles.statsContainer, 
+                        { 
+                          borderTopColor: colors.border, 
+                          paddingTop: 0,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: colors.border
+                        }
+                      ]}>
+                      <View style={styles.statsRow}>
+                        {loadingBests ? (
+                          <ActivityIndicator size="small" color={colors.secondaryText} style={{flex: 1, paddingVertical: 10}} />
+                        ) : (
+                          <>
+                            <View style={styles.statItem}>
+                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                Snatch
+                              </ThemedText>
+                              <ThemedText style={styles.statValue}>
+                                {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.statItem}>
+                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                CJ
+                              </ThemedText>
+                              <ThemedText style={styles.statValue}>
+                                {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.statItem}>
+                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                Total
+                              </ThemedText>
+                              <ThemedText style={styles.statValue}>
+                                {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                              </ThemedText>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+
+                    {/* Combined Results and Qualifying Totals Row */}
+                    <View style={[styles.combinedButtonRow, { borderBottomColor: colors.border }]}>
+                      {/* Meet Results Button */}
+                      <Pressable
+                        style={styles.combinedButton}
+                        onPress={() => router.push({
+                          pathname: '/athlete-results',
+                          params: { name: warmup.athlete.name }
+                        })}
+                      >
+                        <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
+                          Meet Results
+                        </ThemedText>
+                        <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                      </Pressable>
+
+                      {/* Vertical Separator */}
+                      <View style={[styles.verticalSeparator, { backgroundColor: colors.border }]} />
+
+                      {/* Qualifying Totals Button */}
+                      <Pressable
+                        style={styles.combinedButton}
+                        onPress={() => router.push({
+                          pathname: '/new-qualifying-totals',
+                          params: { name: warmup.athlete.name }
+                        })}
+                      >
+                        <ThemedText style={[styles.combinedButtonText, { color: colors.link }]}>
+                          Qualifying Totals
+                        </ThemedText>
+                        <IconSymbol name="chevron.right" size={16} color={colors.link} />
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* Warmup Table */}
+                  <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                    <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
+                      <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                        Minutes Out
+                      </ThemedText>
+                      <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                        Snatch
+                      </ThemedText>
+                      <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>
+                        C&J
+                      </ThemedText>
+                    </View>
+
+                    {warmupRows.map((row, index) => (
+                      <View 
+                        key={index} 
+                        style={[
+                          styles.tableRow, 
+                          index < warmupRows.length - 1 && { borderBottomColor: colors.border },
+                          index < 3 && { backgroundColor: colors.highlight }
+                        ]}
+                      >
+                        <TextInput
+                          style={[styles.tableCell, { color: colors.text }]}
+                          value={index === 0 ? "3rd" : index === 1 ? "2nd" : index === 2 ? "Opener" : row.minutesOut.toString() === '0' ? '' : row.minutesOut.toString()}
+                          editable={index >= 3 && isEditing}
+                          keyboardType="numeric"
+                          onChangeText={(value) => handleMinutesOutChange(index, value)}
+                          placeholder="—"
+                          placeholderTextColor={colors.secondaryText}
+                        />
+                        <TextInput
+                          style={[
+                            styles.tableCell, 
+                            { color: colors.text },
+                            row.snatchCrossedOut && !isEditing && styles.crossedOutText
+                          ]}
+                          value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
+                          placeholder="—"
+                          placeholderTextColor={colors.secondaryText}
+                          keyboardType="numeric"
+                          onChangeText={(value) => handleSnatchChange(index, value)}
+                          editable={isEditing}
+                          onPress={() => {
+                            if (!isEditing) {
+                              console.log(`[WarmupDetails] Snatch TextInput pressed. Index: ${index}`);
+                              handleToggleCrossOut(index, 'snatch');
+                            }
+                          }}
+                        />
+                        <TextInput
+                          style={[
+                            styles.tableCell,
+                            { color: colors.text },
+                            row.cleanAndJerkCrossedOut && !isEditing && styles.crossedOutText
+                          ]}
+                          value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
+                          placeholder="—"
+                          placeholderTextColor={colors.secondaryText}
+                          keyboardType="numeric"
+                          onChangeText={(value) => handleCleanAndJerkChange(index, value)}
+                          editable={isEditing}
+                          onPress={() => {
+                            if (!isEditing) {
+                              console.log(`[WarmupDetails] C&J TextInput pressed. Index: ${index}`);
+                              handleToggleCrossOut(index, 'cleanAndJerk');
+                            }
+                          }}
+                        />
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Notes Section */} 
+                  <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
+                    <ThemedText style={[styles.notesHeader, { color: colors.secondaryText, borderBottomColor: colors.border }]}>
+                      Notes
+                    </ThemedText>
+                    <TextInput
+                      style={[
+                        styles.notesInput,
+                        { color: colors.text, borderColor: colors.border }                  ]}
+                      value={notes}
+                      onChangeText={setNotes}
+                      placeholder="Add any notes here..."
+                      placeholderTextColor={colors.secondaryText}
+                      multiline
+                      numberOfLines={4} // Suggest a minimum height
+                      editable={isEditing}
+                      textAlignVertical="top" // Align text to the top for multiline
+                    />
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            {/* Save Button - Fixed to bottom */}
+            {warmup && (
+              <View style={[
+                styles.saveButtonContainer, 
+                { 
+                  backgroundColor: colors.background,
+                  paddingBottom: Math.max(insets.bottom, 12),
+                  paddingTop: 12,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border
+                }
+              ]}>
+                <Pressable
+                  style={[styles.saveButton, { backgroundColor: colors.link }]}
+                  onPress={handleEditPress}
+                >
+                  <ThemedText style={styles.saveButtonText}>
+                    {isEditing ? 'Save Changes' : 'Edit'}
+                  </ThemedText>
+                </Pressable>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        </ThemedView>
+      </GestureDetector>
+    </GestureHandlerRootView>
   )
 }
 
