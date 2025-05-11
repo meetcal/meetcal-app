@@ -346,10 +346,17 @@ export default function WarmupsScreen() {
                         },
                         pressed && { backgroundColor: colors.pressed }
                       ]}
-                      onPress={() => router.push({
-                        pathname: '/warmup-details',
-                        params: { id: warmup.id }
-                      })}
+                      onPress={() => {
+                        const allWarmupIds = savedWarmups.map(w => w.id);
+                        router.push({
+                          pathname: '/(screens)/warmup-details', // Ensure this path is correct for your project structure
+                          params: { 
+                            id: warmup.id,
+                            allWarmupIds: JSON.stringify(allWarmupIds),
+                            currentIndex: index.toString()
+                          }
+                        });
+                      }}
                     >
                       <View>
                         <ThemedText style={[styles.athleteName, { color: colors.text }]}>
