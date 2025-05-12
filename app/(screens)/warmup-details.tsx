@@ -494,52 +494,50 @@ export default function WarmupDetailsScreen() {
                       </ThemedText>
                     </View>
 
-                    {/* PRs */}
-                  {/* Bests From The Last Year Section */}
-                  <View style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}>
-                    <View style={[
-                        styles.statsContainer, 
-                        { 
-                          borderTopColor: colors.border, 
-                          paddingTop: 0,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderBottomColor: colors.border
-                        }
-                      ]}>
-                      <View style={styles.statsRow}>
-                        {loadingBests ? (
-                          <ActivityIndicator size="small" color={colors.secondaryText} style={{flex: 1, paddingVertical: 10}} />
-                        ) : (
-                          <>
-                            <View style={styles.statItem}>
-                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                                Snatch
-                              </ThemedText>
-                              <ThemedText style={styles.statValue}>
-                                {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                              </ThemedText>
-                            </View>
-                            <View style={styles.statItem}>
-                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                                CJ
-                              </ThemedText>
-                              <ThemedText style={styles.statValue}>
-                                {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                              </ThemedText>
-                            </View>
-                            <View style={styles.statItem}>
-                              <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                                Total
-                              </ThemedText>
-                              <ThemedText style={styles.statValue}>
-                                {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                              </ThemedText>
-                            </View>
-                          </>
-                        )}
+                    {/* Bests From The Last Year Section */}
+                    <View>
+                      <View style={[
+                          styles.statsContainer, // Provides paddingVertical: 12
+                          { 
+                            // Removed borderTopColor and paddingTop: 0. Top separation from infoRow's bottom border.
+                            borderBottomWidth: StyleSheet.hairlineWidth, // Keeps bottom border for separation
+                            borderBottomColor: colors.border
+                          }
+                        ]}>
+                        <View style={styles.statsRow}>
+                          {loadingBests ? (
+                            <ActivityIndicator size="small" color={colors.secondaryText} style={{flex: 1, paddingVertical: 10}} />
+                          ) : (
+                            <>
+                              <View style={styles.statItem}>
+                                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                  Snatch
+                                </ThemedText>
+                                <ThemedText style={styles.statValue}>
+                                  {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
+                                </ThemedText>
+                              </View>
+                              <View style={styles.statItem}>
+                                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                  CJ
+                                </ThemedText>
+                                <ThemedText style={styles.statValue}>
+                                  {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
+                                </ThemedText>
+                              </View>
+                              <View style={styles.statItem}>
+                                <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
+                                  Total
+                                </ThemedText>
+                                <ThemedText style={styles.statValue}>
+                                  {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
+                                </ThemedText>
+                              </View>
+                            </>
+                          )}
+                        </View>
                       </View>
                     </View>
-                  </View>
 
                     {/* Combined Results and Qualifying Totals Row */}
                     <View style={[styles.combinedButtonRow, { borderBottomColor: colors.border }]}>
