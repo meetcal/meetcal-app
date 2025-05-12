@@ -606,44 +606,78 @@ export default function WarmupDetailsScreen() {
                           placeholder="—"
                           placeholderTextColor={colors.secondaryText}
                         />
-                        <TextInput
-                          style={[
-                            styles.tableCell, 
-                            { color: colors.text },
-                            row.snatchCrossedOut && !isEditing && styles.crossedOutText
-                          ]}
-                          value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
-                          placeholder="—"
-                          placeholderTextColor={colors.secondaryText}
-                          keyboardType="numeric"
-                          onChangeText={(value) => handleSnatchChange(index, value)}
-                          editable={isEditing}
-                          onPress={() => {
-                            if (!isEditing) {
-                              console.log(`[WarmupDetails] Snatch TextInput pressed. Index: ${index}`);
+                        {isEditing ? (
+                          <TextInput
+                            style={[
+                              styles.tableCell,
+                              { color: row.snatchCrossedOut ? colors.secondaryText : colors.text },
+                              { textDecorationLine: row.snatchCrossedOut ? 'line-through' : 'none' }
+                            ]}
+                            value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
+                            placeholder="—"
+                            placeholderTextColor={colors.secondaryText}
+                            keyboardType="numeric"
+                            onChangeText={(value) => handleSnatchChange(index, value)}
+                            editable={true}
+                          />
+                        ) : (
+                          <Pressable 
+                            style={styles.tableCellPressable}
+                            onPress={() => {
+                              console.log(`[WarmupDetails] Snatch Pressable pressed. Index: ${index}`);
                               handleToggleCrossOut(index, 'snatch');
-                            }
-                          }}
-                        />
-                        <TextInput
-                          style={[
-                            styles.tableCell,
-                            { color: colors.text },
-                            row.cleanAndJerkCrossedOut && !isEditing && styles.crossedOutText
-                          ]}
-                          value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
-                          placeholder="—"
-                          placeholderTextColor={colors.secondaryText}
-                          keyboardType="numeric"
-                          onChangeText={(value) => handleCleanAndJerkChange(index, value)}
-                          editable={isEditing}
-                          onPress={() => {
-                            if (!isEditing) {
-                              console.log(`[WarmupDetails] C&J TextInput pressed. Index: ${index}`);
-                              handleToggleCrossOut(index, 'cleanAndJerk');
-                            }
-                          }}
-                        />
+                            }}
+                          >
+                            <TextInput
+                              style={[
+                                styles.tableCell,
+                                { color: row.snatchCrossedOut ? colors.secondaryText : colors.text },
+                                { textDecorationLine: row.snatchCrossedOut ? 'line-through' : 'none' }
+                              ]}
+                              value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
+                              placeholder="—"
+                              placeholderTextColor={colors.secondaryText}
+                              editable={false}
+                              pointerEvents="none"
+                            />
+                          </Pressable>
+                        )}
+                        {isEditing ? (
+                          <TextInput
+                            style={[
+                              styles.tableCell,
+                              { color: row.cleanAndJerkCrossedOut ? colors.secondaryText : colors.text },
+                              { textDecorationLine: row.cleanAndJerkCrossedOut ? 'line-through' : 'none' }
+                            ]}
+                            value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
+                            placeholder="—"
+                            placeholderTextColor={colors.secondaryText}
+                            keyboardType="numeric"
+                            onChangeText={(value) => handleCleanAndJerkChange(index, value)}
+                            editable={true}
+                          />
+                        ) : (
+                           <Pressable 
+                             style={styles.tableCellPressable}
+                             onPress={() => {
+                               console.log(`[WarmupDetails] C&J Pressable pressed. Index: ${index}`);
+                               handleToggleCrossOut(index, 'cleanAndJerk');
+                             }}
+                           >
+                             <TextInput
+                               style={[
+                                 styles.tableCell,
+                                 { color: row.cleanAndJerkCrossedOut ? colors.secondaryText : colors.text },
+                                 { textDecorationLine: row.cleanAndJerkCrossedOut ? 'line-through' : 'none' }
+                               ]}
+                               value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
+                               placeholder="—"
+                               placeholderTextColor={colors.secondaryText}
+                               editable={false}
+                               pointerEvents="none"
+                             />
+                           </Pressable>
+                        )}
                       </View>
                     ))}
                   </View>
@@ -854,5 +888,10 @@ const styles = StyleSheet.create({
     fontSize: 17, // Increased from 15 to match tableCell
     fontWeight: '500',
     textAlign: 'center',
+  },
+  tableCellPressable: {
+     flex: 1,
+     justifyContent: 'center',
+     alignItems: 'stretch',
   },
 }) 
