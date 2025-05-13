@@ -610,6 +610,7 @@ export default function WarmupDetailsScreen() {
                           <TextInput
                             style={[
                               styles.tableCell,
+                              // Apply conditional color and explicit textDecorationLine
                               { color: row.snatchCrossedOut ? colors.secondaryText : colors.text },
                               { textDecorationLine: row.snatchCrossedOut ? 'line-through' : 'none' }
                             ]}
@@ -628,25 +629,25 @@ export default function WarmupDetailsScreen() {
                               handleToggleCrossOut(index, 'snatch');
                             }}
                           >
-                            <TextInput
+                            {/* Use ThemedText instead of TextInput in view mode */}
+                            <ThemedText
                               style={[
                                 styles.tableCell,
+                                // Apply conditional color and explicit textDecorationLine
                                 { color: row.snatchCrossedOut ? colors.secondaryText : colors.text },
                                 { textDecorationLine: row.snatchCrossedOut ? 'line-through' : 'none' }
                               ]}
-                              value={row.snatch.toString() === '0' ? '' : row.snatch.toString()}
-                              placeholder="—"
-                              placeholderTextColor={colors.secondaryText}
-                              editable={false}
-                              pointerEvents="none"
-                            />
+                            >
+                              {row.snatch.toString() === '0' ? '—' : row.snatch.toString()}
+                            </ThemedText>
                           </Pressable>
                         )}
                         {isEditing ? (
                           <TextInput
                             style={[
                               styles.tableCell,
-                              { color: row.cleanAndJerkCrossedOut ? colors.secondaryText : colors.text },
+                              // Apply conditional color and explicit textDecorationLine
+                              { color: row.cleanAndJerkCrossedOut ? colors.secondaryText : colors.text }, 
                               { textDecorationLine: row.cleanAndJerkCrossedOut ? 'line-through' : 'none' }
                             ]}
                             value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
@@ -664,18 +665,17 @@ export default function WarmupDetailsScreen() {
                                handleToggleCrossOut(index, 'cleanAndJerk');
                              }}
                            >
-                             <TextInput
+                             {/* Use ThemedText instead of TextInput in view mode */}
+                             <ThemedText
                                style={[
                                  styles.tableCell,
+                                 // Apply conditional color and explicit textDecorationLine
                                  { color: row.cleanAndJerkCrossedOut ? colors.secondaryText : colors.text },
                                  { textDecorationLine: row.cleanAndJerkCrossedOut ? 'line-through' : 'none' }
                                ]}
-                               value={row.cleanAndJerk.toString() === '0' ? '' : row.cleanAndJerk.toString()}
-                               placeholder="—"
-                               placeholderTextColor={colors.secondaryText}
-                               editable={false}
-                               pointerEvents="none"
-                             />
+                             >
+                               {row.cleanAndJerk.toString() === '0' ? '—' : row.cleanAndJerk.toString()}
+                             </ThemedText>
                            </Pressable>
                         )}
                       </View>
