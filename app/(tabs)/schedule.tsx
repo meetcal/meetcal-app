@@ -469,11 +469,11 @@ export default function ScheduleScreen() {
             ]}
             onPress={() => setShowFilterModal(true)}
           >
-            <View>
+            <View style={styles.filterTextContainer}>
               <ThemedText style={[styles.filterButtonText, { color: colors.text }]}>
                 Selected Meet
               </ThemedText>
-              <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]}>
+              <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]} numberOfLines={2} ellipsizeMode="tail">
                 {selectedMeet}
               </ThemedText>
             </View>
@@ -565,49 +565,51 @@ export default function ScheduleScreen() {
               </Pressable>
             </View>
             
-            {availableMeets.map((meet) => (
-              <Pressable
-                key={meet.name}
-                style={({ pressed }) => [
-                  styles.modalOption,
-                  { borderBottomColor: colors.border },
-                  selectedMeet === meet.name && { backgroundColor: colors.pressed },
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={async () => {
-                  setShowFilterModal(false);
-                  if (meet.name === selectedMeet) return;
-                  setIsChangingMeet(true);
-                  try {
-                    await setSelectedMeet(meet.name);
-                  } catch (error) {
-                    console.error('Error saving selected meet:', error);
-                    Alert.alert('Error', 'Failed to update selected meet.');
-                  } finally {
-                    setIsChangingMeet(false);
-                  }
-                }}
-              >
-                <ThemedText style={[
-                  styles.modalOptionText,
-                  { color: colors.text },
-                  selectedMeet === meet.name && { color: '#007AFF' }
-                ]}>
-                  {meet.name}
-                </ThemedText>
-                {selectedMeet === meet.name && (
-                  <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                )}
-              </Pressable>
-            ))}
-            
-            {availableMeets.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <ThemedText style={styles.emptyText}>
-                  No meets available
-                </ThemedText>
-              </View>
-            )}
+            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
+              {availableMeets.map((meet) => (
+                <Pressable
+                  key={meet.name}
+                  style={({ pressed }) => [
+                    styles.modalOption,
+                    { borderBottomColor: colors.border },
+                    selectedMeet === meet.name && { backgroundColor: colors.pressed },
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={async () => {
+                    setShowFilterModal(false);
+                    if (meet.name === selectedMeet) return;
+                    setIsChangingMeet(true);
+                    try {
+                      await setSelectedMeet(meet.name);
+                    } catch (error) {
+                      console.error('Error saving selected meet:', error);
+                      Alert.alert('Error', 'Failed to update selected meet.');
+                    } finally {
+                      setIsChangingMeet(false);
+                    }
+                  }}
+                >
+                  <ThemedText style={[
+                    styles.modalOptionText,
+                    { color: colors.text },
+                    selectedMeet === meet.name && { color: '#007AFF' }
+                  ]}>
+                    {meet.name}
+                  </ThemedText>
+                  {selectedMeet === meet.name && (
+                    <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                  )}
+                </Pressable>
+              ))}
+              
+              {availableMeets.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <ThemedText style={styles.emptyText}>
+                    No meets available
+                  </ThemedText>
+                </View>
+              )}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -741,6 +743,10 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 1,
   },
+  filterTextContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
   filterButtonText: {
     fontSize: 15,
     fontWeight: '600',
@@ -756,6 +762,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginHorizontal: 16,
+    maxHeight: '70%',
   },
   modalHeader: {
     padding: 16,
@@ -817,5 +824,11 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  modalScrollView: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
   },
 }); 
