@@ -6,8 +6,8 @@ import { useUser } from '@clerk/clerk-expo';
 
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
-  subscriptionType: 'free' | 'quarterly' | 'lifetime' | null;
-  setSubscribed: (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => Promise<void>;
+  subscriptionType: 'free' | 'premium' | 'weekpass' | null;
+  setSubscribed: (value: boolean, type: 'free' | 'premium' | 'weekpass') => Promise<void>;
   isLoading: boolean;
   restorePurchases: () => Promise<boolean>;
   checkSubscriptionStatus: () => Promise<void>;
@@ -17,40 +17,90 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
-  const [subscriptionType, setSubscriptionType] = useState<'free' | 'quarterly' | 'lifetime' | null>(null);
+  const [subscriptionType, setSubscriptionType] = useState<'free' | 'premium' | 'weekpass' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useUser();
 
   // Helper function to check subscription status consistently
-  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'quarterly' | 'lifetime']> => {
+  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'premium' | 'weekpass']> => {
     // Check for simulated subscription first
-    const simulatedStatus = getSimulatedSubscriptionStatus();
-    if (simulatedStatus !== null) {
-      console.log('Using simulated subscription status:', simulatedStatus);
-      return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
+    const simulatedSubscriptionType = getSimulatedSubscriptionStatus();
+    if (simulatedSubscriptionType !== null) {
+      console.log('Using simulated subscription status:', simulatedSubscriptionType);
+      const isActive = simulatedSubscriptionType !== 'free';
+      return [isActive, simulatedSubscriptionType];
     }
 
-    const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
-    let subscriptionType: 'free' | 'quarterly' | 'lifetime' = 'free';
+    let hasActiveAccess = false;
+    let determinedSubscriptionType: 'free' | 'premium' | 'weekpass' = 'free';
 
-    if (hasActiveEntitlement) {
-      // Check the specific product identifier or entitlement to determine type
-      const entitlement = customerInfo.entitlements.active['Subscriptions'];
-      if (entitlement?.productIdentifier.includes('lifetime')) {
-        subscriptionType = 'lifetime';
+    const activeSubscriptionEntitlement = customerInfo.entitlements.active['Subscriptions'];
+
+    if (activeSubscriptionEntitlement && activeSubscriptionEntitlement.isActive) {
+      const productIdentifier = activeSubscriptionEntitlement.productIdentifier;
+      const purchaseDateStr = activeSubscriptionEntitlement.latestPurchaseDate;
+
+      if (productIdentifier === 'week_pass_meetcal') {
+        if (purchaseDateStr) {
+          try {
+            const purchaseDate = new Date(purchaseDateStr);
+            const expiryDate = new Date(purchaseDate.getTime());
+            expiryDate.setUTCDate(purchaseDate.getUTCDate() + 7);
+            const currentDate = new Date();
+
+            if (currentDate.getTime() <= expiryDate.getTime()) {
+              hasActiveAccess = true;
+              determinedSubscriptionType = 'weekpass';
+            } else {
+              // Week pass expired
+              hasActiveAccess = false;
+              determinedSubscriptionType = 'free'; 
+              console.log(
+                'Week pass has expired (UTC comparison). Purchase date (UTC):',
+                purchaseDate.toISOString(), 
+                'Expiry (UTC):', 
+                expiryDate.toISOString()
+              );
+            }
+          } catch (e) {
+            console.error('Error processing week_pass_meetcal purchase date (UTC):', e);
+            // Treat as no access if date parsing fails
+            hasActiveAccess = false;
+            determinedSubscriptionType = 'free';
+          }
+        } else {
+          // No purchase date for week_pass_meetcal, should not happen if product is active
+          console.warn('week_pass_meetcal is active product but has no purchase date.');
+          hasActiveAccess = false; // Or true, depending on desired fallback for this edge case
+          determinedSubscriptionType = 'free';
+        }
+      } else if (productIdentifier) { 
+        // Any other active product under 'Subscriptions' grants premium access
+        hasActiveAccess = true;
+        determinedSubscriptionType = 'premium'; 
       } else {
-        subscriptionType = 'quarterly';
+        // Entitlement 'Subscriptions' is active but no productIdentifier?
+        // This is unusual. Could be a new product not yet handled or a glitch.
+        // Defaulting to some access, but this should be reviewed.
+        console.warn('Active "Subscriptions" entitlement has no productIdentifier.');
+        hasActiveAccess = true; 
+        determinedSubscriptionType = 'premium'; // Fallback type
       }
+    } else {
+      // No active 'Subscriptions' entitlement
+      hasActiveAccess = false;
+      determinedSubscriptionType = 'free';
     }
 
     console.log('Checking entitlement status:', {
-      hasActiveEntitlement,
-      subscriptionType,
+      hasActiveAccess,
+      subscriptionType: determinedSubscriptionType,
+      productIdentifier: activeSubscriptionEntitlement?.productIdentifier,
+      purchaseDate: activeSubscriptionEntitlement?.latestPurchaseDate,
       activeEntitlements: customerInfo.entitlements.active,
-      allEntitlements: customerInfo.entitlements
     });
     
-    return [hasActiveEntitlement, subscriptionType];
+    return [hasActiveAccess, determinedSubscriptionType];
   };
 
   const checkSubscriptionStatus = async () => {
@@ -59,14 +109,14 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setIsLoading(true);
       
       // Check for simulated subscription first
-      const simulatedStatus = getSimulatedSubscriptionStatus();
-      if (simulatedStatus !== null) {
-        console.log('Using simulated subscription status:', simulatedStatus);
-        const type = simulatedStatus ? 'quarterly' : 'free';
-        await AsyncStorage.setItem('subscriptionStatus', simulatedStatus.toString());
-        await AsyncStorage.setItem('subscriptionType', type);
-        setIsSubscribed(simulatedStatus);
-        setSubscriptionType(type);
+      const simulatedSubscriptionType = getSimulatedSubscriptionStatus();
+      if (simulatedSubscriptionType !== null) {
+        console.log('Using simulated subscription status:', simulatedSubscriptionType);
+        const isActive = simulatedSubscriptionType !== 'free';
+        await AsyncStorage.setItem('subscriptionStatus', isActive.toString());
+        await AsyncStorage.setItem('subscriptionType', simulatedSubscriptionType);
+        setIsSubscribed(isActive);
+        setSubscriptionType(simulatedSubscriptionType);
         setIsLoading(false);
         return;
       }
@@ -85,7 +135,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       console.error('Failed to check subscription status:', error);
       // On error, try to get status from AsyncStorage
       const status = await AsyncStorage.getItem('subscriptionStatus');
-      const type = await AsyncStorage.getItem('subscriptionType') as 'free' | 'quarterly' | 'lifetime' | null;
+      const type = await AsyncStorage.getItem('subscriptionType') as 'free' | 'premium' | 'weekpass' | null;
       setIsSubscribed(status === 'true');
       setSubscriptionType(type || 'free');
       setIsLoading(false);
@@ -98,19 +148,19 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       setIsLoading(true);
       try {
         // First check if we have a simulated status
-        const simulatedStatus = getSimulatedSubscriptionStatus();
-        if (simulatedStatus !== null) {
-          const type = simulatedStatus ? 'quarterly' : 'free';
-          console.log('Initializing with simulated status:', { simulatedStatus, type });
-          setIsSubscribed(simulatedStatus);
-          setSubscriptionType(type);
+        const simulatedSubscriptionType = getSimulatedSubscriptionStatus();
+        if (simulatedSubscriptionType !== null) {
+          const isActive = simulatedSubscriptionType !== 'free';
+          console.log('Initializing with simulated status:', { simulatedSubscriptionType });
+          setIsSubscribed(isActive);
+          setSubscriptionType(simulatedSubscriptionType);
           setIsLoading(false);
           return;
         }
 
         // Then check AsyncStorage
         const storedStatus = await AsyncStorage.getItem('subscriptionStatus');
-        const storedType = await AsyncStorage.getItem('subscriptionType') as 'free' | 'quarterly' | 'lifetime' | null;
+        const storedType = await AsyncStorage.getItem('subscriptionType') as 'free' | 'premium' | 'weekpass' | null;
         if (storedStatus !== null) {
           console.log('Found stored subscription status:', { storedStatus, storedType });
           setIsSubscribed(storedStatus === 'true');
@@ -164,7 +214,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
-  const setSubscribed = async (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
+  const setSubscribed = async (value: boolean, type: 'free' | 'premium' | 'weekpass') => {
     try {
       await AsyncStorage.setItem('subscriptionStatus', value.toString());
       await AsyncStorage.setItem('subscriptionType', type);
