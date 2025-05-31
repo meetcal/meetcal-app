@@ -7,11 +7,10 @@ import { flatMap } from "lodash";
 
 export const DEV_CONFIG = {
   /**
-   * Set to a specific subscription type ('free', 'premium', 'weekpass') to simulate it,
-   * or null to disable simulation.
-   * This will bypass the real RevenueCat subscription check in development.
+   * Set to true to simulate an active subscription
+   * This will bypass the real RevenueCat subscription check
    */
-  SIMULATE_SUBSCRIPTION: 'weekpass',
+  SIMULATE_SUBSCRIPTION: true,
 
   /**
    * Additional development flags can be added here
@@ -23,10 +22,10 @@ export const DEV_CONFIG = {
 /**
  * Helper to get the simulated subscription status
  * Returns:
- * - The simulated type ('free', 'premium', 'weekpass') if enabled in dev mode
+ * - true/false if simulation is enabled in dev mode
  * - null if simulation is disabled or in production
  */
-export function getSimulatedSubscriptionStatus(): 'free' | 'premium' | 'weekpass' | null {
+export function getSimulatedSubscriptionStatus(): boolean | null {
   if (__DEV__ && DEV_CONFIG.SIMULATE_SUBSCRIPTION !== undefined) {
     return DEV_CONFIG.SIMULATE_SUBSCRIPTION;
   }
