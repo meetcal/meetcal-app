@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LiftResult } from '@/data/athletes';
+import { LiftResult } from '@/data/types/athletes';
 
 const SAVED_ATHLETES_KEY = '@saved_athletes';
 

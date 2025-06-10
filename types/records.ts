@@ -6,8 +6,8 @@ export interface WeightClassRecord {
 }
 
 export type AgeGroupRecords = {
-  men: WeightClassRecord[];
-  women: WeightClassRecord[];
+  Men: WeightClassRecord[];
+  Women: WeightClassRecord[];
 };
 
 export type RecordsData = {

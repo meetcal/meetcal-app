@@ -18,10 +18,12 @@ export async function fetchStandards(
   const { data, error } = await query;
   if (error) throw error;
 
-  const ageGroups = ['u15', 'youth', 'junior', 'senior'];
-  const result: StandardsData = Object.fromEntries(
-    ageGroups.map((g) => [g, { men: [], women: [] }])
-  ) as StandardsData;
+  const result: StandardsData = {
+    u15: { men: [], women: [] },
+    youth: { men: [], women: [] },
+    junior: { men: [], women: [] },
+    senior: { men: [], women: [] },
+  };
 
   (data || []).forEach((row) => {
     const ageKey = row.age_category as keyof StandardsData;

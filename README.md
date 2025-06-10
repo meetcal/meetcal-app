@@ -1,6 +1,20 @@
-# Welcome to your Expo app 👋
+# MeetCal - Meet Calendar App 📅
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native application built with Expo for managing athletic schedules and meet calendars.
+
+## Features
+
+- 📅 Schedule management for athletes and meets
+- 🏃‍♂️ Athlete data management
+- 📊 Real-time data synchronization with Supabase
+- 📱 Cross-platform support (iOS, Android)
+
+## Tech Stack
+
+- **Framework:** Expo / React Native
+- **Database:** Supabase
+- **Navigation:** Expo Router (file-based routing)
+- **Language:** TypeScript
 
 ## Get started
 
@@ -10,37 +24,50 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
-
-   ```bash
-    npx expo start
+2. Set up environment variables
+   
+   Create a `.env.local` file with your Supabase credentials:
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 
-In the output, you'll find options to open the app in a
+3. Start the development server
+
+   ```bash
+   npx expo start
+   ```
+
+In the output, you'll find options to open the app in a:
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
 - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- [Expo Go](https://expo.dev/go)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Project Structure
 
-## Get a fresh project
+This project uses [file-based routing](https://docs.expo.dev/router/introduction) with the **app** directory containing all screens and navigation.
 
-When you're ready, run:
+## Database
 
-```bash
-npm run reset-project
-```
+All schedule and athlete data is stored in and fetched from Supabase. The app follows these data access patterns:
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- No hardcoded data for schedules or athletes
+- All queries go through Supabase client
+- Real-time updates supported
+
+## Development
+
+- Edit files in the **app** directory to modify screens and navigation
+- Database schema and queries should be documented
+- Maintain consistency with existing Supabase data patterns
 
 ## Learn more
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- [Expo documentation](https://docs.expo.dev/)
+- [Supabase documentation](https://supabase.com/docs)
+- [React Native documentation](https://reactnative.dev/docs/getting-started)
 
 ## Join the community
 
