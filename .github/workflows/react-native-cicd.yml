@@ -88,7 +88,7 @@ jobs:
 
       - name: 📢 Notify test results
         if: always()
-        uses: rtCamp/action-discord-notify@v2
+        uses: rtCamp/action-slack-notify@v2
         env:
           DISCORD_WEBHOOK: ${{ env.DISCORD_WEBHOOK }}
           DISCORD_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
@@ -277,7 +277,7 @@ jobs:
 
       - name: 📢 Notify build completion
         if: always()
-        uses: rtCamp/action-discord-notify@v2
+        uses: rtCamp/action-slack-notify@v2
         env:
           DISCORD_WEBHOOK: ${{ env.DISCORD_WEBHOOK }}
           DISCORD_COLOR:  ${{ job.status == 'success' && 'good' || 'danger' }}
