@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { RecordsData } from '@/types/records';
+import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
@@ -40,15 +40,19 @@ export async function fetchWSORecords(
   const genders = ['Men', 'Women'];
 
   // Initialize result shape
-  const result: RecordsData = {} as any;
+  const result: RecordsData = {};
   ageGroups.forEach((g) => {
     result[g] = { Men: [], Women: [] };
   });
 
   (data || []).forEach((row) => {
     const ageKey = row.age_category;
-    const genderKey = row.gender;
-    if (!result[ageKey] || !result[ageKey][genderKey]) return;
+    const genderKey = row.gender as 'Men' | 'Women';
+    if (!result[ageKey]) return;
+    
+    // Check if genderKey is a valid key, although `as` above should ensure it
+    if (genderKey !== 'Men' && genderKey !== 'Women') return;
+    
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
       snatchRecord: row.snatch_record ?? 0,
@@ -58,9 +62,9 @@ export async function fetchWSORecords(
   });
 
   // Sort weight classes for consistency (lowest to highest, '+' last)
-  Object.values(result).forEach((group: any) => {
-    group.Men.sort((a: any, b: any) => weightClassSort(a.weightClass, b.weightClass));
-    group.Women.sort((a: any, b: any) => weightClassSort(a.weightClass, b.weightClass));
+  Object.values(result).forEach((group: AgeGroupRecords) => {
+    group.Men.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
+    group.Women.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
   });
 
   return result;

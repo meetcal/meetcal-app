@@ -7,7 +7,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
 import { fetchQualifyingTotals, QualifyingTotalsData } from '@/lib/database/fetch-qualifying-totals';
 
-type Gender = string;
+type Gender = 'Men' | 'Women';
 type Event = string;
 type AgeGroup = string;
 
