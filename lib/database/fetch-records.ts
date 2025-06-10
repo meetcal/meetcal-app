@@ -23,14 +23,14 @@ function weightClassSort(a: string, b: string): number {
 export async function fetchRecords(
   federation: string = 'USAW',
   ageGroup?: string,
-  gender?: 'men' | 'women'
+  gender?: 'Men' | 'Women'
 ): Promise<RecordsData> {
   let query = supabase
     .from('records')
     .select('*')
     .eq('record_type', federation);
   if (ageGroup) query = query.eq('age_category', ageGroup);
-  if (gender) query = query.eq('gender', gender);
+  if (gender) query = query.eq('gender', gender.toLowerCase());
 
   const { data, error } = await query;
 
@@ -40,22 +40,18 @@ export async function fetchRecords(
   const result: RecordsData = {};
 
   (data || []).forEach((row) => {
-    const ageKey = row.age_category as string; // keyof RecordsData removed as it's string now
+    const ageKey = row.age_category as string;
     const genderKey = row.gender as 'men' | 'women';
 
-    // Ensure the age group object exists
+    // Ensure the age group object exists with the correct (capitalized) structure
     if (!result[ageKey]) {
-      result[ageKey] = { men: [], women: [] };
+      result[ageKey] = { Men: [], Women: [] };
     }
     
-    // Ensure the gender array within the age group object exists (should always be true due to above)
-    // This check might be redundant if result[ageKey] is always initialized with men/women arrays.
-    // For safety, keeping a check or ensuring initialization covers it.
-    if (!result[ageKey][genderKey]) {
-        result[ageKey][genderKey] = []; // Should not happen if initialized correctly
-    }
-
-    result[ageKey][genderKey].push({
+    // Map the lowercase DB value to the uppercase property in our standardized object
+    const genderProp = genderKey === 'men' ? 'Men' : 'Women';
+    
+    result[ageKey][genderProp].push({
       weightClass: row.weight_class,
       snatchRecord: row.snatch_record ?? 0,
       cjRecord: row.cj_record ?? 0,
@@ -65,8 +61,8 @@ export async function fetchRecords(
 
   // Sort weight classes for consistency (lowest to highest, '+' last)
   Object.values(result).forEach((group) => {
-    group.men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-    group.women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.Men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.Women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
   });
 
   return result;
