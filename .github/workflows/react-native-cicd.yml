@@ -91,10 +91,9 @@ jobs:
         uses: rtCamp/action-discord-notify@v2
         env:
           DISCORD_WEBHOOK: ${{ env.DISCORD_WEBHOOK }}
-          DISCORD_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
+          DISCORD_COLOR: '${{ job.status == "success" && "good" || "danger" }}'
           DISCORD_TITLE: Test Results
           DISCORD_MESSAGE: 'Tests ${{ job.status == "success" && "passed ✅" || "failed ❌" }}'
-
   build-and-deploy:
     needs: test
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
@@ -281,6 +280,6 @@ jobs:
         uses: rtCamp/action-discord-notify@v2
         env:
           DISCORD_WEBHOOK: ${{ env.DISCORD_WEBHOOK }}
-          DISCORD_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
+          DISCORD_COLOR:  '${{ job.status == "success" && "good" || "danger" }}'
           DISCORD_TITLE: Build Results
           DISCORD_MESSAGE: 'Build ${{ job.status == "success" && "completed successfully ✅" || "failed ❌" }}'
