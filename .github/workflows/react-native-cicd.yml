@@ -98,36 +98,13 @@ jobs:
             exit 1
           fi
 
-      - name: 📋 Update metro.config.js for SVG support
+      - name: 📋 Verify metro configuration
         run: |
           if [ -f ./metro.config.js ]; then
-            echo "Creating backup of metro.config.js"
-            cp ./metro.config.js ./metro.config.js.backup
-            echo "Updating metro.config.js to CommonJS format"
-            cat > ./metro.config.js << 'EOFMARKER'
-          /* eslint-disable @typescript-eslint/no-var-requires */
-          const { getDefaultConfig } = require('expo/metro-config');
-
-          const config = getDefaultConfig(__dirname);
-
-          const { transformer, resolver } = config;
-
-          config.transformer = {
-            ...transformer,
-            babelTransformerPath: require.resolve('react-native-svg-transformer/expo'),
-          };
-
-          config.resolver = {
-            ...resolver,
-            assetExts: resolver.assetExts.filter(ext => ext !== 'svg'),
-            sourceExts: [...resolver.sourceExts, 'svg'],
-          };
-
-          module.exports = config;
-          EOFMARKER
-            echo "metro.config.js updated to CommonJS format"
+            echo "Metro configuration found"
+            head -5 ./metro.config.js
           else
-            echo "metro.config.js not found"
+            echo "Warning: metro.config.js not found"
           fi
 
       - name: 📱 Build Production APK
