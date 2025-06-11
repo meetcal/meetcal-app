@@ -87,25 +87,11 @@ jobs:
           echo "EAS CLI version:"
           eas --version
 
-      - name: 📋 Fix package.json main entry
+      - name: 📋 Verify project configuration
         run: |
-          # Check if jq is installed, if not install it
-          if ! command -v jq &> /dev/null; then
-            echo "Installing jq..."
-            if [[ "$RUNNER_OS" == "macOS" ]]; then
-              brew install jq
-            else
-              sudo apt-get update && sudo apt-get install -y jq
-            fi
-          fi
-
-          # Fix the main entry in package.json
+          echo "Verifying package.json configuration..."
           if [ -f ./package.json ]; then
-            # Create a backup
-            cp package.json package.json.bak
-            # Update the package.json
-            jq '.main = "node_modules/expo/AppEntry.js"' package.json > package.json.tmp && mv package.json.tmp package.json
-            echo "Updated package.json main entry"
+            echo "Package.json found"
             cat package.json | grep "main"
           else
             echo "package.json not found"
