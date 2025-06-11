@@ -1,12 +1,10 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Add path alias support
+// Configure path aliases
 config.resolver.alias = {
-  '@': path.resolve(__dirname, './'),
+  '@': __dirname,
 };
 
 module.exports = config; 
