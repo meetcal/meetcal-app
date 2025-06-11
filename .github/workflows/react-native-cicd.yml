@@ -173,4 +173,4 @@ jobs:
           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
           title: Build Results
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
-          message: Build  for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
+          message: Build for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
