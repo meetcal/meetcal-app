@@ -15,10 +15,8 @@ on:
         type: choice
         description: "Build type to run"
         options:
-          - dev
           - prod-apk
           - prod-aab
-          - ios-dev
           - ios-prod
           - publish-expo
           - publish-stores
@@ -54,11 +52,13 @@ jobs:
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
-        platform: [android]
+        platform: [android, ios]
         include:
+          - platform: android
+            runs-on: ubuntu-latest
           - platform: ios
             runs-on: macos-latest
-    runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - name: 🏗 Checkout repository
         uses: actions/checkout@v4
@@ -92,7 +92,11 @@ jobs:
           # Check if jq is installed, if not install it
           if ! command -v jq &> /dev/null; then
             echo "Installing jq..."
-            sudo apt-get update && sudo apt-get install -y jq
+            if [[ "$RUNNER_OS" == "macOS" ]]; then
+              brew install jq
+            else
+              sudo apt-get update && sudo apt-get install -y jq
+            fi
           fi
 
           # Fix the main entry in package.json
@@ -140,17 +144,8 @@ jobs:
             echo "metro.config.js not found"
           fi
 
-      - name: 📱 Build Development APK
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event_name == 'push' && (matrix.platform == 'android' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android')
-        run: |
-          # Build with increased memory limit
-          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-          eas build --platform android --profile development --local --non-interactive --output=./app-dev.apk
-        env:
-          NODE_ENV: development
-
       - name: 📱 Build Production APK
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push' && (matrix.platform == 'android' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android')
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push')
         run: |
           export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
           eas build --platform android --profile production-apk --local --non-interactive --output=./app-prod.apk
@@ -158,23 +153,15 @@ jobs:
           NODE_ENV: production
 
       - name: 📱 Build Production AAB
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event_name == 'push' && (matrix.platform == 'android' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android')
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event_name == 'push')
         run: |
           export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
           eas build --platform android --profile production --local --non-interactive --output=./app-prod.aab
         env:
           NODE_ENV: production
 
-      - name: 📱 Build iOS Development
-        if: (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-dev') && (matrix.platform == 'ios' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios')
-        run: |
-          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-          eas build --platform ios --profile development --local --non-interactive --output=./app-ios-dev.app
-        env:
-          NODE_ENV: development
-
       - name: 📱 Build iOS Production
-        if: (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-prod') && (matrix.platform == 'ios' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios')
+        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-prod' || github.event_name == 'push')
         run: |
           export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
           eas build --platform ios --profile production --local --non-interactive --output=./app-ios-prod.ipa
@@ -189,7 +176,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: 🚀 Submit to Play Store
-        if: (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores') && (matrix.platform == 'android' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android')
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores')
         run: |
           eas submit -p android --path ./app-prod.aab --non-interactive
         env:
@@ -197,7 +184,7 @@ jobs:
           GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
 
       - name: 🚀 Submit to App Store
-        if: (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores') && (matrix.platform == 'ios' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios')
+        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores')
         run: |
           eas submit -p ios --path ./app-ios-prod.ipa --non-interactive
         env:
@@ -209,12 +196,10 @@ jobs:
       - name: 📦 Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: app-builds
+          name: app-builds-${{ matrix.platform }}
           path: |
-            ./app-dev.apk
             ./app-prod.apk
             ./app-prod.aab
-            ./app-ios-dev.app
             ./app-ios-prod.ipa
           retention-days: 7
 
@@ -225,4 +210,4 @@ jobs:
           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
           title: Build Results
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
-          message: Build ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
+          message: Build  for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
