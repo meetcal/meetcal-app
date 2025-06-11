@@ -38,7 +38,7 @@ env:
   EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
   EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
   GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
-  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+  webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
   NODE_OPTIONS: --openssl-legacy-provider
 
 jobs:
@@ -222,6 +222,7 @@ jobs:
         if: always()
         uses: stegzilla/discord-notify@v2
         env:
-          DISCORD_WEBHOOK: ${{ env.DISCORD_WEBHOOK }}
+          webhook_url: ${{ env.webhook_url }}
           title: Build Results
+          colour: ${{ job.status == 'success' && 'good' || 'danger' }}
           message: Build ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
