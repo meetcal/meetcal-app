@@ -221,7 +221,7 @@ jobs:
       - name: 📢 Notify build completion
         if: always()
         uses: stegzilla/discord-notify@v2
-        env:
+        with:
           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
           title: Build Results
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
