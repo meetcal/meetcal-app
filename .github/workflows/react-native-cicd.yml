@@ -38,7 +38,7 @@ env:
   EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
   EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
   GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
-  webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+  webhook_url: ${{ secrets.webhook_url }}
   NODE_OPTIONS: --openssl-legacy-provider
 
 jobs:
