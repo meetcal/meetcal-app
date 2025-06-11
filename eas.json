@@ -28,13 +28,20 @@
     },
     "production": {
       "autoIncrement": true,
-      "credentialsSource": "local",
+      "credentialsSource": "remote",
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
         "resourceClass": "m-medium",
         "image": "latest"
+      }
+    },
+    "production-apk": {
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "android": {
+        "buildType": "apk"
       }
     }
   },
