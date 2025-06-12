@@ -58,7 +58,10 @@ export async function updateNotificationPreferences(
 export async function updateExpoPushToken(userId: string, token: string): Promise<NotificationPreferences | null> {
   let clerkToken: string | null = null;
   try {
-    clerkToken = await Clerk.session?.getToken({ template: 'supabase' });
+    if (Clerk.session) {
+      const token = await Clerk.session.getToken({ template: 'supabase' });
+      clerkToken = token ?? null;
+    }
   } catch (clerkError: any) {
     console.error('Failed to get Clerk token:', clerkError);
   }
@@ -67,11 +70,27 @@ export async function updateExpoPushToken(userId: string, token: string): Promis
 }
 
 export async function toggleNotifications(userId: string, enabled: boolean): Promise<NotificationPreferences | null> {
-  const clerkToken = await Clerk.session?.getToken({ template: 'supabase' }).catch(() => null);
+  let clerkToken: string | null = null;
+  try {
+    if (Clerk.session) {
+      const token = await Clerk.session.getToken({ template: 'supabase' });
+      clerkToken = token ?? null;
+    }
+  } catch {
+    clerkToken = null;
+  }
   return updateNotificationPreferences(userId, { notification_enabled: enabled }, clerkToken);
 }
 
 export async function updateNotificationTimeBefore(userId: string, minutes: number): Promise<NotificationPreferences | null> {
-  const clerkToken = await Clerk.session?.getToken({ template: 'supabase' }).catch(() => null);
+  let clerkToken: string | null = null;
+  try {
+    if (Clerk.session) {
+      const token = await Clerk.session.getToken({ template: 'supabase' });
+      clerkToken = token ?? null;
+    }
+  } catch {
+    clerkToken = null;
+  }
   return updateNotificationPreferences(userId, { notification_time_before: minutes }, clerkToken);
 } 
