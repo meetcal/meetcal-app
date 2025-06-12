@@ -15,7 +15,6 @@ on:
         type: choice
         description: "Build type to run"
         options:
-          - prod-apk
           - prod-aab
           - ios-prod
           - publish-expo
@@ -47,6 +46,37 @@ jobs:
       - name: Skip CI check
         run: echo "Proceeding with workflow"
 
+  test:
+    needs: check-skip
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run TypeScript check
+        run: npx tsc
+
+      - name: 🧹 Run ESLint
+        run: npm run lint
+
+      - name: 📢 Notify test results
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
+          colour: ${{ job.status == 'success' && 'good' || 'danger' }}
+          title: Test Results
+          message: Tests ${{ job.status == 'success' && 'passed ✅' || 'failed ❌' }}
+  
   build-and-deploy:
     needs: check-skip
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
@@ -107,14 +137,6 @@ jobs:
             echo "Warning: metro.config.js not found"
           fi
 
-      - name: 📱 Build Production APK
-        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push')
-        run: |
-          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-          eas build --platform android --profile production-apk --local --non-interactive --output=./app-prod.apk
-        env:
-          NODE_ENV: production
-
       - name: 📱 Build Production AAB
         if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event_name == 'push')
         run: |
@@ -132,14 +154,14 @@ jobs:
           NODE_ENV: production
 
       - name: 🚀 Publish to Expo
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-expo'
+        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-expo' || github.event_name == 'push'
         run: |
           eas update --auto
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: 🚀 Submit to Play Store
-        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores')
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
         run: |
           eas submit -p android --path ./app-prod.aab --non-interactive
         env:
@@ -147,7 +169,7 @@ jobs:
           GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
 
       - name: 🚀 Submit to App Store
-        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores')
+        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
         run: |
           eas submit -p ios --path ./app-ios-prod.ipa --non-interactive
         env:
@@ -161,7 +183,6 @@ jobs:
         with:
           name: app-builds-${{ matrix.platform }}
           path: |
-            ./app-prod.apk
             ./app-prod.aab
             ./app-ios-prod.ipa
           retention-days: 7
