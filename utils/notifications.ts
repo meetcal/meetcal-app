@@ -85,10 +85,8 @@ export async function scheduleNotification(title: string, body: string, trigger:
       data: { identifier }, // Pass identifier in data if needed, or use request identifier if available
     },
     trigger: {
-      type: 'timeInterval',
-      seconds: seconds, 
-      repeats: false, 
-    },
+      seconds: seconds,
+    } as Notifications.TimeIntervalTriggerInput,
     identifier, // Use the identifier directly if supported at the top level
   });
 }
