@@ -9,7 +9,7 @@ import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records
 import { fetchRecords, fetchFederations, fetchAgeGroups } from '@/lib/database/fetch-records';
 
 type Federation = string;
-type Gender = 'men' | 'women';
+type Gender = 'Men' | 'Women';
 type AgeGroup = string; // Changed from specific union
 
 // Helper to create an empty RecordsData structure - this might need refinement
@@ -33,7 +33,7 @@ export default function RecordsScreen() {
   
   const [filters, setFilters] = useState<Filters>({
     federation: '',
-    gender: 'men',
+    gender: 'Men',
     ageGroup: '' 
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -51,7 +51,7 @@ export default function RecordsScreen() {
       setLoading(true);
       let determinedFederation = '';
       let determinedAgeGroup = '';
-      const defaultGender = 'men';
+              const defaultGender = 'Men';
 
       try {
         const fetchedFederations = await fetchFederations();
@@ -281,7 +281,7 @@ export default function RecordsScreen() {
 
   const getFilterDisplayText = () => {
     const fed = filters.federation || 'N/A';
-    const gen = filters.gender === 'men' ? 'Men' : 'Women';
+    const gen = filters.gender === 'Men' ? 'Men' : 'Women';
     const age = getAgeGroupDisplayText(displayAgeGroup) || 'N/A';
     return `${fed} • ${gen} • ${age}`;
   };
@@ -402,7 +402,7 @@ export default function RecordsScreen() {
           )}
           {!loading && !fetchError && (!recordsData[displayAgeGroup] || recordsData[displayAgeGroup]?.[filters.gender]?.length === 0) && (
             <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
-              No {filters.federation} records available for {filters.gender === 'men' ? 'men' : 'women'} 
+              No {filters.federation} records available for {filters.gender === 'Men' ? 'men' : 'women'} 
               in the {getAgeGroupDisplayText(displayAgeGroup) || 'selected'} age group.
             </ThemedText>
           )}
@@ -519,14 +519,14 @@ export default function RecordsScreen() {
                       <View style={styles.filterSectionButtonContent}>
                         <View>
                           <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>Gender</ThemedText>
-                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>{tempFilters.gender === 'men' ? 'Men' : 'Women'}</ThemedText>
+                          <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>{tempFilters.gender === 'Men' ? 'Men' : 'Women'}</ThemedText>
                         </View>
                         <IconSymbol name={expandedSection === 'gender' ? 'chevron.down' : 'chevron.right'} size={16} color={colors.secondaryText} />
                       </View>
                     </Pressable>
                     {expandedSection === 'gender' && (
                       <ScrollView style={[styles.filterOptions, { borderTopColor: colors.border }]} bounces={false}>
-                        {(['men', 'women'] as Gender[]).map((gender) => (
+                        {(['Men', 'Women'] as Gender[]).map((gender) => (
                           <Pressable
                             key={gender}
                             style={({ pressed }) => [
@@ -545,7 +545,7 @@ export default function RecordsScreen() {
                               { color: colors.text },
                               tempFilters.gender === gender && { color: colors.link }
                             ]}>
-                              {gender === 'men' ? 'Men' : 'Women'}
+                              {gender === 'Men' ? 'Men' : 'Women'}
                             </ThemedText>
                             {tempFilters.gender === gender && (
                               <IconSymbol name="checkmark" size={16} color={colors.link} />
