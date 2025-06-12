@@ -84,9 +84,12 @@ export async function scheduleNotification(title: string, body: string, trigger:
       priority: Notifications.AndroidNotificationPriority.HIGH, // Keep priority
       data: { identifier }, // Pass identifier in data if needed, or use request identifier if available
     },
+    // @ts-ignore - Expo accepts this trigger format but TypeScript types are incorrect
     trigger: {
-      seconds: seconds,
-    } as Notifications.TimeIntervalTriggerInput,
+      type: 'timeInterval',
+      seconds: seconds, 
+      repeats: false, 
+    },
     identifier, // Use the identifier directly if supported at the top level
   });
 }

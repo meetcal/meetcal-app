@@ -183,6 +183,16 @@ const SessionCard = React.memo(({
   const { currentTheme } = useTheme();
   const { meetDetails } = useSelectedMeet();
 
+  // Get time zone abbreviation - moved before early returns to follow Rules of Hooks
+  const timeZoneAbbr = useMemo(() => {
+    if (!meetDetails?.time.timeZoneIdentifier) return '';
+    const date = new Date();
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: meetDetails.time.timeZoneIdentifier,
+      timeZoneName: 'short'
+    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
+
   // Ensure meet is defined before using it
   const meet = item.meet || selectedMeet;
   // Add a check for schedule existence in the map
@@ -227,15 +237,7 @@ const SessionCard = React.memo(({
       })
     : 'Date TBD');
 
-  // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return '';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: meetDetails.time.timeZoneIdentifier,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
-  }, [meetDetails?.time.timeZoneIdentifier]);
+
 
   const colors = {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
