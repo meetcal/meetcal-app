@@ -8,6 +8,7 @@ export interface LiftResult {
   gender: string;
   weightClass: string;
   entryTotal: number;
+  adaptive: boolean;
   session?: {
     number: number;
     platform: Platform;

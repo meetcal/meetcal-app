@@ -198,6 +198,7 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
     gender: athlete.gender || '',
     weightClass: athlete.weight_class || '', // Map weight_class to weightClass
     entryTotal: athlete.entry_total,
+    adaptive: athlete.adaptive || false,
     session: athlete.session_number && athlete.session_platform ? {
       number: athlete.session_number,
       platform: validatePlatform(athlete.session_platform), // Also validate platform here

@@ -150,6 +150,7 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
       gender: athlete.gender || '',
       weightClass: athlete.weight_class || '',
       entryTotal: athlete.entry_total,
+      adaptive: athlete.adaptive || false,
       session: {
         number: sessionNumber,
         platform: platform
