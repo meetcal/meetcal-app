@@ -651,20 +651,7 @@ export default function StartListScreen() {
     loadStarredClubs();
   }, []);
 
-  // Move weightClassOptions here, before any useEffect
-  const weightClassOptions = useMemo(() => {
-    const weightClasses = new Set<string>();
-    
-    athletes.forEach(athlete => {
-      if (athlete.weightClass) {
-        const parsed = parseWeightClasses(athlete.weightClass);
-        parsed.forEach(wc => weightClasses.add(wc));
-      }
-    });
-    
-    const options = Array.from(weightClasses).sort(sortWeightClasses);
-    return options;
-  }, [athletes]);
+
 
   // Move clubOptions and sortedClubOptions here
   const clubOptions = Array.from(
@@ -689,13 +676,100 @@ export default function StartListScreen() {
   };
 
   // Add new state for age group filter
-  const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | 'adaptiveAthlete' | null>(null);
+  const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | 'adaptiveAthlete' | 'gender' | null>(null);
 
   // Add new state for temporary filters
   const [tempAgeGroupFilter, setTempAgeGroupFilter] = useState('');
   const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
   const [tempClubFilter, setTempClubFilter] = useState('');
   const [tempAdaptiveAthleteFilter, setTempAdaptiveAthleteFilter] = useState('');
+  const [tempGenderFilter, setTempGenderFilter] = useState('');
+
+  // Move weightClassOptions here, after state declarations
+  const weightClassOptions = useMemo(() => {
+    const weightClasses = new Set<string>();
+    
+    // First, collect all weight classes and separate by gender and age group to identify heaviest classes
+    const maleWeightClasses = new Set<string>();
+    const femaleWeightClasses = new Set<string>();
+    
+    athletes.forEach(athlete => {
+      // Filter by age group if one is selected
+      if (tempAgeGroupFilter && getAgeCategory(athlete.age) !== tempAgeGroupFilter) {
+        return; // Skip athletes that don't match the selected age group
+      }
+      
+      if (athlete.weightClass) {
+        const parsed = parseWeightClasses(athlete.weightClass);
+        parsed.forEach(wc => {
+          if (athlete.gender.toLowerCase() === 'male') {
+            maleWeightClasses.add(wc);
+          } else if (athlete.gender.toLowerCase() === 'female') {
+            femaleWeightClasses.add(wc);
+          }
+        });
+      }
+    });
+    
+    // Find the heaviest weight class for each gender (within the age group filter)
+    const getHeaviestWeightClass = (weightClassSet: Set<string>) => {
+      const sorted = Array.from(weightClassSet).sort(sortWeightClasses);
+      return sorted[sorted.length - 1];
+    };
+    
+    const heaviestMale = getHeaviestWeightClass(maleWeightClasses);
+    const heaviestFemale = getHeaviestWeightClass(femaleWeightClasses);
+    
+    // Convert heaviest classes to plus classes
+    const plusClasses = new Set<string>();
+    if (heaviestMale) {
+      const num = heaviestMale.replace(/\+?kg$/, ''); // Remove + and kg
+      plusClasses.add(`${num}+kg`);
+    }
+    if (heaviestFemale && heaviestFemale !== heaviestMale) {
+      const num = heaviestFemale.replace(/\+?kg$/, ''); // Remove + and kg
+      plusClasses.add(`${num}+kg`);
+    }
+    
+    // Add plus classes based on gender filter
+    if (tempGenderFilter) {
+      // If a gender is selected, only add the plus class for that gender
+      const relevantHeaviest = tempGenderFilter.toLowerCase() === 'male' ? heaviestMale : heaviestFemale;
+      if (relevantHeaviest) {
+        const num = relevantHeaviest.replace(/\+?kg$/, '');
+        weightClasses.add(`${num}+kg`);
+      }
+    } else {
+      // If no gender filter, add all plus classes
+      plusClasses.forEach(wc => weightClasses.add(wc));
+    }
+    
+    // Then add gender-specific regular weight classes (excluding the heaviest ones)
+    athletes.forEach(athlete => {
+      // Filter by gender if one is selected
+      if (tempGenderFilter && athlete.gender.toLowerCase() !== tempGenderFilter.toLowerCase()) {
+        return; // Skip athletes that don't match the selected gender
+      }
+      
+      // Filter by age group if one is selected
+      if (tempAgeGroupFilter && getAgeCategory(athlete.age) !== tempAgeGroupFilter) {
+        return; // Skip athletes that don't match the selected age group
+      }
+      
+      if (athlete.weightClass) {
+        const parsed = parseWeightClasses(athlete.weightClass);
+        parsed.forEach(wc => {
+          // Don't add the heaviest weight classes as regular classes since they're now plus classes
+          if (wc !== heaviestMale && wc !== heaviestFemale) {
+            weightClasses.add(wc);
+          }
+        });
+      }
+    });
+    
+    const options = Array.from(weightClasses).sort(sortWeightClasses);
+    return options;
+  }, [athletes, tempGenderFilter, tempAgeGroupFilter]);
 
   // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
@@ -704,6 +778,7 @@ export default function StartListScreen() {
     if (clubFilter) filters.push(clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter);
     if (tempAgeGroupFilter) filters.push(tempAgeGroupFilter);
     if (tempAdaptiveAthleteFilter) filters.push(tempAdaptiveAthleteFilter);
+    if (tempGenderFilter) filters.push(tempGenderFilter);
     
     return filters.length > 0 ? filters.join(' • ') : 'Filter';
   };
@@ -734,11 +809,14 @@ export default function StartListScreen() {
               ? athlete.adaptive === false
               : true
           : true;
+        const matchesGender = tempGenderFilter 
+          ? athlete.gender.toLowerCase() === tempGenderFilter.toLowerCase()
+          : true;
 
-        return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete;
+        return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete && matchesGender;
       })
       .sort(sortAthletes);
-  }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, tempAdaptiveAthleteFilter, starredClubs, athletes, selectedMeet]);
+  }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, tempAdaptiveAthleteFilter, tempGenderFilter, starredClubs, athletes, selectedMeet]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -874,6 +952,7 @@ export default function StartListScreen() {
     setTempClubFilter(clubFilter);
     setTempAgeGroupFilter(tempAgeGroupFilter);
     setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
+    setTempGenderFilter(tempGenderFilter);
     setShowFilterModal(true);
   };
 
@@ -883,6 +962,7 @@ export default function StartListScreen() {
     setClubFilter(tempClubFilter);
     setTempAgeGroupFilter(tempAgeGroupFilter);
     setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
+    setTempGenderFilter(tempGenderFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
   };
@@ -893,6 +973,7 @@ export default function StartListScreen() {
     setTempClubFilter('');
     setTempAgeGroupFilter('');
     setTempAdaptiveAthleteFilter('');
+    setTempGenderFilter('');
     setWeightClassFilter('');
     setClubFilter('');
     setSearchQuery('');
@@ -1080,7 +1161,7 @@ export default function StartListScreen() {
 
           <Pressable
             style={({ pressed }) => [
-              styles.button,
+              styles.saveButton,
               { 
                 backgroundColor: colors.card,
                 borderColor: colors.border,
@@ -1094,9 +1175,6 @@ export default function StartListScreen() {
               size={16} 
               color={colors.secondaryText} 
             />
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Save
-            </ThemedText>
           </Pressable>
         </View>
       </View>
@@ -1202,6 +1280,7 @@ export default function StartListScreen() {
                         ]}
                         onPress={() => {
                           setTempAgeGroupFilter('');
+                          setTempWeightClassFilter(''); // Clear weight class when age group changes
                           setExpandedSection(null);
                         }}
                       >
@@ -1228,6 +1307,7 @@ export default function StartListScreen() {
                           ]}
                           onPress={() => {
                             setTempAgeGroupFilter(ageGroup);
+                            setTempWeightClassFilter(''); // Clear weight class when age group changes
                             setExpandedSection(null);
                           }}
                         >
@@ -1243,6 +1323,121 @@ export default function StartListScreen() {
                           )}
                         </Pressable>
                       ))}
+                    </ScrollView>
+                  )}
+                </View>
+
+                {/* Gender Filter */}
+                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.filterSectionButton,
+                      { borderBottomColor: colors.border },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => setExpandedSection(
+                      expandedSection === 'gender' ? null : 'gender'
+                    )}
+                  >
+                    <View style={styles.filterSectionButtonContent}>
+                      <View>
+                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                          Gender
+                        </ThemedText>
+                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                          {tempGenderFilter || 'All Genders'}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol 
+                        name={getChevronIcon(expandedSection === 'gender' ? 'down' : 'right')} 
+                        size={16} 
+                        color={colors.secondaryText}
+                      />
+                    </View>
+                  </Pressable>
+                  
+                  {expandedSection === 'gender' && (
+                    <ScrollView 
+                      style={[
+                        styles.filterOptions,
+                        { maxHeight: maxOptionsHeight }
+                      ]}
+                      bounces={false}
+                    >
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempGenderFilter === '' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempGenderFilter('');
+                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempGenderFilter === '' && { color: '#007AFF' }
+                        ]}>
+                          All Genders
+                        </ThemedText>
+                        {tempGenderFilter === '' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempGenderFilter === 'Male' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempGenderFilter('Male');
+                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempGenderFilter === 'Male' && { color: '#007AFF' }
+                        ]}>
+                          Male
+                        </ThemedText>
+                        {tempGenderFilter === 'Male' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempGenderFilter === 'Female' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempGenderFilter('Female');
+                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempGenderFilter === 'Female' && { color: '#007AFF' }
+                        ]}>
+                          Female
+                        </ThemedText>
+                        {tempGenderFilter === 'Female' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
                     </ScrollView>
                   )}
                 </View>
@@ -1865,6 +2060,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 1,
     elevation: 1,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+    minWidth: 44, // Minimum touch target size
   },
   buttonText: {
     fontSize: 15,
