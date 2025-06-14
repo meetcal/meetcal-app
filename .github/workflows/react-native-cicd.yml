@@ -70,7 +70,7 @@ jobs:
 
       - name: 📢 Notify test results
         if: always()
-        uses: rtCamp/action-slack-notify@v2
+        uses: stegzilla/discord-notify@v2
         env:
           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
@@ -156,13 +156,6 @@ jobs:
           eas build --platform ios --profile production --local --non-interactive --output=./app-ios-prod.ipa
         env:
           NODE_ENV: production
-
-      - name: 🚀 Publish to Expo
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-expo' || github.event_name == 'push'
-        run: |
-          eas update --auto
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: 🚀 Submit to Play Store
         if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
