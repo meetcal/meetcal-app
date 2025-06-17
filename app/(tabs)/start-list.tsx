@@ -699,6 +699,16 @@ export default function StartListScreen() {
         return; // Skip athletes that don't match the selected age group
       }
       
+      // Filter by adaptive athlete status if one is selected
+      if (tempAdaptiveAthleteFilter) {
+        if (tempAdaptiveAthleteFilter === 'Adaptive Athletes' && athlete.adaptive !== true) {
+          return; // Skip non-adaptive athletes when adaptive filter is selected
+        }
+        if (tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && athlete.adaptive !== false) {
+          return; // Skip adaptive athletes when non-adaptive filter is selected
+        }
+      }
+      
       if (athlete.weightClass) {
         const parsed = parseWeightClasses(athlete.weightClass);
         parsed.forEach(wc => {
@@ -711,7 +721,7 @@ export default function StartListScreen() {
       }
     });
     
-    // Find the heaviest weight class for each gender (within the age group filter)
+    // Find the heaviest weight class for each gender (within the age group and adaptive filters)
     const getHeaviestWeightClass = (weightClassSet: Set<string>) => {
       const sorted = Array.from(weightClassSet).sort(sortWeightClasses);
       return sorted[sorted.length - 1];
@@ -756,6 +766,16 @@ export default function StartListScreen() {
         return; // Skip athletes that don't match the selected age group
       }
       
+      // Filter by adaptive athlete status if one is selected
+      if (tempAdaptiveAthleteFilter) {
+        if (tempAdaptiveAthleteFilter === 'Adaptive Athletes' && athlete.adaptive !== true) {
+          return; // Skip non-adaptive athletes when adaptive filter is selected
+        }
+        if (tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && athlete.adaptive !== false) {
+          return; // Skip adaptive athletes when non-adaptive filter is selected
+        }
+      }
+      
       if (athlete.weightClass) {
         const parsed = parseWeightClasses(athlete.weightClass);
         parsed.forEach(wc => {
@@ -769,7 +789,7 @@ export default function StartListScreen() {
     
     const options = Array.from(weightClasses).sort(sortWeightClasses);
     return options;
-  }, [athletes, tempGenderFilter, tempAgeGroupFilter]);
+  }, [athletes, tempGenderFilter, tempAgeGroupFilter, tempAdaptiveAthleteFilter]);
 
   // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
@@ -1442,6 +1462,121 @@ export default function StartListScreen() {
                   )}
                 </View>
 
+                {/* Adaptive Athlete Filter */}
+                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.filterSectionButton,
+                      { borderBottomColor: colors.border },
+                      pressed && { opacity: 0.8 }
+                    ]}
+                    onPress={() => setExpandedSection(
+                      expandedSection === 'adaptiveAthlete' ? null : 'adaptiveAthlete'
+                    )}
+                  >
+                    <View style={styles.filterSectionButtonContent}>
+                      <View>
+                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                          Adaptive Athlete
+                        </ThemedText>
+                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
+                          {tempAdaptiveAthleteFilter || 'All Athletes'}
+                        </ThemedText>
+                      </View>
+                      <IconSymbol 
+                        name={getChevronIcon(expandedSection === 'adaptiveAthlete' ? 'down' : 'right')} 
+                        size={16} 
+                        color={colors.secondaryText}
+                      />
+                    </View>
+                  </Pressable>
+                  
+                  {expandedSection === 'adaptiveAthlete' && (
+                    <ScrollView 
+                      style={[
+                        styles.filterOptions,
+                        { maxHeight: maxOptionsHeight }
+                      ]}
+                      bounces={false}
+                    >
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempAdaptiveAthleteFilter === '' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempAdaptiveAthleteFilter('');
+                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempAdaptiveAthleteFilter === '' && { color: '#007AFF' }
+                        ]}>
+                          All Athletes
+                        </ThemedText>
+                        {tempAdaptiveAthleteFilter === '' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempAdaptiveAthleteFilter('Adaptive Athletes');
+                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { color: '#007AFF' }
+                        ]}>
+                          Adaptive Athletes
+                        </ThemedText>
+                        {tempAdaptiveAthleteFilter === 'Adaptive Athletes' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.filterOption,
+                          { borderBottomColor: colors.border },
+                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { backgroundColor: colors.pressed },
+                          pressed && { opacity: 0.8 }
+                        ]}
+                        onPress={() => {
+                          setTempAdaptiveAthleteFilter('Non-Adaptive Athletes');
+                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setExpandedSection(null);
+                        }}
+                      >
+                        <ThemedText style={[
+                          styles.filterOptionText,
+                          { color: colors.text },
+                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { color: '#007AFF' }
+                        ]}>
+                          Non-Adaptive Athletes
+                        </ThemedText>
+                        {tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && (
+                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        )}
+                      </Pressable>
+                    </ScrollView>
+                  )}
+                </View>
+                
                 {/* Weight Class Filter */}
                 <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
                   <Pressable
@@ -1532,117 +1667,6 @@ export default function StartListScreen() {
                   )}
                 </View>
 
-                {/* Adaptive Athlete Filter */}
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.filterSectionButton,
-                      { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
-                    ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'adaptiveAthlete' ? null : 'adaptiveAthlete'
-                    )}
-                  >
-                    <View style={styles.filterSectionButtonContent}>
-                      <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
-                          Adaptive Athlete
-                        </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempAdaptiveAthleteFilter || 'All Athletes'}
-                        </ThemedText>
-                      </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'adaptiveAthlete' ? 'down' : 'right')} 
-                        size={16} 
-                        color={colors.secondaryText}
-                      />
-                    </View>
-                  </Pressable>
-                  
-                  {expandedSection === 'adaptiveAthlete' && (
-                    <ScrollView 
-                      style={[
-                        styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
-                      ]}
-                      bounces={false}
-                    >
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.filterOption,
-                          { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
-                        ]}
-                        onPress={() => {
-                          setTempAdaptiveAthleteFilter('');
-                          setExpandedSection(null);
-                        }}
-                      >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === '' && { color: '#007AFF' }
-                        ]}>
-                          All Athletes
-                        </ThemedText>
-                        {tempAdaptiveAthleteFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                        )}
-                      </Pressable>
-
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.filterOption,
-                          { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
-                        ]}
-                        onPress={() => {
-                          setTempAdaptiveAthleteFilter('Adaptive Athletes');
-                          setExpandedSection(null);
-                        }}
-                      >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { color: '#007AFF' }
-                        ]}>
-                          Adaptive Athletes
-                        </ThemedText>
-                        {tempAdaptiveAthleteFilter === 'Adaptive Athletes' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                        )}
-                      </Pressable>
-
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.filterOption,
-                          { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
-                        ]}
-                        onPress={() => {
-                          setTempAdaptiveAthleteFilter('Non-Adaptive Athletes');
-                          setExpandedSection(null);
-                        }}
-                      >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { color: '#007AFF' }
-                        ]}>
-                          Non-Adaptive Athletes
-                        </ThemedText>
-                        {tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                        )}
-                      </Pressable>
-                    </ScrollView>
-                  )}
-                </View>
 
                 {/* Club Filter */}
                 <View style={styles.filterSection}>
