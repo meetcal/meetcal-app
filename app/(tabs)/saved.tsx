@@ -544,6 +544,11 @@ export default function SavedScreen() {
   };
 
   const handleSaveToCalendar = async () => {
+    if (!isSubscribed) {
+      router.push('/paywall');
+      return;
+    }
+
     if (filteredSessions.length === 0) {
       Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
       return;
@@ -790,8 +795,15 @@ export default function SavedScreen() {
             onPress={handleSaveToCalendar}
             disabled={isSchedulesLoading}
           >
-            <IconSymbol name="calendar" size={16} color={isSchedulesLoading ? colors.border : colors.secondaryText} />
-            <ThemedText style={[styles.buttonText, { color: isSchedulesLoading ? colors.border : colors.secondaryText }]}>
+            <IconSymbol 
+              name="calendar" 
+              size={16} 
+              color={isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText)} 
+            />
+            <ThemedText style={[
+              styles.buttonText, 
+              { color: isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText) }
+            ]}>
               {isSchedulesLoading ? 'Loading...' : 'Add to Calendar'}
             </ThemedText>
           </Pressable>

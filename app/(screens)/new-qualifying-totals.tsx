@@ -1,4 +1,4 @@
-import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -6,6 +6,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
 import { fetchQualifyingTotals, QualifyingTotalsData } from '@/lib/database/fetch-qualifying-totals';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import PaywallScreen from './paywall';
 
 type Gender = 'Men' | 'Women';
 type Event = string;
@@ -22,6 +24,7 @@ const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 
 export default function QualifyingTotalsScreen() {
   const { currentTheme } = useTheme();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [filters, setFilters] = useState<Filters>({
     event: 'USAW Nationals',
     gender: 'Men',
@@ -107,6 +110,18 @@ export default function QualifyingTotalsScreen() {
       qt
     }));
   };
+
+  if (isSubscriptionLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </ThemedView>
+    );
+  }
+
+  if (!isSubscribed) {
+    return <PaywallScreen />;
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>

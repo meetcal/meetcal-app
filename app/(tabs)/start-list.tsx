@@ -493,6 +493,7 @@ export default function StartListScreen() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const { selectedMeet } = useSelectedMeet();
+  const { isSubscribed } = useSubscription();
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -890,6 +891,11 @@ export default function StartListScreen() {
   };
 
   const handleSaveToCalendar = async () => {
+    if (!isSubscribed) {
+      router.push('/paywall');
+      return;
+    }
+
     if (!selectedMeet || !isMeetName(selectedMeet)) {
       Alert.alert('Error', 'Please select a meet before adding events to calendar.');
       return;
@@ -1977,9 +1983,16 @@ export default function StartListScreen() {
               }}
             >
               <View style={styles.saveOptionContent}>
-                <IconSymbol name="calendar" size={22} color={colors.text} />
+                <IconSymbol 
+                  name="calendar" 
+                  size={22} 
+                  color={!isSubscribed ? colors.secondaryText : colors.text} 
+                />
                 <View style={styles.saveOptionText}>
-                  <ThemedText style={[styles.saveOptionTitle, { color: colors.text }]}>
+                  <ThemedText style={[
+                    styles.saveOptionTitle, 
+                    { color: !isSubscribed ? colors.secondaryText : colors.text }
+                  ]}>
                     Add to Calendar
                   </ThemedText>
                   <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
