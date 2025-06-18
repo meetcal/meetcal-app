@@ -71,7 +71,7 @@ jobs:
       - name: 📢 Notify test results
         if: always()
         uses: stegzilla/discord-notify@v2
-        env:
+        with:
           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
           title: Test Results
