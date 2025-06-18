@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -7,6 +7,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records';
 import { fetchRecords, fetchFederations, fetchAgeGroups } from '@/lib/database/fetch-records';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import PaywallScreen from './paywall';
 
 type Federation = string;
 type Gender = 'Men' | 'Women';
@@ -27,6 +29,7 @@ const maxOptionsHeight = windowHeight * 0.4;
 
 export default function RecordsScreen() {
   const { currentTheme } = useTheme();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [availableFederations, setAvailableFederations] = useState<string[]>([]);
   const [currentAvailableAgeGroupsList, setCurrentAvailableAgeGroupsList] = useState<string[]>([]);
   const [modalFederationForAgeGroups, setModalFederationForAgeGroups] = useState<string | null>(null);
@@ -64,6 +67,8 @@ export default function RecordsScreen() {
           if (fetchedFederations.includes(preferredFederation)) {
             determinedFederation = preferredFederation;
             const ageGroupsForPreferredFed = await fetchAgeGroups(determinedFederation);
+            setCurrentAvailableAgeGroupsList(ageGroupsForPreferredFed);
+            setModalFederationForAgeGroups(determinedFederation);
             // Find 'Senior' or its case variation, then fallback
             const seniorEquivalent = ageGroupsForPreferredFed.find(ag => ag.toLowerCase() === preferredAgeGroup.toLowerCase());
             if (seniorEquivalent) {
@@ -77,6 +82,8 @@ export default function RecordsScreen() {
             // USAW not available, use the first federation from the list
             determinedFederation = fetchedFederations[0];
             const ageGroupsForFirstFed = await fetchAgeGroups(determinedFederation);
+            setCurrentAvailableAgeGroupsList(ageGroupsForFirstFed);
+            setModalFederationForAgeGroups(determinedFederation);
             if (ageGroupsForFirstFed.length > 0) {
               determinedAgeGroup = ageGroupsForFirstFed[0];
             } else {
@@ -135,6 +142,7 @@ export default function RecordsScreen() {
     if (tempFilters.federation !== modalFederationForAgeGroups) {
       let isStale = false;
       const federationToFetch = tempFilters.federation; 
+      const currentTempAgeGroup = tempFilters.ageGroup; // Preserve current selection
       
       setCurrentAvailableAgeGroupsList([]); // Clear previous list, indicates loading
       setLoading(true); // Use main loading indicator for now
@@ -146,7 +154,14 @@ export default function RecordsScreen() {
           setCurrentAvailableAgeGroupsList(fetchedAgeGroups);
           setModalFederationForAgeGroups(federationToFetch); 
 
-          const newAgeGroup = fetchedAgeGroups.length > 0 ? fetchedAgeGroups[0] : '';
+          // Try to preserve the current age group selection if it exists in the new list
+          let newAgeGroup = '';
+          if (fetchedAgeGroups.includes(currentTempAgeGroup)) {
+            newAgeGroup = currentTempAgeGroup;
+          } else if (fetchedAgeGroups.length > 0) {
+            newAgeGroup = fetchedAgeGroups[0];
+          }
+          
           setTempFilters(prev => ({ ...prev, ageGroup: newAgeGroup }));
         })
         .catch((err) => {
@@ -168,7 +183,7 @@ export default function RecordsScreen() {
   // Effect for fetching records when filters change
   useEffect(() => {
     if (!filters.federation || !filters.ageGroup) { // Don't fetch if essential filters are not set
-      // setLoading(false); // Stop loading if filters aren't ready
+      setLoading(false);
       return;
     }
 
@@ -178,62 +193,31 @@ export default function RecordsScreen() {
     setAllRecords(null);
     setFetchError(null);
 
-    // Fetch age groups for the *applied* federation if they haven't been loaded
-    // or if the federation has changed since last load.
-    // This ensures currentAvailableAgeGroupsList is up-to-date for the *applied* filters.
-    async function ensureAgeGroupsForAppliedFederation() {
-        try {
-            const fetchedAgeGroups = await fetchAgeGroups(filters.federation);
-            setCurrentAvailableAgeGroupsList(fetchedAgeGroups);
-            // If current filters.ageGroup is not in the new list, reset it.
-            if (!fetchedAgeGroups.includes(filters.ageGroup) && fetchedAgeGroups.length > 0) {
-                setFilters(prev => ({ ...prev, ageGroup: fetchedAgeGroups[0] }));
-                // This state change will re-trigger the records fetch effect.
-                // To avoid immediate re-fetch, we might return early or manage loading state carefully.
-                // For now, let it re-trigger, as filters.ageGroup has changed.
-                return false; // Indicate that filters changed and effect should re-run or stop current path
-            }
-            return true; // Indicate age groups are fine
-        } catch (err) {
-            console.error("Failed to fetch age groups for applied federation", err);
-            setFetchError("Failed to load age group data.");
-            return false; // Indicate failure
+    // Fetch records directly - age group validation should be handled elsewhere
+    fetchRecords(filters.federation, filters.ageGroup, filters.gender)
+      .then((data) => {
+        if (!cancelled) {
+          setRecords(data);
         }
-    }
-
-    ensureAgeGroupsForAppliedFederation().then(ageGroupsAreValid => {
-        if (!ageGroupsAreValid || cancelled) {
-            setLoading(false);
-            return;
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.message || 'Failed to fetch records');
         }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-        fetchRecords(filters.federation, filters.ageGroup, filters.gender)
-        .then((data) => {
-            if (!cancelled) {
-            setRecords(data);
-            }
-        })
-        .catch((err) => {
-            if (!cancelled) {
-            setFetchError(err.message || 'Failed to fetch records');
-            }
-        })
-        .finally(() => {
-            if(!cancelled) setLoading(false); // Combined loading state management
-        });
-
-        // Fetch all records for the federation in the background
-        // We should use the more specific filter set if available
-        fetchRecords(filters.federation, undefined, undefined) 
-        .then((data) => {
-            if (!cancelled) setAllRecords(data);
-        })
-        .catch((err) => {
-            // Silently fail or log, as this is background
-            console.warn("Failed to fetch all records for federation in background", err);
-        });
-    });
-
+    // Fetch all records for the federation in the background
+    fetchRecords(filters.federation, undefined, undefined) 
+      .then((data) => {
+        if (!cancelled) setAllRecords(data);
+      })
+      .catch((err) => {
+        // Silently fail or log, as this is background
+        console.warn("Failed to fetch all records for federation in background", err);
+      });
 
     return () => { cancelled = true; };
   }, [filters.federation, filters.ageGroup, filters.gender]); // React to all filter changes
@@ -288,14 +272,16 @@ export default function RecordsScreen() {
 
   const handleApplyFilters = async () => {
     let ageGroupToApply = tempFilters.ageGroup;
-    // Ensure age groups for the temp federation are loaded if not already
-    // This is a safeguard, ideally currentAvailableAgeGroupsList is already for tempFilters.federation
+    
+    // Check if we need to fetch age groups for the selected federation
+    // This happens if the federation in tempFilters is different from what we loaded age groups for
     let ageGroupsForSelectedFed = currentAvailableAgeGroupsList;
-    if (!currentAvailableAgeGroupsList.find(ag => tempFilters.federation)) { // A bit of a guess, if list doesn't match temp fed
+    if (tempFilters.federation !== modalFederationForAgeGroups) {
         try {
             setLoading(true);
             ageGroupsForSelectedFed = await fetchAgeGroups(tempFilters.federation);
             setCurrentAvailableAgeGroupsList(ageGroupsForSelectedFed); // Update list for modal consistency
+            setModalFederationForAgeGroups(tempFilters.federation);
         } catch (err) {
             console.error("Error fetching age groups on apply", err);
             setLoading(false);
@@ -306,6 +292,7 @@ export default function RecordsScreen() {
         }
     }
 
+    // Validate the age group selection
     if (!ageGroupsForSelectedFed.includes(tempFilters.ageGroup) && ageGroupsForSelectedFed.length > 0) {
       ageGroupToApply = ageGroupsForSelectedFed[0];
     } else if (ageGroupsForSelectedFed.length === 0) {
@@ -337,6 +324,18 @@ export default function RecordsScreen() {
       loadAgeGroupsForModal();
     }
   }, [showFilterModal]); THIS IS REPLACED / INTEGRATED */
+
+  if (isSubscriptionLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.link} />
+      </ThemedView>
+    );
+  }
+
+  if (!isSubscribed) {
+    return <PaywallScreen />;
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -7,6 +7,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { fetchStandards } from '@/lib/database/fetch-standards';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useState, useEffect, useMemo } from 'react';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import PaywallScreen from './paywall';
 
 type Gender = 'men' | 'women';
 type AgeGroup = 'senior' | 'junior' | 'youth' | 'u15';
@@ -31,6 +33,7 @@ const maxOptionsHeight = windowHeight * 0.4;
 
 export default function NewStandardsScreen() {
   const { currentTheme } = useTheme();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [filters, setFilters] = useState<Filters>({
     gender: 'men',
     ageGroup: 'senior'
@@ -113,6 +116,18 @@ export default function NewStandardsScreen() {
     { id: 'junior', label: 'Junior' },
     { id: 'senior', label: 'Senior' },
   ];
+
+  if (isSubscriptionLoading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </ThemedView>
+    );
+  }
+
+  if (!isSubscribed) {
+    return <PaywallScreen />;
+  }
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
