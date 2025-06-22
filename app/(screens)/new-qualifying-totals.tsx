@@ -276,7 +276,23 @@ export default function QualifyingTotalsScreen() {
                               pressed && { opacity: 0.8 }
                             ]}
                             onPress={() => {
-                              setTempFilters(prev => ({ ...prev, event: event as Event }));
+                              const newEvent = event as Event;
+                              setTempFilters(prev => {
+                                // Get available age groups for the new event
+                                const eventData = totalsData[newEvent];
+                                const availableAgeGroups = eventData ? Object.keys(eventData) : [];
+                                
+                                // Reset age group if current selection is not available for new event
+                                const newAgeGroup = availableAgeGroups.includes(prev.ageGroup) 
+                                  ? prev.ageGroup 
+                                  : (availableAgeGroups.length > 0 ? availableAgeGroups[0] as AgeGroup : 'Senior');
+                                
+                                return { 
+                                  ...prev, 
+                                  event: newEvent,
+                                  ageGroup: newAgeGroup
+                                };
+                              });
                               setExpandedSection(null);
                             }}
                           >
@@ -396,54 +412,51 @@ export default function QualifyingTotalsScreen() {
                       ]}
                       bounces={false}
                     >
-                      {[
-                         { id: 'U11', label: 'U11' },
-                         { id: 'U13', label: 'U13' },
-                         { id: 'U15', label: 'U15' },
-                         { id: 'U17', label: 'U17' },
-                         { id: 'Junior', label: 'Junior' },
-                         { id: 'University', label: 'University' },
-                         { id: 'U23', label: 'U23' },
-                         { id: 'U25', label: 'U25' },
-                        { id: 'Senior', label: 'Senior' },
-                        { id: 'Masters 30', label: 'Masters 30' },
-                        { id: 'Masters 35', label: 'Masters 35' },
-                        { id: 'Masters 40', label: 'Masters 40' },
-                        { id: 'Masters 45', label: 'Masters 45' },
-                        { id: 'Masters 50', label: 'Masters 50' },
-                        { id: 'Masters 55', label: 'Masters 55' },
-                        { id: 'Masters 60', label: 'Masters 60' },
-                        { id: 'Masters 65', label: 'Masters 65' },
-                        { id: 'Masters 70', label: 'Masters 70' },
-                        { id: 'Masters 75', label: 'Masters 75' },
-                        { id: 'Masters 80', label: 'Masters 80' },
-                        { id: 'Masters 85', label: 'Masters 85' },
-                      ].map((ageGroup) => (
-                        <Pressable
-                          key={ageGroup.id}
-                          style={({ pressed }) => [
-                            styles.filterOption,
-                            { borderBottomColor: colors.border },
-                            tempFilters.ageGroup === ageGroup.id && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
-                          ]}
-                          onPress={() => {
-                            setTempFilters(prev => ({ ...prev, ageGroup: ageGroup.id as AgeGroup }));
-                            setExpandedSection(null);
-                          }}
-                        >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempFilters.ageGroup === ageGroup.id && { color: '#007AFF' }
-                          ]}>
-                            {ageGroup.label}
-                          </ThemedText>
-                          {tempFilters.ageGroup === ageGroup.id && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
-                          )}
-                        </Pressable>
-                      ))}
+                      {/* Filter age groups based on selected event */}
+                      {(tempFilters.event && totalsData[tempFilters.event] 
+                        ? Object.keys(totalsData[tempFilters.event])
+                        : []
+                      )
+                        .filter(ageGroup => typeof ageGroup === 'string')
+                        .sort((a, b) => {
+                          // Custom sort to put common age groups first
+                          const order = ['U11', 'U13', 'U15', 'U17', 'Junior', 'University', 'U23', 'U25', 'Senior'];
+                          const aIndex = order.indexOf(a);
+                          const bIndex = order.indexOf(b);
+                          
+                          if (aIndex !== -1 && bIndex !== -1) {
+                            return aIndex - bIndex;
+                          }
+                          if (aIndex !== -1) return -1;
+                          if (bIndex !== -1) return 1;
+                          return a.localeCompare(b);
+                        })
+                        .map((ageGroup) => (
+                          <Pressable
+                            key={ageGroup}
+                            style={({ pressed }) => [
+                              styles.filterOption,
+                              { borderBottomColor: colors.border },
+                              tempFilters.ageGroup === ageGroup && { backgroundColor: colors.pressed },
+                              pressed && { opacity: 0.8 }
+                            ]}
+                            onPress={() => {
+                              setTempFilters(prev => ({ ...prev, ageGroup: ageGroup as AgeGroup }));
+                              setExpandedSection(null);
+                            }}
+                          >
+                            <ThemedText style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempFilters.ageGroup === ageGroup && { color: '#007AFF' }
+                            ]}>
+                              {ageGroup[0].toUpperCase() + ageGroup.slice(1)}
+                            </ThemedText>
+                            {tempFilters.ageGroup === ageGroup && (
+                              <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            )}
+                          </Pressable>
+                        ))}
                     </ScrollView>
                   )}
                 </View>
