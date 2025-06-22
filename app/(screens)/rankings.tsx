@@ -112,12 +112,21 @@ export default function RecordsScreen() {
           .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
     [intlRankings]
   );
+  
+  // Filter age category options based on the selected meet in tempFilters
   const ageCategoryOptions = useMemo(
-    () => Array.from(new Set(intlRankings.map(r => typeof r.age_category === 'string' ? r.age_category : '')))
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-    [intlRankings]
+    () => {
+      const filteredData = tempFilters.meet 
+        ? intlRankings.filter(r => r.meet === tempFilters.meet)
+        : intlRankings;
+      
+      return Array.from(new Set(filteredData.map(r => typeof r.age_category === 'string' ? r.age_category : '')))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    },
+    [intlRankings, tempFilters.meet]
   );
+  
   const genderOptions = useMemo(
     () => Array.from(new Set(intlRankings.map(r => typeof r.gender === 'string' ? r.gender : '')))
           .filter(Boolean)
@@ -317,7 +326,23 @@ export default function RecordsScreen() {
                               pressed && { opacity: 0.8 }
                             ]}
                             onPress={() => {
-                              setTempFilters(prev => ({ ...prev, meet: meet ?? '' }));
+                              const newMeet = meet ?? '';
+                              setTempFilters(prev => {
+                                // Get available age categories for the new meet
+                                const meetData = intlRankings.filter(r => r.meet === newMeet);
+                                const availableAgeCategories = Array.from(new Set(meetData.map(r => r.age_category).filter(Boolean)));
+                                
+                                // Reset age category if current selection is not available for new meet
+                                const newAgeCategory = availableAgeCategories.includes(prev.age_category as any) 
+                                  ? prev.age_category 
+                                  : (availableAgeCategories.length > 0 ? availableAgeCategories[0] as string : '');
+                                
+                                return { 
+                                  ...prev, 
+                                  meet: newMeet,
+                                  age_category: newAgeCategory
+                                };
+                              });
                               setExpandedSection(null);
                             }}
                           >
