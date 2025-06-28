@@ -275,6 +275,7 @@ export default function ScheduleScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
+  const [initialScrollIndex, setInitialScrollIndex] = useState(0);
 
   const colors: Colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -284,6 +285,26 @@ export default function ScheduleScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
+
+  // Function to calculate the initial page based on current UTC date
+  const calculateInitialPage = useCallback((scheduleData: Schedule): number => {
+    if (!scheduleData || scheduleData.length === 0) return 0;
+    
+    // Get current date in UTC and format as YYYY-MM-DD
+    const currentUTCDate = new Date().toISOString().split('T')[0];
+    
+    // Find the index of the current date or the closest future date using fullDate
+    const currentDateIndex = scheduleData.findIndex(day => day.fullDate >= currentUTCDate);
+        
+    // If current date is before all schedule dates, return 0 (first day)
+    // If current date is after all schedule dates, return the last day
+    // Otherwise, return the found index
+    if (currentDateIndex === -1) {
+      return scheduleData.length - 1; // Current date is after all schedule dates
+    }
+    
+    return currentDateIndex;
+  }, []);
 
   // Revised loadData function (Supabase-first, Cache-fallback)
   const loadData = useCallback(async (meet: MeetName) => {
@@ -316,6 +337,15 @@ export default function ScheduleScreen() {
     }
 
     setSchedule(scheduleData); 
+    
+    // Calculate and set the initial page based on current UTC date
+    if (scheduleData && scheduleData.length > 0) {
+      const initialPage = calculateInitialPage(scheduleData);
+      setInitialScrollIndex(initialPage);
+      setCurrentPage(initialPage);
+      setCurrentDate(scheduleData[initialPage]?.date || '');
+    }
+    
     // If loaded from cache, maybe show an indicator?
     // For now, just log it.
     if (loadedFromCache) {
@@ -323,7 +353,7 @@ export default function ScheduleScreen() {
     }
     setIsLoading(false);
 
-  }, []); // Dependencies managed by the calling useEffect
+  }, [calculateInitialPage]); // Dependencies managed by the calling useEffect
 
   // Load data when selectedMeet changes
   useEffect(() => {
@@ -339,6 +369,21 @@ export default function ScheduleScreen() {
       setIsLoading(false); 
     }
   }, [selectedMeet, loadData]);
+
+  // Scroll to initial position after data is loaded
+  useEffect(() => {
+    if (!isLoading && schedule.length > 0 && initialScrollIndex > 0) {
+      // Use a small delay to ensure the FlatList is fully rendered
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToIndex({ 
+          index: initialScrollIndex, 
+          animated: false 
+        });
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, schedule.length, initialScrollIndex]);
 
   // Revised refresh handler
   const handleRefresh = useCallback(async () => {
@@ -510,6 +555,7 @@ export default function ScheduleScreen() {
             data={schedule}
             keyExtractor={item => item.date}
             renderItem={renderDayView}
+            initialScrollIndex={initialScrollIndex}
             getItemLayout={(data, index) => ({
               length: width,
               offset: width * index,

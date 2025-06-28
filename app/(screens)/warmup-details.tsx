@@ -467,19 +467,21 @@ export default function WarmupDetailsScreen() {
           />
 
           <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'height' : 'height'}
             style={{ flex: 1 }}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+            keyboardVerticalOffset={0}
           >
             <ScrollView 
               style={styles.scrollView} 
               contentContainerStyle={[
                 styles.content,
-                { paddingBottom: 32 }
+                { paddingBottom: 200 }
               ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={true}
+              bounces={true}
+              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
             >
               {warmup && (
                 <>
@@ -801,6 +803,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     minHeight: 100, // Ensure a decent default size
+    maxHeight: 120, // Prevent it from getting too tall
     borderWidth: 0, // No border inside the card, relies on card border
   },
   crossedOutText: {
