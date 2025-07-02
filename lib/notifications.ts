@@ -59,7 +59,7 @@ export async function updateExpoPushToken(userId: string, token: string): Promis
   let clerkToken: string | null = null;
   try {
     if (Clerk.session) {
-      const token = await Clerk.session.getToken({ template: 'supabase' });
+      const token = await Clerk.session.getToken();
       clerkToken = token ?? null;
     }
   } catch (clerkError: any) {
@@ -73,7 +73,7 @@ export async function toggleNotifications(userId: string, enabled: boolean): Pro
   let clerkToken: string | null = null;
   try {
     if (Clerk.session) {
-      const token = await Clerk.session.getToken({ template: 'supabase' });
+      const token = await Clerk.session.getToken();
       clerkToken = token ?? null;
     }
   } catch {
@@ -86,7 +86,7 @@ export async function updateNotificationTimeBefore(userId: string, minutes: numb
   let clerkToken: string | null = null;
   try {
     if (Clerk.session) {
-      const token = await Clerk.session.getToken({ template: 'supabase' });
+      const token = await Clerk.session.getToken();
       clerkToken = token ?? null;
     }
   } catch {

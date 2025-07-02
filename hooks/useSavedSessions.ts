@@ -71,8 +71,13 @@ export function useSavedSessions() {
 
       if (supabaseError) {
         console.error('Error fetching saved sessions from Supabase:', supabaseError);
-        // Fallback to local storage if Supabase fails? Or show error?
-        // For now, load local as a fallback
+        
+        // Check if it's an authentication error
+        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
+          console.error('Authentication error with Supabase - this may be due to Clerk token issues');
+        }
+        
+        // Fallback to local storage if Supabase fails
         const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
         if (saved) {
           const parsedSessions = JSON.parse(saved);
@@ -107,6 +112,12 @@ export function useSavedSessions() {
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
+      
+      // Check if it's a network/connection error
+      if (error instanceof Error && (error.message.includes('network') || error.message.includes('fetch'))) {
+        console.error('Network error detected, falling back to local storage');
+      }
+      
       // Attempt to load from local storage as a final fallback
       try {
         const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
@@ -277,8 +288,13 @@ export function useSavedSessions() {
 
       if (supabaseError) {
         console.error('Error saving session to Supabase:', supabaseError);
-        // Handle error - maybe revert local changes or show message?
-        // For now, just log the error. The local save already succeeded.
+        
+        // Check if it's an authentication error
+        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
+          console.error('Authentication error while saving session - this may be due to Clerk token issues');
+        }
+        
+        // The local save already succeeded, so the user has their data
         return false; // Indicate partial failure
       }
 
