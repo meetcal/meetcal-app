@@ -25,22 +25,18 @@ export const supabase = createClient<Database>(
       persistSession: true,
       detectSessionInUrl: false,
     },
-    global: {
-      fetch: async (url, options = {}) => {
-        const token = await Clerk.session?.getToken({ template: 'supabase' });
-        // Always use a plain object for headers
-        const originalHeaders = (options.headers && !(options.headers instanceof Headers) ? options.headers : {}) as Record<string, string>;
-        options.headers = {
-          ...originalHeaders,
-          apikey: supabaseAnonKey!,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        };
-        // Ensure Content-Type is set for requests with a body
-        if (options.body && !('Content-Type' in (options.headers as Record<string, string>))) {
-          (options.headers as Record<string, string>)['Content-Type'] = 'application/json';
-        }
-        return fetch(url, options);
-      },
+    // Use the new Clerk third-party auth integration
+    // This replaces the custom fetch function approach
+    accessToken: async () => {
+      try {
+        // Get the session token directly from Clerk session
+        // No need for template parameter with the new integration
+        const token = await Clerk.session?.getToken();
+        return token ?? null;
+      } catch (error) {
+        console.error('Error getting Clerk session token:', error);
+        return null;
+      }
     },
   }
 ) 

@@ -113,7 +113,12 @@ export default function CreateWarmupScreen() {
 
       if (supabaseError) {
         console.error('Error saving warmup to Supabase:', supabaseError);
-        // Optionally: Handle error - perhaps show a message to the user
+        
+        // Check if it's an authentication error
+        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
+          console.error('Authentication error while saving warmup - this may be due to Clerk token issues');
+        }
+        
         // The local save succeeded, so the user has their data, but sync failed.
       } else {
         console.log('Warmup saved to Supabase successfully');
@@ -123,6 +128,12 @@ export default function CreateWarmupScreen() {
       router.back()
     } catch (error) {
       console.error('Error saving warmup:', error)
+      
+      // Check if it's a network/connection error
+      if (error instanceof Error && (error.message.includes('network') || error.message.includes('fetch'))) {
+        console.error('Network error detected during warmup save');
+      }
+      
       // Handle general errors (e.g., AsyncStorage failure)
     }
   }

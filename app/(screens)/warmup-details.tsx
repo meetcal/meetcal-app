@@ -226,6 +226,12 @@ export default function WarmupDetailsScreen() {
 
       if (supabaseError && supabaseError.code !== 'PGRST116') { // Ignore 'No rows found' error initially
         console.error('Error fetching warmup from Supabase:', supabaseError);
+        
+        // Check if it's an authentication error
+        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
+          console.error('Authentication error while loading warmup - this may be due to Clerk token issues');
+        }
+        
         // Fallback to AsyncStorage below
       } else if (supabaseData && Array.isArray(supabaseData) && supabaseData.length > 0) {
         // Access the first element since the response is an array
@@ -415,15 +421,20 @@ export default function WarmupDetailsScreen() {
           notes: notes,
           updated_at: updatedTimestamp
         })
-        .match({ id: id, user_id: user.id });
+        .eq('id', id)
+        .eq('user_id', user.id);
 
       if (supabaseError) {
         console.error('Error updating warmup in Supabase:', supabaseError);
-        // Handle error - revert local changes? Show message?
-        Alert.alert("Error", "Failed to save changes to the server.");
+        
+        // Check if it's an authentication error
+        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
+          console.error('Authentication error while saving warmup - this may be due to Clerk token issues');
+        }
+        
+        // Local save already succeeded, so user has their changes
       } else {
         console.log('Warmup updated in Supabase successfully');
-        Alert.alert("Success", "Warmup changes saved successfully.");
       }
       
       // Navigate back after attempts - REMOVED
