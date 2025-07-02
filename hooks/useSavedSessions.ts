@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'; // Import supabase client
 import { scheduleNotification, cancelNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
+import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -315,24 +316,58 @@ export function useSavedSessions() {
             const startTime = getPlatformStartTime(foundSession, platform);
             console.log(`Notification Scheduling - Start time found: ${startTime}`);
             
-            const [time, period] = startTime.split(' ');
-            let [hours, minutes] = time.split(':').map(Number);
-            if (period === 'PM' && hours !== 12) hours += 12;
-            if (period === 'AM' && hours === 12) hours = 0;
+            // Get meet config for timezone information
+            const meetConfig = await getMeetConfig(meetName);
             
-            console.log(`Notification Scheduling - Parsing Date/Time: Date='${sessionDayDate}', H=${hours}, M=${minutes}`);
-
-            const sessionDate = new Date(sessionDayDate);
-            // Ensure date part is correct (avoid potential UTC issues with new Date(string))
-            const [year, month, day] = sessionDayDate.split('-').map(Number);
-            sessionDate.setFullYear(year, month - 1, day); // Use setFullYear for clarity
-            sessionDate.setHours(hours, minutes, 0, 0); 
+            // Convert times to UTC using the meet's time zone (same as calendar events)
+            const sessionDate = convertToUTC(startTime, sessionDayDate, meetName);
+            
+            // Format times for clearer logging
+            const sessionDateEastern = sessionDate.toLocaleString('en-US', {
+              timeZone: 'America/New_York',
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
+            
+            const sessionDateMeetLocal = sessionDate.toLocaleString('en-US', {
+              timeZone: meetConfig.time.timeZoneIdentifier,
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
 
             const triggerDate = new Date(sessionDate.getTime() - 60 * 60 * 1000);
             const now = new Date();
-            console.log(`Notification Scheduling - Session Date: ${sessionDate.toISOString()}`);
-            console.log(`Notification Scheduling - Trigger Date: ${triggerDate.toISOString()}`);
-            console.log(`Notification Scheduling - Current Time: ${now.toISOString()}`);
+            
+            const triggerDateEastern = triggerDate.toLocaleString('en-US', {
+              timeZone: 'America/New_York',
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
+            
+            const triggerDateMeetLocal = triggerDate.toLocaleString('en-US', {
+              timeZone: meetConfig.time.timeZoneIdentifier,
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
+            
+            const nowEastern = now.toLocaleString('en-US', {
+              timeZone: 'America/New_York',
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
+            
+            const nowMeetLocal = now.toLocaleString('en-US', {
+              timeZone: meetConfig.time.timeZoneIdentifier,
+              dateStyle: 'short',
+              timeStyle: 'short'
+            });
+
+            console.log(`Notification Scheduling - Session Date (UTC): ${sessionDate.toISOString()}`);
+            console.log(`Notification Scheduling - Session Date (Eastern): ${sessionDateEastern}`);
+            console.log(`Notification Scheduling - Session Date (${meetConfig.time.abbreviation}): ${sessionDateMeetLocal}`);
+            console.log(`Notification Scheduling - Trigger Date (UTC): ${triggerDate.toISOString()}`);
+            console.log(`Notification Scheduling - Trigger Date (Eastern): ${triggerDateEastern}`);
+            console.log(`Notification Scheduling - Trigger Date (${meetConfig.time.abbreviation}): ${triggerDateMeetLocal}`);
             console.log(`Notification Scheduling - triggerDate > now: ${triggerDate > now}`);
 
             if (triggerDate > now) {
