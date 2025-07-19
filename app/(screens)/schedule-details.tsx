@@ -74,6 +74,7 @@ type SessionAthlete = {
   age: number;
   club: string;
   entryTotal: number;
+  weightClass: string;
 };
 
 // Extended type for athlete data from sync manager
@@ -108,7 +109,8 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
             name: athlete.name,
             age: athlete.age,
             club: athlete.club,
-            entryTotal: athlete.entryTotal
+            entryTotal: athlete.entryTotal,
+            weightClass: athlete.weightClass
           }))
         };
       }
@@ -171,7 +173,8 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
         name: athlete.name,
         age: athlete.age,
         club: athlete.club,
-        entryTotal: athlete.entryTotal
+        entryTotal: athlete.entryTotal,
+        weightClass: athlete.weightClass
       }))
     };
   } catch (error) {
@@ -413,7 +416,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                   )}
                 </View>
                 <ThemedText style={[styles.athleteDetail, { color: colors.secondaryText }]}>
-                  Age: {athlete.age}
+                  Age: {athlete.age} | Weight Class: {athlete.weightClass}
                 </ThemedText>
                 <ThemedText style={[styles.athleteDetail, { color: colors.secondaryText }]}>
                   {athlete.club}
