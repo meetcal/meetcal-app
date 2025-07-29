@@ -536,7 +536,7 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
-const checkAndShowReviewPrompt = async () => {
+const checkAndShowReviewPrompt = async (router: any) => {
   try {
     const hasShownReview = await AsyncStorage.getItem('hasShownReview');
     const hasSavedBefore = await AsyncStorage.getItem('hasSavedBefore');
@@ -544,32 +544,8 @@ const checkAndShowReviewPrompt = async () => {
     if (!hasSavedBefore && !hasShownReview) {
       // Mark that user has saved a session
       await AsyncStorage.setItem('hasSavedBefore', 'true');
-      // Show review prompt
-      Alert.alert(
-        'Enjoying MeetCal?',
-        'Please consider leaving a review! Unless you think a bunch of PDFs are better for some reason.',
-        [
-          {
-            text: 'I Prefer PDFs',
-            style: 'cancel',
-            onPress: async () => {
-              // Mark that we've shown the review prompt
-              await AsyncStorage.setItem('hasShownReview', 'true');
-            }
-          },
-          {
-            text: 'Leave Review',
-            onPress: async () => {
-              await AsyncStorage.setItem('hasShownReview', 'true');
-              Linking.openURL(
-                Platform.OS === 'ios' 
-                  ? 'https://apps.apple.com/us/app/meetcal/id6741133286' 
-                  : 'https://play.google.com/store/apps/details?id=com.memohnsen.meetcal'
-              );
-            }
-          }
-        ]
-      );
+      // Navigate to review screen
+      router.push('/(screens)/review-request');
     }
   } catch (error) {
     console.error('Error checking review status:', error);
@@ -777,7 +753,7 @@ export default function SessionDetailsScreen() {
         meet: params.meet,
       });
       showSaveAlert('save');
-      checkAndShowReviewPrompt();
+      checkAndShowReviewPrompt(router);
     }
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success
