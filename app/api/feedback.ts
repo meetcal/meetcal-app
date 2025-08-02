@@ -1,6 +1,14 @@
-import { Resend } from 'resend'
+import { createClient } from '@supabase/supabase-js'
 
-const resend = new Resend(process.env.EXPO_PUBLIC_RESEND_API_KEY)
+// Create a separate client for Edge Functions (without Clerk auth)
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+
+const supabaseForFunctions = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false, // Don't persist sessions for function calls
+  }
+})
 
 export async function sendFeedback({ name, email, role, description }: { 
   name: string
@@ -8,70 +16,41 @@ export async function sendFeedback({ name, email, role, description }: {
   role: string
   description: string 
 }) {
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          .header {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            color: #007AFF;
-          }
-          .section {
-            margin-bottom: 20px;
-          }
-          .label {
-            font-weight: bold;
-            color: #666;
-          }
-          .content {
-            margin-top: 8px;
-          }
-          .description {
-            background-color: #f5f5f5;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 8px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">MeetCal Feedback</div>
-        
-        <div class="section">
-          <div class="label">From:</div>
-          <div class="content">${name} (${email})</div>
-        </div>
-        
-        <div class="section">
-          <div class="label">Feedback:</div>
-          <div class="description">${description}</div>
-        </div>
-      </body>
-    </html>
-  `
+  console.log('🔍 Attempting to send feedback via Edge Function...')
+  console.log('📧 Data:', { name, email, role: role.substring(0, 10) + '...', description: description.substring(0, 20) + '...' })
+  
+  try {
+    // Call the secure Edge Function instead of using Resend directly
+    const { data, error } = await supabaseForFunctions.functions.invoke('send-feedback', {
+      body: {
+        name,
+        email,
+        role,
+        description
+      }
+    })
 
-  const { data, error } = await resend.emails.send({
-    from: 'MeetCal Feedback <feedback@meetcal.app>',
-    to: 'maddisen@meetcal.app',
-    subject: `MeetCal Feedback from ${name}`,
-    html: htmlContent,
-    replyTo: email
-  })
+    console.log('📨 Edge Function response:', { data, error })
 
-  if (error) {
-    throw error
+    if (error) {
+      console.error('❌ Edge Function error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw new Error(error.message || 'Failed to send feedback')
+    }
+
+    if (!data?.success) {
+      console.error('❌ Edge Function returned error:', data)
+      throw new Error(data?.error || 'Failed to send feedback')
+    }
+
+    console.log('✅ Feedback sent successfully!')
+    return data
+  } catch (err) {
+    console.error('💥 Unexpected error in sendFeedback:', err)
+    throw err
   }
-
-  return data
 } 

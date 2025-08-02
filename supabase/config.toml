@@ -17,8 +17,8 @@ extra_search_path = ["public", "extensions"]
 # for accidental or malicious requests.
 max_rows = 1000
 url = "https://ztziuiiharxtvzitwzfv.supabase.co"
-service_role_key = "YOUR_SERVICE_ROLE_KEY"
-anon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0eml1aWloYXJ4dHZ6aXR3emZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk0ODM2OTcsImV4cCI6MjA1NTA1OTY5N30.Zp4Zk6hXPoo089QbkCjEqIbqQ2FUjJ8nxbhIL2Q2cZg"
+service_role_key = "env(SUPABASE_SERVICE_ROLE_KEY)"
+anon_key = "env(SUPABASE_ANON_KEY)"
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -279,3 +279,14 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+[functions.send-feedback]
+enabled = true
+verify_jwt = true
+import_map = "./functions/send-feedback/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/send-feedback/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/send-feedback/*.html" ]
