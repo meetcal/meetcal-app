@@ -261,7 +261,7 @@ export default function InfoScreen() {
           styles.scrollContent,
           { 
             paddingHorizontal: 20, 
-            paddingTop: 20,
+            paddingTop: insets.top + 20,
             paddingBottom: Math.max(80, insets.bottom + 60)
           }
         ]}
