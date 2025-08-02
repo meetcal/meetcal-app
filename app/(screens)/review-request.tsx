@@ -99,7 +99,7 @@ export default function ReviewRequestScreen() {
           lineHeight: 24,
           marginBottom: 40,
         }}>
-          Please consider leaving a review! Unless you think a bunch of PDFs are better for some reason.
+          Please consider leaving a review!
         </Text>
 
         {/* Buttons */}
