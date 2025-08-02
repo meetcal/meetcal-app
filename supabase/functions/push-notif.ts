@@ -1,6 +1,7 @@
 // @ts-ignore
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// @ts-ignore
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 console.log('Send Marketing Push function booting up');
@@ -17,6 +18,7 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
 serve(async (req: Request) => {
   // 1. Authentication check - CRITICAL SECURITY
   const authHeader = req.headers.get('authorization')
+  // @ts-ignore
   const expectedAuthKey = Deno.env.get('PUSH_NOTIFICATION_AUTH_KEY')
   
   if (!authHeader || !expectedAuthKey || authHeader !== `Bearer ${expectedAuthKey}`) {
@@ -63,8 +65,11 @@ serve(async (req: Request) => {
   }
 
   // 3. Initialize Supabase client
+  // @ts-ignore
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  // @ts-ignore
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  // @ts-ignore
   const expoAccessToken = Deno.env.get('EXPO_ACCESS_TOKEN');
 
   if (!supabaseUrl || !supabaseServiceKey || !expoAccessToken) {
@@ -127,6 +132,7 @@ serve(async (req: Request) => {
       const chunk = tokenChunks[i];
       console.log(`Sending batch ${i + 1}/${tokenChunks.length} with ${chunk.length} tokens`);
 
+      // @ts-ignore
       const messages = chunk.map((token: string) => ({
         to: token,
         sound: 'default',
