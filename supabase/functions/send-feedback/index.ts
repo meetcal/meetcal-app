@@ -1,6 +1,5 @@
-// @ts-ignore
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+// @ts-ignore
 import { Resend } from "npm:resend"
 
 const corsHeaders = {
@@ -40,7 +39,7 @@ const validateInput = (data: any) => {
     throw new Error('Description is required')
   }
 }
-
+// @ts-ignore
 Deno.serve(async (req) => {
   console.log('🚀 Edge Function started - send-feedback')
   console.log('📨 Request method:', req.method)
@@ -66,6 +65,7 @@ Deno.serve(async (req) => {
     }
 
     // Get the Resend API key from environment variables
+    // @ts-ignore
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     
     if (!resendApiKey) {
@@ -205,8 +205,11 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('💥 Function error:', error)
     console.error('🔍 Error details:', {
+      // @ts-ignore
       name: error?.name,
+      // @ts-ignore
       message: error?.message,
+      // @ts-ignore
       stack: error?.stack
     })
     
