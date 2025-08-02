@@ -29,6 +29,7 @@
     "production": {
       "autoIncrement": true,
       "credentialsSource": "remote",
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
@@ -51,11 +52,6 @@
         "ascAppId": "6741133286",
         "appleTeamId": "HCK9FFW6UX"
       }
-    }
-  },
-  "update": {
-    "production": {
-      "channel": "production"
     }
   }
 }
