@@ -15,7 +15,23 @@ function chunkArray<T>(array: T[], chunkSize: number): T[][] {
 }
 
 serve(async (req: Request) => {
-  // 1. Check if the request method is POST
+  // 1. Authentication check - CRITICAL SECURITY
+  const authHeader = req.headers.get('authorization')
+  const expectedAuthKey = Deno.env.get('PUSH_NOTIFICATION_AUTH_KEY')
+  
+  if (!authHeader || !expectedAuthKey || authHeader !== `Bearer ${expectedAuthKey}`) {
+    console.error('❌ Unauthorized push notification request')
+    return new Response(JSON.stringify({
+      error: 'Unauthorized'
+    }), {
+      status: 401,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  // 2. Check if the request method is POST
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({
       error: 'Method Not Allowed'
