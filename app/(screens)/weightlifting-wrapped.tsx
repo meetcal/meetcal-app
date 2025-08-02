@@ -452,79 +452,201 @@ export default function WeightliftingWrappedScreen() {
         }}
       />
 
-      {!showStats ? (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 20 }
-          ]}
-        >
-          {/* Search Section */}
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-              Find Your Wrapped
-            </ThemedText>
-            
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.searchInput, { 
-                  backgroundColor: colors.background,
-                  color: colors.text,
-                  borderColor: colors.border 
-                }]}
-                placeholder="Enter athlete name"
-                placeholderTextColor={colors.secondaryText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.yearSelector}>
-              <ThemedText style={[styles.yearLabel, { color: colors.secondaryText }]}>
-                Year
-              </ThemedText>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {YEARS.map(year => (
-                  <Pressable
-                    key={year}
-                    style={[
-                      styles.yearChip,
-                      { 
-                        backgroundColor: selectedYear === year ? colors.primary : colors.background,
-                        borderColor: colors.border 
-                      }
-                    ]}
-                    onPress={() => setSelectedYear(year)}
-                  >
-                    <ThemedText style={[
-                      styles.yearChipText,
-                      { color: selectedYear === year ? '#FFFFFF' : colors.text }
-                    ]}>
-                      {year}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-
-            <Pressable
-              style={[styles.searchButton, { backgroundColor: colors.primary }]}
-              onPress={searchAthlete}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <ThemedText style={styles.searchButtonText}>
-                  Generate Wrapped
-                </ThemedText>
-              )}
-            </Pressable>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 20 }
+        ]}
+      >
+        {/* Search Section */}
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+            Find Your Wrapped
+          </ThemedText>
+          
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={[styles.searchInput, { 
+                backgroundColor: colors.background,
+                color: colors.text,
+                borderColor: colors.border 
+              }]}
+              placeholder="Enter athlete name"
+              placeholderTextColor={colors.secondaryText}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="words"
+            />
           </View>
 
-          {/* Info Section */}
+          <View style={styles.yearSelector}>
+            <ThemedText style={[styles.yearLabel, { color: colors.secondaryText }]}>
+              Year
+            </ThemedText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {YEARS.map(year => (
+                <Pressable
+                  key={year}
+                  style={[
+                    styles.yearChip,
+                    { 
+                      backgroundColor: selectedYear === year ? colors.primary : colors.background,
+                      borderColor: colors.border 
+                    }
+                  ]}
+                  onPress={() => setSelectedYear(year)}
+                >
+                  <ThemedText style={[
+                    styles.yearChipText,
+                    { color: selectedYear === year ? '#FFFFFF' : colors.text }
+                  ]}>
+                    {year}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          <Pressable
+            style={[styles.searchButton, { backgroundColor: colors.primary }]}
+            onPress={searchAthlete}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <ThemedText style={styles.searchButtonText}>
+                Generate Wrapped
+              </ThemedText>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Stats Cards or Info Section */}
+        {showStats && wrappedStats ? (
+          <>
+            {/* Year Overview Card */}
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+                Your {selectedYear} Weightlifting Year
+              </ThemedText>
+              <View style={styles.yearOverview}>
+                <ThemedText style={[styles.athleteName, { color: colors.text }]}>
+                  {searchQuery}
+                </ThemedText>
+                <ThemedText style={[styles.yearRank, { color: colors.primary }]}>
+                  {wrappedStats.yearRank}
+                </ThemedText>
+                <ThemedText style={[styles.overview, { color: colors.secondaryText }]}>
+                  {wrappedStats.totalMeets} meets • {wrappedStats.makePercentage.toFixed(0)}% success rate
+                </ThemedText>
+              </View>
+            </View>
+
+            {/* Total Weight Card */}
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+                Total Weight Lifted
+              </ThemedText>
+              <View style={styles.statContainer}>
+                <ThemedText style={[styles.bigStatNumber, { color: colors.accent }]}>
+                  {wrappedStats.totalWeightLifted.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                </ThemedText>
+                <ThemedText style={[styles.statUnit, { color: colors.text }]}>kg</ThemedText>
+              </View>
+              <ThemedText style={[styles.statDescription, { color: colors.secondaryText }]}>
+                That's equivalent to lifting {Math.round(wrappedStats.totalWeightLifted / 180)} people!
+              </ThemedText>
+            </View>
+
+            {/* Personal Records Card */}
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+                Personal Records
+              </ThemedText>
+              <View style={styles.recordsContainer}>
+                <View style={styles.recordRow}>
+                  <ThemedText style={[styles.recordLabel, { color: colors.secondaryText }]}>
+                    🏋️‍♂️ Snatch
+                  </ThemedText>
+                  <ThemedText style={[styles.recordValue, { color: colors.primary }]}>
+                    {wrappedStats.bestSnatch}kg
+                  </ThemedText>
+                </View>
+                <View style={styles.recordRow}>
+                  <ThemedText style={[styles.recordLabel, { color: colors.secondaryText }]}>
+                    💪 Clean & Jerk
+                  </ThemedText>
+                  <ThemedText style={[styles.recordValue, { color: colors.accent }]}>
+                    {wrappedStats.bestCleanJerk}kg
+                  </ThemedText>
+                </View>
+                <View style={styles.recordRow}>
+                  <ThemedText style={[styles.recordLabel, { color: colors.secondaryText }]}>
+                    🏆 Total
+                  </ThemedText>
+                  <ThemedText style={[styles.recordValue, { color: colors.success }]}>
+                    {wrappedStats.bestTotal}kg
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+
+            {/* Performance Card */}
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
+                Performance Stats
+              </ThemedText>
+              <View style={styles.performanceContainer}>
+                <View style={styles.performanceRow}>
+                  <ThemedText style={[styles.performanceLabel, { color: colors.secondaryText }]}>
+                    Make Percentage
+                  </ThemedText>
+                  <ThemedText style={[styles.performanceValue, { color: colors.success }]}>
+                    {wrappedStats.makePercentage.toFixed(1)}%
+                  </ThemedText>
+                </View>
+                <View style={styles.performanceRow}>
+                  <ThemedText style={[styles.performanceLabel, { color: colors.secondaryText }]}>
+                    Average Total
+                  </ThemedText>
+                  <ThemedText style={[styles.performanceValue, { color: colors.text }]}>
+                    {wrappedStats.averageTotal.toFixed(0)}kg
+                  </ThemedText>
+                </View>
+                <View style={styles.performanceRow}>
+                  <ThemedText style={[styles.performanceLabel, { color: colors.secondaryText }]}>
+                    Best Meet
+                  </ThemedText>
+                  <ThemedText style={[styles.performanceValue, { color: colors.primary }]}>
+                    {wrappedStats.topMeet}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+
+            {/* Share Button */}
+            <View style={styles.shareContainer}>
+              <Pressable
+                style={[styles.shareButton, { backgroundColor: colors.primary }]}
+                onPress={shareWrapped}
+              >
+                <IconSymbol name="square.and.arrow.up" size={20} color="#FFFFFF" />
+                <ThemedText style={styles.shareButtonText}>Share Your Wrapped</ThemedText>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.backButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
+                onPress={() => setShowStats(false)}
+              >
+                <IconSymbol name="arrow.left" size={20} color={colors.text} />
+                <ThemedText style={[styles.backButtonText, { color: colors.text }]}>Search Again</ThemedText>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          /* Info Section */
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
               About Weightlifting Wrapped
@@ -533,90 +655,8 @@ export default function WeightliftingWrappedScreen() {
               Discover your year in weightlifting! See your total weight lifted, success rates, personal records, and more in a fun, shareable format.
             </ThemedText>
           </View>
-        </ScrollView>
-      ) : (
-        <View style={styles.wrappedContainer}>
-          <Animated.View
-            style={[
-              styles.wrappedSlide,
-              {
-                backgroundColor: colors.card,
-                opacity: fadeAnim,
-                transform: [
-                  { translateX: slideAnim },
-                  { scale: scaleAnim }
-                ],
-              },
-            ]}
-          >
-            {renderWrappedSlide() && (
-              <>
-                <ThemedText style={[styles.slideTitle, { color: colors.text }]}>
-                  {renderWrappedSlide()?.title}
-                </ThemedText>
-                {renderWrappedSlide()?.subtitle && (
-                  <ThemedText style={[styles.slideSubtitle, { color: colors.secondaryText }]}>
-                    {renderWrappedSlide()?.subtitle}
-                  </ThemedText>
-                )}
-                {renderWrappedSlide()?.content}
-              </>
-            )}
-          </Animated.View>
-
-          {/* Navigation */}
-          <View style={styles.navigation}>
-            <Pressable
-              style={[styles.navButton, { opacity: currentSlide > 0 ? 1 : 0.3 }]}
-              onPress={prevSlide}
-              disabled={currentSlide === 0}
-            >
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
-            </Pressable>
-
-            <View style={styles.slideIndicator}>
-              {Array.from({ length: 5 }, (_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.dot,
-                    {
-                      backgroundColor: i === currentSlide ? colors.primary : colors.border,
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-
-            <Pressable
-              style={[styles.navButton, { opacity: currentSlide < 4 ? 1 : 0.3 }]}
-              onPress={nextSlide}
-              disabled={currentSlide === 4}
-            >
-              <IconSymbol name="chevron.right" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          {/* Actions */}
-          <View style={styles.actions}>
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: colors.primary }]}
-              onPress={shareWrapped}
-            >
-              <IconSymbol name="square.and.arrow.up" size={20} color="#FFFFFF" />
-              <ThemedText style={styles.actionButtonText}>Share</ThemedText>
-            </Pressable>
-
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
-              onPress={() => setShowStats(false)}
-            >
-              <IconSymbol name="arrow.left" size={20} color={colors.text} />
-              <ThemedText style={[styles.actionButtonText, { color: colors.text }]}>Back</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      )}
+        )}
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -630,7 +670,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 70,
   },
   card: {
     borderRadius: 12,
@@ -870,5 +910,115 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 8,
+  },
+  // New card-based layout styles
+  yearOverview: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  athleteName: {
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  yearRank: {
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  overview: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  statContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    marginVertical: 8,
+    flexWrap: 'wrap',
+  },
+  bigStatNumber: {
+    fontSize: 40,
+    fontWeight: '900',
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  statUnit: {
+    fontSize: 20,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  statDescription: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  recordsContainer: {
+    gap: 12,
+  },
+  recordRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
+  },
+  recordLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  recordValue: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  performanceContainer: {
+    gap: 12,
+  },
+  performanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  performanceLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  performanceValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  shareContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  shareButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

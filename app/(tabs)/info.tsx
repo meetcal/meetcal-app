@@ -261,7 +261,7 @@ export default function InfoScreen() {
           styles.scrollContent,
           { 
             paddingHorizontal: 20, 
-            paddingTop: insets.top + 20,
+            paddingTop: 20,
             paddingBottom: Math.max(80, insets.bottom + 60)
           }
         ]}
@@ -389,7 +389,7 @@ export default function InfoScreen() {
           </View>
         </Pressable>
 
-        <Pressable
+        {/* <Pressable
           style={({ pressed }) => [
             styles.section,
             { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
@@ -403,7 +403,7 @@ export default function InfoScreen() {
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
-        </Pressable>
+        </Pressable> */}
 
         <Pressable
           style={({ pressed }) => [
