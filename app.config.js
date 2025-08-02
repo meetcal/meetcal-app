@@ -66,7 +66,6 @@ export default ({ config }) => ({
     eas: {
       projectId: 'a0017b93-a31e-42b1-b36a-11cb5eedf11f'
     },
-    EXPO_PUBLIC_RESEND_API_KEY: undefined,
     EXPO_PUBLIC_REVENUECAT_API_KEY_IOS: undefined,
     EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID: undefined,
   },
