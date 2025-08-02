@@ -266,13 +266,14 @@ type Colors = {
 export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
-  const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets } = useSelectedMeet();
+  const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets, refreshAvailableMeets } = useSelectedMeet();
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const { currentTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
@@ -394,6 +395,18 @@ export default function ScheduleScreen() {
       console.log("Refresh skipped: No meet selected");
     }
   }, [selectedMeet, loadData]);
+
+  // Handle refreshing available meets in modal
+  const handleRefreshMeets = useCallback(async () => {
+    setIsRefreshingMeets(true);
+    try {
+      await refreshAvailableMeets();
+    } catch (error) {
+      console.error('Error refreshing meets:', error);
+    } finally {
+      setIsRefreshingMeets(false);
+    }
+  }, [refreshAvailableMeets]);
 
   // Extract unique letters from all weight classes
   const filterOptions = useMemo(() => {
@@ -611,7 +624,17 @@ export default function ScheduleScreen() {
               </Pressable>
             </View>
             
-            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
+            <ScrollView 
+              style={styles.modalScrollView} 
+              contentContainerStyle={styles.modalScrollContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshingMeets}
+                  onRefresh={handleRefreshMeets}
+                  tintColor={colors.text}
+                />
+              }
+            >
               {availableMeets.map((meet) => (
                 <Pressable
                   key={meet.name}

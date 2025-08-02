@@ -15,6 +15,7 @@ type SelectedMeetContextType = {
   lastSynced: number | null;
   syncStatus: 'idle' | 'syncing' | 'error';
   forceSync: () => Promise<void>;
+  refreshAvailableMeets: () => Promise<void>;
 };
 
 const SelectedMeetContext = createContext<SelectedMeetContextType | undefined>(undefined);
@@ -181,6 +182,22 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  // Refresh available meets function
+  const refreshAvailableMeets = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncStatus('syncing');
+      const meets = await fetchMeets();
+      setAvailableMeets(meets);
+      setSyncStatus('idle');
+    } catch (error) {
+      console.error('Error refreshing available meets:', error);
+      setSyncStatus('error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <SelectedMeetContext.Provider 
       value={{ 
@@ -192,7 +209,8 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         isSyncing,
         lastSynced,
         syncStatus,
-        forceSync
+        forceSync,
+        refreshAvailableMeets
       }}
     >
       {children}
