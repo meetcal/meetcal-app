@@ -52,5 +52,10 @@
         "appleTeamId": "HCK9FFW6UX"
       }
     }
+  },
+  "update": {
+    "production": {
+      "channel": "production"
+    }
   }
 }
