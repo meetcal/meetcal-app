@@ -419,6 +419,21 @@ export default function InfoScreen() {
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
         </Pressable>
+
+        {/* <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+          ]}
+          onPress={() => router.push('/(screens)/adap-records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              Adaptive Athlete Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable> */}
         </View>
 
         {/* App Info Card */}

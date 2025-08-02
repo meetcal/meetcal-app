@@ -48,6 +48,3 @@ android/keystores/release.jks
 credentials.json
 
 push-notification-send.md
-
-# Supabase
-supabase/functions/push-notif.ts
