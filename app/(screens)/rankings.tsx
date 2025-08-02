@@ -134,13 +134,20 @@ export default function RecordsScreen() {
     [intlRankings]
   );
 
-  // Filter intlRankings based on selected filters
+  // Filter intlRankings based on selected filters and sort by rank
   const filteredRankings = useMemo(() => {
-    return intlRankings.filter(r =>
-      (!filters.meet || r.meet === filters.meet) &&
-      (!filters.age_category || r.age_category === filters.age_category) &&
-      (!filters.gender || r.gender === filters.gender)
-    );
+    return intlRankings
+      .filter(r =>
+        (!filters.meet || r.meet === filters.meet) &&
+        (!filters.age_category || r.age_category === filters.age_category) &&
+        (!filters.gender || r.gender === filters.gender)
+      )
+      .sort((a, b) => {
+        // Handle cases where ranking might be null/undefined
+        const rankA = a.ranking ?? Number.MAX_SAFE_INTEGER;
+        const rankB = b.ranking ?? Number.MAX_SAFE_INTEGER;
+        return rankA - rankB;
+      });
   }, [intlRankings, filters]);
 
   const colors = {
