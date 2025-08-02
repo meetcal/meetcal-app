@@ -916,6 +916,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
+  // @ts-ignore
   athleteName: {
     fontSize: 24,
     fontWeight: '600',
@@ -967,10 +968,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 8,
   },
+  // @ts-ignore
   recordLabel: {
     fontSize: 16,
     fontWeight: '500',
   },
+  // @ts-ignore
   recordValue: {
     fontSize: 18,
     fontWeight: '700',
