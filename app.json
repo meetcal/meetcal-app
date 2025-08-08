@@ -56,14 +56,54 @@
       },
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "quickActions": [
+        {
+          "title": "View Schedule",
+          "subtitle": "Check today's competitions",
+          "icon": "symbol:calendar",
+          "id": "schedule"
+        },
+        {
+          "title": "Qualifying Totals",
+          "subtitle": "View competition qualifying totals",
+          "icon": "symbol:list.bullet",
+          "id": "qualifying-totals"
+        },
+        {
+          "title": "Records",
+          "subtitle": "Browse competition records",
+          "icon": "symbol:trophy.fill",
+          "id": "records"
+        }
+      ]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/ic_launcher_foreground.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.memohnsen.meetcal"
+      "package": "com.memohnsen.meetcal",
+      "quickActions": [
+        {
+          "title": "View Schedule",
+          "subtitle": "Check today's competitions",
+          "icon": "@drawable/ic_launcher_foreground",
+          "id": "schedule"
+        },
+        {
+          "title": "Qualifying Totals",
+          "subtitle": "View competition qualifying totals",
+          "icon": "@drawable/ic_launcher_foreground",
+          "id": "qualifying-totals"
+        },
+        {
+          "title": "Records",
+          "subtitle": "Browse competition records",
+          "icon": "@drawable/ic_launcher_foreground",
+          "id": "records"
+        }
+      ]
     },
     "web": {
       "bundler": "metro",

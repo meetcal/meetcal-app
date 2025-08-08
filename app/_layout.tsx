@@ -15,6 +15,7 @@ import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as SecureStore from 'expo-secure-store'
 import * as Notifications from 'expo-notifications';
+import * as QuickActions from 'expo-quick-actions';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotificationsAsync } from '@/utils/notifications';
 
@@ -215,12 +216,80 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
   }, [isUserLoaded, user?.id]); 
 
+  // Quick Actions handler
   useEffect(() => {
-    async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
+    const handleQuickAction = (action: QuickActions.Action | null) => {
+      if (!action) return;
+      
+      // Only navigate if user is signed in
+      if (!isUserSignedIn) return;
+      
+      switch (action.id) {
+        case 'schedule':
+          router.push('/(tabs)/' as any);
+          break;
+        case 'qualifying-totals':
+          router.push('/(screens)/new-qualifying-totals');
+          break;
+        case 'records':
+          router.push('/(screens)/records');
+          break;
+        default:
+          break;
+      }
+    };
+
+    // Set up quick actions dynamically
+    setTimeout(() => {
+      QuickActions.setItems([
+      {
+        title: "View Schedule",
+        subtitle: "Check today's competitions",
+        icon: "symbol:calendar",
+        id: "schedule"
+      },
+      {
+        title: "Qualifying Totals", 
+        subtitle: "View competition qualifying totals",
+        icon: "symbol:list.bullet",
+        id: "qualifying-totals"
+      },
+      {
+        title: "Records",
+        subtitle: "Browse competition records", 
+        icon: "symbol:trophy.fill",
+        id: "records"
+      }
+      ]);
+    }, 1000);
+
+    // Handle quick action on app launch
+    handleQuickAction(QuickActions.initial || null);
+
+    // Listen for quick actions while app is running
+    const subscription = QuickActions.addListener(handleQuickAction);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [isUserSignedIn, router]);
+
+  // Hide Expo splash screen early to show our custom one
+  useEffect(() => {
+    async function hideExpoSplash() {
+      if (fontsLoaded && !hasAttemptedSplashHide.current) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
+      }
+    }
 
+    hideExpoSplash();
+  }, [fontsLoaded]);
+
+  // Handle navigation after app is fully initialized
+  useEffect(() => {
+    async function handleNavigation() {
+      if (isInitialized && !isSubscriptionLoading && isUserLoaded && !showAnimatedSplash) {
         const initialUrl = await Linking.getInitialURL();
 
         if (initialUrl) {
@@ -235,14 +304,14 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
           if (!isUserSignedIn) {
             router.replace('/sign-in');
           } else {
-            router.replace('/(tabs)/schedule');
+            router.replace('/(tabs)');
           }
         }
       }
     }
 
-    hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
+    handleNavigation();
+  }, [isInitialized, isSubscriptionLoading, isUserLoaded, isUserSignedIn, showAnimatedSplash, router]);
 
   const handleAnimationComplete = () => {
     setShowAnimatedSplash(false);
@@ -250,19 +319,18 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   const isAppReady = isInitialized && !isSubscriptionLoading && isUserLoaded;
 
-  // Show animated splash screen until app is ready and animation completes
-  if (showAnimatedSplash || !isAppReady) {
+  // Always show our custom animated splash screen first
+  if (showAnimatedSplash) {
     return (
-      <>
-        {!isAppReady && null}
-        {showAnimatedSplash && (
-          <AnimatedSplashScreen 
-            onAnimationComplete={handleAnimationComplete}
-          />
-        )}
-        {isAppReady && !showAnimatedSplash && <RootLayoutNav />}
-      </>
+      <AnimatedSplashScreen 
+        onAnimationComplete={handleAnimationComplete}
+      />
     );
+  }
+
+  // Only show main app after splash animation completes AND app is ready
+  if (!isAppReady) {
+    return null; // Brief moment between splash and app loading
   }
 
   return <RootLayoutNav />;

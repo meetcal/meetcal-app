@@ -44,6 +44,7 @@ export default ({ config }) => ({
   },
   plugins: [
     'expo-router',
+    'expo-quick-actions',
     [
       'expo-build-properties',
       {

@@ -120,12 +120,12 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
 
     // After animation completes, fade out and call onAnimationComplete
     setTimeout(() => {
-      opacity.value = withTiming(0, { duration: 300 }, () => {
+      opacity.value = withTiming(0, { duration: 400 }, () => {
         if (onAnimationComplete) {
           runOnJS(onAnimationComplete)();
         }
       });
-    }, 2000); // Wait 2 seconds before starting fade out
+    }, 2500); // Wait 2.5 seconds before starting fade out
   };
 
   useEffect(() => {
