@@ -57,7 +57,7 @@ export default function TabLayout() {
         tabBarShowLabel: false,
       }}>
       <Tabs.Screen
-        name="schedule"
+        name="index"
         options={{
           title: 'Today',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,

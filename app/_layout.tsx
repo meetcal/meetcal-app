@@ -25,6 +25,7 @@ import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { posthog } from '@/lib/posthog';
 import { UpdateNotification } from '@/components/UpdateNotification';
+import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -160,6 +161,7 @@ export default function RootLayout() {
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showAnimatedSplash, setShowAnimatedSplash] = useState(true);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
@@ -242,8 +244,25 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     hideSplash();
   }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
 
-  if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
-    return null;
+  const handleAnimationComplete = () => {
+    setShowAnimatedSplash(false);
+  };
+
+  const isAppReady = isInitialized && !isSubscriptionLoading && isUserLoaded;
+
+  // Show animated splash screen until app is ready and animation completes
+  if (showAnimatedSplash || !isAppReady) {
+    return (
+      <>
+        {!isAppReady && null}
+        {showAnimatedSplash && (
+          <AnimatedSplashScreen 
+            onAnimationComplete={handleAnimationComplete}
+          />
+        )}
+        {isAppReady && !showAnimatedSplash && <RootLayoutNav />}
+      </>
+    );
   }
 
   return <RootLayoutNav />;
