@@ -5,8 +5,8 @@
     "version": "3.3.0",
     "orientation": "portrait",
     "icon": {
-      "light": "./assets/images/MeetCal.png",
-      "dark": "./assets/images/MeetCal-no-bg.png"
+      "light": "./ios/MeetCal/Images.xcassets/AppIcon.appiconset/liquid-glass-iOS-Dark-1024x1024@1x.png",
+      "dark": "./ios/MeetCal/Images.xcassets/AppIcon.appiconset/liquid-glass-iOS-Default-1024x1024@1x.png"
     },
     "scheme": "meetcal",
     "userInterfaceStyle": "automatic",
@@ -22,9 +22,9 @@
       "bundleIdentifier": "com.memohnsen.meetcal",
       "usesIcloudStorage": true,
       "icon": {
-        "light": "./assets/images/liquid-glass/light-icon.png",
-        "dark": "./assets/images/liquid-glass/dark-icon.png",
-        "tinted": "./assets/images/liquid-glass/tinted-icon.png"
+        "light": "./ios/MeetCal/Images.xcassets/AppIcon.appiconset/liquid-glass-iOS-Default-1024x1024@1x.png",
+        "dark": "./ios/MeetCal/Images.xcassets/AppIcon.appiconset/liquid-glass-iOS-Dark-1024x1024@1x.png",
+        "tinted": "./ios/MeetCal/Images.xcassets/AppIcon.appiconset/liquid-glass-iOS-Default-1024x1024@1x.png"
       },
       "infoPlist": {
         "UIBackgroundModes": [
