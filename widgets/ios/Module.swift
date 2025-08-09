@@ -30,9 +30,12 @@ public class ExpoWidgetsModule: Module {
         
         userDefaults.synchronize()
         
-        // Reload all widgets
+        // Force immediate widget reload
         if #available(iOS 14.0, *) {
           WidgetCenter.shared.reloadAllTimelines()
+          // Also reload specific widgets to ensure they update
+          WidgetCenter.shared.reloadTimelines(ofKind: "MeetCalMediumWidget")
+          WidgetCenter.shared.reloadTimelines(ofKind: "MeetCalLargeWidget")
         }
       }
     }
