@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -266,6 +266,7 @@ type Colors = {
 export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets, refreshAvailableMeets } = useSelectedMeet();
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -600,11 +601,21 @@ export default function ScheduleScreen() {
         <Pressable 
           style={[
             styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+            { 
+              backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)',
+              paddingTop: Platform.OS === 'android' ? insets.top + 20 : 16,
+              paddingBottom: Platform.OS === 'android' ? insets.bottom + 20 : 16,
+            }
           ]}
           onPress={() => setShowFilterModal(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <View style={[
+            styles.modalContent, 
+            { 
+              backgroundColor: colors.card,
+              maxHeight: Platform.OS === 'android' ? '80%' : '70%',
+            }
+          ]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
                 Select Your Meet
@@ -824,7 +835,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
