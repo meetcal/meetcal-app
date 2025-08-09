@@ -1,50 +1,60 @@
 import WidgetKit
 import SwiftUI
 
-struct MeetCalMediumWidget: Widget {
-    let kind: String = "MeetCalMediumWidget"
+struct MeetCalLargeWidget: Widget {
+    let kind: String = "MeetCalLargeWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: MediumWidgetTimelineProvider()) { entry in
-            MediumWidgetView(entry: entry)
+        StaticConfiguration(kind: kind, provider: LargeWidgetTimelineProvider()) { entry in
+            LargeWidgetView(entry: entry)
         }
         .configurationDisplayName("Saved Sessions")
         .description("View your upcoming saved sessions")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemLarge])
     }
 }
 
-struct MediumWidgetEntry: TimelineEntry {
+struct LargeWidgetEntry: TimelineEntry {
     let date: Date
     let selectedMeet: String?
     let savedSessions: [SavedSession]
 }
 
-struct SavedSession: Codable, Hashable {
-    let id: String
-    let meet: String
-    let sessionNumber: Int
-    let platform: String
-    let weightClass: String
-    let startTime: String
-    let date: String
-    let athleteNames: [String]?
-}
-
-struct MediumWidgetTimelineProvider: TimelineProvider {
-    func placeholder(in context: Context) -> MediumWidgetEntry {
-        MediumWidgetEntry(
+struct LargeWidgetTimelineProvider: TimelineProvider {
+    func placeholder(in context: Context) -> LargeWidgetEntry {
+        LargeWidgetEntry(
             date: Date(),
             selectedMeet: "Loading...",
             savedSessions: []
         )
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (MediumWidgetEntry) -> ()) {
-        let entry = MediumWidgetEntry(
+    func getSnapshot(in context: Context, completion: @escaping (LargeWidgetEntry) -> ()) {
+        let entry = LargeWidgetEntry(
             date: Date(),
-            selectedMeet: loadSelectedMeet(),
-            savedSessions: loadSavedSessions()
+            selectedMeet: "2024 National Championships",
+            savedSessions: [
+                SavedSession(
+                    id: "1",
+                    meet: "2024 National Championships",
+                    sessionNumber: 1,
+                    platform: "Red",
+                    weightClass: "Women 55kg A",
+                    startTime: "9:00 AM",
+                    date: "2024-12-20",
+                    athleteNames: ["Alice Smith", "Jane Doe"]
+                ),
+                SavedSession(
+                    id: "2",
+                    meet: "2024 National Championships",
+                    sessionNumber: 2,
+                    platform: "Blue",
+                    weightClass: "Men 73kg A",
+                    startTime: "1:00 PM",
+                    date: "2024-12-20",
+                    athleteNames: ["John Smith"]
+                )
+            ]
         )
         completion(entry)
     }
@@ -53,7 +63,7 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
         let currentDate = Date()
         let entryDate = Calendar.current.date(byAdding: .minute, value: 15, to: currentDate)!
         
-        let entry = MediumWidgetEntry(
+        let entry = LargeWidgetEntry(
             date: currentDate,
             selectedMeet: loadSelectedMeet(),
             savedSessions: loadSavedSessions()
@@ -75,23 +85,23 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
            let data = userDefaults.data(forKey: "saved_sessions"),
            let sessions = try? JSONDecoder().decode([SavedSession].self, from: data) {
             
-            print("Widget: Found \(sessions.count) saved sessions in UserDefaults")
+            print("Large Widget: Found \(sessions.count) saved sessions in UserDefaults")
             
             // For debugging, let's first show all sessions without filtering
             if sessions.isEmpty {
-                print("Widget: No sessions found")
+                print("Large Widget: No sessions found")
                 return []
             }
             
             // Filter for current selected meet if available, otherwise show all
             let selectedMeet = loadSelectedMeet()
-            print("Widget: Selected meet is: \(selectedMeet ?? "none")")
+            print("Large Widget: Selected meet is: \(selectedMeet ?? "none")")
             
             var filteredSessions = sessions
             
             if let selectedMeet = selectedMeet, !selectedMeet.isEmpty {
                 filteredSessions = sessions.filter { $0.meet == selectedMeet }
-                print("Widget: After filtering by meet '\(selectedMeet)': \(filteredSessions.count) sessions")
+                print("Large Widget: After filtering by meet '\(selectedMeet)': \(filteredSessions.count) sessions")
             }
             
             // Be more lenient with date filtering - show sessions from today onwards
@@ -109,7 +119,7 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
                 return true
             }
             
-            print("Widget: After date filtering: \(upcomingSessions.count) sessions")
+            print("Large Widget: After date filtering: \(upcomingSessions.count) sessions")
             
             let sortedSessions = upcomingSessions.sorted { session1, session2 in
                 let date1 = dateFormatter.date(from: session1.date) ?? Date.distantFuture
@@ -117,84 +127,87 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
                 return date1 < date2
             }
             
-            print("Widget: Returning \(sortedSessions.count) sessions")
-            return Array(sortedSessions.prefix(10)) // Limit to 10 sessions
+            print("Large Widget: Returning \(sortedSessions.count) sessions")
+            return Array(sortedSessions.prefix(15)) // Show up to 15 sessions for large widget
         }
         
-        print("Widget: No UserDefaults data found for saved_sessions")
+        print("Large Widget: No UserDefaults data found for saved_sessions")
         return []
     }
 }
 
-struct MediumWidgetView: View {
-    var entry: MediumWidgetTimelineProvider.Entry
+struct LargeWidgetView: View {
+    var entry: LargeWidgetTimelineProvider.Entry
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-                // Header
-                HStack {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(.title3)
-                        .foregroundColor(.blue)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("MeetCal")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                        
-                        if let selectedMeet = entry.selectedMeet {
-                            Text(selectedMeet)
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                                .lineLimit(1)
-                        }
-                    }
-                    
-                    Spacer()
-                }
+            // Header
+            HStack {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.title3)
+                    .foregroundColor(.blue)
                 
-                Divider()
-                    .background(Color.secondary.opacity(0.3))
-                
-                // Sessions list
-                if entry.savedSessions.isEmpty {
-                    VStack {
-                        Spacer()
-                        Text("No saved sessions")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        Spacer()
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Upcoming Sessions")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                        
-                        ForEach(Array(entry.savedSessions.prefix(3)), id: \.id) { session in
-                            SessionRowView(session: session)
-                        }
-                        
-                        if entry.savedSessions.count > 3 {
-                            Text("+ \(entry.savedSessions.count - 3) more")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MeetCal")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    if let selectedMeet = entry.selectedMeet {
+                        Text(selectedMeet)
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                            .lineLimit(1)
                     }
                 }
                 
                 Spacer()
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            Divider()
+                .background(Color.secondary.opacity(0.3))
+            
+            // Sessions list
+            if entry.savedSessions.isEmpty {
+                VStack {
+                    Spacer()
+                    Text("No saved sessions")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Upcoming Sessions")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(entry.savedSessions.prefix(8)), id: \.id) { session in
+                            LargeSessionRowView(session: session)
+                        }
+                        
+                        if entry.savedSessions.count > 8 {
+                            Text("+ \(entry.savedSessions.count - 8) more")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 4)
+                        }
+                    }
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .widgetURL(URL(string: "meetcal://saved-sessions"))
     }
 }
 
-struct SessionRowView: View {
+struct LargeSessionRowView: View {
     let session: SavedSession
     
     private var platformColor: Color {
@@ -214,9 +227,9 @@ struct SessionRowView: View {
             // Platform indicator
             RoundedRectangle(cornerRadius: 4)
                 .fill(platformColor)
-                .frame(width: 6, height: 24)
+                .frame(width: 6, height: 20)
             
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack {
                     Text("Session \(session.sessionNumber)")
                         .font(.caption2)
@@ -237,10 +250,11 @@ struct SessionRowView: View {
                 Text(session.weightClass)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
         .background(Color.secondary.opacity(0.1))
         .cornerRadius(6)
     }

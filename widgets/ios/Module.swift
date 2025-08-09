@@ -7,7 +7,7 @@ public class ExpoWidgetsModule: Module {
     
     // Function to update widget data from the app
     AsyncFunction("updateWidgetData") { (data: [String: Any]) in
-      if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.widgets") {
+      if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.expowidgets") {
         
         // Update selected meet
         if let selectedMeet = data["selectedMeet"] as? String {

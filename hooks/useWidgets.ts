@@ -8,11 +8,12 @@ let MeetCalWidgets: any = null;
 
 try {
   if (Platform.OS === 'ios') {
-    // On iOS, this will be available through the expo-widgets module
-    MeetCalWidgets = require('@bittingz/expo-widgets');
+    // On iOS, this will be available through our custom native module
+    const ExpoModulesCore = require('expo-modules-core');
+    MeetCalWidgets = ExpoModulesCore.NativeModulesProxy.MeetCalWidgets;
   }
 } catch (error) {
-  console.log('Widgets module not available:', error);
+  console.log('MeetCalWidgets module not available:', error);
 }
 
 // For Android, we'll use shared preferences directly
@@ -41,10 +42,21 @@ export function useWidgets() {
       }))
     };
 
+    console.log('Updating widget data:', {
+      selectedMeet,
+      availableMeetsCount: availableMeets.length,
+      savedSessionsCount: savedSessions.length,
+      platform: Platform.OS
+    });
+
     try {
       if (Platform.OS === 'ios' && MeetCalWidgets?.updateWidgetData) {
         // Update iOS widgets through the native module
+        console.log('Calling MeetCalWidgets.updateWidgetData with:', widgetData);
         await MeetCalWidgets.updateWidgetData(widgetData);
+        console.log('Widget data updated successfully');
+      } else if (Platform.OS === 'ios') {
+        console.warn('MeetCalWidgets module not available or updateWidgetData method missing');
       } else if (Platform.OS === 'android') {
         // For Android, store data in AsyncStorage with specific keys that widgets can access
         await AsyncStorage.setItem('@widget_selected_meet', selectedMeet || '');

@@ -64,38 +64,64 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
     }
     
     private func loadSelectedMeet() -> String? {
-        if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.widgets") {
+        if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.expowidgets") {
             return userDefaults.string(forKey: "selected_meet")
         }
         return nil
     }
     
     private func loadSavedSessions() -> [SavedSession] {
-        if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.widgets"),
+        if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.expowidgets"),
            let data = userDefaults.data(forKey: "saved_sessions"),
            let sessions = try? JSONDecoder().decode([SavedSession].self, from: data) {
             
-            // Filter for current selected meet and upcoming sessions
-            guard let selectedMeet = loadSelectedMeet() else { return [] }
+            print("Widget: Found \(sessions.count) saved sessions in UserDefaults")
             
-            let currentDate = Date()
+            // For debugging, let's first show all sessions without filtering
+            if sessions.isEmpty {
+                print("Widget: No sessions found")
+                return []
+            }
+            
+            // Filter for current selected meet if available, otherwise show all
+            let selectedMeet = loadSelectedMeet()
+            print("Widget: Selected meet is: \(selectedMeet ?? "none")")
+            
+            var filteredSessions = sessions
+            
+            if let selectedMeet = selectedMeet, !selectedMeet.isEmpty {
+                filteredSessions = sessions.filter { $0.meet == selectedMeet }
+                print("Widget: After filtering by meet '\(selectedMeet)': \(filteredSessions.count) sessions")
+            }
+            
+            // Be more lenient with date filtering - show sessions from today onwards
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd"
             
-            return sessions
-                .filter { $0.meet == selectedMeet }
-                .filter { session in
-                    if let sessionDate = dateFormatter.date(from: session.date) {
-                        return sessionDate >= currentDate
-                    }
-                    return false
+            let upcomingSessions = filteredSessions.filter { session in
+                if let sessionDate = dateFormatter.date(from: session.date) {
+                    let sessionStartOfDay = calendar.startOfDay(for: sessionDate)
+                    return sessionStartOfDay >= today
                 }
-                .sorted { session1, session2 in
-                    let date1 = dateFormatter.date(from: session1.date) ?? Date.distantFuture
-                    let date2 = dateFormatter.date(from: session2.date) ?? Date.distantFuture
-                    return date1 < date2
-                }
+                // If we can't parse the date, include the session
+                return true
+            }
+            
+            print("Widget: After date filtering: \(upcomingSessions.count) sessions")
+            
+            let sortedSessions = upcomingSessions.sorted { session1, session2 in
+                let date1 = dateFormatter.date(from: session1.date) ?? Date.distantFuture
+                let date2 = dateFormatter.date(from: session2.date) ?? Date.distantFuture
+                return date1 < date2
+            }
+            
+            print("Widget: Returning \(sortedSessions.count) sessions")
+            return Array(sortedSessions.prefix(10)) // Limit to 10 sessions
         }
+        
+        print("Widget: No UserDefaults data found for saved_sessions")
         return []
     }
 }
@@ -164,7 +190,6 @@ struct MediumWidgetView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.regularMaterial)
         .widgetURL(URL(string: "meetcal://saved-sessions"))
     }
 }
