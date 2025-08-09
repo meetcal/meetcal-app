@@ -41,7 +41,7 @@ export default function AuthRoutesLayout() {
   if (isOffline && !isCacheLoading) {
     if (cachedIsSignedIn === true) {
       console.log('[AuthLayout] Offline: cache valid, redirecting to app.')
-      return <Redirect href="/(tabs)/schedule" />
+      return <Redirect href="/" />
     } else {
       console.log('[AuthLayout] Offline: cache not valid, showing auth stack.')
       return <Stack />
@@ -60,13 +60,13 @@ export default function AuthRoutesLayout() {
 
   if (isClerkLoaded && isSignedIn) {
     console.log('[AuthLayout] Clerk loaded and user is signed in. Redirecting to app.')
-    return <Redirect href="/(tabs)/schedule" />
+    return <Redirect href="/" />
   }
 
   if (isClerkLoaded && !isSignedIn) {
     if (cachedIsSignedIn === true) {
       console.log('[AuthLayout] Online: Clerk not signed in, but cache valid. Redirecting to app.')
-      return <Redirect href="/(tabs)/schedule" />
+      return <Redirect href="/" />
     } else {
       console.log('[AuthLayout] Online: Clerk not signed in, cache not valid. Showing auth stack.')
       return <Stack />
