@@ -27,6 +27,7 @@ import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { posthog } from '@/lib/posthog';
 import { UpdateNotification } from '@/components/UpdateNotification';
 import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
+import { useWidgets, handleWidgetDeepLink } from '@/hooks/useWidgets';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -167,6 +168,9 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const router = useRouter();
   const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
   
+  // Initialize widgets
+  useWidgets();
+  
   useEffect(() => {
     async function initialize() {
       try {
@@ -268,6 +272,47 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     // Listen for quick actions while app is running
     const subscription = QuickActions.addListener(handleQuickAction);
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [isUserSignedIn, router]);
+
+  // Widget deep link handling
+  useEffect(() => {
+    const handleDeepLinkFromWidget = (url: string) => {
+      if (!isUserSignedIn) return;
+      
+      const result = handleWidgetDeepLink(url);
+      
+      switch (result.action) {
+        case 'select-meet':
+          // Navigate to main schedule screen where meet selection happens
+          router.push('/(tabs)/' as any);
+          break;
+        case 'saved-sessions':
+          // Navigate to saved sessions (could be a specific screen or the main screen with saved sessions shown)
+          router.push('/(tabs)/saved' as any);
+          break;
+        default:
+          router.push('/(tabs)/' as any);
+          break;
+      }
+    };
+
+    // Handle initial URL when app is opened from widget
+    Linking.getInitialURL().then((url) => {
+      if (url && url.startsWith('meetcal://')) {
+        handleDeepLinkFromWidget(url);
+      }
+    });
+
+    // Handle URLs when app is already running
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (url.startsWith('meetcal://')) {
+        handleDeepLinkFromWidget(url);
+      }
+    });
 
     return () => {
       subscription?.remove();

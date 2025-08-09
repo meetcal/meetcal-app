@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget colors for light mode -->
+    <color name="widget_background">@android:color/system_accent1_10</color>
+    <color name="widget_text_primary">@android:color/system_on_surface</color>
+    <color name="widget_text_secondary">@android:color/system_outline</color>
+    <color name="widget_card_background">@android:color/system_surface_container_low</color>
+    <color name="widget_accent">@android:color/system_accent1_400</color>
+    
+    <!-- Fallback colors for older Android versions -->
+    <color name="widget_background_fallback">#F5F5F5</color>
+    <color name="widget_text_primary_fallback">#1C1C1C</color>
+    <color name="widget_text_secondary_fallback">#6C6C6C</color>
+    <color name="widget_card_background_fallback">#FFFFFF</color>
+    <color name="widget_accent_fallback">#007AFF</color>
+</resources>

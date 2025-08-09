@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:updatePeriodMillis="900000"
+    android:previewImage="@drawable/meetcal_small_preview"
+    android:initialLayout="@layout/meetcal_small_widget"
+    android:description="@string/small_widget_description"
+    android:resizeMode="none"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2">
+</appwidget-provider>

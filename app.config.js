@@ -51,6 +51,7 @@ export default ({ config }) => ({
         ios: {
           deploymentTarget: '17.0',
           useFrameworks: 'static',
+          swiftVersion: '5.4',
         },
         android: {
           compileSdkVersion: 35,
@@ -58,6 +59,35 @@ export default ({ config }) => ({
           buildToolsVersion: '35.0.0',
         },
       },
+    ],
+    [
+      '@bittingz/expo-widgets',
+      {
+        ios: {
+          src: './widgets/ios',
+          devTeamId: 'HCK9FFW6UX', // Found from existing app build logs
+          mode: 'production',
+          moduleDependencies: [],
+          useLiveActivities: false,
+          frequentUpdates: true,
+          entitlements: {
+            'com.apple.security.application-groups': ['group.com.memohnsen.meetcal.widgets']
+          }
+        },
+        android: {
+          src: './widgets/android',
+          widgets: [
+            {
+              name: 'MeetCalSmallWidgetProvider',
+              resourceName: '@xml/meetcal_small_widget_info'
+            },
+            {
+              name: 'MeetCalMediumWidgetProvider', 
+              resourceName: '@xml/meetcal_medium_widget_info'
+            }
+          ]
+        }
+      }
     ],
   ],
   experiments: {

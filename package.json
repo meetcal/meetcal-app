@@ -15,6 +15,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@bittingz/expo-widgets": "^3.0.2",
     "@clerk/clerk-expo": "^2.9.6",
     "@expo/vector-icons": "^14.0.2",
     "@react-native-async-storage/async-storage": "1.23.1",
@@ -73,6 +74,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@react-native-community/cli": "^19.1.1",
     "@types/jest": "^29.5.12",
     "@types/lodash": "^4.17.16",
     "@types/react": "~18.3.12",
