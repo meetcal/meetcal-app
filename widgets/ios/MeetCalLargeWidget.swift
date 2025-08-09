@@ -104,25 +104,10 @@ struct LargeWidgetTimelineProvider: TimelineProvider {
                 print("Large Widget: After filtering by meet '\(selectedMeet)': \(filteredSessions.count) sessions")
             }
             
-            // Be more lenient with date filtering - show sessions from today onwards
-            let calendar = Calendar.current
-            let today = calendar.startOfDay(for: Date())
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
+            print("Large Widget: Returning \(filteredSessions.count) sessions")
             
-            let upcomingSessions = filteredSessions.filter { session in
-                if let sessionDate = dateFormatter.date(from: session.date) {
-                    let sessionStartOfDay = calendar.startOfDay(for: sessionDate)
-                    return sessionStartOfDay >= today
-                }
-                // If we can't parse the date, include the session
-                return true
-            }
-            
-            print("Large Widget: Returning \(upcomingSessions.count) sessions")
-            
-            // Return sessions in the order they were received (already sorted by React Native)
-            return Array(upcomingSessions.prefix(15)) // Show up to 15 sessions for large widget
+            // Return sessions in the order they were received (already filtered and sorted by React Native)
+            return Array(filteredSessions.prefix(15)) // Show up to 15 sessions for large widget
         }
         
         print("Large Widget: No UserDefaults data found for saved_sessions")

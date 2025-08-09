@@ -41,6 +41,16 @@ export function useWidgets() {
           date: session.date,
           athleteNames: session.athleteNames || []
         }))
+        .filter(session => {
+          // Filter to only show sessions from today onwards in Central Time
+          const now = new Date();
+          const centralTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+          const todayCentral = new Date(centralTime.getFullYear(), centralTime.getMonth(), centralTime.getDate());
+          
+          const sessionDate = new Date(session.date + 'T00:00:00');
+          
+          return sessionDate >= todayCentral;
+        })
         .sort((a, b) => {
           // Sort by session number first
           if (a.sessionNumber !== b.sessionNumber) {
