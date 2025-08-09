@@ -1,7 +1,7 @@
 export default ({ config }) => ({
   name: 'MeetCal',
   slug: 'meetcal',
-  version: '3.4.0',
+  version: '4.0.0',
   orientation: 'portrait',
   icon: './assets/images/MeetCal.png',
   userInterfaceStyle: 'automatic',
@@ -102,7 +102,7 @@ export default ({ config }) => ({
   },
   scheme: 'meetcal',
   owner: 'memohnsen',
-  runtimeVersion: "3.4.0",
+  runtimeVersion: "4.0.0",
   updates: {
     url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
     enabled: true,
