@@ -30,16 +30,43 @@ export function useWidgets() {
         name: meet.name,
         status: meet.status || 'upcoming'
       })),
-      savedSessions: savedSessions.map(session => ({
-        id: session.id,
-        meet: session.meet,
-        sessionNumber: session.sessionNumber,
-        platform: session.platform,
-        weightClass: session.weightClass,
-        startTime: session.startTime,
-        date: session.date,
-        athleteNames: session.athleteNames || []
-      }))
+      savedSessions: savedSessions
+        .map(session => ({
+          id: session.id,
+          meet: session.meet,
+          sessionNumber: session.sessionNumber,
+          platform: session.platform,
+          weightClass: session.weightClass,
+          startTime: session.startTime,
+          date: session.date,
+          athleteNames: session.athleteNames || []
+        }))
+        .sort((a, b) => {
+          // Sort by session number first
+          if (a.sessionNumber !== b.sessionNumber) {
+            return a.sessionNumber - b.sessionNumber;
+          }
+          
+          // Then by platform (Red=0, White=1, Blue=2)
+          const platformPriority = (platform: string) => {
+            switch (platform.toLowerCase()) {
+              case 'red': return 0;
+              case 'white': return 1;
+              case 'blue': return 2;
+              default: return 999;
+            }
+          };
+          
+          const aPriority = platformPriority(a.platform);
+          const bPriority = platformPriority(b.platform);
+          
+          if (aPriority !== bPriority) {
+            return aPriority - bPriority;
+          }
+          
+          // Finally by date
+          return a.date.localeCompare(b.date);
+        })
     };
 
     console.log('Updating widget data:', {

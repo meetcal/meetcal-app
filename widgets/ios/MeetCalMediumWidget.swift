@@ -70,18 +70,7 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
         return nil
     }
     
-    private func platformPriority(_ platform: String) -> Int {
-        switch platform.lowercased() {
-        case "red":
-            return 0
-        case "white":
-            return 1
-        case "blue":
-            return 2
-        default:
-            return 999 // Unknown platforms go last
-        }
-    }
+
     
     private func loadSavedSessions() -> [SavedSession] {
         if let userDefaults = UserDefaults(suiteName: "group.com.memohnsen.meetcal.expowidgets"),
@@ -122,29 +111,9 @@ struct MediumWidgetTimelineProvider: TimelineProvider {
                 return true
             }
             
-            print("Widget: After date filtering: \(upcomingSessions.count) sessions")
             
-            let sortedSessions = upcomingSessions.sorted { session1, session2 in
-                // First sort by session number
-                if session1.sessionNumber != session2.sessionNumber {
-                    return session1.sessionNumber < session2.sessionNumber
-                }
-                
-                // Then sort by platform: Red=0, White=1, Blue=2
-                let platform1Priority = platformPriority(session1.platform)
-                let platform2Priority = platformPriority(session2.platform)
-                if platform1Priority != platform2Priority {
-                    return platform1Priority < platform2Priority
-                }
-                
-                // Finally sort by date if session number and platform are the same
-                let date1 = dateFormatter.date(from: session1.date) ?? Date.distantFuture
-                let date2 = dateFormatter.date(from: session2.date) ?? Date.distantFuture
-                return date1 < date2
-            }
-            
-            print("Widget: Returning \(sortedSessions.count) sessions")
-            return Array(sortedSessions.prefix(10)) // Limit to 10 sessions
+            // Return sessions in the order they were received (already sorted by React Native)
+            return Array(upcomingSessions.prefix(10)) // Limit to 10 sessions
         }
         
         print("Widget: No UserDefaults data found for saved_sessions")
