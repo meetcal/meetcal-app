@@ -174,12 +174,12 @@ struct MediumWidgetView: View {
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
                         
-                        ForEach(Array(entry.savedSessions.prefix(3)), id: \.id) { session in
+                        ForEach(Array(entry.savedSessions.prefix(1)), id: \.id) { session in
                             SessionRowView(session: session)
                         }
                         
-                        if entry.savedSessions.count > 3 {
-                            Text("+ \(entry.savedSessions.count - 3) more")
+                        if entry.savedSessions.count > 1 {
+                            Text("+ \(entry.savedSessions.count - 1) more")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }

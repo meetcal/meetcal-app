@@ -185,12 +185,12 @@ struct LargeWidgetView: View {
                         .foregroundColor(.primary)
                     
                     LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(entry.savedSessions.prefix(8)), id: \.id) { session in
+                        ForEach(Array(entry.savedSessions.prefix(6)), id: \.id) { session in
                             LargeSessionRowView(session: session)
                         }
                         
-                        if entry.savedSessions.count > 8 {
-                            Text("+ \(entry.savedSessions.count - 8) more")
+                        if entry.savedSessions.count > 6 {
+                            Text("+ \(entry.savedSessions.count - 6) more")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                                 .padding(.top, 4)
