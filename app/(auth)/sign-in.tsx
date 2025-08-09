@@ -10,6 +10,17 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useSubscription } from '@/contexts/SubscriptionContext'
 import Purchases from 'react-native-purchases'
 import { cacheAuthState } from '@/lib/authCache'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  withDelay,
+  interpolate,
+  Extrapolate,
+} from 'react-native-reanimated'
+import { LinearGradient } from 'expo-linear-gradient'
 
 // Warm up the browser for better performance
 export const useWarmUpBrowser = () => {
@@ -37,16 +48,91 @@ export default function SignInScreen() {
   const [emailAddress, setEmailAddress] = React.useState('')
   const [password, setPassword] = React.useState('')
 
-  // Define theme colors to match other screens
+  // Animation values
+  const logoOpacity = useSharedValue(0)
+  const logoScale = useSharedValue(0.8)
+  const logoTranslateY = useSharedValue(30)
+  const titleOpacity = useSharedValue(0)
+  const titleTranslateY = useSharedValue(20)
+  const buttonsOpacity = useSharedValue(0)
+  const buttonsTranslateY = useSharedValue(20)
+
+  // Define enhanced color scheme
   const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    background: currentTheme === 'dark' ? '#0F0F0F' : '#F8F9FA',
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    cardShadow: currentTheme === 'dark' ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)',
     border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#1C1C1E',
+    secondaryText: currentTheme === 'dark' ? '#A0A0A0' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
     link: '#007AFF',
+    accent: '#007AFF',
+    gradient: currentTheme === 'dark' 
+      ? ['#0F0F0F', '#1A1A1A', '#0F0F0F']
+      : ['#F8F9FA', '#FFFFFF', '#F0F2F5'],
   }
+
+  // Animation styles
+  const animatedLogoStyle = useAnimatedStyle(() => {
+    return {
+      opacity: logoOpacity.value,
+      transform: [
+        { scale: logoScale.value },
+        { translateY: logoTranslateY.value },
+      ],
+    }
+  })
+
+  const animatedTitleStyle = useAnimatedStyle(() => {
+    return {
+      opacity: titleOpacity.value,
+      transform: [{ translateY: titleTranslateY.value }],
+    }
+  })
+
+  const animatedButtonsStyle = useAnimatedStyle(() => {
+    return {
+      opacity: buttonsOpacity.value,
+      transform: [{ translateY: buttonsTranslateY.value }],
+    }
+  })
+
+  // Start entrance animations
+  useEffect(() => {
+    const startAnimations = () => {
+      // Logo animation
+      logoOpacity.value = withTiming(1, { duration: 600 })
+      logoScale.value = withSpring(1, {
+        damping: 15,
+        stiffness: 100,
+        mass: 1,
+      })
+      logoTranslateY.value = withSpring(0, {
+        damping: 15,
+        stiffness: 100,
+        mass: 1,
+      })
+
+      // Title animation
+      titleOpacity.value = withDelay(200, withTiming(1, { duration: 500 }))
+      titleTranslateY.value = withDelay(200, withSpring(0, {
+        damping: 15,
+        stiffness: 100,
+        mass: 1,
+      }))
+
+      // Buttons animation
+      buttonsOpacity.value = withDelay(400, withTiming(1, { duration: 500 }))
+      buttonsTranslateY.value = withDelay(400, withSpring(0, {
+        damping: 15,
+        stiffness: 100,
+        mass: 1,
+      }))
+    }
+
+    startAnimations()
+  }, [])
 
   const handlePostSignIn = useCallback(() => {
     if (!isSubscribed) {
@@ -287,7 +373,12 @@ export default function SignInScreen() {
   }, [handlePostSignIn]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <LinearGradient
+      colors={colors.gradient}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+    >
       <Stack.Screen
         options={{
           headerTitle: "",
@@ -304,66 +395,88 @@ export default function SignInScreen() {
             </TouchableOpacity>
           ) : undefined,
           headerStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: 'transparent',
           },
           headerShadowVisible: false,
           headerTintColor: colors.text,
+          headerTransparent: true,
         }}
       />
-      <View style={[styles.content, { backgroundColor: colors.background }]}>
-        <View style={styles.titleContainer}>
-          <Image 
-            source={require('@/assets/images/MeetCal-no-bg.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={[styles.title, { color: colors.text }]}>Welcome to MeetCal</Text>
-          <Text style={[styles.subtitle, { color: colors.secondaryText }]}>Please Sign In to Continue</Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.button, styles.googleButton, { 
-            backgroundColor: currentTheme === 'dark' ? '#FFFFFF' : colors.card,
-            borderColor: colors.border 
-          }]}
-          onPress={onGooglePress}
-        >
-          <View style={styles.googleIconContainer}>
-            <Image
-              source={require('@/assets/images/ios_light_sq_na.png')}
-              style={styles.googleIcon}
+      
+      <View style={styles.content}>
+        {/* Logo and Title Section */}
+        <Animated.View style={[styles.titleContainer, animatedLogoStyle]}>
+          <View style={styles.logoWrapper}>
+            <Image 
+              source={require('@/assets/images/MeetCal-no-bg.png')}
+              style={styles.logo}
+              resizeMode="contain"
             />
           </View>
-          <Text style={[styles.buttonText, styles.googleButtonText, { 
-            color: currentTheme === 'dark' ? '#000000' : colors.text 
-          }]}>
-            Continue with Google
-          </Text>
-        </TouchableOpacity>
+        </Animated.View>
 
-        {Platform.OS === 'ios' && (
-          <TouchableOpacity 
-            style={[styles.button, styles.appleButton, {
-              backgroundColor: currentTheme === 'dark' ? '#FFFFFF' : '#000000'
-            }]} 
-            onPress={onApplePress}
+        <Animated.View style={[styles.textContainer, animatedTitleStyle]}>
+          <Text style={[styles.title, { color: colors.text }]}>Welcome Back</Text>
+          <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
+            Sign in to access your weightlifting journey
+          </Text>
+        </Animated.View>
+
+        {/* Authentication Buttons */}
+        <Animated.View style={[styles.buttonsContainer, animatedButtonsStyle]}>
+          <TouchableOpacity
+            style={[styles.authButton, styles.googleButton, { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: colors.cardShadow,
+            }]}
+            onPress={onGooglePress}
           >
-            <View style={styles.iconContainer}>
-              <IconSymbol
-                name="apple.logo"
-                size={22}
-                color={currentTheme === 'dark' ? '#000000' : '#FFFFFF'}
+            <View style={styles.googleIconContainer}>
+              <Image
+                source={require('@/assets/images/ios_light_sq_na.png')}
+                style={styles.googleIcon}
               />
             </View>
-            <Text style={[styles.buttonText, styles.appleButtonText, {
-              color: currentTheme === 'dark' ? '#000000' : '#FFFFFF'
+            <Text style={[styles.buttonText, styles.googleButtonText, { 
+              color: colors.text 
             }]}>
-              Continue with Apple
+              Continue with Google
             </Text>
           </TouchableOpacity>
-        )}
+
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity 
+              style={[styles.authButton, styles.appleButton, {
+                backgroundColor: colors.text,
+                shadowColor: colors.cardShadow,
+              }]} 
+              onPress={onApplePress}
+            >
+              <View style={styles.iconContainer}>
+                <IconSymbol
+                  name="apple.logo"
+                  size={22}
+                  color={colors.background}
+                />
+              </View>
+              <Text style={[styles.buttonText, styles.appleButtonText, {
+                color: colors.background
+              }]}>
+                Continue with Apple
+              </Text>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: colors.secondaryText }]}>
+            Your weightlifting meets, perfectly organized
+          </Text>
+        </View>
       </View>
-    </View>
+    </LinearGradient>
   )
 }
 
@@ -373,117 +486,110 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 100 : 80,
+    paddingBottom: 40,
+    justifyContent: 'space-between',
   },
   backButton: {
     padding: 8,
     marginLeft: Platform.OS === 'ios' ? -8 : 0,
-  },
-  input: {
-    borderWidth: 1,
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    marginHorizontal: 10,
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 52,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-  },
-  googleIconContainer: {
-    marginRight: 8,
-  },
-  googleIcon: {
-    width: 18,
-    height: 18,
-  },
-  googleButtonText: {
-    fontSize: 15,
-    fontWeight: '500',
-    letterSpacing: 0.25,
-    fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
-  },
-  appleButton: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 50,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-  },
-  iconContainer: {
-    marginRight: 8,
-  },
-  appleButtonText: {
-    fontSize: 15,
-    fontWeight: '500',
-    letterSpacing: 0.25,
-    fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    gap: 5,
-  },
-  footerText: {
-    fontSize: 16,
-  },
-  link: {
-    marginLeft: 5,
-  },
-  linkText: {
-    fontSize: 16,
-    fontWeight: '600',
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
   },
   titleContainer: {
-    marginBottom: 32,
     alignItems: 'center',
-    width: '100%',
+    marginBottom: 48,
+  },
+  logoWrapper: {
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   logo: {
-    width: Dimensions.get('window').width * 0.5, // 50% of screen width
-    height: Dimensions.get('window').width * 0.5 * 0.5, // Maintain aspect ratio (2:1)
-    marginBottom: 24,
+    width: 140,
+    height: 140,
+  },
+  textContainer: {
+    alignItems: 'center',
+    marginBottom: 48,
+    paddingHorizontal: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 32,
+    fontWeight: '700',
+    marginBottom: 12,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     textAlign: 'center',
+    lineHeight: 24,
+    fontWeight: '400',
+    letterSpacing: 0.2,
+  },
+  buttonsContainer: {
+    paddingHorizontal: 4,
+  },
+  authButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 56,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  googleButton: {
+    borderWidth: 1.5,
+  },
+  googleIconContainer: {
+    marginRight: 12,
+  },
+  googleIcon: {
+    width: 20,
+    height: 20,
+  },
+  appleButton: {
+    // No border for Apple button as it has a filled background
+  },
+  iconContainer: {
+    marginRight: 12,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    fontFamily: Platform.OS === 'ios' ? '-apple-system' : 'sans-serif-medium',
+  },
+  googleButtonText: {
+    // Inherits from buttonText
+  },
+  appleButtonText: {
+    // Inherits from buttonText
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: 24,
+    paddingHorizontal: 20,
+  },
+  footerText: {
+    fontSize: 15,
+    textAlign: 'center',
+    fontWeight: '400',
+    lineHeight: 20,
+    letterSpacing: 0.1,
   },
 });
