@@ -1296,6 +1296,7 @@ export default function StartListScreen() {
                         { maxHeight: maxOptionsHeight }
                       ]}
                       bounces={false}
+                      nestedScrollEnabled={true}
                     >
                       <Pressable
                         style={({ pressed }) => [
@@ -1389,6 +1390,7 @@ export default function StartListScreen() {
                         { maxHeight: maxOptionsHeight }
                       ]}
                       bounces={false}
+                      nestedScrollEnabled={true}
                     >
                       <Pressable
                         style={({ pressed }) => [
@@ -1504,6 +1506,7 @@ export default function StartListScreen() {
                         { maxHeight: maxOptionsHeight }
                       ]}
                       bounces={false}
+                      nestedScrollEnabled={true}
                     >
                       <Pressable
                         style={({ pressed }) => [
@@ -1619,6 +1622,7 @@ export default function StartListScreen() {
                         { maxHeight: maxOptionsHeight }
                       ]}
                       bounces={false}
+                      nestedScrollEnabled={true}
                     >
                       <Pressable
                         style={({ pressed }) => [
@@ -1709,6 +1713,7 @@ export default function StartListScreen() {
                         { maxHeight: maxOptionsHeight }
                       ]}
                       bounces={false}
+                      nestedScrollEnabled={true}
                     >
                       {/* Add search bar for clubs */}
                       <View style={[styles.filterSearchContainer, { borderBottomColor: colors.border }]}>
