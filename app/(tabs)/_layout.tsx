@@ -42,11 +42,12 @@ export default function TabLayout() {
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: Platform.OS === 'ios' ? 50 + insets.bottom : 60,
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 10,
+          height: Platform.OS === 'ios' ? 85 : 95,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 15,
+          paddingTop: Platform.OS === 'ios' ? 5 : 10,
         },
         tabBarItemStyle: {
-          marginTop: 8,
+          marginTop: Platform.OS === 'ios' ? 0 : 5,
         },
         headerStyle: {
           backgroundColor: colors.background,

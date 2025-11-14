@@ -21,7 +21,7 @@ export function PageIndicator({ count, currentPage, onPageChange }: PageIndicato
     <View style={[
       styles.container, 
       { 
-        paddingBottom: insets.bottom + 70, // Account for tab bar height
+        paddingBottom: insets.bottom + 80, // Account for tab bar height
       }
     ]}>
       <View style={[

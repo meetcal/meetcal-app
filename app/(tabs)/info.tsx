@@ -311,16 +311,56 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
+            onPress={() => router.push('/(screens)/all-meet-results')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                All Meet Results
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/share-results-by-club')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Share Results by Club
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
             onPress={() => router.push('/(screens)/event-info')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Event Info
               </ThemedText>
-              <IconSymbol 
+              <IconSymbol
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20} 
-                color={colors.link} 
+                size={20}
+                color={colors.link}
               />
             </View>
           </Pressable>
@@ -384,6 +424,22 @@ export default function InfoScreen() {
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
               American Records
+            </ThemedText>
+            <IconSymbol name="chevron.right" size={20} color={colors.link} />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.section,
+            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+            pressed && { backgroundColor: colors.pressed }
+          ]}
+          onPress={() => router.push('/(screens)/world-records')}
+        >
+          <View style={styles.linkRow}>
+            <ThemedText style={[styles.label, { color: colors.text }]}>
+              IWF World Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>

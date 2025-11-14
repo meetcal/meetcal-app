@@ -565,6 +565,7 @@ export default function SessionDetailsScreen() {
   const router = useRouter();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { selectedMeet, meetDetails } = useSelectedMeet();
+  const { isSubscribed } = useSubscription();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
@@ -994,6 +995,67 @@ export default function SessionDetailsScreen() {
               </Pressable>
             </View>
           </View>
+
+          {/* New section for premium features */}
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View style={[styles.section, { borderBottomWidth: 0 }]}>
+              <View style={styles.premiumButtonsRow}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.premiumButton,
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={() => {
+                    if (isSubscribed) {
+                      router.push({
+                        pathname: '/(screens)/new-qualifying-totals',
+                        params: {
+                          sessionNumber: params.sessionNumber,
+                          platform: params.platform,
+                          meet: params.meet
+                        }
+                      });
+                    } else {
+                      router.push('/(screens)/paywall');
+                    }
+                  }}
+                >
+                  <ThemedText style={[styles.premiumButtonText, { color: colors.text }]}>
+                    Qualifying Totals
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={13} color="#007AFF" />
+                </Pressable>
+
+                <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.premiumButton,
+                    pressed && { opacity: 0.8 }
+                  ]}
+                  onPress={() => {
+                    if (isSubscribed) {
+                      router.push({
+                        pathname: '/(screens)/attempt-estimator',
+                        params: {
+                          sessionNumber: params.sessionNumber,
+                          platform: params.platform,
+                          meet: params.meet
+                        }
+                      });
+                    } else {
+                      router.push('/(screens)/paywall');
+                    }
+                  }}
+                >
+                  <ThemedText style={[styles.premiumButtonText, { color: colors.text }]}>
+                    Attempt Estimator
+                  </ThemedText>
+                  <IconSymbol name="chevron.right" size={13} color="#007AFF" />
+                </Pressable>
+              </View>
+            </View>
+          </View>
           
           <SessionAthletes 
             sessionNumber={parseInt(params.sessionNumber)} 
@@ -1183,5 +1245,27 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  premiumButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  premiumButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  premiumButtonText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  verticalDivider: {
+    width: 1,
+    height: 24,
+    marginHorizontal: 8,
   },
 }); 
