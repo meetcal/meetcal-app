@@ -207,4 +207,27 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
   }));
 
   return mappedData;
-} 
+}
+
+// Search athletes by name across all meets
+export async function searchAthletesByName(query: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('lifting_results')
+      .select('name')
+      .ilike('name', `%${query}%`)
+      .order('name');
+
+    if (error) {
+      console.error('Error searching athletes:', error);
+      throw error;
+    }
+
+    // Extract unique names
+    const uniqueNames = Array.from(new Set((data || []).map(result => result.name))).sort();
+    return uniqueNames;
+  } catch (error) {
+    console.error('Error in searchAthletesByName:', error);
+    throw error;
+  }
+}

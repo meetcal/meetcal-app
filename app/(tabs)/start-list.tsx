@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -21,6 +21,8 @@ import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
 import type { Schedule as ScheduleType } from '@/types/schedule';
+import ShareScheduleView from '@/components/share/ShareScheduleView';
+import ImagePreviewModal from '@/components/share/ImagePreviewModal';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -499,6 +501,9 @@ export default function StartListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
   const [isScheduleLoading, setIsScheduleLoading] = useState(true);
+  const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
+  const [showImagePreview, setShowImagePreview] = useState(false);
+  const shareScheduleRef = useRef<View>(null);
   
   // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
@@ -1013,11 +1018,55 @@ export default function StartListScreen() {
       const newStarredClubs = starredClubs.includes(club)
         ? starredClubs.filter(c => c !== club)
         : [...starredClubs, club];
-      
+
       setStarredClubs(newStarredClubs);
       await AsyncStorage.setItem('starredClubs', JSON.stringify(newStarredClubs));
     } catch (error) {
       console.error('Error saving starred clubs:', error);
+    }
+  };
+
+  // Capture schedule image for sharing
+  const captureScheduleImage = async () => {
+    // Validate that a specific club is selected
+    if (!tempClubFilter || tempClubFilter === '' || tempClubFilter === STARRED_CLUBS_FILTER) {
+      Alert.alert(
+        'Select a Club',
+        'Please select a specific club from the filters to create a shareable schedule.'
+      );
+      return;
+    }
+
+    // Ensure there are filtered athletes
+    if (filteredAthletes.length === 0) {
+      Alert.alert(
+        'Nothing to Share',
+        'No athletes were found for the current filters.'
+      );
+      return;
+    }
+
+    try {
+      // Dynamically import captureRef to avoid native module errors on startup
+      const { captureRef } = await import('react-native-view-shot');
+
+      if (shareScheduleRef.current) {
+        // Add a small delay to ensure the view is fully rendered
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const uri = await captureRef(shareScheduleRef.current, {
+          format: 'png',
+          quality: 1.0,
+          result: 'tmpfile',
+          width: 850,
+          height: undefined,
+        });
+        setGeneratedImageUri(uri);
+        setShowImagePreview(true);
+      }
+    } catch (error) {
+      console.error('Error capturing image:', error);
+      Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
     }
   };
 
@@ -1980,6 +2029,7 @@ export default function StartListScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.saveOption,
+                { borderBottomColor: colors.border },
                 pressed && { backgroundColor: colors.pressed }
               ]}
               onPress={() => {
@@ -1988,14 +2038,14 @@ export default function StartListScreen() {
               }}
             >
               <View style={styles.saveOptionContent}>
-                <IconSymbol 
-                  name="calendar" 
-                  size={22} 
-                  color={!isSubscribed ? colors.secondaryText : colors.text} 
+                <IconSymbol
+                  name="calendar"
+                  size={22}
+                  color={!isSubscribed ? colors.secondaryText : colors.text}
                 />
                 <View style={styles.saveOptionText}>
                   <ThemedText style={[
-                    styles.saveOptionTitle, 
+                    styles.saveOptionTitle,
                     { color: !isSubscribed ? colors.secondaryText : colors.text }
                   ]}>
                     Add to Calendar
@@ -2005,15 +2055,94 @@ export default function StartListScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <IconSymbol 
-                name={getChevronIcon('right')} 
-                size={16} 
-                color={colors.secondaryText} 
+              <IconSymbol
+                name={getChevronIcon('right')}
+                size={16}
+                color={colors.secondaryText}
+              />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveOption,
+                pressed && { backgroundColor: colors.pressed }
+              ]}
+              onPress={() => {
+                setShowSaveModal(false);
+                if (isSubscribed) {
+                  captureScheduleImage();
+                } else {
+                  router.push('/paywall');
+                }
+              }}
+            >
+              <View style={styles.saveOptionContent}>
+                <IconSymbol
+                  name={Platform.select({
+                    ios: 'photo',
+                    android: 'image',
+                  }) || 'photo'}
+                  size={22}
+                  color={!isSubscribed ? colors.secondaryText : colors.text}
+                />
+                <View style={styles.saveOptionText}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <ThemedText style={[
+                      styles.saveOptionTitle,
+                      { color: !isSubscribed ? colors.secondaryText : colors.text }
+                    ]}>
+                      Create Shareable Schedule
+                    </ThemedText>
+                    {!isSubscribed && (
+                      <IconSymbol
+                        name={Platform.select({
+                          ios: 'lock.fill',
+                          android: 'lock',
+                        }) || 'lock.fill'}
+                        size={14}
+                        color={colors.secondaryText}
+                      />
+                    )}
+                  </View>
+                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                    {isSubscribed
+                      ? 'Generate an image to share'
+                      : 'Pro feature - Upgrade to access'}
+                  </ThemedText>
+                </View>
+              </View>
+              <IconSymbol
+                name={getChevronIcon('right')}
+                size={16}
+                color={colors.secondaryText}
               />
             </Pressable>
           </View>
         </Pressable>
       </Modal>
+
+      {/* Hidden view for capturing schedule image */}
+      <View style={{ position: 'absolute', left: -10000, top: 0 }}>
+        <View ref={shareScheduleRef} collapsable={false}>
+          <ShareScheduleView
+            filteredAthletes={filteredAthletes}
+            schedule={scheduleData}
+            selectedMeet={selectedMeet || ''}
+            selectedClub={tempClubFilter || ''}
+            getSessionDetails={getSessionDetails}
+          />
+        </View>
+      </View>
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        visible={showImagePreview}
+        imageUri={generatedImageUri}
+        onClose={() => {
+          setShowImagePreview(false);
+          setGeneratedImageUri(null);
+        }}
+      />
     </ThemedView>
   );
 }
