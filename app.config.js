@@ -28,12 +28,8 @@ export default ({ config }) => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/MeetCal-android.png',
-      backgroundColor: '#ffffff',
-      dark: {
-        foregroundImage: './assets/images/MeetCal-no-bg.png',
-        backgroundColor: '#1c1c1e'
-      }
+      foregroundImage: './assets/images/ic_launcher_foreground.png',
+      backgroundColor: '#ffffff'
     },
     package: 'com.memohnsen.meetcal',
     versionCode: 1,
@@ -56,7 +52,7 @@ export default ({ config }) => ({
           targetSdkVersion: 35,
           buildToolsVersion: '36.1.0',
           minSdkVersion: 24,
-          ndkVersion: '29.0.14033849',
+          ndkVersion: '27.0.12077973',  // NDK r27b - EAS Build available version, AGP 8.6 handles 16KB alignment
         },
       },
     ],
