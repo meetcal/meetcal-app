@@ -2,7 +2,6 @@ import 'react-native-url-polyfill/auto'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
 import { Database } from './database.types'
-import { Clerk } from '@clerk/clerk-expo'
 
 // Create a single supabase client for interacting with your database
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
@@ -29,12 +28,17 @@ export const supabase = createClient<Database>(
     // This replaces the custom fetch function approach
     accessToken: async () => {
       try {
-        // Get the session token directly from Clerk session
-        // No need for template parameter with the new integration
-        const token = await Clerk.session?.getToken();
-        return token ?? null;
+        // Dynamically import Clerk to avoid initialization issues
+        const { Clerk } = await import('@clerk/clerk-expo');
+        // Get the session token - Clerk.session may be undefined if not initialized yet
+        const session = Clerk.session;
+        if (session) {
+          const token = await session.getToken();
+          return token ?? null;
+        }
+        return null;
       } catch (error) {
-        console.error('Error getting Clerk session token:', error);
+        // Silently fail if Clerk is not initialized yet
         return null;
       }
     },

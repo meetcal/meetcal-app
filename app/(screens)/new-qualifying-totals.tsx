@@ -26,7 +26,7 @@ export default function QualifyingTotalsScreen() {
   const { currentTheme } = useTheme();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [filters, setFilters] = useState<Filters>({
-    event: 'USAW Nationals',
+    event: 'Nationals',
     gender: 'Men',
     ageGroup: 'Senior'
   });
