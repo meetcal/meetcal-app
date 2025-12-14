@@ -233,7 +233,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
           if (!isUserSignedIn) {
             router.replace('/sign-in');
           } else {
-            router.replace('/(tabs)/schedule');
+            router.replace('/(tabs)');
           }
         }
       }
