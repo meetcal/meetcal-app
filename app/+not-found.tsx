@@ -21,7 +21,7 @@ export default function NotFoundScreen() {
         </ThemedText>
         <ThemedText style={styles.subtext}>
           If the page doesn't automatically load,{' '}
-          <Link href="/schedule" style={styles.link}>
+          <Link href="/" style={styles.link}>
             <ThemedText type="link">click here</ThemedText>
           </Link>
         </ThemedText>
