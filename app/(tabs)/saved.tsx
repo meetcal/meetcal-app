@@ -430,7 +430,7 @@ const SessionCard = React.memo(({
 
 export default function SavedScreen() {
   const { user } = useUser();
-  const { savedSessions, saveSession, loadSavedSessions } = useSavedSessions();
+  const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -450,6 +450,52 @@ export default function SavedScreen() {
   // Add state for schedules map and loading
   const [schedulesMap, setSchedulesMap] = useState<Map<MeetName, ScheduleType>>(new Map());
   const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
+
+  const handleResetSessions = () => {
+    if (!user?.id) return;
+
+    Alert.alert(
+      'Reset Saved Sessions',
+      'Are you sure you want to remove all saved sessions? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              let success = false;
+              if (typeof resetAllSessions === 'function') {
+                success = await resetAllSessions(selectedMeet ?? undefined);
+              }
+              const STORAGE_KEYS = [
+                getSavedSessionsKey(user.id),
+                `savedSessions_${user.id}`,
+                `@savedSessions_${user.id}`,
+                `sessions_${user.id}`,
+              ];
+              for (const key of STORAGE_KEYS) {
+                const stored = await AsyncStorage.getItem(key);
+                if (stored) {
+                  let sessions = [];
+                  try { sessions = JSON.parse(stored); } catch {}
+                  if (Array.isArray(sessions)) {
+                    const filtered = sessions.filter(s => s.meet !== selectedMeet);
+                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
+                  }
+                }
+              }
+              await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
+              Alert.alert('Success', 'All saved sessions for this meet have been reset.');
+            } catch (error) {
+              console.error('Error resetting sessions:', error);
+              Alert.alert('Error', 'Failed to reset saved sessions.');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -776,22 +822,6 @@ export default function SavedScreen() {
         <View style={styles.buttonRow}>
           <Pressable
             style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => {
-              if (isSubscribed) {
-                router.push('/(screens)/create-session');
-              } else {
-                router.push('/paywall');
-              }
-            }}
-          >
-            <IconSymbol name="plus" size={16} color={colors.secondaryText} />
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-              Create Session
-            </ThemedText>
-          </Pressable>     
-
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={handleSaveToCalendar}
             disabled={isSchedulesLoading}
           >
@@ -807,23 +837,17 @@ export default function SavedScreen() {
               {isSchedulesLoading ? 'Loading...' : 'Add to Calendar'}
             </ThemedText>
           </Pressable>
-        </View>
 
-        <Pressable
-          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => {
-            if (isSubscribed) {
-              router.push('/(screens)/warmups');
-            } else {
-              router.push('/paywall');
-            }
-          }}
-        >
-          <IconSymbol name="bookmark" size={16} color={colors.secondaryText} />
-          <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
-            Saved Warmups
-          </ThemedText>
-        </Pressable>
+          <Pressable
+            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={handleResetSessions}
+          >
+            <IconSymbol name={Platform.OS === 'ios' ? 'trash' : 'trash'} size={16} color="#FF3B30" />
+            <ThemedText style={[styles.buttonText, { color: '#FF3B30' }]}>
+              Delete All
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
       <FlatList

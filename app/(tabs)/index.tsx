@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, Dimensions, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -277,6 +277,106 @@ export default function ScheduleScreen() {
   const { currentTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
+  const skeletonPulse = useRef(new Animated.Value(0.4)).current;
+
+  const upcomingMeets = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sixMonthsFromNow = new Date(startOfToday);
+    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 3);
+
+    return availableMeets.filter((meet) => {
+      const start = new Date(meet.dates?.start ?? '');
+      const end = new Date(meet.dates?.end ?? meet.dates?.start ?? '');
+      if (Number.isNaN(start.getTime())) return false;
+      const endDate = Number.isNaN(end.getTime()) ? start : end;
+      return endDate >= startOfToday && start <= sixMonthsFromNow;
+    });
+  }, [availableMeets]);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 0.9,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.4,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [skeletonPulse]);
+
+  const SkeletonBlock = useCallback(({ style }: { style: any }) => {
+    const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
+    return (
+      <Animated.View
+        style={[
+          styles.skeletonBlock,
+          { backgroundColor, opacity: skeletonPulse },
+          style,
+        ]}
+      />
+    );
+  }, [currentTheme, skeletonPulse]);
+
+  const renderLoadingSkeleton = useCallback((label: string) => (
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
+      }]}>
+        <View style={styles.filterRow}>
+          <View style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.filterTextContainer}>
+              <SkeletonBlock style={styles.skeletonLineShort} />
+              <SkeletonBlock style={styles.skeletonLine} />
+            </View>
+            <SkeletonBlock style={styles.skeletonIcon} />
+          </View>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.skeletonContent}>
+        {[0, 1, 2].map((index) => (
+          <View key={`skeleton-${index}`} style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
+            <View style={styles.skeletonSection}>
+              <SkeletonBlock style={styles.skeletonTitle} />
+              <SkeletonBlock style={styles.skeletonSubtitle} />
+            </View>
+            <View style={styles.skeletonTimeRow}>
+              <SkeletonBlock style={styles.skeletonChip} />
+              <SkeletonBlock style={styles.skeletonChip} />
+            </View>
+            <View style={[styles.platformsContainer, { backgroundColor: colors.card }]}>
+              {[0, 1, 2].map((row) => (
+                <View key={`platform-${index}-${row}`} style={styles.platformCard}>
+                  <View style={styles.platformContent}>
+                    <SkeletonBlock style={styles.skeletonBadge} />
+                    <View style={styles.platformInfo}>
+                      <SkeletonBlock style={styles.skeletonLine} />
+                      <SkeletonBlock style={styles.skeletonLineShort} />
+                    </View>
+                  </View>
+                  <SkeletonBlock style={styles.skeletonTiny} />
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+        <ThemedText style={[styles.loadingText, { color: colors.secondaryText, marginTop: 12 }]}>
+          {label}
+        </ThemedText>
+      </ScrollView>
+    </ThemedView>
+  ), [SkeletonBlock, colors, currentTheme]);
 
   const colors: Colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -475,16 +575,7 @@ export default function ScheduleScreen() {
   ), [width, letterFilter, meetDetails, handleRefresh]);
 
   if (isMeetLoading) {
-    return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.text} />
-          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
-            Loading meets...
-          </ThemedText>
-        </View>
-      </ThemedView>
-    );
+    return renderLoadingSkeleton('Loading meets...');
   }
 
   if (!selectedMeet || !meetDetails) {
@@ -500,16 +591,7 @@ export default function ScheduleScreen() {
   }
 
   if (isLoading || isChangingMeet) {
-    return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.text} />
-          <ThemedText style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>
-            Loading schedule...
-          </ThemedText>
-        </View>
-      </ThemedView>
-    );
+    return renderLoadingSkeleton('Loading schedule...');
   }
 
   return (
@@ -639,7 +721,7 @@ export default function ScheduleScreen() {
                 />
               }
             >
-              {availableMeets.map((meet) => (
+              {upcomingMeets.map((meet) => (
                 <Pressable
                   key={meet.name}
                   style={({ pressed }) => [
@@ -675,10 +757,10 @@ export default function ScheduleScreen() {
                 </Pressable>
               ))}
               
-              {availableMeets.length === 0 && (
+              {upcomingMeets.length === 0 && (
                 <View style={styles.emptyContainer}>
                   <ThemedText style={styles.emptyText}>
-                    No meets available
+                    No meets available in the next 6 months
                   </ThemedText>
                 </View>
               )}
@@ -897,6 +979,61 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  skeletonContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  skeletonBlock: {
+    borderRadius: 6,
+  },
+  skeletonSection: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  skeletonTitle: {
+    height: 18,
+    width: '60%',
+    marginBottom: 10,
+  },
+  skeletonSubtitle: {
+    height: 14,
+    width: '40%',
+  },
+  skeletonLine: {
+    height: 12,
+    width: '75%',
+  },
+  skeletonLineShort: {
+    height: 12,
+    width: '45%',
+    marginTop: 6,
+  },
+  skeletonIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
+  skeletonChip: {
+    height: 12,
+    width: 80,
+    borderRadius: 6,
+  },
+  skeletonBadge: {
+    width: 52,
+    height: 22,
+    borderRadius: 6,
+  },
+  skeletonTiny: {
+    width: 24,
+    height: 12,
+    borderRadius: 6,
+  },
+  skeletonTimeRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    gap: 12,
   },
   modalScrollView: {
     flexGrow: 0,

@@ -88,7 +88,7 @@ export default function MeetResultsByClubScreen() {
     setIsGeneratingImage(true);
 
     try {
-      const uri = await captureRef(shareableViewRef, {
+      const uri = await captureRef(shareableViewRef.current, {
         format: 'png',
         quality: 1,
         result: 'tmpfile',
@@ -286,12 +286,13 @@ export default function MeetResultsByClubScreen() {
 
       {/* Hidden shareable view - rendered off-screen for image generation */}
       <View style={styles.offScreen}>
-        <ShareableRecapView
-          ref={shareableViewRef}
-          club={club || ''}
-          meet={meet || ''}
-          stats={clubStats}
-        />
+        <View ref={shareableViewRef} collapsable={false}>
+          <ShareableRecapView
+            club={club || ''}
+            meet={meet || ''}
+            stats={clubStats}
+          />
+        </View>
       </View>
 
       {/* Image Preview Modal */}
@@ -420,6 +421,7 @@ function ImagePreviewModal({
   onShare: () => void;
   currentTheme: string;
 }) {
+  const insets = useSafeAreaInsets();
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -428,9 +430,20 @@ function ImagePreviewModal({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ThemedView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-        <View style={styles.modalHeader}>
+        <View
+          style={[
+            styles.modalHeader,
+            Platform.OS === 'android' && { paddingTop: Math.max(insets.top, 12) + 12 },
+          ]}
+        >
           <ThemedText style={[styles.modalTitle, { color: colors.text }]}>Recap Preview</ThemedText>
-          <Pressable style={styles.closeButton} onPress={onClose}>
+          <Pressable
+            style={[
+              styles.closeButton,
+              Platform.OS === 'android' && { top: Math.max(insets.top, 12) + 6 },
+            ]}
+            onPress={onClose}
+          >
             <ThemedText style={{ color: '#007AFF', fontSize: 17, fontWeight: '600' }}>Done</ThemedText>
           </Pressable>
         </View>
@@ -515,7 +528,8 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 28,
-    paddingTop: 30,
+    lineHeight: 32,
+    includeFontPadding: false,
     fontWeight: 'bold',
   },
   statTitle: {
@@ -651,13 +665,14 @@ const shareableStyles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
     textAlign: 'center',
-    paddingTop: 30,
+    lineHeight: 42,
   },
   meetName: {
     fontSize: 24,
     fontWeight: '600',
     color: '#007AFF',
     textAlign: 'center',
+    lineHeight: 30,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -676,17 +691,18 @@ const shareableStyles = StyleSheet.create({
   },
   statEmoji: {
     fontSize: 48,
-    paddingTop: 30,
+    lineHeight: 54,
   },
   statValue: {
     fontSize: 36,
     fontWeight: 'bold',
     color: '#000000',
-    paddingTop: 30,
+    lineHeight: 42,
   },
   statTitle: {
     fontSize: 14,
     color: '#8E8E93',
+    lineHeight: 18,
   },
   medalsContainer: {
     marginTop: 30,
@@ -701,7 +717,7 @@ const shareableStyles = StyleSheet.create({
     fontWeight: '600',
     color: '#000000',
     marginBottom: 20,
-    paddingTop: 20,
+    lineHeight: 34,
   },
   medalsRow: {
     flexDirection: 'row',
@@ -723,11 +739,12 @@ const shareableStyles = StyleSheet.create({
     fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    paddingTop: 20
+    lineHeight: 42,
   },
   medalType: {
     fontSize: 16,
     color: '#8E8E93',
+    lineHeight: 20,
   },
   footer: {
     position: 'absolute',
@@ -742,6 +759,7 @@ const shareableStyles = StyleSheet.create({
   footerText: {
     fontSize: 14,
     color: '#8E8E93',
+    lineHeight: 18,
   },
   logo: {
     width: 30,
