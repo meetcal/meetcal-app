@@ -54,7 +54,7 @@ export default function SignInScreen() {
     } else if (from === 'info') {
       router.back();
     } else {
-      router.replace('/(tabs)/schedule');
+      router.replace('/(tabs)/index');
     }
   }, [from, isSubscribed, router]);
 
