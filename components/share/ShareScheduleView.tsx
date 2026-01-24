@@ -9,6 +9,7 @@ interface ShareScheduleViewProps {
   schedule: ScheduleType;
   selectedMeet: string;
   selectedClub: string;
+  transparentBackground?: boolean;
   getSessionDetails: (sessionNumber: number) => {
     date: string;
     startTime: string;
@@ -59,6 +60,7 @@ export default function ShareScheduleView({
   schedule,
   selectedMeet,
   selectedClub,
+  transparentBackground = false,
   getSessionDetails,
 }: ShareScheduleViewProps) {
   // Group athletes by date and sort
@@ -99,7 +101,12 @@ export default function ShareScheduleView({
   }, [filteredAthletes, schedule, getSessionDetails]);
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        transparentBackground && styles.containerTransparent,
+      ]}
+    >
       {/* Header */}
       <View style={styles.header}>
         <ThemedText style={styles.clubName}>{selectedClub}</ThemedText>
@@ -223,6 +230,9 @@ const styles = StyleSheet.create({
     width: 850,
     backgroundColor: '#FFFFFF',
     paddingTop: 40,
+  },
+  containerTransparent: {
+    backgroundColor: 'transparent',
   },
   header: {
     paddingVertical: 30,

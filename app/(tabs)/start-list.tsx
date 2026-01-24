@@ -509,9 +509,12 @@ export default function StartListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
   const [isScheduleLoading, setIsScheduleLoading] = useState(true);
-  const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
+  const [generatedImageWhiteUri, setGeneratedImageWhiteUri] = useState<string | null>(null);
+  const [generatedImageTransparentUri, setGeneratedImageTransparentUri] = useState<string | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const shareScheduleRef = useRef<View>(null);
+  const shareScheduleTransparentRef = useRef<View>(null);
   
   // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
@@ -1062,18 +1065,27 @@ export default function StartListScreen() {
       // Dynamically import captureRef to avoid native module errors on startup
       const { captureRef } = await import('react-native-view-shot');
 
-      if (shareScheduleRef.current) {
+      if (shareScheduleRef.current && shareScheduleTransparentRef.current) {
         // Add a small delay to ensure the view is fully rendered
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        const uri = await captureRef(shareScheduleRef.current, {
+        const whiteUri = await captureRef(shareScheduleRef.current, {
           format: 'png',
           quality: 1.0,
           result: 'tmpfile',
           width: 850,
           height: undefined,
         });
-        setGeneratedImageUri(uri);
+        const transparentUri = await captureRef(shareScheduleTransparentRef.current, {
+          format: 'png',
+          quality: 1.0,
+          result: 'tmpfile',
+          width: 850,
+          height: undefined,
+        });
+        setGeneratedImageWhiteUri(whiteUri);
+        setGeneratedImageTransparentUri(transparentUri);
+        setSelectedImageIndex(0);
         setShowImagePreview(true);
       }
     } catch (error) {
@@ -2202,6 +2214,7 @@ export default function StartListScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.saveOption,
+                { borderBottomColor: colors.border },
                 pressed && { backgroundColor: colors.pressed }
               ]}
               onPress={() => {
@@ -2258,6 +2271,7 @@ export default function StartListScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.saveOption,
+                { borderBottomColor: colors.border },
                 pressed && { backgroundColor: colors.pressed }
               ]}
               onPress={() => {
@@ -2314,7 +2328,7 @@ export default function StartListScreen() {
         </Pressable>
       </Modal>
 
-      {/* Hidden view for capturing schedule image */}
+      {/* Hidden views for capturing schedule images */}
       <View style={{ position: 'absolute', left: -10000, top: 0 }}>
         <View ref={shareScheduleRef} collapsable={false}>
           <ShareScheduleView
@@ -2323,6 +2337,17 @@ export default function StartListScreen() {
             selectedMeet={selectedMeet || ''}
             selectedClub={tempClubFilter || ''}
             getSessionDetails={getSessionDetails}
+            transparentBackground={false}
+          />
+        </View>
+        <View ref={shareScheduleTransparentRef} collapsable={false}>
+          <ShareScheduleView
+            filteredAthletes={filteredAthletes}
+            schedule={scheduleData}
+            selectedMeet={selectedMeet || ''}
+            selectedClub={tempClubFilter || ''}
+            getSessionDetails={getSessionDetails}
+            transparentBackground={true}
           />
         </View>
       </View>
@@ -2330,10 +2355,14 @@ export default function StartListScreen() {
       {/* Image Preview Modal */}
       <ImagePreviewModal
         visible={showImagePreview}
-        imageUri={generatedImageUri}
+        whiteImageUri={generatedImageWhiteUri}
+        transparentImageUri={generatedImageTransparentUri}
+        selectedIndex={selectedImageIndex}
+        onChangeIndex={setSelectedImageIndex}
         onClose={() => {
           setShowImagePreview(false);
-          setGeneratedImageUri(null);
+          setGeneratedImageWhiteUri(null);
+          setGeneratedImageTransparentUri(null);
         }}
       />
     </ThemedView>
