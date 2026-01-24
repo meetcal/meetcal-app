@@ -1,23 +1,33 @@
 import React from 'react';
-import { View, StyleSheet, Modal, Pressable, ScrollView, Image, Platform } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, ScrollView, Image, Platform, StatusBar } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Sharing from 'expo-sharing';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ImagePreviewModalProps {
   visible: boolean;
-  imageUri: string | null;
+  whiteImageUri: string | null;
+  transparentImageUri: string | null;
+  selectedIndex: number;
+  onChangeIndex: (index: number) => void;
   onClose: () => void;
 }
 
 export default function ImagePreviewModal({
   visible,
-  imageUri,
+  whiteImageUri,
+  transparentImageUri,
+  selectedIndex,
+  onChangeIndex,
   onClose,
 }: ImagePreviewModalProps) {
   const { currentTheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const hasTransparent = Boolean(transparentImageUri);
+  const activeIndex = hasTransparent ? selectedIndex : 0;
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -26,7 +36,8 @@ export default function ImagePreviewModal({
   };
 
   const handleShare = async () => {
-    if (!imageUri) return;
+    const activeUri = activeIndex === 0 ? whiteImageUri : transparentImageUri;
+    if (!activeUri) return;
 
     try {
       const isAvailable = await Sharing.isAvailableAsync();
@@ -35,7 +46,7 @@ export default function ImagePreviewModal({
         return;
       }
 
-      await Sharing.shareAsync(imageUri, {
+      await Sharing.shareAsync(activeUri, {
         mimeType: 'image/png',
         dialogTitle: 'Share Schedule',
       });
@@ -54,13 +65,25 @@ export default function ImagePreviewModal({
     >
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            Platform.OS === 'android' && {
+              paddingTop: Math.max(insets.top, StatusBar.currentHeight ?? 0) + 24,
+              paddingBottom: 12,
+              minHeight: 64,
+            },
+          ]}
+        >
           <ThemedText style={[styles.title, { color: colors.text }]}>
             Schedule Preview
           </ThemedText>
           <Pressable
             style={({ pressed }) => [
               styles.closeButton,
+              Platform.OS === 'android' && {
+                top: Math.max(insets.top, StatusBar.currentHeight ?? 0) + 8,
+              },
               pressed && { opacity: 0.7 },
             ]}
             onPress={onClose}
@@ -77,12 +100,76 @@ export default function ImagePreviewModal({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
         >
-          {imageUri ? (
+          {whiteImageUri || transparentImageUri ? (
             <View style={styles.imageContainer}>
-              {/* White card container for image */}
-              <View style={styles.imageCard}>
+              {(whiteImageUri && transparentImageUri) && (
+                <View style={styles.segmentedControl}>
+                  <Pressable
+                    style={[
+                      styles.segment,
+                      activeIndex === 0 && styles.segmentActive,
+                    ]}
+                    onPress={() => onChangeIndex(0)}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.segmentText,
+                        activeIndex === 0 && styles.segmentTextActive,
+                      ]}
+                    >
+                      White
+                    </ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.segment,
+                      activeIndex === 1 && styles.segmentActive,
+                    ]}
+                    onPress={() => onChangeIndex(1)}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.segmentText,
+                        activeIndex === 1 && styles.segmentTextActive,
+                      ]}
+                    >
+                      Transparent
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Image Preview */}
+              <View
+                style={[
+                  styles.imageCard,
+                  activeIndex === 1 && styles.imageCardTransparent,
+                ]}
+              >
+                {activeIndex === 1 ? (
+                  <View style={styles.checkerboard} pointerEvents="none">
+                    {Array.from({ length: 8 }).map((_, rowIndex) => (
+                      <View style={styles.checkerRow} key={`row-${rowIndex}`}>
+                        {Array.from({ length: 8 }).map((__, colIndex) => {
+                          const isLight = (rowIndex + colIndex) % 2 === 0;
+                          return (
+                            <View
+                              key={`cell-${rowIndex}-${colIndex}`}
+                              style={[
+                                styles.checkerSquare,
+                                isLight ? styles.checkerLight : styles.checkerDark,
+                              ]}
+                            />
+                          );
+                        })}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 <Image
-                  source={{ uri: imageUri }}
+                  source={{
+                    uri: activeIndex === 0 ? (whiteImageUri || '') : (transparentImageUri || ''),
+                  }}
                   style={styles.image}
                   resizeMode="contain"
                 />
@@ -105,7 +192,7 @@ export default function ImagePreviewModal({
                   color="#FFFFFF"
                 />
                 <ThemedText style={styles.shareButtonText}>
-                  Share Schedule
+                  Share {activeIndex === 0 ? 'White' : 'Transparent'} Background
                 </ThemedText>
               </Pressable>
             </View>
@@ -174,10 +261,56 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  imageCardTransparent: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#DADADA',
+  },
   image: {
     width: '100%',
     aspectRatio: 850 / 1200,
     borderRadius: 0,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#E9E9EB',
+    borderRadius: 10,
+    padding: 2,
+    width: '100%',
+    maxWidth: 320,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  segmentActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B6B6B',
+  },
+  segmentTextActive: {
+    color: '#000000',
+  },
+  checkerboard: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  checkerRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  checkerSquare: {
+    flex: 1,
+  },
+  checkerLight: {
+    backgroundColor: '#F0F0F0',
+  },
+  checkerDark: {
+    backgroundColor: '#D8D8D8',
   },
   shareButton: {
     flexDirection: 'row',
