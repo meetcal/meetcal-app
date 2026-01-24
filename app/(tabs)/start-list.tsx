@@ -23,6 +23,8 @@ import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import ShareScheduleView from '@/components/share/ShareScheduleView';
 import ImagePreviewModal from '@/components/share/ImagePreviewModal';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 // Rename Platform interface to PlatformSchedule to avoid conflict
 interface PlatformSchedule {
@@ -86,6 +88,11 @@ async function getLastYearBests(athleteName: string) {
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   
   try {
+    type LiftBestRow = {
+      snatch_best: number | null;
+      cj_best: number | null;
+      total: number | null;
+    };
     const { data: athleteResults, error } = await supabase
       .from('lifting_results')
       .select('snatch_best, cj_best, total')
@@ -98,14 +105,15 @@ async function getLastYearBests(athleteName: string) {
       return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
     }
 
-    if (!athleteResults || athleteResults.length === 0) {
+    const results = (athleteResults ?? []) as LiftBestRow[];
+    if (results.length === 0) {
       return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
     }
 
     return {
-      bestSnatch: Math.max(...athleteResults.map(r => r.snatch_best || 0)),
-      bestCJ: Math.max(...athleteResults.map(r => r.cj_best || 0)),
-      bestTotal: Math.max(...athleteResults.map(r => r.total || 0))
+      bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
+      bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
+      bestTotal: Math.max(...results.map(r => r.total || 0))
     };
   } catch (error) {
     console.error('Error in getLastYearBests:', error);
@@ -571,9 +579,13 @@ export default function StartListScreen() {
         const transformedSchedule = await transformScheduleData(dbSchedule);
         console.log(`StartList: fetchSchedule successful, ${transformedSchedule.length} days found`);
         scheduleResult = transformedSchedule;
-        saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
-          console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
-        );
+        if (transformedSchedule.length > 0) {
+          saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
+            console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
+          );
+        } else {
+          console.log(`StartList: Empty schedule from DB for ${validMeet}; skipping cache save`);
+        }
       } catch (fetchError) {
         console.warn(`StartList: fetchSchedule failed for ${validMeet}, attempting cache fallback:`, fetchError);
         try {
@@ -1067,6 +1079,131 @@ export default function StartListScreen() {
     } catch (error) {
       console.error('Error capturing image:', error);
       Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
+    }
+  };
+
+  const generateShareableScheduleCsv = async () => {
+    if (!tempClubFilter || tempClubFilter === '' || tempClubFilter === STARRED_CLUBS_FILTER) {
+      Alert.alert(
+        'Select a Club',
+        'Please select a specific club from the filters to create a shareable schedule.'
+      );
+      return;
+    }
+
+    if (filteredAthletes.length === 0) {
+      Alert.alert(
+        'Nothing to Share',
+        'No athletes were found for the current filters.'
+      );
+      return;
+    }
+
+    const formatTime = (time: string) => {
+      if (!time) return '';
+      if (time.includes('AM') || time.includes('PM')) {
+        return time;
+      }
+      const [hours, minutes] = time.split(':').map(Number);
+      if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hour12 = hours % 12 || 12;
+      return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+    };
+
+    const formatDate = (dateString: string) => {
+      if (!dateString) return '';
+      const parsed = new Date(dateString);
+      if (Number.isNaN(parsed.getTime())) return dateString;
+      return parsed.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      });
+    };
+
+    const csvEscape = (value: string) => {
+      const escaped = value.replace(/"/g, '""');
+      return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
+    };
+
+    const sanitizeFileName = (value: string) =>
+      value.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+
+    const groupedByDate: Record<string, Array<{ athlete: LiftResult; startTime: string }>> = {};
+
+    filteredAthletes.forEach((athlete) => {
+      if (!athlete.session) return;
+
+      const sessionDay = scheduleData.find((day) =>
+        day.sessions.some((s) => s.number === athlete.session?.number)
+      );
+      if (!sessionDay) return;
+
+      const sessionDetails = getSessionDetails(athlete.session.number);
+      if (!sessionDetails) return;
+
+      const session = sessionDay.sessions.find((s) => s.number === athlete.session?.number);
+      const platform = session?.platforms.find((p) => p.platform === athlete.session?.platform);
+      const startTime = platform?.platformStartTime || sessionDetails.startTime || '';
+
+      const dateKey = sessionDay.fullDate;
+      if (!groupedByDate[dateKey]) {
+        groupedByDate[dateKey] = [];
+      }
+      groupedByDate[dateKey].push({ athlete, startTime });
+    });
+
+    const orderedRows = Object.entries(groupedByDate)
+      .map(([date, athletes]) => ({
+        date,
+        athletes: athletes.sort((a, b) => a.startTime.localeCompare(b.startTime)),
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const header = ['Club', 'Meet', 'Name', 'Weight Class', 'Session', 'Platform', 'Date', 'Start Time'];
+    const rows = [header];
+
+    orderedRows.forEach((group) => {
+      group.athletes.forEach(({ athlete, startTime }) => {
+        const sessionDay = scheduleData.find((day) =>
+          day.sessions.some((s) => s.number === athlete.session?.number)
+        );
+
+        rows.push([
+          tempClubFilter,
+          selectedMeet || '',
+          athlete.name || '',
+          athlete.weightClass || '',
+          athlete.session?.number?.toString() || '',
+          athlete.session?.platform || '',
+          formatDate(sessionDay?.fullDate || ''),
+          formatTime(startTime)
+        ]);
+      });
+    });
+
+    const csvContent = rows.map((row) => row.map((cell) => csvEscape(cell)).join(',')).join('\n');
+
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing Unavailable', 'Sharing is not available on this device.');
+        return;
+      }
+
+      const fileName = `meetcal-schedule-${sanitizeFileName(tempClubFilter)}-${Date.now()}.csv`;
+      const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
+      file.write(csvContent, { encoding: 'utf8' });
+
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Share Schedule CSV',
+        UTI: 'public.comma-separated-values-text'
+      });
+    } catch (error) {
+      console.error('Error generating CSV:', error);
+      Alert.alert('Error', 'Failed to generate CSV. Please try again.');
     }
   };
 
@@ -2107,6 +2244,62 @@ export default function StartListScreen() {
                   <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
                     {isSubscribed
                       ? 'Generate an image to share'
+                      : 'Pro feature - Upgrade to access'}
+                  </ThemedText>
+                </View>
+              </View>
+              <IconSymbol
+                name={getChevronIcon('right')}
+                size={16}
+                color={colors.secondaryText}
+              />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveOption,
+                pressed && { backgroundColor: colors.pressed }
+              ]}
+              onPress={() => {
+                setShowSaveModal(false);
+                if (isSubscribed) {
+                  generateShareableScheduleCsv();
+                } else {
+                  router.push('/paywall');
+                }
+              }}
+            >
+              <View style={styles.saveOptionContent}>
+                <IconSymbol
+                  name={Platform.select({
+                    ios: 'square.and.arrow.down',
+                    android: 'download',
+                  }) || 'square.and.arrow.down'}
+                  size={22}
+                  color={!isSubscribed ? colors.secondaryText : colors.text}
+                />
+                <View style={styles.saveOptionText}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <ThemedText style={[
+                      styles.saveOptionTitle,
+                      { color: !isSubscribed ? colors.secondaryText : colors.text }
+                    ]}>
+                      Download Shareable Schedule As CSV
+                    </ThemedText>
+                    {!isSubscribed && (
+                      <IconSymbol
+                        name={Platform.select({
+                          ios: 'lock.fill',
+                          android: 'lock',
+                        }) || 'lock.fill'}
+                        size={14}
+                        color={colors.secondaryText}
+                      />
+                    )}
+                  </View>
+                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                    {isSubscribed
+                      ? 'Export the schedule as a CSV file'
                       : 'Pro feature - Upgrade to access'}
                   </ThemedText>
                 </View>

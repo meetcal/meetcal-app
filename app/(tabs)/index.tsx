@@ -318,9 +318,13 @@ export default function ScheduleScreen() {
       const freshSchedule = await fetchSchedule(meet);
       scheduleData = freshSchedule;
       // 2. Save successful fetch to cache (don't wait for it)
-      saveMeetSchedule(meet, freshSchedule).catch(err => 
-        console.error(`ScheduleScreen: Failed to save fresh schedule to cache for ${meet}:`, err)
-      );
+      if (freshSchedule.length > 0) {
+        saveMeetSchedule(meet, freshSchedule).catch(err => 
+          console.error(`ScheduleScreen: Failed to save fresh schedule to cache for ${meet}:`, err)
+        );
+      } else {
+        console.log(`ScheduleScreen: Empty schedule from DB for ${meet}; skipping cache save`);
+      }
     } catch (fetchError) {
       // 3. Fallback to cache if Supabase fetch fails
       try {

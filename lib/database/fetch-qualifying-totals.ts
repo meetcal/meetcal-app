@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type QualifyingTotal = {
   id: number;
@@ -18,6 +19,14 @@ export type QualifyingTotalsData = {
   };
 };
 
+type QualifyingTotalRow = {
+  event_name: string;
+  age_category: string;
+  gender: 'Men' | 'Women';
+  weight_class: string;
+  qualifying_total: number;
+};
+
 /**
  * Fetches qualifying totals from Supabase. If eventName, ageCategory, gender, or weightClass are provided,
  * fetches only that subset. Otherwise, fetches all.
@@ -28,28 +37,43 @@ export async function fetchQualifyingTotals(
   gender?: 'Men' | 'Women',
   weightClass?: string
 ): Promise<QualifyingTotalsData> {
-  let query = supabase
-    .from('qualifying_totals')
-    .select('*');
-  if (eventName) query = query.eq('event_name', eventName.trim());
-  if (ageCategory) query = query.eq('age_category', ageCategory.trim());
-  if (gender) query = query.eq('gender', gender.trim());
-  if (weightClass) query = query.eq('weight_class', weightClass.trim());
+  const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
 
-  const { data, error } = await query;
-  if (error) throw error;
+  try {
+    let query = supabase
+      .from('qualifying_totals')
+      .select('*');
+    if (eventName) query = query.eq('event_name', eventName.trim());
+    if (ageCategory) query = query.eq('age_category', ageCategory.trim());
+    if (gender) query = query.eq('gender', gender.trim());
+    if (weightClass) query = query.eq('weight_class', weightClass.trim());
 
-  const result: QualifyingTotalsData = {};
-  (data || []).forEach((row) => {
-    const e = row.event_name; 
-    const a = row.age_category; 
-    const g = row.gender as 'Men' | 'Women'; 
-    const w = row.weight_class; 
-    if (!result[e]) result[e] = {};
-    if (!result[e][a]) result[e][a] = { Men: {}, Women: {} };
-    if (!result[e][a][g]) result[e][a][g] = {};
-    result[e][a][g][w] = row.qualifying_total;
-  });
+    const { data, error } = await query;
+    if (error) throw error;
 
-  return result;
+    const result: QualifyingTotalsData = {};
+    const rows = (data || []) as QualifyingTotalRow[];
+    rows.forEach((row) => {
+      const e = row.event_name; 
+      const a = row.age_category; 
+      const g = row.gender as 'Men' | 'Women'; 
+      const w = row.weight_class; 
+      if (!result[e]) result[e] = {};
+      if (!result[e][a]) result[e][a] = { Men: {}, Women: {} };
+      if (!result[e][a][g]) result[e][a][g] = {};
+      result[e][a][g][w] = row.qualifying_total;
+    });
+
+    if (!eventName && !ageCategory && !gender && !weightClass) {
+      await setOfflineCache(cacheKey, result);
+    }
+
+    return result;
+  } catch (error) {
+    const cached = await getOfflineCache<QualifyingTotalsData>(cacheKey);
+    if (cached?.data) {
+      return cached.data;
+    }
+    throw error;
+  }
 }

@@ -1,5 +1,17 @@
 import { supabase } from '@/lib/supabase';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
+import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+
+type RecordsCache = Record<string, RecordsData>;
+type RecordsRow = {
+  age_category: string;
+  gender: 'men' | 'women';
+  weight_class: string;
+  snatch_record: number | null;
+  cj_record: number | null;
+  total_record: number | null;
+  record_type: string;
+};
 
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
@@ -25,65 +37,98 @@ export async function fetchRecords(
   ageGroup?: string,
   gender?: 'Men' | 'Women'
 ): Promise<RecordsData> {
-  let query = supabase
-    .from('records')
-    .select('*')
-    .eq('record_type', federation);
-  if (ageGroup) query = query.eq('age_category', ageGroup);
-  if (gender) query = query.eq('gender', gender.toLowerCase());
+  const cacheKey = OFFLINE_CACHE_KEYS.records;
 
-  const { data, error } = await query;
+  try {
+    let query = supabase
+      .from('records')
+      .select('*')
+      .eq('record_type', federation);
+    if (ageGroup) query = query.eq('age_category', ageGroup);
+    if (gender) query = query.eq('gender', gender.toLowerCase());
 
-  if (error) throw error;
+    const { data, error } = await query;
 
-  // Initialize result shape dynamically
-  const result: RecordsData = {};
+    if (error) throw error;
 
-  (data || []).forEach((row) => {
-    const ageKey = row.age_category as string;
-    const genderKey = row.gender as 'men' | 'women';
+    // Initialize result shape dynamically
+    const result: RecordsData = {};
 
-    // Ensure the age group object exists with the correct (capitalized) structure
-    if (!result[ageKey]) {
-      result[ageKey] = { Men: [], Women: [] };
-    }
-    
-    // Map the lowercase DB value to the uppercase property in our standardized object
-    const genderProp = genderKey === 'men' ? 'Men' : 'Women';
-    
-    result[ageKey][genderProp].push({
-      weightClass: row.weight_class,
-      snatchRecord: row.snatch_record ?? 0,
-      cjRecord: row.cj_record ?? 0,
-      totalRecord: row.total_record ?? 0,
+    const rows = (data || []) as RecordsRow[];
+    rows.forEach((row) => {
+      const ageKey = row.age_category as string;
+      const genderKey = row.gender as 'men' | 'women';
+
+      // Ensure the age group object exists with the correct (capitalized) structure
+      if (!result[ageKey]) {
+        result[ageKey] = { Men: [], Women: [] };
+      }
+      
+      // Map the lowercase DB value to the uppercase property in our standardized object
+      const genderProp = genderKey === 'men' ? 'Men' : 'Women';
+      
+      result[ageKey][genderProp].push({
+        weightClass: row.weight_class,
+        snatchRecord: row.snatch_record ?? 0,
+        cjRecord: row.cj_record ?? 0,
+        totalRecord: row.total_record ?? 0,
+      });
     });
-  });
 
-  // Sort weight classes for consistency (lowest to highest, '+' last)
-  Object.values(result).forEach((group) => {
-    group.Men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-    group.Women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-  });
+    // Sort weight classes for consistency (lowest to highest, '+' last)
+    Object.values(result).forEach((group) => {
+      group.Men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+      group.Women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    });
 
-  return result;
+    if (!ageGroup && !gender) {
+      const cached = await getOfflineCache<RecordsCache>(cacheKey);
+      const nextCache: RecordsCache = {
+        ...(cached?.data || {}),
+        [federation]: result
+      };
+      await setOfflineCache(cacheKey, nextCache);
+    }
+
+    return result;
+  } catch (error) {
+    const cached = await getOfflineCache<RecordsCache>(cacheKey);
+    const cachedFederation = cached?.data?.[federation];
+    if (cachedFederation) {
+      return cachedFederation;
+    }
+    throw error;
+  }
 }
 
 export async function fetchFederations(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('records')
-    .select('record_type', { count: 'exact', head: false });
+  const cacheKey = OFFLINE_CACHE_KEYS.records;
 
-  if (error) {
-    console.error('Error fetching federations:', error);
+  try {
+    const { data, error } = await supabase
+      .from('records')
+      .select('record_type', { count: 'exact', head: false });
+
+    if (error) {
+      console.error('Error fetching federations:', error);
+      throw error;
+    }
+
+    // Get unique, non-null, sorted record_type values
+    const federationRows = (data || []) as Array<Pick<RecordsRow, 'record_type'>>;
+    const federations = Array.from(new Set(federationRows.map(row => row.record_type)))
+      .filter(Boolean) 
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    
+    return federations as string[];
+  } catch (error) {
+    const cached = await getOfflineCache<RecordsCache>(cacheKey);
+    const federations = Object.keys(cached?.data || {});
+    if (federations.length > 0) {
+      return federations.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }
     throw error;
   }
-
-  // Get unique, non-null, sorted record_type values
-  const federations = Array.from(new Set((data || []).map(row => row.record_type)))
-    .filter(Boolean) 
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  
-  return federations as string[];
 }
 
 // Helper for sorting age groups
@@ -119,20 +164,32 @@ function ageGroupSort(a: string, b: string): number {
 
 export async function fetchAgeGroups(federation: string): Promise<string[]> {
   if (!federation) return [];
-  const { data, error } = await supabase
-    .from('records')
-    .select('age_category')
-    .eq('record_type', federation)
-    .neq('age_category', null);
+  const cacheKey = OFFLINE_CACHE_KEYS.records;
 
-  if (error) {
-    console.error(`Error fetching age groups for ${federation}:`, error);
+  try {
+    const { data, error } = await supabase
+      .from('records')
+      .select('age_category')
+      .eq('record_type', federation)
+      .neq('age_category', null);
+
+    if (error) {
+      console.error(`Error fetching age groups for ${federation}:`, error);
+      throw error;
+    }
+
+    const ageGroupRows = (data || []) as Array<Pick<RecordsRow, 'age_category'>>;
+    const ageGroups = Array.from(new Set(ageGroupRows.map(row => row.age_category)))
+      .filter(Boolean) 
+      .sort(ageGroupSort);
+    
+    return ageGroups as string[];
+  } catch (error) {
+    const cached = await getOfflineCache<RecordsCache>(cacheKey);
+    const federationData = cached?.data?.[federation];
+    if (federationData) {
+      return Object.keys(federationData).sort(ageGroupSort);
+    }
     throw error;
   }
-
-  const ageGroups = Array.from(new Set((data || []).map(row => row.age_category)))
-    .filter(Boolean) 
-    .sort(ageGroupSort);
-  
-  return ageGroups as string[];
 }

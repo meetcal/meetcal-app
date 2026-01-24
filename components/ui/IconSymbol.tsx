@@ -19,6 +19,8 @@ const iconMap: Record<string, string> = {
   'checkmark': 'checkmark',
   'plus': 'add',
   'magnifyingglass': 'search',
+  'arrow.down.circle': 'arrow-down-circle',
+  'arrow.clockwise': 'refresh',
 };
 
 type IconSymbolProps = {
@@ -29,10 +31,7 @@ type IconSymbolProps = {
 
 export function IconSymbol({ name, size, color }: IconSymbolProps) {
   // Convert SF Symbol name to Ionicons name
-  const ionIconName = Platform.select({
-    ios: name,
-    android: iconMap[name] || name,
-  });
+  const ionIconName = iconMap[name] || name;
 
   return (
     <Ionicons 
