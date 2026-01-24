@@ -515,6 +515,62 @@ export default function StartListScreen() {
   const [showImagePreview, setShowImagePreview] = useState(false);
   const shareScheduleRef = useRef<View>(null);
   const shareScheduleTransparentRef = useRef<View>(null);
+  const [filterApplyCount, setFilterApplyCount] = useState(0);
+  const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>([]);
+
+  const REVIEW_COUNT_KEY = 'startListFilterApplyCount';
+  const REVIEW_PROMPTED_KEY = 'startListReviewPromptedCounts';
+  const REVIEW_COUNTS = [10, 50, 100];
+
+  const loadStoreReview = useCallback(async () => {
+    try {
+      const module = await import('expo-store-review');
+      return module;
+    } catch (error) {
+      console.warn('StartList: expo-store-review not available', error);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadReviewState = async () => {
+      try {
+        const [countRaw, promptedRaw] = await Promise.all([
+          AsyncStorage.getItem(REVIEW_COUNT_KEY),
+          AsyncStorage.getItem(REVIEW_PROMPTED_KEY),
+        ]);
+        if (!isMounted) return;
+        const count = Number(countRaw ?? 0);
+        const prompted = promptedRaw ? JSON.parse(promptedRaw) : [];
+        setFilterApplyCount(Number.isFinite(count) ? count : 0);
+        setReviewPromptedCounts(Array.isArray(prompted) ? prompted : []);
+      } catch (error) {
+        console.warn('StartList: Failed to load review state', error);
+      }
+    };
+    loadReviewState();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const requestReviewIfEligible = useCallback(async (nextCount: number) => {
+    if (!REVIEW_COUNTS.includes(nextCount)) return;
+    if (reviewPromptedCounts.includes(nextCount)) return;
+    try {
+      const StoreReview = await loadStoreReview();
+      if (!StoreReview) return;
+      const isAvailable = await StoreReview.isAvailableAsync();
+      if (!isAvailable) return;
+      await StoreReview.requestReview();
+      const updated = [...reviewPromptedCounts, nextCount];
+      setReviewPromptedCounts(updated);
+      await AsyncStorage.setItem(REVIEW_PROMPTED_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.warn('StartList: requestReview failed', error);
+    }
+  }, [reviewPromptedCounts, loadStoreReview]);
   
   // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
@@ -1011,6 +1067,13 @@ export default function StartListScreen() {
     setTempGenderFilter(tempGenderFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
+
+    const nextCount = filterApplyCount + 1;
+    setFilterApplyCount(nextCount);
+    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch(error => {
+      console.warn('StartList: Failed to persist filter apply count', error);
+    });
+    requestReviewIfEligible(nextCount);
   };
 
   // Add resetFilters function before the return statement

@@ -44,7 +44,21 @@
           }
         ],
         "NSCalendarsFullAccessUsageDescription": "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times.",
-        "NSCalendarsUsageDescription": "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times."
+        "NSCalendarsUsageDescription": "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times.",
+        "INAlternativeAppNames": [
+          {
+            "INAlternativeAppName": "Lifting",
+            "INAlternativeAppNamePronunciationHint": "Lifting"
+          },
+          {
+            "INAlternativeAppName": "Weightlifting",
+            "INAlternativeAppNamePronunciationHint": "Weightlifting"
+          },
+          {
+            "INAlternativeAppName": "Calendar",
+            "INAlternativeAppNamePronunciationHint": "Calendar"
+          }
+        ]
       },
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
