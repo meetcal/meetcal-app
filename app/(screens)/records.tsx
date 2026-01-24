@@ -340,7 +340,7 @@ export default function RecordsScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ 
-        title: `American Records`,
+        title: `Records`,
         headerBackTitle: "Back",
         headerShown: true,
         gestureEnabled: true,

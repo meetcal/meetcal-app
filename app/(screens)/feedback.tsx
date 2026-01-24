@@ -12,6 +12,8 @@ import type { UserProfile } from '@/lib/profile'
 import { IconSymbol } from '@/components/ui/IconSymbol'
 import { Platform } from 'react-native'
 import { useUser } from '@clerk/clerk-expo'
+import * as Device from 'expo-device'
+import Purchases from 'react-native-purchases'
 
 // Define the shape of user metadata
 interface UserMetadata {
@@ -53,8 +55,9 @@ export default function FeedbackScreen() {
             .eq('id', user.id)
             .single();
           if (error) throw error;
-          if (data && data.role) {
-            setRole(data.role);
+          const profile = data as { role: UserProfile['role'] | null } | null;
+          if (profile?.role) {
+            setRole(profile.role);
             setRoleAutofilled(true);
           } else {
             setRole('Athlete');
@@ -90,7 +93,47 @@ export default function FeedbackScreen() {
     setError(null)
 
     try {
-      await sendFeedback({ name, email, role, description })
+      const deviceTypeLabel = (() => {
+        switch (Device.deviceType) {
+          case Device.DeviceType.PHONE:
+            return 'Phone'
+          case Device.DeviceType.TABLET:
+            return 'Tablet'
+          case Device.DeviceType.DESKTOP:
+            return 'Desktop'
+          case Device.DeviceType.TV:
+            return 'TV'
+          default:
+            return 'Unknown'
+        }
+      })()
+
+      const model = Device.modelName || Device.modelId || 'Unknown'
+      const softwareVersion =
+        [Device.osName, Device.osVersion].filter(Boolean).join(' ') ||
+        String(Platform.Version ?? 'Unknown')
+      const clerkUserId = user?.id || 'Unknown'
+      let revenueCatId = 'Unknown'
+
+      try {
+        const customerInfo = await Purchases.getCustomerInfo()
+        const legacyAppUserId = (customerInfo as { appUserId?: string })?.appUserId
+        revenueCatId = customerInfo?.originalAppUserId || legacyAppUserId || 'Unknown'
+      } catch (revcatError) {
+        console.warn('Unable to fetch RevenueCat ID:', revcatError)
+      }
+
+      const descriptionWithMetadata = [
+        `Device Type: ${deviceTypeLabel}`,
+        `Device Model: ${model}`,
+        `Software Version: ${softwareVersion}`,
+        `Clerk User ID: ${clerkUserId}`,
+        `RevenueCat ID: ${revenueCatId}`,
+        '',
+        description
+      ].join('\n')
+
+      await sendFeedback({ name, email, role, description: descriptionWithMetadata })
       setShowSuccessModal(true)
       setTimeout(() => {
         setShowSuccessModal(false)

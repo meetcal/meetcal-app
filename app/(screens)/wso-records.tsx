@@ -6,8 +6,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records';
-import { fetchWSORecords } from '@/lib/database/fetch-wso-records';
-import { supabase } from '@/lib/supabase';
+import { fetchWSORecords, fetchWSOList, fetchWSOAgeGroups } from '@/lib/database/fetch-wso-records';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import PaywallScreen from './paywall';
 
@@ -44,18 +43,15 @@ export default function RecordsScreen() {
 
   useEffect(() => {
     async function fetchWSOs() {
-      const { data, error } = await supabase
-        .from('wso_records')
-        .select('wso', { count: 'exact', head: false })
-        .neq('wso', null);
-      if (error) return setFetchError('Failed to load WSOs');
-      const wsos = Array.from(new Set((data || []).map(row => row.wso)))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-      setAvailableWSOs(wsos);
-      if (wsos.length > 0) {
-        setFilters(f => ({ ...f, wso: wsos[0] }));
-        setTempFilters(f => ({ ...f, wso: wsos[0] }));
+      try {
+        const wsos = await fetchWSOList();
+        setAvailableWSOs(wsos);
+        if (wsos.length > 0) {
+          setFilters(f => ({ ...f, wso: wsos[0] }));
+          setTempFilters(f => ({ ...f, wso: wsos[0] }));
+        }
+      } catch (error) {
+        setFetchError('Failed to load WSOs');
       }
     }
     fetchWSOs();
@@ -64,13 +60,8 @@ export default function RecordsScreen() {
   useEffect(() => {
     if (!tempFilters.wso) return;
     async function fetchAgeGroupsForWSO() {
-      const { data, error } = await supabase
-        .from('wso_records')
-        .select('age_category', { count: 'exact', head: false })
-        .eq('wso', tempFilters.wso)
-        .neq('age_category', null);
-      if (error) return setFetchError('Failed to load age groups');
-      let ageGroups = Array.from(new Set((data || []).map(row => row.age_category)));
+      try {
+        let ageGroups = Array.from(new Set(await fetchWSOAgeGroups(tempFilters.wso)));
       const order = ['u11','u13', 'u15', 'u17', 'youth','junior', 'senior'];
       ageGroups = ageGroups.sort((a, b) => {
         const aLower = a.toLowerCase();
@@ -97,6 +88,9 @@ export default function RecordsScreen() {
       setAvailableAgeGroups(ageGroups);
       if (ageGroups.length > 0 && !ageGroups.includes(tempFilters.ageGroup)) {
         setTempFilters(prev => ({ ...prev, ageGroup: ageGroups[0] }));
+      }
+      } catch (error) {
+        setFetchError('Failed to load age groups');
       }
     }
     fetchAgeGroupsForWSO();

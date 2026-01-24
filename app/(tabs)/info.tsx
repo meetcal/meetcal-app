@@ -423,7 +423,7 @@ export default function InfoScreen() {
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              American Records
+              Records
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
@@ -435,11 +435,11 @@ export default function InfoScreen() {
             { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
             pressed && { backgroundColor: colors.pressed }
           ]}
-          onPress={() => router.push('/(screens)/world-records')}
+          onPress={() => router.push('/(screens)/offline-data')}
         >
           <View style={styles.linkRow}>
             <ThemedText style={[styles.label, { color: colors.text }]}>
-              IWF World Records
+              Offline Data
             </ThemedText>
             <IconSymbol name="chevron.right" size={20} color={colors.link} />
           </View>
