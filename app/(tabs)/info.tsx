@@ -1,11 +1,11 @@
-import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Switch, Alert, ActivityIndicator, Modal } from 'react-native';
+import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Alert, ActivityIndicator, Modal } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
@@ -36,20 +36,15 @@ const showReviewPrompt = () => {
 };
 
 export default function InfoScreen() {
-  const { currentTheme, setTheme } = useTheme();
+  const { currentTheme } = useTheme();
   const { signOut } = useClerk();
   const { isSignedIn } = useAuth();
-  const [isEnabled, setIsEnabled] = useState(currentTheme === 'dark');
   const { selectedMeet, setSelectedMeet, isLoading } = useSelectedMeet();
   const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useUser();
 
-  // Sync the switch state with theme changes
-  useEffect(() => {
-    setIsEnabled(currentTheme === 'dark');
-  }, [currentTheme]);
 
   // Define theme colors
   const colors = {
@@ -87,10 +82,6 @@ export default function InfoScreen() {
     });
   };
 
-  const handleThemeChange = (value: boolean) => {
-    setIsEnabled(value); // Update switch state immediately
-    setTheme(value ? 'dark' : 'light'); // Update theme
-  };
 
   const handleResetWarmups = () => {
     if (!user?.id) return;
@@ -436,29 +427,7 @@ export default function InfoScreen() {
         </Pressable> */}
         </View>
 
-        {/* App Info Card */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-          >
-            <View style={styles.settingRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Dark Mode
-              </ThemedText>
-              <Switch
-                value={isEnabled}
-                onValueChange={handleThemeChange}
-                trackColor={{ false: '#E1E1E1', true: '#34C759' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </Pressable>
-        </View>
+        {/* App Info Card removed: app now follows system theme */}
       </ScrollView>
     </ThemedView>
   );
@@ -523,15 +492,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 2,
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  settingLabel: {
-    fontSize: 16,
-    marginBottom: 4,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

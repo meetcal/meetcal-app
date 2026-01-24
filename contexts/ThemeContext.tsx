@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useContext } from 'react';
+import { useColorScheme } from 'react-native';
 
 type ThemeType = 'light' | 'dark';
 
@@ -10,33 +10,12 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_KEY = 'theme_preference';
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [currentTheme, setCurrentTheme] = useState<ThemeType>('light');
+  const colorScheme = useColorScheme();
+  const currentTheme: ThemeType = colorScheme === 'dark' ? 'dark' : 'light';
 
-  useEffect(() => {
-    loadTheme();
-  }, []);
-
-  const loadTheme = async () => {
-    try {
-      const savedTheme = await AsyncStorage.getItem(THEME_KEY);
-      if (savedTheme) {
-        setCurrentTheme(savedTheme as ThemeType);
-      }
-    } catch (error) {
-      console.error('Error loading theme:', error);
-    }
-  };
-
-  const setTheme = async (newTheme: ThemeType) => {
-    try {
-      await AsyncStorage.setItem(THEME_KEY, newTheme);
-      setCurrentTheme(newTheme);
-    } catch (error) {
-      console.error('Error saving theme:', error);
-    }
+  const setTheme = () => {
+    // Theme is locked to system; setter is a no-op to preserve API shape.
   };
 
   return (
