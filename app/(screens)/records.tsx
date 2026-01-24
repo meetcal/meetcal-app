@@ -58,13 +58,16 @@ export default function RecordsScreen() {
 
       try {
         const fetchedFederations = await fetchFederations();
-        setAvailableFederations(fetchedFederations);
+        const filteredFederations = fetchedFederations.filter(
+          (federation) => federation.toUpperCase() !== 'BWL'
+        );
+        setAvailableFederations(filteredFederations);
 
         const preferredFederation = 'USAW';
         const preferredAgeGroup = 'Senior';
 
-        if (fetchedFederations.length > 0) {
-          if (fetchedFederations.includes(preferredFederation)) {
+        if (filteredFederations.length > 0) {
+          if (filteredFederations.includes(preferredFederation)) {
             determinedFederation = preferredFederation;
             const ageGroupsForPreferredFed = await fetchAgeGroups(determinedFederation);
             setCurrentAvailableAgeGroupsList(ageGroupsForPreferredFed);
@@ -80,7 +83,7 @@ export default function RecordsScreen() {
             }
           } else {
             // USAW not available, use the first federation from the list
-            determinedFederation = fetchedFederations[0];
+            determinedFederation = filteredFederations[0];
             const ageGroupsForFirstFed = await fetchAgeGroups(determinedFederation);
             setCurrentAvailableAgeGroupsList(ageGroupsForFirstFed);
             setModalFederationForAgeGroups(determinedFederation);

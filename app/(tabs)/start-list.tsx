@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl, Animated } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -517,6 +517,7 @@ export default function StartListScreen() {
   const shareScheduleTransparentRef = useRef<View>(null);
   const [filterApplyCount, setFilterApplyCount] = useState(0);
   const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>([]);
+  const skeletonPulse = useRef(new Animated.Value(0.4)).current;
 
   const REVIEW_COUNT_KEY = 'startListFilterApplyCount';
   const REVIEW_PROMPTED_KEY = 'startListReviewPromptedCounts';
@@ -554,6 +555,93 @@ export default function StartListScreen() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 0.9,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.4,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [skeletonPulse]);
+
+  const SkeletonBlock = useCallback(({ style }: { style: any }) => {
+    const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
+    return (
+      <Animated.View
+        style={[
+          styles.skeletonBlock,
+          { backgroundColor, opacity: skeletonPulse },
+          style,
+        ]}
+      />
+    );
+  }, [currentTheme, skeletonPulse]);
+
+  const renderLoadingSkeleton = useCallback((label: string) => (
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { 
+        backgroundColor: colors.background,
+        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
+        borderBottomWidth: 1,
+      }]}>
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SkeletonBlock style={styles.skeletonIcon} />
+            <SkeletonBlock style={styles.skeletonSearchLine} />
+          </View>
+        </View>
+        <View style={styles.buttonRow}>
+          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SkeletonBlock style={styles.skeletonButtonIcon} />
+            <SkeletonBlock style={styles.skeletonButtonText} />
+          </View>
+          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SkeletonBlock style={styles.skeletonButtonIcon} />
+            <SkeletonBlock style={styles.skeletonButtonText} />
+          </View>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.skeletonContent}>
+        {[0, 1, 2, 3].map((index) => (
+          <View key={`athlete-skeleton-${index}`} style={[styles.athleteCard, { backgroundColor: colors.card }]}>
+            <View style={styles.skeletonCardHeader}>
+              <SkeletonBlock style={styles.skeletonLine} />
+              <SkeletonBlock style={styles.skeletonTiny} />
+            </View>
+            <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
+              <View style={styles.skeletonDetailRow}>
+                <SkeletonBlock style={styles.skeletonLabel} />
+                <SkeletonBlock style={styles.skeletonValue} />
+              </View>
+              <View style={styles.skeletonDetailRow}>
+                <SkeletonBlock style={styles.skeletonLabel} />
+                <SkeletonBlock style={styles.skeletonValueShort} />
+              </View>
+              <View style={styles.skeletonDetailRow}>
+                <SkeletonBlock style={styles.skeletonLabel} />
+                <SkeletonBlock style={styles.skeletonValueShort} />
+              </View>
+            </View>
+          </View>
+        ))}
+        <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
+          {label}
+        </ThemedText>
+      </ScrollView>
+    </ThemedView>
+  ), [SkeletonBlock, colors, currentTheme]);
 
   const requestReviewIfEligible = useCallback(async (nextCount: number) => {
     if (!REVIEW_COUNTS.includes(nextCount)) return;
@@ -1359,16 +1447,7 @@ export default function StartListScreen() {
   }
 
   if (loading || isScheduleLoading) {
-    return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.secondaryText} />
-          <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
-            {loading ? 'Loading Athletes...' : 'Loading Schedule...'}
-          </ThemedText>
-        </View>
-      </ThemedView>
-    );
+    return renderLoadingSkeleton(loading ? 'Loading Athletes...' : 'Loading Schedule...');
   }
 
   return (
@@ -2781,6 +2860,70 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     marginTop: 12,
+  },
+  skeletonContent: {
+    padding: 16,
+    paddingBottom: 32,
+    gap: 12,
+  },
+  skeletonBlock: {
+    borderRadius: 6,
+  },
+  skeletonIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  skeletonSearchLine: {
+    height: 12,
+    width: '70%',
+    borderRadius: 6,
+  },
+  skeletonButtonIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  skeletonButtonText: {
+    height: 12,
+    width: '60%',
+    borderRadius: 6,
+  },
+  skeletonCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  skeletonLine: {
+    height: 14,
+    width: '55%',
+    borderRadius: 6,
+  },
+  skeletonTiny: {
+    width: 24,
+    height: 12,
+    borderRadius: 6,
+  },
+  skeletonDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skeletonLabel: {
+    height: 12,
+    width: 90,
+    borderRadius: 6,
+  },
+  skeletonValue: {
+    height: 12,
+    width: 140,
+    borderRadius: 6,
+  },
+  skeletonValueShort: {
+    height: 12,
+    width: 90,
+    borderRadius: 6,
   },
   clearButton: {
     padding: 4,

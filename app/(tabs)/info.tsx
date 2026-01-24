@@ -6,7 +6,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
-import { useSavedSessions } from '@/contexts/SavedSessionsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
@@ -45,7 +44,6 @@ export default function InfoScreen() {
   const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { savedSessions, resetAllSessions } = useSavedSessions();
   const { user } = useUser();
 
   // Sync the switch state with theme changes
@@ -92,60 +90,6 @@ export default function InfoScreen() {
   const handleThemeChange = (value: boolean) => {
     setIsEnabled(value); // Update switch state immediately
     setTheme(value ? 'dark' : 'light'); // Update theme
-  };
-
-  const handleResetSessions = () => {
-    if (!user?.id) return;
-    
-    Alert.alert(
-      'Reset Saved Sessions',
-      'Are you sure you want to remove all saved sessions? This cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Try to use the context's reset function first, for the selected meet only
-              let success = false;
-              if (typeof resetAllSessions === 'function') {
-                success = await resetAllSessions(selectedMeet ?? undefined);
-              }
-              // Also manually clear all possible storage keys for this user for the selected meet only
-              const STORAGE_KEYS = [
-                getSavedSessionsKey(user.id),
-                `savedSessions_${user.id}`,
-                `@savedSessions_${user.id}`,
-                `sessions_${user.id}`
-              ];
-              for (const key of STORAGE_KEYS) {
-                // Remove only sessions for the selected meet from local storage
-                const stored = await AsyncStorage.getItem(key);
-                if (stored) {
-                  let sessions = [];
-                  try { sessions = JSON.parse(stored); } catch {}
-                  if (Array.isArray(sessions)) {
-                    const filtered = sessions.filter(s => s.meet !== selectedMeet);
-                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
-                  }
-                }
-              }
-              // Set a flag to notify other components that sessions were reset
-              await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
-              // Show success message
-              Alert.alert('Success', 'All saved sessions for this meet have been reset.');
-            } catch (error) {
-              console.error('Error resetting sessions:', error);
-              Alert.alert('Error', 'Failed to reset saved sessions.');
-            }
-          }
-        }
-      ]
-    );
   };
 
   const handleResetWarmups = () => {
@@ -511,50 +455,6 @@ export default function InfoScreen() {
                 onValueChange={handleThemeChange}
                 trackColor={{ false: '#E1E1E1', true: '#34C759' }}
                 thumbColor="#FFFFFF"
-              />
-            </View>
-          </Pressable>
-        </View>
-
-        {/* Danger Zone Card */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={handleResetSessions}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
-                Reset Saved Sessions
-              </ThemedText>
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
-                size={20} 
-                color="#FF3B30" 
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={handleResetWarmups}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: '#FF3B30' }]}>
-                Reset Saved Warmups
-              </ThemedText>
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'exclamationmark.triangle.fill' : 'warning'} 
-                size={20} 
-                color="#FF3B30" 
               />
             </View>
           </Pressable>
