@@ -16,6 +16,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { fetchSchedule } from '@/lib/database/queries';
 import { MeetName } from '@/data/types/meet';
+import { VersionAnnouncement } from '@/components/VersionAnnouncement';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -625,6 +626,8 @@ export default function ScheduleScreen() {
           </Pressable>
         </View>
       </View>
+
+      <VersionAnnouncement />
 
       {!schedule || schedule.length === 0 ? (
         <ScrollView

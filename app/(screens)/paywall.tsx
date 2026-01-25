@@ -16,7 +16,7 @@ export default function PaywallScreen() {
       try {
         const offerings = await Purchases.default.getOfferings();
         // Get the offering based on platform
-        const offeringId = Platform.OS === 'android' ? 'android' : 'test';
+        const offeringId = "new image test";
         const platformOffering = offerings.all[offeringId];
         setOffering(platformOffering || offerings.current);
       } catch (e) {
@@ -28,7 +28,7 @@ export default function PaywallScreen() {
   }, []);
 
   const handleDismiss = () => {
-    router.replace('/schedule');
+    router.replace('/(tabs)');
   };
 
   if (!offering) {

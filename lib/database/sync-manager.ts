@@ -1,5 +1,5 @@
-import { getMeetData, saveMeetSchedule, saveMeetAthletes, clearMeetData } from './offline-store';
-import { fetchSchedule, fetchAthletes } from './queries';
+import { getMeetData, saveMeetSchedule, saveMeetAthletes, saveMeetLiftingResults, clearMeetData } from './offline-store';
+import { fetchSchedule, fetchAthletes, fetchLiftingResultsForMeet } from './queries';
 import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
 
@@ -50,6 +50,18 @@ export class SyncManager {
 
       // Save athletes even if empty (to clear old cache)
       await saveMeetAthletes(this.meetId, athletes);
+
+      // Fetch and save lifting results for all athletes in the meet
+      // This includes all historical results for PR calculations and "See All Meet Results"
+      if (athletes.length > 0) {
+        try {
+          const athleteNames = athletes.map(a => a.name);
+          const liftingResults = await fetchLiftingResultsForMeet(this.meetId, athleteNames);
+          await saveMeetLiftingResults(this.meetId, liftingResults);
+        } catch (liftingError) {
+          console.error('Error fetching lifting results for offline save:', liftingError);
+        }
+      }
 
     } catch (error) {
       console.error('Sync failed:', error);

@@ -17,10 +17,13 @@ const iconMap: Record<string, string> = {
   'info.circle.fill': 'information-circle',
   'list.bullet': 'list',
   'checkmark': 'checkmark',
+  'checkmark.circle.fill': 'checkmark-circle',
   'plus': 'add',
   'magnifyingglass': 'search',
   'arrow.down.circle': 'arrow-down-circle',
   'arrow.clockwise': 'refresh',
+  'xmark': 'close',
+  'close': 'close',
 };
 
 type IconSymbolProps = {

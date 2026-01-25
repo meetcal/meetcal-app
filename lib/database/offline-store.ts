@@ -1,16 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
-import type { LiftResult, Platform } from '@/data/types/athletes';
+import type { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 
 const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
+const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
 
 export interface MeetData {
   schedule: Schedule | null;
   scheduleKey: string;
   athletes: LiftResult[];
+  liftingResultsKey: string;
   lastSyncTime: number;
 }
 
@@ -51,10 +53,12 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
     const store = await getStore();
     if (!store.meets[meetId]) {
       const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+      const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
       store.meets[meetId] = {
         schedule: null,
         scheduleKey,
         athletes: [],
+        liftingResultsKey,
         lastSyncTime: 0
       };
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
@@ -75,11 +79,35 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
       schedule,
       scheduleKey: store.meets[meetId].scheduleKey,
       athletes: store.meets[meetId].athletes,
+      liftingResultsKey: store.meets[meetId].liftingResultsKey,
       lastSyncTime: store.meets[meetId].lastSyncTime
     };
   } catch (error) {
     console.error('Error getting meet data:', error);
     throw error;
+  }
+}
+
+// Get lifting results for an athlete from the cached meet data
+export async function getAthleteLiftingResults(meetId: MeetName, athleteName: string): Promise<SupabaseLiftResult[]> {
+  try {
+    const meetData = await getMeetData(meetId);
+    const liftingResultsKey = meetData.liftingResultsKey;
+    
+    if (!liftingResultsKey) {
+      return [];
+    }
+    
+    const liftingResultsString = await AsyncStorage.getItem(liftingResultsKey);
+    if (!liftingResultsString) {
+      return [];
+    }
+    
+    const allResults: SupabaseLiftResult[] = JSON.parse(liftingResultsString);
+    return allResults.filter(result => result.name === athleteName);
+  } catch (error) {
+    console.error('Error getting athlete lifting results:', error);
+    return [];
   }
 }
 
@@ -135,10 +163,12 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
     
     // Update meet metadata: ONLY store the key and sync time, NOT the full schedule object
     const currentAthletes = store.meets[meetId]?.athletes || [];
+    const currentLiftingResultsKey = store.meets[meetId]?.liftingResultsKey || `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
     store.meets[meetId] = {
       schedule: null,
       scheduleKey: scheduleKey,
       athletes: currentAthletes,
+      liftingResultsKey: currentLiftingResultsKey,
       lastSyncTime: Date.now()
     };
     
@@ -159,10 +189,12 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
     const store = await getStore();
     if (!store.meets[meetId]) {
       const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+      const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
       store.meets[meetId] = {
         schedule: null,
         scheduleKey,
         athletes: [],
+        liftingResultsKey,
         lastSyncTime: Date.now()
       };
     }
@@ -175,6 +207,35 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
   }
 }
 
+// Save lifting results for all athletes in a meet
+export async function saveMeetLiftingResults(meetId: string, liftingResults: SupabaseLiftResult[]): Promise<void> {
+  try {
+    const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
+    const liftingResultsString = JSON.stringify(liftingResults);
+    await AsyncStorage.setItem(liftingResultsKey, liftingResultsString);
+    
+    // Update store metadata
+    const store = await getStore();
+    if (!store.meets[meetId]) {
+      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+      store.meets[meetId] = {
+        schedule: null,
+        scheduleKey,
+        athletes: [],
+        liftingResultsKey,
+        lastSyncTime: Date.now()
+      };
+    } else {
+      store.meets[meetId].liftingResultsKey = liftingResultsKey;
+      store.meets[meetId].lastSyncTime = Date.now();
+    }
+    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch (error) {
+    console.error('Error saving meet lifting results:', error);
+    throw error;
+  }
+}
+
 // Clear meet data from store
 export async function clearMeetData(meet: MeetName): Promise<void> {
   try {
@@ -182,13 +243,18 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
     if (store) {
       const data: OfflineStore = JSON.parse(store);
       const scheduleKey = data.meets[meet]?.scheduleKey;
+      const liftingResultsKey = data.meets[meet]?.liftingResultsKey;
       if (scheduleKey) {
         await AsyncStorage.removeItem(scheduleKey);
+      }
+      if (liftingResultsKey) {
+        await AsyncStorage.removeItem(liftingResultsKey);
       }
       const emptyMeetData: MeetData = {
         schedule: null,
         scheduleKey: `${SCHEDULE_KEY_PREFIX}${meet}`,
         athletes: [],
+        liftingResultsKey: `${LIFTING_RESULTS_KEY_PREFIX}${meet}`,
         lastSyncTime: 0
       };
       data.meets[meet] = emptyMeetData;

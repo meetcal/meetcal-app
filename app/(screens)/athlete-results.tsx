@@ -7,6 +7,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useMemo, useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { getAthleteLiftingResults } from '@/lib/database/offline-store';
 
 // First, add the interface for Supabase results
 interface SupabaseLiftResult {
@@ -201,6 +203,7 @@ function AthleteStats({ results, colors }: { results: SupabaseLiftResult[], colo
 export default function AthleteResultsScreen() {
   const { currentTheme } = useTheme();
   const { name } = useLocalSearchParams();
+  const { selectedMeet } = useSelectedMeet();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>([]);
@@ -215,7 +218,7 @@ export default function AthleteResultsScreen() {
     fail: '#FF3B30',
   };
 
-  // Add useEffect to fetch data from Supabase
+  // Add useEffect to fetch data from cache first, then Supabase
   useEffect(() => {
     const fetchAthleteResults = async () => {
       if (!name) return;
@@ -223,19 +226,37 @@ export default function AthleteResultsScreen() {
       try {
         setLoading(true);
         const nameStr = Array.isArray(name) ? name[0] : name;
-        
-        const { data, error } = await supabase
-          .from('lifting_results')
-          .select('*')
-          .eq('name', nameStr)
-          .order('date', { ascending: false });
+        let results: SupabaseLiftResult[] = [];
 
-        if (error) {
-          console.error('Error fetching athlete results:', error);
-          return;
+        // Try to get from cache first if we have a selected meet
+        if (selectedMeet) {
+          try {
+            const cachedResults = await getAthleteLiftingResults(selectedMeet, nameStr);
+            if (cachedResults && cachedResults.length > 0) {
+              results = cachedResults;
+            }
+          } catch (cacheError) {
+            console.log('Cache miss for athlete results, fetching from Supabase');
+          }
         }
 
-        setAthleteResults(data || []);
+        // If no cached results, fetch from Supabase
+        if (results.length === 0) {
+          const { data, error } = await supabase
+            .from('lifting_results')
+            .select('*')
+            .eq('name', nameStr)
+            .order('date', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching athlete results:', error);
+            return;
+          }
+
+          results = data || [];
+        }
+
+        setAthleteResults(results);
       } catch (error) {
         console.error('Error in fetchAthleteResults:', error);
       } finally {
@@ -244,7 +265,7 @@ export default function AthleteResultsScreen() {
     };
 
     fetchAthleteResults();
-  }, [name]);
+  }, [name, selectedMeet]);
 
   if (!name) {
     return (
