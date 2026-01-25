@@ -140,7 +140,7 @@ export default function SignUpScreen() {
           // Continue with navigation even if RevenueCat sync fails
         }
 
-        router.replace('/schedule')
+        router.replace('/(tabs)')
       } else {
         console.error(JSON.stringify(signUpAttempt, null, 2))
       }

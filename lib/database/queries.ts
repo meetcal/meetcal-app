@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Schedule, Session } from '@/types/schedule';
-import type { Platform } from '@/data/types/athletes';
+import type { Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import type { LiftResult } from '@/data/types/athletes';
 import { getMeetConfig } from '@/data/meets/config';
@@ -228,6 +228,32 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
     return uniqueNames;
   } catch (error) {
     console.error('Error in searchAthletesByName:', error);
+    throw error;
+  }
+}
+
+// Fetch lifting results for all athletes in a meet
+// This includes all historical results for these athletes (for PR calculations and "See All Meet Results")
+export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: string[]): Promise<SupabaseLiftResult[]> {
+  try {
+    if (athleteNames.length === 0) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('lifting_results')
+      .select('*')
+      .in('name', athleteNames)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching lifting results for meet:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchLiftingResultsForMeet:', error);
     throw error;
   }
 }

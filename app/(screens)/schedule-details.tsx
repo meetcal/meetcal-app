@@ -19,7 +19,7 @@ import { MeetName } from '@/data/types/meet';
 import { Platform as PlatformType } from '@/data/types/athletes';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { LiftResult } from '@/data/types/athletes';
-import { saveMeetAthletes } from '@/lib/database/offline-store';
+import { saveMeetAthletes, getAthleteLiftingResults } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -193,11 +193,29 @@ async function getAthleteBests(name: string, meetId: MeetName): Promise<Supabase
       total: null
     };
 
-    // Fetch all results for the athlete
-    const { data: liftingResults } = await supabase
-      .from('lifting_results')
-      .select('snatch_best, cj_best, total')
-      .eq('name', name);
+    let liftingResults: any[] = [];
+
+    // Try to get from cache first
+    try {
+      const cachedResults = await getAthleteLiftingResults(meetId, name);
+      if (cachedResults && cachedResults.length > 0) {
+        liftingResults = cachedResults;
+      }
+    } catch (cacheError) {
+      console.log('Cache miss for athlete bests, fetching from Supabase');
+    }
+
+    // If no cached results, fetch from Supabase
+    if (liftingResults.length === 0) {
+      const { data } = await supabase
+        .from('lifting_results')
+        .select('snatch_best, cj_best, total')
+        .eq('name', name);
+
+      if (data) {
+        liftingResults = data;
+      }
+    }
 
     if (liftingResults && liftingResults.length > 0) {
       // Process each result to find the bests
