@@ -9,6 +9,9 @@
       "distribution": "internal",
       "ios": {
         "resourceClass": "m-medium"
+      },
+      "env": {
+        "APP_VARIANT": "development"
       }
     },
     "development-simulator": {

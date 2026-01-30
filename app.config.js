@@ -1,5 +1,7 @@
+const IS_DEV = process.env.APP_VARIANT === 'development';
+
 export default ({ config }) => ({
-  name: 'MeetCal',
+  name: IS_DEV ? 'MeetCal Dev' : 'MeetCal',
   slug: 'meetcal',
   version: '5.2.5',
   orientation: 'portrait',
@@ -15,7 +17,7 @@ export default ({ config }) => ({
   ],
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'com.memohnsen.meetcal',
+    bundleIdentifier: IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal',
     buildNumber: '1',
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
@@ -31,7 +33,7 @@ export default ({ config }) => ({
       foregroundImage: './assets/images/ic_launcher_foreground.png',
       backgroundColor: '#ffffff'
     },
-    package: 'com.memohnsen.meetcal',
+    package: IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal',
     versionCode: 1,
     permissions: ["READ_CALENDAR", "WRITE_CALENDAR"]
   },
