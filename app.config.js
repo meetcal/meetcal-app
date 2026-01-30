@@ -1,7 +1,7 @@
 const IS_DEV = process.env.APP_VARIANT === 'development';
 
 export default ({ config }) => ({
-  name: IS_DEV ? 'MeetCal Dev' : 'MeetCal',
+  name: IS_DEV ? 'MeetCalDev' : 'MeetCal',
   slug: 'meetcal',
   version: '5.2.5',
   orientation: 'portrait',
