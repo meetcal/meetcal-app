@@ -5,7 +5,6 @@ export default ({ config }) => ({
   slug: 'meetcal',
   version: '5.2.5',
   orientation: 'portrait',
-  icon: './assets/images/MeetCal.png',
   userInterfaceStyle: 'automatic',
   splash: {
     image: './assets/images/MeetCal.png',
