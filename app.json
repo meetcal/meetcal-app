@@ -21,11 +21,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.memohnsen.meetcal",
       "usesIcloudStorage": true,
-      "icon": {
-        "light": "./assets/images/liquid-glass/light-icon.png",
-        "dark": "./assets/images/liquid-glass/dark-icon.png",
-        "tinted": "./assets/images/liquid-glass/tinted-icon.png"
-      },
+      "icon": "./assets/images/liquid-glass.icon",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
