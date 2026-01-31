@@ -14,6 +14,11 @@ Notifications.setNotificationHandler({
 
 export async function registerForPushNotificationsAsync(userId: string | null | undefined) {
   let token;
+  // Avoid noisy errors on Android dev builds without FCM setup.
+  if (__DEV__ && Platform.OS === 'android') {
+    console.log('Skipping push token registration on Android dev build.');
+    return;
+  }
 
   if (Platform.OS === 'android') {
     // No alert needed here, just channel setup
