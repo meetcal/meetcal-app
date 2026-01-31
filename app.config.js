@@ -17,7 +17,13 @@ export default ({ config }) => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal',
+    appleTeamId: 'HCK9FFW6UX',
     buildNumber: '1',
+    entitlements: {
+      'com.apple.security.application-groups': [
+        'group.com.memohnsen.meetcal'
+      ]
+    },
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
       UIBackgroundModes: ["remote-notification"],
@@ -57,6 +63,7 @@ export default ({ config }) => ({
         },
       },
     ],
+    '@bacons/apple-targets',
   ],
   experiments: {
     typedRoutes: true,

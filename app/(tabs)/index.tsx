@@ -281,17 +281,31 @@ export default function ScheduleScreen() {
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
 
   const upcomingMeets = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const sixMonthsFromNow = new Date(startOfToday);
-    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 3);
+    const getDateInTimeZone = (timeZone: string) => {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      }).formatToParts(new Date());
+      const year = Number(parts.find(part => part.type === 'year')?.value ?? '0');
+      const month = Number(parts.find(part => part.type === 'month')?.value ?? '1');
+      const day = Number(parts.find(part => part.type === 'day')?.value ?? '1');
+      return new Date(year, month - 1, day);
+    };
+
+    const startOfToday = getDateInTimeZone('America/Los_Angeles');
+    const threeMonthsBefore = new Date(startOfToday);
+    const threeMonthsAfter = new Date(startOfToday);
+    threeMonthsBefore.setMonth(threeMonthsBefore.getMonth() - 3);
+    threeMonthsAfter.setMonth(threeMonthsAfter.getMonth() + 3);
 
     return availableMeets.filter((meet) => {
       const start = new Date(meet.dates?.start ?? '');
       const end = new Date(meet.dates?.end ?? meet.dates?.start ?? '');
       if (Number.isNaN(start.getTime())) return false;
       const endDate = Number.isNaN(end.getTime()) ? start : end;
-      return endDate >= startOfToday && start <= sixMonthsFromNow;
+      return endDate >= threeMonthsBefore && start <= threeMonthsAfter;
     });
   }, [availableMeets]);
 
@@ -697,6 +711,21 @@ export default function ScheduleScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.refreshButton,
+                  pressed && { opacity: 0.8 },
+                  isRefreshingMeets && { opacity: 0.5 },
+                ]}
+                onPress={handleRefreshMeets}
+                disabled={isRefreshingMeets}
+              >
+                <IconSymbol
+                  name="arrow.clockwise"
+                  size={18}
+                  color={colors.secondaryText}
+                />
+              </Pressable>
               <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
                 Select Your Meet
               </ThemedText>
@@ -718,6 +747,7 @@ export default function ScheduleScreen() {
             <ScrollView 
               style={styles.modalScrollView} 
               contentContainerStyle={styles.modalScrollContent}
+              alwaysBounceVertical
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshingMeets}
@@ -858,8 +888,11 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   platformIndicator: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 4,
+    width: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: 6,
   },
   platformText: {
@@ -937,6 +970,13 @@ const styles = StyleSheet.create({
   closeButton: {
     position: 'absolute',
     right: 16,
+    top: 16,
+    padding: 4,
+    zIndex: 1,
+  },
+  refreshButton: {
+    position: 'absolute',
+    left: 16,
     top: 16,
     padding: 4,
     zIndex: 1,
