@@ -86,28 +86,29 @@ export default function TabLayout() {
       <Tabs.Screen
         name="(index)"
         options={{
-          title: 'Today',
+          
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
         name="(saved)"
         options={{
-          title: 'Saved',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="bookmark.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="(start-list)"
         options={{
-          title: 'Start List',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
         }}
       />
       <Tabs.Screen
         name="(info)"
         options={{
-          title: 'Info',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
         }}
       />
