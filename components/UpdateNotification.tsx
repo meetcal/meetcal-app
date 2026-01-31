@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Pressable, Platform } from 'react-native';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -26,6 +26,8 @@ export function UpdateNotification() {
       transparent
       animationType="fade"
       onRequestClose={dismissUpdate}
+      statusBarTranslucent
+      {...(Platform.OS === 'ios' && { presentationStyle: 'overFullScreen' })}
     >
       <Pressable style={styles.backdrop} onPress={dismissUpdate}>
         <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1c1c1e' : '#f2f2f7' }]} onPress={(e) => e.stopPropagation()}>
@@ -109,7 +111,7 @@ export function UpdateNotification() {
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
