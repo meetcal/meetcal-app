@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +28,31 @@ export default function TabLayout() {
     });
   }, [currentTheme, navigation]);
 
+  if (Platform.OS === 'ios') {
+    return (
+      <NativeTabs
+        labelStyle={{ color: colors.secondaryText }}
+        tintColor={colors.text}>
+        <NativeTabs.Trigger name="index">
+          <Label>Today</Label>
+          <Icon sf={{ default: 'calendar', selected: 'calendar.circle.fill' }} />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="saved">
+          <Label>Saved</Label>
+          <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="start-list">
+          <Label>Start List</Label>
+          <Icon sf="list.bullet" />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="info">
+          <Label>Info</Label>
+          <Icon sf={{ default: 'info.circle', selected: 'info.circle.fill' }} />
+        </NativeTabs.Trigger>
+      </NativeTabs>
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -42,13 +68,13 @@ export default function TabLayout() {
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: Platform.OS === 'ios' ? 85 : 95,
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 15,
-          paddingTop: Platform.OS === 'ios' ? 5 : 10,
-        },
-        tabBarItemStyle: {
-          marginTop: Platform.OS === 'ios' ? 0 : 5,
-        },
+        height: 95,
+        paddingBottom: 15,
+        paddingTop: 10,
+      },
+      tabBarItemStyle: {
+        marginTop: 5,
+      },
         headerStyle: {
           backgroundColor: colors.background,
         },

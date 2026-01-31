@@ -521,7 +521,7 @@ export default function StartListScreen() {
 
   const REVIEW_COUNT_KEY = 'startListFilterApplyCount';
   const REVIEW_PROMPTED_KEY = 'startListReviewPromptedCounts';
-  const REVIEW_COUNTS = [10, 50, 100];
+  const REVIEW_COUNTS = [5, 50, 100];
 
   const loadStoreReview = useCallback(async () => {
     try {
@@ -588,7 +588,7 @@ export default function StartListScreen() {
     );
   }, [currentTheme, skeletonPulse]);
 
-  const renderLoadingSkeleton = useCallback((label: string) => (
+  const renderLoadingSkeleton = useCallback(() => (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.filterContainer, { 
         backgroundColor: colors.background,
@@ -636,9 +636,6 @@ export default function StartListScreen() {
             </View>
           </View>
         ))}
-        <ThemedText style={[styles.loadingText, { color: colors.secondaryText }]}>
-          {label}
-        </ThemedText>
       </ScrollView>
     </ThemedView>
   ), [SkeletonBlock, colors, currentTheme]);
@@ -1447,7 +1444,7 @@ export default function StartListScreen() {
   }
 
   if (loading || isScheduleLoading) {
-    return renderLoadingSkeleton(loading ? 'Loading Athletes...' : 'Loading Schedule...');
+    return renderLoadingSkeleton();
   }
 
   return (

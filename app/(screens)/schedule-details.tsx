@@ -8,6 +8,7 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPlatformColors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as StoreReview from 'expo-store-review';
 import { supabase } from '@/lib/supabase';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { ThemedText } from '@/components/ThemedText';
@@ -557,7 +558,7 @@ function calculateWeighInTime(startTime: string): string {
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
-const checkAndShowReviewPrompt = async (router: any) => {
+const checkAndShowReviewPrompt = async () => {
   try {
     const hasShownReview = await AsyncStorage.getItem('hasShownReview');
     const hasSavedBefore = await AsyncStorage.getItem('hasSavedBefore');
@@ -565,8 +566,16 @@ const checkAndShowReviewPrompt = async (router: any) => {
     if (!hasSavedBefore && !hasShownReview) {
       // Mark that user has saved a session
       await AsyncStorage.setItem('hasSavedBefore', 'true');
-      // Navigate to review screen
-      router.push('/(screens)/review-request');
+      // Use native store review prompt
+      try {
+        const isAvailable = await StoreReview.isAvailableAsync();
+        if (isAvailable) {
+          await StoreReview.requestReview();
+        }
+      } catch (error) {
+        console.warn('ScheduleDetails: Store review unavailable', error);
+      }
+      await AsyncStorage.setItem('hasShownReview', 'true');
     }
   } catch (error) {
     console.error('Error checking review status:', error);
@@ -775,7 +784,7 @@ export default function SessionDetailsScreen() {
         meet: params.meet,
       });
       showSaveAlert('save');
-      checkAndShowReviewPrompt(router);
+      checkAndShowReviewPrompt();
     }
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success
