@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import * as Updates from 'expo-updates';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 
 export interface OTAUpdateState {
   isChecking: boolean;
@@ -134,11 +134,27 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
     }));
   }, []);
 
-  // Automatically check for updates when the app becomes active
   useEffect(() => {
     if (Platform.OS !== 'web') {
       checkForUpdate();
     }
+  }, [checkForUpdate]);
+
+  const lastForegroundCheckRef = useRef<number>(0);
+  const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') return;
+      const now = Date.now();
+      if (now - lastForegroundCheckRef.current < FOREGROUND_CHECK_THROTTLE_MS) return;
+      lastForegroundCheckRef.current = now;
+      checkForUpdate();
+    });
+
+    return () => subscription.remove();
   }, [checkForUpdate]);
 
   return {

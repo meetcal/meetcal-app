@@ -22,7 +22,7 @@ The app is configured to automatically check for and download over-the-air updat
 ```
 
 - **url**: The EAS Updates endpoint for this project
-- **enabled**: Enables OTA updates
+- **enabled**: Enables OTA updates. Production and preview builds must have this set to `true` (or `!IS_DEV` in app.config.js so only non-development builds receive updates). Development builds can leave it disabled if desired.
 - **fallbackToCacheTimeout**: Immediate fallback to cache if update fails
 - **runtimeVersion**: Controls compatibility between app and updates
 

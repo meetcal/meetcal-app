@@ -13,7 +13,8 @@
       },
       "env": {
         "APP_VARIANT": "development"
-      }
+      },
+      "channel": "development"
     },
     "development-simulator": {
       "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
@@ -22,7 +23,8 @@
       "ios": {
         "resourceClass": "m-medium",
         "simulator": true
-      }
+      },
+      "channel": "development-simulator"
     },
     "preview": {
       "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
@@ -30,7 +32,8 @@
       "ios": {
         "resourceClass": "m-medium",
         "simulator": true
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
@@ -52,7 +55,8 @@
       "android": {
         "buildType": "apk",
         "image": "ubuntu-24.04-jdk-17-ndk-r27b"
-      }
+      },
+      "channel": "production-apk"
     }
   },
   "submit": {
