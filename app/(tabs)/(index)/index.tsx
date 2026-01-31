@@ -11,7 +11,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { getPlatformColors } from '@/constants/Colors';
 import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
-import { PageIndicator } from '../../components/PageIndicator';
+import { PageIndicator } from '@/components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { fetchSchedule } from '@/lib/database/queries';
@@ -844,6 +844,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 120
   },
   sessionContainer: {
     borderRadius: 12,
@@ -1054,9 +1055,7 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
-  flatListContent: {
-    paddingBottom: 50,
-  },
+
   syncInfo: {
     flexDirection: 'row',
     alignItems: 'center',
