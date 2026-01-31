@@ -202,13 +202,12 @@ export default function InfoScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        
-        {/* Authentication/Profile Card */}
+
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
+        <Pressable
             style={({ pressed }) => [
               styles.section,
-              styles.lastSection,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => {
@@ -233,12 +232,103 @@ export default function InfoScreen() {
               />
             </View>
           </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/event-info')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Event Info
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          {/* <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/weightlifting-wrapped')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Weightlifting Wrapped
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable> */}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/offline-data')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Offline Data
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/share-results-by-club')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Shareable Meet Results By Club
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
         </View>
 
+        <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>
+          National
+        </ThemedText>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-            Competition Information
-          </ThemedText>
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/adap-records')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Adaptive American Records
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
 
           <Pressable
             style={({ pressed }) => [
@@ -266,11 +356,11 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(screens)/share-results-by-club')}
+            onPress={() => router.push('/(screens)/national-rankings')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                Share Results by Club
+                National Rankings
               </ThemedText>
               <IconSymbol
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
@@ -286,148 +376,85 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(screens)/event-info')}
+            onPress={() => router.push('/(screens)/records')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
-                Event Info
+                National & World Records
               </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
           </Pressable>
 
           <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/new-qualifying-totals')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Qualifying Totals
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/wso-records')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                WSO Records
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/new-standards')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              A/B Standards
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/rankings')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              International Rankings
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/records')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Records
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/offline-data')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Offline Data
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        {/* <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-            pressed && { backgroundColor: colors.pressed }
-          ]}
-          onPress={() => router.push('/(screens)/weightlifting-wrapped')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Weightlifting Wrapped
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable> */}
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-          ]}
-          onPress={() => router.push('/(screens)/wso-records')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              WSO Records
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable>
-
-        {/* <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-          ]}
-          onPress={() => router.push('/(screens)/adap-records')}
-        >
-          <View style={styles.linkRow}>
-            <ThemedText style={[styles.label, { color: colors.text }]}>
-              Adaptive Athlete Records
-            </ThemedText>
-            <IconSymbol name="chevron.right" size={20} color={colors.link} />
-          </View>
-        </Pressable> */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/new-qualifying-totals')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Qualifying Totals
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
         </View>
 
-        {/* App Info Card removed: app now follows system theme */}
+        <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>
+          International
+        </ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/new-standards')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                A/B Standards
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/rankings')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                International Rankings
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -454,11 +481,11 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  cardTitle: {
-    fontSize: 18,
+  sectionHeader: {
+    fontSize: 17,
     fontWeight: '600',
-    padding: 16,
-    paddingBottom: 8,
+    marginBottom: 8,
+    marginTop: 8,
   },
   section: {
     paddingVertical: 12,

@@ -12,6 +12,7 @@ export const OFFLINE_CACHE_KEYS = {
   records: '@offline_cache/records',
   wsoRecords: '@offline_cache/wso_records',
   adaptiveRecords: '@offline_cache/adaptive_records',
+  nationalRankings: '@offline_cache/national_rankings',
 } as const;
 
 export async function getOfflineCache<T>(key: string): Promise<OfflineCacheEntry<T> | null> {

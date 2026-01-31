@@ -2440,7 +2440,7 @@ export default function StartListScreen() {
                       styles.saveOptionTitle,
                       { color: !isSubscribed ? colors.secondaryText : colors.text }
                     ]}>
-                      Download Shareable Schedule As CSV
+                      Download Shareable Schedule
                     </ThemedText>
                     {!isSubscribed && (
                       <IconSymbol
