@@ -1,7 +1,7 @@
 import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRouter } from 'expo-router';
-import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
+import { router, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { SyncManager } from '@/lib/database/sync-manager';
@@ -17,6 +17,7 @@ import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline
 import { fetchSchedule } from '@/lib/database/queries';
 import { MeetName } from '@/data/types/meet';
 import { VersionAnnouncement } from '@/components/VersionAnnouncement';
+import { useAuth } from '@clerk/clerk-expo';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -276,6 +277,19 @@ export default function ScheduleScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const { currentTheme } = useTheme();
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
+  const headerColors = {
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+  };
+  const colors: Colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
@@ -308,6 +322,32 @@ export default function ScheduleScreen() {
       return endDate >= threeMonthsBefore && start <= threeMonthsAfter;
     });
   }, [availableMeets]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => {
+              if (isSignedIn) {
+                router.push('/(screens)/profile');
+              } else {
+                router.push({
+                  pathname: '/(auth)/sign-in',
+                  params: { from: 'info' }
+                });
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={isSignedIn ? 'My profile and settings' : 'Sign in'}
+          >
+            <IconSymbol name={Platform.OS === 'ios' ? "person.circle.fill" : "person-circle-sharp"} size={24} color={headerColors.text} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [headerColors.text, isSignedIn, navigation, router]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -392,15 +432,6 @@ export default function ScheduleScreen() {
       </ScrollView>
     </ThemedView>
   ), [SkeletonBlock, colors, currentTheme]);
-
-  const colors: Colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
 
   // Function to calculate the initial page based on current UTC date
   const calculateInitialPage = useCallback((scheduleData: Schedule): number => {
@@ -711,7 +742,6 @@ export default function ScheduleScreen() {
             viewabilityConfig={viewabilityConfig}
             onScroll={onScroll}
             scrollEventThrottle={16}
-            contentContainerStyle={styles.flatListContent}
           />
 
           {schedule.length > 0 && (
@@ -1130,5 +1160,14 @@ const styles = StyleSheet.create({
   },
   modalScrollContent: {
     flexGrow: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerIconButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
 }); 

@@ -185,35 +185,6 @@ export default function InfoScreen() {
       >
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-        <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => {
-              if (isSignedIn) {
-                router.push('/(screens)/profile');
-              } else {
-                router.push({
-                  pathname: '/(auth)/sign-in',
-                  params: { from: 'info' }
-                });
-              }
-            }}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                {isSignedIn ? 'My Profile & Settings' : 'Sign In To Your Account'}
-              </ThemedText>
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20} 
-                color={colors.link} 
-              />
-            </View>
-          </Pressable>
-
           <Pressable
             style={({ pressed }) => [
               styles.section,
@@ -257,7 +228,7 @@ export default function InfoScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => router.push('/(screens)/offline-data')}
@@ -267,26 +238,6 @@ export default function InfoScreen() {
                 Offline Data
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/share-results-by-club')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Shareable Meet Results By Club
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
             </View>
           </Pressable>
         </View>
@@ -322,6 +273,26 @@ export default function InfoScreen() {
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 All Meet Results
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/share-results-by-club')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Club Meet Results
               </ThemedText>
               <IconSymbol
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
