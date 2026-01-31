@@ -96,12 +96,17 @@ npx eas update --branch preview --message "Preview update"
 npx eas update --branch production --message "Production update"
 ```
 
-#### Testing Updates
+#### Testing Updates on Android (dev build)
 
-1. Build a development client with expo-dev-client
-2. Publish an update to the development channel
-3. Force close and reopen the app to trigger update check
-4. Verify the update notification appears
+1. **Enable updates for dev** (optional): In `app.config.js` set `updates.enabled: true` temporarily so the development build receives OTA. With `enabled: !IS_DEV`, development builds have updates disabled by design.
+2. Build the Android dev client:  
+   `eas build --profile development --platform android`
+3. Install the build from the EAS link (internal distribution) on your device or emulator.
+4. Publish an update to the development channel:  
+   `eas update --channel development --message "Test update"`
+5. Open the app (or bring it to foreground). The app checks for updates and should show the "Update Available" banner.
+6. Tap "Update Now" and confirm restart to apply the update.
+7. If you changed `enabled` for testing, set it back to `!IS_DEV` when done.
 
 ### For Users
 
