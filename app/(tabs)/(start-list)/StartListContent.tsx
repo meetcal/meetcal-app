@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl, Animated } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView, Platform, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl, Animated } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Stack, useRouter } from 'expo-router';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -1590,14 +1591,11 @@ export default function StartListScreen() {
         </View>
       </View>
 
-      <FlatList
+      <FlashList
         data={filteredAthletes}
         keyExtractor={keyExtractor}
         renderItem={renderListItem}
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        windowSize={11}
-        removeClippedSubviews={Platform.OS !== 'web'}
+        extraData={expandedId}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: 80 + insets.bottom }
