@@ -612,6 +612,15 @@ export default function StartListScreen() {
     return () => animation.stop();
   }, [loading, skeletonPulse]);
 
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
+
   const SkeletonBlock = useCallback(({ style }: { style: any }) => {
     const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
     return (
@@ -694,51 +703,53 @@ export default function StartListScreen() {
     }
   }, [reviewPromptedCounts, loadStoreReview]);
   
-  // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      console.warn('StartList: No valid meet selected for athletes');
       setAthletes([]);
       setLoading(false);
       return;
     }
 
     const validMeet = selectedMeet;
+
+    if (!forceRefresh) {
+      try {
+        const cached = await getMeetData(validMeet);
+        if (cached?.athletes?.length > 0) {
+          setAthletes(cached.athletes);
+          setLoading(false);
+          fetchAthletes(validMeet)
+            .then(fresh => {
+              setAthletes(fresh);
+              saveMeetAthletes(validMeet, fresh).catch(() => {});
+            })
+            .catch(() => {});
+          return;
+        }
+      } catch {
+      }
+    }
+
     setLoading(true);
     let athleteData: LiftResult[] = [];
-    let loadedFromCache = false;
 
     try {
-      // 1. Try fetching from Supabase
       const freshAthletes = await fetchAthletes(validMeet);
       athleteData = freshAthletes;
-      // 2. Save successful fetch to cache (don't wait for it)
-      saveMeetAthletes(validMeet, freshAthletes).catch(err => 
-        console.error(`StartList: Failed to save fresh athletes to cache for ${validMeet}:`, err)
-      );
+      saveMeetAthletes(validMeet, freshAthletes).catch(() => {});
     } catch (fetchError) {
-      console.warn(`StartList: fetchAthletes failed for ${validMeet}, attempting cache fallback:`, fetchError);
-      // 3. Fallback to cache if Supabase fetch fails
       try {
-        // We still need getMeetData to retrieve from the combined offline store structure
         const cachedMeetData = await getMeetData(validMeet);
-        if (cachedMeetData?.athletes) {
+        if (cachedMeetData?.athletes?.length) {
           athleteData = cachedMeetData.athletes;
-          loadedFromCache = true;
-        } else {
-          console.log(`StartList: No athletes found in cache for ${validMeet}`);
         }
-      } catch (cacheError) {
+      } catch {
         Alert.alert('Error', 'Failed to load athlete data. Please check connection or try refreshing.');
       }
     }
-    
-    setAthletes(athleteData);
-    if (loadedFromCache) {
-        console.log("StartList: Displaying athlete data loaded from cache.");
-    }
-    setLoading(false);
 
+    setAthletes(athleteData);
+    setLoading(false);
   }, [selectedMeet]);
 
   // Revised schedule fetching logic (Supabase-first, Cache-fallback)
@@ -804,17 +815,7 @@ export default function StartListScreen() {
     await loadAthletes(true); 
     await loadSchedule();
     setRefreshing(false);
-  }, [loadAthletes, loadSchedule]); // Add loadSchedule dependency
-
-  // Add back the colors object
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
+  }, [loadAthletes, loadSchedule]);
 
   // Define getSessionDetails after scheduleData state is defined
   const getSessionDetails = useCallback((sessionNumber: number) => {
@@ -1492,7 +1493,7 @@ export default function StartListScreen() {
     }
   }
 
-  if (loading || isScheduleLoading) {
+  if (loading) {
     return renderLoadingSkeleton();
   }
 
@@ -2568,6 +2569,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    marginBottom: 12,
   },
   athleteButton: {
     flexDirection: 'row',
