@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -15,6 +16,7 @@
       }
     },
     "development-simulator": {
+      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -23,6 +25,7 @@
       }
     },
     "preview": {
+      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "distribution": "internal",
       "ios": {
         "resourceClass": "m-medium",
@@ -30,6 +33,7 @@
       }
     },
     "production": {
+      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "autoIncrement": true,
       "credentialsSource": "remote",
       "channel": "production",
