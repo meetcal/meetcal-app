@@ -16,6 +16,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@bacons/apple-targets": "^3.0.2",
     "@clerk/clerk-expo": "^2.19.1",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.3",
@@ -27,7 +28,6 @@
     "@supabase/supabase-js": "^2.81.1",
     "@types/pako": "^2.0.3",
     "@types/react": "~19.1.10",
-    "@bacons/apple-targets": "^3.0.2",
     "babel-plugin-module-resolver": "^5.0.2",
     "date-fns": "^4.1.0",
     "expo": "~54.0.0",

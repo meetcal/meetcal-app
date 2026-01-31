@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import * as StoreReview from 'expo-store-review';
 
 type EditableField = 'firstName' | 'lastName' | 'email';
 export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
@@ -26,6 +27,16 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
+  const requestStoreReview = useCallback(async () => {
+    try {
+      const isAvailable = await StoreReview.isAvailableAsync();
+      if (isAvailable) {
+        await StoreReview.requestReview();
+      }
+    } catch (error) {
+      console.warn('Profile: Store review unavailable', error);
+    }
+  }, []);
 
   // Define theme colors to match other screens
   const colors = {
@@ -235,26 +246,6 @@ export default function ProfileScreen() {
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Submit Feedback
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => Linking.openURL(
-              Platform.OS === 'ios' 
-                ? 'https://apps.apple.com/us/app/meetcal/id6741133286' 
-                : 'https://play.google.com/store/apps/details?id=com.memohnsen.meetcal'
-            )}
-          >
-            <View style={styles.fieldRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Leave a Review
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>

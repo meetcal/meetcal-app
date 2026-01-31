@@ -16,25 +16,6 @@ import { supabase } from '@/lib/supabase';
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
-const showReviewPrompt = () => {
-  Alert.alert(
-    'Enjoying MeetCal?',
-    'Would you like to leave a review? Your feedback helps us improve the app.',
-    [
-      {
-        text: 'Not Now',
-        style: 'cancel'
-      },
-      {
-        text: 'Leave Review',
-        onPress: () => {
-          Linking.openURL('https://apps.apple.com/us/app/meetcal/id6741133286');
-        }
-      }
-    ]
-  );
-};
-
 export default function InfoScreen() {
   const { currentTheme } = useTheme();
   const { signOut } = useClerk();
