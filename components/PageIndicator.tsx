@@ -23,7 +23,7 @@ export function PageIndicator({ count, currentPage, onPageChange }: PageIndicato
     <View style={[
       styles.container,
       { 
-        bottom: Platform.OS === 'ios' ? insets.bottom + 60 : insets.bottom + 100,
+        bottom: Platform.OS === 'ios' ? insets.bottom + 60 : insets.bottom + 70,
       }
     ]}>
       <View style={[

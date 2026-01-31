@@ -1055,7 +1055,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   flatListContent: {
-    paddingBottom: 100,
+    paddingBottom: 50,
   },
   syncInfo: {
     flexDirection: 'row',
