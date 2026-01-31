@@ -28,30 +28,30 @@ export default function TabLayout() {
     });
   }, [currentTheme, navigation]);
 
-  if (Platform.OS === 'ios') {
-    return (
-      <NativeTabs
-        labelStyle={{ color: colors.secondaryText }}
-        tintColor={colors.text}>
-        <NativeTabs.Trigger name="index">
-          <Label>Today</Label>
-          <Icon sf={{ default: 'calendar', selected: 'calendar.circle.fill' }} />
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="saved">
-          <Label>Saved</Label>
-          <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="start-list">
-          <Label>Start List</Label>
-          <Icon sf="list.bullet" />
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="info">
-          <Label>Info</Label>
-          <Icon sf={{ default: 'info.circle', selected: 'info.circle.fill' }} />
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    );
-  }
+  // if (Platform.OS === 'ios') {
+  //   return (
+  //     <NativeTabs
+  //       labelStyle={{ color: colors.secondaryText }}
+  //       tintColor={colors.text}>
+  //       <NativeTabs.Trigger name="index">
+  //         <Label hidden />
+  //         <Icon sf={{ default: 'calendar', selected: 'calendar.circle.fill' }} />
+  //       </NativeTabs.Trigger>
+  //       <NativeTabs.Trigger name="saved">
+  //         <Label hidden />
+  //         <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
+  //       </NativeTabs.Trigger>
+  //       <NativeTabs.Trigger name="start-list">
+  //         <Label hidden />
+  //         <Icon sf="list.bullet" />
+  //       </NativeTabs.Trigger>
+  //       <NativeTabs.Trigger name="info">
+  //         <Label hidden />
+  //         <Icon sf={{ default: 'info.circle', selected: 'info.circle.fill' }} />
+  //       </NativeTabs.Trigger>
+  //     </NativeTabs>
+  //   );
+  // }
 
   return (
     <Tabs
