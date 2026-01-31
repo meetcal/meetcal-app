@@ -20,6 +20,8 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
 import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
 import { useNavigation } from '@react-navigation/native';
+import { GlassView } from 'expo-glass-effect';
+
 
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -833,7 +835,7 @@ export default function SavedScreen() {
             disabled={isSchedulesLoading}
             accessibilityRole="button"
             accessibilityLabel="Add to calendar"
-          >
+            >
             <IconSymbol name="calendar" size={24} color={calendarIconColor} />
           </Pressable>
           <Pressable

@@ -4,8 +4,11 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.RemoteViews
+import __PACKAGE_NAME__.R
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -16,15 +19,25 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class SavedWidgetProvider : AppWidgetProvider() {
+  override fun onReceive(context: Context, intent: Intent) {
+    Log.d(TAG, "onReceive: ${intent.action}")
+    super.onReceive(context, intent)
+  }
+
   override fun onUpdate(
     context: Context,
     appWidgetManager: AppWidgetManager,
     appWidgetIds: IntArray
   ) {
     for (appWidgetId in appWidgetIds) {
-      val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-      val useLargeLayout = shouldUseLargeLayout(options)
-      updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+      try {
+        val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+        val useLargeLayout = shouldUseLargeLayout(options)
+        updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+      } catch (e: Exception) {
+        Log.e(TAG, "SavedWidget onUpdate failed", e)
+        showMinimalWidget(context, appWidgetManager, appWidgetId)
+      }
     }
   }
 
@@ -34,11 +47,17 @@ class SavedWidgetProvider : AppWidgetProvider() {
     appWidgetId: Int,
     newOptions: Bundle
   ) {
-    val useLargeLayout = shouldUseLargeLayout(newOptions)
-    updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+    try {
+      val useLargeLayout = shouldUseLargeLayout(newOptions)
+      updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+    } catch (e: Exception) {
+      Log.e(TAG, "SavedWidget onAppWidgetOptionsChanged failed", e)
+      showMinimalWidget(context, appWidgetManager, appWidgetId)
+    }
   }
 
   companion object {
+    private const val TAG = "SavedWidgetProvider"
     const val PREFS_NAME = "saved_widget_prefs"
     const val KEY_SELECTED_MEET = "selectedMeet"
     const val KEY_SESSIONS_JSON = "savedSessions"
@@ -48,9 +67,27 @@ class SavedWidgetProvider : AppWidgetProvider() {
       val componentName = ComponentName(context, SavedWidgetProvider::class.java)
       val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
       for (appWidgetId in appWidgetIds) {
-        val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-        val useLargeLayout = shouldUseLargeLayout(options)
-        updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+        try {
+          val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+          val useLargeLayout = shouldUseLargeLayout(options)
+          updateAppWidget(context, appWidgetManager, appWidgetId, useLargeLayout)
+        } catch (e: Exception) {
+          Log.e(TAG, "SavedWidget updateAllWidgets failed", e)
+          showMinimalWidget(context, appWidgetManager, appWidgetId)
+        }
+      }
+    }
+
+    private fun showMinimalWidget(
+      context: Context,
+      appWidgetManager: AppWidgetManager,
+      appWidgetId: Int
+    ) {
+      try {
+        val views = RemoteViews(context.packageName, R.layout.widget_saved_initial)
+        appWidgetManager.updateAppWidget(appWidgetId, views)
+      } catch (e: Exception) {
+        Log.e(TAG, "SavedWidget showMinimalWidget failed", e)
       }
     }
 

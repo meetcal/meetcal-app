@@ -17,8 +17,7 @@
       android:id="@+id/widget_icon"
       android:layout_width="16dp"
       android:layout_height="16dp"
-      android:src="@android:drawable/ic_menu_my_calendar"
-      android:tint="@color/widget_blue" />
+      android:src="@android:drawable/ic_menu_my_calendar" />
 
     <TextView
       android:id="@+id/widget_title"

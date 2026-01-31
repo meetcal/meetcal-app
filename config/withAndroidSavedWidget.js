@@ -2,8 +2,6 @@ const { withAndroidManifest, withDangerousMod, withMainApplication } = require('
 const fs = require('fs');
 const path = require('path');
 
-const TEMPLATE_DIR = path.join(__dirname, 'android-saved-widget');
-
 const copyDir = (src, dest) => {
   if (!fs.existsSync(src)) return;
   fs.mkdirSync(dest, { recursive: true });
@@ -35,13 +33,17 @@ const withAndroidSavedWidget = config => {
       throw new Error('android.package is required to configure SavedWidget');
     }
 
+    const widgetDir = path.join(projectRoot, 'widget');
+    if (!fs.existsSync(widgetDir)) {
+      throw new Error('widget/ directory not found. Add Android widget template files in project root widget/ (see eas-widget-example).');
+    }
+
     const androidMain = path.join(projectRoot, 'android', 'app', 'src', 'main');
     const packagePath = packageName.replace(/\./g, '/');
 
     const kotlinDest = path.join(androidMain, 'java', packagePath, 'widget');
-    copyDir(path.join(TEMPLATE_DIR, 'java'), kotlinDest);
+    copyDir(path.join(widgetDir, 'java'), kotlinDest);
 
-    // Replace package placeholders in Kotlin files
     for (const file of fs.readdirSync(kotlinDest)) {
       if (file.endsWith('.kt')) {
         replacePackageName(path.join(kotlinDest, file), packageName);
@@ -49,7 +51,7 @@ const withAndroidSavedWidget = config => {
     }
 
     const resDest = path.join(androidMain, 'res');
-    copyDir(path.join(TEMPLATE_DIR, 'res'), resDest);
+    copyDir(path.join(widgetDir, 'res'), resDest);
 
     return config;
   }]);
@@ -76,7 +78,8 @@ const withAndroidSavedWidget = config => {
         'intent-filter': [
           {
             action: [
-              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } }
+              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } },
+              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_ENABLED' } }
             ]
           }
         ],
@@ -108,10 +111,22 @@ const withAndroidSavedWidget = config => {
         );
       }
 
-      contents = contents.replace(
-        /val packages = PackageList\(this\)\.packages\n/,
-        match => `${match}    packages.add(SavedWidgetPackage())\n`
-      );
+      const addPackage = 'add(SavedWidgetPackage())';
+      if (contents.includes(addPackage)) return config;
+      const packagesApplyRe = /PackageList\(this\)\.packages\.apply\s*\{\s*\n(\s+)/;
+      const packagesApplyMatch = contents.match(packagesApplyRe);
+      if (packagesApplyMatch) {
+        const indent = packagesApplyMatch[1];
+        contents = contents.replace(
+          packagesApplyRe,
+          `PackageList(this).packages.apply {\n${indent}${addPackage}\n${indent}`
+        );
+      } else {
+        contents = contents.replace(
+          /val packages = PackageList\(this\)\.packages\n/,
+          match => `${match}    packages.add(SavedWidgetPackage())\n`
+        );
+      }
     }
 
     config.modResults.contents = contents;
