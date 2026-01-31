@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl, Animated } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView, Platform, Modal, Alert, TextInput, Dimensions, RefreshControl, Animated } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedText } from '@/components/ThemedText';
@@ -13,520 +13,35 @@ import { LiftResult } from '@/data/types/athletes';
 import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
 import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { preloadYearBests } from '@/lib/start-list-api';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import ShareScheduleView from '@/components/share/ShareScheduleView';
 import ImagePreviewModal from '@/components/share/ImagePreviewModal';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-
-// Rename Platform interface to PlatformSchedule to avoid conflict
-interface PlatformSchedule {
-  platform: string;
-  platformStartTime?: string;
-}
-
-interface Session {
-  number: number;
-  startTime: string;
-  weighInTime: string;
-  platforms: PlatformSchedule[];
-}
-
-interface ScheduleDay {
-  date: string;
-  fullDate: string;
-  sessions: Session[];
-}
-
-type Schedule = ScheduleDay;
-
-interface AthleteItemProps {
-  athlete: LiftResult;
-  isExpanded: boolean;
-  onPress: () => void;
-  router: ReturnType<typeof useRouter>;
-  schedule: ScheduleType;
-  getSessionDetails: (sessionNumber: number) => {
-    date: string;
-    startTime: string;
-    weighInTime: string;
-    displayDate: string;
-    platforms: PlatformSchedule[];
-  } | null;
-}
-
-// Add interface for Supabase results
-interface SupabaseLiftResult {
-  id: number;
-  event_id: string;
-  meet: string;
-  date: string;
-  name: string;
-  age: number;
-  body_weight: number;
-  snatch1: number;
-  snatch2: number;
-  snatch3: number;
-  snatch_best: number;
-  cj1: number;
-  cj2: number;
-  cj3: number;
-  cj_best: number;
-  total: number;
-}
-
-// Update the getLastYearBests function to use Supabase
-async function getLastYearBests(athleteName: string) {
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  
-  try {
-    type LiftBestRow = {
-      snatch_best: number | null;
-      cj_best: number | null;
-      total: number | null;
-    };
-    const { data: athleteResults, error } = await supabase
-      .from('lifting_results')
-      .select('snatch_best, cj_best, total')
-      .eq('name', athleteName)
-      .gte('date', oneYearAgo.toISOString())
-      .order('date', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching athlete results:', error);
-      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-    }
-
-    const results = (athleteResults ?? []) as LiftBestRow[];
-    if (results.length === 0) {
-      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-    }
-
-    return {
-      bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
-      bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
-      bestTotal: Math.max(...results.map(r => r.total || 0))
-    };
-  } catch (error) {
-    console.error('Error in getLastYearBests:', error);
-    return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-  }
-}
-
-const AthleteItem = React.memo(function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessionDetails }: AthleteItemProps) {
-  const { currentTheme } = useTheme();
-  const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-  const [loadingBests, setLoadingBests] = useState(true);
-  const { selectedMeet, meetDetails } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
-  
-  // Add type guard check
-  const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
-
-  // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return '';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: meetDetails.time.timeZoneIdentifier,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
-  }, [meetDetails?.time.timeZoneIdentifier]);
-
-  const colors = {
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
-
-  useEffect(() => {
-    const loadBests = async () => {
-      if (isExpanded) {
-        setLoadingBests(true);
-        const bests = await getLastYearBests(athlete.name);
-        setYearBests(bests);
-        setLoadingBests(false);
-      }
-    };
-    loadBests();
-  }, [isExpanded, athlete.name]);
-
-  const handleSessionPress = () => {
-    if (!athlete.session) return;
-
-    const sessionDay = schedule.find(day => 
-      day.sessions.some(s => s.number === athlete.session?.number)
-    );
-    
-    const scheduleSession = sessionDay?.sessions.find(s => 
-      s.number === athlete.session?.number
-    );
-
-    const platform = scheduleSession?.platforms.find(p => 
-      p.platform === athlete.session?.platform
-    );
-
-    // Use platform-specific time if available
-    const startTime = platform?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime;
-    const weighInTime = startTime ? calculateWeighInTime(startTime) : getSessionDetails(athlete.session.number)?.weighInTime;
-
-    if (!sessionDay || !startTime || !weighInTime) return;
-
-    router.push({
-      pathname: '/(screens)/schedule-details',
-      params: {
-        id: `session-${athlete.session.number}-${athlete.session.platform}`,
-        sessionNumber: athlete.session.number,
-        platform: athlete.session.platform,
-        weightClass: athlete.weightClass,
-        startTime,
-        weighInTime,
-        date: sessionDay.fullDate,
-        athleteName: athlete.name,
-      }
-    });
-  };
-
-  const formatSessionTime = (time: string | undefined | null) => {
-    if (!time || !validMeet) return 'TBD';
-    return `${time} ${timeZoneAbbr}`;
-  };
-
-  return (
-    <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.athleteButton,
-          pressed && { backgroundColor: colors.pressed }
-        ]}
-        onPress={onPress}
-      >
-        <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
-        <IconSymbol 
-          name={getChevronIcon(isExpanded ? 'down' : 'right')} 
-          size={20} 
-          color={colors.secondaryText}
-        />
-      </Pressable>
-      
-      {isExpanded && (
-        <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
-          {athlete.session && (
-            <>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.detailRow,
-                  styles.sessionLink,
-                  pressed && { backgroundColor: colors.pressed }
-                ]}
-                onPress={handleSessionPress}
-              >
-                <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-                  Session:
-                </ThemedText>
-                <View style={styles.sessionValueContainer}>
-                  <ThemedText style={[styles.detailValue, { color: '#007AFF' }]}>
-                    Session {athlete.session.number} • {athlete.session.platform} Platform
-                  </ThemedText>
-                  <IconSymbol 
-                    name={getChevronIcon('right')} 
-                    size={13} 
-                    color="#007AFF" 
-                  />
-                </View>
-              </Pressable>
-              {getSessionDetails(athlete.session.number) && (
-                <View style={styles.detailRow}>
-                  <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-                    Date & Time:
-                  </ThemedText>
-                  <ThemedText style={styles.detailValue}>
-                    {formatSessionDisplayDate(
-                      getSessionDetails(athlete.session.number)?.displayDate,
-                      getSessionDetails(athlete.session.number)?.date,
-                      meetDetails?.time.timeZoneIdentifier
-                    )} • {
-                      formatSessionTime(
-                        schedule.find(day => 
-                          day.sessions.some(s => s.number === athlete.session?.number)
-                        )?.sessions.find(s => 
-                          s.number === athlete.session?.number
-                        )?.platforms.find(p => 
-                          p.platform === athlete.session?.platform
-                        )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
-                      )
-                    }
-                  </ThemedText>
-                </View>
-              )}
-            </>
-          )}
-          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Club:
-            </ThemedText>
-            <View style={styles.wrappingDetailValue}>
-              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
-                {athlete.club}
-              </ThemedText>
-            </View>
-          </View>
-          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Weight Class:
-            </ThemedText>
-            <View style={styles.wrappingDetailValue}>
-              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
-                {athlete.weightClass}
-              </ThemedText>
-            </View>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Age:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.age}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Entry Total:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
-          </View>
-
-          {isSubscribed && (
-            <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
-              <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
-                Bests From The Last Year
-              </ThemedText>
-              <View style={styles.statsRow}>
-                {loadingBests ? (
-                  <ActivityIndicator size="small" color={colors.secondaryText} />
-                ) : (
-                  <>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        Snatch
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        CJ
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        Total
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-          )}
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.meetResultsButton,
-              pressed && { opacity: 0.8 }
-            ]}
-            onPress={() => {
-              if (isSubscribed) {
-                router.push({
-                  pathname: '/(screens)/athlete-results',
-                  params: { name: athlete.name }
-                });
-              } else {
-                router.push('/paywall');
-              }
-            }}
-          >
-            <ThemedText style={styles.meetResultsText}>
-              See All Meet Results
-            </ThemedText>
-            <IconSymbol 
-              name={getChevronIcon('right')} 
-              size={13} 
-              color="#007AFF"
-            />
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-});
-
-function sortWeightClasses(a: string, b: string): number {
-  // Extract numeric values, removing 'kg' and handling '+' classes
-  const aNum = parseInt(a.replace(/[^\d]/g, ''));
-  const bNum = parseInt(b.replace(/[^\d]/g, ''));
-  
-  // If numbers are different, sort by number
-  if (aNum !== bNum) return aNum - bNum;
-  
-  // If numbers are the same, put the + version after
-  const aHasPlus = a.includes('+');
-  const bHasPlus = b.includes('+');
-  
-  if (aHasPlus && !bHasPlus) return 1;
-  if (!aHasPlus && bHasPlus) return -1;
-  
-  return 0;
-}
-
-function sortAthletes(a: LiftResult, b: LiftResult): number {
-  return a.name.localeCompare(b.name);
-}
-
-async function requestCalendarPermissions() {
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
-  return status === 'granted';
-}
-
-// Add special value for starred clubs filter
-const STARRED_CLUBS_FILTER = 'Favorites';
-
-// Add these helper functions near the top with other helpers
-const getChevronIcon = (direction: 'down' | 'right'): string => {
-  return Platform.select({
-    ios: `chevron.${direction}`,
-    android: direction === 'right' ? 'chevron-forward' : 'chevron-down'
-  }) || `chevron.${direction}`; // Fallback to iOS style if platform select fails
-};
-
-const getSaveIcon = (): string => {
-  return Platform.select({
-    ios: "square.and.arrow.down",
-    android: "download"
-  }) || "square.and.arrow.down";
-};
-
-const getCloseIcon = (): string => {
-  return Platform.select({
-    ios: "xmark",
-    android: "close"
-  }) || "xmark";
-};
-
-const formatSessionDisplayDate = (
-  displayDate?: string,
-  fullDate?: string,
-  timeZoneId?: string
-): string => {
-  if (!displayDate && !fullDate) return '';
-  const normalized = displayDate?.toLowerCase();
-  if (normalized === 'today' || normalized === 'tomorrow') return displayDate || '';
-  if (fullDate && timeZoneId) {
-    const [datePart] = fullDate.split('T');
-    const [year, month, day] = datePart.split('-').map(Number);
-    const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
-      ? new Date(fullDate)
-      : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    return safeUtcDate.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      timeZone: timeZoneId
-    });
-  }
-  const source = fullDate || displayDate || '';
-  const parsed = new Date(source);
-  if (Number.isNaN(parsed.getTime())) return displayDate || source;
-  return parsed.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-// Add the helper function
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === 'PM' && hours !== 12) hour24 += 12;
-  if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
-
-// Add this helper function to determine age category
-function getAgeCategory(age: number): string {
-  if (age <= 13) return 'U13';
-  if (age >= 14 && age <= 15) return 'U15';
-  if (age >= 16 && age <= 17) return 'U17';
-  if (age >= 18 && age <= 20) return 'Junior';
-  if (age >= 21 && age <= 34) return 'Senior';
-  if (age >= 90) return 'Masters 90+';
-  
-  // For ages 35-89, calculate the masters category in 5-year increments
-  const mastersStart = Math.floor((age - 35) / 5) * 5 + 35;
-  return `Masters ${mastersStart}`;
-}
-
-// Update the helper function to parse weight class numbers with gender
-function parseWeightClasses(weightClass: string): string[] {
-  if (!weightClass) return []; // Handle null or empty string
-  const classes = weightClass.split(' / ');
-  const weightClasses = new Set<string>();
-  
-  classes.forEach(classStr => {
-    const trimmedClass = classStr.trim();
-    // Match pattern: number (possibly with +) followed optionally by 'kg'
-    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
-    if (match && match[1]) {
-      const number = match[1];
-      const plus = match[2] ? '+' : '';
-      weightClasses.add(`${number}${plus}kg`);
-    }
-  });
-  
-  return Array.from(weightClasses);
-}
-
-// Add type guard function
-function isMeetName(meet: string | null): meet is MeetName {
-  return meet !== null;
-}
+import { AthleteItem } from '@/components/start-list/AthleteItem';
+import { StartListSkeleton } from '@/components/start-list/StartListSkeleton';
+import {
+  sortWeightClasses,
+  sortAthletes,
+  getAgeCategory,
+  parseWeightClasses,
+  getChevronIcon,
+  getSaveIcon,
+  getCloseIcon,
+  STARRED_CLUBS_FILTER,
+  isMeetName,
+  requestCalendarPermissions,
+} from '@/lib/start-list-utils';
 
 export default function StartListScreen() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState('');
   const [clubFilter, setClubFilter] = useState('');
@@ -621,71 +136,6 @@ export default function StartListScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  const SkeletonBlock = useCallback(({ style }: { style: any }) => {
-    const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
-    return (
-      <Animated.View
-        style={[
-          styles.skeletonBlock,
-          { backgroundColor, opacity: skeletonPulse },
-          style,
-        ]}
-      />
-    );
-  }, [currentTheme, skeletonPulse]);
-
-  const renderLoadingSkeleton = useCallback(() => (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
-        <View style={styles.searchContainer}>
-          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonIcon} />
-            <SkeletonBlock style={styles.skeletonSearchLine} />
-          </View>
-        </View>
-        <View style={styles.buttonRow}>
-          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonButtonIcon} />
-            <SkeletonBlock style={styles.skeletonButtonText} />
-          </View>
-          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonButtonIcon} />
-            <SkeletonBlock style={styles.skeletonButtonText} />
-          </View>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.skeletonContent}>
-        {[0, 1, 2, 3].map((index) => (
-          <View key={`athlete-skeleton-${index}`} style={[styles.athleteCard, { backgroundColor: colors.card }]}>
-            <View style={styles.skeletonCardHeader}>
-              <SkeletonBlock style={styles.skeletonLine} />
-              <SkeletonBlock style={styles.skeletonTiny} />
-            </View>
-            <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValue} />
-              </View>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValueShort} />
-              </View>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValueShort} />
-              </View>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </ThemedView>
-  ), [SkeletonBlock, colors, currentTheme]);
-
   const requestReviewIfEligible = useCallback(async (nextCount: number) => {
     if (!REVIEW_COUNTS.includes(nextCount)) return;
     if (reviewPromptedCounts.includes(nextCount)) return;
@@ -720,7 +170,7 @@ export default function StartListScreen() {
           setLoading(false);
           fetchAthletes(validMeet)
             .then(fresh => {
-              setAthletes(fresh);
+              setTimeout(() => setAthletes(fresh), 0);
               saveMeetAthletes(validMeet, fresh).catch(() => {});
             })
             .catch(() => {});
@@ -752,54 +202,37 @@ export default function StartListScreen() {
     setLoading(false);
   }, [selectedMeet]);
 
-  // Revised schedule fetching logic (Supabase-first, Cache-fallback)
   const loadSchedule = useCallback(async () => {
-      if (!selectedMeet || !isMeetName(selectedMeet)) {
-        console.warn('StartList: No valid meet selected for schedule');
-        setScheduleData([]);
-        setIsScheduleLoading(false);
-        return;
-      }
-      const validMeet = selectedMeet;
-      setIsScheduleLoading(true);
-      let scheduleResult: ScheduleType = [];
-      let loadedFromCache = false;
-
-      try {
-        console.log(`StartList: Attempting fetchSchedule for ${validMeet}`);
-        const dbSchedule = await fetchScheduleFromDb(validMeet);
-        const transformedSchedule = await transformScheduleData(dbSchedule);
-        console.log(`StartList: fetchSchedule successful, ${transformedSchedule.length} days found`);
-        scheduleResult = transformedSchedule;
-        if (transformedSchedule.length > 0) {
-          saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
-            console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
-          );
-        } else {
-          console.log(`StartList: Empty schedule from DB for ${validMeet}; skipping cache save`);
-        }
-      } catch (fetchError) {
-        console.warn(`StartList: fetchSchedule failed for ${validMeet}, attempting cache fallback:`, fetchError);
-        try {
-          const cachedMeetData = await getMeetData(validMeet);
-          if (cachedMeetData?.schedule) {
-            console.log(`StartList: Loaded schedule from cache for ${validMeet}`);
-            scheduleResult = cachedMeetData.schedule;
-            loadedFromCache = true;
-          } else {
-            console.log(`StartList: No schedule found in cache for ${validMeet}`);
-          }
-        } catch (cacheError) {
-          console.error(`StartList: Failed to load schedule from cache for ${validMeet}:`, cacheError);
-          // Don't alert here, athlete alert is enough
-        }
-      }
-
-      setScheduleData(scheduleResult);
-      if (loadedFromCache) {
-        console.log("StartList: Displaying schedule data loaded from cache.");
-      }
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      setScheduleData([]);
       setIsScheduleLoading(false);
+      return;
+    }
+    const validMeet = selectedMeet;
+    setIsScheduleLoading(true);
+    let scheduleResult: ScheduleType = [];
+
+    try {
+      const dbSchedule = await fetchScheduleFromDb(validMeet);
+      const transformedSchedule = await transformScheduleData(dbSchedule);
+      if (transformedSchedule.length > 0) {
+        saveMeetSchedule(validMeet, transformedSchedule).catch(() => {});
+      }
+      scheduleResult = transformedSchedule;
+    } catch {
+      try {
+        const cached = await getMeetData(validMeet);
+        if (cached?.schedule && cached.schedule.length > 0) {
+          scheduleResult = cached.schedule as ScheduleType;
+        }
+      } catch {
+      }
+    }
+
+    setTimeout(() => {
+      setScheduleData(scheduleResult);
+      setIsScheduleLoading(false);
+    }, 0);
   }, [selectedMeet]);
 
   // Load data on mount and meet change
@@ -869,21 +302,14 @@ export default function StartListScreen() {
     });
   }, [clubOptions, starredClubs]);
 
-  const handlePress = useCallback((athleteName: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedId(prev => prev === athleteName ? null : athleteName);
-  }, []);
-
   const renderListItem = useCallback(({ item }: { item: LiftResult }) => (
     <AthleteItem
       athlete={item}
-      isExpanded={expandedId === item.name}
-      onPress={() => handlePress(item.name)}
       router={router}
       schedule={scheduleData}
       getSessionDetails={getSessionDetails}
     />
-  ), [expandedId, handlePress, router, scheduleData, getSessionDetails]);
+  ), [router, scheduleData, getSessionDetails]);
 
   const keyExtractor = useCallback((item: LiftResult) => item.name, []);
 
@@ -1049,6 +475,15 @@ export default function StartListScreen() {
       })
       .sort(sortAthletes);
   }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, tempAdaptiveAthleteFilter, tempGenderFilter, starredClubs, athletes]);
+
+  useEffect(() => {
+    if (athletes.length === 0) return;
+    const firstNameStartsWithA = (a: LiftResult) => ((a.name || '').trim().split(/\s+/)[0] || '').toUpperCase().startsWith('A');
+    const aNames = athletes.filter(firstNameStartsWithA).map(a => a.name);
+    if (aNames.length === 0) return;
+    const t = setTimeout(() => preloadYearBests(aNames.slice(0, 80)), 500);
+    return () => clearTimeout(t);
+  }, [athletes]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -1494,7 +929,7 @@ export default function StartListScreen() {
   }
 
   if (loading) {
-    return renderLoadingSkeleton();
+    return <StartListSkeleton colors={colors} currentTheme={currentTheme} skeletonPulse={skeletonPulse} />;
   }
 
   return (
@@ -1592,11 +1027,11 @@ export default function StartListScreen() {
         </View>
       </View>
 
+      <ExpandedIdProvider>
       <FlashList
         data={filteredAthletes}
         keyExtractor={keyExtractor}
         renderItem={renderListItem}
-        extraData={expandedId}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: 80 + insets.bottom }
@@ -1610,6 +1045,7 @@ export default function StartListScreen() {
           />
         }
       />
+      </ExpandedIdProvider>
 
       <Modal
         visible={showFilterModal}
@@ -2558,57 +1994,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  athleteCard: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    marginBottom: 12,
-  },
-  athleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  athleteName: {
-    fontSize: 17,
-    fontWeight: '400',
-  },
-  detailsContainer: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  wrappingDetailRow: {
-    alignItems: 'flex-start',
-  },
-  detailLabel: {
-    fontSize: 15,
-    minWidth: 95,
-  },
-  detailValue: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  wrappingDetailValue: {
-    flex: 1,
-  },
-  wrappingText: {
-    textAlign: 'right',
-    flexWrap: 'wrap',
-  },
   filterContainer: {
     padding: 16,
   },
@@ -2820,16 +2205,6 @@ const styles = StyleSheet.create({
   saveOptionSubtitle: {
     fontSize: 13,
   },
-  sessionLink: {
-    borderRadius: 8,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-  },
-  sessionValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   filterOptionRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2848,49 +2223,6 @@ const styles = StyleSheet.create({
   starredClubsIcon: {
     marginTop: 1,
   },
-  statsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    position: 'relative',
-  },
-  statsTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  meetResultsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  meetResultsText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#007AFF',
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2900,70 +2232,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     marginTop: 12,
-  },
-  skeletonContent: {
-    padding: 16,
-    paddingBottom: 32,
-    gap: 12,
-  },
-  skeletonBlock: {
-    borderRadius: 6,
-  },
-  skeletonIcon: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  skeletonSearchLine: {
-    height: 12,
-    width: '70%',
-    borderRadius: 6,
-  },
-  skeletonButtonIcon: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-  },
-  skeletonButtonText: {
-    height: 12,
-    width: '60%',
-    borderRadius: 6,
-  },
-  skeletonCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  skeletonLine: {
-    height: 14,
-    width: '55%',
-    borderRadius: 6,
-  },
-  skeletonTiny: {
-    width: 24,
-    height: 12,
-    borderRadius: 6,
-  },
-  skeletonDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  skeletonLabel: {
-    height: 12,
-    width: 90,
-    borderRadius: 6,
-  },
-  skeletonValue: {
-    height: 12,
-    width: 140,
-    borderRadius: 6,
-  },
-  skeletonValueShort: {
-    height: 12,
-    width: 90,
-    borderRadius: 6,
   },
   clearButton: {
     padding: 4,
