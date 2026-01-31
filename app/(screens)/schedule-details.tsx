@@ -952,48 +952,18 @@ export default function SessionDetailsScreen() {
         <View style={[styles.content, { backgroundColor: colors.background }]}>
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Session
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {params.sessionNumber}
+              <ThemedText style={[styles.sessionSummary, { color: colors.text }]}>
+                Session {params.sessionNumber} • {platformStartTime} {timeZoneAbbr}
               </ThemedText>
             </View>
 
             <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Platform
-              </ThemedText>
-              <View style={styles.platformRow}>
+              <View style={styles.platformWeightRow}>
                 <PlatformBadge platform={params.platform} />
+                <ThemedText style={[styles.inlineValue, { color: colors.text }]}>
+                  {sessionWeightClass}
+                </ThemedText>
               </View>
-            </View>
-
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Weight Class
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {sessionWeightClass}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.section, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Weigh-in Time
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {platformWeighInTime} {timeZoneAbbr}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.section, styles.lastSection]}>
-              <ThemedText style={[styles.label, { color: colors.secondaryText }]}>
-                Start Time
-              </ThemedText>
-              <ThemedText style={[styles.value, { color: colors.text }]}>
-                {platformStartTime} {timeZoneAbbr}
-              </ThemedText>
             </View>
 
             <View style={styles.buttonContainer}>
@@ -1021,11 +991,15 @@ export default function SessionDetailsScreen() {
                 </ThemedText>
               </Pressable>
             </View>
-          </View>
 
-          {/* New section for premium features */}
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <View style={[styles.section, { borderBottomWidth: 0 }]}>
+            <View
+              style={[
+                styles.section,
+                styles.lastSection,
+                styles.sectionTopDivider,
+                { borderTopColor: colors.border }
+              ]}
+            >
               <View style={styles.premiumButtonsRow}>
                 <Pressable
                   style={({ pressed }) => [
@@ -1124,6 +1098,10 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 17,
   },
+  sessionSummary: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
   athletesContainer: {
     marginTop: 16,
   },
@@ -1208,6 +1186,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  platformWeightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inlineBullet: {
+    fontSize: 15,
+    marginTop: -1,
+  },
+  inlineValue: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
   platformBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1221,12 +1212,14 @@ const styles = StyleSheet.create({
   buttonContainer: {
     padding: 16,
     gap: 12,
+    flexDirection: 'row',
   },
   saveButton: {
     backgroundColor: '#007AFF',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+    flex: 1,
   },
   saveButtonPressed: {
     opacity: 0.8,
@@ -1241,6 +1234,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+    flex: 1,
   },
   calendarButtonPressed: {
     opacity: 0.8,
@@ -1252,6 +1246,9 @@ const styles = StyleSheet.create({
   },
   lastSection: {
     borderBottomWidth: 0,
+  },
+  sectionTopDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   linksContainer: {
     marginTop: 12,
@@ -1283,7 +1280,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
     paddingHorizontal: 8,
   },
   premiumButtonText: {

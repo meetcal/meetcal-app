@@ -1,7 +1,7 @@
 import { StyleSheet, View, FlatList, Pressable, Modal, Alert, Platform, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useLayoutEffect } from 'react';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -19,6 +19,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
 import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { useNavigation } from '@react-navigation/native';
 
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -181,6 +182,7 @@ const SessionCard = React.memo(({
   schedulesMap: Map<MeetName, ScheduleType>;
 }) => {
   const { currentTheme } = useTheme();
+  const navigation = useNavigation();
   const { meetDetails } = useSelectedMeet();
 
   // Get time zone abbreviation - moved before early returns to follow Rules of Hooks
@@ -433,6 +435,7 @@ export default function SavedScreen() {
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } = useSavedSessions();
   const { selectedMeet } = useSelectedMeet();
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -816,40 +819,47 @@ export default function SavedScreen() {
     fetchAllSchedules();
   }, [savedSessions]);
 
-  return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={styles.buttonRow}>
+  useLayoutEffect(() => {
+    const calendarIconColor = isSchedulesLoading
+      ? colors.border
+      : (isSubscribed ? colors.text : colors.secondaryText);
+
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
           <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            style={styles.headerIconButton}
             onPress={handleSaveToCalendar}
             disabled={isSchedulesLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Add to calendar"
           >
-            <IconSymbol 
-              name="calendar" 
-              size={16} 
-              color={isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText)} 
-            />
-            <ThemedText style={[
-              styles.buttonText, 
-              { color: isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText) }
-            ]}>
-              {isSchedulesLoading ? 'Loading...' : 'Add to Calendar'}
-            </ThemedText>
+            <IconSymbol name="calendar" size={24} color={calendarIconColor} />
           </Pressable>
-
           <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
+            style={styles.headerIconButton}
             onPress={handleResetSessions}
+            accessibilityRole="button"
+            accessibilityLabel="Delete all saved sessions"
           >
-            <IconSymbol name={Platform.OS === 'ios' ? 'trash' : 'trash'} size={16} color="#FF3B30" />
-            <ThemedText style={[styles.buttonText, { color: '#FF3B30' }]}>
-              Delete All
-            </ThemedText>
+            <IconSymbol name="trash" size={24} color="#FF3B30" />
           </Pressable>
         </View>
-      </View>
+      ),
+    });
+  }, [
+    colors.border,
+    colors.secondaryText,
+    colors.text,
+    handleResetSessions,
+    handleSaveToCalendar,
+    isSchedulesLoading,
+    isSubscribed,
+    navigation,
+  ]);
 
+  return (
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
         data={filteredSessions}
         keyExtractor={item => item.id}
@@ -946,41 +956,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  filterContainer: {
-    padding: 16,
-    backgroundColor: '#F5F5F5',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#C6C6C8',
-    gap: 12,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  button: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C6C6C8',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
+    gap: 10,
   },
-  buttonText: {
-    fontSize: 15,
-    color: '#666666',
-    fontWeight: '600',
+  headerIconButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   list: {
     padding: 16,
