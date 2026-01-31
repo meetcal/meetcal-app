@@ -28,30 +28,30 @@ export default function TabLayout() {
     });
   }, [currentTheme, navigation]);
 
-  // if (Platform.OS === 'ios') {
-  //   return (
-  //     <NativeTabs
-  //       labelStyle={{ color: colors.secondaryText }}
-  //       tintColor={colors.text}>
-  //       <NativeTabs.Trigger name="index">
-  //         <Label hidden />
-  //         <Icon sf={{ default: 'calendar', selected: 'calendar.circle.fill' }} />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="saved">
-  //         <Label hidden />
-  //         <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="start-list">
-  //         <Label hidden />
-  //         <Icon sf="list.bullet" />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="info">
-  //         <Label hidden />
-  //         <Icon sf={{ default: 'info.circle', selected: 'info.circle.fill' }} />
-  //       </NativeTabs.Trigger>
-  //     </NativeTabs>
-  //   );
-  // }
+  if (Platform.OS === 'ios') {
+    return (
+      <NativeTabs
+        labelStyle={{ color: colors.secondaryText }}
+        tintColor={colors.text}>
+        <NativeTabs.Trigger name="(index)">
+          <Icon sf="calendar" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(saved)">
+          <Icon sf="bookmark.fill" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(start-list)">
+          <Icon sf="list.bullet" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(info)">
+          <Icon sf="info.circle.fill" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+      </NativeTabs>
+    );
+  }
 
   return (
     <Tabs
@@ -84,28 +84,28 @@ export default function TabLayout() {
         tabBarShowLabel: false,
       }}>
       <Tabs.Screen
-        name="index"
+        name="(index)"
         options={{
           title: 'Today',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="saved"
+        name="(saved)"
         options={{
           title: 'Saved',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="bookmark.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="start-list"
+        name="(start-list)"
         options={{
           title: 'Start List',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="info"
+        name="(info)"
         options={{
           title: 'Info',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
