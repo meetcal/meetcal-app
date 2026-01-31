@@ -27,11 +27,11 @@ export const Colors = {
 
 export function getPlatformColors() {
   return {
-    Red: '#FF6B6B',
-    White: '#4A4A4A',
-    Blue: '#4DABF7',
-    Stars: '#B8860B',  // Changed to a richer gold color (darkgoldenrod)
-    Stripes: '#9C27B0',  // Purple
-    Rogue: '#4CAF50',  // Green
+    Red: '#FF3B30',
+    White: '#8E8E93',
+    Blue: '#007AFF',
+    Stars: '#AF52DE',
+    Stripes: '#34C759',
+    Rogue: '#000000',
   } as const;
 }

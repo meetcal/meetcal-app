@@ -274,6 +274,8 @@ PODS:
   - ExpoWebBrowser (15.0.9):
     - ExpoModulesCore
   - EXStructuredHeaders (5.0.0)
+  - ExtensionStorage (1.0.0):
+    - ExpoModulesCore
   - EXUpdates (29.0.12):
     - EASClient
     - EXManifests
@@ -2410,6 +2412,7 @@ DEPENDENCIES:
   - ExpoSystemUI (from `../node_modules/expo-system-ui/ios`)
   - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
   - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
+  - "ExtensionStorage (from `../node_modules/@bacons/apple-targets/ios`)"
   - EXUpdates (from `../node_modules/expo-updates/ios`)
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
@@ -2572,6 +2575,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-web-browser/ios"
   EXStructuredHeaders:
     :path: "../node_modules/expo-structured-headers/ios"
+  ExtensionStorage:
+    :path: "../node_modules/@bacons/apple-targets/ios"
   EXUpdates:
     :path: "../node_modules/expo-updates/ios"
   EXUpdatesInterface:
@@ -2775,6 +2780,7 @@ SPEC CHECKSUMS:
   ExpoSystemUI: 2761aa6875849af83286364811d46e8ed8ea64c7
   ExpoWebBrowser: b973e1351fdcf5fec0c400997b1851f5a8219ec3
   EXStructuredHeaders: c951e77f2d936f88637421e9588c976da5827368
+  ExtensionStorage: 5796de20bf181317c376d693fedb64c6781a33ba
   EXUpdates: ef83273afc231a627b170358c90689ac30a4429d
   EXUpdatesInterface: 5adf50cb41e079c861da6d9b4b954c3db9a50734
   FBLazyVector: e95a291ad2dadb88e42b06e0c5fb8262de53ec12
@@ -2864,6 +2870,6 @@ SPEC CHECKSUMS:
   RNWorklets: 76fce72926e28e304afb44f0da23b2d24f2c1fa0
   Yoga: 65431d43277b661ebc7289c6c5d82f64ce42cfe0
 
-PODFILE CHECKSUM: 8f21508ef1d76ba82af7f854a5baf7a50c10a208
+PODFILE CHECKSUM: cca265e01423b512dbe8d08ac8a49e14fcae6e9d
 
 COCOAPODS: 1.16.2
