@@ -4,7 +4,10 @@ import { MeetName } from '@/data/types/meet';
 
 export const syncSavedWidget = (selectedMeet: MeetName | null, sessions: SavedSession[]) => {
   const module = NativeModules.SavedWidget;
-  if (!module?.updateSavedWidget) return;
+  if (!module?.updateSavedWidget) {
+    console.log('[Widget] Native module not available');
+    return;
+  }
 
   const filtered = selectedMeet
     ? sessions.filter(session => session.meet === selectedMeet)
@@ -18,6 +21,8 @@ export const syncSavedWidget = (selectedMeet: MeetName | null, sessions: SavedSe
     date: session.date,
   }));
 
+  console.log(`[Widget] Syncing: meet="${selectedMeet}", sessions=${widgetSessions.length}`);
+  
   try {
     module.updateSavedWidget(selectedMeet ?? '', JSON.stringify(widgetSessions));
   } catch (error) {

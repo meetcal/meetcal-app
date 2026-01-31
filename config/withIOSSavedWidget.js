@@ -36,11 +36,32 @@ const withIOSSavedWidget = (config) => {
       });
 
       const productName = XcodeUtils.getProductName(project);
-      XcodeUtils.addFramework({
+      
+      // Add WidgetKit framework with weak linking (optional)
+      const frameworkOptions = {
         project,
         projectName: productName,
         framework: 'WidgetKit.framework',
-      });
+      };
+      
+      // Add the framework
+      XcodeUtils.addFramework(frameworkOptions);
+      
+      // Make it optional (weak linking) by finding and modifying the framework reference
+      const frameworks = project.pbxFrameworksBuildPhaseObj(project.getFirstTarget().uuid);
+      if (frameworks && frameworks.files) {
+        for (const file of frameworks.files) {
+          const fileRef = project.pbxFileReferenceSection()[file.value];
+          if (fileRef && fileRef.path === 'WidgetKit.framework') {
+            // Mark as optional/weak
+            if (!file.settings) {
+              file.settings = {};
+            }
+            file.settings.ATTRIBUTES = ['Weak'];
+            break;
+          }
+        }
+      }
 
       fs.writeFileSync(projectPath, project.writeSync());
 
