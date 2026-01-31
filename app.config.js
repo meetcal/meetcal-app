@@ -79,7 +79,7 @@ export default ({ config }) => ({
   runtimeVersion: "5.2.5",
   updates: {
     url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
-    enabled: false,
+    enabled: !IS_DEV,
     fallbackToCacheTimeout: 0
   }
 }); 
