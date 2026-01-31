@@ -14,9 +14,24 @@ import { cacheAuthState } from '@/lib/authCache'
 // Warm up the browser for better performance
 export const useWarmUpBrowser = () => {
   useEffect(() => {
-    void WebBrowser.warmUpAsync()
+    const warmUp = async () => {
+      try {
+        await WebBrowser.warmUpAsync()
+      } catch (err) {
+        // Some Android setups can't resolve a browser package; ignore.
+        console.log('WebBrowser warmUp skipped:', err)
+      }
+    }
+    void warmUp()
     return () => {
-      void WebBrowser.coolDownAsync()
+      const coolDown = async () => {
+        try {
+          await WebBrowser.coolDownAsync()
+        } catch (err) {
+          console.log('WebBrowser coolDown skipped:', err)
+        }
+      }
+      void coolDown()
     }
   }, [])
 }
@@ -93,6 +108,41 @@ export default function SignInScreen() {
   }
 
   // Handle Google OAuth
+  const safeStringify = (value: unknown) => {
+    try {
+      const seen = new WeakSet<object>()
+      return JSON.stringify(value, (_key, val) => {
+        if (typeof val === 'object' && val !== null) {
+          if (seen.has(val as object)) return '[Circular]'
+          seen.add(val as object)
+        }
+        return val
+      })
+    } catch (stringifyError) {
+      return `<<unstringifiable: ${String(stringifyError)}>>`
+    }
+  }
+  const dumpErrorDetails = (value: unknown) => {
+    try {
+      if (value && typeof value === 'object') {
+        const obj = value as Record<string, unknown>
+        const keys = Object.keys(obj)
+        const allKeys = Object.getOwnPropertyNames(obj)
+        console.error('OAuth error keys:', keys)
+        console.error('OAuth error all keys:', allKeys)
+        allKeys.forEach((key) => {
+          try {
+            console.error(`OAuth error prop ${key}:`, obj[key])
+          } catch (propErr) {
+            console.error(`OAuth error prop ${key} (read error):`, propErr)
+          }
+        })
+      }
+    } catch (dumpErr) {
+      console.error('OAuth error dump failed:', dumpErr)
+    }
+  }
+
   const onGooglePress = useCallback(async () => {
     try {
       console.log('Starting Google OAuth flow...');
@@ -107,7 +157,7 @@ export default function SignInScreen() {
         strategy: 'oauth_google',
         redirectUrl,
       });
-      console.log('SSO Flow Result:', JSON.stringify(result, null, 2));
+      console.log('SSO Flow Result:', safeStringify(result));
 
       if (result.createdSessionId) {
         console.log('Session created directly:', result.createdSessionId);
@@ -185,7 +235,18 @@ export default function SignInScreen() {
         console.log('Unexpected flow state:', JSON.stringify(result, null, 2));
       }
     } catch (err) {
-      console.error('OAuth error:', JSON.stringify(err, null, 2));
+      // Many native errors aren't JSON-serializable; log safely.
+      console.error('OAuth error (raw):', err);
+      console.error('OAuth error (name):', (err as Error)?.name);
+      console.error('OAuth error (message):', (err as Error)?.message);
+      console.error('OAuth error (stack):', (err as Error)?.stack);
+      try {
+        console.error('OAuth error (string):', String(err));
+      } catch (toStringError) {
+        console.error('OAuth error (string error):', toStringError);
+      }
+      console.error('OAuth error (safe json):', safeStringify(err));
+      dumpErrorDetails(err);
     }
   }, [handlePostSignIn]);
 
