@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { useOTAUpdates } from '@/hooks/useOTAUpdates';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -7,7 +7,6 @@ export function UpdateNotification() {
   const {
     isUpdateAvailable,
     isDownloading,
-    isChecking,
     error,
     downloadAndRestart,
     dismissUpdate,
@@ -15,16 +14,21 @@ export function UpdateNotification() {
   const { currentTheme } = useTheme();
 
   const isDark = currentTheme === 'dark';
+  const visible = isUpdateAvailable || !!error;
 
-  if (!isUpdateAvailable && !error) {
+  if (!visible) {
     return null;
   }
 
   return (
-    <View style={[
-      styles.container,
-      { backgroundColor: isDark ? '#1c1c1e' : '#f2f2f7' }
-    ]}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={dismissUpdate}
+    >
+      <Pressable style={styles.backdrop} onPress={dismissUpdate}>
+        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1c1c1e' : '#f2f2f7' }]} onPress={(e) => e.stopPropagation()}>
       {error ? (
         <View style={styles.content}>
           <Text style={[
@@ -97,22 +101,29 @@ export function UpdateNotification() {
           </View>
         </View>
       )}
-    </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    margin: 16,
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
     borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
   content: {
     padding: 16,
