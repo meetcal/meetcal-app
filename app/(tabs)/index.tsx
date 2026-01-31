@@ -1,4 +1,4 @@
-import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated } from 'react-native';
+import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
@@ -631,7 +631,7 @@ export default function ScheduleScreen() {
 
       {!schedule || schedule.length === 0 ? (
         <ScrollView
-          contentContainerStyle={styles.loadingContainer}
+          contentContainerStyle={styles.emptyStateContainer}
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -640,11 +640,13 @@ export default function ScheduleScreen() {
             />
           }
         >
-          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
-            No schedule data available
-          </ThemedText>
-          <ThemedText style={[styles.loadingText, { color: colors.secondaryText, marginTop: 8, fontSize: 14 }]}>
-            Pull down to refresh
+          <Image
+            source={require('@/assets/images/MeetCal-no-bg.png')}
+            style={styles.emptyStateImage}
+            resizeMode="contain"
+          />
+          <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
+            No data has been loaded yet for this meet. Check back soon!
           </ThemedText>
         </ScrollView>
       ) : (
@@ -961,6 +963,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  emptyStateContainer: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    gap: 16,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyStateImage: {
+    width: 144,
+    height: 144,
   },
   contentContainer: {
     flex: 1,

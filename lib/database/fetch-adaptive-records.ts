@@ -1,37 +1,26 @@
 import { supabase } from '@/lib/supabase';
-import { RecordsData } from '@/types/records';
+import { RecordsData, WeightClassRecord } from '@/types/records';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type Gender = 'Men' | 'Women';
+
 type AdaptiveRecordRow = {
-  body_weight: number;
+  id: number;
+  age: string | null;
   snatch_best: number | null;
   cj_best: number | null;
   total: number | null;
+  name: string | null;
 };
 
-// Weight class mappings for men and women
-const MENS_WEIGHT_CLASSES = [55, 61, 67, 73, 81, 89, 96, 102, 109, 118, 145, Infinity];
-const WOMENS_WEIGHT_CLASSES = [45, 49, 55, 59, 64, 71, 76, 81, 87, Infinity];
-
-function getWeightClass(bodyWeight: number, gender: string): string {
-  const classes = gender.toLowerCase() === 'men' ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
-  
-  for (const limit of classes) {
-    if (bodyWeight <= limit) {
-      return limit === Infinity ? `+${classes[classes.length - 2]}` : limit.toString();
-    }
-  }
-  
-  return `+${classes[classes.length - 2]}`;
-}
+const AGE_GROUP_KEY = 'Adaptive';
 
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
-    if (w.startsWith('+')) return Infinity;
-    const num = parseInt(w);
-    return isNaN(num) ? Infinity : num;
+    if (w.includes('+')) return Infinity;
+    const num = parseInt(w.replace(/[^\d]/g, ''), 10);
+    return Number.isNaN(num) ? Infinity : num;
   };
   const aVal = parse(a);
   const bVal = parse(b);
@@ -41,69 +30,67 @@ function weightClassSort(a: string, b: string): number {
   return aVal - bVal;
 }
 
+// Extract weight class from age column (e.g., "Women's Masters (35-39) 69kg" -> "69kg")
+function extractWeightClass(ageString: string): string | null {
+  const match = ageString.match(/(\d+\+?kg)$/i);
+  return match ? match[1] : null;
+}
+
+async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
+  const { data, error } = await supabase
+    .from('lifting_results')
+    .select('id, age, snatch_best, cj_best, total, name')
+    .eq('adaptive', true)
+    .neq('federation', 'BWL')
+    .like('age', `%${gender}%`);
+
+  if (error) throw error;
+
+  const rows = (data || []) as AdaptiveRecordRow[];
+  const weightClassRecords = new Map<string, AdaptiveRecordRow>();
+
+  rows.forEach((row) => {
+    if (!row.age) return;
+    const weightClass = extractWeightClass(row.age);
+    if (!weightClass) return;
+    if (row.total == null) return;
+
+    const existing = weightClassRecords.get(weightClass);
+    if (!existing || (row.total ?? 0) > (existing.total ?? 0)) {
+      weightClassRecords.set(weightClass, row);
+    }
+  });
+
+  const records = Array.from(weightClassRecords.entries()).map(([weightClass, row]) => ({
+    weightClass,
+    snatchRecord: row.snatch_best ?? 0,
+    cjRecord: row.cj_best ?? 0,
+    totalRecord: row.total ?? 0,
+  }));
+
+  records.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+  return records;
+}
+
 export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
   const cacheKey = OFFLINE_CACHE_KEYS.adaptiveRecords;
+  const ageGroupKey = ageGroup || AGE_GROUP_KEY;
 
   try {
-    let query = supabase
-      .from('lifting_results')
-      .select('*')
-      .eq('adaptive', true)
-      .not('body_weight', 'is', null)
-      .not('snatch_best', 'is', null)
-      .not('cj_best', 'is', null)
-      .not('total', 'is', null);
+    const result: RecordsData = {
+      [ageGroupKey]: { Men: [], Women: [] },
+    };
 
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    // Group by weight class and calculate max lifts
-    const weightClassGroups: { [key: string]: { [gender: string]: any[] } } = {};
-
-    const rows = (data || []) as AdaptiveRecordRow[];
-    rows.forEach((row) => {
-      // Simple gender inference based on typical weight ranges
-      // Men's weight classes typically go higher than women's
-      const inferredGender = row.body_weight > 87 ? 'Men' : 'Women';
-      
-      if (gender && inferredGender !== gender) return; // Filter by gender if specified
-
-      const weightClass = getWeightClass(row.body_weight, inferredGender);
-      
-      if (!weightClassGroups[weightClass]) {
-        weightClassGroups[weightClass] = { Men: [], Women: [] };
-      }
-      
-      weightClassGroups[weightClass][inferredGender].push(row);
-    });
-
-    // Calculate max records for each weight class
-    // Use the provided age group or default to 'Adaptive'
-    const ageGroupKey = ageGroup || 'Adaptive';
-    const result: RecordsData = { [ageGroupKey]: { Men: [], Women: [] } };
-
-    Object.entries(weightClassGroups).forEach(([weightClass, genderGroups]) => {
-      ['Men', 'Women'].forEach((genderKey) => {
-        const records = genderGroups[genderKey];
-        if (records.length > 0) {
-          const maxSnatch = Math.max(...records.map(r => r.snatch_best || 0));
-          const maxCJ = Math.max(...records.map(r => r.cj_best || 0));
-          const maxTotal = Math.max(...records.map(r => r.total || 0));
-
-          result[ageGroupKey][genderKey as 'Men' | 'Women'].push({
-            weightClass,
-            snatchRecord: maxSnatch,
-            cjRecord: maxCJ,
-            totalRecord: maxTotal,
-          });
-        }
-      });
-    });
-
-    // Sort weight classes
-    result[ageGroupKey].Men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-    result[ageGroupKey].Women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    if (gender) {
+      result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
+    } else {
+      const [menRecords, womenRecords] = await Promise.all([
+        fetchAdaptiveRecordsForGender('Men'),
+        fetchAdaptiveRecordsForGender('Women'),
+      ]);
+      result[ageGroupKey].Men = menRecords;
+      result[ageGroupKey].Women = womenRecords;
+    }
 
     if (!gender && !ageGroup) {
       await setOfflineCache(cacheKey, result);
@@ -114,10 +101,7 @@ export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): 
     const cached = await getOfflineCache<RecordsData>(cacheKey);
     if (cached?.data) {
       if (ageGroup && !cached.data[ageGroup]) {
-        const firstKey = Object.keys(cached.data)[0];
-        if (firstKey) {
-          return { [ageGroup]: cached.data[firstKey] };
-        }
+        return { [ageGroup]: cached.data[AGE_GROUP_KEY] || { Men: [], Women: [] } };
       }
       return cached.data;
     }
