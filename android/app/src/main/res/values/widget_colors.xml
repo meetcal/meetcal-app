@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="widget_blue">#007AFF</color>
+  <color name="widget_text_primary">#1C1C1E</color>
+  <color name="widget_text_secondary">#6B6B6E</color>
+  <color name="widget_divider">#D5D5DA</color>
+  <color name="widget_bg">#F2F2F7</color>
+  <color name="widget_chip_text">#FFFFFF</color>
+  <color name="widget_chip_red">#FF3B30</color>
+  <color name="widget_chip_gray">#8E8E93</color>
+  <color name="widget_chip_indigo">#5856D6</color>
+  <color name="widget_chip_green">#34C759</color>
+  <color name="widget_chip_black">#1C1C1E</color>
+  <color name="widget_chip_blue">#007AFF</color>
+</resources>

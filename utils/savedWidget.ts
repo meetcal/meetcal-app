@@ -1,12 +1,8 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import { MeetName } from '@/data/types/meet';
 
-const isAndroid = Platform.OS === 'android';
-
 export const syncSavedWidget = (selectedMeet: MeetName | null, sessions: SavedSession[]) => {
-  if (!isAndroid) return;
-
   const module = NativeModules.SavedWidget;
   if (!module?.updateSavedWidget) return;
 
@@ -30,8 +26,6 @@ export const syncSavedWidget = (selectedMeet: MeetName | null, sessions: SavedSe
 };
 
 export const clearSavedWidget = () => {
-  if (!isAndroid) return;
-
   const module = NativeModules.SavedWidget;
   if (!module?.clearSavedWidget) return;
 
