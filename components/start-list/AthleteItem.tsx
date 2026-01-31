@@ -91,14 +91,24 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
 
   const handleSessionPress = useCallback(() => {
     if (!athlete.session) return;
-    const sessionDay = schedule.find(day =>
-      day.sessions.some(s => s.number === athlete.session?.number)
-    );
-    const scheduleSession = sessionDay?.sessions.find(s => s.number === athlete.session?.number);
-    const platform = scheduleSession?.platforms.find(p => p.platform === athlete.session?.platform);
-    const startTime = platform?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime;
-    const weighInTime = startTime ? calculateWeighInTime(startTime) : getSessionDetails(athlete.session.number)?.weighInTime;
-    if (!sessionDay || !startTime || !weighInTime) return;
+    const hasEmbedded = athlete.session.date != null && athlete.session.startTime != null && athlete.session.weighInTime != null;
+    let startTime: string;
+    let weighInTime: string;
+    let dateStr: string;
+    if (hasEmbedded) {
+      startTime = athlete.session.startTime!;
+      weighInTime = athlete.session.weighInTime!;
+      dateStr = athlete.session.date!;
+    } else {
+      const sessionDay = schedule.find(day => day.sessions.some(s => s.number === athlete.session?.number));
+      const scheduleSession = sessionDay?.sessions.find(s => s.number === athlete.session?.number);
+      const platform = scheduleSession?.platforms.find(p => p.platform === athlete.session?.platform);
+      const details = getSessionDetails(athlete.session.number);
+      startTime = platform?.platformStartTime || details?.startTime || '';
+      weighInTime = startTime ? calculateWeighInTime(startTime) : (details?.weighInTime || '');
+      dateStr = sessionDay?.fullDate || details?.date || '';
+    }
+    if (!startTime || !weighInTime || !dateStr) return;
     router.push({
       pathname: '/(screens)/schedule-details',
       params: {
@@ -108,7 +118,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
         weightClass: athlete.weightClass,
         startTime,
         weighInTime,
-        date: sessionDay.fullDate,
+        date: dateStr,
         athleteName: athlete.name,
       }
     });
@@ -144,19 +154,20 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
                   <IconSymbol name={getChevronIcon('right')} size={13} color="#007AFF" />
                 </View>
               </Pressable>
-              {getSessionDetails(athlete.session.number) && (
+              {(athlete.session.displayDate != null || getSessionDetails(athlete.session.number)) && (
                 <View style={styles.detailRow}>
                   <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>Date & Time:</ThemedText>
                   <ThemedText style={styles.detailValue}>
                     {formatSessionDisplayDate(
-                      getSessionDetails(athlete.session.number)?.displayDate,
-                      getSessionDetails(athlete.session.number)?.date,
+                      athlete.session.displayDate ?? getSessionDetails(athlete.session.number)?.displayDate,
+                      athlete.session.date ?? getSessionDetails(athlete.session.number)?.date,
                       meetDetails?.time.timeZoneIdentifier
                     )} • {formatSessionTime(
+                      athlete.session.startTime ??
                       schedule.find(day => day.sessions.some(s => s.number === athlete.session?.number))
                         ?.sessions.find(s => s.number === athlete.session?.number)
                         ?.platforms.find(p => p.platform === athlete.session?.platform)
-                        ?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
+                        ?.platformStartTime ?? getSessionDetails(athlete.session.number)?.startTime
                     )}
                   </ThemedText>
                 </View>

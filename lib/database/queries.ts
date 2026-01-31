@@ -178,6 +178,80 @@ export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   }
 }
 
+type AthleteWithSessionRow = {
+  member_id: string;
+  name: string;
+  age: number;
+  club: string;
+  gender: string;
+  weight_class: string;
+  entry_total: number;
+  adaptive: boolean;
+  session_number: number | null;
+  session_platform: string | null;
+  meet: string;
+  session_date: string | null;
+  session_start_time: string | null;
+  session_weigh_in_time: string | null;
+  session_weight_class: string | null;
+};
+
+export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResult[]> {
+  const { data, error } = await supabase
+    .from('athletes_with_session')
+    .select('*')
+    .eq('meet', meet);
+
+  if (error) {
+    return fetchAthletes(meet);
+  }
+
+  const meetConfig = await getMeetConfig(meet);
+  const formatDisplayDate = (isoDate: string | null) => {
+    if (!isoDate) return undefined;
+    const [datePart] = isoDate.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return undefined;
+    const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return d.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: meetConfig.time.timeZoneIdentifier,
+    });
+  };
+
+  const rows = (data || []) as AthleteWithSessionRow[];
+  const mappedData: LiftResult[] = rows.map((row) => {
+    const hasSession = row.session_number != null && row.session_platform != null;
+    const session = hasSession
+      ? {
+          number: row.session_number!,
+          platform: validatePlatform(row.session_platform!),
+          ...(row.session_date != null && {
+            date: row.session_date,
+            startTime: formatTo12Hour(row.session_start_time ?? ''),
+            weighInTime: formatTo12Hour(row.session_weigh_in_time ?? ''),
+            displayDate: formatDisplayDate(row.session_date) ?? undefined,
+          }),
+        }
+      : undefined;
+    return {
+      memberId: row.member_id || '',
+      name: row.name,
+      age: row.age,
+      club: row.club,
+      gender: row.gender || '',
+      weightClass: row.weight_class || '',
+      entryTotal: row.entry_total,
+      adaptive: row.adaptive || false,
+      session,
+    };
+  });
+
+  return mappedData;
+}
+
 export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
   
   const { data, error } = await supabase
@@ -190,21 +264,19 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
     throw error;
   }
 
-  // Explicitly map Supabase snake_case fields to LiftResult camelCase fields
   const mappedData: LiftResult[] = (data || []).map(athlete => ({
     memberId: athlete.member_id || '',
     name: athlete.name,
     age: athlete.age,
     club: athlete.club,
     gender: athlete.gender || '',
-    weightClass: athlete.weight_class || '', // Map weight_class to weightClass
+    weightClass: athlete.weight_class || '',
     entryTotal: athlete.entry_total,
     adaptive: athlete.adaptive || false,
     session: athlete.session_number && athlete.session_platform ? {
       number: athlete.session_number,
-      platform: validatePlatform(athlete.session_platform), // Also validate platform here
+      platform: validatePlatform(athlete.session_platform),
     } : undefined,
-    // Add any other fields from LiftResult that need mapping
   }));
 
   return mappedData;
