@@ -990,6 +990,7 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 17,
+    width: '90%',
   },
   meetValue: {
     fontSize: 15,
