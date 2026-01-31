@@ -251,7 +251,11 @@ function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessio
                     Date & Time:
                   </ThemedText>
                   <ThemedText style={styles.detailValue}>
-                    {getSessionDetails(athlete.session.number)?.displayDate} • {
+                    {formatSessionDisplayDate(
+                      getSessionDetails(athlete.session.number)?.displayDate,
+                      getSessionDetails(athlete.session.number)?.date,
+                      meetDetails?.time.timeZoneIdentifier
+                    )} • {
                       formatSessionTime(
                         schedule.find(day => 
                           day.sessions.some(s => s.number === athlete.session?.number)
@@ -421,6 +425,37 @@ const getCloseIcon = (): string => {
     ios: "xmark",
     android: "close"
   }) || "xmark";
+};
+
+const formatSessionDisplayDate = (
+  displayDate?: string,
+  fullDate?: string,
+  timeZoneId?: string
+): string => {
+  if (!displayDate && !fullDate) return '';
+  const normalized = displayDate?.toLowerCase();
+  if (normalized === 'today' || normalized === 'tomorrow') return displayDate || '';
+  if (fullDate && timeZoneId) {
+    const [datePart] = fullDate.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
+    const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
+      ? new Date(fullDate)
+      : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return safeUtcDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: timeZoneId
+    });
+  }
+  const source = fullDate || displayDate || '';
+  const parsed = new Date(source);
+  if (Number.isNaN(parsed.getTime())) return displayDate || source;
+  return parsed.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  });
 };
 
 // Add the helper function
@@ -1434,7 +1469,7 @@ export default function StartListScreen() {
       }
       
       const errorMessage = Platform.select({
-        ios: 'Could not add events to calendar. Please try again.',
+        ios: 'Could not add events to calendadayr. Please try again.',
         android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
         default: 'Could not add events to calendar. Please try again.'
       });

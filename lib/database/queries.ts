@@ -115,17 +115,18 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
 
   for (const row of dbSchedule) {
     if (!scheduleMap.has(row.date)) {
-      // Create a date object in UTC
-      const utcDate = new Date(row.date);
-      
-      // Format the date in the meet's timezone
+      // Format the date in the meet's timezone without double-applying offsets.
       const meetConfig = await getMeetConfig(row.meet as MeetName);
-      const meetDate = new Date(utcDate.getTime() + (meetConfig.time.utcOffset * 60 * 60 * 1000));
-      
+      const [datePart] = row.date.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
+        ? new Date(row.date)
+        : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+
       scheduleMap.set(row.date, {
-        date: meetDate.toLocaleDateString('en-US', { 
-          month: 'long', 
-          day: 'numeric', 
+        date: safeUtcDate.toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
           year: 'numeric',
           timeZone: meetConfig.time.timeZoneIdentifier
         }),
