@@ -64,6 +64,7 @@ export default ({ config }) => ({
       },
     ],
     '@bacons/apple-targets',
+    './config/withAndroidSavedWidget',
   ],
   experiments: {
     typedRoutes: true,

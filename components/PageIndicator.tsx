@@ -1,4 +1,4 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet, Platform } from 'react-native';
 import { useThemeColor } from '../hooks/useThemeColor';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -23,7 +23,7 @@ export function PageIndicator({ count, currentPage, onPageChange }: PageIndicato
     <View style={[
       styles.container,
       { 
-        bottom: insets.bottom + 100,
+        bottom: Platform.OS === 'ios' ? insets.bottom + 60 : insets.bottom + 100,
       }
     ]}>
       <View style={[
