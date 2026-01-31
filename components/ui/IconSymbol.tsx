@@ -22,6 +22,8 @@ const iconMap: Record<string, string> = {
   'magnifyingglass': 'search',
   'arrow.down.circle': 'arrow-down-circle',
   'arrow.clockwise': 'refresh',
+  'arrow.up.arrow.down': 'swap-vertical',
+  'lock': 'lock-closed',
   'xmark': 'close',
   'close': 'close',
 };
