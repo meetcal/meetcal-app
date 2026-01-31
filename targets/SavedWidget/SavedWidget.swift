@@ -26,7 +26,9 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         let entry = loadEntry()
-        let timeline = Timeline(entries: [entry], policy: .never)
+        // Refresh every 15 minutes to pick up changes from the app
+        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+        let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
         completion(timeline)
     }
 
