@@ -632,7 +632,7 @@ export default function ScheduleScreen() {
               <ThemedText style={[styles.filterButtonText, { color: colors.text }]}>
                 Selected Meet
               </ThemedText>
-              <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]} numberOfLines={2} ellipsizeMode="tail">
+              <ThemedText style={[styles.meetValue, { color: colors.secondaryText }]} numberOfLines={1} ellipsizeMode="tail">
                 {selectedMeet}
               </ThemedText>
             </View>
