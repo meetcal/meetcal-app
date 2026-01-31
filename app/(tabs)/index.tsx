@@ -543,6 +543,34 @@ export default function ScheduleScreen() {
     return Array.from(letterSet).sort();
   }, [schedule]);
 
+  const formatDayTitle = useCallback((day: DaySchedule) => {
+    const sourceDate = day.fullDate || day.date;
+    if (!sourceDate) return day.date;
+
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sourceDate);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]);
+      const dayOfMonth = Number(isoMatch[3]);
+      const utcDate = new Date(Date.UTC(year, month - 1, dayOfMonth));
+      return new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(utcDate);
+    }
+
+    const parsed = new Date(sourceDate);
+    if (Number.isNaN(parsed.getTime())) return day.date;
+
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    }).format(parsed);
+  }, []);
+
   const onViewableItemsChanged = useCallback(({ viewableItems }: {
     viewableItems: ViewToken[];
     changed: ViewToken[];
@@ -551,10 +579,10 @@ export default function ScheduleScreen() {
       const currentItem = viewableItems[0].item as DaySchedule;
       setCurrentDate(currentItem.date);
       navigation.setOptions({
-        title: currentItem.date
+        title: formatDayTitle(currentItem)
       });
     }
-  }, [navigation]);
+  }, [formatDayTitle, navigation]);
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50
