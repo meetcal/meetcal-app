@@ -144,12 +144,12 @@ export default function RootLayout() {
         >
           <PostHogProvider client={posthog}>
             <SubscriptionProvider>
-              <SavedSessionsProvider>
-                <SelectedMeetProvider>
+              <SelectedMeetProvider>
+                <SavedSessionsProvider>
                   <PostHogPageView />
                   <AppContent fontsLoaded={fontsLoaded} />
-                </SelectedMeetProvider>
-              </SavedSessionsProvider>
+                </SavedSessionsProvider>
+              </SelectedMeetProvider>
             </SubscriptionProvider>
           </PostHogProvider>
         </ClerkProvider>
@@ -263,4 +263,3 @@ function RootLayoutNav() {
     </NavigationThemeProvider>
   );
 }
-

@@ -1,7 +1,7 @@
 import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRouter } from 'expo-router';
-import { useCallback, useRef, useState, useMemo, useEffect } from 'react';
+import { router, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { SyncManager } from '@/lib/database/sync-manager';
@@ -11,12 +11,13 @@ import { ThemedView } from '@/components/ThemedView';
 import { getPlatformColors } from '@/constants/Colors';
 import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/types/schedule';
 import { useTheme } from '@/contexts/ThemeContext';
-import { PageIndicator } from '../../components/PageIndicator';
+import { PageIndicator } from '@/components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { fetchSchedule } from '@/lib/database/queries';
 import { MeetName } from '@/data/types/meet';
 import { VersionAnnouncement } from '@/components/VersionAnnouncement';
+import { useAuth } from '@clerk/clerk-expo';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -162,32 +163,33 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
     }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
   }, [selectedMeet, timeZone]);
 
-  // Initialize sync manager when selectedMeet changes
+  const currentDate = day.date;
+  const currentDay = day;
+
   useEffect(() => {
     if (selectedMeet && typeof selectedMeet === 'string') {
       const manager = new SyncManager(selectedMeet);
       setSyncManager(manager);
-      
-      // Load schedule data immediately when sync manager is created
+
       const loadData = async () => {
         setRefreshing(true);
         try {
           const meetData = await manager.getMeetData();
-          setScheduleData(meetData.schedule?.find(d => d.date === day.date) || day);
+          setScheduleData(meetData.schedule?.find(d => d.date === currentDate) || currentDay);
         } catch (error) {
           console.error('Error loading schedule:', error);
-          setScheduleData(day);
+          setScheduleData(currentDay);
         } finally {
           setRefreshing(false);
         }
       };
-      
+
       loadData();
     } else {
       setSyncManager(null);
-      setScheduleData(day);
+      setScheduleData(currentDay);
     }
-  }, [selectedMeet, day.date]);
+  }, [selectedMeet, currentDate, currentDay]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -276,6 +278,19 @@ export default function ScheduleScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const { currentTheme } = useTheme();
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
+  const headerColors = {
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+  };
+  const colors: Colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
@@ -308,6 +323,55 @@ export default function ScheduleScreen() {
       return endDate >= threeMonthsBefore && start <= threeMonthsAfter;
     });
   }, [availableMeets]);
+
+  useLayoutEffect(() => {
+    const offlineDataIcon = Platform.OS === 'ios' ? 'square.and.arrow.down' : 'download';
+    navigation.setOptions({
+      ...(Platform.OS === 'ios' && {
+        headerLeft: () => (
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => router.push('/(screens)/offline-data')}
+            accessibilityRole="button"
+            accessibilityLabel="Offline data"
+          >
+            <IconSymbol name={offlineDataIcon} size={24} color={headerColors.text} />
+          </Pressable>
+        ),
+      }),
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          {Platform.OS === 'android' && (
+            <Pressable
+              style={styles.headerIconButton}
+              onPress={() => router.push('/(screens)/offline-data')}
+              accessibilityRole="button"
+              accessibilityLabel="Offline data"
+            >
+              <IconSymbol name={offlineDataIcon} size={24} color={headerColors.text} />
+            </Pressable>
+            )}
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => {
+              if (isSignedIn) {
+                router.push('/(screens)/profile');
+              } else {
+                router.push({
+                  pathname: '/(auth)/sign-in',
+                  params: { from: 'info' }
+                });
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={isSignedIn ? 'My profile and settings' : 'Sign in'}
+          >
+            <IconSymbol name={Platform.OS === 'ios' ? "person.circle.fill" : "person-circle-sharp"} size={24} color={headerColors.text} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [headerColors.text, isSignedIn, navigation, router]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -392,15 +456,6 @@ export default function ScheduleScreen() {
       </ScrollView>
     </ThemedView>
   ), [SkeletonBlock, colors, currentTheme]);
-
-  const colors: Colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
 
   // Function to calculate the initial page based on current UTC date
   const calculateInitialPage = useCallback((scheduleData: Schedule): number => {
@@ -543,6 +598,34 @@ export default function ScheduleScreen() {
     return Array.from(letterSet).sort();
   }, [schedule]);
 
+  const formatDayTitle = useCallback((day: DaySchedule) => {
+    const sourceDate = day.fullDate || day.date;
+    if (!sourceDate) return day.date;
+
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sourceDate);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]);
+      const dayOfMonth = Number(isoMatch[3]);
+      const utcDate = new Date(Date.UTC(year, month - 1, dayOfMonth));
+      return new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(utcDate);
+    }
+
+    const parsed = new Date(sourceDate);
+    if (Number.isNaN(parsed.getTime())) return day.date;
+
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    }).format(parsed);
+  }, []);
+
   const onViewableItemsChanged = useCallback(({ viewableItems }: {
     viewableItems: ViewToken[];
     changed: ViewToken[];
@@ -551,10 +634,10 @@ export default function ScheduleScreen() {
       const currentItem = viewableItems[0].item as DaySchedule;
       setCurrentDate(currentItem.date);
       navigation.setOptions({
-        title: currentItem.date
+        title: formatDayTitle(currentItem)
       });
     }
-  }, [navigation]);
+  }, [formatDayTitle, navigation]);
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50
@@ -649,7 +732,7 @@ export default function ScheduleScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
-              onRefresh={() => {}}
+              onRefresh={handleRefresh}
               tintColor={colors.text}
             />
           }
@@ -683,7 +766,6 @@ export default function ScheduleScreen() {
             viewabilityConfig={viewabilityConfig}
             onScroll={onScroll}
             scrollEventThrottle={16}
-            contentContainerStyle={styles.flatListContent}
           />
 
           {schedule.length > 0 && (
@@ -711,21 +793,6 @@ export default function ScheduleScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.refreshButton,
-                  pressed && { opacity: 0.8 },
-                  isRefreshingMeets && { opacity: 0.5 },
-                ]}
-                onPress={handleRefreshMeets}
-                disabled={isRefreshingMeets}
-              >
-                <IconSymbol
-                  name="arrow.clockwise"
-                  size={18}
-                  color={colors.secondaryText}
-                />
-              </Pressable>
               <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
                 Select Your Meet
               </ThemedText>
@@ -816,6 +883,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 120
   },
   sessionContainer: {
     borderRadius: 12,
@@ -990,6 +1058,7 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 17,
+    width: '90%',
   },
   meetValue: {
     fontSize: 15,
@@ -1025,9 +1094,7 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
-  flatListContent: {
-    paddingBottom: 100,
-  },
+
   syncInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1102,5 +1169,14 @@ const styles = StyleSheet.create({
   },
   modalScrollContent: {
     flexGrow: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerIconButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
 }); 

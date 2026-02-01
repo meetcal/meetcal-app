@@ -11,6 +11,8 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase';
+import EventInfoScreen from '@/app/(screens)/event-info';
+import { Colors } from '@/constants/Colors';
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
@@ -88,14 +90,16 @@ export default function InfoScreen() {
                 `warmups_${user.id}`,
                 `@warmups_${user.id}`
               ];
-              for (const key of STORAGE_KEYS) {
-                const stored = await AsyncStorage.getItem(key);
-                if (stored) {
-                  let warmups = [];
-                  try { warmups = JSON.parse(stored); } catch {}
-                  if (Array.isArray(warmups)) {
-                    const filtered = warmups.filter(w => w.meet !== selectedMeet);
-                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
+              if (selectedMeet) {
+                for (const key of STORAGE_KEYS) {
+                  const stored = await AsyncStorage.getItem(key);
+                  if (stored) {
+                    let warmups = [];
+                    try { warmups = JSON.parse(stored); } catch {}
+                    if (Array.isArray(warmups)) {
+                      const filtered = warmups.filter(w => w.meet !== selectedMeet);
+                      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+                    }
                   }
                 }
               }
@@ -165,7 +169,7 @@ export default function InfoScreen() {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',  // White in light mode, dark gray in dark mode
+            backgroundColor: currentTheme === 'dark' ? Colors.dark.background : Colors.light.background
           },
           headerShadowVisible: false,
         }}
@@ -185,36 +189,7 @@ export default function InfoScreen() {
       >
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-        <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => {
-              if (isSignedIn) {
-                router.push('/(screens)/profile');
-              } else {
-                router.push({
-                  pathname: '/(auth)/sign-in',
-                  params: { from: 'info' }
-                });
-              }
-            }}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                {isSignedIn ? 'My Profile & Settings' : 'Sign In To Your Account'}
-              </ThemedText>
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20} 
-                color={colors.link} 
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
+          {/* <Pressable
             style={({ pressed }) => [
               styles.section,
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
@@ -232,7 +207,9 @@ export default function InfoScreen() {
                 color={colors.link}
               />
             </View>
-          </Pressable>
+          </Pressable> */}
+
+          <EventInfoScreen />
 
           {/* <Pressable
             style={({ pressed }) => [
@@ -254,10 +231,10 @@ export default function InfoScreen() {
             </View>
           </Pressable> */}
 
-          <Pressable
+          {/* <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              styles.lastSection,
               pressed && { backgroundColor: colors.pressed }
             ]}
             onPress={() => router.push('/(screens)/offline-data')}
@@ -268,27 +245,7 @@ export default function InfoScreen() {
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/share-results-by-club')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Shareable Meet Results By Club
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
+          </Pressable> */}
         </View>
 
         <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>
@@ -322,6 +279,26 @@ export default function InfoScreen() {
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 All Meet Results
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+              pressed && { backgroundColor: colors.pressed }
+            ]}
+            onPress={() => router.push('/(screens)/share-results-by-club')}
+          >
+            <View style={styles.linkRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Club Meet Results
               </ThemedText>
               <IconSymbol
                 name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}

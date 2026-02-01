@@ -154,7 +154,7 @@ export default function FeedbackScreen() {
           headerShown: true,
           headerTitle: 'Submit Feedback',
           headerBackTitle: 'Back',
-          headerTintColor: colors.link,
+          headerTintColor: colors.text,
           headerTitleStyle: {
             color: colors.text,
           },

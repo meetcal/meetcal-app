@@ -123,13 +123,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSubscription = () => {
-    router.push({
-      pathname: '/(screens)/subscription',
-      params: { from: 'profile' }
-    });
-  };
-
   const formatTitle = (field: string) => {
     return field
       .replace(/([A-Z])/g, ' $1')
@@ -143,11 +136,7 @@ export default function ProfileScreen() {
     <Pressable
       style={({ pressed }) => [
         styles.section,
-        { 
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.card
-        },
+        { backgroundColor: colors.card },
         pressed && { backgroundColor: colors.pressed }
       ]}
       onPress={() => handleEdit(field)}
@@ -170,13 +159,15 @@ export default function ProfileScreen() {
     </Pressable>
   );
 
+  const divider = <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />;
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen 
         options={{ 
           headerShown: true,
           headerTitle: '',
-          headerTintColor: colors.link,
+          headerTintColor: colors.text,
           headerBackTitle: 'Back',
           headerStyle: {
             backgroundColor: colors.background,
@@ -203,7 +194,9 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           {renderField('First Name', user?.firstName || '', 'firstName')}
+          {divider}
           {renderField('Last Name', user?.lastName || '', 'lastName')}
+          {divider}
           {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
         </View>
 
@@ -419,6 +412,9 @@ const styles = StyleSheet.create({
   section: {
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  sectionDivider: {
+    height: 1,
   },
   fieldRow: {
     flexDirection: 'row',

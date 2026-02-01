@@ -1,7 +1,7 @@
 import { StyleSheet, View, FlatList, Pressable, Modal, Alert, Platform, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useLayoutEffect } from 'react';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -19,6 +19,9 @@ import { useUser } from '@clerk/clerk-expo';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
 import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { useNavigation } from '@react-navigation/native';
+import { GlassView } from 'expo-glass-effect';
+
 
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
@@ -42,9 +45,10 @@ interface LegacySavedSession extends SavedSession {
   athleteName?: string;
 }
 
-// Add type guard at the top of the file
-function isMeetName(meet: string | null): meet is MeetName {
-  return typeof meet === 'string';
+function isMeetName(meet: string | null, allowedNames?: ReadonlySet<string>): meet is MeetName {
+  if (meet === null || typeof meet !== 'string') return false;
+  if (allowedNames !== undefined && allowedNames.size > 0) return allowedNames.has(meet);
+  return true;
 }
 
 async function requestCalendarPermissions() {
@@ -127,29 +131,40 @@ async function createCalendarEvents(sessions: Array<{
   }
 }
 
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})\s+(AM|PM)$/i;
+
 function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
+  const match = startTime.trim().match(TIME_12H_REGEX);
+  if (!match) {
+    console.warn('calculateWeighInTime: invalid startTime format, expected "HH:MM AM/PM"', { startTime });
+    return '6:00 AM';
+  }
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3].toUpperCase();
+  if (hours < 1 || hours > 12) {
+    console.warn('calculateWeighInTime: hours out of range 1-12', { startTime, hours });
+    return '6:00 AM';
+  }
+  if (minutes < 0 || minutes > 59) {
+    console.warn('calculateWeighInTime: minutes out of range 0-59', { startTime, minutes });
+    return '6:00 AM';
+  }
+  if (period !== 'AM' && period !== 'PM') {
+    console.warn('calculateWeighInTime: period must be AM or PM', { startTime, period });
+    return '6:00 AM';
+  }
   let hour24 = hours;
   if (period === 'PM' && hours !== 12) hour24 += 12;
   if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
   let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
   if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
+  let weighInPeriod: 'AM' | 'PM' = 'AM';
   if (weighInHour >= 12) {
     weighInPeriod = 'PM';
     if (weighInHour > 12) weighInHour -= 12;
   }
   if (weighInHour === 0) weighInHour = 12;
-  
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
@@ -171,7 +186,8 @@ const SessionCard = React.memo(({
   onPress,
   router,
   savedWarmups,
-  schedulesMap
+  schedulesMap,
+  allowedMeetNames
 }: {
   item: LegacySavedSession;
   selectedMeet: MeetName | null;
@@ -179,8 +195,10 @@ const SessionCard = React.memo(({
   router: ReturnType<typeof useRouter>;
   savedWarmups: Array<{ id: string; name: string; meet: string; }>;
   schedulesMap: Map<MeetName, ScheduleType>;
+  allowedMeetNames: ReadonlySet<string>;
 }) => {
   const { currentTheme } = useTheme();
+  const navigation = useNavigation();
   const { meetDetails } = useSelectedMeet();
 
   // Get time zone abbreviation - moved before early returns to follow Rules of Hooks
@@ -195,10 +213,9 @@ const SessionCard = React.memo(({
 
   // Ensure meet is defined before using it
   const meet = item.meet || selectedMeet;
-  // Add a check for schedule existence in the map
-  const schedule = meet && isMeetName(meet) ? schedulesMap.get(meet) : undefined;
+  const schedule = meet && isMeetName(meet, allowedMeetNames) ? schedulesMap.get(meet) : undefined;
 
-  if (!meet || !isMeetName(meet)) {
+  if (!meet || !isMeetName(meet, allowedMeetNames)) {
     console.warn('[SessionCard] No valid meet information available for session:', item);
     return null; // Don't render if meet info is missing
   }
@@ -431,8 +448,13 @@ const SessionCard = React.memo(({
 export default function SavedScreen() {
   const { user } = useUser();
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } = useSavedSessions();
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, availableMeets } = useSelectedMeet();
+  const allowedMeetNames = useMemo(
+    () => new Set(availableMeets.map((m) => m.name)),
+    [availableMeets]
+  );
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -477,8 +499,13 @@ export default function SavedScreen() {
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
                 if (stored) {
-                  let sessions = [];
-                  try { sessions = JSON.parse(stored); } catch {}
+                  let sessions: Array<{ meet?: string }> = [];
+                  try {
+                    const parsed: unknown = JSON.parse(stored);
+                    if (Array.isArray(parsed)) sessions = parsed as Array<{ meet?: string }>;
+                  } catch (err) {
+                    console.error('Failed to parse stored sessions:', err, { key, stored });
+                  }
                   if (Array.isArray(sessions)) {
                     const filtered = sessions.filter(s => s.meet !== selectedMeet);
                     await AsyncStorage.setItem(key, JSON.stringify(filtered));
@@ -625,7 +652,7 @@ export default function SavedScreen() {
 
               // Filter out sessions without meet information or missing schedules
               const validSessions = filteredSessions.filter(session => {
-                if (!session.meet || !isMeetName(session.meet)) return false;
+                if (!session.meet || !isMeetName(session.meet, allowedMeetNames)) return false;
                 const schedule = schedulesMap.get(session.meet);
                 return schedule && schedule.length > 0; // Ensure schedule exists and is not empty
               }) as Array<SavedSession & { meet: MeetName }>;
@@ -760,16 +787,16 @@ export default function SavedScreen() {
         router={router}
         savedWarmups={savedWarmups}
         schedulesMap={schedulesMap}
+        allowedMeetNames={allowedMeetNames}
       />
     );
-  }, [selectedMeet, router, savedWarmups, schedulesMap]);
+  }, [selectedMeet, router, savedWarmups, schedulesMap, allowedMeetNames]);
 
-  // Only run migration on mount
   useEffect(() => {
     if (!hasMigrated) {
       migrateSessions();
     }
-  }, [hasMigrated]);
+  }, [hasMigrated, migrateSessions]);
 
   // Remove all other effects except calendar permissions
   useEffect(() => {
@@ -788,7 +815,7 @@ export default function SavedScreen() {
       }
 
       setIsSchedulesLoading(true);
-      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter(isMeetName)));
+      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter((m): m is MeetName => isMeetName(m, allowedMeetNames))));
       const newSchedulesMap = new Map<MeetName, ScheduleType>();
 
       try {
@@ -814,42 +841,49 @@ export default function SavedScreen() {
     };
 
     fetchAllSchedules();
-  }, [savedSessions]);
+  }, [savedSessions, allowedMeetNames]);
+
+  useLayoutEffect(() => {
+    const calendarIconColor = isSchedulesLoading
+      ? colors.border
+      : (isSubscribed ? colors.text : colors.secondaryText);
+
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={handleSaveToCalendar}
+            disabled={isSchedulesLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Add to calendar"
+            >
+            <IconSymbol name="calendar" size={24} color={calendarIconColor} />
+          </Pressable>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={handleResetSessions}
+            accessibilityRole="button"
+            accessibilityLabel="Delete all saved sessions"
+          >
+            <IconSymbol name="trash" size={24} color="#FF3B30" />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [
+    colors.border,
+    colors.secondaryText,
+    colors.text,
+    handleResetSessions,
+    handleSaveToCalendar,
+    isSchedulesLoading,
+    isSubscribed,
+    navigation,
+  ]);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={handleSaveToCalendar}
-            disabled={isSchedulesLoading}
-          >
-            <IconSymbol 
-              name="calendar" 
-              size={16} 
-              color={isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText)} 
-            />
-            <ThemedText style={[
-              styles.buttonText, 
-              { color: isSchedulesLoading ? colors.border : (!isSubscribed ? colors.border : colors.secondaryText) }
-            ]}>
-              {isSchedulesLoading ? 'Loading...' : 'Add to Calendar'}
-            </ThemedText>
-          </Pressable>
-
-          <Pressable
-            style={[styles.button, { flex: 1, backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={handleResetSessions}
-          >
-            <IconSymbol name={Platform.OS === 'ios' ? 'trash' : 'trash'} size={16} color="#FF3B30" />
-            <ThemedText style={[styles.buttonText, { color: '#FF3B30' }]}>
-              Delete All
-            </ThemedText>
-          </Pressable>
-        </View>
-      </View>
-
       <FlatList
         data={filteredSessions}
         keyExtractor={item => item.id}
@@ -946,41 +980,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  filterContainer: {
-    padding: 16,
-    backgroundColor: '#F5F5F5',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#C6C6C8',
-    gap: 12,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  button: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C6C6C8',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
+    gap: 10,
   },
-  buttonText: {
-    fontSize: 15,
-    color: '#666666',
-    fontWeight: '600',
+  headerIconButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   list: {
     padding: 16,

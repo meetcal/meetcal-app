@@ -33,21 +33,21 @@ export default function TabLayout() {
       <NativeTabs
         labelStyle={{ color: colors.secondaryText }}
         tintColor={colors.text}>
-        <NativeTabs.Trigger name="index">
-          <Label>Today</Label>
-          <Icon sf={{ default: 'calendar', selected: 'calendar.circle.fill' }} />
+        <NativeTabs.Trigger name="(index)">
+          <Icon sf="calendar" />
+          <Label hidden />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="saved">
-          <Label>Saved</Label>
-          <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
+        <NativeTabs.Trigger name="(saved)">
+          <Icon sf="bookmark.fill" />
+          <Label hidden />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="start-list">
-          <Label>Start List</Label>
+        <NativeTabs.Trigger name="(start-list)">
           <Icon sf="list.bullet" />
+          <Label hidden />
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="info">
-          <Label>Info</Label>
-          <Icon sf={{ default: 'info.circle', selected: 'info.circle.fill' }} />
+        <NativeTabs.Trigger name="(info)">
+          <Icon sf="info.circle.fill" />
+          <Label hidden />
         </NativeTabs.Trigger>
       </NativeTabs>
     );
@@ -68,9 +68,9 @@ export default function TabLayout() {
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-        height: 95,
+        height: 70,
         paddingBottom: 15,
-        paddingTop: 10,
+        paddingTop: 0,
       },
       tabBarItemStyle: {
         marginTop: 5,
@@ -84,30 +84,31 @@ export default function TabLayout() {
         tabBarShowLabel: false,
       }}>
       <Tabs.Screen
-        name="index"
+        name="(index)"
         options={{
-          title: 'Today',
+          
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="saved"
+        name="(saved)"
         options={{
-          title: 'Saved',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="bookmark.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="start-list"
+        name="(start-list)"
         options={{
-          title: 'Start List',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="info"
+        name="(info)"
         options={{
-          title: 'Info',
+          headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
         }}
       />

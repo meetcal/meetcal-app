@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, FlatList, Modal, Alert, TextInput, Dimensions, ActivityIndicator, RefreshControl, Animated } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { View, StyleSheet, Pressable, ScrollView, Platform, Modal, Alert, TextInput, Dimensions, RefreshControl, Animated } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { useRouter } from 'expo-router';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedText } from '@/components/ThemedText';
@@ -12,488 +13,41 @@ import { LiftResult } from '@/data/types/athletes';
 import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LayoutAnimation } from 'react-native';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { fetchAthletes, fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
+import { fetchAthletesWithSession, fetchSchedule } from '@/lib/database/queries';
+import { preloadYearBests } from '@/lib/start-list-api';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import ShareScheduleView from '@/components/share/ShareScheduleView';
 import ImagePreviewModal from '@/components/share/ImagePreviewModal';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-
-// Rename Platform interface to PlatformSchedule to avoid conflict
-interface PlatformSchedule {
-  platform: string;
-  platformStartTime?: string;
-}
-
-interface Session {
-  number: number;
-  startTime: string;
-  weighInTime: string;
-  platforms: PlatformSchedule[];
-}
-
-interface ScheduleDay {
-  date: string;
-  fullDate: string;
-  sessions: Session[];
-}
-
-type Schedule = ScheduleDay;
-
-interface AthleteItemProps {
-  athlete: LiftResult;
-  isExpanded: boolean;
-  onPress: () => void;
-  router: ReturnType<typeof useRouter>;
-  schedule: ScheduleType;
-  getSessionDetails: (sessionNumber: number) => {
-    date: string;
-    startTime: string;
-    weighInTime: string;
-    displayDate: string;
-    platforms: PlatformSchedule[];
-  } | null;
-}
-
-// Add interface for Supabase results
-interface SupabaseLiftResult {
-  id: number;
-  event_id: string;
-  meet: string;
-  date: string;
-  name: string;
-  age: number;
-  body_weight: number;
-  snatch1: number;
-  snatch2: number;
-  snatch3: number;
-  snatch_best: number;
-  cj1: number;
-  cj2: number;
-  cj3: number;
-  cj_best: number;
-  total: number;
-}
-
-// Update the getLastYearBests function to use Supabase
-async function getLastYearBests(athleteName: string) {
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  
-  try {
-    type LiftBestRow = {
-      snatch_best: number | null;
-      cj_best: number | null;
-      total: number | null;
-    };
-    const { data: athleteResults, error } = await supabase
-      .from('lifting_results')
-      .select('snatch_best, cj_best, total')
-      .eq('name', athleteName)
-      .gte('date', oneYearAgo.toISOString())
-      .order('date', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching athlete results:', error);
-      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-    }
-
-    const results = (athleteResults ?? []) as LiftBestRow[];
-    if (results.length === 0) {
-      return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-    }
-
-    return {
-      bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
-      bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
-      bestTotal: Math.max(...results.map(r => r.total || 0))
-    };
-  } catch (error) {
-    console.error('Error in getLastYearBests:', error);
-    return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
-  }
-}
-
-function AthleteItem({ athlete, isExpanded, onPress, router, schedule, getSessionDetails }: AthleteItemProps) {
-  const { currentTheme } = useTheme();
-  const [yearBests, setYearBests] = useState({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-  const [loadingBests, setLoadingBests] = useState(true);
-  const { selectedMeet, meetDetails } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
-  
-  // Add type guard check
-  const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
-
-  // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return '';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: meetDetails.time.timeZoneIdentifier,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
-  }, [meetDetails?.time.timeZoneIdentifier]);
-
-  const colors = {
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
-
-  useEffect(() => {
-    const loadBests = async () => {
-      if (isExpanded) {
-        setLoadingBests(true);
-        const bests = await getLastYearBests(athlete.name);
-        setYearBests(bests);
-        setLoadingBests(false);
-      }
-    };
-    loadBests();
-  }, [isExpanded, athlete.name]);
-
-  const handleSessionPress = () => {
-    if (!athlete.session) return;
-
-    const sessionDay = schedule.find(day => 
-      day.sessions.some(s => s.number === athlete.session?.number)
-    );
-    
-    const scheduleSession = sessionDay?.sessions.find(s => 
-      s.number === athlete.session?.number
-    );
-
-    const platform = scheduleSession?.platforms.find(p => 
-      p.platform === athlete.session?.platform
-    );
-
-    // Use platform-specific time if available
-    const startTime = platform?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime;
-    const weighInTime = startTime ? calculateWeighInTime(startTime) : getSessionDetails(athlete.session.number)?.weighInTime;
-
-    if (!sessionDay || !startTime || !weighInTime) return;
-
-    router.push({
-      pathname: '/(screens)/schedule-details',
-      params: {
-        id: `session-${athlete.session.number}-${athlete.session.platform}`,
-        sessionNumber: athlete.session.number,
-        platform: athlete.session.platform,
-        weightClass: athlete.weightClass,
-        startTime,
-        weighInTime,
-        date: sessionDay.fullDate,
-        athleteName: athlete.name,
-      }
-    });
-  };
-
-  const formatSessionTime = (time: string | undefined | null) => {
-    if (!time || !validMeet) return 'TBD';
-    return `${time} ${timeZoneAbbr}`;
-  };
-
-  return (
-    <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.athleteButton,
-          pressed && { backgroundColor: colors.pressed }
-        ]}
-        onPress={onPress}
-      >
-        <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
-        <IconSymbol 
-          name={getChevronIcon(isExpanded ? 'down' : 'right')} 
-          size={20} 
-          color={colors.secondaryText}
-        />
-      </Pressable>
-      
-      {isExpanded && (
-        <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
-          {athlete.session && (
-            <>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.detailRow,
-                  styles.sessionLink,
-                  pressed && { backgroundColor: colors.pressed }
-                ]}
-                onPress={handleSessionPress}
-              >
-                <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-                  Session:
-                </ThemedText>
-                <View style={styles.sessionValueContainer}>
-                  <ThemedText style={[styles.detailValue, { color: '#007AFF' }]}>
-                    Session {athlete.session.number} • {athlete.session.platform} Platform
-                  </ThemedText>
-                  <IconSymbol 
-                    name={getChevronIcon('right')} 
-                    size={13} 
-                    color="#007AFF" 
-                  />
-                </View>
-              </Pressable>
-              {getSessionDetails(athlete.session.number) && (
-                <View style={styles.detailRow}>
-                  <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-                    Date & Time:
-                  </ThemedText>
-                  <ThemedText style={styles.detailValue}>
-                    {getSessionDetails(athlete.session.number)?.displayDate} • {
-                      formatSessionTime(
-                        schedule.find(day => 
-                          day.sessions.some(s => s.number === athlete.session?.number)
-                        )?.sessions.find(s => 
-                          s.number === athlete.session?.number
-                        )?.platforms.find(p => 
-                          p.platform === athlete.session?.platform
-                        )?.platformStartTime || getSessionDetails(athlete.session.number)?.startTime
-                      )
-                    }
-                  </ThemedText>
-                </View>
-              )}
-            </>
-          )}
-          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Club:
-            </ThemedText>
-            <View style={styles.wrappingDetailValue}>
-              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
-                {athlete.club}
-              </ThemedText>
-            </View>
-          </View>
-          <View style={[styles.detailRow, styles.wrappingDetailRow]}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Weight Class:
-            </ThemedText>
-            <View style={styles.wrappingDetailValue}>
-              <ThemedText style={[styles.detailValue, styles.wrappingText]}>
-                {athlete.weightClass}
-              </ThemedText>
-            </View>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Age:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.age}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={[styles.detailLabel, { color: colors.secondaryText }]}>
-              Entry Total:
-            </ThemedText>
-            <ThemedText style={styles.detailValue}>{athlete.entryTotal}kg</ThemedText>
-          </View>
-
-          {isSubscribed && (
-            <View style={[styles.statsContainer, { borderTopColor: colors.border }]}>
-              <ThemedText style={[styles.statsTitle, { color: colors.secondaryText }]}>
-                Bests From The Last Year
-              </ThemedText>
-              <View style={styles.statsRow}>
-                {loadingBests ? (
-                  <ActivityIndicator size="small" color={colors.secondaryText} />
-                ) : (
-                  <>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        Snatch
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestSnatch > 0 ? `${yearBests.bestSnatch}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        CJ
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestCJ > 0 ? `${yearBests.bestCJ}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.statItem}>
-                      <ThemedText style={[styles.statLabel, { color: colors.secondaryText }]}>
-                        Total
-                      </ThemedText>
-                      <ThemedText style={styles.statValue}>
-                        {yearBests.bestTotal > 0 ? `${yearBests.bestTotal}kg` : '—'}
-                      </ThemedText>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-          )}
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.meetResultsButton,
-              pressed && { opacity: 0.8 }
-            ]}
-            onPress={() => {
-              if (isSubscribed) {
-                router.push({
-                  pathname: '/(screens)/athlete-results',
-                  params: { name: athlete.name }
-                });
-              } else {
-                router.push('/paywall');
-              }
-            }}
-          >
-            <ThemedText style={styles.meetResultsText}>
-              See All Meet Results
-            </ThemedText>
-            <IconSymbol 
-              name={getChevronIcon('right')} 
-              size={13} 
-              color="#007AFF"
-            />
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function sortWeightClasses(a: string, b: string): number {
-  // Extract numeric values, removing 'kg' and handling '+' classes
-  const aNum = parseInt(a.replace(/[^\d]/g, ''));
-  const bNum = parseInt(b.replace(/[^\d]/g, ''));
-  
-  // If numbers are different, sort by number
-  if (aNum !== bNum) return aNum - bNum;
-  
-  // If numbers are the same, put the + version after
-  const aHasPlus = a.includes('+');
-  const bHasPlus = b.includes('+');
-  
-  if (aHasPlus && !bHasPlus) return 1;
-  if (!aHasPlus && bHasPlus) return -1;
-  
-  return 0;
-}
-
-function sortAthletes(a: LiftResult, b: LiftResult): number {
-  return a.name.localeCompare(b.name);
-}
-
-async function requestCalendarPermissions() {
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
-  return status === 'granted';
-}
-
-// Add special value for starred clubs filter
-const STARRED_CLUBS_FILTER = 'Favorites';
-
-// Add these helper functions near the top with other helpers
-const getChevronIcon = (direction: 'down' | 'right'): string => {
-  return Platform.select({
-    ios: `chevron.${direction}`,
-    android: direction === 'right' ? 'chevron-forward' : 'chevron-down'
-  }) || `chevron.${direction}`; // Fallback to iOS style if platform select fails
-};
-
-const getSaveIcon = (): string => {
-  return Platform.select({
-    ios: "square.and.arrow.down",
-    android: "download"
-  }) || "square.and.arrow.down";
-};
-
-const getCloseIcon = (): string => {
-  return Platform.select({
-    ios: "xmark",
-    android: "close"
-  }) || "xmark";
-};
-
-// Add the helper function
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === 'PM' && hours !== 12) hour24 += 12;
-  if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
-
-// Add this helper function to determine age category
-function getAgeCategory(age: number): string {
-  if (age <= 13) return 'U13';
-  if (age >= 14 && age <= 15) return 'U15';
-  if (age >= 16 && age <= 17) return 'U17';
-  if (age >= 18 && age <= 20) return 'Junior';
-  if (age >= 21 && age <= 34) return 'Senior';
-  if (age >= 90) return 'Masters 90+';
-  
-  // For ages 35-89, calculate the masters category in 5-year increments
-  const mastersStart = Math.floor((age - 35) / 5) * 5 + 35;
-  return `Masters ${mastersStart}`;
-}
-
-// Update the helper function to parse weight class numbers with gender
-function parseWeightClasses(weightClass: string): string[] {
-  if (!weightClass) return []; // Handle null or empty string
-  const classes = weightClass.split(' / ');
-  const weightClasses = new Set<string>();
-  
-  classes.forEach(classStr => {
-    const trimmedClass = classStr.trim();
-    // Match pattern: number (possibly with +) followed optionally by 'kg'
-    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
-    if (match && match[1]) {
-      const number = match[1];
-      const plus = match[2] ? '+' : '';
-      weightClasses.add(`${number}${plus}kg`);
-    }
-  });
-  
-  return Array.from(weightClasses);
-}
-
-// Add type guard function
-function isMeetName(meet: string | null): meet is MeetName {
-  return meet !== null;
-}
+import { AthleteItem } from '@/components/start-list/AthleteItem';
+import { StartListSkeleton } from '@/components/start-list/StartListSkeleton';
+import {
+  sortWeightClasses,
+  sortAthletes,
+  getAgeCategory,
+  parseWeightClasses,
+  getChevronIcon,
+  getSaveIcon,
+  getCloseIcon,
+  STARRED_CLUBS_FILTER,
+  isMeetName,
+  requestCalendarPermissions,
+} from '@/lib/start-list-utils';
 
 export default function StartListScreen() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState('');
   const [clubFilter, setClubFilter] = useState('');
+  const [ageGroupFilter, setAgeGroupFilter] = useState('');
+  const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState('');
+  const [genderFilter, setGenderFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [clubSearchQuery, setClubSearchQuery] = useState('');
   const { currentTheme } = useTheme();
@@ -508,7 +62,6 @@ export default function StartListScreen() {
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
-  const [isScheduleLoading, setIsScheduleLoading] = useState(true);
   const [generatedImageWhiteUri, setGeneratedImageWhiteUri] = useState<string | null>(null);
   const [generatedImageTransparentUri, setGeneratedImageTransparentUri] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -557,6 +110,7 @@ export default function StartListScreen() {
   }, []);
 
   useEffect(() => {
+    if (!loading) return;
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(skeletonPulse, {
@@ -573,72 +127,16 @@ export default function StartListScreen() {
     );
     animation.start();
     return () => animation.stop();
-  }, [skeletonPulse]);
+  }, [loading, skeletonPulse]);
 
-  const SkeletonBlock = useCallback(({ style }: { style: any }) => {
-    const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
-    return (
-      <Animated.View
-        style={[
-          styles.skeletonBlock,
-          { backgroundColor, opacity: skeletonPulse },
-          style,
-        ]}
-      />
-    );
-  }, [currentTheme, skeletonPulse]);
-
-  const renderLoadingSkeleton = useCallback(() => (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
-        <View style={styles.searchContainer}>
-          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonIcon} />
-            <SkeletonBlock style={styles.skeletonSearchLine} />
-          </View>
-        </View>
-        <View style={styles.buttonRow}>
-          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonButtonIcon} />
-            <SkeletonBlock style={styles.skeletonButtonText} />
-          </View>
-          <View style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <SkeletonBlock style={styles.skeletonButtonIcon} />
-            <SkeletonBlock style={styles.skeletonButtonText} />
-          </View>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.skeletonContent}>
-        {[0, 1, 2, 3].map((index) => (
-          <View key={`athlete-skeleton-${index}`} style={[styles.athleteCard, { backgroundColor: colors.card }]}>
-            <View style={styles.skeletonCardHeader}>
-              <SkeletonBlock style={styles.skeletonLine} />
-              <SkeletonBlock style={styles.skeletonTiny} />
-            </View>
-            <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValue} />
-              </View>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValueShort} />
-              </View>
-              <View style={styles.skeletonDetailRow}>
-                <SkeletonBlock style={styles.skeletonLabel} />
-                <SkeletonBlock style={styles.skeletonValueShort} />
-              </View>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </ThemedView>
-  ), [SkeletonBlock, colors, currentTheme]);
+  const colors = {
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
+    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
+    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
+    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
+  };
 
   const requestReviewIfEligible = useCallback(async (nextCount: number) => {
     if (!REVIEW_COUNTS.includes(nextCount)) return;
@@ -657,146 +155,125 @@ export default function StartListScreen() {
     }
   }, [reviewPromptedCounts, loadStoreReview]);
   
-  // Revised loadAthletes function (Supabase-first, Cache-fallback)
   const loadAthletes = useCallback(async (forceRefresh?: boolean) => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      console.warn('StartList: No valid meet selected for athletes');
       setAthletes([]);
       setLoading(false);
       return;
     }
 
     const validMeet = selectedMeet;
+
+    if (!forceRefresh) {
+      try {
+        const cached = await getMeetData(validMeet);
+        if (cached?.athletes?.length > 0) {
+          setAthletes(cached.athletes);
+          setLoading(false);
+          fetchAthletesWithSession(validMeet)
+            .then(fresh => {
+              setTimeout(() => setAthletes(fresh), 0);
+              saveMeetAthletes(validMeet, fresh).catch(() => {});
+            })
+            .catch(() => {});
+          return;
+        }
+      } catch {
+      }
+    }
+
     setLoading(true);
     let athleteData: LiftResult[] = [];
-    let loadedFromCache = false;
 
     try {
-      // 1. Try fetching from Supabase
-      const freshAthletes = await fetchAthletes(validMeet);
-      athleteData = freshAthletes;
-      // 2. Save successful fetch to cache (don't wait for it)
-      saveMeetAthletes(validMeet, freshAthletes).catch(err => 
-        console.error(`StartList: Failed to save fresh athletes to cache for ${validMeet}:`, err)
-      );
+      athleteData = await fetchAthletesWithSession(validMeet);
+      saveMeetAthletes(validMeet, athleteData).catch(() => {});
     } catch (fetchError) {
-      console.warn(`StartList: fetchAthletes failed for ${validMeet}, attempting cache fallback:`, fetchError);
-      // 3. Fallback to cache if Supabase fetch fails
       try {
-        // We still need getMeetData to retrieve from the combined offline store structure
         const cachedMeetData = await getMeetData(validMeet);
-        if (cachedMeetData?.athletes) {
+        if (cachedMeetData?.athletes?.length) {
           athleteData = cachedMeetData.athletes;
-          loadedFromCache = true;
-        } else {
-          console.log(`StartList: No athletes found in cache for ${validMeet}`);
         }
-      } catch (cacheError) {
+      } catch {
         Alert.alert('Error', 'Failed to load athlete data. Please check connection or try refreshing.');
       }
     }
-    
+
     setAthletes(athleteData);
-    if (loadedFromCache) {
-        console.log("StartList: Displaying athlete data loaded from cache.");
-    }
     setLoading(false);
-
   }, [selectedMeet]);
 
-  // Revised schedule fetching logic (Supabase-first, Cache-fallback)
-  const loadSchedule = useCallback(async () => {
-      if (!selectedMeet || !isMeetName(selectedMeet)) {
-        console.warn('StartList: No valid meet selected for schedule');
-        setScheduleData([]);
-        setIsScheduleLoading(false);
-        return;
-      }
-      const validMeet = selectedMeet;
-      setIsScheduleLoading(true);
-      let scheduleResult: ScheduleType = [];
-      let loadedFromCache = false;
-
-      try {
-        console.log(`StartList: Attempting fetchSchedule for ${validMeet}`);
-        const dbSchedule = await fetchScheduleFromDb(validMeet);
-        const transformedSchedule = await transformScheduleData(dbSchedule);
-        console.log(`StartList: fetchSchedule successful, ${transformedSchedule.length} days found`);
-        scheduleResult = transformedSchedule;
-        if (transformedSchedule.length > 0) {
-          saveMeetSchedule(validMeet, transformedSchedule).catch(err => 
-            console.error(`StartList: Failed to save fresh schedule to cache for ${validMeet}:`, err)
-          );
-        } else {
-          console.log(`StartList: Empty schedule from DB for ${validMeet}; skipping cache save`);
-        }
-      } catch (fetchError) {
-        console.warn(`StartList: fetchSchedule failed for ${validMeet}, attempting cache fallback:`, fetchError);
-        try {
-          const cachedMeetData = await getMeetData(validMeet);
-          if (cachedMeetData?.schedule) {
-            console.log(`StartList: Loaded schedule from cache for ${validMeet}`);
-            scheduleResult = cachedMeetData.schedule;
-            loadedFromCache = true;
-          } else {
-            console.log(`StartList: No schedule found in cache for ${validMeet}`);
-          }
-        } catch (cacheError) {
-          console.error(`StartList: Failed to load schedule from cache for ${validMeet}:`, cacheError);
-          // Don't alert here, athlete alert is enough
-        }
-      }
-
-      setScheduleData(scheduleResult);
-      if (loadedFromCache) {
-        console.log("StartList: Displaying schedule data loaded from cache.");
-      }
-      setIsScheduleLoading(false);
-  }, [selectedMeet]);
-
-  // Load data on mount and meet change
   useEffect(() => {
     loadAthletes();
-    loadSchedule(); 
-  }, [loadAthletes, loadSchedule, selectedMeet]); // Add loadSchedule dependency
+  }, [loadAthletes, selectedMeet]);
 
-  // Revised refresh handler
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    // Refresh both athletes and schedule using the new logic
-    await loadAthletes(true); 
-    await loadSchedule();
-    setRefreshing(false);
-  }, [loadAthletes, loadSchedule]); // Add loadSchedule dependency
-
-  // Add back the colors object
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
-
-  // Define getSessionDetails after scheduleData state is defined
-  const getSessionDetails = useCallback((sessionNumber: number) => {
-    // Use scheduleData state variable
-    if (!scheduleData || scheduleData.length === 0 || isScheduleLoading) return null;
-    for (const day of scheduleData) {
-      const session = day.sessions.find((s) => s.number === sessionNumber);
-      if (session) {
-        return {
-          date: day.fullDate,
-          startTime: session.startTime,
-          weighInTime: session.weighInTime,
-          displayDate: day.date,
-          platforms: session.platforms
-        };
+  const loadSchedule = useCallback(async () => {
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      setScheduleData([]);
+      return;
+    }
+    const validMeet = selectedMeet;
+    try {
+      const freshSchedule = await fetchSchedule(validMeet);
+      setScheduleData(freshSchedule);
+      if (freshSchedule.length > 0) {
+        saveMeetSchedule(validMeet, freshSchedule).catch(() => {});
+      }
+    } catch {
+      try {
+        const cached = await getMeetData(validMeet);
+        setScheduleData(cached?.schedule ?? []);
+      } catch {
+        setScheduleData([]);
       }
     }
-    return null;
-  }, [scheduleData, isScheduleLoading]);
+  }, [selectedMeet]);
+
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadAthletes(true), loadSchedule()]);
+    setRefreshing(false);
+  }, [loadAthletes, loadSchedule]);
+
+  const sessionDetailsByNumber = useMemo(() => {
+    const map = new Map<number, { date: string; startTime: string; weighInTime: string; displayDate: string }>();
+    athletes.forEach((a) => {
+      if (a.session?.number != null && a.session?.date != null && a.session?.startTime != null && a.session?.weighInTime != null && a.session?.displayDate != null) {
+        map.set(a.session.number, {
+          date: a.session.date,
+          startTime: a.session.startTime,
+          weighInTime: a.session.weighInTime,
+          displayDate: a.session.displayDate,
+        });
+      }
+    });
+    return map;
+  }, [athletes]);
+
+  const getSessionDetails = useCallback((sessionNumber: number) => {
+    if (scheduleData.length > 0) {
+      for (const day of scheduleData) {
+        const session = day.sessions.find((s) => s.number === sessionNumber);
+        if (session) {
+          return {
+            date: day.fullDate,
+            startTime: session.startTime,
+            weighInTime: session.weighInTime,
+            displayDate: day.date,
+            platforms: session.platforms
+          };
+        }
+      }
+      return null;
+    }
+    const details = sessionDetailsByNumber.get(sessionNumber);
+    if (!details) return null;
+    return { ...details, platforms: [] };
+  }, [scheduleData, sessionDetailsByNumber]);
 
   // Add back useEffect for starred clubs
   useEffect(() => {
@@ -815,13 +292,12 @@ export default function StartListScreen() {
 
 
 
-  // Move clubOptions and sortedClubOptions here
-  const clubOptions = Array.from(
-    new Set(athletes.map(athlete => athlete.club))
-  ).sort();
+  const clubOptions = useMemo(() =>
+    Array.from(new Set(athletes.map(a => a.club))).sort(),
+  [athletes]);
 
   const sortedClubOptions = useMemo(() => {
-    return clubOptions.sort((a, b) => {
+    return [...clubOptions].sort((a, b) => {
       const aIsStarred = starredClubs.includes(a);
       const bIsStarred = starredClubs.includes(b);
       
@@ -832,10 +308,16 @@ export default function StartListScreen() {
     });
   }, [clubOptions, starredClubs]);
 
-  const handlePress = (athleteName: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedId(expandedId === athleteName ? null : athleteName);
-  };
+  const renderListItem = useCallback(({ item }: { item: LiftResult }) => (
+    <AthleteItem
+      athlete={item}
+      router={router}
+      schedule={scheduleData}
+      getSessionDetails={getSessionDetails}
+    />
+  ), [router, scheduleData, getSessionDetails]);
+
+  const keyExtractor = useCallback((item: LiftResult) => `${item.memberId}_${item.name}`, []);
 
   // Add new state for age group filter
   const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | 'adaptiveAthlete' | 'gender' | null>(null);
@@ -847,8 +329,8 @@ export default function StartListScreen() {
   const [tempAdaptiveAthleteFilter, setTempAdaptiveAthleteFilter] = useState('');
   const [tempGenderFilter, setTempGenderFilter] = useState('');
 
-  // Move weightClassOptions here, after state declarations
   const weightClassOptions = useMemo(() => {
+    if (!showFilterModal) return [];
     const weightClasses = new Set<string>();
     
     // First, collect all weight classes and separate by gender and age group to identify heaviest classes
@@ -951,16 +433,16 @@ export default function StartListScreen() {
     
     const options = Array.from(weightClasses).sort(sortWeightClasses);
     return options;
-  }, [athletes, tempGenderFilter, tempAgeGroupFilter, tempAdaptiveAthleteFilter]);
+  }, [athletes, tempGenderFilter, tempAgeGroupFilter, tempAdaptiveAthleteFilter, showFilterModal]);
 
   // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
     const filters = [];
     if (weightClassFilter) filters.push(weightClassFilter);
     if (clubFilter) filters.push(clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter);
-    if (tempAgeGroupFilter) filters.push(tempAgeGroupFilter);
-    if (tempAdaptiveAthleteFilter) filters.push(tempAdaptiveAthleteFilter);
-    if (tempGenderFilter) filters.push(tempGenderFilter);
+    if (ageGroupFilter) filters.push(ageGroupFilter);
+    if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
+    if (genderFilter) filters.push(genderFilter);
     
     return filters.length > 0 ? filters.join(' • ') : 'Filter';
   };
@@ -970,35 +452,44 @@ export default function StartListScreen() {
     
     return athletes
       .filter(athlete => {
-        const matchesWeightClass = tempWeightClassFilter 
-          ? parseWeightClasses(athlete.weightClass).includes(tempWeightClassFilter)
+        const matchesWeightClass = weightClassFilter 
+          ? parseWeightClasses(athlete.weightClass).includes(weightClassFilter)
           : true;
-        const matchesClub = tempClubFilter 
-          ? tempClubFilter === STARRED_CLUBS_FILTER 
+        const matchesClub = clubFilter 
+          ? clubFilter === STARRED_CLUBS_FILTER 
             ? starredClubs.includes(athlete.club)
-            : athlete.club === tempClubFilter
+            : athlete.club === clubFilter
           : true;
         const matchesSearch = searchQuery 
           ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
-        const matchesAgeGroup = tempAgeGroupFilter 
-          ? getAgeCategory(athlete.age) === tempAgeGroupFilter
+        const matchesAgeGroup = ageGroupFilter 
+          ? getAgeCategory(athlete.age) === ageGroupFilter
           : true;
-        const matchesAdaptiveAthlete = tempAdaptiveAthleteFilter 
-          ? tempAdaptiveAthleteFilter === 'Adaptive Athletes'
+        const matchesAdaptiveAthlete = adaptiveAthleteFilter 
+          ? adaptiveAthleteFilter === 'Adaptive Athletes'
             ? athlete.adaptive === true
-            : tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes'
+            : adaptiveAthleteFilter === 'Non-Adaptive Athletes'
               ? athlete.adaptive === false
               : true
           : true;
-        const matchesGender = tempGenderFilter 
-          ? athlete.gender.toLowerCase() === tempGenderFilter.toLowerCase()
+        const matchesGender = genderFilter 
+          ? athlete.gender.toLowerCase() === genderFilter.toLowerCase()
           : true;
 
         return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete && matchesGender;
       })
       .sort(sortAthletes);
-  }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, tempAdaptiveAthleteFilter, tempGenderFilter, starredClubs, athletes, selectedMeet]);
+  }, [weightClassFilter, clubFilter, searchQuery, ageGroupFilter, adaptiveAthleteFilter, genderFilter, starredClubs, athletes]);
+
+  useEffect(() => {
+    if (athletes.length === 0) return;
+    const firstNameStartsWithA = (a: LiftResult) => ((a.name || '').trim().split(/\s+/)[0] || '').toUpperCase().startsWith('A');
+    const aNames = athletes.filter(firstNameStartsWithA).map(a => a.name);
+    if (aNames.length === 0) return;
+    const t = setTimeout(() => preloadYearBests(aNames.slice(0, 80)), 500);
+    return () => clearTimeout(t);
+  }, [athletes]);
 
   const windowHeight = Dimensions.get('window').height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
@@ -1067,16 +558,18 @@ export default function StartListScreen() {
     // Get unique sessions from filtered athletes
     const sessionsToAdd = filteredAthletes
       .filter(athlete => athlete.session)
-      .map(athlete => ({
-        date: scheduleData.find(day => 
-          day.sessions.some(s => s.number === athlete.session?.number)
-        )?.fullDate || '',
-        startTime: getSessionDetails(athlete.session?.number || 0)?.startTime || '',
-        weighInTime: getSessionDetails(athlete.session?.number || 0)?.weighInTime || '',
-        sessionNumber: athlete.session?.number.toString() || '',
-        platform: athlete.session?.platform || '',
-        weightClass: athlete.weightClass
-      }));
+      .map(athlete => {
+        const details = getSessionDetails(athlete.session?.number || 0);
+        const sessionDay = scheduleData.find(day => day.sessions.some(s => s.number === athlete.session?.number));
+        return {
+          date: details?.date || sessionDay?.fullDate || '',
+          startTime: details?.startTime || '',
+          weighInTime: details?.weighInTime || '',
+          sessionNumber: athlete.session?.number.toString() || '',
+          platform: athlete.session?.platform || '',
+          weightClass: athlete.weightClass
+        };
+      });
 
     if (sessionsToAdd.length === 0) {
       Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
@@ -1137,9 +630,9 @@ export default function StartListScreen() {
   const handleOpenModal = () => {
     setTempWeightClassFilter(weightClassFilter);
     setTempClubFilter(clubFilter);
-    setTempAgeGroupFilter(tempAgeGroupFilter);
-    setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
-    setTempGenderFilter(tempGenderFilter);
+    setTempAgeGroupFilter(ageGroupFilter);
+    setTempAdaptiveAthleteFilter(adaptiveAthleteFilter);
+    setTempGenderFilter(genderFilter);
     setShowFilterModal(true);
   };
 
@@ -1147,9 +640,9 @@ export default function StartListScreen() {
   const handleApplyFilters = () => {
     setWeightClassFilter(tempWeightClassFilter);
     setClubFilter(tempClubFilter);
-    setTempAgeGroupFilter(tempAgeGroupFilter);
-    setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
-    setTempGenderFilter(tempGenderFilter);
+    setAgeGroupFilter(tempAgeGroupFilter);
+    setAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
+    setGenderFilter(tempGenderFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
 
@@ -1170,6 +663,9 @@ export default function StartListScreen() {
     setTempGenderFilter('');
     setWeightClassFilter('');
     setClubFilter('');
+    setAgeGroupFilter('');
+    setAdaptiveAthleteFilter('');
+    setGenderFilter('');
     setSearchQuery('');
     setShowFilterModal(false);
     setExpandedSection(null);
@@ -1295,19 +791,17 @@ export default function StartListScreen() {
     filteredAthletes.forEach((athlete) => {
       if (!athlete.session) return;
 
-      const sessionDay = scheduleData.find((day) =>
-        day.sessions.some((s) => s.number === athlete.session?.number)
-      );
-      if (!sessionDay) return;
-
       const sessionDetails = getSessionDetails(athlete.session.number);
       if (!sessionDetails) return;
 
-      const session = sessionDay.sessions.find((s) => s.number === athlete.session?.number);
+      const sessionDay = scheduleData.find((day) =>
+        day.sessions.some((s) => s.number === athlete.session?.number)
+      );
+      const session = sessionDay?.sessions.find((s) => s.number === athlete.session?.number);
       const platform = session?.platforms.find((p) => p.platform === athlete.session?.platform);
-      const startTime = platform?.platformStartTime || sessionDetails.startTime || '';
+      const startTime = platform?.platformStartTime ?? sessionDetails.startTime ?? '';
 
-      const dateKey = sessionDay.fullDate;
+      const dateKey = sessionDetails.date;
       if (!groupedByDate[dateKey]) {
         groupedByDate[dateKey] = [];
       }
@@ -1329,6 +823,8 @@ export default function StartListScreen() {
         const sessionDay = scheduleData.find((day) =>
           day.sessions.some((s) => s.number === athlete.session?.number)
         );
+        const details = getSessionDetails(athlete.session?.number ?? 0);
+        const dateStr = details?.date ?? sessionDay?.fullDate ?? '';
 
         rows.push([
           tempClubFilter,
@@ -1337,7 +833,7 @@ export default function StartListScreen() {
           athlete.weightClass || '',
           athlete.session?.number?.toString() || '',
           athlete.session?.platform || '',
-          formatDate(sessionDay?.fullDate || ''),
+          formatDate(dateStr),
           formatTime(startTime)
         ]);
       });
@@ -1443,8 +939,8 @@ export default function StartListScreen() {
     }
   }
 
-  if (loading || isScheduleLoading) {
-    return renderLoadingSkeleton();
+  if (loading) {
+    return <StartListSkeleton colors={colors} currentTheme={currentTheme} skeletonPulse={skeletonPulse} />;
   }
 
   return (
@@ -1542,19 +1038,11 @@ export default function StartListScreen() {
         </View>
       </View>
 
-      <FlatList
+      <ExpandedIdProvider>
+      <FlashList
         data={filteredAthletes}
-        keyExtractor={item => item.name}
-        renderItem={({ item }) => (
-          <AthleteItem
-            athlete={item}
-            isExpanded={expandedId === item.name}
-            onPress={() => handlePress(item.name)}
-            router={router}
-            schedule={scheduleData}
-            getSessionDetails={getSessionDetails}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderListItem}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: 80 + insets.bottom }
@@ -1568,6 +1056,7 @@ export default function StartListScreen() {
           />
         }
       />
+      </ExpandedIdProvider>
 
       <Modal
         visible={showFilterModal}
@@ -2513,58 +2002,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     gap: 12,
-  },
-  athleteCard: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  athleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  athleteName: {
-    fontSize: 17,
-    fontWeight: '400',
-  },
-  detailsContainer: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  wrappingDetailRow: {
-    alignItems: 'flex-start',
-  },
-  detailLabel: {
-    fontSize: 15,
-    minWidth: 95,
-  },
-  detailValue: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  wrappingDetailValue: {
-    flex: 1,
-  },
-  wrappingText: {
-    textAlign: 'right',
-    flexWrap: 'wrap',
   },
   filterContainer: {
     padding: 16,
@@ -2777,16 +2217,6 @@ const styles = StyleSheet.create({
   saveOptionSubtitle: {
     fontSize: 13,
   },
-  sessionLink: {
-    borderRadius: 8,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-  },
-  sessionValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   filterOptionRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2805,49 +2235,6 @@ const styles = StyleSheet.create({
   starredClubsIcon: {
     marginTop: 1,
   },
-  statsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    position: 'relative',
-  },
-  statsTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  meetResultsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  meetResultsText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#007AFF',
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2857,70 +2244,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     marginTop: 12,
-  },
-  skeletonContent: {
-    padding: 16,
-    paddingBottom: 32,
-    gap: 12,
-  },
-  skeletonBlock: {
-    borderRadius: 6,
-  },
-  skeletonIcon: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  skeletonSearchLine: {
-    height: 12,
-    width: '70%',
-    borderRadius: 6,
-  },
-  skeletonButtonIcon: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-  },
-  skeletonButtonText: {
-    height: 12,
-    width: '60%',
-    borderRadius: 6,
-  },
-  skeletonCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  skeletonLine: {
-    height: 14,
-    width: '55%',
-    borderRadius: 6,
-  },
-  skeletonTiny: {
-    width: 24,
-    height: 12,
-    borderRadius: 6,
-  },
-  skeletonDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  skeletonLabel: {
-    height: 12,
-    width: 90,
-    borderRadius: 6,
-  },
-  skeletonValue: {
-    height: 12,
-    width: 140,
-    borderRadius: 6,
-  },
-  skeletonValueShort: {
-    height: 12,
-    width: 90,
-    borderRadius: 6,
   },
   clearButton: {
     padding: 4,

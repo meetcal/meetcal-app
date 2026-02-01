@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="widget_description">Your saved competition sessions</string>
+  <string name="meetcal_title">MeetCal</string>
+  <string name="title_meetcal">MeetCal</string>
+  <string name="no_saved_sessions">No saved sessions</string>
+  <string name="widget_empty_state">No saved sessions</string>
+  <string name="widget_icon_desc">MeetCal calendar icon</string>
+</resources>
