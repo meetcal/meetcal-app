@@ -19,6 +19,7 @@ import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
+import { useAuthGuard } from '@/utils/authGuard';
 import { fetchAthletesWithSession, fetchSchedule } from '@/lib/database/queries';
 import { preloadYearBests } from '@/lib/start-list-api';
 import type { Schedule as ScheduleType } from '@/types/schedule';
@@ -58,6 +59,7 @@ export default function StartListScreen() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const { selectedMeet } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -1847,10 +1849,22 @@ export default function StartListScreen() {
               ]}
               onPress={() => {
                 setShowSaveModal(false);
+                // 1. Check auth
+                if (!requireAuth({
+                  feature: 'share-schedule-image',
+                  message: 'Sign in to share schedule images.',
+                  returnPath: '/(tabs)/(start-list)',
+                })) {
+                  return;
+                }
+                // 2. Check subscription
                 if (isSubscribed) {
                   captureScheduleImage();
                 } else {
-                  router.push('/paywall');
+                  router.push({
+                    pathname: '/(screens)/paywall',
+                    params: { from: '/(tabs)/(start-list)', feature: 'share-schedule-image' },
+                  } as any);
                 }
               }}
             >
@@ -1904,10 +1918,22 @@ export default function StartListScreen() {
               ]}
               onPress={() => {
                 setShowSaveModal(false);
+                // 1. Check auth
+                if (!requireAuth({
+                  feature: 'export-csv',
+                  message: 'Sign in to export schedules.',
+                  returnPath: '/(tabs)/(start-list)',
+                })) {
+                  return;
+                }
+                // 2. Check subscription
                 if (isSubscribed) {
                   generateShareableScheduleCsv();
                 } else {
-                  router.push('/paywall');
+                  router.push({
+                    pathname: '/(screens)/paywall',
+                    params: { from: '/(tabs)/(start-list)', feature: 'export-csv' },
+                  } as any);
                 }
               }}
             >

@@ -5,6 +5,8 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { IconSymbol } from './ui/IconSymbol';
 import { SubscriptionStatus } from '@/app/(screens)/profile';
+import { AuthGuardOptions } from '@/utils/authGuard';
+import type { Router } from 'expo-router';
 
 interface NotificationSettingsProps {
   colors: {
@@ -15,11 +17,13 @@ interface NotificationSettingsProps {
     pressed: string;
   };
   subscriptionStatus: SubscriptionStatus;
+  requireAuth: (options: AuthGuardOptions) => boolean;
+  router: Router;
 }
 
 const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
-export function NotificationSettings({ colors, subscriptionStatus }: NotificationSettingsProps) {
+export function NotificationSettings({ colors, subscriptionStatus, requireAuth, router }: NotificationSettingsProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -71,14 +75,33 @@ export function NotificationSettings({ colors, subscriptionStatus }: Notificatio
   };
 
   const handleToggle = async () => {
+    // 1. Check auth first
+    if (!requireAuth({
+      feature: 'session-reminders',
+      message: 'Sign in to enable session reminders.',
+      returnPath: '/(screens)/profile',
+    })) {
+      return;
+    }
+
+    // 2. Check subscription
     if (!isSubscribed) {
-       Alert.alert(
-         'Premium Feature',
-         'Session reminders are available for subscribed users. Please upgrade your plan to enable this feature.',
-         [
-            { text: 'OK', style: 'cancel' },
-         ]
-       );
+      Alert.alert(
+        'Premium Feature',
+        'Session reminders are available for subscribed users. Please upgrade your plan to enable this feature.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'View Plans',
+            onPress: () => {
+              router.push({
+                pathname: '/(screens)/paywall',
+                params: { from: '/(screens)/profile', feature: 'session-reminders' },
+              } as any);
+            },
+          },
+        ]
+      );
       return;
     }
 

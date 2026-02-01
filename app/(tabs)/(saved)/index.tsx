@@ -21,6 +21,7 @@ import React from 'react';
 import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
 import { useNavigation } from '@react-navigation/native';
 import { GlassView } from 'expo-glass-effect';
+import { useAuthGuard } from '@/utils/authGuard';
 
 
 // Function to get user-specific storage key
@@ -468,12 +469,23 @@ export default function SavedScreen() {
     meet: string
   }>>([]);
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
 
   // Add state for schedules map and loading
   const [schedulesMap, setSchedulesMap] = useState<Map<MeetName, ScheduleType>>(new Map());
   const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
 
   const handleResetSessions = () => {
+    // Check authentication first
+    if (!requireAuth({
+      feature: 'delete-sessions',
+      message: 'Sign in to manage your saved sessions.',
+      returnPath: '/(tabs)/(saved)',
+    })) {
+      return;
+    }
+
+    // At this point, user must be authenticated
     if (!user?.id) return;
 
     Alert.alert(
@@ -491,10 +503,10 @@ export default function SavedScreen() {
                 success = await resetAllSessions(selectedMeet ?? undefined);
               }
               const STORAGE_KEYS = [
-                getSavedSessionsKey(user.id),
-                `savedSessions_${user.id}`,
-                `@savedSessions_${user.id}`,
-                `sessions_${user.id}`,
+                getSavedSessionsKey(user!.id),
+                `savedSessions_${user!.id}`,
+                `@savedSessions_${user!.id}`,
+                `sessions_${user!.id}`,
               ];
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
@@ -512,7 +524,7 @@ export default function SavedScreen() {
                   }
                 }
               }
-              await AsyncStorage.setItem(`@sessions_reset_${user.id}`, Date.now().toString());
+              await AsyncStorage.setItem(`@sessions_reset_${user!.id}`, Date.now().toString());
               Alert.alert('Success', 'All saved sessions for this meet have been reset.');
             } catch (error) {
               console.error('Error resetting sessions:', error);
@@ -617,8 +629,24 @@ export default function SavedScreen() {
   };
 
   const handleSaveToCalendar = async () => {
+    // 1. Check authentication first
+    if (!requireAuth({
+      feature: 'add-to-calendar',
+      message: 'Sign in to add sessions to your calendar.',
+      returnPath: '/(tabs)/(saved)',
+    })) {
+      return;
+    }
+
+    // 2. Then check subscription
     if (!isSubscribed) {
-      router.push('/paywall');
+      router.push({
+        pathname: '/(screens)/paywall',
+        params: {
+          from: '/(tabs)/(saved)',
+          feature: 'add-to-calendar'
+        },
+      } as any);
       return;
     }
 
