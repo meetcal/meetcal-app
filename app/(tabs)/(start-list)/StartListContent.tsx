@@ -19,7 +19,7 @@ import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
-import { fetchAthletesWithSession } from '@/lib/database/queries';
+import { fetchAthletesWithSession, fetchSchedule } from '@/lib/database/queries';
 import { preloadYearBests } from '@/lib/start-list-api';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import ShareScheduleView from '@/components/share/ShareScheduleView';
@@ -207,11 +207,37 @@ export default function StartListScreen() {
     loadAthletes();
   }, [loadAthletes, selectedMeet]);
 
+  const loadSchedule = useCallback(async () => {
+    if (!selectedMeet || !isMeetName(selectedMeet)) {
+      setScheduleData([]);
+      return;
+    }
+    const validMeet = selectedMeet;
+    try {
+      const freshSchedule = await fetchSchedule(validMeet);
+      setScheduleData(freshSchedule);
+      if (freshSchedule.length > 0) {
+        saveMeetSchedule(validMeet, freshSchedule).catch(() => {});
+      }
+    } catch {
+      try {
+        const cached = await getMeetData(validMeet);
+        setScheduleData(cached?.schedule ?? []);
+      } catch {
+        setScheduleData([]);
+      }
+    }
+  }, [selectedMeet]);
+
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadAthletes(true);
+    await Promise.all([loadAthletes(true), loadSchedule()]);
     setRefreshing(false);
-  }, [loadAthletes]);
+  }, [loadAthletes, loadSchedule]);
 
   const sessionDetailsByNumber = useMemo(() => {
     const map = new Map<number, { date: string; startTime: string; weighInTime: string; displayDate: string }>();
