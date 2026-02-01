@@ -203,6 +203,7 @@ export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResu
     .eq('meet', meet);
 
   if (error) {
+    console.error('Error fetching athletes_with_session, falling back to fetchAthletes', { meet, error });
     return fetchAthletes(meet);
   }
 

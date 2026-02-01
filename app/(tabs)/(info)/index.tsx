@@ -90,14 +90,16 @@ export default function InfoScreen() {
                 `warmups_${user.id}`,
                 `@warmups_${user.id}`
               ];
-              for (const key of STORAGE_KEYS) {
-                const stored = await AsyncStorage.getItem(key);
-                if (stored) {
-                  let warmups = [];
-                  try { warmups = JSON.parse(stored); } catch {}
-                  if (Array.isArray(warmups)) {
-                    const filtered = warmups.filter(w => w.meet !== selectedMeet);
-                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
+              if (selectedMeet) {
+                for (const key of STORAGE_KEYS) {
+                  const stored = await AsyncStorage.getItem(key);
+                  if (stored) {
+                    let warmups = [];
+                    try { warmups = JSON.parse(stored); } catch {}
+                    if (Array.isArray(warmups)) {
+                      const filtered = warmups.filter(w => w.meet !== selectedMeet);
+                      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+                    }
                   }
                 }
               }

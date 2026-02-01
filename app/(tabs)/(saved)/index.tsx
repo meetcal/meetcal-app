@@ -45,9 +45,10 @@ interface LegacySavedSession extends SavedSession {
   athleteName?: string;
 }
 
-// Add type guard at the top of the file
-function isMeetName(meet: string | null): meet is MeetName {
-  return typeof meet === 'string';
+function isMeetName(meet: string | null, allowedNames?: ReadonlySet<string>): meet is MeetName {
+  if (meet === null || typeof meet !== 'string') return false;
+  if (allowedNames !== undefined && allowedNames.size > 0) return allowedNames.has(meet);
+  return true;
 }
 
 async function requestCalendarPermissions() {
@@ -130,29 +131,40 @@ async function createCalendarEvents(sessions: Array<{
   }
 }
 
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})\s+(AM|PM)$/i;
+
 function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
+  const match = startTime.trim().match(TIME_12H_REGEX);
+  if (!match) {
+    console.warn('calculateWeighInTime: invalid startTime format, expected "HH:MM AM/PM"', { startTime });
+    return '6:00 AM';
+  }
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3].toUpperCase();
+  if (hours < 1 || hours > 12) {
+    console.warn('calculateWeighInTime: hours out of range 1-12', { startTime, hours });
+    return '6:00 AM';
+  }
+  if (minutes < 0 || minutes > 59) {
+    console.warn('calculateWeighInTime: minutes out of range 0-59', { startTime, minutes });
+    return '6:00 AM';
+  }
+  if (period !== 'AM' && period !== 'PM') {
+    console.warn('calculateWeighInTime: period must be AM or PM', { startTime, period });
+    return '6:00 AM';
+  }
   let hour24 = hours;
   if (period === 'PM' && hours !== 12) hour24 += 12;
   if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
   let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
   if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
+  let weighInPeriod: 'AM' | 'PM' = 'AM';
   if (weighInHour >= 12) {
     weighInPeriod = 'PM';
     if (weighInHour > 12) weighInHour -= 12;
   }
   if (weighInHour === 0) weighInHour = 12;
-  
   return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
 }
 
@@ -174,7 +186,8 @@ const SessionCard = React.memo(({
   onPress,
   router,
   savedWarmups,
-  schedulesMap
+  schedulesMap,
+  allowedMeetNames
 }: {
   item: LegacySavedSession;
   selectedMeet: MeetName | null;
@@ -182,6 +195,7 @@ const SessionCard = React.memo(({
   router: ReturnType<typeof useRouter>;
   savedWarmups: Array<{ id: string; name: string; meet: string; }>;
   schedulesMap: Map<MeetName, ScheduleType>;
+  allowedMeetNames: ReadonlySet<string>;
 }) => {
   const { currentTheme } = useTheme();
   const navigation = useNavigation();
@@ -199,10 +213,9 @@ const SessionCard = React.memo(({
 
   // Ensure meet is defined before using it
   const meet = item.meet || selectedMeet;
-  // Add a check for schedule existence in the map
-  const schedule = meet && isMeetName(meet) ? schedulesMap.get(meet) : undefined;
+  const schedule = meet && isMeetName(meet, allowedMeetNames) ? schedulesMap.get(meet) : undefined;
 
-  if (!meet || !isMeetName(meet)) {
+  if (!meet || !isMeetName(meet, allowedMeetNames)) {
     console.warn('[SessionCard] No valid meet information available for session:', item);
     return null; // Don't render if meet info is missing
   }
@@ -435,7 +448,11 @@ const SessionCard = React.memo(({
 export default function SavedScreen() {
   const { user } = useUser();
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } = useSavedSessions();
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, availableMeets } = useSelectedMeet();
+  const allowedMeetNames = useMemo(
+    () => new Set(availableMeets.map((m) => m.name)),
+    [availableMeets]
+  );
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -482,8 +499,13 @@ export default function SavedScreen() {
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
                 if (stored) {
-                  let sessions = [];
-                  try { sessions = JSON.parse(stored); } catch {}
+                  let sessions: Array<{ meet?: string }> = [];
+                  try {
+                    const parsed: unknown = JSON.parse(stored);
+                    if (Array.isArray(parsed)) sessions = parsed as Array<{ meet?: string }>;
+                  } catch (err) {
+                    console.error('Failed to parse stored sessions:', err, { key, stored });
+                  }
                   if (Array.isArray(sessions)) {
                     const filtered = sessions.filter(s => s.meet !== selectedMeet);
                     await AsyncStorage.setItem(key, JSON.stringify(filtered));
@@ -630,7 +652,7 @@ export default function SavedScreen() {
 
               // Filter out sessions without meet information or missing schedules
               const validSessions = filteredSessions.filter(session => {
-                if (!session.meet || !isMeetName(session.meet)) return false;
+                if (!session.meet || !isMeetName(session.meet, allowedMeetNames)) return false;
                 const schedule = schedulesMap.get(session.meet);
                 return schedule && schedule.length > 0; // Ensure schedule exists and is not empty
               }) as Array<SavedSession & { meet: MeetName }>;
@@ -765,16 +787,16 @@ export default function SavedScreen() {
         router={router}
         savedWarmups={savedWarmups}
         schedulesMap={schedulesMap}
+        allowedMeetNames={allowedMeetNames}
       />
     );
-  }, [selectedMeet, router, savedWarmups, schedulesMap]);
+  }, [selectedMeet, router, savedWarmups, schedulesMap, allowedMeetNames]);
 
-  // Only run migration on mount
   useEffect(() => {
     if (!hasMigrated) {
       migrateSessions();
     }
-  }, [hasMigrated]);
+  }, [hasMigrated, migrateSessions]);
 
   // Remove all other effects except calendar permissions
   useEffect(() => {
@@ -793,7 +815,7 @@ export default function SavedScreen() {
       }
 
       setIsSchedulesLoading(true);
-      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter(isMeetName)));
+      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter((m): m is MeetName => isMeetName(m, allowedMeetNames))));
       const newSchedulesMap = new Map<MeetName, ScheduleType>();
 
       try {
@@ -819,7 +841,7 @@ export default function SavedScreen() {
     };
 
     fetchAllSchedules();
-  }, [savedSessions]);
+  }, [savedSessions, allowedMeetNames]);
 
   useLayoutEffect(() => {
     const calendarIconColor = isSchedulesLoading

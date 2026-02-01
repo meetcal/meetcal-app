@@ -163,32 +163,33 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
     }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
   }, [selectedMeet, timeZone]);
 
-  // Initialize sync manager when selectedMeet changes
+  const currentDate = day.date;
+  const currentDay = day;
+
   useEffect(() => {
     if (selectedMeet && typeof selectedMeet === 'string') {
       const manager = new SyncManager(selectedMeet);
       setSyncManager(manager);
-      
-      // Load schedule data immediately when sync manager is created
+
       const loadData = async () => {
         setRefreshing(true);
         try {
           const meetData = await manager.getMeetData();
-          setScheduleData(meetData.schedule?.find(d => d.date === day.date) || day);
+          setScheduleData(meetData.schedule?.find(d => d.date === currentDate) || currentDay);
         } catch (error) {
           console.error('Error loading schedule:', error);
-          setScheduleData(day);
+          setScheduleData(currentDay);
         } finally {
           setRefreshing(false);
         }
       };
-      
+
       loadData();
     } else {
       setSyncManager(null);
-      setScheduleData(day);
+      setScheduleData(currentDay);
     }
-  }, [selectedMeet, day.date]);
+  }, [selectedMeet, currentDate, currentDay]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -731,7 +732,7 @@ export default function ScheduleScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
-              onRefresh={() => {}}
+              onRefresh={handleRefresh}
               tintColor={colors.text}
             />
           }

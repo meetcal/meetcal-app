@@ -16,6 +16,8 @@ export interface OTAUpdateActions {
   dismissUpdate: () => void;
 }
 
+const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
+
 export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
   const [state, setState] = useState<OTAUpdateState>({
     isChecking: false,
@@ -140,8 +142,7 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
     }
   }, [checkForUpdate]);
 
-  const lastForegroundCheckRef = useRef<number>(0);
-  const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
+  const lastForegroundCheckRef = useRef<number>(Date.now());
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
