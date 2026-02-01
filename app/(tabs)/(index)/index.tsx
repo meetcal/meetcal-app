@@ -639,6 +639,23 @@ export default function ScheduleScreen() {
     }
   }, [formatDayTitle, navigation]);
 
+  // Set title to start date when there's no schedule loaded
+  useEffect(() => {
+    if (!isLoading && schedule.length === 0 && meetDetails?.dates?.start) {
+      const startDate = new Date(meetDetails.dates.start);
+      if (!Number.isNaN(startDate.getTime())) {
+        const formattedDate = new Intl.DateTimeFormat('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+        }).format(startDate);
+        navigation.setOptions({
+          title: formattedDate
+        });
+      }
+    }
+  }, [isLoading, schedule.length, meetDetails, navigation]);
+
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50
   }).current;
