@@ -136,11 +136,7 @@ export default function ProfileScreen() {
     <Pressable
       style={({ pressed }) => [
         styles.section,
-        { 
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.card
-        },
+        { backgroundColor: colors.card },
         pressed && { backgroundColor: colors.pressed }
       ]}
       onPress={() => handleEdit(field)}
@@ -162,6 +158,8 @@ export default function ProfileScreen() {
       </View>
     </Pressable>
   );
+
+  const divider = <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />;
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -196,7 +194,9 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           {renderField('First Name', user?.firstName || '', 'firstName')}
+          {divider}
           {renderField('Last Name', user?.lastName || '', 'lastName')}
+          {divider}
           {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
         </View>
 
@@ -412,6 +412,9 @@ const styles = StyleSheet.create({
   section: {
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  sectionDivider: {
+    height: 1,
   },
   fieldRow: {
     flexDirection: 'row',
