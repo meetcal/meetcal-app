@@ -324,9 +324,32 @@ export default function ScheduleScreen() {
   }, [availableMeets]);
 
   useLayoutEffect(() => {
+    const offlineDataIcon = Platform.OS === 'ios' ? 'square.and.arrow.down' : 'download';
     navigation.setOptions({
+      ...(Platform.OS === 'ios' && {
+        headerLeft: () => (
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => router.push('/(screens)/offline-data')}
+            accessibilityRole="button"
+            accessibilityLabel="Offline data"
+          >
+            <IconSymbol name={offlineDataIcon} size={24} color={headerColors.text} />
+          </Pressable>
+        ),
+      }),
       headerRight: () => (
         <View style={styles.headerActions}>
+          {Platform.OS === 'android' && (
+            <Pressable
+              style={styles.headerIconButton}
+              onPress={() => router.push('/(screens)/offline-data')}
+              accessibilityRole="button"
+              accessibilityLabel="Offline data"
+            >
+              <IconSymbol name={offlineDataIcon} size={24} color={headerColors.text} />
+            </Pressable>
+            )}
           <Pressable
             style={styles.headerIconButton}
             onPress={() => {
