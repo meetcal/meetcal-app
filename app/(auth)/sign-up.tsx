@@ -165,7 +165,7 @@ export default function SignUpScreen() {
                 <IconSymbol
                   name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow-back'}
                   size={24}
-                  color={colors.link}
+                  color={colors.text}
                 />
               </TouchableOpacity>
             ),

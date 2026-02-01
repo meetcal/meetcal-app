@@ -448,7 +448,7 @@ export default function WeightliftingWrappedScreen() {
           headerTitleStyle: { color: colors.text },
           headerStyle: { backgroundColor: colors.background },
           headerShadowVisible: false,
-          headerTintColor: '#007AFF',
+          headerTintColor: colors.text,
         }}
       />
 
