@@ -18,6 +18,7 @@ import { fetchSchedule } from '@/lib/database/queries';
 import { MeetName } from '@/data/types/meet';
 import { VersionAnnouncement } from '@/components/VersionAnnouncement';
 import { useAuth } from '@clerk/clerk-expo';
+import { OnboardingView, checkOnboardingComplete } from '@/components/OnboardingView';
 
 // Helper function to calculate weigh-in time
 function calculateWeighInTime(startTime: string): string {
@@ -280,6 +281,7 @@ export default function ScheduleScreen() {
   const { currentTheme } = useTheme();
   const { isSignedIn } = useAuth();
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const headerColors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
@@ -391,6 +393,17 @@ export default function ScheduleScreen() {
     animation.start();
     return () => animation.stop();
   }, [skeletonPulse]);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      const completed = await checkOnboardingComplete();
+      if (!completed) {
+        setShowOnboarding(true);
+      }
+    };
+    checkOnboarding();
+  }, []);
 
   const SkeletonBlock = useCallback(({ style }: { style: any }) => {
     const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
@@ -711,7 +724,12 @@ export default function ScheduleScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
+      <OnboardingView
+        visible={showOnboarding}
+        onComplete={() => setShowOnboarding(false)}
+      />
+
+      <View style={[styles.filterContainer, {
         backgroundColor: colors.background,
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
@@ -720,9 +738,9 @@ export default function ScheduleScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.filterButton,
-              { 
+              {
                 backgroundColor: colors.card,
-                borderColor: colors.border 
+                borderColor: colors.border
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
