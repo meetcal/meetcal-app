@@ -123,13 +123,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSubscription = () => {
-    router.push({
-      pathname: '/(screens)/subscription',
-      params: { from: 'profile' }
-    });
-  };
-
   const formatTitle = (field: string) => {
     return field
       .replace(/([A-Z])/g, ' $1')

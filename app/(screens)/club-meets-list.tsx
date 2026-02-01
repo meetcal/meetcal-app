@@ -165,28 +165,42 @@ export default function ClubMeetsListScreen() {
         }}
       />
 
-      {/* Search Bar */}
-      <View style={[styles.searchContainer, { 
+      <View style={[styles.searchWrapper, {
         backgroundColor: colors.background,
         borderBottomColor: colors.border,
-        paddingTop: insets.top + 12
+        paddingTop: insets.top + 12,
       }]}>
-        <View style={[styles.searchInputContainer, { backgroundColor: colors.card }]}>
-          <IconSymbol name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'} size={18} color={colors.secondaryText} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search meets..."
-            placeholderTextColor={colors.secondaryText}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
-              <IconSymbol name={Platform.OS === 'ios' ? 'xmark.circle.fill' : 'close-circle'} size={18} color={colors.secondaryText} />
-            </Pressable>
-          )}
+        <View style={styles.searchRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}
+            hitSlop={12}
+          >
+            <IconSymbol
+              name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow.back'}
+              size={24}
+              color={colors.text}
+            />
+          </Pressable>
+          <View style={[styles.searchContainer, { flex: 1 }]}>
+            <View style={[styles.searchInputContainer, { backgroundColor: colors.card }]}>
+              <IconSymbol name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'} size={18} color={colors.secondaryText} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search meets..."
+                placeholderTextColor={colors.secondaryText}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                  <IconSymbol name={Platform.OS === 'ios' ? 'xmark.circle.fill' : 'close-circle'} size={18} color={colors.secondaryText} />
+                </Pressable>
+              )}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -215,10 +229,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchContainer: {
+  searchWrapper: {
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingRight: 4,
+  },
+  searchContainer: {
+    marginBottom: 0,
   },
   searchInputContainer: {
     flexDirection: 'row',
