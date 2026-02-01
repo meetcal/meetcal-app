@@ -5,6 +5,7 @@ import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
+import Constants from 'expo-constants';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -21,6 +22,10 @@ export default function TabLayout() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
   };
 
+  // Check if iOS 26+ for NativeTabs
+  const iosVersion = Platform.OS === 'ios' ? parseInt(String(Platform.Version).split('.')[0], 10) : 0;
+  const isIOS26OrHigher = iosVersion >= 26;
+
   // Update navigation theme when theme changes
   React.useEffect(() => {
     navigation.setOptions({
@@ -28,7 +33,7 @@ export default function TabLayout() {
     });
   }, [currentTheme, navigation]);
 
-  if (Platform.OS === 'ios') {
+  if (Platform.OS === 'ios' && isIOS26OrHigher) {
     return (
       <NativeTabs
         labelStyle={{ color: colors.secondaryText }}
