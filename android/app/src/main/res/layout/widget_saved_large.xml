@@ -17,6 +17,7 @@
       android:id="@+id/widget_icon"
       android:layout_width="16dp"
       android:layout_height="16dp"
+      android:contentDescription="@string/widget_icon_description"
       android:src="@android:drawable/ic_menu_my_calendar" />
 
     <TextView
@@ -26,7 +27,7 @@
       android:layout_marginStart="6dp"
       android:ellipsize="end"
       android:maxLines="1"
-      android:text="MeetCal"
+      android:text="@string/meetcal_title"
       android:textColor="@color/widget_blue"
       android:textSize="12sp"
       android:textStyle="bold" />
@@ -43,7 +44,7 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_marginTop="8dp"
-    android:text="No saved sessions"
+    android:text="@string/no_saved_sessions"
     android:textColor="@color/widget_text_secondary"
     android:textSize="12sp"
     android:visibility="gone" />

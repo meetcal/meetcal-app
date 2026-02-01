@@ -10,8 +10,9 @@ import android.util.Log
 import android.widget.RemoteViews
 import __PACKAGE_NAME__.R
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -216,13 +217,15 @@ class SavedWidgetProvider : AppWidgetProvider() {
           val startTime = obj.optString("start_time", "")
           val weightClass = obj.optString("weight_class", "")
           val date = obj.optString("date", "")
+          val eventTimezone = obj.optString("time_zone", ZoneId.systemDefault().id)
           sessions.add(
             WidgetSession(
               platform = platform,
               sessionNumber = sessionNumber,
               startTime = startTime,
               weightClass = weightClass,
-              date = date
+              date = date,
+              eventTimezone = eventTimezone
             )
           )
         }
@@ -250,12 +253,13 @@ private data class WidgetSession(
   val sessionNumber: Int,
   val startTime: String,
   val weightClass: String,
-  val date: String
+  val date: String,
+  val eventTimezone: String = ZoneId.systemDefault().id
 ) {
   fun formattedStartTime(): String {
     return try {
       val parsed = LocalTime.parse(startTime, DateTimeFormatter.ofPattern("HH:mm:ss"))
-      parsed.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.US))
+      parsed.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.getDefault()))
     } catch (_: Exception) {
       startTime
     }
@@ -263,10 +267,15 @@ private data class WidgetSession(
 
   fun isPast(): Boolean {
     return try {
+      val zone = try {
+        ZoneId.of(eventTimezone)
+      } catch (_: Exception) {
+        ZoneId.systemDefault()
+      }
       val parsedDate = LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE)
       val parsedTime = LocalTime.parse(startTime, DateTimeFormatter.ofPattern("HH:mm:ss"))
-      val sessionDateTime = LocalDateTime.of(parsedDate, parsedTime)
-      sessionDateTime.isBefore(LocalDateTime.now())
+      val sessionZoned = ZonedDateTime.of(parsedDate, parsedTime, zone)
+      sessionZoned.isBefore(ZonedDateTime.now(zone))
     } catch (_: Exception) {
       false
     }

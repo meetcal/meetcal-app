@@ -52,7 +52,15 @@ export function useSavedSessions() {
   }, [user?.id]);
 
   useEffect(() => {
-    syncSavedWidget(selectedMeet, savedSessions);
+    if (!selectedMeet) {
+      syncSavedWidget(null, savedSessions);
+      return;
+    }
+    getMeetConfig(selectedMeet)
+      .then(config =>
+        syncSavedWidget(selectedMeet, savedSessions, config?.time?.timeZoneIdentifier ?? 'UTC')
+      )
+      .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'));
   }, [selectedMeet, savedSessions]);
 
   // Load sessions when user logs in
