@@ -769,21 +769,6 @@ export default function ScheduleScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.refreshButton,
-                  pressed && { opacity: 0.8 },
-                  isRefreshingMeets && { opacity: 0.5 },
-                ]}
-                onPress={handleRefreshMeets}
-                disabled={isRefreshingMeets}
-              >
-                <IconSymbol
-                  name="arrow.clockwise"
-                  size={18}
-                  color={colors.secondaryText}
-                />
-              </Pressable>
               <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
                 Select Your Meet
               </ThemedText>
