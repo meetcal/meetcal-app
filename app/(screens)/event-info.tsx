@@ -82,7 +82,7 @@ export default function EventInfoScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ 
+      {/* <Stack.Screen options={{ 
         title: "Event Info",
         headerBackTitle: "Back",
         headerShown: true,
@@ -93,7 +93,7 @@ export default function EventInfoScreen() {
           backgroundColor: colors.background,
         },
         headerShadowVisible: false,
-      }} />
+      }} /> */}
 
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
@@ -112,9 +112,6 @@ export default function EventInfoScreen() {
           ]}
           onPress={handleAddressPress}
         >
-          <ThemedText style={[styles.label, { color: colors.text }]}>
-            Location
-          </ThemedText>
           <View>
             <View style={styles.addressContainer}>
               <View>
@@ -134,7 +131,7 @@ export default function EventInfoScreen() {
         </Pressable>
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
+{/* 
         <View style={styles.section}>
           <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
             Venue Time Zone
@@ -142,9 +139,9 @@ export default function EventInfoScreen() {
           <ThemedText style={[styles.sectionText, { color: colors.text }]}>
             {timeZoneName}
           </ThemedText>
-        </View>
+        </View> */}
       </View>
-
+{/* 
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
@@ -156,7 +153,7 @@ export default function EventInfoScreen() {
             for any platform or time changes.
           </ThemedText>
         </View>
-      </View>
+      </View> */}
     </ThemedView>
   );
 }
@@ -166,7 +163,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    margin: 16,
     borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -186,7 +182,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   mainTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     marginTop: 4,
   },
@@ -204,7 +200,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   link: {
-    fontSize: 17,
+    fontSize: 16,
     lineHeight: 22,
   },
   addressContainer: {

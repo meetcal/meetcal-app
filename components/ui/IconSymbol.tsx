@@ -28,6 +28,8 @@ const iconMap: Record<string, string> = {
   'lock': 'lock-closed',
   'xmark': 'close',
   'close': 'close',
+  'download': 'download',
+  'square.and.arrow.down': 'download',
 };
 
 type IconSymbolProps = {

@@ -11,6 +11,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase';
+import EventInfoScreen from '@/app/(screens)/event-info';
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
@@ -185,7 +186,7 @@ export default function InfoScreen() {
       >
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
+          {/* <Pressable
             style={({ pressed }) => [
               styles.section,
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
@@ -203,7 +204,9 @@ export default function InfoScreen() {
                 color={colors.link}
               />
             </View>
-          </Pressable>
+          </Pressable> */}
+
+          <EventInfoScreen />
 
           {/* <Pressable
             style={({ pressed }) => [
@@ -225,7 +228,7 @@ export default function InfoScreen() {
             </View>
           </Pressable> */}
 
-          <Pressable
+          {/* <Pressable
             style={({ pressed }) => [
               styles.section,
               styles.lastSection,
@@ -239,7 +242,7 @@ export default function InfoScreen() {
               </ThemedText>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
-          </Pressable>
+          </Pressable> */}
         </View>
 
         <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>

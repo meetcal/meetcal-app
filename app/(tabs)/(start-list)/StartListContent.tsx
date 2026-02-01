@@ -1970,7 +1970,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     gap: 12,
   },
   filterContainer: {
