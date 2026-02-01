@@ -56,7 +56,7 @@ export default ({ config }) => ({
           targetSdkVersion: 35,
           buildToolsVersion: '36.1.0',
           minSdkVersion: 24,
-          ndkVersion: '27.0.12077973',  // NDK r27b - EAS Build available version, AGP 8.6 handles 16KB alignment
+          ndkVersion: '27.1.12297006',  // NDK version matching EAS Build
         },
       },
     ],
