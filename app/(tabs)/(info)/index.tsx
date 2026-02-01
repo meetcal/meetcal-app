@@ -12,6 +12,7 @@ import { MeetName } from '@/data/types/meet';
 import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase';
 import EventInfoScreen from '@/app/(screens)/event-info';
+import { Colors } from '@/constants/Colors';
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
@@ -166,7 +167,7 @@ export default function InfoScreen() {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',  // White in light mode, dark gray in dark mode
+            backgroundColor: currentTheme === 'dark' ? Colors.dark.background : Colors.light.background
           },
           headerShadowVisible: false,
         }}
