@@ -4,6 +4,13 @@ export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number 
 
 const cache = new Map<string, YearBests>();
 
+const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+
+function setNegativeCache(athleteName: string): YearBests {
+  cache.set(athleteName, ZERO_BESTS);
+  return ZERO_BESTS;
+}
+
 export async function getLastYearBests(athleteName: string): Promise<YearBests> {
   const cached = cache.get(athleteName);
   if (cached != null) return cached;
@@ -17,9 +24,9 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
       .eq('name', athleteName)
       .gte('date', oneYearAgo.toISOString())
       .order('date', { ascending: false });
-    if (error) return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    if (error) return setNegativeCache(athleteName);
     const results = (athleteResults ?? []) as LiftBestRow[];
-    if (results.length === 0) return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    if (results.length === 0) return setNegativeCache(athleteName);
     const result: YearBests = {
       bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
       bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
@@ -28,7 +35,7 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
     cache.set(athleteName, result);
     return result;
   } catch {
-    return { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
+    return setNegativeCache(athleteName);
   }
 }
 

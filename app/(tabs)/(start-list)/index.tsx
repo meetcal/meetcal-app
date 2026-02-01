@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedView } from '@/components/ThemedView';
 

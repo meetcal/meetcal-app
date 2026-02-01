@@ -335,13 +335,14 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
       return athlete.entryTotal || 0;
     }
     const bests = athleteBests[athlete.name];
+    const fallback = athlete.entryTotal ?? 0;
     if (sortKey === 'snatch') {
-      return bests?.snatch_best || 0;
+      return bests?.snatch_best ?? fallback;
     }
     if (sortKey === 'cj') {
-      return bests?.cj_best || 0;
+      return bests?.cj_best ?? fallback;
     }
-    return bests?.total || 0;
+    return bests?.total ?? fallback;
   }, [athleteBests, sortKey]);
 
   const sortedAthletes = useMemo(() => {

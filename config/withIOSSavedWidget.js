@@ -21,9 +21,10 @@ const withIOSSavedWidget = (config) => {
       for (const file of FILES) {
         const src = path.join(TEMPLATE_DIR, file);
         const dest = path.join(sourceRoot, file);
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, dest);
+        if (!fs.existsSync(src)) {
+          throw new Error(`Saved widget template not found: ${file}. Expected at ${src}`);
         }
+        fs.copyFileSync(src, dest);
       }
 
       const projectPath = Paths.getPBXProjectPath(projectRoot);
@@ -47,13 +48,22 @@ const withIOSSavedWidget = (config) => {
       // Add the framework
       XcodeUtils.addFramework(frameworkOptions);
       
-      // Make it optional (weak linking) by finding and modifying the framework reference
-      const frameworks = project.pbxFrameworksBuildPhaseObj(project.getFirstTarget().uuid);
+      const firstTarget = project.getFirstTarget();
+      if (!firstTarget) {
+        throw new Error('withIOSSavedWidget: no target found in Xcode project');
+      }
+
+      const frameworks = project.pbxFrameworksBuildPhaseObj(firstTarget.uuid);
       if (frameworks && frameworks.files) {
+        const buildFileSection = project.pbxBuildFileSection();
+        const fileRefSection = project.pbxFileReferenceSection();
         for (const file of frameworks.files) {
-          const fileRef = project.pbxFileReferenceSection()[file.value];
-          if (fileRef && fileRef.path === 'WidgetKit.framework') {
-            // Mark as optional/weak
+          const buildFile = buildFileSection[file.value];
+          if (!buildFile || !buildFile.fileRef) continue;
+          const fileRef = fileRefSection[buildFile.fileRef];
+          if (!fileRef || !fileRef.path) continue;
+          const pathStr = typeof fileRef.path === 'string' ? fileRef.path : String(fileRef.path);
+          if (pathStr.endsWith('WidgetKit.framework') || pathStr.includes('/WidgetKit.framework')) {
             if (!file.settings) {
               file.settings = {};
             }

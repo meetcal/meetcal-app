@@ -31,16 +31,17 @@ export interface AthleteItemProps {
 export const AthleteItem = React.memo(function AthleteItem({ athlete, router, schedule, getSessionDetails }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   const { expandedId, setExpandedId } = useExpandedId();
-  const isExpanded = expandedId === athlete.name;
+  const expandKey = athlete.memberId;
+  const isExpanded = expandedId === expandKey;
   const tapTimeRef = useRef(0);
   const expandRenderLogged = useRef(false);
   const expandCommitLogged = useRef(false);
   const onPress = useCallback(() => {
     tapTimeRef.current = performance.now();
     if (__DEV__) recordExpandTapTime();
-    setExpandedId(prev => prev === athlete.name ? null : athlete.name);
+    setExpandedId(prev => prev === expandKey ? null : expandKey);
     if (__DEV__) console.log('[StartList] 0. setExpandedId called', Math.round(performance.now() - tapTimeRef.current), 'ms since tap');
-  }, [athlete.name, setExpandedId]);
+  }, [expandKey, setExpandedId]);
   if (__DEV__ && isExpanded && !expandRenderLogged.current) {
     expandRenderLogged.current = true;
     console.log('[StartList] 2. AthleteItem expanded render', Math.round(performance.now() - tapTimeRef.current), 'ms since tap');
@@ -81,10 +82,16 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
     const { InteractionManager } = require('react-native');
     const task = InteractionManager.runAfterInteractions(() => {
       setLoadingBests(true);
-      getLastYearBests(athlete.name).then(bests => {
-        setYearBests(bests);
-        setLoadingBests(false);
-      });
+      getLastYearBests(athlete.name)
+        .then(bests => {
+          setYearBests(bests);
+          setLoadingBests(false);
+        })
+        .catch(err => {
+          if (__DEV__) console.warn('[AthleteItem] getLastYearBests failed', err);
+          setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+          setLoadingBests(false);
+        });
     });
     return () => task.cancel();
   }, [isExpanded, athlete.name]);
@@ -105,7 +112,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
       const platform = scheduleSession?.platforms.find(p => p.platform === athlete.session?.platform);
       const details = getSessionDetails(athlete.session.number);
       startTime = platform?.platformStartTime || details?.startTime || '';
-      weighInTime = startTime ? calculateWeighInTime(startTime) : (details?.weighInTime || '');
+      weighInTime = startTime ? (calculateWeighInTime(startTime) ?? details?.weighInTime ?? '') : (details?.weighInTime || '');
       dateStr = sessionDay?.fullDate || details?.date || '';
     }
     if (!startTime || !weighInTime || !dateStr) return;

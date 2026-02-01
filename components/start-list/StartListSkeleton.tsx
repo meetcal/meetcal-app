@@ -28,7 +28,7 @@ const skeletonStyles = StyleSheet.create({
   buttonRow: { flexDirection: 'row', gap: 16, marginTop: 6 },
   button: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
   athleteCard: { borderRadius: 12, overflow: 'hidden', marginBottom: 12 },
-  detailsContainer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  detailsContainer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
 });
 
 export function StartListSkeleton({ colors, currentTheme, skeletonPulse }: StartListSkeletonProps) {

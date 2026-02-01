@@ -45,6 +45,9 @@ export default function StartListScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState('');
   const [clubFilter, setClubFilter] = useState('');
+  const [ageGroupFilter, setAgeGroupFilter] = useState('');
+  const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState('');
+  const [genderFilter, setGenderFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [clubSearchQuery, setClubSearchQuery] = useState('');
   const { currentTheme } = useTheme();
@@ -268,7 +271,7 @@ export default function StartListScreen() {
   [athletes]);
 
   const sortedClubOptions = useMemo(() => {
-    return clubOptions.sort((a, b) => {
+    return [...clubOptions].sort((a, b) => {
       const aIsStarred = starredClubs.includes(a);
       const bIsStarred = starredClubs.includes(b);
       
@@ -288,7 +291,7 @@ export default function StartListScreen() {
     />
   ), [router, scheduleData, getSessionDetails]);
 
-  const keyExtractor = useCallback((item: LiftResult) => item.name, []);
+  const keyExtractor = useCallback((item: LiftResult) => `${item.memberId}_${item.name}`, []);
 
   // Add new state for age group filter
   const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | 'adaptiveAthlete' | 'gender' | null>(null);
@@ -411,9 +414,9 @@ export default function StartListScreen() {
     const filters = [];
     if (weightClassFilter) filters.push(weightClassFilter);
     if (clubFilter) filters.push(clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter);
-    if (tempAgeGroupFilter) filters.push(tempAgeGroupFilter);
-    if (tempAdaptiveAthleteFilter) filters.push(tempAdaptiveAthleteFilter);
-    if (tempGenderFilter) filters.push(tempGenderFilter);
+    if (ageGroupFilter) filters.push(ageGroupFilter);
+    if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
+    if (genderFilter) filters.push(genderFilter);
     
     return filters.length > 0 ? filters.join(' • ') : 'Filter';
   };
@@ -423,35 +426,35 @@ export default function StartListScreen() {
     
     return athletes
       .filter(athlete => {
-        const matchesWeightClass = tempWeightClassFilter 
-          ? parseWeightClasses(athlete.weightClass).includes(tempWeightClassFilter)
+        const matchesWeightClass = weightClassFilter 
+          ? parseWeightClasses(athlete.weightClass).includes(weightClassFilter)
           : true;
-        const matchesClub = tempClubFilter 
-          ? tempClubFilter === STARRED_CLUBS_FILTER 
+        const matchesClub = clubFilter 
+          ? clubFilter === STARRED_CLUBS_FILTER 
             ? starredClubs.includes(athlete.club)
-            : athlete.club === tempClubFilter
+            : athlete.club === clubFilter
           : true;
         const matchesSearch = searchQuery 
           ? athlete.name.toLowerCase().includes(searchQuery.toLowerCase())
           : true;
-        const matchesAgeGroup = tempAgeGroupFilter 
-          ? getAgeCategory(athlete.age) === tempAgeGroupFilter
+        const matchesAgeGroup = ageGroupFilter 
+          ? getAgeCategory(athlete.age) === ageGroupFilter
           : true;
-        const matchesAdaptiveAthlete = tempAdaptiveAthleteFilter 
-          ? tempAdaptiveAthleteFilter === 'Adaptive Athletes'
+        const matchesAdaptiveAthlete = adaptiveAthleteFilter 
+          ? adaptiveAthleteFilter === 'Adaptive Athletes'
             ? athlete.adaptive === true
-            : tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes'
+            : adaptiveAthleteFilter === 'Non-Adaptive Athletes'
               ? athlete.adaptive === false
               : true
           : true;
-        const matchesGender = tempGenderFilter 
-          ? athlete.gender.toLowerCase() === tempGenderFilter.toLowerCase()
+        const matchesGender = genderFilter 
+          ? athlete.gender.toLowerCase() === genderFilter.toLowerCase()
           : true;
 
         return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete && matchesGender;
       })
       .sort(sortAthletes);
-  }, [tempWeightClassFilter, tempClubFilter, searchQuery, tempAgeGroupFilter, tempAdaptiveAthleteFilter, tempGenderFilter, starredClubs, athletes]);
+  }, [weightClassFilter, clubFilter, searchQuery, ageGroupFilter, adaptiveAthleteFilter, genderFilter, starredClubs, athletes]);
 
   useEffect(() => {
     if (athletes.length === 0) return;
@@ -601,9 +604,9 @@ export default function StartListScreen() {
   const handleOpenModal = () => {
     setTempWeightClassFilter(weightClassFilter);
     setTempClubFilter(clubFilter);
-    setTempAgeGroupFilter(tempAgeGroupFilter);
-    setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
-    setTempGenderFilter(tempGenderFilter);
+    setTempAgeGroupFilter(ageGroupFilter);
+    setTempAdaptiveAthleteFilter(adaptiveAthleteFilter);
+    setTempGenderFilter(genderFilter);
     setShowFilterModal(true);
   };
 
@@ -611,9 +614,9 @@ export default function StartListScreen() {
   const handleApplyFilters = () => {
     setWeightClassFilter(tempWeightClassFilter);
     setClubFilter(tempClubFilter);
-    setTempAgeGroupFilter(tempAgeGroupFilter);
-    setTempAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
-    setTempGenderFilter(tempGenderFilter);
+    setAgeGroupFilter(tempAgeGroupFilter);
+    setAdaptiveAthleteFilter(tempAdaptiveAthleteFilter);
+    setGenderFilter(tempGenderFilter);
     setShowFilterModal(false);
     setExpandedSection(null);
 
@@ -634,6 +637,9 @@ export default function StartListScreen() {
     setTempGenderFilter('');
     setWeightClassFilter('');
     setClubFilter('');
+    setAgeGroupFilter('');
+    setAdaptiveAthleteFilter('');
+    setGenderFilter('');
     setSearchQuery('');
     setShowFilterModal(false);
     setExpandedSection(null);
@@ -898,7 +904,7 @@ export default function StartListScreen() {
       }
       
       const errorMessage = Platform.select({
-        ios: 'Could not add events to calendadayr. Please try again.',
+        ios: 'Could not add events to calendar. Please try again.',
         android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
         default: 'Could not add events to calendar. Please try again.'
       });

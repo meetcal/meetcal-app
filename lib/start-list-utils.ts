@@ -3,10 +3,14 @@ import * as Calendar from 'expo-calendar';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 
+const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
+
 export function sortWeightClasses(a: string, b: string): number {
-  const aNum = parseInt(a.replace(/[^\d]/g, ''));
-  const bNum = parseInt(b.replace(/[^\d]/g, ''));
-  if (aNum !== bNum) return aNum - bNum;
+  const aNum = parseInt(a.replace(/[^\d]/g, ''), 10);
+  const bNum = parseInt(b.replace(/[^\d]/g, ''), 10);
+  const aSafe = Number.isNaN(aNum) ? WEIGHT_CLASS_NAN_SENTINEL : aNum;
+  const bSafe = Number.isNaN(bNum) ? WEIGHT_CLASS_NAN_SENTINEL : bNum;
+  if (aSafe !== bSafe) return aSafe - bSafe;
   const aHasPlus = a.includes('+');
   const bHasPlus = b.includes('+');
   if (aHasPlus && !bHasPlus) return 1;
@@ -77,12 +81,30 @@ export function formatSessionDisplayDate(
   });
 }
 
-export function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
+const TIME_PART_REGEX = /^\d{1,2}:\d{2}$/;
+const PERIOD_REGEX = /\s*(AM|PM)\s*$/i;
+
+export function calculateWeighInTime(startTime: string): string | null {
+  const trimmed = startTime.trim();
+  let timePart: string;
+  let periodPart: string | undefined;
+  const spaceSplit = trimmed.split(/\s+/);
+  if (spaceSplit.length >= 2) {
+    periodPart = spaceSplit.pop()?.toUpperCase();
+    timePart = spaceSplit.join(' ').trim();
+  } else {
+    const periodMatch = trimmed.match(PERIOD_REGEX);
+    periodPart = periodMatch ? periodMatch[1].toUpperCase() : undefined;
+    timePart = periodMatch ? trimmed.slice(0, periodMatch.index).trim() : trimmed;
+  }
+  if (!periodPart || (periodPart !== 'AM' && periodPart !== 'PM')) return null;
+  if (!TIME_PART_REGEX.test(timePart)) return null;
+  const [hours, minutes] = timePart.split(':').map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
   let hour24 = hours;
-  if (period === 'PM' && hours !== 12) hour24 += 12;
-  if (period === 'AM' && hours === 12) hour24 = 0;
+  if (periodPart === 'PM' && hours !== 12) hour24 += 12;
+  if (periodPart === 'AM' && hours === 12) hour24 = 0;
   let weighInHour = hour24 - 2;
   if (weighInHour < 0) weighInHour += 24;
   let weighInPeriod = 'AM';
