@@ -25,6 +25,7 @@ import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { posthog } from '@/lib/posthog';
 import { UpdateNotification } from '@/components/UpdateNotification';
+import { OfflineIndicator } from '@/components/OfflineIndicator';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -256,6 +257,7 @@ function RootLayoutNav() {
   return (
     <NavigationThemeProvider value={theme}>
       <UpdateNotification />
+      <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
       </Stack>

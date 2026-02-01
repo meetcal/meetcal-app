@@ -123,14 +123,14 @@ export default function SignUpScreen() {
         code,
       })
 
-      if (signUpAttempt.status === 'complete' && 
-          signUpAttempt.createdSessionId && 
+      if (signUpAttempt.status === 'complete' &&
+          signUpAttempt.createdSessionId &&
           signUpAttempt.createdUserId) {
         await setActive({ session: signUpAttempt.createdSessionId })
-        
-        // Cache the auth state
-        await cacheAuthState(true)
-        
+
+        // Cache the auth state with user details
+        await cacheAuthState(true, signUpAttempt.createdUserId, emailAddress)
+
         // Sync user with RevenueCat
         try {
           await Purchases.setEmail(emailAddress);
