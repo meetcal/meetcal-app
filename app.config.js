@@ -48,7 +48,7 @@ export default ({ config }) => ({
       'expo-build-properties',
       {
         ios: {
-          deploymentTarget: '17.0',
+          deploymentTarget: '18.0',
           useFrameworks: 'static',
         },
         android: {
