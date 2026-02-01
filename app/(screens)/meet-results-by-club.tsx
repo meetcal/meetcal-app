@@ -134,19 +134,21 @@ export default function MeetResultsByClubScreen() {
     }
   };
 
+  const topBar = (
+    <View style={[styles.topBar, { paddingTop: insets.top + 8, paddingBottom: 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]} hitSlop={12}>
+        <IconSymbol name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow.back'} size={24} color={colors.text} />
+      </Pressable>
+      <ThemedText style={[styles.topBarTitle, { color: colors.text }]} numberOfLines={1}>Meet Recap</ThemedText>
+      <View style={styles.topBarSpacer} />
+    </View>
+  );
+
   if (isLoading) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen
-          options={{
-            headerTitle: 'Meet Recap',
-            headerTitleStyle: { color: colors.text },
-            headerStyle: {
-              backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-            },
-            headerShadowVisible: false,
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
+        {topBar}
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.link} />
           <ThemedText style={[styles.emptyText, { color: colors.secondaryText, marginTop: 16 }]}>
@@ -160,16 +162,8 @@ export default function MeetResultsByClubScreen() {
   if (error || !clubStats) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen
-          options={{
-            headerTitle: 'Meet Recap',
-            headerTitleStyle: { color: colors.text },
-            headerStyle: {
-              backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-            },
-            headerShadowVisible: false,
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
+        {topBar}
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
             Error loading statistics
@@ -187,23 +181,12 @@ export default function MeetResultsByClubScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen
-        options={{
-          headerTitle: 'Meet Recap',
-          headerTitleStyle: { color: colors.text },
-          headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-          },
-          headerShadowVisible: false,
-          headerBackVisible: true,
-          headerTintColor: colors.link,
-        }}
-      />
-
+      <Stack.Screen options={{ headerShown: false }} />
+      {topBar}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={{
-          paddingTop: insets.top + 40,
+          paddingTop: 16,
           paddingBottom: Math.max(80, insets.bottom + 60),
         }}
       >
@@ -467,6 +450,26 @@ function ImagePreviewModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingRight: 12,
+  },
+  topBarTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  topBarSpacer: {
+    width: 40,
   },
   scrollView: {
     flex: 1,

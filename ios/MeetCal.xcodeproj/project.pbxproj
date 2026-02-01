@@ -9,13 +9,16 @@
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		53E1E16C55AB39E9E01A917D /* Pods_MeetCal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0215B5F3D03F8B37B466AF73 /* Pods_MeetCal.framework */; };
-		8E0EF17050AF013B9350ECB5 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F0E69D120E0D64C48C2DB1 /* ExpoModulesProvider.swift */; };
-		B94E0BCFF5B618C7BF869241 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BE961C97642E10BB08D572D6 /* PrivacyInfo.xcprivacy */; };
+		9372796DA7EF429BB5F8EF0A /* liquid-glass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9BD0115A4AD04EF9BBD9D37B /* liquid-glass.icon */; };
+		97A593E833F1FBFE3DC9B537 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58EAFC6D77644C6B1454FA8 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		D370801BE4284DAFB08B93C7 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 179E0E369A0240BE9EC8397B /* WidgetKit.framework */; };
+		DE3061B182EE4D5E8B6A4117 /* SavedWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 46CFF7541B0642B88DBBBF91 /* SavedWidgetModule.m */; };
+		E7B90593027A93F64304D3C5 /* Pods_MeetCal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6B3D17A26F3DA4F5BEB9415 /* Pods_MeetCal.framework */; };
+		EF773A2D0C34151B051D51E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9217C3B335B8BC1F8CEB7557 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		XX12B55A1EDABF083C3B51XX /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */; };
 		XX1A6800511A685AB346D2XX /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XXA12889081EB894481655XX /* AppIntents.framework */; };
+		XX2498911E437C34F993F9XX /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 179E0E369A0240BE9EC8397B /* WidgetKit.framework */; };
 		XX3C562DEF346B45594832XX /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */; };
 		XX5D9C75C2976C14B86EE5XX /* SavedWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XX3290D957F0C803AFE554XX /* SavedWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		XX6A44985675A04437B8C4XX /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */; };
@@ -46,21 +49,23 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0215B5F3D03F8B37B466AF73 /* Pods_MeetCal.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_MeetCal.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* MeetCal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; fileEncoding = 4; includeInIndex = 0; path = MeetCal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = MeetCal/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = Info.plist; path = MeetCal/Info.plist; sourceTree = "<group>"; };
-		A0F0E69D120E0D64C48C2DB1 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MeetCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		179E0E369A0240BE9EC8397B /* WidgetKit.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		17D7A7A8856861C442AEC4D3 /* Pods-MeetCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetCal.debug.xcconfig"; path = "Target Support Files/Pods-MeetCal/Pods-MeetCal.debug.xcconfig"; sourceTree = "<group>"; };
+		46CFF7541B0642B88DBBBF91 /* SavedWidgetModule.m */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.objc; name = SavedWidgetModule.m; path = MeetCal/SavedWidgetModule.m; sourceTree = "<group>"; };
+		9217C3B335B8BC1F8CEB7557 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = MeetCal/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		9BD0115A4AD04EF9BBD9D37B /* liquid-glass.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "liquid-glass.icon"; path = "MeetCal/liquid-glass.icon"; sourceTree = "<group>"; };
+		A6B3D17A26F3DA4F5BEB9415 /* Pods_MeetCal.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_MeetCal.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = MeetCal/SplashScreen.storyboard; sourceTree = "<group>"; };
-		B8CA544DB7773CC2B0A6692A /* Pods-MeetCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetCal.release.xcconfig"; path = "Target Support Files/Pods-MeetCal/Pods-MeetCal.release.xcconfig"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		BE961C97642E10BB08D572D6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = MeetCal/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		E9F39A9B64764870C4512DF0 /* Pods-MeetCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetCal.debug.xcconfig"; path = "Target Support Files/Pods-MeetCal/Pods-MeetCal.debug.xcconfig"; sourceTree = "<group>"; };
+		BB50A6A4FF7950B0781F46A3 /* Pods-MeetCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MeetCal.release.xcconfig"; path = "Target Support Files/Pods-MeetCal/Pods-MeetCal.release.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = MeetCal/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* MeetCal-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "MeetCal-Bridging-Header.h"; path = "MeetCal/MeetCal-Bridging-Header.h"; sourceTree = "<group>"; };
+		F58EAFC6D77644C6B1454FA8 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MeetCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		XX3290D957F0C803AFE554XX /* SavedWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; fileEncoding = 4; includeInIndex = 0; path = SavedWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		XXA12889081EB894481655XX /* AppIntents.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
@@ -97,7 +102,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				53E1E16C55AB39E9E01A917D /* Pods_MeetCal.framework in Frameworks */,
+				D370801BE4284DAFB08B93C7 /* WidgetKit.framework in Frameworks */,
+				E7B90593027A93F64304D3C5 /* Pods_MeetCal.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,7 +111,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				XX12B55A1EDABF083C3B51XX /* WidgetKit.framework in Frameworks */,
+				XX2498911E437C34F993F9XX /* WidgetKit.framework in Frameworks */,
 				XX6A44985675A04437B8C4XX /* SwiftUI.framework in Frameworks */,
 				XX3C562DEF346B45594832XX /* ActivityKit.framework in Frameworks */,
 				XX1A6800511A685AB346D2XX /* AppIntents.framework in Frameworks */,
@@ -124,7 +130,9 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				BE961C97642E10BB08D572D6 /* PrivacyInfo.xcprivacy */,
+				46CFF7541B0642B88DBBBF91 /* SavedWidgetModule.m */,
+				9BD0115A4AD04EF9BBD9D37B /* liquid-glass.icon */,
+				9217C3B335B8BC1F8CEB7557 /* PrivacyInfo.xcprivacy */,
 			);
 			name = MeetCal;
 			sourceTree = "<group>";
@@ -133,19 +141,27 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */,
+				179E0E369A0240BE9EC8397B /* WidgetKit.framework */,
 				XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */,
 				XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */,
 				XXA12889081EB894481655XX /* AppIntents.framework */,
-				0215B5F3D03F8B37B466AF73 /* Pods_MeetCal.framework */,
+				A6B3D17A26F3DA4F5BEB9415 /* Pods_MeetCal.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		5D9941BD9CC408152065E9BC /* MeetCal */ = {
+		6160D6CD369837C2CD43AD0C /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				A0F0E69D120E0D64C48C2DB1 /* ExpoModulesProvider.swift */,
+				7F361FE52E8C47782D7D8D1F /* MeetCal */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
+		7F361FE52E8C47782D7D8D1F /* MeetCal */ = {
+			isa = PBXGroup;
+			children = (
+				F58EAFC6D77644C6B1454FA8 /* ExpoModulesProvider.swift */,
 			);
 			name = MeetCal;
 			sourceTree = "<group>";
@@ -165,8 +181,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				99350650825B5FFBE2620A59 /* Pods */,
-				E83BF484648ACD50508EDF25 /* ExpoModulesProviders */,
+				FF84B1DE644C3295E20AE3D5 /* Pods */,
+				6160D6CD369837C2CD43AD0C /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -182,16 +198,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		99350650825B5FFBE2620A59 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				E9F39A9B64764870C4512DF0 /* Pods-MeetCal.debug.xcconfig */,
-				B8CA544DB7773CC2B0A6692A /* Pods-MeetCal.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
-			sourceTree = "<group>";
-		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
 			isa = PBXGroup;
 			children = (
@@ -201,12 +207,14 @@
 			path = MeetCal/Supporting;
 			sourceTree = "<group>";
 		};
-		E83BF484648ACD50508EDF25 /* ExpoModulesProviders */ = {
+		FF84B1DE644C3295E20AE3D5 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				5D9941BD9CC408152065E9BC /* MeetCal */,
+				17D7A7A8856861C442AEC4D3 /* Pods-MeetCal.debug.xcconfig */,
+				BB50A6A4FF7950B0781F46A3 /* Pods-MeetCal.release.xcconfig */,
 			);
-			name = ExpoModulesProviders;
+			name = Pods;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		XX3E41C1850246162C0061XX /* expo:targets */ = {
@@ -226,14 +234,14 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "MeetCal" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				CD50E6FD639D69F86BC29337 /* [Expo] Configure project */,
+				B6785315609E7939BC56427F /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
 				XX72A8CFBF0FBA13A79902XX /* Embed Foundation Extensions */,
-				09EC1E5E2EAD0D50F34E1F2D /* [CP] Embed Pods Frameworks */,
+				DB86686DBCA180627CE82D46 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -310,7 +318,8 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				B94E0BCFF5B618C7BF869241 /* PrivacyInfo.xcprivacy in Resources */,
+				9372796DA7EF429BB5F8EF0A /* liquid-glass.icon in Resources */,
+				EF773A2D0C34151B051D51E5 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -365,28 +374,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		09EC1E5E2EAD0D50F34E1F2D /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-MeetCal/Pods-MeetCal-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-MeetCal/Pods-MeetCal-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
@@ -445,7 +432,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-MeetCal/Pods-MeetCal-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		CD50E6FD639D69F86BC29337 /* [Expo] Configure project */ = {
+		B6785315609E7939BC56427F /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -469,6 +456,28 @@
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-MeetCal/expo-configure-project.sh\"\n";
 		};
+		DB86686DBCA180627CE82D46 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-MeetCal/Pods-MeetCal-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-MeetCal/Pods-MeetCal-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -477,7 +486,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				8E0EF17050AF013B9350ECB5 /* ExpoModulesProvider.swift in Sources */,
+				DE3061B182EE4D5E8B6A4117 /* SavedWidgetModule.m in Sources */,
+				97A593E833F1FBFE3DC9B537 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -501,9 +511,9 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E9F39A9B64764870C4512DF0 /* Pods-MeetCal.debug.xcconfig */;
+			baseConfigurationReference = 17D7A7A8856861C442AEC4D3 /* Pods-MeetCal.debug.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "liquid-glass";
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MeetCal/MeetCal.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
@@ -538,9 +548,9 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = B8CA544DB7773CC2B0A6692A /* Pods-MeetCal.release.xcconfig */;
+			baseConfigurationReference = BB50A6A4FF7950B0781F46A3 /* Pods-MeetCal.release.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "liquid-glass";
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MeetCal/MeetCal.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
@@ -571,6 +581,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "liquid-glass";
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
@@ -647,6 +658,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "liquid-glass";
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";

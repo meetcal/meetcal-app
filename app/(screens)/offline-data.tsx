@@ -531,7 +531,7 @@ export default function OfflineDataScreen() {
               {isRefreshingAll ? (
                 <ActivityIndicator size="small" color={colors.link} />
               ) : (
-                <IconSymbol name="arrow.clockwise" size={18} color={colors.link} />
+                <IconSymbol name="arrow.clockwise" size={20} color={colors.link} />
               )}
             </Pressable>
             <Pressable
@@ -545,7 +545,7 @@ export default function OfflineDataScreen() {
               {isDeletingAll ? (
                 <ActivityIndicator size="small" color={colors.danger} />
               ) : (
-                <IconSymbol name="trash" size={18} color={colors.danger} />
+                <IconSymbol name="trash" size={20} color={colors.danger} />
               )}
             </Pressable>
           </View>
@@ -727,6 +727,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   headerButton: {
-    padding: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
 });

@@ -12,6 +12,10 @@ export interface LiftResult {
   session?: {
     number: number;
     platform: Platform;
+    date?: string;
+    startTime?: string;
+    weighInTime?: string;
+    displayDate?: string;
   };
 }
 

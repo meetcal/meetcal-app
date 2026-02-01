@@ -200,7 +200,7 @@ export default function CreateSessionScreen() {
           headerTitleStyle: {
             color: colors.text,
           },
-          headerTintColor: '#007AFF',
+          headerTintColor: colors.text,
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           animation: 'slide_from_right',

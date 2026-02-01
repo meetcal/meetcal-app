@@ -9,6 +9,8 @@ import { scheduleNotification, cancelNotification } from '@/utils/notifications'
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -36,6 +38,7 @@ export interface SavedSession {
 
 export function useSavedSessions() {
   const { user } = useUser();
+  const { selectedMeet } = useSelectedMeet();
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -44,8 +47,21 @@ export function useSavedSessions() {
     if (!user?.id) {
       setSavedSessions([]);
       setIsLoading(false);
+      clearSavedWidget();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!selectedMeet) {
+      syncSavedWidget(null, savedSessions);
+      return;
+    }
+    getMeetConfig(selectedMeet)
+      .then(config =>
+        syncSavedWidget(selectedMeet, savedSessions, config?.time?.timeZoneIdentifier ?? 'UTC')
+      )
+      .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'));
+  }, [selectedMeet, savedSessions]);
 
   // Load sessions when user logs in
   useEffect(() => {
