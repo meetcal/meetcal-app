@@ -13,6 +13,7 @@ import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
 import { supabase } from '@/lib/supabase';
 import EventInfoScreen from '@/app/(screens)/event-info';
 import { Colors } from '@/constants/Colors';
+import { clearAuthCache } from '@/lib/authCache';
 
 // Function to get user-specific storage key
 const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
@@ -141,6 +142,7 @@ export default function InfoScreen() {
 
   const handleSignOut = async () => {
     try {
+      await clearAuthCache();
       await signOut();
       // The auth layout will automatically redirect to sign-in
     } catch (err) {

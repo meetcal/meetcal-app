@@ -85,10 +85,10 @@ export default function SignInScreen() {
 
       if (signInAttempt.status === 'complete' && signInAttempt.createdSessionId) {
         await setActive({ session: signInAttempt.createdSessionId })
-        
-        // Cache the auth state
-        await cacheAuthState(true)
-        
+
+        // Cache the auth state with user details
+        await cacheAuthState(true, signInAttempt.createdSessionId, emailAddress)
+
         // Sync user with RevenueCat after successful sign-in
         try {
           await Purchases.setEmail(emailAddress);
@@ -97,7 +97,7 @@ export default function SignInScreen() {
           console.error('Error syncing with RevenueCat:', error);
           // Continue with navigation even if RevenueCat sync fails
         }
-        
+
         handlePostSignIn();
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2))

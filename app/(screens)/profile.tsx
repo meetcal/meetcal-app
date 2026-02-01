@@ -12,6 +12,7 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import * as StoreReview from 'expo-store-review';
+import { clearAuthCache } from '@/lib/authCache';
 
 type EditableField = 'firstName' | 'lastName' | 'email';
 export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
@@ -51,6 +52,7 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     try {
+      await clearAuthCache();
       await signOut();
       router.replace('/(tabs)/info');
     } catch (err) {

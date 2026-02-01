@@ -1,0 +1,109 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { isNetworkAvailable } from '@/lib/networkUtils';
+
+export function OfflineIndicator() {
+  const { currentTheme } = useTheme();
+  const { isUsingStaleCache, lastSyncTimestamp } = useSubscription();
+  const [isOffline, setIsOffline] = useState(false);
+  const [slideAnim] = useState(new Animated.Value(-100));
+
+  // Check network status
+  useEffect(() => {
+    async function checkNetwork() {
+      const hasNetwork = await isNetworkAvailable();
+      setIsOffline(!hasNetwork);
+    }
+    checkNetwork();
+
+    // Check periodically
+    const interval = setInterval(checkNetwork, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Show/hide animation
+  useEffect(() => {
+    if (isOffline || isUsingStaleCache) {
+      // Slide in
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    } else {
+      // Slide out
+      Animated.timing(slideAnim, {
+        toValue: -100,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isOffline, isUsingStaleCache, slideAnim]);
+
+  if (!isOffline && !isUsingStaleCache) {
+    return null;
+  }
+
+  const colors = {
+    background: currentTheme === 'dark' ? '#FF9500' : '#FF9500',
+    text: '#FFFFFF',
+  };
+
+  const getTimeSinceSync = () => {
+    if (!lastSyncTimestamp) return 'unknown';
+
+    const now = Date.now();
+    const diff = now - lastSyncTimestamp;
+    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+    const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+
+    if (days > 0) {
+      return `${days}d ago`;
+    } else if (hours > 0) {
+      return `${hours}h ago`;
+    } else {
+      return 'recently';
+    }
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, transform: [{ translateY: slideAnim }] },
+      ]}
+    >
+      <IconSymbol name="wifi.slash" size={16} color={colors.text} />
+      <Text style={[styles.text, { color: colors.text }]}>
+        {isOffline ? 'Offline Mode' : 'Using Cached Data'}
+        {isUsingStaleCache && lastSyncTimestamp && ` • Last synced ${getTimeSinceSync()}`}
+      </Text>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 36,
+    paddingBottom: 4,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  text: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});
