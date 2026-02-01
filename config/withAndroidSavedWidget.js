@@ -44,9 +44,11 @@ const withAndroidSavedWidget = config => {
     const kotlinDest = path.join(androidMain, 'java', packagePath, 'widget');
     copyDir(path.join(widgetDir, 'java'), kotlinDest);
 
-    for (const file of fs.readdirSync(kotlinDest)) {
-      if (file.endsWith('.kt')) {
-        replacePackageName(path.join(kotlinDest, file), packageName);
+    if (fs.existsSync(kotlinDest)) {
+      for (const file of fs.readdirSync(kotlinDest)) {
+        if (file.endsWith('.kt')) {
+          replacePackageName(path.join(kotlinDest, file), packageName);
+        }
       }
     }
 
@@ -102,6 +104,9 @@ const withAndroidSavedWidget = config => {
     if (!packageName) return config;
 
     let contents = config.modResults.contents;
+    const originalContents = contents;
+    let packageAdded = false;
+
     if (!contents.includes('SavedWidgetPackage')) {
       const importStatement = `import ${packageName}.widget.SavedWidgetPackage`;
       if (!contents.includes(importStatement)) {
@@ -112,7 +117,10 @@ const withAndroidSavedWidget = config => {
       }
 
       const addPackage = 'add(SavedWidgetPackage())';
-      if (contents.includes(addPackage)) return config;
+      if (contents.includes(addPackage)) {
+        config.modResults.contents = contents;
+        return config;
+      }
       const packagesApplyRe = /PackageList\(this\)\.packages\.apply\s*\{\s*\n(\s+)/;
       const packagesApplyMatch = contents.match(packagesApplyRe);
       if (packagesApplyMatch) {
@@ -121,12 +129,26 @@ const withAndroidSavedWidget = config => {
           packagesApplyRe,
           `PackageList(this).packages.apply {\n${indent}${addPackage}\n${indent}`
         );
+        packageAdded = true;
       } else {
-        contents = contents.replace(
-          /val packages = PackageList\(this\)\.packages\n/,
-          match => `${match}    packages.add(SavedWidgetPackage())\n`
-        );
+        const fallbackRe = /val packages = PackageList\(this\)\.packages\n/;
+        if (fallbackRe.test(contents)) {
+          contents = contents.replace(
+            fallbackRe,
+            match => `${match}    packages.add(SavedWidgetPackage())\n`
+          );
+          packageAdded = true;
+        }
       }
+    }
+
+    const attemptedInject = !originalContents.includes('SavedWidgetPackage');
+    if (attemptedInject && !contents.includes('add(SavedWidgetPackage())')) {
+      console.warn(
+        '[withAndroidSavedWidget] SavedWidgetPackage was not registered in MainApplication. ' +
+          'Add the import and packages.add(SavedWidgetPackage()) manually. ' +
+          'Expected: import com.facebook.react.PackageList and PackageList(this).packages.apply { } or val packages = PackageList(this).packages'
+      );
     }
 
     config.modResults.contents = contents;
