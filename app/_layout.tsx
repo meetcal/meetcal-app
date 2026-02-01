@@ -255,11 +255,11 @@ function RootLayoutNav() {
 
   return (
     <NavigationThemeProvider value={theme}>
+      <UpdateNotification />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
-      <UpdateNotification />
     </NavigationThemeProvider>
   );
 }

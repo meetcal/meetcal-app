@@ -466,7 +466,7 @@ export default function WarmupDetailsScreen() {
               headerTitleStyle: {
                 color: colors.text,
               },
-              headerTintColor: '#007AFF',
+              headerTintColor: colors.text,
               gestureEnabled: true,
               gestureDirection: 'horizontal',
               animation: 'slide_from_right',

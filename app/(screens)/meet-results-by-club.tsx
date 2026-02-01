@@ -196,7 +196,7 @@ export default function MeetResultsByClubScreen() {
           },
           headerShadowVisible: false,
           headerBackVisible: true,
-          headerTintColor: colors.link,
+          headerTintColor: colors.text,
         }}
       />
 

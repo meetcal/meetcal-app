@@ -176,7 +176,7 @@ export default function ProfileScreen() {
         options={{ 
           headerShown: true,
           headerTitle: '',
-          headerTintColor: colors.link,
+          headerTintColor: colors.text,
           headerBackTitle: 'Back',
           headerStyle: {
             backgroundColor: colors.background,

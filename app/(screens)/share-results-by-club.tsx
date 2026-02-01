@@ -167,50 +167,63 @@ export default function ShareResultsByClubScreen() {
         borderBottomWidth: 1,
         paddingTop: insets.top + 16,
       }]}>
-        <View style={styles.searchContainer}>
-          <View style={[
-            styles.searchBar,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border
-            }
-          ]}>
+        <View style={styles.searchRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}
+            hitSlop={12}
+          >
             <IconSymbol
-              name={Platform.select({
-                ios: "magnifyingglass",
-                android: "search"
-              }) || "magnifyingglass"}
-              size={16}
-              color={colors.secondaryText}
+              name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow.back'}
+              size={24}
+              color={colors.text}
             />
-            <TextInput
-              style={[
-                styles.searchInput,
-                { color: colors.text }
-              ]}
-              placeholder="Search clubs..."
-              placeholderTextColor={colors.secondaryText}
-              value={searchText}
-              onChangeText={setSearchText}
-            />
-            {searchText.length > 0 && (
-              <Pressable
-                onPress={() => setSearchText('')}
-                style={({ pressed }) => [
-                  styles.clearButton,
-                  pressed && { opacity: 0.7 }
+          </Pressable>
+          <View style={[styles.searchContainer, { flex: 1 }]}>
+            <View style={[
+              styles.searchBar,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border
+              }
+            ]}>
+              <IconSymbol
+                name={Platform.select({
+                  ios: "magnifyingglass",
+                  android: "search"
+                }) || "magnifyingglass"}
+                size={16}
+                color={colors.secondaryText}
+              />
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  { color: colors.text }
                 ]}
-              >
-                <IconSymbol
-                  name={Platform.select({
-                    ios: "xmark.circle.fill",
-                    android: "close"
-                  }) || "xmark.circle.fill"}
-                  size={16}
-                  color={colors.secondaryText}
-                />
-              </Pressable>
-            )}
+                placeholder="Search clubs..."
+                placeholderTextColor={colors.secondaryText}
+                value={searchText}
+                onChangeText={setSearchText}
+              />
+              {searchText.length > 0 && (
+                <Pressable
+                  onPress={() => setSearchText('')}
+                  style={({ pressed }) => [
+                    styles.clearButton,
+                    pressed && { opacity: 0.7 }
+                  ]}
+                >
+                  <IconSymbol
+                    name={Platform.select({
+                      ios: "xmark.circle.fill",
+                      android: "close"
+                    }) || "xmark.circle.fill"}
+                    size={16}
+                    color={colors.secondaryText}
+                  />
+                </Pressable>
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -240,6 +253,15 @@ const styles = StyleSheet.create({
   filterContainer: {
     paddingHorizontal: 16,
     paddingBottom: 16,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingRight: 4,
   },
   searchContainer: {
     marginBottom: 0,

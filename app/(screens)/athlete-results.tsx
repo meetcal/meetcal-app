@@ -283,7 +283,7 @@ export default function AthleteResultsScreen() {
           headerTitle: name?.toString() || 'Meet Results',
           headerBackTitle: 'Back',
           headerTitleStyle: { color: colors.text },
-          headerTintColor: '#007AFF',
+          headerTintColor: colors.text,
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           animation: 'slide_from_right',

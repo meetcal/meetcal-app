@@ -9,8 +9,10 @@ import { OpaqueColorValue, StyleProp, ViewStyle } from 'react-native';
 // Map SF Symbols to Ionicons names
 const iconMap: Record<string, string> = {
   'chevron.down': 'chevron-down',
+  'chevron.left': 'chevron-back',
   'chevron.right': 'chevron-forward',
   'chevron.up': 'chevron-up',
+  'arrow.back': 'arrow-back',
   'calendar': 'calendar',
   'bookmark.fill': 'bookmark',
   'line.3.horizontal.decrease': 'filter',
