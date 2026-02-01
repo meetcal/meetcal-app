@@ -8,6 +8,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useExpandedId, recordExpandTapTime } from '@/contexts/ExpandedIdContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LiftResult } from '@/data/types/athletes';
+import { useAuthGuard } from '@/utils/authGuard';
 import { MeetName } from '@/data/types/meet';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getLastYearBests } from '@/lib/start-list-api';
@@ -54,6 +55,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
   const [loadingBests, setLoadingBests] = useState(true);
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
 
   const timeZoneAbbr = useMemo(() => {
@@ -229,10 +231,22 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
           <Pressable
             style={({ pressed }) => [styles.meetResultsButton, pressed && { opacity: 0.8 }]}
             onPress={() => {
+              // 1. Check auth
+              if (!requireAuth({
+                feature: 'athlete-results',
+                message: 'Sign in to access premium features.',
+                returnPath: '/(tabs)/(start-list)',
+              })) {
+                return;
+              }
+              // 2. Check subscription
               if (isSubscribed) {
                 router.push({ pathname: '/(screens)/athlete-results', params: { name: athlete.name } });
               } else {
-                router.push('/paywall');
+                router.push({
+                  pathname: '/(screens)/paywall',
+                  params: { from: '/(tabs)/(start-list)', feature: 'athlete-results' },
+                } as any);
               }
             }}
           >

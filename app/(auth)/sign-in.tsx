@@ -43,7 +43,7 @@ export default function SignInScreen() {
   const { startSSOFlow } = useSSO()
   const router = useRouter()
   const { currentTheme } = useTheme()
-  const { from } = useLocalSearchParams<{ from?: string }>()
+  const { from, feature } = useLocalSearchParams<{ from?: string; feature?: string }>()
   const isFromInfo = from === 'info'
   const { isSubscribed } = useSubscription()
 
@@ -65,13 +65,22 @@ export default function SignInScreen() {
 
   const handlePostSignIn = useCallback(() => {
     if (!isSubscribed) {
-      router.replace('/(screens)/paywall');
-    } else if (from === 'info') {
-      router.back();
+      // User needs subscription - redirect to paywall with context
+      router.replace({
+        pathname: '/(screens)/paywall',
+        params: {
+          from: from || '/(tabs)',
+          feature: feature,
+        },
+      } as any);
+    } else if (from && from !== 'feature') {
+      // Return to origin
+      router.replace(from as any);
     } else {
-      router.replace('/(tabs)');
+      // Default to tabs
+      router.replace('/(tabs)' as any);
     }
-  }, [from, isSubscribed, router]);
+  }, [from, feature, isSubscribed, router]);
 
   // Handle the submission of the sign-in form
   const onSignInPress = async () => {

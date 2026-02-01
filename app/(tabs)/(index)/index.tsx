@@ -354,7 +354,7 @@ export default function ScheduleScreen() {
             </Pressable>
             )}
           <Pressable
-            style={styles.headerIconButton}
+            style={[styles.headerIconButton, {paddingTop: 8}]}
             onPress={() => {
               if (isSignedIn) {
                 router.push('/(screens)/profile');

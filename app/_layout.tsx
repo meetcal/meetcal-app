@@ -224,18 +224,10 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
         if (initialUrl) {
           console.log('[RootLayout] App launched with initial URL, letting router handle:', initialUrl);
-          if (!isUserSignedIn) {
-            if (!initialUrl.includes('/sign-in') && !initialUrl.includes('/sign-up')) { // Example check
-                router.replace('/sign-in');
-            }
-          }
+          // Let router handle deep links - auth will be guarded per-feature
         } else {
-          // No deep link, proceed with default routing
-          if (!isUserSignedIn) {
-            router.replace('/sign-in');
-          } else {
-            router.replace('/(tabs)');
-          }
+          // Always navigate to tabs - authentication handled just-in-time
+          router.replace('/(tabs)' as any);
         }
       }
     }

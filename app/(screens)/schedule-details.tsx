@@ -24,6 +24,7 @@ import { saveMeetAthletes, getAthleteLiftingResults } from '@/lib/database/offli
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useAuthGuard } from '@/utils/authGuard';
 
 // Update interface names
 interface SessionPlatformDetails {
@@ -270,6 +271,7 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
 
   const loadAthletes = async () => {
     setLoading(true);
@@ -451,7 +453,19 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     styles.sortButton,
                     pressed && isSubscribed && { opacity: 0.8 }
                   ]}
-                  onPress={isSubscribed ? handleSortPress : () => router.push('/paywall')}
+                  onPress={isSubscribed ? handleSortPress : () => {
+                    if (!requireAuth({
+                      feature: 'sort-athletes',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    })) {
+                      return;
+                    }
+                    router.push({
+                      pathname: '/(screens)/paywall',
+                      params: { from: '/(screens)/schedule-details', feature: 'sort-athletes' },
+                    } as any);
+                  }}
                 >
                   <IconSymbol
                     name={isSubscribed ? 'arrow.up.arrow.down' : 'lock'}
@@ -488,7 +502,19 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                 styles.sortButton,
                 pressed && isSubscribed && { opacity: 0.8 }
               ]}
-              onPress={isSubscribed ? handleSortPress : () => router.push('/paywall')}
+              onPress={isSubscribed ? handleSortPress : () => {
+                if (!requireAuth({
+                  feature: 'sort-athletes',
+                  message: 'Sign in to access premium features.',
+                  returnPath: '/(screens)/schedule-details',
+                })) {
+                  return;
+                }
+                router.push({
+                  pathname: '/(screens)/paywall',
+                  params: { from: '/(screens)/schedule-details', feature: 'sort-athletes' },
+                } as any);
+              }}
             >
               <IconSymbol
                 name={isSubscribed ? 'arrow.up.arrow.down' : 'lock'}
@@ -580,9 +606,21 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                       </>
                     )
                   ) : (
-                    <Pressable 
+                    <Pressable
                       style={styles.premiumBadgeContainer}
-                      onPress={() => router.push('/paywall')}
+                      onPress={() => {
+                        if (!requireAuth({
+                          feature: 'athlete-bests',
+                          message: 'Sign in to access premium features.',
+                          returnPath: '/(screens)/schedule-details',
+                        })) {
+                          return;
+                        }
+                        router.push({
+                          pathname: '/(screens)/paywall',
+                          params: { from: '/(screens)/schedule-details', feature: 'athlete-bests' },
+                        } as any);
+                      }}
                     >
                     </Pressable>
                   )}
@@ -594,13 +632,23 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    if (!requireAuth({
+                      feature: 'athlete-results',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    })) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/athlete-results',
                         params: { name: athlete.name }
                       });
                     } else {
-                      router.push('/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'athlete-results' },
+                      } as any);
                     }
                   }}
                 >
@@ -739,6 +787,7 @@ export default function SessionDetailsScreen() {
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
@@ -904,12 +953,21 @@ export default function SessionDetailsScreen() {
   };
 
   const handleSavePress = () => {
+    // Check authentication first
+    if (!requireAuth({
+      feature: 'save-session',
+      message: 'Sign in to save sessions and sync them across your devices.',
+      returnPath: '/(screens)/schedule-details',
+    })) {
+      return;
+    }
+
     if (isSaved) {
       removeSession(sessionId);
       showSaveAlert('remove');
     } else {
       // Find the session day in the current schedule
-      const sessionDay = currentSchedule.find((day: DaySchedule) => 
+      const sessionDay = currentSchedule.find((day: DaySchedule) =>
         day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
       );
 
@@ -1153,6 +1211,13 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    if (!requireAuth({
+                      feature: 'qualifying-totals',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    })) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/(screens)/new-qualifying-totals',
@@ -1163,7 +1228,10 @@ export default function SessionDetailsScreen() {
                         }
                       });
                     } else {
-                      router.push('/(screens)/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'qualifying-totals' },
+                      } as any);
                     }
                   }}
                 >
@@ -1181,6 +1249,13 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    if (!requireAuth({
+                      feature: 'attempt-estimator',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    })) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/(screens)/attempt-estimator',
@@ -1191,7 +1266,10 @@ export default function SessionDetailsScreen() {
                         }
                       });
                     } else {
-                      router.push('/(screens)/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'attempt-estimator' },
+                      } as any);
                     }
                   }}
                 >
