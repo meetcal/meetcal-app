@@ -254,10 +254,9 @@ export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResu
 }
 
 export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
-  
   const { data, error } = await supabase
     .from('athletes')
-    .select('*')
+    .select('member_id,name,age,club,gender,weight_class,entry_total,adaptive,session_number,session_platform')
     .eq('meet', meet);
 
   if (error) {
