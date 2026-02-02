@@ -19,7 +19,7 @@ import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
 import { useAuthGuard } from '@/utils/authGuard';
-import { fetchAthletesWithSession, fetchSchedule } from '@/lib/database/queries';
+import { fetchAthletes, fetchSchedule } from '@/lib/database/queries';
 import { preloadYearBests } from '@/lib/start-list-api';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import ShareScheduleView from '@/components/share/ShareScheduleView';
@@ -67,6 +67,7 @@ export default function StartListScreen() {
   const [generatedImageTransparentUri, setGeneratedImageTransparentUri] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
+  const [showShareViews, setShowShareViews] = useState(false);
   const shareScheduleRef = useRef<View>(null);
   const shareScheduleTransparentRef = useRef<View>(null);
   const [filterApplyCount, setFilterApplyCount] = useState(0);
@@ -171,7 +172,7 @@ export default function StartListScreen() {
         if (cached?.athletes?.length > 0) {
           setAthletes(cached.athletes);
           setLoading(false);
-          fetchAthletesWithSession(validMeet)
+          fetchAthletes(validMeet)
             .then(fresh => {
               setTimeout(() => setAthletes(fresh), 0);
               saveMeetAthletes(validMeet, fresh).catch(() => {});
@@ -187,7 +188,7 @@ export default function StartListScreen() {
     let athleteData: LiftResult[] = [];
 
     try {
-      athleteData = await fetchAthletesWithSession(validMeet);
+      athleteData = await fetchAthletes(validMeet);
       saveMeetAthletes(validMeet, athleteData).catch(() => {});
     } catch (fetchError) {
       try {
@@ -240,21 +241,6 @@ export default function StartListScreen() {
     setRefreshing(false);
   }, [loadAthletes, loadSchedule]);
 
-  const sessionDetailsByNumber = useMemo(() => {
-    const map = new Map<number, { date: string; startTime: string; weighInTime: string; displayDate: string }>();
-    athletes.forEach((a) => {
-      if (a.session?.number != null && a.session?.date != null && a.session?.startTime != null && a.session?.weighInTime != null && a.session?.displayDate != null) {
-        map.set(a.session.number, {
-          date: a.session.date,
-          startTime: a.session.startTime,
-          weighInTime: a.session.weighInTime,
-          displayDate: a.session.displayDate,
-        });
-      }
-    });
-    return map;
-  }, [athletes]);
-
   const getSessionDetails = useCallback((sessionNumber: number) => {
     if (scheduleData.length > 0) {
       for (const day of scheduleData) {
@@ -271,10 +257,8 @@ export default function StartListScreen() {
       }
       return null;
     }
-    const details = sessionDetailsByNumber.get(sessionNumber);
-    if (!details) return null;
-    return { ...details, platforms: [] };
-  }, [scheduleData, sessionDetailsByNumber]);
+    return null;
+  }, [scheduleData]);
 
   // Add back useEffect for starred clubs
   useEffect(() => {
@@ -709,31 +693,38 @@ export default function StartListScreen() {
     try {
       // Dynamically import captureRef to avoid native module errors on startup
       const { captureRef } = await import('react-native-view-shot');
+      setShowShareViews(true);
+      await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
 
-      if (shareScheduleRef.current && shareScheduleTransparentRef.current) {
-        // Add a small delay to ensure the view is fully rendered
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        const whiteUri = await captureRef(shareScheduleRef.current, {
-          format: 'png',
-          quality: 1.0,
-          result: 'tmpfile',
-          width: 850,
-          height: undefined,
-        });
-        const transparentUri = await captureRef(shareScheduleTransparentRef.current, {
-          format: 'png',
-          quality: 1.0,
-          result: 'tmpfile',
-          width: 850,
-          height: undefined,
-        });
-        setGeneratedImageWhiteUri(whiteUri);
-        setGeneratedImageTransparentUri(transparentUri);
-        setSelectedImageIndex(0);
-        setShowImagePreview(true);
+      if (!shareScheduleRef.current || !shareScheduleTransparentRef.current) {
+        setShowShareViews(false);
+        Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
+        return;
       }
+
+      // Add a small delay to ensure the view is fully rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const whiteUri = await captureRef(shareScheduleRef.current, {
+        format: 'png',
+        quality: 1.0,
+        result: 'tmpfile',
+        width: 850,
+        height: undefined,
+      });
+      const transparentUri = await captureRef(shareScheduleTransparentRef.current, {
+        format: 'png',
+        quality: 1.0,
+        result: 'tmpfile',
+        width: 850,
+        height: undefined,
+      });
+      setGeneratedImageWhiteUri(whiteUri);
+      setGeneratedImageTransparentUri(transparentUri);
+      setSelectedImageIndex(0);
+      setShowImagePreview(true);
     } catch (error) {
+      setShowShareViews(false);
       console.error('Error capturing image:', error);
       Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
     }
@@ -1983,29 +1974,30 @@ export default function StartListScreen() {
         </Pressable>
       </Modal>
 
-      {/* Hidden views for capturing schedule images */}
-      <View style={{ position: 'absolute', left: -10000, top: 0 }}>
-        <View ref={shareScheduleRef} collapsable={false}>
-          <ShareScheduleView
-            filteredAthletes={filteredAthletes}
-            schedule={scheduleData}
-            selectedMeet={selectedMeet || ''}
-            selectedClub={tempClubFilter || ''}
-            getSessionDetails={getSessionDetails}
-            transparentBackground={false}
-          />
+      {showShareViews && (
+        <View style={{ position: 'absolute', left: -10000, top: 0 }}>
+          <View ref={shareScheduleRef} collapsable={false}>
+            <ShareScheduleView
+              filteredAthletes={filteredAthletes}
+              schedule={scheduleData}
+              selectedMeet={selectedMeet || ''}
+              selectedClub={tempClubFilter || ''}
+              getSessionDetails={getSessionDetails}
+              transparentBackground={false}
+            />
+          </View>
+          <View ref={shareScheduleTransparentRef} collapsable={false}>
+            <ShareScheduleView
+              filteredAthletes={filteredAthletes}
+              schedule={scheduleData}
+              selectedMeet={selectedMeet || ''}
+              selectedClub={tempClubFilter || ''}
+              getSessionDetails={getSessionDetails}
+              transparentBackground={true}
+            />
+          </View>
         </View>
-        <View ref={shareScheduleTransparentRef} collapsable={false}>
-          <ShareScheduleView
-            filteredAthletes={filteredAthletes}
-            schedule={scheduleData}
-            selectedMeet={selectedMeet || ''}
-            selectedClub={tempClubFilter || ''}
-            getSessionDetails={getSessionDetails}
-            transparentBackground={true}
-          />
-        </View>
-      </View>
+      )}
 
       {/* Image Preview Modal */}
       <ImagePreviewModal
@@ -2018,6 +2010,7 @@ export default function StartListScreen() {
           setShowImagePreview(false);
           setGeneratedImageWhiteUri(null);
           setGeneratedImageTransparentUri(null);
+          setShowShareViews(false);
         }}
       />
     </ThemedView>
