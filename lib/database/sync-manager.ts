@@ -1,12 +1,12 @@
-import { getMeetData, saveMeetSchedule, saveMeetAthletes, saveMeetLiftingResults, clearMeetData } from './offline-store';
-import { fetchSchedule, fetchAthletes, fetchLiftingResultsForMeet } from './queries';
+import { getMeetData, saveMeetSchedule } from './offline-store';
+import { fetchSchedule } from './queries';
 import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
 
 const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 export class SyncManager {
-  private syncInterval: NodeJS.Timeout | null = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
   private isSyncing = false;
   private meetId: MeetName;
 
@@ -19,7 +19,7 @@ export class SyncManager {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
     }
-    
+
     this.syncInterval = setInterval(() => {
       this.syncIfNeeded();
     }, SYNC_INTERVAL);
@@ -33,40 +33,18 @@ export class SyncManager {
 
     try {
       this.isSyncing = true;
-      
-      // Clear existing data first
-      await clearMeetData(this.meetId);
-      
-      const [schedule, athletes] = await Promise.all([
-        fetchSchedule(this.meetId),
-        fetchAthletes(this.meetId)
-      ]);
 
-      
+      // Fetch only the schedule - athletes and results are fetched on-demand
+      const schedule = await fetchSchedule(this.meetId);
+
       // Only save if we have data
       if (schedule.length > 0) {
         await saveMeetSchedule(this.meetId, schedule);
       }
 
-      // Save athletes even if empty (to clear old cache)
-      await saveMeetAthletes(this.meetId, athletes);
-
-      // Fetch and save lifting results for all athletes in the meet
-      // This includes all historical results for PR calculations and "See All Meet Results"
-      if (athletes.length > 0) {
-        try {
-          const athleteNames = athletes.map(a => a.name);
-          const liftingResults = await fetchLiftingResultsForMeet(this.meetId, athleteNames);
-          await saveMeetLiftingResults(this.meetId, liftingResults);
-        } catch (liftingError) {
-          console.error('Error fetching lifting results for offline save:', liftingError);
-        }
-      }
-
     } catch (error) {
       console.error('Sync failed:', error);
-      // Clear data on error
-      await clearMeetData(this.meetId);
+      throw error;
     } finally {
       this.isSyncing = false;
     }
@@ -77,11 +55,9 @@ export class SyncManager {
       // Always try to sync first
       await this.syncIfNeeded();
     } catch (error) {
-      console.log('Sync failed:', error);
-      // Clear data on error
-      await clearMeetData(this.meetId);
+      console.log('Sync failed, using cached data:', error);
     }
-    
+
     // Get data from cache (whether sync succeeded or failed)
     const data = await getMeetData(this.meetId);
     return data;

@@ -30,49 +30,52 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
 
-  // Enhanced setSelectedMeet function
+  // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
     try {
-      setIsSyncing(true);
-      setSyncStatus('syncing');
-      
-      // Clear existing data first
-      setSelectedMeetState(null);
-      setMeetDetails(null);
-      setSyncManager(null);
-      
       // Find meet details from available meets
       const meetData = availableMeets.find(m => m.name === meet);
       if (!meetData) {
         throw new Error('Selected meet not found in available meets');
       }
 
-      // Save to storage first
-      await AsyncStorage.setItem('@selected_meet', meet);
+      // Optimistically update UI immediately
       setSelectedMeetState(meet);
       setMeetDetails(meetData);
-      
+
+      // Save to storage
+      await AsyncStorage.setItem('@selected_meet', meet);
+
       // Create new sync manager for the meet
       const manager = new SyncManager(meet);
       setSyncManager(manager);
-      
-      // Prefetch data for the new meet
-      if (manager) {
-        await prefetchMeetData(meet);
-        setLastSynced(Date.now());
-      }
-      setSyncStatus('idle');
+
+      // Prefetch data in background (non-blocking)
+      setIsSyncing(true);
+      setSyncStatus('syncing');
+
+      prefetchMeetData(meet)
+        .then(() => {
+          setLastSynced(Date.now());
+          setSyncStatus('idle');
+        })
+        .catch((error) => {
+          console.error('Error prefetching meet data:', error);
+          setSyncStatus('error');
+        })
+        .finally(() => {
+          setIsSyncing(false);
+        });
+
     } catch (error) {
       console.error('Error saving selected meet:', error);
       setSyncStatus('error');
-      // Clear everything on error
+      // Revert on error
       setSelectedMeetState(null);
       setMeetDetails(null);
       setSyncManager(null);
       await AsyncStorage.removeItem('@selected_meet');
       throw error;
-    } finally {
-      setIsSyncing(false);
     }
   };
 

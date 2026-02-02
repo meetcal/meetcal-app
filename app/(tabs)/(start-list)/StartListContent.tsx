@@ -14,7 +14,6 @@ import * as Calendar from 'expo-calendar';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SyncManager } from '@/lib/database/sync-manager';
 import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { useSubscription } from '@/contexts/SubscriptionContext';
