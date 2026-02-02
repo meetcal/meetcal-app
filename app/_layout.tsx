@@ -17,6 +17,7 @@ import * as SecureStore from 'expo-secure-store'
 import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotificationsAsync } from '@/utils/notifications';
+import NetInfo from '@react-native-community/netinfo';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -37,6 +38,15 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// Configure NetInfo IMMEDIATELY with shorter timeout for faster offline detection
+// This MUST run synchronously before any NetInfo.fetch() calls
+NetInfo.configure({
+  reachabilityUrl: 'https://clients3.google.com/generate_204',
+  reachabilityRequestTimeout: 3000,  // 3 seconds instead of default 15s
+  reachabilityShortTimeout: 3000,
+  useNativeReachability: true
+});
 
 // PostHog page view tracking component
 function PostHogPageView() {

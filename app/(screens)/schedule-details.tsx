@@ -18,9 +18,8 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { Platform as PlatformType } from '@/data/types/athletes';
-import { SyncManager } from '@/lib/database/sync-manager';
 import { LiftResult } from '@/data/types/athletes';
-import { saveMeetAthletes, getAthleteLiftingResults } from '@/lib/database/offline-store';
+import { saveMeetAthletes, getAthleteLiftingResults, getMeetData } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -90,35 +89,7 @@ const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
 async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName, forceRefresh?: boolean) {
   try {
-    // If not forcing refresh, try offline store first
-    if (!forceRefresh) {
-      const syncManager = new SyncManager(meetId);
-      const meetData = await syncManager.getMeetData();
-      
-      const cachedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
-        athlete.session?.number === sessionNumber && 
-        athlete.session?.platform === platform
-      );
-
-      if (cachedAthletes.length > 0) {
-        // Sort cached athletes by entry total
-        const sortedAthletes = [...cachedAthletes].sort((a, b) => 
-          (b.entryTotal || 0) - (a.entryTotal || 0)
-        );
-
-        return {
-          [platform]: sortedAthletes.map((athlete: LiftResult) => ({
-            name: athlete.name,
-            age: athlete.age,
-            club: athlete.club,
-            entryTotal: athlete.entryTotal,
-            weightClass: athlete.weightClass
-          }))
-        };
-      }
-    }
-
-    // Get fresh data from Supabase
+    // Fetch fresh data from Supabase (athletes are fetched on-demand, not pre-cached)
     const { data, error } = await supabase
       .from('athletes')
       .select('*')
@@ -131,17 +102,8 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
       return {};
     }
 
-    // If no athletes found for this meet/session/platform, return empty and clear cache
+    // If no athletes found for this meet/session/platform, return empty
     if (!data || data.length === 0) {
-      // Clear any cached data for this meet/session/platform
-      const syncManager = new SyncManager(meetId);
-      const meetData = await syncManager.getMeetData();
-      const updatedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
-        athlete.session?.number !== sessionNumber || 
-        athlete.session?.platform !== platform
-      );
-      await saveMeetAthletes(meetId, updatedAthletes);
-      
       return {};
     }
 
@@ -162,12 +124,11 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
     } as LiftResult));
 
     // Sort athletes by entry total
-    const sortedAthletes = [...athletes].sort((a, b) => 
+    const sortedAthletes = [...athletes].sort((a, b) =>
       (b.entryTotal || 0) - (a.entryTotal || 0)
     );
 
-    // Save to offline store
-    const syncManager = new SyncManager(meetId);
+    // Save to offline store for this session
     await saveMeetAthletes(meetId, sortedAthletes);
 
     return {
@@ -804,7 +765,6 @@ export default function SessionDetailsScreen() {
   const [sessionData, setSessionData] = useState<Session | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [syncManager] = useState(() => new SyncManager(selectedMeet || ''));
 
   // Get time zone abbreviation
   const timeZoneAbbr = useMemo(() => {
@@ -868,21 +828,21 @@ export default function SessionDetailsScreen() {
     })();
   }, []);
 
-  // Load session data from SyncManager
+  // Load session data from cache
   const loadSessionData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Get fresh data from SyncManager
-      const meetData = await syncManager.getMeetData();
+      // Get cached data (context's SyncManager handles syncing)
+      const meetData = await getMeetData(params.meet as MeetName);
       if (meetData.schedule) {
         setCurrentSchedule(meetData.schedule);
-        
+
         // Find the session in the schedule
-        const day = meetData.schedule.find(day => 
-          day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+        const day = meetData.schedule.find((day: DaySchedule) =>
+          day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
         );
-        
-        const session = day?.sessions.find(s => 
+
+        const session = day?.sessions.find((s: Session) =>
           s.number === parseInt(params.sessionNumber)
         );
 
@@ -895,7 +855,7 @@ export default function SessionDetailsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [syncManager, params.sessionNumber]);
+  }, [params.meet, params.sessionNumber]);
 
   // Initial load
   useEffect(() => {

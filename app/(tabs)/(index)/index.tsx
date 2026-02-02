@@ -4,7 +4,6 @@ import { router, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -13,8 +12,7 @@ import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/type
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '@/components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
-import { fetchSchedule } from '@/lib/database/queries';
+import { initStore, getMeetData } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { VersionAnnouncement } from '@/components/VersionAnnouncement';
 import { useAuth } from '@clerk/clerk-expo';
@@ -142,17 +140,15 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   );
 }
 
-function DayView({ day, letterFilter, timeZone, onRefreshComplete }: { 
-  day: DaySchedule; 
-  letterFilter: string; 
+function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
+  day: DaySchedule;
+  letterFilter: string;
   timeZone: string;
   onRefreshComplete?: () => void;
 }) {
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
-  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const { currentTheme } = useTheme();
-  const [scheduleData, setScheduleData] = useState(day);
 
   // Get time zone abbreviation
   const timeZoneAbbreviation = useMemo(() => {
@@ -164,68 +160,30 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
     }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
   }, [selectedMeet, timeZone]);
 
-  const currentDate = day.date;
-  const currentDay = day;
-
-  useEffect(() => {
-    if (selectedMeet && typeof selectedMeet === 'string') {
-      const manager = new SyncManager(selectedMeet);
-      setSyncManager(manager);
-
-      const loadData = async () => {
-        setRefreshing(true);
-        try {
-          const meetData = await manager.getMeetData();
-          setScheduleData(meetData.schedule?.find(d => d.date === currentDate) || currentDay);
-        } catch (error) {
-          console.error('Error loading schedule:', error);
-          setScheduleData(currentDay);
-        } finally {
-          setRefreshing(false);
-        }
-      };
-
-      loadData();
-    } else {
-      setSyncManager(null);
-      setScheduleData(currentDay);
-    }
-  }, [selectedMeet, currentDate, currentDay]);
-
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
 
   const onRefresh = useCallback(async () => {
-    if (!syncManager) return;
-
     setRefreshing(true);
     try {
-      const meetData = await syncManager.getMeetData();
-      if (meetData.schedule) {
-        // Find and update the current day's data
-        const updatedDay = meetData.schedule.find(d => d.date === day.date);
-        if (updatedDay) {
-          setScheduleData(updatedDay);
-        }
-      }
-      // Notify parent component to reload full schedule
+      // Notify parent component to reload full schedule from cache
       onRefreshComplete?.();
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [syncManager, day.date, onRefreshComplete]);
+  }, [onRefreshComplete]);
 
   const filteredSessions = useMemo(() => {
-    if (!letterFilter) return scheduleData.sessions;
-    return scheduleData.sessions.filter(session => 
-      session.platforms.some(platform => 
+    if (!letterFilter) return day.sessions;
+    return day.sessions.filter((session: Session) =>
+      session.platforms.some((platform: PlatformType) =>
         platform.weightClass.slice(-1) === letterFilter
       )
     );
-  }, [scheduleData.sessions, letterFilter]);
+  }, [day.sessions, letterFilter]);
 
   return (
     <FlatList
@@ -503,42 +461,25 @@ export default function ScheduleScreen() {
     return currentDateIndex;
   }, []);
 
-  // Revised loadData function (Supabase-first, Cache-fallback)
+  // Load schedule from cache (context handles syncing)
   const loadData = useCallback(async (meet: MeetName) => {
     setIsLoading(true);
     let scheduleData: Schedule = [];
-    let loadedFromCache = false;
 
     try {
-      // 1. Try fetching from Supabase
-      const freshSchedule = await fetchSchedule(meet);
-      scheduleData = freshSchedule;
-      // 2. Save successful fetch to cache (don't wait for it)
-      if (freshSchedule.length > 0) {
-        saveMeetSchedule(meet, freshSchedule).catch(err => 
-          console.error(`ScheduleScreen: Failed to save fresh schedule to cache for ${meet}:`, err)
-        );
+      // Get cached data - context's SyncManager handles fetching/syncing
+      const cachedMeetData = await getMeetData(meet);
+      if (cachedMeetData?.schedule) {
+        scheduleData = cachedMeetData.schedule;
       } else {
-        console.log(`ScheduleScreen: Empty schedule from DB for ${meet}; skipping cache save`);
+        console.log(`ScheduleScreen: No schedule found in cache for ${meet}`);
       }
-    } catch (fetchError) {
-      // 3. Fallback to cache if Supabase fetch fails
-      try {
-        const cachedMeetData = await getMeetData(meet);
-        if (cachedMeetData?.schedule) {
-          scheduleData = cachedMeetData.schedule;
-          loadedFromCache = true;
-        } else {
-          console.log(`ScheduleScreen: No schedule found in cache for ${meet}`);
-        }
-      } catch (cacheError) {
-        console.error(`ScheduleScreen: Failed to load schedule from cache for ${meet}:`, cacheError);
-        Alert.alert('Error', 'Failed to load schedule data. Please check connection or try refreshing.');
-      }
+    } catch (cacheError) {
+      console.error(`ScheduleScreen: Failed to load schedule from cache for ${meet}:`, cacheError);
     }
 
-    setSchedule(scheduleData); 
-    
+    setSchedule(scheduleData);
+
     // Calculate and set the initial page based on current UTC date
     if (scheduleData && scheduleData.length > 0) {
       const initialPage = calculateInitialPage(scheduleData);
@@ -546,15 +487,10 @@ export default function ScheduleScreen() {
       setCurrentPage(initialPage);
       setCurrentDate(scheduleData[initialPage]?.date || '');
     }
-    
-    // If loaded from cache, maybe show an indicator?
-    // For now, just log it.
-    if (loadedFromCache) {
-        console.log("ScheduleScreen: Displaying data loaded from cache.");
-    }
+
     setIsLoading(false);
 
-  }, [calculateInitialPage]); // Dependencies managed by the calling useEffect
+  }, [calculateInitialPage]);
 
   // Load data when selectedMeet changes
   useEffect(() => {
