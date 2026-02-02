@@ -396,13 +396,26 @@ export default function ScheduleScreen() {
 
   // Check onboarding status on mount
   useEffect(() => {
+    let aborted = false;
+
     const checkOnboarding = async () => {
-      const completed = await checkOnboardingComplete();
-      if (!completed) {
-        setShowOnboarding(true);
+      try {
+        const completed = await checkOnboardingComplete();
+        if (!aborted && !completed) {
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        if (!aborted) {
+          console.error('Error checking onboarding status:', error);
+        }
       }
     };
+
     checkOnboarding();
+
+    return () => {
+      aborted = true;
+    };
   }, []);
 
   const SkeletonBlock = useCallback(({ style }: { style: any }) => {

@@ -129,7 +129,12 @@ export default function SignUpScreen() {
         await setActive({ session: signUpAttempt.createdSessionId })
 
         // Cache the auth state with user details
-        await cacheAuthState(true, signUpAttempt.createdUserId, emailAddress)
+        try {
+          await cacheAuthState(true, signUpAttempt.createdUserId, emailAddress)
+        } catch (error) {
+          console.error('Error caching auth state (userId:', signUpAttempt.createdUserId, 'email:', emailAddress, '):', error)
+          // Continue with navigation even if caching fails
+        }
 
         // Sync user with RevenueCat
         try {
