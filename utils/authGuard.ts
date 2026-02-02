@@ -22,12 +22,12 @@ export function useAuthGuard() {
 
   /**
    * Check if user is authenticated. If not, show login prompt.
-   * @returns true if authenticated, false if login is required
+   * @returns true if authenticated, false if login is required, null if still loading
    */
-  const requireAuth = useCallback((options: AuthGuardOptions): boolean => {
+  const requireAuth = useCallback((options: AuthGuardOptions): boolean | null => {
     if (!isLoaded) {
       // Still loading auth state
-      return false;
+      return null;
     }
 
     if (user) {

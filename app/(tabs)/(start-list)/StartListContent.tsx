@@ -1850,11 +1850,12 @@ export default function StartListScreen() {
               onPress={() => {
                 setShowSaveModal(false);
                 // 1. Check auth
-                if (!requireAuth({
+                const authResult = requireAuth({
                   feature: 'share-schedule-image',
                   message: 'Sign in to share schedule images.',
                   returnPath: '/(tabs)/(start-list)',
-                })) {
+                });
+                if (authResult === null || authResult === false) {
                   return;
                 }
                 // 2. Check subscription
@@ -1919,11 +1920,12 @@ export default function StartListScreen() {
               onPress={() => {
                 setShowSaveModal(false);
                 // 1. Check auth
-                if (!requireAuth({
+                const authResult = requireAuth({
                   feature: 'export-csv',
                   message: 'Sign in to export schedules.',
                   returnPath: '/(tabs)/(start-list)',
-                })) {
+                });
+                if (authResult === null || authResult === false) {
                   return;
                 }
                 // 2. Check subscription

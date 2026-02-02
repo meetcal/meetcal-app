@@ -477,11 +477,12 @@ export default function SavedScreen() {
 
   const handleResetSessions = () => {
     // Check authentication first
-    if (!requireAuth({
+    const authResult = requireAuth({
       feature: 'delete-sessions',
       message: 'Sign in to manage your saved sessions.',
       returnPath: '/(tabs)/(saved)',
-    })) {
+    });
+    if (authResult === null || authResult === false) {
       return;
     }
 
@@ -630,11 +631,12 @@ export default function SavedScreen() {
 
   const handleSaveToCalendar = async () => {
     // 1. Check authentication first
-    if (!requireAuth({
+    const authResult = requireAuth({
       feature: 'add-to-calendar',
       message: 'Sign in to add sessions to your calendar.',
       returnPath: '/(tabs)/(saved)',
-    })) {
+    });
+    if (authResult === null || authResult === false) {
       return;
     }
 

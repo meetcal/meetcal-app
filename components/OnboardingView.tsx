@@ -132,7 +132,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📸 Start List
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Pro members can also create and share Start Lists for their club on this page. Easily share when and where you athletes will be lifting.
+              Pro members can also create and share Start Lists for their club on this page. Easily share when and where your athletes will be lifting.
             </ThemedText>
           </View>
         );
@@ -190,11 +190,10 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onComplete}
+      onRequestClose={() => {}}
     >
       <Pressable
         style={styles.modalOverlay}
-        onPress={onComplete}
       >
         <Pressable
           style={[styles.container, { backgroundColor: colors.background }]}

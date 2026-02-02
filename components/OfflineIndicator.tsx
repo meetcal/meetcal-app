@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { Text, StyleSheet, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export function OfflineIndicator() {
-  const { currentTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { isUsingStaleCache, lastSyncTimestamp } = useSubscription();
   const [isOffline, setIsOffline] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-100));
@@ -44,12 +44,8 @@ export function OfflineIndicator() {
     }
   }, [isOffline, isUsingStaleCache, slideAnim]);
 
-  if (!isOffline && !isUsingStaleCache) {
-    return null;
-  }
-
   const colors = {
-    background: currentTheme === 'dark' ? '#FF9500' : '#FF9500',
+    background: '#FF9500',
     text: '#FFFFFF',
   };
 
@@ -72,9 +68,14 @@ export function OfflineIndicator() {
 
   return (
     <Animated.View
+      pointerEvents={isOffline || isUsingStaleCache ? 'auto' : 'none'}
       style={[
         styles.container,
-        { backgroundColor: colors.background, transform: [{ translateY: slideAnim }] },
+        {
+          backgroundColor: colors.background,
+          transform: [{ translateY: slideAnim }],
+          paddingTop: insets.top + 8,
+        },
       ]}
     >
       <IconSymbol name="wifi.slash" size={16} color={colors.text} />
@@ -92,7 +93,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingTop: 36,
     paddingBottom: 4,
     paddingHorizontal: 16,
     flexDirection: 'row',

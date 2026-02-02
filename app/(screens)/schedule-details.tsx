@@ -454,11 +454,12 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     pressed && isSubscribed && { opacity: 0.8 }
                   ]}
                   onPress={isSubscribed ? handleSortPress : () => {
-                    if (!requireAuth({
+                    const authResult = requireAuth({
                       feature: 'sort-athletes',
                       message: 'Sign in to access premium features.',
                       returnPath: '/(screens)/schedule-details',
-                    })) {
+                    });
+                    if (authResult === null || authResult === false) {
                       return;
                     }
                     router.push({
@@ -503,11 +504,12 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                 pressed && isSubscribed && { opacity: 0.8 }
               ]}
               onPress={isSubscribed ? handleSortPress : () => {
-                if (!requireAuth({
+                const authResult = requireAuth({
                   feature: 'sort-athletes',
                   message: 'Sign in to access premium features.',
                   returnPath: '/(screens)/schedule-details',
-                })) {
+                });
+                if (authResult === null || authResult === false) {
                   return;
                 }
                 router.push({
@@ -609,11 +611,12 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     <Pressable
                       style={styles.premiumBadgeContainer}
                       onPress={() => {
-                        if (!requireAuth({
+                        const authResult = requireAuth({
                           feature: 'athlete-bests',
                           message: 'Sign in to access premium features.',
                           returnPath: '/(screens)/schedule-details',
-                        })) {
+                        });
+                        if (authResult === null || authResult === false) {
                           return;
                         }
                         router.push({
@@ -621,7 +624,14 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                           params: { from: '/(screens)/schedule-details', feature: 'athlete-bests' },
                         } as any);
                       }}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Unlock athlete best lifts with premium"
                     >
+                      <View style={styles.premiumBadge}>
+                        <IconSymbol name="lock.fill" size={14} color="#FFFFFF" />
+                        <ThemedText style={styles.premiumText}>Premium</ThemedText>
+                      </View>
                     </Pressable>
                   )}
                 </View>
@@ -632,11 +642,12 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
-                    if (!requireAuth({
+                    const authResult = requireAuth({
                       feature: 'athlete-results',
                       message: 'Sign in to access premium features.',
                       returnPath: '/(screens)/schedule-details',
-                    })) {
+                    });
+                    if (authResult === null || authResult === false) {
                       return;
                     }
                     if (isSubscribed) {
@@ -954,11 +965,12 @@ export default function SessionDetailsScreen() {
 
   const handleSavePress = () => {
     // Check authentication first
-    if (!requireAuth({
+    const authResult = requireAuth({
       feature: 'save-session',
       message: 'Sign in to save sessions and sync them across your devices.',
       returnPath: '/(screens)/schedule-details',
-    })) {
+    });
+    if (authResult === null || authResult === false) {
       return;
     }
 
@@ -1211,11 +1223,12 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
-                    if (!requireAuth({
+                    const authResult = requireAuth({
                       feature: 'qualifying-totals',
                       message: 'Sign in to access premium features.',
                       returnPath: '/(screens)/schedule-details',
-                    })) {
+                    });
+                    if (authResult === null || authResult === false) {
                       return;
                     }
                     if (isSubscribed) {
@@ -1249,11 +1262,12 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
-                    if (!requireAuth({
+                    const authResult = requireAuth({
                       feature: 'attempt-estimator',
                       message: 'Sign in to access premium features.',
                       returnPath: '/(screens)/schedule-details',
-                    })) {
+                    });
+                    if (authResult === null || authResult === false) {
                       return;
                     }
                     if (isSubscribed) {

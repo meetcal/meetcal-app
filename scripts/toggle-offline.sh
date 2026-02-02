@@ -11,15 +11,18 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+# Portable sed in-place editing
+TMP_FILE="${CONFIG_FILE}.tmp"
+
 # Check current state
 if grep -q "SIMULATE_OFFLINE: true" "$CONFIG_FILE"; then
     # Currently true, set to false
-    sed -i '' 's/SIMULATE_OFFLINE: true/SIMULATE_OFFLINE: false/g' "$CONFIG_FILE"
+    sed 's/SIMULATE_OFFLINE: true/SIMULATE_OFFLINE: false/g' "$CONFIG_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$CONFIG_FILE"
     echo "✅ Offline mode DISABLED"
     echo "   App will use real network"
 else
     # Currently false, set to true
-    sed -i '' 's/SIMULATE_OFFLINE: false/SIMULATE_OFFLINE: true/g' "$CONFIG_FILE"
+    sed 's/SIMULATE_OFFLINE: false/SIMULATE_OFFLINE: true/g' "$CONFIG_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$CONFIG_FILE"
     echo "✅ Offline mode ENABLED"
     echo "   App will simulate offline (no network calls)"
     echo ""

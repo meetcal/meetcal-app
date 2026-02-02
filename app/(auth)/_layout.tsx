@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-expo'
 import { useEffect, useState } from 'react'
 import { getCachedAuthState } from '@/lib/authCache'
 import { isNetworkAvailable } from '@/lib/networkUtils'
+import NetInfo from '@react-native-community/netinfo'
 
 export default function AuthRoutesLayout() {
   const { isSignedIn, isLoaded: isClerkLoaded } = useAuth()
@@ -11,13 +12,30 @@ export default function AuthRoutesLayout() {
   const [isOffline, setIsOffline] = useState(false)
   const [error, setError] = useState<Error | null>(null)
 
-  // Check network availability on mount
+  // Check network availability on mount and listen for changes
   useEffect(() => {
-    async function checkNetwork() {
-      const hasNetwork = await isNetworkAvailable()
-      setIsOffline(!hasNetwork)
+    async function recheckNetwork() {
+      try {
+        const hasNetwork = await isNetworkAvailable()
+        setIsOffline(!hasNetwork)
+      } catch (err) {
+        console.error('[AuthLayout] Error checking network availability:', err)
+        // Assume offline on error
+        setIsOffline(true)
+      }
     }
-    checkNetwork()
+
+    // Check immediately on mount
+    recheckNetwork()
+
+    // Listen for network status changes with NetInfo
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected)
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {

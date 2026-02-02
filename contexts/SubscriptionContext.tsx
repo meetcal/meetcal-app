@@ -7,7 +7,7 @@ import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtil
 
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
-  subscriptionType: 'free' | 'quarterly' | 'lifetime' | null;
+  subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown' | null;
   setSubscribed: (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => Promise<void>;
   isLoading: boolean;
   restorePurchases: () => Promise<boolean>;
@@ -18,7 +18,7 @@ type SubscriptionContextType = {
 
 interface SubscriptionCacheData {
   isSubscribed: boolean;
-  subscriptionType: 'free' | 'quarterly' | 'lifetime';
+  subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown';
   timestamp: number;
 }
 
@@ -29,7 +29,7 @@ const SubscriptionContext = createContext<SubscriptionContextType | undefined>(u
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
-  const [subscriptionType, setSubscriptionType] = useState<'free' | 'quarterly' | 'lifetime' | null>(null);
+  const [subscriptionType, setSubscriptionType] = useState<'free' | 'quarterly' | 'lifetime' | 'unknown' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
@@ -150,9 +150,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
         } else {
-          console.warn('No network and no cache available, defaulting to free');
-          setIsSubscribed(false);
-          setSubscriptionType('free');
+          console.warn('No network and no cache available, setting unknown state');
+          setIsSubscribed(null);
+          setSubscriptionType('unknown');
         }
         setIsLoading(false);
         return;
@@ -175,8 +175,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         setIsSubscribed(cached.isSubscribed);
         setSubscriptionType(cached.subscriptionType);
       } else {
-        setIsSubscribed(false);
-        setSubscriptionType('free');
+        console.warn('Error checking subscription and no cache available, setting unknown state');
+        setIsSubscribed(null);
+        setSubscriptionType('unknown');
       }
       setIsLoading(false);
     }
@@ -217,9 +218,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           // No network, use cache only
           console.log('No network, using cached subscription only');
           if (!cached) {
-            console.warn('No network and no cache, defaulting to free');
-            setIsSubscribed(false);
-            setSubscriptionType('free');
+            console.warn('No network and no cache, setting unknown state');
+            setIsSubscribed(null);
+            setSubscriptionType('unknown');
           }
           setIsLoading(false);
         }

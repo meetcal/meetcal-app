@@ -13,6 +13,18 @@ interface AuthCacheData {
   email?: string;
 }
 
+// Runtime validator for cached auth data
+function isAuthCacheData(obj: any): obj is AuthCacheData {
+  return (
+    obj !== null &&
+    typeof obj === 'object' &&
+    typeof obj.isSignedIn === 'boolean' &&
+    typeof obj.timestamp === 'number' &&
+    (obj.userId === undefined || typeof obj.userId === 'string') &&
+    (obj.email === undefined || typeof obj.email === 'string')
+  );
+}
+
 export async function cacheAuthState(
   isSignedIn: boolean,
   userId?: string,
@@ -37,7 +49,15 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
     const cachedData = await SecureStore.getItemAsync(AUTH_CACHE_KEY);
     if (!cachedData) return null;
 
-    const parsed: AuthCacheData = JSON.parse(cachedData);
+    const parsed = JSON.parse(cachedData);
+
+    // Validate the parsed data structure
+    if (!isAuthCacheData(parsed)) {
+      console.warn('Invalid auth cache data structure, clearing cache');
+      await clearAuthCache();
+      return null;
+    }
+
     const now = Date.now();
 
     // Check if cache is expired
@@ -82,13 +102,19 @@ export function useCachedAuth() {
 
   // Load cached auth state on mount
   React.useEffect(() => {
+    let cancelled = false;
+
     async function loadCache() {
       const cached = await getCachedAuthState();
-      if (cached) {
+      if (cached && !cancelled) {
         setCachedAuthData(cached);
       }
     }
     loadCache();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Cache the auth state whenever it changes (only when online)

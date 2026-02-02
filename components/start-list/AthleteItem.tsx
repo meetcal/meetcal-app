@@ -232,11 +232,17 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
             style={({ pressed }) => [styles.meetResultsButton, pressed && { opacity: 0.8 }]}
             onPress={() => {
               // 1. Check auth
-              if (!requireAuth({
+              const authResult = requireAuth({
                 feature: 'athlete-results',
                 message: 'Sign in to access premium features.',
                 returnPath: '/(tabs)/(start-list)',
-              })) {
+              });
+              if (authResult === null) {
+                // Still loading auth state
+                return;
+              }
+              if (authResult === false) {
+                // User not authenticated, alert already shown
                 return;
               }
               // 2. Check subscription

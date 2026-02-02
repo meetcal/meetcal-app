@@ -17,7 +17,7 @@ interface NotificationSettingsProps {
     pressed: string;
   };
   subscriptionStatus: SubscriptionStatus;
-  requireAuth: (options: AuthGuardOptions) => boolean;
+  requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: Router;
 }
 
@@ -76,11 +76,12 @@ export function NotificationSettings({ colors, subscriptionStatus, requireAuth, 
 
   const handleToggle = async () => {
     // 1. Check auth first
-    if (!requireAuth({
+    const authResult = requireAuth({
       feature: 'session-reminders',
       message: 'Sign in to enable session reminders.',
       returnPath: '/(screens)/profile',
-    })) {
+    });
+    if (authResult === null || authResult === false) {
       return;
     }
 
