@@ -3,10 +3,13 @@ import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/ty
 import { SyncManager } from './sync-manager';
 import { clearMeetData, getMeetData } from './offline-store';
 import { supabase } from '@/lib/supabase';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
+const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
+const INITIAL_LOAD_TIMEOUT_MS = 4000;
 
 interface MeetInfo {
   lastAccessed: number;
@@ -16,6 +19,43 @@ interface MeetInfo {
 interface CacheInfo {
   totalSize: number;
   meets: { [key: string]: MeetInfo };
+}
+
+async function getCachedMeets(): Promise<Meet[]> {
+  try {
+    const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
+    if (!cached) return [];
+    const parsed = JSON.parse(cached);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Error reading cached meets list:', error);
+    return [];
+  }
+}
+
+async function setCachedMeets(meets: Meet[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(MEETS_LIST_CACHE_KEY, JSON.stringify(meets));
+  } catch (error) {
+    console.error('Error saving cached meets list:', error);
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 // Helper function to determine if a date is in DST
@@ -69,19 +109,27 @@ async function saveCacheInfo(info: CacheInfo) {
 // Fetch all meets from Supabase
 export async function fetchMeets(): Promise<Meet[]> {
   try {
-    
-    const { data: meetsData, error } = await supabase
-      .from('meets')
-      .select('*')
-      .neq('status', 'completed')
-      .order('start_date', { ascending: true });
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      return await getCachedMeets();
+    }
+
+    const { data: meetsData, error } = await withTimeout(
+      supabase
+        .from('meets')
+        .select('*')
+        .neq('status', 'completed')
+        .order('start_date', { ascending: true }),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchMeets'
+    );
 
     if (error) {
       console.error('Error fetching meets:', error);
-      throw error;
+      return await getCachedMeets();
     }
 
-    return meetsData.map(meet => {
+    const mapped = meetsData.map(meet => {
       const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
       const startDate = new Date(meet.start_date);
       
@@ -110,20 +158,32 @@ export async function fetchMeets(): Promise<Meet[]> {
         status: meet.status
       };
     });
+    await setCachedMeets(mapped);
+    return mapped;
   } catch (error) {
     console.error('Error in fetchMeets:', error);
-    throw error;
+    return await getCachedMeets();
   }
 }
 
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
-    const { data: meet, error, status } = await supabase
-      .from('meets')
-      .select('*')
-      .eq('name', name)
-      .single();
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      const cached = await getCachedMeets();
+      return cached.find(meet => meet.name === name) ?? null;
+    }
+
+    const { data: meet, error, status } = await withTimeout(
+      supabase
+        .from('meets')
+        .select('*')
+        .eq('name', name)
+        .single(),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchMeetByName'
+    );
 
 
     const actualMeet = Array.isArray(meet) ? meet[0] : meet;
@@ -167,7 +227,8 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
     };
   } catch (error) {
     console.error('Error in fetchMeetByName:', error);
-    throw error;
+    const cached = await getCachedMeets();
+    return cached.find(meet => meet.name === name) ?? null;
   }
 }
 

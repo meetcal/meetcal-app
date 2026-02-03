@@ -5,6 +5,9 @@ require 'json'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
 
 def ccache_enabled?(podfile_properties)
+  # EAS build env can resolve the ccache script to a bad path for extensions.
+  return false if ENV['EAS_BUILD'] == '1'
+
   # Environment variable takes precedence
   return ENV['USE_CCACHE'] == '1' if ENV['USE_CCACHE']
   
