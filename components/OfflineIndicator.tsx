@@ -11,6 +11,7 @@ export function OfflineIndicator() {
   const [isOffline, setIsOffline] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-100));
   const [hasCheckedNetwork, setHasCheckedNetwork] = useState(false);
+  const [minDelayPassed, setMinDelayPassed] = useState(false);
 
   // Check network status
   useEffect(() => {
@@ -24,6 +25,11 @@ export function OfflineIndicator() {
     // Check periodically
     const interval = setInterval(checkNetwork, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinDelayPassed(true), 8000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Show/hide animation
@@ -68,7 +74,7 @@ export function OfflineIndicator() {
     }
   };
 
-  if (!hasCheckedNetwork) {
+  if (!hasCheckedNetwork || !minDelayPassed) {
     return null;
   }
 
