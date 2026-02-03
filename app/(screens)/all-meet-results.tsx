@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useState, useEffect, useCallback } from 'react';
 import { searchAthletesByName } from '@/lib/database/queries';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { posthog } from '@/lib/posthog';
 
 export default function AllMeetResultsScreen() {
@@ -18,12 +19,29 @@ export default function AllMeetResultsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Track screen view on mount
   useEffect(() => {
     posthog.capture('screen_viewed', {
       screen_name: 'All Meet Results'
     });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkNetwork = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (isMounted) setIsOffline(!hasNetwork);
+    };
+    checkNetwork();
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Define theme colors
@@ -55,6 +73,14 @@ export default function AllMeetResultsScreen() {
   }, [searchText]);
 
   const performSearch = async (query: string) => {
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      setError(null);
+      setSearchResults([]);
+      setIsOffline(true);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
 
@@ -108,6 +134,19 @@ export default function AllMeetResultsScreen() {
           </ThemedText>
           <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
             Try searching again
+          </ThemedText>
+        </View>
+      );
+    }
+
+    if (isOffline) {
+      return (
+        <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            Offline
+          </ThemedText>
+          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+            Meet results search is not available without an internet connection
           </ThemedText>
         </View>
       );
