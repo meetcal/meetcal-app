@@ -18,6 +18,7 @@ import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotificationsAsync } from '@/utils/notifications';
 import NetInfo from '@react-native-community/netinfo';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -171,6 +172,7 @@ export default function RootLayout() {
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
@@ -186,6 +188,31 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     initialize();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkOffline = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork && isMounted) {
+        setOfflineBypass(true);
+      } else if (hasNetwork && isMounted) {
+        setOfflineBypass(false);
+      }
+    };
+    checkOffline();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setOfflineBypass(!isConnected);
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Effect to sync Clerk user with RevenueCat
@@ -226,7 +253,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   useEffect(() => {
     async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
+      if (!hasAttemptedSplashHide.current && isInitialized && fontsLoaded && (offlineBypass || (!isSubscriptionLoading && isUserLoaded))) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
 
@@ -243,9 +270,9 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router, offlineBypass]);
 
-  if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
+  if (!isInitialized || (!offlineBypass && (isSubscriptionLoading || !isUserLoaded))) {
     return null;
   }
 

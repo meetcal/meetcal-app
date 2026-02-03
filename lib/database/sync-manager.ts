@@ -2,6 +2,7 @@ import { getMeetData, saveMeetSchedule } from './offline-store';
 import { fetchSchedule } from './queries';
 import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 
 const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -33,6 +34,10 @@ export class SyncManager {
 
     try {
       this.isSyncing = true;
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        return;
+      }
 
       // Fetch only the schedule - athletes and results are fetched on-demand
       const schedule = await fetchSchedule(this.meetId);

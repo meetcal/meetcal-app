@@ -5,6 +5,25 @@ import { MeetName } from '@/data/types/meet';
 import type { LiftResult } from '@/data/types/athletes';
 import { getMeetConfig } from '@/data/meets/config';
 
+const INITIAL_LOAD_TIMEOUT_MS = 4000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 type DbSchedule = {
   id: number;
   date: string;
@@ -55,9 +74,13 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
   
   try {
     // First check what meet names we have in the database
-    const { data: allRecords, error: meetError } = await supabase
-      .from('session_schedule')
-      .select('meet');
+    const { data: allRecords, error: meetError } = await withTimeout(
+      supabase
+        .from('session_schedule')
+        .select('meet'),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchScheduleFromDb:meetNames'
+    );
     
     if (meetError) {
       console.error('Error fetching meet names:', meetError);
@@ -66,10 +89,14 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
     }
 
     // Now try to fetch all records without any filters first
-    const { data: sampleRecords, error: sampleError } = await supabase
-      .from('session_schedule')
-      .select('*')
-      .limit(1);
+    const { data: sampleRecords, error: sampleError } = await withTimeout(
+      supabase
+        .from('session_schedule')
+        .select('*')
+        .limit(1),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchScheduleFromDb:sample'
+    );
 
     if (sampleError) {
       console.error('Error fetching sample records:', sampleError);
@@ -77,13 +104,17 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
     }
 
     // Now fetch the actual schedule with filters
-    const { data, error } = await supabase
-      .from('session_schedule')
-      .select('*')
-      .eq('meet', meet)
-      .order('date')
-      .order('session_id')
-      .order('platform');
+    const { data, error } = await withTimeout(
+      supabase
+        .from('session_schedule')
+        .select('*')
+        .eq('meet', meet)
+        .order('date')
+        .order('session_id')
+        .order('platform'),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchScheduleFromDb:schedule'
+    );
 
     if (error) {
       console.error('Error fetching schedule:', error);
