@@ -4,6 +4,7 @@ import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { needsSync } from '@/lib/database/offline-store';
 import { prefetchMeetData, updateMeetAccess, fetchMeets, fetchMeetByName } from '@/lib/database/meet-manager';
+import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SelectedMeetContextType = {
   selectedMeet: MeetName | null;
@@ -107,8 +108,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   };
 
   // Load available meets
-  useEffect(() => {
-    const loadMeets = async () => {
+  const loadMeets = useCallback(async () => {
       try {
         const meets = await fetchMeets();
         setAvailableMeets(meets);
@@ -155,9 +155,10 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       } finally {
         setIsLoading(false);
       }
-    };
+  }, [selectedMeet, initializeMeetData]);
 
     // Initial load
+  useEffect(() => {
     loadMeets();
 
     // Set up periodic refresh every 5 minutes
@@ -165,7 +166,18 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
     // Cleanup interval on unmount
     return () => clearInterval(refreshInterval);
-  }, [selectedMeet]); // Added selectedMeet as dependency since we use it in the effect
+  }, [loadMeets]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      if (isConnected) {
+        loadMeets();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [loadMeets]);
 
   // Force sync function
   const forceSync = async () => {

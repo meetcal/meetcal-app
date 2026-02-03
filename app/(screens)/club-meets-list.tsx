@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchAthletesByClub } from '@/lib/database/fetch-club-stats';
 import type { AthleteClub } from '@/types/club';
 import { posthog } from '@/lib/posthog';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 export default function ClubMeetsListScreen() {
   const { currentTheme } = useTheme();
@@ -20,6 +21,7 @@ export default function ClubMeetsListScreen() {
   const [athletesInClub, setAthletesInClub] = useState<AthleteClub[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isOffline, setIsOffline] = useState(false);
 
   // Track screen view on mount
   useEffect(() => {
@@ -28,6 +30,22 @@ export default function ClubMeetsListScreen() {
       club_name: club
     });
   }, [club]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkNetwork = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (isMounted) setIsOffline(!hasNetwork);
+    };
+    checkNetwork();
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Define theme colors
   const colors = {
@@ -54,6 +72,13 @@ export default function ClubMeetsListScreen() {
     setError(null);
 
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        setIsOffline(true);
+        setAthletesInClub([]);
+        setError('Offline - meet results are not available');
+        return;
+      }
       const athletes = await fetchAthletesByClub(club);
       setAthletesInClub(athletes);
     } catch (err) {
@@ -101,19 +126,21 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            Error loading meets
+            {isOffline ? 'Offline' : 'Error loading meets'}
           </ThemedText>
           <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-            {error}
+            {isOffline ? 'Meet results are not available without an internet connection' : error}
           </ThemedText>
-          <Pressable
-            style={[styles.retryButton, { backgroundColor: colors.link }]}
-            onPress={loadAthletes}
-          >
-            <ThemedText style={styles.retryButtonText}>
-              Retry
-            </ThemedText>
-          </Pressable>
+          {!isOffline && (
+            <Pressable
+              style={[styles.retryButton, { backgroundColor: colors.link }]}
+              onPress={loadAthletes}
+            >
+              <ThemedText style={styles.retryButtonText}>
+                Retry
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
       );
     }

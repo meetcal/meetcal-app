@@ -10,12 +10,14 @@ export function OfflineIndicator() {
   const { isUsingStaleCache, lastSyncTimestamp } = useSubscription();
   const [isOffline, setIsOffline] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-100));
+  const [hasCheckedNetwork, setHasCheckedNetwork] = useState(false);
 
   // Check network status
   useEffect(() => {
     async function checkNetwork() {
       const hasNetwork = await isNetworkAvailable();
       setIsOffline(!hasNetwork);
+      setHasCheckedNetwork(true);
     }
     checkNetwork();
 
@@ -65,6 +67,10 @@ export function OfflineIndicator() {
       return 'recently';
     }
   };
+
+  if (!hasCheckedNetwork) {
+    return null;
+  }
 
   return (
     <Animated.View

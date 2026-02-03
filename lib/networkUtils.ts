@@ -7,9 +7,9 @@ let inFlightCheck: Promise<boolean> | null = null;
 const NETWORK_CACHE_MS = 3000;
 
 NetInfo.addEventListener(state => {
-  const isConnected = state.isConnected === true;
   const isReachable = state.isInternetReachable;
-  lastKnownNetwork = isReachable === false ? false : isConnected;
+  // Only mark offline when reachability is explicitly false.
+  lastKnownNetwork = isReachable === false ? false : true;
   lastCheckedAt = Date.now();
 });
 
@@ -36,9 +36,8 @@ export async function isNetworkAvailable(): Promise<boolean> {
 
     inFlightCheck = NetInfo.fetch()
       .then(state => {
-        const isConnected = state.isConnected === true;
         const isReachable = state.isInternetReachable;
-        const isConnectedAndReachable = isReachable === false ? false : isConnected;
+        const isConnectedAndReachable = isReachable === false ? false : true;
         lastKnownNetwork = isConnectedAndReachable;
         lastCheckedAt = Date.now();
         return isConnectedAndReachable;
@@ -67,7 +66,7 @@ export function subscribeToNetworkChanges(
   callback: (isConnected: boolean) => void
 ): () => void {
   const unsubscribe = NetInfo.addEventListener(state => {
-    const isConnected = state.isConnected === true && state.isInternetReachable !== false;
+    const isConnected = state.isInternetReachable === false ? false : true;
     callback(isConnected);
   });
 

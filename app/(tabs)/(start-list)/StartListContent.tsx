@@ -28,6 +28,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { AthleteItem } from '@/components/start-list/AthleteItem';
 import { StartListSkeleton } from '@/components/start-list/StartListSkeleton';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   sortWeightClasses,
   sortAthletes,
@@ -165,6 +166,7 @@ export default function StartListScreen() {
     }
 
     const validMeet = selectedMeet;
+    const hasNetwork = await isNetworkAvailable();
 
     if (!forceRefresh) {
       try {
@@ -172,16 +174,24 @@ export default function StartListScreen() {
         if (cached?.athletes?.length > 0) {
           setAthletes(cached.athletes);
           setLoading(false);
-          fetchAthletes(validMeet)
-            .then(fresh => {
-              setTimeout(() => setAthletes(fresh), 0);
-              saveMeetAthletes(validMeet, fresh).catch(() => {});
-            })
-            .catch(() => {});
+          if (hasNetwork) {
+            fetchAthletes(validMeet)
+              .then(fresh => {
+                setTimeout(() => setAthletes(fresh), 0);
+                saveMeetAthletes(validMeet, fresh).catch(() => {});
+              })
+              .catch(() => {});
+          }
           return;
         }
       } catch {
       }
+    }
+
+    if (!hasNetwork) {
+      setAthletes([]);
+      setLoading(false);
+      return;
     }
 
     setLoading(true);
@@ -212,6 +222,16 @@ export default function StartListScreen() {
   const loadSchedule = useCallback(async () => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
       setScheduleData([]);
+      return;
+    }
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      try {
+        const cached = await getMeetData(selectedMeet);
+        setScheduleData(cached?.schedule ?? []);
+      } catch {
+        setScheduleData([]);
+      }
       return;
     }
     const validMeet = selectedMeet;
