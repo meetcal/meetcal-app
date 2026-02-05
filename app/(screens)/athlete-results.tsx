@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
@@ -207,6 +207,8 @@ export default function AthleteResultsScreen() {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>([]);
+  const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
+  const requestIdRef = useRef(0);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -223,17 +225,26 @@ export default function AthleteResultsScreen() {
     const fetchAthleteResults = async () => {
       if (!name) return;
 
-      try {
+      const nameStr = Array.isArray(name) ? name[0] : name;
+      const cacheKey = `${selectedMeet || 'all'}::${nameStr}`;
+      const cachedResults = resultsCacheRef.current.get(cacheKey);
+      if (cachedResults) {
+        setAthleteResults(cachedResults);
+        setLoading(false);
+      } else {
         setLoading(true);
-        const nameStr = Array.isArray(name) ? name[0] : name;
+      }
+
+      const requestId = ++requestIdRef.current;
+      try {
         let results: SupabaseLiftResult[] = [];
 
         // Try to get from cache first if we have a selected meet
         if (selectedMeet) {
           try {
-            const cachedResults = await getAthleteLiftingResults(selectedMeet, nameStr);
-            if (cachedResults && cachedResults.length > 0) {
-              results = cachedResults;
+            const offlineResults = await getAthleteLiftingResults(selectedMeet, nameStr);
+            if (offlineResults && offlineResults.length > 0) {
+              results = offlineResults;
             }
           } catch (cacheError) {
             console.log('Cache miss for athlete results, fetching from Supabase');
@@ -244,7 +255,7 @@ export default function AthleteResultsScreen() {
         if (results.length === 0) {
           const { data, error } = await supabase
             .from('lifting_results')
-            .select('*')
+            .select('id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total')
             .eq('name', nameStr)
             .order('date', { ascending: false });
 
@@ -256,11 +267,15 @@ export default function AthleteResultsScreen() {
           results = data || [];
         }
 
+        if (requestId !== requestIdRef.current) return;
+        resultsCacheRef.current.set(cacheKey, results);
         setAthleteResults(results);
       } catch (error) {
         console.error('Error in fetchAthleteResults:', error);
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+        }
       }
     };
 
