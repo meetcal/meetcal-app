@@ -1,8 +1,6 @@
 import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated, Image } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useNavigation, useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -18,34 +16,9 @@ import { VersionAnnouncement } from '@/components/VersionAnnouncement';
 import { useAuth } from '@clerk/clerk-expo';
 import { OnboardingView, checkOnboardingComplete } from '@/components/OnboardingView';
 
-// Helper function to calculate weigh-in time
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === 'PM' && hours !== 12) hour24 += 12;
-  if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
+const PLATFORM_SORT_ORDER = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'] as const;
 
-function SessionView({ session, letterFilter, timeZone }: { session: Session; letterFilter: string; timeZone: string }) {
+function SessionView({ session, timeZone }: { session: Session; timeZone: string }) {
   const router = useRouter();
   const platformColors = getPlatformColors();
   const { currentTheme } = useTheme();
@@ -59,19 +32,15 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Filter platforms based on letterFilter
-  const filteredPlatforms = letterFilter 
-    ? session.platforms.filter(platform => platform.weightClass.slice(-1) === letterFilter)
-    : session.platforms;
-
-  // Custom sort order for platforms
-  const platformSortOrder = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  const sortedPlatforms = [...filteredPlatforms].sort((a, b) => {
-    const idxA = platformSortOrder.indexOf(a.platform);
-    const idxB = platformSortOrder.indexOf(b.platform);
-    // If not found, push to end
-    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-  });
+  const sortedPlatforms = useMemo(
+    () =>
+      [...session.platforms].sort((a, b) => {
+        const idxA = PLATFORM_SORT_ORDER.indexOf(a.platform as (typeof PLATFORM_SORT_ORDER)[number]);
+        const idxB = PLATFORM_SORT_ORDER.indexOf(b.platform as (typeof PLATFORM_SORT_ORDER)[number]);
+        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+      }),
+    [session.platforms]
+  );
 
   const handlePlatformPress = (platform: PlatformType) => {
     router.push({
@@ -140,60 +109,34 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   );
 }
 
-function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
+function DayView({ day, timeZone, onRefreshComplete, refreshing }: {
   day: DaySchedule;
-  letterFilter: string;
   timeZone: string;
-  onRefreshComplete?: () => void;
+  onRefreshComplete?: () => Promise<void>;
+  refreshing: boolean;
 }) {
-  const { selectedMeet } = useSelectedMeet();
-  const [refreshing, setRefreshing] = useState(false);
   const { currentTheme } = useTheme();
-
-  // Get time zone abbreviation
-  const timeZoneAbbreviation = useMemo(() => {
-    if (!selectedMeet) return 'Local';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timeZone,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
-  }, [selectedMeet, timeZone]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     try {
-      // Notify parent component to reload full schedule from cache
-      onRefreshComplete?.();
+      await onRefreshComplete?.();
     } catch (error) {
       console.error('Refresh failed:', error);
-    } finally {
-      setRefreshing(false);
     }
   }, [onRefreshComplete]);
 
-  const filteredSessions = useMemo(() => {
-    if (!letterFilter) return day.sessions;
-    return day.sessions.filter((session: Session) =>
-      session.platforms.some((platform: PlatformType) =>
-        platform.weightClass.slice(-1) === letterFilter
-      )
-    );
-  }, [day.sessions, letterFilter]);
-
   return (
     <FlatList
-      data={filteredSessions}
+      data={day.sessions}
       keyExtractor={item => item.id}
       renderItem={({ item }) => (
         <SessionView 
           session={item} 
-          letterFilter={letterFilter}
-          timeZone={timeZoneAbbreviation}
+          timeZone={timeZone}
         />
       )}
       showsVerticalScrollIndicator={false}
@@ -208,7 +151,7 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
           <ThemedText style={styles.emptyText}>
-            No {letterFilter} sessions found
+            No sessions found
           </ThemedText>
         </View>
       )}
@@ -231,9 +174,8 @@ export default function ScheduleScreen() {
   const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets, refreshAvailableMeets } = useSelectedMeet();
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
-  const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
-  const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const { currentTheme } = useTheme();
@@ -254,6 +196,8 @@ export default function ScheduleScreen() {
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
+  const previousHeaderTitleRef = useRef<string>('');
+  const lastAppliedInitialIndexRef = useRef<string>('');
 
   const upcomingMeets = useMemo(() => {
     const getDateInTimeZone = (timeZone: string) => {
@@ -351,6 +295,10 @@ export default function ScheduleScreen() {
     animation.start();
     return () => animation.stop();
   }, [skeletonPulse]);
+
+  useEffect(() => {
+    initStore();
+  }, []);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -462,8 +410,9 @@ export default function ScheduleScreen() {
   }, []);
 
   // Load schedule from cache (context handles syncing)
-  const loadData = useCallback(async (meet: MeetName) => {
-    setIsLoading(true);
+  const loadData = useCallback(async (meet: MeetName, options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? true;
+    if (showLoading) setIsLoading(true);
     let scheduleData: Schedule = [];
 
     try {
@@ -485,18 +434,14 @@ export default function ScheduleScreen() {
       const initialPage = calculateInitialPage(scheduleData);
       setInitialScrollIndex(initialPage);
       setCurrentPage(initialPage);
-      setCurrentDate(scheduleData[initialPage]?.date || '');
     }
 
-    setIsLoading(false);
+    if (showLoading) setIsLoading(false);
 
   }, [calculateInitialPage]);
 
   // Load data when selectedMeet changes
   useEffect(() => {
-    // Initialize store once
-    initStore(); 
-
     if (selectedMeet && typeof selectedMeet === 'string') {
       // Ensure selectedMeet is treated as MeetName type
       loadData(selectedMeet as MeetName);
@@ -510,6 +455,9 @@ export default function ScheduleScreen() {
   // Scroll to initial position after data is loaded
   useEffect(() => {
     if (!isLoading && schedule.length > 0 && initialScrollIndex > 0) {
+      const applyKey = `${selectedMeet ?? 'none'}:${schedule.length}:${initialScrollIndex}`;
+      if (lastAppliedInitialIndexRef.current === applyKey) return;
+      lastAppliedInitialIndexRef.current = applyKey;
       // Use a small delay to ensure the FlatList is fully rendered
       const timer = setTimeout(() => {
         flatListRef.current?.scrollToIndex({ 
@@ -520,13 +468,17 @@ export default function ScheduleScreen() {
       
       return () => clearTimeout(timer);
     }
-  }, [isLoading, schedule.length, initialScrollIndex]);
+  }, [isLoading, schedule.length, initialScrollIndex, selectedMeet]);
 
   // Revised refresh handler
   const handleRefresh = useCallback(async () => {
     if (selectedMeet && typeof selectedMeet === 'string') {
-      // Re-run the loadData logic on refresh
-      await loadData(selectedMeet as MeetName); 
+      setIsRefreshing(true);
+      try {
+        await loadData(selectedMeet as MeetName, { showLoading: false });
+      } finally {
+        setIsRefreshing(false);
+      }
     } else {
       console.log("Refresh skipped: No meet selected");
     }
@@ -544,21 +496,13 @@ export default function ScheduleScreen() {
     }
   }, [refreshAvailableMeets]);
 
-  // Extract unique letters from all weight classes
-  const filterOptions = useMemo(() => {
-    const letterSet = new Set<string>();
-    schedule.forEach((day: DaySchedule) => {
-      day.sessions.forEach((session: Session) => {
-        session.platforms.forEach((platform: PlatformType) => {
-          const lastChar = platform.weightClass.slice(-1);
-          if (/^[A-G]$/.test(lastChar)) {
-            letterSet.add(lastChar);
-          }
-        });
-      });
-    });
-    return Array.from(letterSet).sort();
-  }, [schedule]);
+  const timeZoneAbbreviation = useMemo(() => {
+    const timeZoneId = meetDetails?.time.timeZoneIdentifier || 'America/New_York';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZoneId,
+      timeZoneName: 'short',
+    }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value || 'Local';
+  }, [meetDetails?.time.timeZoneIdentifier]);
 
   const formatDayTitle = useCallback((day: DaySchedule) => {
     const sourceDate = day.fullDate || day.date;
@@ -594,9 +538,11 @@ export default function ScheduleScreen() {
   }) => {
     if (viewableItems.length > 0) {
       const currentItem = viewableItems[0].item as DaySchedule;
-      setCurrentDate(currentItem.date);
+      const formattedTitle = formatDayTitle(currentItem);
+      if (previousHeaderTitleRef.current === formattedTitle) return;
+      previousHeaderTitleRef.current = formattedTitle;
       navigation.setOptions({
-        title: formatDayTitle(currentItem)
+        title: formattedTitle
       });
     }
   }, [formatDayTitle, navigation]);
@@ -614,6 +560,7 @@ export default function ScheduleScreen() {
         navigation.setOptions({
           title: formattedDate
         });
+        previousHeaderTitleRef.current = formattedDate;
       }
     }
   }, [isLoading, schedule.length, meetDetails, navigation]);
@@ -622,34 +569,32 @@ export default function ScheduleScreen() {
     itemVisiblePercentThreshold: 50
   }).current;
 
-  const handleFilterSelect = (letter: string) => {
-    setLetterFilter(letter);
-    setShowFilterModal(false);
-  };
-
   const handlePageChange = useCallback((index: number) => {
+    if (index === currentPage) return;
     setCurrentPage(index);
     flatListRef.current?.scrollToIndex({ index, animated: true });
-  }, []);
+  }, [currentPage]);
 
   const flatListRef = useRef<FlatList>(null);
 
-  const onScroll = useCallback((event: any) => {
+  const onMomentumScrollEnd = useCallback((event: any) => {
     const newPage = Math.round(event.nativeEvent.contentOffset.x / width);
-    setCurrentPage(newPage);
-  }, [width]);
+    if (newPage !== currentPage) {
+      setCurrentPage(newPage);
+    }
+  }, [currentPage, width]);
 
   // Update the renderDayView to use handleRefresh
   const renderDayView = useCallback(({ item }: { item: DaySchedule }) => (
     <View style={[styles.pageContainer, { width }]}>
       <DayView 
         day={item} 
-        letterFilter={letterFilter}
-        timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
+        timeZone={timeZoneAbbreviation}
         onRefreshComplete={handleRefresh}
+        refreshing={isRefreshing}
       />
     </View>
-  ), [width, letterFilter, meetDetails, handleRefresh]);
+  ), [width, timeZoneAbbreviation, handleRefresh, isRefreshing]);
 
   if (isMeetLoading) {
     return renderLoadingSkeleton('Loading meets...');
@@ -715,7 +660,7 @@ export default function ScheduleScreen() {
           contentContainerStyle={styles.emptyStateContainer}
           refreshControl={
             <RefreshControl
-              refreshing={isLoading}
+              refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.text}
             />
@@ -738,7 +683,7 @@ export default function ScheduleScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             data={schedule}
-            keyExtractor={item => item.date}
+            keyExtractor={(item, index) => item.fullDate || `${item.date}-${index}`}
             renderItem={renderDayView}
             initialScrollIndex={initialScrollIndex}
             getItemLayout={(data, index) => ({
@@ -748,8 +693,7 @@ export default function ScheduleScreen() {
             })}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
+            onMomentumScrollEnd={onMomentumScrollEnd}
           />
 
           {schedule.length > 0 && (
