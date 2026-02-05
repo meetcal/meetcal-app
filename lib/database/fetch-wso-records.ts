@@ -13,6 +13,13 @@ type WSORecordRow = {
   wso: string;
 };
 
+const wsoRecordsMemoryCache = new Map<string, RecordsData>();
+const wsoListMemoryCache: { data: string[] | null } = { data: null };
+const wsoAgeGroupsMemoryCache = new Map<string, string[]>();
+const inFlightRequests = new Map<string, Promise<RecordsData>>();
+let inFlightWSOList: Promise<string[]> | null = null;
+const inFlightWSOAgeGroups = new Map<string, Promise<string[]>>();
+
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
@@ -37,113 +44,163 @@ export async function fetchWSORecords(
   ageGroup?: string,
   gender?: 'Men' | 'Women'
 ): Promise<RecordsData> {
-  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
-
-  try {
-    let query = supabase
-      .from('wso_records')
-      .select('*')
-      .eq('wso', wso);
-    if (ageGroup) query = query.eq('age_category', ageGroup);
-    if (gender) query = query.eq('gender', gender);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    // Find all unique age groups in this data
-    const rows = (data || []) as WSORecordRow[];
-    const ageGroups = Array.from(new Set(rows.map(row => row.age_category)));
-
-    // Initialize result shape
-    const result: RecordsData = {};
-    ageGroups.forEach((g) => {
-      result[g] = { Men: [], Women: [] };
-    });
-
-    rows.forEach((row) => {
-      const ageKey = row.age_category;
-      const genderKey = row.gender as 'Men' | 'Women';
-      if (!result[ageKey]) return;
-      
-      // Check if genderKey is a valid key, although `as` above should ensure it
-      if (genderKey !== 'Men' && genderKey !== 'Women') return;
-      
-      result[ageKey][genderKey].push({
-        weightClass: row.weight_class,
-        snatchRecord: row.snatch_record ?? 0,
-        cjRecord: row.cj_record ?? 0,
-        totalRecord: row.total_record ?? 0,
-      });
-    });
-
-    // Sort weight classes for consistency (lowest to highest, '+' last)
-    Object.values(result).forEach((group: AgeGroupRecords) => {
-      group.Men.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
-      group.Women.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
-    });
-
-    if (!ageGroup && !gender) {
-      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-      const nextCache: WSORecordsCache = {
-        ...(cached?.data || {}),
-        [wso]: result
-      };
-      await setOfflineCache(cacheKey, nextCache);
-    }
-
-    return result;
-  } catch (error) {
-    const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-    const cachedWso = cached?.data?.[wso];
-    if (cachedWso) {
-      return cachedWso;
-    }
-    throw error;
+  const requestKey = `${wso}::${ageGroup || '*'}::${gender || '*'}`;
+  const memoryKey = ageGroup || gender ? null : wso;
+  if (memoryKey && wsoRecordsMemoryCache.has(memoryKey)) {
+    return wsoRecordsMemoryCache.get(memoryKey)!;
   }
+  if (inFlightRequests.has(requestKey)) {
+    return inFlightRequests.get(requestKey)!;
+  }
+
+  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
+  const request = (async () => {
+    try {
+      let query = supabase
+        .from('wso_records')
+        .select('age_category, gender, weight_class, snatch_record, cj_record, total_record, wso')
+        .eq('wso', wso);
+      if (ageGroup) query = query.eq('age_category', ageGroup);
+      if (gender) query = query.eq('gender', gender);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rows = (data || []) as WSORecordRow[];
+      const ageGroups = Array.from(new Set(rows.map((row) => row.age_category)));
+
+      const result: RecordsData = {};
+      ageGroups.forEach((g) => {
+        result[g] = { Men: [], Women: [] };
+      });
+
+      rows.forEach((row) => {
+        const ageKey = row.age_category;
+        const genderKey = row.gender as 'Men' | 'Women';
+        if (!result[ageKey]) return;
+        if (genderKey !== 'Men' && genderKey !== 'Women') return;
+
+        result[ageKey][genderKey].push({
+          weightClass: row.weight_class,
+          snatchRecord: row.snatch_record ?? 0,
+          cjRecord: row.cj_record ?? 0,
+          totalRecord: row.total_record ?? 0,
+        });
+      });
+
+      Object.values(result).forEach((group: AgeGroupRecords) => {
+        group.Men.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
+        group.Women.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
+      });
+
+      if (!ageGroup && !gender) {
+        wsoRecordsMemoryCache.set(wso, result);
+        wsoAgeGroupsMemoryCache.set(wso, Object.keys(result));
+
+        const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
+        const nextCache: WSORecordsCache = {
+          ...(cached?.data || {}),
+          [wso]: result
+        };
+        await setOfflineCache(cacheKey, nextCache);
+      }
+
+      return result;
+    } catch (error) {
+      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
+      const cachedWso = cached?.data?.[wso];
+      if (cachedWso) {
+        if (!ageGroup && !gender) {
+          wsoRecordsMemoryCache.set(wso, cachedWso);
+          wsoAgeGroupsMemoryCache.set(wso, Object.keys(cachedWso));
+        }
+        return cachedWso;
+      }
+      throw error;
+    } finally {
+      inFlightRequests.delete(requestKey);
+    }
+  })();
+
+  inFlightRequests.set(requestKey, request);
+  return request;
 }
 
 export async function fetchWSOList(): Promise<string[]> {
-  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
-
-  try {
-    const { data, error } = await supabase
-      .from('wso_records')
-      .select('wso', { count: 'exact', head: false })
-      .neq('wso', null);
-    if (error) throw error;
-    const wsoRows = (data || []) as Array<Pick<WSORecordRow, 'wso'>>;
-    const wsos = Array.from(new Set(wsoRows.map(row => row.wso)))
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    return wsos as string[];
-  } catch (error) {
-    const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-    const wsos = Object.keys(cached?.data || {});
-    if (wsos.length > 0) {
-      return wsos.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    }
-    throw error;
+  if (wsoListMemoryCache.data) {
+    return wsoListMemoryCache.data;
   }
+  if (inFlightWSOList) {
+    return inFlightWSOList;
+  }
+
+  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
+  inFlightWSOList = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('wso_records')
+        .select('wso')
+        .neq('wso', null);
+      if (error) throw error;
+      const wsoRows = (data || []) as Pick<WSORecordRow, 'wso'>[];
+      const wsos = Array.from(new Set(wsoRows.map((row) => row.wso)))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })) as string[];
+      wsoListMemoryCache.data = wsos;
+      return wsos;
+    } catch (error) {
+      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
+      const wsos = Object.keys(cached?.data || {});
+      if (wsos.length > 0) {
+        const sorted = wsos.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        wsoListMemoryCache.data = sorted;
+        return sorted;
+      }
+      throw error;
+    } finally {
+      inFlightWSOList = null;
+    }
+  })();
+
+  return inFlightWSOList;
 }
 
 export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
+  if (wsoAgeGroupsMemoryCache.has(wso)) {
+    return wsoAgeGroupsMemoryCache.get(wso)!;
+  }
+  if (inFlightWSOAgeGroups.has(wso)) {
+    return inFlightWSOAgeGroups.get(wso)!;
+  }
+
   const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
 
-  try {
-    const { data, error } = await supabase
-      .from('wso_records')
-      .select('age_category', { count: 'exact', head: false })
-      .eq('wso', wso)
-      .neq('age_category', null);
-    if (error) throw error;
-    const ageGroupRows = (data || []) as Array<Pick<WSORecordRow, 'age_category'>>;
-    return Array.from(new Set(ageGroupRows.map(row => row.age_category)));
-  } catch (error) {
-    const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-    const cachedWso = cached?.data?.[wso];
-    if (cachedWso) {
-      return Object.keys(cachedWso);
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('wso_records')
+        .select('age_category')
+        .eq('wso', wso)
+        .neq('age_category', null);
+      if (error) throw error;
+      const ageGroupRows = (data || []) as Pick<WSORecordRow, 'age_category'>[];
+      const ageGroups = Array.from(new Set(ageGroupRows.map((row) => row.age_category)));
+      wsoAgeGroupsMemoryCache.set(wso, ageGroups);
+      return ageGroups;
+    } catch (error) {
+      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
+      const cachedWso = cached?.data?.[wso];
+      if (cachedWso) {
+        const ageGroups = Object.keys(cachedWso);
+        wsoAgeGroupsMemoryCache.set(wso, ageGroups);
+        return ageGroups;
+      }
+      throw error;
+    } finally {
+      inFlightWSOAgeGroups.delete(wso);
     }
-    throw error;
-  }
+  })();
+
+  inFlightWSOAgeGroups.set(wso, request);
+  return request;
 }

@@ -320,7 +320,8 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
       .from('lifting_results')
       .select('name')
       .ilike('name', `%${query}%`)
-      .order('name');
+      .order('name')
+      .limit(100);
 
     if (error) {
       console.error('Error searching athletes:', error);

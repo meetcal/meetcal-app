@@ -8,28 +8,54 @@ import type {
   MeetStatus
 } from '@/types/club';
 
+const clubsMemoryCache: { data: string[] | null } = { data: null };
+let inFlightClubs: Promise<string[]> | null = null;
+
+async function fetchAndStoreClubs(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('athletes')
+    .select('club')
+    .order('club');
+
+  if (error) {
+    console.error('Error fetching clubs:', error);
+    throw error;
+  }
+
+  const clubRows = (data || []) as Array<{ club: string | null }>;
+  const uniqueClubs = Array.from(new Set(clubRows.map((row) => row.club).filter(Boolean))).sort() as string[];
+  clubsMemoryCache.data = uniqueClubs;
+  return uniqueClubs;
+}
+
 /**
  * Fetch all unique clubs from the database
  */
 export async function fetchAllClubs(): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('athletes')
-      .select('club')
-      .order('club');
-
-    if (error) {
-      console.error('Error fetching clubs:', error);
-      throw error;
+  if (clubsMemoryCache.data) {
+    if (!inFlightClubs) {
+      inFlightClubs = fetchAndStoreClubs().finally(() => {
+        inFlightClubs = null;
+      });
     }
-
-    // Get unique clubs and sort them
-    const uniqueClubs = Array.from(new Set((data || []).map(row => row.club))).sort();
-    return uniqueClubs;
-  } catch (error) {
-    console.error('Error in fetchAllClubs:', error);
-    throw error;
+    return clubsMemoryCache.data;
   }
+  if (inFlightClubs) {
+    return inFlightClubs;
+  }
+
+  inFlightClubs = (async () => {
+    try {
+      return await fetchAndStoreClubs();
+    } catch (error) {
+      console.error('Error in fetchAllClubs:', error);
+      throw error;
+    } finally {
+      inFlightClubs = null;
+    }
+  })();
+
+  return inFlightClubs;
 }
 
 /**

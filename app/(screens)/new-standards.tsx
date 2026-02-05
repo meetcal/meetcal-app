@@ -50,13 +50,12 @@ export default function NewStandardsScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setStandards(null);
     setFetchError(null);
 
-    // Fetch only the current page first
-    fetchStandards(filters.ageGroup, filters.gender)
+    fetchStandards()
       .then((data) => {
         if (!cancelled) {
+          setAllStandards(data);
           setStandards(data);
           setLoading(false);
         }
@@ -68,14 +67,8 @@ export default function NewStandardsScreen() {
         }
       });
 
-    // Then fetch all standards in the background
-    fetchStandards()
-      .then((data) => {
-        if (!cancelled) setAllStandards(data);
-      });
-
     return () => { cancelled = true; };
-  }, [filters.ageGroup, filters.gender]);
+  }, []);
 
   const standardsData = useMemo(() => {
     const dataToUse = allStandards || standards || {};
