@@ -3,13 +3,12 @@ import { ThemedView } from '@/components/ThemedView'
 import { ThemedText } from '@/components/ThemedText'
 import { Stack, useRouter } from 'expo-router'
 import { useTheme } from '@/contexts/ThemeContext'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '@/lib/supabase'
 import { IconSymbol } from '@/components/ui/IconSymbol'
-import debounce from 'lodash/debounce'
 import { useUser } from '@clerk/clerk-expo'
 
 // Function to get user-specific storage key
@@ -53,6 +52,8 @@ export default function CreateWarmupScreen() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
@@ -138,8 +139,7 @@ export default function CreateWarmupScreen() {
     }
   }
 
-  // Debounced search function
-  const searchAthletes = debounce(async (query: string, shouldUpdateQuery = true) => {
+  const searchAthletes = useCallback(async (query: string, requestId: number) => {
     if (!query.trim() || query.trim().length < 3) {
       setSearchResults([])
       setShowResults(false)
@@ -154,62 +154,69 @@ export default function CreateWarmupScreen() {
         .select('name, club')
         .eq('meet', selectedMeet)
         .ilike('name', `%${query}%`)
-        .limit(5)
+        .limit(12)
 
       if (athletesError) throw athletesError
       if (!athletes || athletes.length === 0) {
+        if (requestId !== searchRequestIdRef.current) return
         setSearchResults([])
         setShowResults(false)
         return
       }
 
-      // Get PRs for each athlete
-      const athleteResults = await Promise.all(
-        athletes.map(async (athlete) => {
-          const { data: prs, error: prsError } = await supabase
-            .from('lifting_results')
-            .select(`
-              snatch_best,
-              cj_best
-            `)
-            .eq('name', athlete.name)
-            .not('snatch_best', 'is', null)
-            .not('cj_best', 'is', null)
-            .order('snatch_best', { ascending: false })
-            .order('cj_best', { ascending: false })
-            .limit(1)
+      const athleteNames = athletes.map((athlete) => athlete.name).filter(Boolean);
+      const bestsByAthlete = new Map<string, { snatch_best: number; cj_best: number }>();
 
-          if (prsError) {
-            console.error('Error fetching PRs:', prsError)
-            return {
-              ...athlete,
-              snatch_best: 0,
-              cj_best: 0,
+      if (athleteNames.length > 0) {
+        const { data: prsRows, error: prsError } = await supabase
+          .from('lifting_results')
+          .select('name,snatch_best,cj_best')
+          .in('name', athleteNames)
+          .not('snatch_best', 'is', null)
+          .not('cj_best', 'is', null);
+
+        if (prsError) {
+          console.error('Error fetching PRs:', prsError);
+        } else {
+          (prsRows || []).forEach((row) => {
+            if (!row.name) return;
+            const snatch = row.snatch_best ?? 0;
+            const cj = row.cj_best ?? 0;
+            const current = bestsByAthlete.get(row.name) || { snatch_best: 0, cj_best: 0 };
+            if (snatch > current.snatch_best || cj > current.cj_best) {
+              bestsByAthlete.set(row.name, {
+                snatch_best: Math.max(current.snatch_best, snatch),
+                cj_best: Math.max(current.cj_best, cj),
+              });
             }
-          }
-
-          const bestLifts = prs?.[0] || { snatch_best: 0, cj_best: 0 }
-
-          return {
-            ...athlete,
-            snatch_best: bestLifts.snatch_best,
-            cj_best: bestLifts.cj_best,
-          }
-        })
-      )
-
-      setSearchResults(athleteResults)
-      if (shouldUpdateQuery) {
-        setShowResults(true)
+          });
+        }
       }
+
+      if (requestId !== searchRequestIdRef.current) return;
+
+      const athleteResults: SearchResult[] = athletes.map((athlete) => {
+        const bests = bestsByAthlete.get(athlete.name) || { snatch_best: 0, cj_best: 0 };
+        return {
+          name: athlete.name,
+          club: athlete.club,
+          snatch_best: bests.snatch_best,
+          cj_best: bests.cj_best,
+        };
+      });
+
+      setSearchResults(athleteResults);
+      setShowResults(true);
     } catch (error) {
       console.error('Error searching athletes:', error)
     } finally {
-      setIsSearching(false)
+      if (requestId === searchRequestIdRef.current) {
+        setIsSearching(false)
+      }
     }
-  }, 300)
+  }, [selectedMeet])
 
-  const handleAthleteSelect = async (athlete: SearchResult) => {
+  const handleAthleteSelect = (athlete: SearchResult) => {
     // Set the athlete and search query in one step
     setSelectedAthlete({
       name: athlete.name,
@@ -255,13 +262,34 @@ export default function CreateWarmupScreen() {
   }
 
   useEffect(() => {
-    if (!selectedAthlete && searchQuery.length >= 3) {
-      searchAthletes(searchQuery)
-    } else if (searchQuery.length < 3) {
-      setSearchResults([])
-      setShowResults(false)
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
     }
-  }, [searchQuery])
+
+    if (!selectedAthlete && searchQuery.length >= 3) {
+      const nextRequestId = ++searchRequestIdRef.current;
+      searchTimeoutRef.current = setTimeout(() => {
+        searchAthletes(searchQuery, nextRequestId);
+      }, 300);
+      return;
+    }
+
+    if (searchQuery.length < 3) {
+      setSearchResults([]);
+      setShowResults(false);
+      setIsSearching(false);
+    }
+  }, [searchAthletes, searchQuery, selectedAthlete]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      searchRequestIdRef.current += 1;
+    };
+  }, []);
 
   const handleSearchChange = (text: string) => {
     setSearchQuery(text)

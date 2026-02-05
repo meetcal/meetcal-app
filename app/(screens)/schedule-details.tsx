@@ -19,7 +19,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { Platform as PlatformType } from '@/data/types/athletes';
 import { LiftResult } from '@/data/types/athletes';
-import { saveMeetAthletes, getAthleteLiftingResults, getMeetData } from '@/lib/database/offline-store';
+import { getAthleteLiftingResults, getMeetData } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -87,12 +87,12 @@ interface CachedAthlete extends SessionAthlete {
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
-async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName, forceRefresh?: boolean) {
+async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName) {
   try {
-    // Fetch fresh data from Supabase (athletes are fetched on-demand, not pre-cached)
+    // Fetch session-scoped athletes from Supabase.
     const { data, error } = await supabase
       .from('athletes')
-      .select('*')
+      .select('member_id,name,age,club,gender,weight_class,entry_total,adaptive')
       .eq('session_number', sessionNumber)
       .eq('session_platform', platform)
       .eq('meet', meetId);
@@ -128,9 +128,6 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
       (b.entryTotal || 0) - (a.entryTotal || 0)
     );
 
-    // Save to offline store for this session
-    await saveMeetAthletes(meetId, sortedAthletes);
-
     return {
       [platform]: sortedAthletes.map(athlete => ({
         name: athlete.name,
@@ -146,67 +143,63 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
   }
 }
 
-async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
+async function getAthleteBestsBatch(names: string[], meetId: MeetName): Promise<Record<string, SupabaseBests>> {
+  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
+  const bestsByName: Record<string, SupabaseBests> = {};
+
+  uniqueNames.forEach((name) => {
+    bestsByName[name] = { snatch_best: 0, cj_best: 0, total: 0 };
+  });
+
+  if (uniqueNames.length === 0) {
+    return bestsByName;
+  }
+
   try {
-    
-    // Initialize result with null values
-    const result: SupabaseBests = {
-      snatch_best: null,
-      cj_best: null,
-      total: null
-    };
+    const { data, error } = await supabase
+      .from('lifting_results')
+      .select('name,snatch_best,cj_best,total')
+      .in('name', uniqueNames);
 
-    let liftingResults: any[] = [];
-
-    // Try to get from cache first
-    try {
-      const cachedResults = await getAthleteLiftingResults(meetId, name);
-      if (cachedResults && cachedResults.length > 0) {
-        liftingResults = cachedResults;
-      }
-    } catch (cacheError) {
-      console.log('Cache miss for athlete bests, fetching from Supabase');
+    if (error) {
+      throw error;
     }
 
-    // If no cached results, fetch from Supabase
-    if (liftingResults.length === 0) {
-      const { data } = await supabase
-        .from('lifting_results')
-        .select('snatch_best, cj_best, total')
-        .eq('name', name);
+    (data || []).forEach((record) => {
+      if (!record.name) return;
+      const current = bestsByName[record.name] || { snatch_best: 0, cj_best: 0, total: 0 };
+      bestsByName[record.name] = {
+        snatch_best: Math.max(current.snatch_best ?? 0, record.snatch_best ?? 0),
+        cj_best: Math.max(current.cj_best ?? 0, record.cj_best ?? 0),
+        total: Math.max(current.total ?? 0, record.total ?? 0),
+      };
+    });
 
-      if (data) {
-        liftingResults = data;
-      }
-    }
-
-    if (liftingResults && liftingResults.length > 0) {
-      // Process each result to find the bests
-      liftingResults.forEach(record => {
-        // Update snatch best if it's higher than current
-        if (record.snatch_best && (result.snatch_best === null || record.snatch_best > result.snatch_best)) {
-          result.snatch_best = record.snatch_best;
-        }
-        // Update C&J best if it's higher than current
-        if (record.cj_best && (result.cj_best === null || record.cj_best > result.cj_best)) {
-          result.cj_best = record.cj_best;
-        }
-        // Update total if it's higher than current
-        if (record.total && (result.total === null || record.total > result.total)) {
-          result.total = record.total;
-        }
-      });
-    }
-
-    // Convert null values to 0 for display
-    return {
-      snatch_best: result.snatch_best || 0,
-      cj_best: result.cj_best || 0,
-      total: result.total || 0
-    };
+    return bestsByName;
   } catch (error) {
-    console.error('Unexpected error in getAthleteBests:', error);
-    return { snatch_best: 0, cj_best: 0, total: 0 };
+    // Fall back to locally cached lifting results when network fetch fails.
+    await Promise.all(
+      uniqueNames.map(async (name) => {
+        try {
+          const cachedResults = await getAthleteLiftingResults(meetId, name);
+          if (!cachedResults || cachedResults.length === 0) return;
+
+          let snatchBest = 0;
+          let cjBest = 0;
+          let totalBest = 0;
+          cachedResults.forEach((row: any) => {
+            snatchBest = Math.max(snatchBest, row?.snatch_best ?? 0);
+            cjBest = Math.max(cjBest, row?.cj_best ?? 0);
+            totalBest = Math.max(totalBest, row?.total ?? 0);
+          });
+          bestsByName[name] = { snatch_best: snatchBest, cj_best: cjBest, total: totalBest };
+        } catch {
+          // Keep default zeros for this athlete.
+        }
+      })
+    );
+
+    return bestsByName;
   }
 }
 
@@ -237,32 +230,30 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const loadAthletes = async () => {
     setLoading(true);
     try {
-      const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet || '', refreshKey > 0);
+      const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet || '');
       setAthletes(sessionAthletes);
 
       // Initialize loading states for each athlete
       const newLoadingBests: Record<string, boolean> = {};
+      const athleteNames: string[] = [];
       for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
         for (const athlete of platformAthletes) {
           newLoadingBests[athlete.name] = true;
+          athleteNames.push(athlete.name);
         }
       }
       setLoadingBests(newLoadingBests);
 
-      // Fetch athlete bests independently
-      for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
-        for (const athlete of platformAthletes) {
-          getAthleteBests(athlete.name, selectedMeet || '').then(bests => {
-            setAthleteBests(prev => ({
-              ...prev,
-              [athlete.name]: bests
-            }));
-            setLoadingBests(prev => ({
-              ...prev,
-              [athlete.name]: false
-            }));
+      if (athleteNames.length > 0) {
+        const bestsMap = await getAthleteBestsBatch(athleteNames, selectedMeet || '');
+        setAthleteBests((prev) => ({ ...prev, ...bestsMap }));
+        setLoadingBests((prev) => {
+          const next = { ...prev };
+          athleteNames.forEach((name) => {
+            next[name] = false;
           });
-        }
+          return next;
+        });
       }
       
       // Check for warmups after loading athletes
