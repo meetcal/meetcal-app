@@ -40,7 +40,7 @@ target 'MeetCal' do
   end
 
   config = use_native_modules!(config_command)
-  react_native_path = File.expand_path(config[:reactNativePath], Pod::Config.instance.installation_root)
+  react_native_path = File.expand_path(config[:reactNativePath], __dir__)
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
