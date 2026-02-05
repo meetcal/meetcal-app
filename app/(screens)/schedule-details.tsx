@@ -923,7 +923,7 @@ export default function SessionDetailsScreen() {
     );
   };
 
-  const handleSavePress = () => {
+  const handleSavePress = async () => {
     // Check authentication first
     const authResult = requireAuth({
       feature: 'save-session',
@@ -935,7 +935,11 @@ export default function SessionDetailsScreen() {
     }
 
     if (isSaved) {
-      removeSession(sessionId);
+      const removed = await removeSession(sessionId);
+      if (!removed) {
+        Alert.alert('Error', 'Failed to remove saved session. Please try again.');
+        return;
+      }
       showSaveAlert('remove');
     } else {
       // Find the session day in the current schedule
@@ -948,7 +952,7 @@ export default function SessionDetailsScreen() {
         return;
       }
 
-      saveSession({
+      const saved = await saveSession({
         id: sessionId,
         sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
@@ -959,6 +963,10 @@ export default function SessionDetailsScreen() {
         athleteNames: params.athleteName ? [params.athleteName] : undefined,
         meet: params.meet,
       });
+      if (!saved) {
+        Alert.alert('Error', 'Failed to save session. Please try again.');
+        return;
+      }
       showSaveAlert('save');
       checkAndShowReviewPrompt();
     }

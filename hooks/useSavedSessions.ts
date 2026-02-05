@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
@@ -36,11 +36,31 @@ export interface SavedSession {
   athleteName?: string; // For backward compatibility
 }
 
+function parseStoredSessions(raw: string | null): SavedSession[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((session): session is SavedSession => {
+      return Boolean(
+        session &&
+          typeof session === 'object' &&
+          'id' in session &&
+          'meet' in session
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
 export function useSavedSessions() {
   const { user } = useUser();
   const { selectedMeet } = useSelectedMeet();
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionsRawRef = useRef<string | null>(null);
+  const sessionsRef = useRef<SavedSession[]>([]);
 
   // Clear sessions when user logs out
   useEffect(() => {
@@ -48,6 +68,8 @@ export function useSavedSessions() {
       setSavedSessions([]);
       setIsLoading(false);
       clearSavedWidget();
+      sessionsRawRef.current = null;
+      sessionsRef.current = [];
     }
   }, [user?.id]);
 
@@ -70,6 +92,33 @@ export function useSavedSessions() {
     }
   }, [user?.id]);
 
+  const commitSessions = useCallback(async (nextSessions: SavedSession[]) => {
+    if (!user?.id) return;
+    const serialized = JSON.stringify(nextSessions);
+    if (sessionsRawRef.current !== serialized) {
+      await AsyncStorage.setItem(getSavedSessionsKey(user.id), serialized);
+      sessionsRawRef.current = serialized;
+    }
+    sessionsRef.current = nextSessions;
+    setSavedSessions(nextSessions);
+  }, [user?.id]);
+
+  const readStoredSessions = useCallback(async (forceStorageRead = false): Promise<SavedSession[]> => {
+    if (!user?.id) return [];
+    if (!forceStorageRead && sessionsRawRef.current !== null) {
+      return sessionsRef.current;
+    }
+    const raw = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+    if (raw && raw === sessionsRawRef.current) {
+      return sessionsRef.current;
+    }
+
+    const parsedSessions = parseStoredSessions(raw).filter((session) => session.meet);
+    sessionsRawRef.current = raw;
+    sessionsRef.current = parsedSessions;
+    return parsedSessions;
+  }, [user?.id]);
+
   const loadSavedSessions = async () => {
     if (!user?.id) {
       setSavedSessions([]);
@@ -79,6 +128,13 @@ export function useSavedSessions() {
     
     setIsLoading(true); // Set loading true at the start
     try {
+      // Hydrate from local storage first so navigation to Saved shows data immediately.
+      const localRaw = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+      const localSessions = parseStoredSessions(localRaw).filter((session) => session.meet);
+      sessionsRawRef.current = localRaw;
+      sessionsRef.current = localSessions;
+      setSavedSessions(localSessions);
+
       // Fetch from Supabase first
       const { data: supabaseSessions, error: supabaseError } = await supabase
         .from('saved_sessions')
@@ -94,14 +150,7 @@ export function useSavedSessions() {
         }
         
         // Fallback to local storage if Supabase fails
-        const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-        if (saved) {
-          const parsedSessions = JSON.parse(saved);
-          const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
-          setSavedSessions(validSessions);
-        } else {
-          setSavedSessions([]);
-        }
+        setSavedSessions(localSessions);
       } else if (supabaseSessions) {
         // Map Supabase data to SavedSession interface
         const formattedSessions = supabaseSessions.map(s => ({
@@ -119,12 +168,17 @@ export function useSavedSessions() {
         }));
 
         // Update local storage with Supabase data
-        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(formattedSessions));
-        setSavedSessions(formattedSessions);
+        await commitSessions(formattedSessions);
       } else {
-         // No sessions in Supabase, clear local storage too?
-         await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
-         setSavedSessions([]);
+         // If Supabase returns empty, avoid nuking non-empty local sessions during transient lag.
+         if (localSessions.length === 0) {
+           await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
+           sessionsRawRef.current = null;
+           sessionsRef.current = [];
+           setSavedSessions([]);
+         } else {
+           setSavedSessions(localSessions);
+         }
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
@@ -137,13 +191,10 @@ export function useSavedSessions() {
       // Attempt to load from local storage as a final fallback
       try {
         const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-        if (saved) {
-          const parsedSessions = JSON.parse(saved);
-          const validSessions = parsedSessions.filter((session: SavedSession) => session.meet);
-          setSavedSessions(validSessions);
-        } else {
-          setSavedSessions([]);
-        }
+        const validSessions = parseStoredSessions(saved).filter((session) => session.meet);
+        sessionsRawRef.current = saved;
+        sessionsRef.current = validSessions;
+        setSavedSessions(validSessions);
       } catch (localError) {
         console.error('Error loading saved sessions from AsyncStorage fallback:', localError);
         setSavedSessions([]);
@@ -265,11 +316,7 @@ export function useSavedSessions() {
       }
 
       // 1. Update local state and AsyncStorage
-      const currentSaved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-      let currentSessions: SavedSession[] = [];
-      if (currentSaved) {
-        currentSessions = JSON.parse(currentSaved);
-      }
+      const currentSessions = await readStoredSessions();
 
       const existingSessionIndex = currentSessions.findIndex(s => s.id === session.id);
       let updatedSession: SavedSession;
@@ -282,8 +329,7 @@ export function useSavedSessions() {
         currentSessions.push(updatedSession);
       }
 
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(currentSessions));
-      setSavedSessions(currentSessions);
+      await commitSessions(currentSessions);
 
       // 2. Upsert to Supabase
       const { error: supabaseError } = await supabase
@@ -444,9 +490,9 @@ export function useSavedSessions() {
       const sessionToRemove = savedSessions.find(session => session.id === sessionId);
 
       // 1. Update local state and AsyncStorage
-      const updatedSessions = savedSessions.filter(session => session.id !== sessionId);
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(updatedSessions));
-      setSavedSessions(updatedSessions);
+      const currentSessions = await readStoredSessions();
+      const updatedSessions = currentSessions.filter(session => session.id !== sessionId);
+      await commitSessions(updatedSessions);
 
       // 2. Delete from Supabase
       const { error: supabaseError } = await supabase
@@ -492,14 +538,9 @@ export function useSavedSessions() {
     try {
       if (meet) {
         // Filter out sessions for the selected meet locally
-        const currentSaved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
-        let currentSessions: SavedSession[] = [];
-        if (currentSaved) {
-          currentSessions = JSON.parse(currentSaved);
-        }
+        const currentSessions = await readStoredSessions();
         const filteredSessions = currentSessions.filter(s => s.meet !== meet);
-        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify(filteredSessions));
-        setSavedSessions(filteredSessions);
+        await commitSessions(filteredSessions);
         // Delete only sessions for this meet from Supabase
         const { error: supabaseError } = await supabase
           .from('saved_sessions')
@@ -510,8 +551,7 @@ export function useSavedSessions() {
         }
       } else {
         // 1. Clear all local storage and state
-        await AsyncStorage.setItem(getSavedSessionsKey(user.id), JSON.stringify([]));
-        setSavedSessions([]);
+        await commitSessions([]);
         // 2. Delete all sessions for this user from Supabase
         const { error: supabaseError } = await supabase
           .from('saved_sessions')
