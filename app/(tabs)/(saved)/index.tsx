@@ -12,15 +12,14 @@ import * as Calendar from 'expo-calendar';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { MeetName, MeetConfig } from '@/data/types/meet';
+import { MeetName } from '@/data/types/meet';
 import { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
 import { useUser } from '@clerk/clerk-expo';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import React from 'react';
-import { fetchScheduleFromDb, transformScheduleData } from '@/lib/database/queries';
+import { fetchSchedule } from '@/lib/database/queries';
 import { useNavigation } from '@react-navigation/native';
-import { GlassView } from 'expo-glass-effect';
 import { useAuthGuard } from '@/utils/authGuard';
 
 
@@ -170,7 +169,7 @@ function calculateWeighInTime(startTime: string): string {
 }
 
 // Update migration helper to include proper IDs
-async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetName) {
+function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetName) {
   return sessions.map(session => ({
     ...session,
     // If the session has a meet, keep it, otherwise assign to current meet
@@ -180,82 +179,64 @@ async function migrateSessionsToMeetSpecific(sessions: any[], currentMeet: MeetN
   }));
 }
 
+type SessionScheduleLookup = {
+  displayDate: string;
+  fullDate: string;
+  startTime: string;
+  weighInTime: string;
+  weightClass: string;
+};
+
+function makeLookupKey(sessionNumber: number | string, platform: string): string {
+  return `${sessionNumber}-${platform}`;
+}
+
 // Create a separate SessionCard component
 const SessionCard = React.memo(({
   item,
   selectedMeet,
   onPress,
-  router,
-  savedWarmups,
-  schedulesMap,
-  allowedMeetNames
+  onOpenWarmup,
+  warmupByMeetAndName,
+  sessionLookupByMeet,
+  allowedMeetNames,
+  timeZoneIdentifier,
+  timeZoneAbbr,
 }: {
   item: LegacySavedSession;
   selectedMeet: MeetName | null;
   onPress: () => void;
-  router: ReturnType<typeof useRouter>;
-  savedWarmups: Array<{ id: string; name: string; meet: string; }>;
-  schedulesMap: Map<MeetName, ScheduleType>;
+  onOpenWarmup: (warmupId: string) => void;
+  warmupByMeetAndName: Map<string, string>;
+  sessionLookupByMeet: Map<MeetName, Map<string, SessionScheduleLookup>>;
   allowedMeetNames: ReadonlySet<string>;
+  timeZoneIdentifier?: string;
+  timeZoneAbbr: string;
 }) => {
   const { currentTheme } = useTheme();
-  const navigation = useNavigation();
-  const { meetDetails } = useSelectedMeet();
-
-  // Get time zone abbreviation - moved before early returns to follow Rules of Hooks
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return '';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: meetDetails.time.timeZoneIdentifier,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || '';
-  }, [meetDetails?.time.timeZoneIdentifier]);
 
   // Ensure meet is defined before using it
   const meet = item.meet || selectedMeet;
-  const schedule = meet && isMeetName(meet, allowedMeetNames) ? schedulesMap.get(meet) : undefined;
-
   if (!meet || !isMeetName(meet, allowedMeetNames)) {
     console.warn('[SessionCard] No valid meet information available for session:', item);
-    return null; // Don't render if meet info is missing
+    return null;
   }
 
   const sessionNumber = item.sessionNumber?.toString() || '';
   const platform = item.platform || '';
-  const weightClass = item.weightClass || '';
-
-
-  // Add a check to ensure schedule is valid before calling find
-  const sessionDay = schedule && Array.isArray(schedule) ? schedule.find(day =>
-    day.sessions.some(s => {
-      return s.number.toString() === sessionNumber;
-    })
-  ) : undefined; // If schedule is invalid, sessionDay will be undefined
-
-  const scheduleSession = sessionDay?.sessions.find(s =>
-    // Use parseInt safely
-    s.number === parseInt(sessionNumber, 10)
-  );
-
-  const platformInfo = scheduleSession?.platforms.find(p =>
-    p.platform === platform
-  );
-
-  // Use platform-specific time if available, otherwise fall back to session time
-  const startTime = platformInfo?.platformStartTime || item.startTime || '';
-  // Calculate weighInTime based on the determined startTime
-  const weighInTime = startTime ? calculateWeighInTime(startTime) : item.weighInTime || '';
-
-  // Get date from sessionDay if available, otherwise fallback to item.date
-  const displayDate = sessionDay?.date || 
-    (item.date ? new Date(item.date + 'T12:00:00').toLocaleDateString('en-US', {
-        month: 'long', day: 'numeric', year: 'numeric',
-        timeZone: meetDetails?.time.timeZoneIdentifier || 'UTC' // Fallback timezone
-      })
-    : 'Date TBD');
-
-
+  const lookup = sessionLookupByMeet.get(meet)?.get(makeLookupKey(sessionNumber, platform));
+  const weightClass = lookup?.weightClass || item.weightClass || '';
+  const startTime = lookup?.startTime || item.startTime || '';
+  const weighInTime = lookup?.weighInTime || (startTime ? calculateWeighInTime(startTime) : item.weighInTime || '');
+  const displayDate = lookup?.displayDate
+    || (item.date
+      ? new Date(`${item.date}T12:00:00`).toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: timeZoneIdentifier || 'UTC',
+        })
+      : 'Date TBD');
 
   const colors = {
     card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
@@ -268,9 +249,9 @@ const SessionCard = React.memo(({
 
   // Format time with the correct timezone abbreviation
   const formatTime = (time: string) => {
-    if (!time || !timeZoneAbbr) return 'TBD';
-    const [timeStr, period] = time.split(' ');  // Split into time and AM/PM
-    return `${timeStr} ${period} ${timeZoneAbbr}`;
+    if (!time) return 'TBD';
+    if (!timeZoneAbbr) return time;
+    return `${time} ${timeZoneAbbr}`;
   };
 
   return (
@@ -337,10 +318,7 @@ const SessionCard = React.memo(({
           </ThemedText>
           <View style={styles.athleteNamesContainer}>
             {item.athleteNames.slice(0, 3).map((name, index) => {
-              // Find warmup for THIS specific athlete inside the map
-              const athleteWarmup = savedWarmups.find(w => 
-                w?.name === name && w?.meet === meet
-              );
+              const athleteWarmupId = warmupByMeetAndName.get(`${meet}::${name}`);
 
               return (
                 <View key={index} style={styles.athleteRow}>
@@ -352,14 +330,11 @@ const SessionCard = React.memo(({
                     {name}
                   </ThemedText>
                   {/* Render link if a warmup exists for THIS athlete */}
-                  {athleteWarmup && (
+                  {athleteWarmupId && (
                     <Pressable
                       onPress={(e) => {
                         e.stopPropagation();
-                        router.push({
-                          pathname: '/warmup-details',
-                          params: { id: athleteWarmup.id } // Use this athlete's warmup ID
-                        });
+                        onOpenWarmup(athleteWarmupId);
                       }}
                       style={({ pressed }) => [
                         styles.warmupLink,
@@ -396,17 +371,12 @@ const SessionCard = React.memo(({
             </ThemedText>
             {/* Also fix backward compatibility section */}
             {(() => {
-              const athleteWarmup = savedWarmups.find(w => 
-                w?.name === item.athleteName && w?.meet === meet
-              );
-              return athleteWarmup ? (
+              const athleteWarmupId = item.athleteName ? warmupByMeetAndName.get(`${meet}::${item.athleteName}`) : undefined;
+              return athleteWarmupId ? (
                 <Pressable
                   onPress={(e) => {
                     e.stopPropagation();
-                    router.push({
-                      pathname: '/warmup-details',
-                      params: { id: athleteWarmup.id }
-                    });
+                    onOpenWarmup(athleteWarmupId);
                   }}
                   style={({ pressed }) => [
                     styles.warmupLink,
@@ -449,7 +419,7 @@ const SessionCard = React.memo(({
 export default function SavedScreen() {
   const { user } = useUser();
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } = useSavedSessions();
-  const { selectedMeet, availableMeets } = useSelectedMeet();
+  const { selectedMeet, availableMeets, meetDetails } = useSelectedMeet();
   const allowedMeetNames = useMemo(
     () => new Set(availableMeets.map((m) => m.name)),
     [availableMeets]
@@ -460,7 +430,6 @@ export default function SavedScreen() {
   const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const { currentTheme } = useTheme();
-  const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
   const [savedWarmups, setSavedWarmups] = useState<Array<{
@@ -474,6 +443,19 @@ export default function SavedScreen() {
   // Add state for schedules map and loading
   const [schedulesMap, setSchedulesMap] = useState<Map<MeetName, ScheduleType>>(new Map());
   const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
+  const schedulesMapRef = React.useRef<Map<MeetName, ScheduleType>>(new Map());
+  const warmupsInFlightRef = React.useRef<Promise<void> | null>(null);
+  const lastWarmupsSnapshotRef = React.useRef<string | null>(null);
+  const loadSavedSessionsRef = React.useRef(loadSavedSessions);
+  const loadSavedWarmupsRef = React.useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    schedulesMapRef.current = schedulesMap;
+  }, [schedulesMap]);
+
+  useEffect(() => {
+    loadSavedSessionsRef.current = loadSavedSessions;
+  }, [loadSavedSessions]);
 
   const handleResetSessions = () => {
     // Check authentication first
@@ -546,6 +528,52 @@ export default function SavedScreen() {
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
     link: '#007AFF',
   };
+
+  const timeZoneAbbr = useMemo(() => {
+    if (!meetDetails?.time.timeZoneIdentifier) return '';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: meetDetails.time.timeZoneIdentifier,
+      timeZoneName: 'short',
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value || '';
+  }, [meetDetails?.time.timeZoneIdentifier]);
+
+  const warmupByMeetAndName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const warmup of savedWarmups) {
+      if (!warmup?.meet || !warmup?.name || !warmup?.id) continue;
+      map.set(`${warmup.meet}::${warmup.name}`, warmup.id);
+    }
+    return map;
+  }, [savedWarmups]);
+
+  const sessionLookupByMeet = useMemo(() => {
+    const lookupByMeet = new Map<MeetName, Map<string, SessionScheduleLookup>>();
+
+    for (const [meet, schedule] of schedulesMap.entries()) {
+      const meetLookup = new Map<string, SessionScheduleLookup>();
+
+      for (const day of schedule) {
+        for (const session of day.sessions) {
+          for (const platformInfo of session.platforms) {
+            const startTime = platformInfo.platformStartTime || session.startTime;
+            meetLookup.set(makeLookupKey(session.number, platformInfo.platform), {
+              displayDate: day.date,
+              fullDate: day.fullDate,
+              startTime,
+              weighInTime: calculateWeighInTime(startTime),
+              weightClass: platformInfo.weightClass,
+            });
+          }
+        }
+      }
+
+      lookupByMeet.set(meet, meetLookup);
+    }
+
+    return lookupByMeet;
+  }, [schedulesMap]);
 
   // Update migrateSessions function to use user-specific storage
   const migrateSessions = useCallback(async () => {
@@ -683,8 +711,7 @@ export default function SavedScreen() {
               // Filter out sessions without meet information or missing schedules
               const validSessions = filteredSessions.filter(session => {
                 if (!session.meet || !isMeetName(session.meet, allowedMeetNames)) return false;
-                const schedule = schedulesMap.get(session.meet);
-                return schedule && schedule.length > 0; // Ensure schedule exists and is not empty
+                return sessionLookupByMeet.has(session.meet);
               }) as Array<SavedSession & { meet: MeetName }>;
 
               if (validSessions.length === 0) {
@@ -693,24 +720,19 @@ export default function SavedScreen() {
               }
 
               const sessionsToAdd = validSessions.map(session => {
-                // Get schedule from the map
-                const meetSchedule = schedulesMap.get(session.meet)!; // Non-null assertion ok due to filter above
-                // Find the specific day and platform info from the loaded schedule
-                const sessionDay = meetSchedule.find(day =>
-                    day.sessions.some(s => s.number === parseInt(session.sessionNumber.toString()))
-                );
-                const scheduleSession = sessionDay?.sessions.find(s => s.number === parseInt(session.sessionNumber.toString()));
-                const platformInfo = scheduleSession?.platforms.find(p => p.platform === session.platform);
-                const startTime = platformInfo?.platformStartTime || session.startTime;
-                const weighInTime = startTime ? calculateWeighInTime(startTime) : session.weighInTime;
+                const lookup = sessionLookupByMeet
+                  .get(session.meet)
+                  ?.get(makeLookupKey(session.sessionNumber, session.platform));
+                const startTime = lookup?.startTime || session.startTime;
+                const weighInTime = lookup?.weighInTime || (startTime ? calculateWeighInTime(startTime) : session.weighInTime);
 
                 return {
-                  date: sessionDay?.fullDate || '', // Use fullDate from schedule
+                  date: lookup?.fullDate || '',
                   startTime: startTime,
                   weighInTime: weighInTime,
                   sessionNumber: session.sessionNumber.toString(),
                   platform: session.platform,
-                  weightClass: session.weightClass,
+                  weightClass: lookup?.weightClass || session.weightClass,
                   meet: session.meet
                 };
               }).filter(s => s.date && s.startTime && s.weighInTime); // Ensure critical info is present
@@ -756,15 +778,20 @@ export default function SavedScreen() {
 
   // Add logging to loadSavedWarmups
   const loadSavedWarmups = useCallback(async () => {
+    if (warmupsInFlightRef.current) {
+      await warmupsInFlightRef.current;
+      return;
+    }
+
+    const loadPromise = (async () => {
     try {
-      console.log('Loading saved warmups');
       // Check if warmups were reset
       if (user?.id) {
         const resetTimestamp = await AsyncStorage.getItem(`@saved_warmups_reset_${user.id}`);
         if (resetTimestamp) {
-          console.log('Found reset timestamp, clearing warmups');
           // Clear the reset flag
           await AsyncStorage.removeItem(`@saved_warmups_reset_${user.id}`);
+          lastWarmupsSnapshotRef.current = null;
           setSavedWarmups([]);
           return;
         }
@@ -772,34 +799,78 @@ export default function SavedScreen() {
         // Load warmups from user-specific storage
         const storedWarmups = await AsyncStorage.getItem(getSavedWarmupsKey(user.id));
         if (storedWarmups) {
-          const warmups = JSON.parse(storedWarmups);
-          setSavedWarmups(warmups);
+          if (lastWarmupsSnapshotRef.current !== storedWarmups) {
+            const warmups = JSON.parse(storedWarmups);
+            setSavedWarmups(warmups);
+            lastWarmupsSnapshotRef.current = storedWarmups;
+          }
           return;
         }
 
         // Fallback to legacy storage
         const legacyWarmups = await AsyncStorage.getItem('@saved_warmups');
         if (legacyWarmups) {
-          console.log('Found legacy warmups:', legacyWarmups);
-          const warmups = JSON.parse(legacyWarmups);
-          setSavedWarmups(warmups);
+          if (lastWarmupsSnapshotRef.current !== legacyWarmups) {
+            const warmups = JSON.parse(legacyWarmups);
+            setSavedWarmups(warmups);
+            lastWarmupsSnapshotRef.current = legacyWarmups;
+          }
           // Migrate to user-specific storage
           await AsyncStorage.setItem(getSavedWarmupsKey(user.id), legacyWarmups);
         } else {
-          console.log('No warmups found');
+          lastWarmupsSnapshotRef.current = null;
+          setSavedWarmups([]);
         }
+      } else {
+        lastWarmupsSnapshotRef.current = null;
+        setSavedWarmups([]);
       }
     } catch (error) {
       console.error('Error loading warmups:', error);
     }
+    })();
+
+    warmupsInFlightRef.current = loadPromise;
+    try {
+      await loadPromise;
+    } finally {
+      warmupsInFlightRef.current = null;
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    loadSavedWarmupsRef.current = loadSavedWarmups;
+  }, [loadSavedWarmups]);
 
   // Load saved warmups when screen focuses
   useFocusEffect(
     useCallback(() => {
-      loadSavedWarmups()
-    }, [loadSavedWarmups])
-  )
+      let isActive = true;
+      const syncOnFocus = async () => {
+        try {
+          await Promise.all([
+            loadSavedSessionsRef.current(),
+            loadSavedWarmupsRef.current(),
+          ]);
+        } catch (error) {
+          if (isActive) {
+            console.error('Failed to sync saved data on focus:', error);
+          }
+        }
+      };
+      syncOnFocus();
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
+  const handleOpenWarmup = useCallback((warmupId: string) => {
+    router.push({
+      pathname: '/warmup-details',
+      params: { id: warmupId },
+    });
+  }, [router]);
 
   const renderSession = useCallback(({ item }: { item: LegacySavedSession }) => {
     return (
@@ -814,13 +885,24 @@ export default function SavedScreen() {
             weighInTime: item.weighInTime,
           }
         })}
-        router={router}
-        savedWarmups={savedWarmups}
-        schedulesMap={schedulesMap}
+        onOpenWarmup={handleOpenWarmup}
+        warmupByMeetAndName={warmupByMeetAndName}
+        sessionLookupByMeet={sessionLookupByMeet}
         allowedMeetNames={allowedMeetNames}
+        timeZoneIdentifier={meetDetails?.time.timeZoneIdentifier}
+        timeZoneAbbr={timeZoneAbbr}
       />
     );
-  }, [selectedMeet, router, savedWarmups, schedulesMap, allowedMeetNames]);
+  }, [
+    selectedMeet,
+    router,
+    handleOpenWarmup,
+    warmupByMeetAndName,
+    sessionLookupByMeet,
+    allowedMeetNames,
+    meetDetails?.time.timeZoneIdentifier,
+    timeZoneAbbr,
+  ]);
 
   useEffect(() => {
     if (!hasMigrated) {
@@ -828,50 +910,80 @@ export default function SavedScreen() {
     }
   }, [hasMigrated, migrateSessions]);
 
-  // Remove all other effects except calendar permissions
+  // Fetch schedules incrementally for saved sessions.
   useEffect(() => {
-    (async () => {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      setHasCalendarPermission(status === 'granted');
-    })();
-  }, []);
+    const meetNames = Array.from(
+      new Set(savedSessions.map((s) => s.meet).filter((m): m is MeetName => isMeetName(m, allowedMeetNames)))
+    );
+    const requiredMeetSet = new Set(meetNames);
 
-  // Fetch schedules for all saved sessions
-  useEffect(() => {
-    const fetchAllSchedules = async () => {
-      if (savedSessions.length === 0) {
-        setSchedulesMap(new Map());
+    let isCancelled = false;
+    const run = async () => {
+      setSchedulesMap((prev) => {
+        const next = new Map<MeetName, ScheduleType>();
+        let changed = prev.size !== requiredMeetSet.size;
+        for (const [meet, schedule] of prev.entries()) {
+          if (requiredMeetSet.has(meet)) {
+            next.set(meet, schedule);
+          } else {
+            changed = true;
+          }
+        }
+        if (changed) {
+          schedulesMapRef.current = next;
+        }
+        return changed ? next : prev;
+      });
+
+      const missingMeets = meetNames.filter((meet) => !schedulesMapRef.current.has(meet));
+      if (missingMeets.length === 0) {
+        setIsSchedulesLoading(false);
         return;
       }
 
       setIsSchedulesLoading(true);
-      const meetNames = Array.from(new Set(savedSessions.map(s => s.meet).filter((m): m is MeetName => isMeetName(m, allowedMeetNames))));
-      const newSchedulesMap = new Map<MeetName, ScheduleType>();
-
-      try {
-        await Promise.all(meetNames.map(async (meetName) => {
+      await Promise.all(
+        missingMeets.map(async (meetName) => {
           try {
-            const dbSchedule = await fetchScheduleFromDb(meetName);
-            const transformedSchedule = await transformScheduleData(dbSchedule);
-            newSchedulesMap.set(meetName, transformedSchedule);
+            const schedule = await fetchSchedule(meetName);
+            if (!isCancelled) {
+              setSchedulesMap((prev) => {
+                const next = new Map(prev);
+                next.set(meetName, schedule);
+                schedulesMapRef.current = next;
+                return next;
+              });
+            }
           } catch (fetchError) {
             console.error(`Error fetching schedule for ${meetName}:`, fetchError);
-            // Optionally set an empty array or null for this meet to indicate failure
-            newSchedulesMap.set(meetName, []); 
+            if (!isCancelled) {
+              setSchedulesMap((prev) => {
+                const next = new Map(prev);
+                next.set(meetName, []);
+                schedulesMapRef.current = next;
+                return next;
+              });
+            }
           }
-        }));
-        console.log('[SavedScreen] Schedules map populated:', newSchedulesMap.size);
-        setSchedulesMap(newSchedulesMap);
-      } catch (error) {
-        console.error('Error fetching schedules:', error);
-        Alert.alert('Error', 'Could not load schedule data for all saved sessions.');
-      } finally {
+        })
+      );
+      if (!isCancelled) {
         setIsSchedulesLoading(false);
       }
     };
 
-    fetchAllSchedules();
+    run();
+    return () => {
+      isCancelled = true;
+    };
   }, [savedSessions, allowedMeetNames]);
+
+  useEffect(() => {
+    if (!selectedMeet || filterOptions.length === 0 || !letterFilter) return;
+    if (!filterOptions.includes(letterFilter)) {
+      setLetterFilter(filterOptions[0] || '');
+    }
+  }, [selectedMeet, filterOptions, letterFilter]);
 
   useLayoutEffect(() => {
     const calendarIconColor = isSchedulesLoading
