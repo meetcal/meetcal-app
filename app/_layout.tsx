@@ -289,6 +289,8 @@ function RootLayoutNav() {
       <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+        <Stack.Screen name="(screens)" />
+        <Stack.Screen name="(auth)" />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>

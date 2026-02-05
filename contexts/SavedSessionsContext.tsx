@@ -14,6 +14,18 @@ interface SavedSessionsContextType {
 }
 
 const SavedSessionsContext = createContext<SavedSessionsContextType | undefined>(undefined);
+let hasWarnedMissingProvider = false;
+
+const fallbackContext: SavedSessionsContextType = {
+  savedSessions: [],
+  isLoading: false,
+  loadSavedSessions: async () => {},
+  saveSessionsFromAthletes: async () => false,
+  saveSession: async () => false,
+  removeSession: async () => false,
+  isSessionSaved: () => false,
+  resetAllSessions: async () => false,
+};
 
 export function SavedSessionsProvider({ children }: { children: React.ReactNode }) {
   const hook = useHook();
@@ -28,7 +40,11 @@ export function SavedSessionsProvider({ children }: { children: React.ReactNode 
 export function useSavedSessions() {
   const context = useContext(SavedSessionsContext);
   if (context === undefined) {
-    throw new Error('useSavedSessions must be used within a SavedSessionsProvider');
+    if (!hasWarnedMissingProvider) {
+      console.error('[SavedSessionsContext] useSavedSessions called outside SavedSessionsProvider');
+      hasWarnedMissingProvider = true;
+    }
+    return fallbackContext;
   }
   return context;
-} 
+}
