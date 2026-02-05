@@ -6,7 +6,7 @@ podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties
 
 def ccache_enabled?(podfile_properties)
   # EAS build env can resolve the ccache script to a bad path for extensions.
-  return false if ENV['EAS_BUILD'] == '1'
+  return false if ENV['EAS_BUILD'] == '1' || ENV['CI'] == '1'
 
   # Environment variable takes precedence
   return ENV['USE_CCACHE'] == '1' if ENV['USE_CCACHE']
@@ -40,12 +40,13 @@ target 'MeetCal' do
   end
 
   config = use_native_modules!(config_command)
+  react_native_path = File.expand_path(config[:reactNativePath], Pod::Config.instance.installation_root)
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
 
   use_react_native!(
-    :path => config[:reactNativePath],
+    :path => react_native_path,
     :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/..",
@@ -55,7 +56,7 @@ target 'MeetCal' do
   post_install do |installer|
     react_native_post_install(
       installer,
-      config[:reactNativePath],
+      react_native_path,
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
