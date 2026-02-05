@@ -561,7 +561,10 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     )
                   ) : (
                     <Pressable
-                      style={styles.premiumBadgeContainer}
+                      style={({ pressed }) => [
+                        styles.premiumStatsContainer,
+                        pressed && { opacity: 0.8 }
+                      ]}
                       onPress={() => {
                         const authResult = requireAuth({
                           feature: 'athlete-bests',
@@ -576,13 +579,24 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                           params: { from: '/(screens)/schedule-details', feature: 'athlete-bests' },
                         } as any);
                       }}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Unlock athlete best lifts with premium"
                     >
-                      <View style={styles.premiumBadge}>
-                        <IconSymbol name="lock.fill" size={14} color="#FFFFFF" />
-                        <ThemedText style={styles.premiumText}>Premium</ThemedText>
+                      <View style={styles.premiumLabelsRow}>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best Sn
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best CJ
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best Total
+                        </ThemedText>
+                      </View>
+                      <View style={styles.premiumUnlockBadge}>
+                        <IconSymbol name="lock" size={11} color="#FFFFFF" />
+                        <ThemedText style={styles.premiumUnlockText}>
+                          Unlock with Premium
+                        </ThemedText>
+                        <IconSymbol name="chevron.right" size={11} color="#FFFFFF" />
                       </View>
                     </Pressable>
                   )}
@@ -1543,5 +1557,44 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     marginHorizontal: 8,
+  },
+  premiumValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  premiumValueText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  premiumStatsContainer: {
+    flex: 3,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  premiumLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  premiumStatLabel: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  premiumUnlockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#007AFF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  premiumUnlockText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 
