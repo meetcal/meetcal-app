@@ -57,7 +57,6 @@ export default function RecordsScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setIntlRankings([]);
     setFetchError(null);
 
     fetchIntlRankings()
@@ -83,7 +82,7 @@ export default function RecordsScreen() {
       });
 
     return () => { cancelled = true; };
-  }, [filters.meet, filters.age_category, filters.gender]);
+  }, []);
 
   // Only set default filters the first time rankings are loaded
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(false);

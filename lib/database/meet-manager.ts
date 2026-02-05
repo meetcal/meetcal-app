@@ -9,7 +9,11 @@ const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
 const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
-const INITIAL_LOAD_TIMEOUT_MS = 4000;
+const INITIAL_LOAD_TIMEOUT_MS = 10000;
+const TIMEOUT_LOG_THROTTLE_MS = 30000;
+
+let inFlightFetchMeets: Promise<Meet[]> | null = null;
+let lastFetchMeetsTimeoutLogAt = 0;
 
 interface MeetInfo {
   lastAccessed: number;
@@ -108,62 +112,82 @@ async function saveCacheInfo(info: CacheInfo) {
 
 // Fetch all meets from Supabase
 export async function fetchMeets(): Promise<Meet[]> {
-  try {
-    const hasNetwork = await isNetworkAvailable();
-    if (!hasNetwork) {
-      return await getCachedMeets();
-    }
-
-    const { data: meetsData, error } = await withTimeout(
-      supabase
-        .from('meets')
-        .select('*')
-        .neq('status', 'completed')
-        .order('start_date', { ascending: true }),
-      INITIAL_LOAD_TIMEOUT_MS,
-      'fetchMeets'
-    );
-
-    if (error) {
-      console.error('Error fetching meets:', error);
-      return await getCachedMeets();
-    }
-
-    const mapped = meetsData.map(meet => {
-      const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
-      const startDate = new Date(meet.start_date);
-      
-      return {
-        id: meet.id,
-        name: meet.name,
-        venue: {
-          name: meet.venue_name,
-          address: {
-            street: meet.venue_street,
-            city: meet.venue_city,
-            state: meet.venue_state,
-            zip: meet.venue_zip
-          }
-        },
-        time: {
-          timeZone: meet.time_zone,
-          timeZoneIdentifier: timeZoneIdentifier,
-          abbreviation: meet.time_zone_abbr || 'EST', // Fallback to EST if not provided
-          utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
-        },
-        dates: {
-          start: meet.start_date,
-          end: meet.end_date
-        },
-        status: meet.status
-      };
-    });
-    await setCachedMeets(mapped);
-    return mapped;
-  } catch (error) {
-    console.error('Error in fetchMeets:', error);
-    return await getCachedMeets();
+  if (inFlightFetchMeets) {
+    return inFlightFetchMeets;
   }
+
+  inFlightFetchMeets = (async () => {
+    try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        return await getCachedMeets();
+      }
+
+      const { data: meetsData, error } = await withTimeout(
+        supabase
+          .from('meets')
+          .select('*')
+          .neq('status', 'completed')
+          .order('start_date', { ascending: true }),
+        INITIAL_LOAD_TIMEOUT_MS,
+        'fetchMeets'
+      );
+
+      if (error) {
+        console.error('Error fetching meets:', error);
+        return await getCachedMeets();
+      }
+
+      const mapped = meetsData.map(meet => {
+        const timeZoneIdentifier = meet.time_zone as USTimeZoneIdentifier;
+        const startDate = new Date(meet.start_date);
+        
+        return {
+          id: meet.id,
+          name: meet.name,
+          venue: {
+            name: meet.venue_name,
+            address: {
+              street: meet.venue_street,
+              city: meet.venue_city,
+              state: meet.venue_state,
+              zip: meet.venue_zip
+            }
+          },
+          time: {
+            timeZone: meet.time_zone,
+            timeZoneIdentifier: timeZoneIdentifier,
+            abbreviation: meet.time_zone_abbr || 'EST', // Fallback to EST if not provided
+            utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
+          },
+          dates: {
+            start: meet.start_date,
+            end: meet.end_date
+          },
+          status: meet.status
+        };
+      });
+      await setCachedMeets(mapped);
+      return mapped;
+    } catch (error) {
+      const err = error as Error;
+      const isTimeout = err.message.includes('fetchMeets timed out');
+      const now = Date.now();
+      if (!isTimeout || now - lastFetchMeetsTimeoutLogAt >= TIMEOUT_LOG_THROTTLE_MS) {
+        if (isTimeout) {
+          lastFetchMeetsTimeoutLogAt = now;
+          console.warn('fetchMeets timed out; using cached meets list');
+        } else {
+          console.error('Error in fetchMeets:', error);
+        }
+      }
+      return await getCachedMeets();
+    } finally {
+      inFlightFetchMeets = null;
+    }
+  })();
+
+  return inFlightFetchMeets;
 }
 
 // Fetch a single meet by name

@@ -13,27 +13,44 @@ export type IntlRanking = {
   age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
 };
 
+const rankingsMemoryCache: { data: IntlRanking[] | null } = { data: null };
+let inFlightRankings: Promise<IntlRanking[]> | null = null;
+
 // Basic fetch function (add filters later)
 export async function fetchIntlRankings(): Promise<IntlRanking[]> {
-  const cacheKey = OFFLINE_CACHE_KEYS.intlRankings;
-
-  try {
-    const { data, error } = await supabase
-      .from('intl_rankings')
-      .select('*');
-
-    if (error) {
-      throw error;
-    }
-
-    const rankings = data as IntlRanking[];
-    await setOfflineCache(cacheKey, rankings);
-    return rankings;
-  } catch (error) {
-    const cached = await getOfflineCache<IntlRanking[]>(cacheKey);
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
+  if (rankingsMemoryCache.data) {
+    return rankingsMemoryCache.data;
   }
+  if (inFlightRankings) {
+    return inFlightRankings;
+  }
+
+  const cacheKey = OFFLINE_CACHE_KEYS.intlRankings;
+  inFlightRankings = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('intl_rankings')
+        .select('meet, ranking, name, weight_class, total, percent_a, gender, age_category');
+
+      if (error) {
+        throw error;
+      }
+
+      const rankings = data as IntlRanking[];
+      rankingsMemoryCache.data = rankings;
+      await setOfflineCache(cacheKey, rankings);
+      return rankings;
+    } catch (error) {
+      const cached = await getOfflineCache<IntlRanking[]>(cacheKey);
+      if (cached?.data) {
+        rankingsMemoryCache.data = cached.data;
+        return cached.data;
+      }
+      throw error;
+    } finally {
+      inFlightRankings = null;
+    }
+  })();
+
+  return inFlightRankings;
 }

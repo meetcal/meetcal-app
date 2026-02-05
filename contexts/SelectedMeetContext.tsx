@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
@@ -30,6 +30,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
+  const lastNetworkStateRef = useRef<boolean | null>(null);
 
   // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
@@ -81,7 +82,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   };
 
   // Initialize meet data
-  const initializeMeetData = async (meet: MeetName, meetData: Meet) => {
+  const initializeMeetData = useCallback(async (meet: MeetName, meetData: Meet) => {
     try {
       setIsSyncing(true);
       setSyncStatus('syncing');
@@ -105,7 +106,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, []);
 
   // Load available meets
   const loadMeets = useCallback(async () => {
@@ -170,7 +171,9 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      if (isConnected) {
+      const wasConnected = lastNetworkStateRef.current;
+      lastNetworkStateRef.current = isConnected;
+      if (isConnected && wasConnected === false) {
         loadMeets();
       }
     });
