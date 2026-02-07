@@ -53,7 +53,7 @@ export default function RecordsScreen() {
     async function loadInitialFilters() {
       setLoading(true);
       let determinedFederation = '';
-      let determinedAgeGroup = '';
+      let determinedAgeGroup = 'Senior';
               const defaultGender = 'Men';
 
       try {
@@ -69,32 +69,14 @@ export default function RecordsScreen() {
         if (filteredFederations.length > 0) {
           if (filteredFederations.includes(preferredFederation)) {
             determinedFederation = preferredFederation;
-            const ageGroupsForPreferredFed = await fetchAgeGroups(determinedFederation);
-            setCurrentAvailableAgeGroupsList(ageGroupsForPreferredFed);
-            setModalFederationForAgeGroups(determinedFederation);
-            // Find 'Senior' or its case variation, then fallback
-            const seniorEquivalent = ageGroupsForPreferredFed.find(ag => ag.toLowerCase() === preferredAgeGroup.toLowerCase());
-            if (seniorEquivalent) {
-              determinedAgeGroup = seniorEquivalent;
-            } else if (ageGroupsForPreferredFed.length > 0) {
-              determinedAgeGroup = ageGroupsForPreferredFed[0]; // Fallback to first if 'Senior' not found
-            } else {
-              determinedAgeGroup = ''; // No age groups for USAW
-            }
+            determinedAgeGroup = preferredAgeGroup;
           } else {
-            // USAW not available, use the first federation from the list
             determinedFederation = filteredFederations[0];
-            const ageGroupsForFirstFed = await fetchAgeGroups(determinedFederation);
-            setCurrentAvailableAgeGroupsList(ageGroupsForFirstFed);
-            setModalFederationForAgeGroups(determinedFederation);
-            if (ageGroupsForFirstFed.length > 0) {
-              determinedAgeGroup = ageGroupsForFirstFed[0];
-            } else {
-              determinedAgeGroup = ''; // No age groups for the first federation
-            }
+            determinedAgeGroup = preferredAgeGroup;
           }
         } else {
           setFetchError("No federations found.");
+          determinedAgeGroup = '';
         }
 
         setFilters({ federation: determinedFederation, gender: defaultGender, ageGroup: determinedAgeGroup });
@@ -148,7 +130,6 @@ export default function RecordsScreen() {
       const currentTempAgeGroup = tempFilters.ageGroup; // Preserve current selection
       
       setCurrentAvailableAgeGroupsList([]); // Clear previous list, indicates loading
-      setLoading(true); // Use main loading indicator for now
 
       fetchAgeGroups(federationToFetch)
         .then((fetchedAgeGroups) => {
@@ -176,31 +157,40 @@ export default function RecordsScreen() {
         })
         .finally(() => {
           if (isStale || tempFilters.federation !== federationToFetch) return;
-          setLoading(false);
         });
 
       return () => { isStale = true; };
     }
   }, [showFilterModal, tempFilters.federation, modalFederationForAgeGroups]);
 
-  // Effect for fetching records when filters change
+  // Fetch full federation records once per federation selection.
   useEffect(() => {
-    if (!filters.federation || !filters.ageGroup) { // Don't fetch if essential filters are not set
+    if (!filters.federation) {
       setLoading(false);
+      setRecords(null);
+      setAllRecords(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    setRecords(null);
-    setAllRecords(null);
     setFetchError(null);
 
-    // Fetch records directly - age group validation should be handled elsewhere
-    fetchRecords(filters.federation, filters.ageGroup, filters.gender)
+    fetchRecords(filters.federation)
       .then((data) => {
         if (!cancelled) {
+          const nextAgeGroups = Object.keys(data);
+          setCurrentAvailableAgeGroupsList(nextAgeGroups);
+          setModalFederationForAgeGroups(filters.federation);
+          setAllRecords(data);
           setRecords(data);
+
+          if (nextAgeGroups.length > 0 && !nextAgeGroups.includes(filters.ageGroup)) {
+            setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroups[0] }));
+          }
+          if (nextAgeGroups.length > 0 && !nextAgeGroups.includes(tempFilters.ageGroup)) {
+            setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroups[0] }));
+          }
         }
       })
       .catch((err) => {
@@ -212,18 +202,8 @@ export default function RecordsScreen() {
         if (!cancelled) setLoading(false);
       });
 
-    // Fetch all records for the federation in the background
-    fetchRecords(filters.federation, undefined, undefined) 
-      .then((data) => {
-        if (!cancelled) setAllRecords(data);
-      })
-      .catch((err) => {
-        // Silently fail or log, as this is background
-        console.warn("Failed to fetch all records for federation in background", err);
-      });
-
     return () => { cancelled = true; };
-  }, [filters.federation, filters.ageGroup, filters.gender]); // React to all filter changes
+  }, [filters.federation]);
 
   const recordsData = useMemo(() => {
     return allRecords || records || EMPTY_RECORDS_DATA;
@@ -273,36 +253,8 @@ export default function RecordsScreen() {
     return `${fed} • ${gen} • ${age}`;
   };
 
-  const handleApplyFilters = async () => {
-    let ageGroupToApply = tempFilters.ageGroup;
-    
-    // Check if we need to fetch age groups for the selected federation
-    // This happens if the federation in tempFilters is different from what we loaded age groups for
-    let ageGroupsForSelectedFed = currentAvailableAgeGroupsList;
-    if (tempFilters.federation !== modalFederationForAgeGroups) {
-        try {
-            setLoading(true);
-            ageGroupsForSelectedFed = await fetchAgeGroups(tempFilters.federation);
-            setCurrentAvailableAgeGroupsList(ageGroupsForSelectedFed); // Update list for modal consistency
-            setModalFederationForAgeGroups(tempFilters.federation);
-        } catch (err) {
-            console.error("Error fetching age groups on apply", err);
-            setLoading(false);
-            // Handle error, maybe don't apply filters
-            return;
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    // Validate the age group selection
-    if (!ageGroupsForSelectedFed.includes(tempFilters.ageGroup) && ageGroupsForSelectedFed.length > 0) {
-      ageGroupToApply = ageGroupsForSelectedFed[0];
-    } else if (ageGroupsForSelectedFed.length === 0) {
-      ageGroupToApply = ''; // No age groups for this fed
-    }
-    
-    setFilters({...tempFilters, ageGroup: ageGroupToApply});
+  const handleApplyFilters = () => {
+    setFilters(tempFilters);
     setShowFilterModal(false);
     setExpandedSection(null);
   };

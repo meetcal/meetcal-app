@@ -49,6 +49,10 @@ export default function ShareResultsByClubScreen() {
     try {
       const clubs = await fetchAllClubs();
       setAllClubs(clubs);
+      // Trigger one background refresh pass when cached data was returned.
+      fetchAllClubs()
+        .then((refreshed) => setAllClubs(refreshed))
+        .catch(() => {});
     } catch (err) {
       console.error('Error loading clubs:', err);
       setError('Failed to load clubs');

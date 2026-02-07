@@ -1,32 +1,17 @@
-import { StyleSheet, View, Linking, Pressable, Platform, ScrollView, Alert, ActivityIndicator, Modal } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, ScrollView } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { MeetName } from '@/data/types/meet';
-import { useClerk, useAuth, useUser } from '@clerk/clerk-expo';
-import { supabase } from '@/lib/supabase';
 import EventInfoScreen from '@/app/(screens)/event-info';
 import { Colors } from '@/constants/Colors';
 
-// Function to get user-specific storage key
-const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
-const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
-
 export default function InfoScreen() {
   const { currentTheme } = useTheme();
-  const { signOut } = useClerk();
-  const { isSignedIn } = useAuth();
-  const { selectedMeet, setSelectedMeet, isLoading } = useSelectedMeet();
-  const [showMeetModal, setShowMeetModal] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useUser();
 
 
   // Define theme colors
@@ -38,126 +23,6 @@ export default function InfoScreen() {
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
     link: '#007AFF', // iOS blue stays the same in both modes
-  };
-
-  const handlePress = (url: string) => {
-    Linking.openURL(url);
-  };
-
-  const handleAddressPress = () => {
-    const address = "400 N High St, Columbus, OH 43215";
-    const encodedAddress = encodeURIComponent(address);
-    
-    // Different URL schemes for iOS and Android
-    const mapsUrl = Platform.select({
-      ios: `maps://maps.apple.com/?address=${encodedAddress}`,
-      android: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-    });
-
-    Linking.canOpenURL(mapsUrl).then((supported) => {
-      if (supported) {
-        Linking.openURL(mapsUrl);
-      } else {
-        // Fallback to browser if maps app cannot be opened
-        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`);
-      }
-    });
-  };
-
-
-  const handleResetWarmups = () => {
-    if (!user?.id) return;
-    
-    Alert.alert(
-      'Reset Saved Warmups',
-      'Are you sure you want to reset all saved warmups? This cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Clear warmups using all possible storage keys, but only for the selected meet
-              const STORAGE_KEYS = [
-                getSavedWarmupsKey(user.id),
-                `@saved_warmups_${user.id}`,
-                `@saved_warmups`,
-                `warmups_${user.id}`,
-                `@warmups_${user.id}`
-              ];
-              if (selectedMeet) {
-                for (const key of STORAGE_KEYS) {
-                  const stored = await AsyncStorage.getItem(key);
-                  if (stored) {
-                    let warmups = [];
-                    try { warmups = JSON.parse(stored); } catch {}
-                    if (Array.isArray(warmups)) {
-                      const filtered = warmups.filter(w => w.meet !== selectedMeet);
-                      await AsyncStorage.setItem(key, JSON.stringify(filtered));
-                    }
-                  }
-                }
-              }
-              // Delete from Supabase for this user and meet only
-              if (selectedMeet) {
-                const { error: supabaseError } = await supabase
-                  .from('saved_warmups')
-                  .delete()
-                  .match({ user_id: user.id, meet: selectedMeet });
-                if (supabaseError) {
-                  console.error('Error deleting warmups from Supabase:', supabaseError);
-                }
-              }
-              // Set flags to notify both screens that data was reset
-              await AsyncStorage.setItem(`@warmups_reset_${user.id}`, Date.now().toString());
-              await AsyncStorage.setItem(`@saved_warmups_reset_${user.id}`, Date.now().toString());
-              // Show success message
-              Alert.alert('Success', 'All saved warmups for this meet have been reset.');
-            } catch (error) {
-              console.error('Error resetting warmups:', error);
-              Alert.alert('Error', 'Failed to reset warmups.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleMeetSelect = async (meet: MeetName) => {
-    setShowMeetModal(false); // Close modal immediately
-    try {
-      await setSelectedMeet(meet);
-    } catch (error) {
-      console.error('Error saving selected meet:', error);
-      // Show error alert if meet selection fails
-      Alert.alert('Error', 'Failed to update selected meet.');
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      // The auth layout will automatically redirect to sign-in
-    } catch (err) {
-      console.error('Error signing out:', err);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
-    }
-  };
-
-  const handleAuthAction = () => {
-    if (isSignedIn) {
-      handleSignOut();
-    } else {
-      router.push({
-        pathname: '/(auth)/sign-in',
-        params: { from: 'info' }
-      });
-    }
   };
 
   return (

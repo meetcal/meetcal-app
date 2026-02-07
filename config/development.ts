@@ -10,14 +10,20 @@ export const DEV_CONFIG = {
    * Set to true to simulate an active subscription
    * This will bypass the real RevenueCat subscription check
    */
-  SIMULATE_SUBSCRIPTION: true,
+  SIMULATE_SUBSCRIPTION: false,
+
+  /**
+   * Simulate offline mode for testing
+   * When true, network checks will always return false
+   */
+  SIMULATE_OFFLINE: false as boolean,
 
   /**
    * Additional development flags can be added here
    */
   ENABLE_API_LOGS: true,
   BYPASS_SPLASH_DELAY: false,
-} as const;
+};
 
 /**
  * Helper to get the simulated subscription status
@@ -30,4 +36,12 @@ export function getSimulatedSubscriptionStatus(): boolean | null {
     return DEV_CONFIG.SIMULATE_SUBSCRIPTION;
   }
   return null;
+}
+
+/**
+ * Helper to check if offline mode is simulated
+ * Returns true if we should simulate offline mode in dev
+ */
+export function isOfflineModeSimulated(): boolean {
+  return __DEV__ && DEV_CONFIG.SIMULATE_OFFLINE === true;
 } 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator, InteractionManager } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ThemedText } from '@/components/ThemedText';
@@ -8,8 +8,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useExpandedId, recordExpandTapTime } from '@/contexts/ExpandedIdContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { LiftResult } from '@/data/types/athletes';
-import { MeetName } from '@/data/types/meet';
-import type { Schedule as ScheduleType } from '@/types/schedule';
+import { useAuthGuard } from '@/utils/authGuard';
 import { getLastYearBests } from '@/lib/start-list-api';
 import { getChevronIcon, calculateWeighInTime, formatSessionDisplayDate, isMeetName } from '@/lib/start-list-utils';
 
@@ -24,11 +23,10 @@ export interface SessionDetails {
 export interface AthleteItemProps {
   athlete: LiftResult;
   router: ReturnType<typeof useRouter>;
-  schedule: ScheduleType;
   getSessionDetails: (sessionNumber: number) => SessionDetails | null;
 }
 
-export const AthleteItem = React.memo(function AthleteItem({ athlete, router, schedule, getSessionDetails }: AthleteItemProps) {
+export const AthleteItem = React.memo(function AthleteItem({ athlete, router, getSessionDetails }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   const { expandedId, setExpandedId } = useExpandedId();
   const expandKey = athlete.memberId;
@@ -54,6 +52,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
   const [loadingBests, setLoadingBests] = useState(true);
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const validMeet = selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
 
   const timeZoneAbbr = useMemo(() => {
@@ -79,7 +78,6 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
       expandCommitLogged.current = true;
       console.log('[StartList] 3. AthleteItem expanded committed (after paint)', Math.round(performance.now() - tapTimeRef.current), 'ms since tap');
     }
-    const { InteractionManager } = require('react-native');
     const task = InteractionManager.runAfterInteractions(() => {
       setLoadingBests(true);
       getLastYearBests(athlete.name)
@@ -107,13 +105,11 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
       weighInTime = athlete.session.weighInTime!;
       dateStr = athlete.session.date!;
     } else {
-      const sessionDay = schedule.find(day => day.sessions.some(s => s.number === athlete.session?.number));
-      const scheduleSession = sessionDay?.sessions.find(s => s.number === athlete.session?.number);
-      const platform = scheduleSession?.platforms.find(p => p.platform === athlete.session?.platform);
       const details = getSessionDetails(athlete.session.number);
+      const platform = details?.platforms.find(p => p.platform === athlete.session?.platform);
       startTime = platform?.platformStartTime || details?.startTime || '';
       weighInTime = startTime ? (calculateWeighInTime(startTime) ?? details?.weighInTime ?? '') : (details?.weighInTime || '');
-      dateStr = sessionDay?.fullDate || details?.date || '';
+      dateStr = details?.date || '';
     }
     if (!startTime || !weighInTime || !dateStr) return;
     router.push({
@@ -129,7 +125,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
         athleteName: athlete.name,
       }
     });
-  }, [athlete, schedule, getSessionDetails, router]);
+  }, [athlete, getSessionDetails, router]);
 
   const formatSessionTime = useCallback((time: string | undefined | null) => {
     if (!time || !validMeet) return 'TBD';
@@ -171,9 +167,7 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
                       meetDetails?.time.timeZoneIdentifier
                     )} • {formatSessionTime(
                       athlete.session.startTime ??
-                      schedule.find(day => day.sessions.some(s => s.number === athlete.session?.number))
-                        ?.sessions.find(s => s.number === athlete.session?.number)
-                        ?.platforms.find(p => p.platform === athlete.session?.platform)
+                      getSessionDetails(athlete.session.number)?.platforms.find(p => p.platform === athlete.session?.platform)
                         ?.platformStartTime ?? getSessionDetails(athlete.session.number)?.startTime
                     )}
                   </ThemedText>
@@ -229,10 +223,28 @@ export const AthleteItem = React.memo(function AthleteItem({ athlete, router, sc
           <Pressable
             style={({ pressed }) => [styles.meetResultsButton, pressed && { opacity: 0.8 }]}
             onPress={() => {
+              // 1. Check auth
+              const authResult = requireAuth({
+                feature: 'athlete-results',
+                message: 'Sign in to access premium features.',
+                returnPath: '/(tabs)/(start-list)',
+              });
+              if (authResult === null) {
+                // Still loading auth state
+                return;
+              }
+              if (authResult === false) {
+                // User not authenticated, alert already shown
+                return;
+              }
+              // 2. Check subscription
               if (isSubscribed) {
                 router.push({ pathname: '/(screens)/athlete-results', params: { name: athlete.name } });
               } else {
-                router.push('/paywall');
+                router.push({
+                  pathname: '/(screens)/paywall',
+                  params: { from: '/(tabs)/(start-list)', feature: 'athlete-results' },
+                } as any);
               }
             }}
           >

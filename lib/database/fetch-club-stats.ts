@@ -8,35 +8,83 @@ import type {
   MeetStatus
 } from '@/types/club';
 
+const clubsMemoryCache: { data: string[] | null } = { data: null };
+let inFlightClubs: Promise<string[]> | null = null;
+const athletesByClubCache = new Map<string, AthleteClub[]>();
+const athletesByClubInFlight = new Map<string, Promise<AthleteClub[]>>();
+const clubMeetStatsCache = new Map<string, ClubMeetStats>();
+const clubMeetStatsInFlight = new Map<string, Promise<ClubMeetStats>>();
+
+const ATHLETE_RESULTS_SELECT =
+  'id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total';
+
+function getClubMeetStatsKey(club: string, meet: string): string {
+  return `${club}::${meet}`;
+}
+
+async function fetchAndStoreClubs(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('athletes')
+    .select('club')
+    .order('club');
+
+  if (error) {
+    console.error('Error fetching clubs:', error);
+    throw error;
+  }
+
+  const clubRows = (data || []) as { club: string | null }[];
+  const uniqueClubs = Array.from(new Set(clubRows.map((row) => row.club).filter(Boolean))).sort() as string[];
+  clubsMemoryCache.data = uniqueClubs;
+  return uniqueClubs;
+}
+
 /**
  * Fetch all unique clubs from the database
  */
 export async function fetchAllClubs(): Promise<string[]> {
-  try {
-    const { data, error } = await supabase
-      .from('athletes')
-      .select('club')
-      .order('club');
-
-    if (error) {
-      console.error('Error fetching clubs:', error);
-      throw error;
+  if (clubsMemoryCache.data) {
+    if (!inFlightClubs) {
+      inFlightClubs = fetchAndStoreClubs().finally(() => {
+        inFlightClubs = null;
+      });
     }
-
-    // Get unique clubs and sort them
-    const uniqueClubs = Array.from(new Set((data || []).map(row => row.club))).sort();
-    return uniqueClubs;
-  } catch (error) {
-    console.error('Error in fetchAllClubs:', error);
-    throw error;
+    return clubsMemoryCache.data;
   }
+  if (inFlightClubs) {
+    return inFlightClubs;
+  }
+
+  inFlightClubs = (async () => {
+    try {
+      return await fetchAndStoreClubs();
+    } catch (error) {
+      console.error('Error in fetchAllClubs:', error);
+      throw error;
+    } finally {
+      inFlightClubs = null;
+    }
+  })();
+
+  return inFlightClubs;
 }
 
 /**
  * Fetch all athletes from a specific club, filtered to only completed meets
  */
 export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> {
-  try {
+  const cached = athletesByClubCache.get(club);
+  if (cached) {
+    return cached;
+  }
+
+  const inFlight = athletesByClubInFlight.get(club);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    try {
     // First get all athletes from this club
     const { data: athletesData, error: athletesError } = await supabase
       .from('athletes')
@@ -78,18 +126,37 @@ export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> 
     // Filter athletes to only those in completed meets
     const filteredAthletes = allAthletes.filter(a => completedMeetNames.has(a.meet));
 
+    athletesByClubCache.set(club, filteredAthletes);
     return filteredAthletes;
   } catch (error) {
     console.error('Error in fetchAthletesByClub:', error);
     throw error;
+  } finally {
+    athletesByClubInFlight.delete(club);
   }
+  })();
+
+  athletesByClubInFlight.set(club, request);
+  return request;
 }
 
 /**
  * Fetch and calculate stats for a specific club at a specific meet
  */
 export async function fetchClubMeetStats(club: string, meet: string): Promise<ClubMeetStats> {
-  try {
+  const cacheKey = getClubMeetStatsKey(club, meet);
+  const cached = clubMeetStatsCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const inFlight = clubMeetStatsInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    try {
     // Step 1: Get all athletes from this club at this meet
     const { data: athletesData, error: athletesError } = await supabase
       .from('athletes')
@@ -121,7 +188,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
     // Step 2: Get lifting results for these athletes at this meet
     const { data: resultsData, error: resultsError } = await supabase
       .from('lifting_results')
-      .select('*')
+      .select(ATHLETE_RESULTS_SELECT)
       .in('name', athleteNames)
       .eq('meet', meet);
 
@@ -148,7 +215,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
     // Step 4: Get all lifting results from this meet
     const { data: allMeetResultsData, error: allMeetResultsError } = await supabase
       .from('lifting_results')
-      .select('*')
+      .select('name,total,snatch_best,cj_best')
       .eq('meet', meet);
 
     if (allMeetResultsError) {
@@ -162,7 +229,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
     const firstDate = results.length > 0 ? results[0].date : new Date().toISOString();
     const { data: historicalData, error: historicalError } = await supabase
       .from('lifting_results')
-      .select('*')
+      .select('name,total')
       .neq('federation', 'BWL')
       .in('name', athleteNames)
       .lt('date', firstDate);
@@ -172,7 +239,16 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
       throw historicalError;
     }
 
-    const historicalResults = historicalData as AthleteResult[];
+    const historicalByAthlete = new Map<string, number>();
+    (historicalData || []).forEach((row) => {
+      const name = row.name as string | null;
+      const total = row.total as number | null;
+      if (!name || total == null) return;
+      const currentBest = historicalByAthlete.get(name) ?? 0;
+      if (total > currentBest) {
+        historicalByAthlete.set(name, total);
+      }
+    });
 
     // Calculate stats
     const stats: ClubMeetStats = {
@@ -200,8 +276,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
 
     // Calculate PRs by comparing to historical bests
     for (const result of results) {
-      const athleteHistory = historicalResults.filter(h => h.name === result.name);
-      const bestHistorical = Math.max(0, ...athleteHistory.map(h => h.total));
+      const bestHistorical = historicalByAthlete.get(result.name) ?? 0;
 
       if (result.total > bestHistorical) {
         stats.totalPRs++;
@@ -244,9 +319,16 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
       else if (totalRank === 2) stats.bronzeMedals++;
     }
 
+    clubMeetStatsCache.set(cacheKey, stats);
     return stats;
   } catch (error) {
     console.error('Error in fetchClubMeetStats:', error);
     throw error;
+  } finally {
+    clubMeetStatsInFlight.delete(cacheKey);
   }
+  })();
+
+  clubMeetStatsInFlight.set(cacheKey, request);
+  return request;
 }

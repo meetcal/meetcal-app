@@ -97,13 +97,31 @@ export default function WeightliftingWrappedScreen() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const normalizedName = searchQuery.trim();
+      const selectFields =
+        'id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total';
+
+      let { data, error } = await supabase
         .from('lifting_results')
-        .select('*')
-        .ilike('name', `%${searchQuery.trim()}%`)
+        .select(selectFields)
+        .eq('name', normalizedName)
         .gte('date', `${selectedYear}-01-01`)
         .lt('date', `${selectedYear + 1}-01-01`)
-        .order('date', { ascending: true });
+        .order('date', { ascending: true })
+        .limit(600);
+
+      if (!error && (!data || data.length === 0)) {
+        const fallback = await supabase
+          .from('lifting_results')
+          .select(selectFields)
+          .ilike('name', `%${normalizedName}%`)
+          .gte('date', `${selectedYear}-01-01`)
+          .lt('date', `${selectedYear + 1}-01-01`)
+          .order('date', { ascending: true })
+          .limit(600);
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) {
         console.error('Error searching athlete:', error);
@@ -302,7 +320,7 @@ export default function WeightliftingWrappedScreen() {
             </ThemedText>
             <ThemedText style={[styles.unit, { color: colors.text }]}>kg</ThemedText>
             <ThemedText style={[styles.subtitle, { color: colors.secondaryText }]}>
-              That's equivalent to lifting {Math.round(wrappedStats.totalWeightLifted / 180)} people!
+              That&apos;s equivalent to lifting {Math.round(wrappedStats.totalWeightLifted / 180)} people!
             </ThemedText>
             <View style={styles.comparisonContainer}>
               <ThemedText style={[styles.comparisonText, { color: colors.secondaryText }]}>
@@ -556,7 +574,7 @@ export default function WeightliftingWrappedScreen() {
                 <ThemedText style={[styles.statUnit, { color: colors.text }]}>kg</ThemedText>
               </View>
               <ThemedText style={[styles.statDescription, { color: colors.secondaryText }]}>
-                That's equivalent to lifting {Math.round(wrappedStats.totalWeightLifted / 180)} people!
+                That&apos;s equivalent to lifting {Math.round(wrappedStats.totalWeightLifted / 180)} people!
               </ThemedText>
             </View>
 

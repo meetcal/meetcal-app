@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import * as Updates from 'expo-updates';
 import { Alert, AppState, Platform } from 'react-native';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export interface OTAUpdateState {
   isChecking: boolean;
@@ -50,9 +51,16 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
       return;
     }
 
+    // Check network connectivity before attempting update check
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      console.log('[OTA] Skipping update check - no network available');
+      return; // Silently skip, don't show error to user
+    }
+
     try {
       setState(prev => ({ ...prev, isChecking: true, error: null }));
-      
+
       const update = await Updates.checkForUpdateAsync();
       
       if (update.isAvailable) {

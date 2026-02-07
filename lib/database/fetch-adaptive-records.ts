@@ -14,6 +14,8 @@ type AdaptiveRecordRow = {
 };
 
 const AGE_GROUP_KEY = 'Adaptive';
+const adaptiveMemoryCache = new Map<string, RecordsData>();
+const adaptiveInFlight = new Map<string, Promise<RecordsData>>();
 
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
@@ -75,36 +77,58 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
 export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
   const cacheKey = OFFLINE_CACHE_KEYS.adaptiveRecords;
   const ageGroupKey = ageGroup || AGE_GROUP_KEY;
+  const requestKey = `${gender || 'all'}::${ageGroupKey}`;
 
-  try {
-    const result: RecordsData = {
-      [ageGroupKey]: { Men: [], Women: [] },
-    };
-
-    if (gender) {
-      result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
-    } else {
-      const [menRecords, womenRecords] = await Promise.all([
-        fetchAdaptiveRecordsForGender('Men'),
-        fetchAdaptiveRecordsForGender('Women'),
-      ]);
-      result[ageGroupKey].Men = menRecords;
-      result[ageGroupKey].Women = womenRecords;
-    }
-
-    if (!gender && !ageGroup) {
-      await setOfflineCache(cacheKey, result);
-    }
-
-    return result;
-  } catch (error) {
-    const cached = await getOfflineCache<RecordsData>(cacheKey);
-    if (cached?.data) {
-      if (ageGroup && !cached.data[ageGroup]) {
-        return { [ageGroup]: cached.data[AGE_GROUP_KEY] || { Men: [], Women: [] } };
-      }
-      return cached.data;
-    }
-    throw error;
+  const cached = adaptiveMemoryCache.get(requestKey);
+  if (cached) {
+    return cached;
   }
+
+  const inFlight = adaptiveInFlight.get(requestKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    try {
+      const result: RecordsData = {
+        [ageGroupKey]: { Men: [], Women: [] },
+      };
+
+      if (gender) {
+        result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
+      } else {
+        const [menRecords, womenRecords] = await Promise.all([
+          fetchAdaptiveRecordsForGender('Men'),
+          fetchAdaptiveRecordsForGender('Women'),
+        ]);
+        result[ageGroupKey].Men = menRecords;
+        result[ageGroupKey].Women = womenRecords;
+      }
+
+      if (!gender && !ageGroup) {
+        await setOfflineCache(cacheKey, result);
+      }
+
+      adaptiveMemoryCache.set(requestKey, result);
+      return result;
+    } catch (error) {
+      const cachedOffline = await getOfflineCache<RecordsData>(cacheKey);
+      if (cachedOffline?.data) {
+        if (ageGroup && !cachedOffline.data[ageGroup]) {
+          const fallback = { [ageGroup]: cachedOffline.data[AGE_GROUP_KEY] || { Men: [], Women: [] } };
+          adaptiveMemoryCache.set(requestKey, fallback);
+          return fallback;
+        }
+        adaptiveMemoryCache.set(requestKey, cachedOffline.data);
+        return cachedOffline.data;
+      }
+      throw error;
+    } finally {
+      adaptiveInFlight.delete(requestKey);
+    }
+  })();
+
+  adaptiveInFlight.set(requestKey, request);
+  return request;
 }

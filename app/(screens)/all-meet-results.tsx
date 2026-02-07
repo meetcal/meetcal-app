@@ -5,8 +5,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { searchAthletesByName } from '@/lib/database/queries';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { posthog } from '@/lib/posthog';
 
 export default function AllMeetResultsScreen() {
@@ -18,12 +19,30 @@ export default function AllMeetResultsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const searchRequestVersion = useRef(0);
 
   // Track screen view on mount
   useEffect(() => {
     posthog.capture('screen_viewed', {
       screen_name: 'All Meet Results'
     });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkNetwork = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (isMounted) setIsOffline(!hasNetwork);
+    };
+    checkNetwork();
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Define theme colors
@@ -46,8 +65,12 @@ export default function AllMeetResultsScreen() {
       if (searchText.trim().length >= 3) {
         performSearch(searchText.trim());
       } else if (searchText.trim().length === 0) {
+        searchRequestVersion.current += 1;
         setSearchResults([]);
         setError(null);
+      } else {
+        searchRequestVersion.current += 1;
+        setIsLoading(false);
       }
     }, 500); // 0.5 seconds debounce
 
@@ -55,11 +78,22 @@ export default function AllMeetResultsScreen() {
   }, [searchText]);
 
   const performSearch = async (query: string) => {
+    const requestVersion = ++searchRequestVersion.current;
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) {
+      if (requestVersion !== searchRequestVersion.current) return;
+      setError(null);
+      setSearchResults([]);
+      setIsOffline(true);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
 
     try {
       const results = await searchAthletesByName(query);
+      if (requestVersion !== searchRequestVersion.current) return;
       setSearchResults(results);
 
       // Track the search
@@ -68,10 +102,12 @@ export default function AllMeetResultsScreen() {
         results_count: results.length
       });
     } catch (err) {
+      if (requestVersion !== searchRequestVersion.current) return;
       console.error('Error searching athletes:', err);
       setError('Failed to search athletes');
       setSearchResults([]);
     } finally {
+      if (requestVersion !== searchRequestVersion.current) return;
       setIsLoading(false);
     }
   };
@@ -108,6 +144,19 @@ export default function AllMeetResultsScreen() {
           </ThemedText>
           <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
             Try searching again
+          </ThemedText>
+        </View>
+      );
+    }
+
+    if (isOffline) {
+      return (
+        <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            Offline
+          </ThemedText>
+          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+            Meet results search is not available without an internet connection
           </ThemedText>
         </View>
       );
@@ -215,7 +264,6 @@ export default function AllMeetResultsScreen() {
             name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'}
             size={20}
             color={colors.secondaryText}
-            style={styles.searchIcon}
           />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}

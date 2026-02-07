@@ -2,6 +2,7 @@ import { Redirect, Stack } from 'expo-router'
 import { useAuth } from '@clerk/clerk-expo'
 import { useEffect, useState } from 'react'
 import { getCachedAuthState } from '@/lib/authCache'
+import { isNetworkAvailable } from '@/lib/networkUtils'
 import NetInfo from '@react-native-community/netinfo'
 
 export default function AuthRoutesLayout() {
@@ -11,11 +12,30 @@ export default function AuthRoutesLayout() {
   const [isOffline, setIsOffline] = useState(false)
   const [error, setError] = useState<Error | null>(null)
 
+  // Check network availability on mount and listen for changes
   useEffect(() => {
+    async function recheckNetwork() {
+      try {
+        const hasNetwork = await isNetworkAvailable()
+        setIsOffline(!hasNetwork)
+      } catch (err) {
+        console.error('[AuthLayout] Error checking network availability:', err)
+        // Assume offline on error
+        setIsOffline(true)
+      }
+    }
+
+    // Check immediately on mount
+    recheckNetwork()
+
+    // Listen for network status changes with NetInfo
     const unsubscribe = NetInfo.addEventListener(state => {
-      setIsOffline(state.isConnected === false)
+      setIsOffline(!state.isConnected)
     })
-    return () => unsubscribe()
+
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -23,7 +43,7 @@ export default function AuthRoutesLayout() {
       setIsCacheLoading(true)
       try {
         const cachedState = await getCachedAuthState()
-        setCachedIsSignedIn(cachedState)
+        setCachedIsSignedIn(cachedState?.isSignedIn ?? null)
         setError(null)
       } catch (e) {
         console.error('Error checking cached auth state:', e)

@@ -5,6 +5,25 @@ import { MeetName } from '@/data/types/meet';
 import type { LiftResult } from '@/data/types/athletes';
 import { getMeetConfig } from '@/data/meets/config';
 
+const INITIAL_LOAD_TIMEOUT_MS = 4000;
+
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([Promise.resolve(promise), timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 type DbSchedule = {
   id: number;
   date: string;
@@ -15,6 +34,14 @@ type DbSchedule = {
   weight_class: string;
   meet: string;
 };
+
+const SCHEDULE_SELECT_FIELDS =
+  'id,date,session_id,start_time,weigh_in_time,platform,weight_class,meet';
+
+const scheduleCache = new Map<MeetName, DbSchedule[]>();
+const scheduleInFlight = new Map<MeetName, Promise<DbSchedule[]>>();
+const transformedScheduleCache = new Map<MeetName, Schedule>();
+const transformedScheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 
 // Validate and convert platform string to Platform type
 function validatePlatform(platform: string): Platform {
@@ -52,38 +79,29 @@ function formatTo12Hour(time: string): string {
 }
 
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
-  
+  const cachedSchedule = scheduleCache.get(meet);
+  if (cachedSchedule) {
+    return cachedSchedule;
+  }
+
+  const inFlight = scheduleInFlight.get(meet);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
   try {
-    // First check what meet names we have in the database
-    const { data: allRecords, error: meetError } = await supabase
-      .from('session_schedule')
-      .select('meet');
-    
-    if (meetError) {
-      console.error('Error fetching meet names:', meetError);
-    } else {
-      const uniqueMeets = [...new Set(allRecords.map(r => r.meet))];
-    }
-
-    // Now try to fetch all records without any filters first
-    const { data: sampleRecords, error: sampleError } = await supabase
-      .from('session_schedule')
-      .select('*')
-      .limit(1);
-
-    if (sampleError) {
-      console.error('Error fetching sample records:', sampleError);
-      throw sampleError;
-    }
-
-    // Now fetch the actual schedule with filters
-    const { data, error } = await supabase
-      .from('session_schedule')
-      .select('*')
-      .eq('meet', meet)
-      .order('date')
-      .order('session_id')
-      .order('platform');
+    const { data, error } = await withTimeout(
+      supabase
+        .from('session_schedule')
+        .select(SCHEDULE_SELECT_FIELDS)
+        .eq('meet', meet)
+        .order('date')
+        .order('session_id')
+        .order('platform'),
+      INITIAL_LOAD_TIMEOUT_MS,
+      'fetchScheduleFromDb:schedule'
+    );
 
     if (error) {
       console.error('Error fetching schedule:', error);
@@ -95,11 +113,42 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       return [];
     }
 
-    return data;
+    scheduleCache.set(meet, data);
+    return data as DbSchedule[];
   } catch (error) {
     console.error('Error in fetchScheduleFromDb:', error);
     throw error;
+  } finally {
+    scheduleInFlight.delete(meet);
   }
+  })();
+
+  scheduleInFlight.set(meet, request);
+  return request;
+}
+
+async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
+  const cached = transformedScheduleCache.get(meet);
+  if (cached) {
+    return cached;
+  }
+
+  const inFlight = transformedScheduleInFlight.get(meet);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    const dbSchedule = await fetchScheduleFromDb(meet);
+    const transformed = await transformScheduleData(dbSchedule);
+    transformedScheduleCache.set(meet, transformed);
+    return transformed;
+  })().finally(() => {
+    transformedScheduleInFlight.delete(meet);
+  });
+
+  transformedScheduleInFlight.set(meet, request);
+  return request;
 }
 
 // Transform DB data to match our Schedule type
@@ -170,8 +219,7 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
 
 export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   try {
-    const dbSchedule = await fetchScheduleFromDb(meet);
-    return transformScheduleData(dbSchedule);
+    return await fetchAndTransformSchedule(meet);
   } catch (error) {
     console.error('Error in fetchSchedule:', error);
     throw error;
@@ -254,10 +302,9 @@ export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResu
 }
 
 export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
-  
   const { data, error } = await supabase
     .from('athletes')
-    .select('*')
+    .select('member_id,name,age,club,gender,weight_class,entry_total,adaptive,session_number,session_platform')
     .eq('meet', meet);
 
   if (error) {
@@ -290,7 +337,8 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
       .from('lifting_results')
       .select('name')
       .ilike('name', `%${query}%`)
-      .order('name');
+      .order('name')
+      .limit(100);
 
     if (error) {
       console.error('Error searching athletes:', error);

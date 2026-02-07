@@ -30,6 +30,7 @@ const iconMap: Record<string, string> = {
   'close': 'close',
   'download': 'download',
   'square.and.arrow.down': 'download',
+  'wifi.slash': 'cloud-offline',
 };
 
 type IconSymbolProps = {

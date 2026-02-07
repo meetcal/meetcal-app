@@ -18,12 +18,12 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { MeetName } from '@/data/types/meet';
 import { Platform as PlatformType } from '@/data/types/athletes';
-import { SyncManager } from '@/lib/database/sync-manager';
 import { LiftResult } from '@/data/types/athletes';
-import { saveMeetAthletes, getAthleteLiftingResults } from '@/lib/database/offline-store';
+import { getAthleteLiftingResults, getMeetData } from '@/lib/database/offline-store';
 import { Schedule, DaySchedule, Platform as PlatformDetails } from '@/types/schedule';
 import { useUser } from '@clerk/clerk-expo'
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useAuthGuard } from '@/utils/authGuard';
 
 // Update interface names
 interface SessionPlatformDetails {
@@ -87,40 +87,12 @@ interface CachedAthlete extends SessionAthlete {
 // Function to get user-specific storage key
 const getSavedWarmupsKey = (userId: string) => `@saved_warmups_${userId}`;
 
-async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName, forceRefresh?: boolean) {
+async function getSessionAthletes(sessionNumber: number, platform: string, meetId: MeetName) {
   try {
-    // If not forcing refresh, try offline store first
-    if (!forceRefresh) {
-      const syncManager = new SyncManager(meetId);
-      const meetData = await syncManager.getMeetData();
-      
-      const cachedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
-        athlete.session?.number === sessionNumber && 
-        athlete.session?.platform === platform
-      );
-
-      if (cachedAthletes.length > 0) {
-        // Sort cached athletes by entry total
-        const sortedAthletes = [...cachedAthletes].sort((a, b) => 
-          (b.entryTotal || 0) - (a.entryTotal || 0)
-        );
-
-        return {
-          [platform]: sortedAthletes.map((athlete: LiftResult) => ({
-            name: athlete.name,
-            age: athlete.age,
-            club: athlete.club,
-            entryTotal: athlete.entryTotal,
-            weightClass: athlete.weightClass
-          }))
-        };
-      }
-    }
-
-    // Get fresh data from Supabase
+    // Fetch session-scoped athletes from Supabase.
     const { data, error } = await supabase
       .from('athletes')
-      .select('*')
+      .select('member_id,name,age,club,gender,weight_class,entry_total,adaptive')
       .eq('session_number', sessionNumber)
       .eq('session_platform', platform)
       .eq('meet', meetId);
@@ -130,17 +102,8 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
       return {};
     }
 
-    // If no athletes found for this meet/session/platform, return empty and clear cache
+    // If no athletes found for this meet/session/platform, return empty
     if (!data || data.length === 0) {
-      // Clear any cached data for this meet/session/platform
-      const syncManager = new SyncManager(meetId);
-      const meetData = await syncManager.getMeetData();
-      const updatedAthletes = meetData.athletes.filter((athlete: LiftResult) => 
-        athlete.session?.number !== sessionNumber || 
-        athlete.session?.platform !== platform
-      );
-      await saveMeetAthletes(meetId, updatedAthletes);
-      
       return {};
     }
 
@@ -161,13 +124,9 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
     } as LiftResult));
 
     // Sort athletes by entry total
-    const sortedAthletes = [...athletes].sort((a, b) => 
+    const sortedAthletes = [...athletes].sort((a, b) =>
       (b.entryTotal || 0) - (a.entryTotal || 0)
     );
-
-    // Save to offline store
-    const syncManager = new SyncManager(meetId);
-    await saveMeetAthletes(meetId, sortedAthletes);
 
     return {
       [platform]: sortedAthletes.map(athlete => ({
@@ -184,67 +143,63 @@ async function getSessionAthletes(sessionNumber: number, platform: string, meetI
   }
 }
 
-async function getAthleteBests(name: string, meetId: MeetName): Promise<SupabaseBests> {
+async function getAthleteBestsBatch(names: string[], meetId: MeetName): Promise<Record<string, SupabaseBests>> {
+  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
+  const bestsByName: Record<string, SupabaseBests> = {};
+
+  uniqueNames.forEach((name) => {
+    bestsByName[name] = { snatch_best: 0, cj_best: 0, total: 0 };
+  });
+
+  if (uniqueNames.length === 0) {
+    return bestsByName;
+  }
+
   try {
-    
-    // Initialize result with null values
-    const result: SupabaseBests = {
-      snatch_best: null,
-      cj_best: null,
-      total: null
-    };
+    const { data, error } = await supabase
+      .from('lifting_results')
+      .select('name,snatch_best,cj_best,total')
+      .in('name', uniqueNames);
 
-    let liftingResults: any[] = [];
-
-    // Try to get from cache first
-    try {
-      const cachedResults = await getAthleteLiftingResults(meetId, name);
-      if (cachedResults && cachedResults.length > 0) {
-        liftingResults = cachedResults;
-      }
-    } catch (cacheError) {
-      console.log('Cache miss for athlete bests, fetching from Supabase');
+    if (error) {
+      throw error;
     }
 
-    // If no cached results, fetch from Supabase
-    if (liftingResults.length === 0) {
-      const { data } = await supabase
-        .from('lifting_results')
-        .select('snatch_best, cj_best, total')
-        .eq('name', name);
+    (data || []).forEach((record) => {
+      if (!record.name) return;
+      const current = bestsByName[record.name] || { snatch_best: 0, cj_best: 0, total: 0 };
+      bestsByName[record.name] = {
+        snatch_best: Math.max(current.snatch_best ?? 0, record.snatch_best ?? 0),
+        cj_best: Math.max(current.cj_best ?? 0, record.cj_best ?? 0),
+        total: Math.max(current.total ?? 0, record.total ?? 0),
+      };
+    });
 
-      if (data) {
-        liftingResults = data;
-      }
-    }
-
-    if (liftingResults && liftingResults.length > 0) {
-      // Process each result to find the bests
-      liftingResults.forEach(record => {
-        // Update snatch best if it's higher than current
-        if (record.snatch_best && (result.snatch_best === null || record.snatch_best > result.snatch_best)) {
-          result.snatch_best = record.snatch_best;
-        }
-        // Update C&J best if it's higher than current
-        if (record.cj_best && (result.cj_best === null || record.cj_best > result.cj_best)) {
-          result.cj_best = record.cj_best;
-        }
-        // Update total if it's higher than current
-        if (record.total && (result.total === null || record.total > result.total)) {
-          result.total = record.total;
-        }
-      });
-    }
-
-    // Convert null values to 0 for display
-    return {
-      snatch_best: result.snatch_best || 0,
-      cj_best: result.cj_best || 0,
-      total: result.total || 0
-    };
+    return bestsByName;
   } catch (error) {
-    console.error('Unexpected error in getAthleteBests:', error);
-    return { snatch_best: 0, cj_best: 0, total: 0 };
+    // Fall back to locally cached lifting results when network fetch fails.
+    await Promise.all(
+      uniqueNames.map(async (name) => {
+        try {
+          const cachedResults = await getAthleteLiftingResults(meetId, name);
+          if (!cachedResults || cachedResults.length === 0) return;
+
+          let snatchBest = 0;
+          let cjBest = 0;
+          let totalBest = 0;
+          cachedResults.forEach((row: any) => {
+            snatchBest = Math.max(snatchBest, row?.snatch_best ?? 0);
+            cjBest = Math.max(cjBest, row?.cj_best ?? 0);
+            totalBest = Math.max(totalBest, row?.total ?? 0);
+          });
+          bestsByName[name] = { snatch_best: snatchBest, cj_best: cjBest, total: totalBest };
+        } catch {
+          // Keep default zeros for this athlete.
+        }
+      })
+    );
+
+    return bestsByName;
   }
 }
 
@@ -270,36 +225,35 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
 
   const loadAthletes = async () => {
     setLoading(true);
     try {
-      const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet || '', refreshKey > 0);
+      const sessionAthletes = await getSessionAthletes(sessionNumber, platform, selectedMeet || '');
       setAthletes(sessionAthletes);
 
       // Initialize loading states for each athlete
       const newLoadingBests: Record<string, boolean> = {};
+      const athleteNames: string[] = [];
       for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
         for (const athlete of platformAthletes) {
           newLoadingBests[athlete.name] = true;
+          athleteNames.push(athlete.name);
         }
       }
       setLoadingBests(newLoadingBests);
 
-      // Fetch athlete bests independently
-      for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
-        for (const athlete of platformAthletes) {
-          getAthleteBests(athlete.name, selectedMeet || '').then(bests => {
-            setAthleteBests(prev => ({
-              ...prev,
-              [athlete.name]: bests
-            }));
-            setLoadingBests(prev => ({
-              ...prev,
-              [athlete.name]: false
-            }));
+      if (athleteNames.length > 0) {
+        const bestsMap = await getAthleteBestsBatch(athleteNames, selectedMeet || '');
+        setAthleteBests((prev) => ({ ...prev, ...bestsMap }));
+        setLoadingBests((prev) => {
+          const next = { ...prev };
+          athleteNames.forEach((name) => {
+            next[name] = false;
           });
-        }
+          return next;
+        });
       }
       
       // Check for warmups after loading athletes
@@ -451,7 +405,20 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     styles.sortButton,
                     pressed && isSubscribed && { opacity: 0.8 }
                   ]}
-                  onPress={isSubscribed ? handleSortPress : () => router.push('/paywall')}
+                  onPress={isSubscribed ? handleSortPress : () => {
+                    const authResult = requireAuth({
+                      feature: 'sort-athletes',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    });
+                    if (authResult === null || authResult === false) {
+                      return;
+                    }
+                    router.push({
+                      pathname: '/(screens)/paywall',
+                      params: { from: '/(screens)/schedule-details', feature: 'sort-athletes' },
+                    } as any);
+                  }}
                 >
                   <IconSymbol
                     name={isSubscribed ? 'arrow.up.arrow.down' : 'lock'}
@@ -488,7 +455,20 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                 styles.sortButton,
                 pressed && isSubscribed && { opacity: 0.8 }
               ]}
-              onPress={isSubscribed ? handleSortPress : () => router.push('/paywall')}
+              onPress={isSubscribed ? handleSortPress : () => {
+                const authResult = requireAuth({
+                  feature: 'sort-athletes',
+                  message: 'Sign in to access premium features.',
+                  returnPath: '/(screens)/schedule-details',
+                });
+                if (authResult === null || authResult === false) {
+                  return;
+                }
+                router.push({
+                  pathname: '/(screens)/paywall',
+                  params: { from: '/(screens)/schedule-details', feature: 'sort-athletes' },
+                } as any);
+              }}
             >
               <IconSymbol
                 name={isSubscribed ? 'arrow.up.arrow.down' : 'lock'}
@@ -580,10 +560,44 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                       </>
                     )
                   ) : (
-                    <Pressable 
-                      style={styles.premiumBadgeContainer}
-                      onPress={() => router.push('/paywall')}
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.premiumStatsContainer,
+                        pressed && { opacity: 0.8 }
+                      ]}
+                      onPress={() => {
+                        const authResult = requireAuth({
+                          feature: 'athlete-bests',
+                          message: 'Sign in to access premium features.',
+                          returnPath: '/(screens)/schedule-details',
+                        });
+                        if (authResult === null || authResult === false) {
+                          return;
+                        }
+                        router.push({
+                          pathname: '/(screens)/paywall',
+                          params: { from: '/(screens)/schedule-details', feature: 'athlete-bests' },
+                        } as any);
+                      }}
                     >
+                      <View style={styles.premiumLabelsRow}>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best Sn
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best CJ
+                        </ThemedText>
+                        <ThemedText style={[styles.statLabel, styles.premiumStatLabel, { color: colors.secondaryText }]}>
+                          Best Total
+                        </ThemedText>
+                      </View>
+                      <View style={styles.premiumUnlockBadge}>
+                        <IconSymbol name="lock" size={11} color="#FFFFFF" />
+                        <ThemedText style={styles.premiumUnlockText}>
+                          Unlock with Premium
+                        </ThemedText>
+                        <IconSymbol name="chevron.right" size={11} color="#FFFFFF" />
+                      </View>
                     </Pressable>
                   )}
                 </View>
@@ -594,13 +608,24 @@ function SessionAthletes({ sessionNumber, platform, sessionWeightClass, refreshK
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    const authResult = requireAuth({
+                      feature: 'athlete-results',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    });
+                    if (authResult === null || authResult === false) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/athlete-results',
                         params: { name: athlete.name }
                       });
                     } else {
-                      router.push('/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'athlete-results' },
+                      } as any);
                     }
                   }}
                 >
@@ -739,12 +764,12 @@ export default function SessionDetailsScreen() {
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionData, setSessionData] = useState<Session | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [syncManager] = useState(() => new SyncManager(selectedMeet || ''));
 
   // Get time zone abbreviation
   const timeZoneAbbr = useMemo(() => {
@@ -808,21 +833,21 @@ export default function SessionDetailsScreen() {
     })();
   }, []);
 
-  // Load session data from SyncManager
+  // Load session data from cache
   const loadSessionData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Get fresh data from SyncManager
-      const meetData = await syncManager.getMeetData();
+      // Get cached data (context's SyncManager handles syncing)
+      const meetData = await getMeetData(params.meet as MeetName);
       if (meetData.schedule) {
         setCurrentSchedule(meetData.schedule);
-        
+
         // Find the session in the schedule
-        const day = meetData.schedule.find(day => 
-          day.sessions.some(s => s.number === parseInt(params.sessionNumber))
+        const day = meetData.schedule.find((day: DaySchedule) =>
+          day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
         );
-        
-        const session = day?.sessions.find(s => 
+
+        const session = day?.sessions.find((s: Session) =>
           s.number === parseInt(params.sessionNumber)
         );
 
@@ -835,7 +860,7 @@ export default function SessionDetailsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [syncManager, params.sessionNumber]);
+  }, [params.meet, params.sessionNumber]);
 
   // Initial load
   useEffect(() => {
@@ -903,13 +928,27 @@ export default function SessionDetailsScreen() {
     );
   };
 
-  const handleSavePress = () => {
+  const handleSavePress = async () => {
+    // Check authentication first
+    const authResult = requireAuth({
+      feature: 'save-session',
+      message: 'Sign in to save sessions and sync them across your devices.',
+      returnPath: '/(screens)/schedule-details',
+    });
+    if (authResult === null || authResult === false) {
+      return;
+    }
+
     if (isSaved) {
-      removeSession(sessionId);
+      const removed = await removeSession(sessionId);
+      if (!removed) {
+        Alert.alert('Error', 'Failed to remove saved session. Please try again.');
+        return;
+      }
       showSaveAlert('remove');
     } else {
       // Find the session day in the current schedule
-      const sessionDay = currentSchedule.find((day: DaySchedule) => 
+      const sessionDay = currentSchedule.find((day: DaySchedule) =>
         day.sessions.some((s: Session) => s.number === parseInt(params.sessionNumber))
       );
 
@@ -918,7 +957,7 @@ export default function SessionDetailsScreen() {
         return;
       }
 
-      saveSession({
+      const saved = await saveSession({
         id: sessionId,
         sessionNumber: Number(params.sessionNumber),
         platform: params.platform,
@@ -929,6 +968,10 @@ export default function SessionDetailsScreen() {
         athleteNames: params.athleteName ? [params.athleteName] : undefined,
         meet: params.meet,
       });
+      if (!saved) {
+        Alert.alert('Error', 'Failed to save session. Please try again.');
+        return;
+      }
       showSaveAlert('save');
       checkAndShowReviewPrompt();
     }
@@ -1153,6 +1196,14 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    const authResult = requireAuth({
+                      feature: 'qualifying-totals',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    });
+                    if (authResult === null || authResult === false) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/(screens)/new-qualifying-totals',
@@ -1163,7 +1214,10 @@ export default function SessionDetailsScreen() {
                         }
                       });
                     } else {
-                      router.push('/(screens)/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'qualifying-totals' },
+                      } as any);
                     }
                   }}
                 >
@@ -1181,6 +1235,14 @@ export default function SessionDetailsScreen() {
                     pressed && { opacity: 0.8 }
                   ]}
                   onPress={() => {
+                    const authResult = requireAuth({
+                      feature: 'attempt-estimator',
+                      message: 'Sign in to access premium features.',
+                      returnPath: '/(screens)/schedule-details',
+                    });
+                    if (authResult === null || authResult === false) {
+                      return;
+                    }
                     if (isSubscribed) {
                       router.push({
                         pathname: '/(screens)/attempt-estimator',
@@ -1191,7 +1253,10 @@ export default function SessionDetailsScreen() {
                         }
                       });
                     } else {
-                      router.push('/(screens)/paywall');
+                      router.push({
+                        pathname: '/(screens)/paywall',
+                        params: { from: '/(screens)/schedule-details', feature: 'attempt-estimator' },
+                      } as any);
                     }
                   }}
                 >
@@ -1492,5 +1557,44 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     marginHorizontal: 8,
+  },
+  premiumValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  premiumValueText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  premiumStatsContainer: {
+    flex: 3,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  premiumLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  premiumStatLabel: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  premiumUnlockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#007AFF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  premiumUnlockText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 }); 

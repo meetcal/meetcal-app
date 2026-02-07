@@ -24,6 +24,9 @@ export default ({ config }) => ({
         'group.com.memohnsen.meetcal'
       ]
     },
+    config: {
+      usesNonExemptEncryption: false
+    },
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
       UIBackgroundModes: ["remote-notification"],
@@ -48,7 +51,7 @@ export default ({ config }) => ({
       'expo-build-properties',
       {
         ios: {
-          deploymentTarget: '17.0',
+          deploymentTarget: '18.0',
           useFrameworks: 'static',
         },
         android: {
@@ -56,7 +59,7 @@ export default ({ config }) => ({
           targetSdkVersion: 35,
           buildToolsVersion: '36.1.0',
           minSdkVersion: 24,
-          ndkVersion: '27.0.12077973',  // NDK r27b - EAS Build available version, AGP 8.6 handles 16KB alignment
+          ndkVersion: '27.1.12297006',  // NDK version matching EAS Build
         },
       },
     ],
