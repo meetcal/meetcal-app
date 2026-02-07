@@ -5,6 +5,7 @@ import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
+import Constants from 'expo-constants';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -90,7 +91,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="(index)"
         options={{
-          
+
           headerShown: false,
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
         }}
