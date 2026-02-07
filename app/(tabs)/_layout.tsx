@@ -5,7 +5,6 @@ import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
-import Constants from 'expo-constants';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -16,7 +15,7 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
   const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
     border: currentTheme === 'dark' ? '#1C1C1E' : '#E1E1E1',
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
     secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',

@@ -6,7 +6,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import EventInfoScreen from '@/app/(screens)/event-info';
-import { Colors } from '@/constants/Colors';
 
 export default function InfoScreen() {
   const { currentTheme } = useTheme();
@@ -34,7 +33,7 @@ export default function InfoScreen() {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? Colors.dark.background : Colors.light.background
+            backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5'
           },
           headerShadowVisible: false,
         }}
