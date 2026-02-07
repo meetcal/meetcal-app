@@ -12,6 +12,8 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import * as StoreReview from 'expo-store-review';
+import { clearAuthCache } from '@/lib/authCache';
+import { useAuthGuard } from '@/utils/authGuard';
 
 type EditableField = 'firstName' | 'lastName' | 'email';
 export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
@@ -27,6 +29,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
+  const { requireAuth } = useAuthGuard();
   const requestStoreReview = useCallback(async () => {
     try {
       const isAvailable = await StoreReview.isAvailableAsync();
@@ -51,8 +54,9 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     try {
+      await clearAuthCache();
       await signOut();
-      router.replace('/(tabs)/info');
+      router.replace('/(tabs)/(index)');
     } catch (err) {
       console.error('Error signing out:', err);
       Alert.alert('Error', 'Failed to sign out. Please try again.');
@@ -201,7 +205,12 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <NotificationSettings colors={colors} subscriptionStatus={subscriptionType || 'free'} />
+          <NotificationSettings
+            colors={colors}
+            subscriptionStatus={subscriptionType || 'free'}
+            requireAuth={requireAuth}
+            router={router}
+          />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>

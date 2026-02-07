@@ -20,6 +20,7 @@ import type { ClubMeetStats } from '@/types/club';
 import { posthog } from '@/lib/posthog';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 export default function MeetResultsByClubScreen() {
   const { currentTheme } = useTheme();
@@ -33,6 +34,7 @@ export default function MeetResultsByClubScreen() {
   const [showPreview, setShowPreview] = useState(false);
   const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   const shareableViewRef = useRef<View>(null);
 
@@ -44,6 +46,22 @@ export default function MeetResultsByClubScreen() {
       meet_name: meet,
     });
   }, [club, meet]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkNetwork = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (isMounted) setIsOffline(!hasNetwork);
+    };
+    checkNetwork();
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Define theme colors
   const colors = {
@@ -70,6 +88,13 @@ export default function MeetResultsByClubScreen() {
     setError(null);
 
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        setIsOffline(true);
+        setClubStats(null);
+        setError('Offline - meet results are not available');
+        return;
+      }
       const stats = await fetchClubMeetStats(club, meet);
       setClubStats(stats);
     } catch (err) {
@@ -166,14 +191,16 @@ export default function MeetResultsByClubScreen() {
         {topBar}
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            Error loading statistics
+            {isOffline ? 'Offline' : 'Error loading statistics'}
           </ThemedText>
           <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-            {error || 'Unknown error'}
+            {isOffline ? 'Meet results are not available without an internet connection' : (error || 'Unknown error')}
           </ThemedText>
-          <Pressable style={[styles.retryButton, { backgroundColor: colors.link }]} onPress={loadStats}>
-            <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-          </Pressable>
+          {!isOffline && (
+            <Pressable style={[styles.retryButton, { backgroundColor: colors.link }]} onPress={loadStats}>
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+            </Pressable>
+          )}
         </View>
       </ThemedView>
     );

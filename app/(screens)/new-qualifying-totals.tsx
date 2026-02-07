@@ -41,13 +41,12 @@ export default function QualifyingTotalsScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setTotals(null);
     setFetchError(null);
 
-    // Fetch only the current page first
-    fetchQualifyingTotals(filters.event, filters.ageGroup, filters.gender)
+    fetchQualifyingTotals()
       .then((data) => {
         if (!cancelled) {
+          setAllTotals(data);
           setTotals(data);
           setLoading(false);
         }
@@ -59,14 +58,8 @@ export default function QualifyingTotalsScreen() {
         }
       });
 
-    // Then fetch all totals in the background
-    fetchQualifyingTotals()
-      .then((data) => {
-        if (!cancelled) setAllTotals(data);
-      });
-
     return () => { cancelled = true; };
-  }, [filters.event, filters.ageGroup, filters.gender]);
+  }, []);
 
   // Use the full cache if available, otherwise just the current page
   const totalsData = useMemo(() => {

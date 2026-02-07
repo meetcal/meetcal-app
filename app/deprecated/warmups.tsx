@@ -5,7 +5,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol'
 import { useTheme } from '@/contexts/ThemeContext'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext'
@@ -24,6 +24,7 @@ interface AthleteWarmup {
 }
 
 export default function WarmupsScreen() {
+  const MIN_RELOAD_INTERVAL_MS = 1000;
   const { user } = useUser();
   const { currentTheme } = useTheme()
   const { selectedMeet } = useSelectedMeet()
@@ -31,6 +32,8 @@ export default function WarmupsScreen() {
   const insets = useSafeAreaInsets()
   const [savedWarmups, setSavedWarmups] = useState<AthleteWarmup[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  const inFlightLoadRef = useRef<Promise<void> | null>(null);
+  const lastLoadedAtRef = useRef(0);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -51,47 +54,23 @@ export default function WarmupsScreen() {
     link: '#007AFF',
   }
 
-  useFocusEffect(
-    useCallback(() => {
-      if (user?.id) {
-        loadSavedWarmups();
-      }
-    }, [user?.id, selectedMeet])
-  );
-
-  useEffect(() => {
-    console.log('Effect triggered - User ID:', user?.id, 'Selected Meet:', selectedMeet);
-    if (user?.id) {
-      loadSavedWarmups();
-      
-      // Check if warmups were reset from info screen
-      const checkReset = async () => {
-        try {
-          const resetTimestamp = await AsyncStorage.getItem(`@warmups_reset_${user.id}`);
-          if (resetTimestamp) {
-            // Clear the reset flag
-            await AsyncStorage.removeItem(`@warmups_reset_${user.id}`);
-            // Reload warmups
-            loadSavedWarmups();
-          }
-        } catch (error) {
-          console.error('Error checking warmups reset:', error);
-        }
-      };
-      
-      checkReset();
-    }
-  }, [selectedMeet, user?.id])
-
-  const loadSavedWarmups = async () => {
+  const loadSavedWarmups = useCallback(async (force = false) => {
     if (!user?.id) {
-      console.log('No user ID, clearing warmups');
-      setSavedWarmups([]); // Clear warmups if no user
+      setSavedWarmups([]);
       return;
     }
-    
-    try {
-      console.log('Loading warmups for user:', user.id, 'Meet:', selectedMeet);
+
+    if (!force && Date.now() - lastLoadedAtRef.current < MIN_RELOAD_INTERVAL_MS) {
+      return;
+    }
+
+    if (inFlightLoadRef.current) {
+      await inFlightLoadRef.current;
+      return;
+    }
+
+    const request = (async () => {
+      try {
       const key = getSavedWarmupsKey(user.id);
 
       // --- Fetch from Supabase --- 
@@ -137,8 +116,6 @@ export default function WarmupsScreen() {
           setSavedWarmups([]);
         }
       } else if (supabaseWarmups) {
-        console.log('Supabase warmups fetched:', supabaseWarmups);
-
         if (supabaseWarmups.length === 0) {
           setSavedWarmups([]);
           return;
@@ -150,10 +127,16 @@ export default function WarmupsScreen() {
         let athleteSessionMap = new Map<string, number>();
 
         if (athleteNames.length > 0) {
-          const { data: athletesData, error: athletesError } = await supabase
+          let athletesQuery = supabase
             .from('athletes')
             .select('name, session_number')
             .in('name', athleteNames);
+
+          if (selectedMeet) {
+            athletesQuery = athletesQuery.eq('meet', selectedMeet);
+          }
+
+          const { data: athletesData, error: athletesError } = await athletesQuery;
 
           if (athletesError) {
             console.error('Error fetching athletes data from Supabase:', athletesError);
@@ -186,21 +169,62 @@ export default function WarmupsScreen() {
 
         setSavedWarmups(combinedWarmups);
       } else {
-        console.log('No warmups found in Supabase for this filter');
         setSavedWarmups([]);
       }
-    } catch (error) {
+      } catch (error) {
       console.error('Error loading warmups:', error);
       setSavedWarmups([]);
+      } finally {
+        lastLoadedAtRef.current = Date.now();
+      }
+    })();
+
+    inFlightLoadRef.current = request;
+    try {
+      await request;
+    } finally {
+      inFlightLoadRef.current = null;
     }
-  };
+  }, [MIN_RELOAD_INTERVAL_MS, selectedMeet, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isCancelled = false;
+
+      const run = async () => {
+        if (!user?.id) return;
+        try {
+          const resetKey = `@warmups_reset_${user.id}`;
+          const resetTimestamp = await AsyncStorage.getItem(resetKey);
+          if (resetTimestamp) {
+            await AsyncStorage.removeItem(resetKey);
+            if (!isCancelled) {
+              await loadSavedWarmups(true);
+            }
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking warmups reset:', error);
+        }
+
+        if (!isCancelled) {
+          await loadSavedWarmups(false);
+        }
+      };
+
+      run();
+      return () => {
+        isCancelled = true;
+      };
+    }, [loadSavedWarmups, user?.id])
+  );
 
   const onRefresh = useCallback(async () => {
     if (!user?.id) return;
     setRefreshing(true)
-    await loadSavedWarmups()
+    await loadSavedWarmups(true)
     setRefreshing(false)
-  }, [selectedMeet, user?.id])
+  }, [loadSavedWarmups, user?.id])
 
   const deleteWarmup = async (id: string) => {
     if (!user?.id) return;
@@ -217,7 +241,6 @@ export default function WarmupsScreen() {
       const allWarmups = storedWarmups ? JSON.parse(storedWarmups) : []
       const updatedWarmups = allWarmups.filter((warmup: AthleteWarmup) => warmup.id !== id)
       await AsyncStorage.setItem(key, JSON.stringify(updatedWarmups))
-      console.log('Warmup deleted locally');
 
       // 3. Delete from Supabase
       const { error: supabaseError } = await supabase
@@ -231,7 +254,6 @@ export default function WarmupsScreen() {
         setSavedWarmups(previousWarmups);
         // Optionally show an error message
       } else {
-        console.log('Warmup deleted from Supabase');
       }
       
     } catch (error) {

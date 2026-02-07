@@ -17,6 +17,8 @@ import * as SecureStore from 'expo-secure-store'
 import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotificationsAsync } from '@/utils/notifications';
+import NetInfo from '@react-native-community/netinfo';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -25,6 +27,7 @@ import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { posthog } from '@/lib/posthog';
 import { UpdateNotification } from '@/components/UpdateNotification';
+import { OfflineIndicator } from '@/components/OfflineIndicator';
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -36,6 +39,15 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// Configure NetInfo IMMEDIATELY with shorter timeout for faster offline detection
+// This MUST run synchronously before any NetInfo.fetch() calls
+NetInfo.configure({
+  reachabilityUrl: 'https://clients3.google.com/generate_204',
+  reachabilityRequestTimeout: 3000,  // 3 seconds instead of default 15s
+  reachabilityShortTimeout: 3000,
+  useNativeReachability: true
+});
 
 // PostHog page view tracking component
 function PostHogPageView() {
@@ -160,6 +172,7 @@ export default function RootLayout() {
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
@@ -175,6 +188,31 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     initialize();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkOffline = async () => {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork && isMounted) {
+        setOfflineBypass(true);
+      } else if (hasNetwork && isMounted) {
+        setOfflineBypass(false);
+      }
+    };
+    checkOffline();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setOfflineBypass(!isConnected);
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Effect to sync Clerk user with RevenueCat
@@ -215,7 +253,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   useEffect(() => {
     async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && !isSubscriptionLoading && fontsLoaded && isUserLoaded) {
+      if (!hasAttemptedSplashHide.current && isInitialized && fontsLoaded && (offlineBypass || (!isSubscriptionLoading && isUserLoaded))) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
 
@@ -223,26 +261,18 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
         if (initialUrl) {
           console.log('[RootLayout] App launched with initial URL, letting router handle:', initialUrl);
-          if (!isUserSignedIn) {
-            if (!initialUrl.includes('/sign-in') && !initialUrl.includes('/sign-up')) { // Example check
-                router.replace('/sign-in');
-            }
-          }
+          // Let router handle deep links - auth will be guarded per-feature
         } else {
-          // No deep link, proceed with default routing
-          if (!isUserSignedIn) {
-            router.replace('/sign-in');
-          } else {
-            router.replace('/(tabs)');
-          }
+          // Always navigate to tabs - authentication handled just-in-time
+          router.replace('/(tabs)' as any);
         }
       }
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router]);
+  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router, offlineBypass]);
 
-  if (!isInitialized || isSubscriptionLoading || !isUserLoaded) {
+  if (!isInitialized || (!offlineBypass && (isSubscriptionLoading || !isUserLoaded))) {
     return null;
   }
 
@@ -256,8 +286,11 @@ function RootLayoutNav() {
   return (
     <NavigationThemeProvider value={theme}>
       <UpdateNotification />
+      <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+        <Stack.Screen name="(screens)" />
+        <Stack.Screen name="(auth)" />
       </Stack>
       <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
     </NavigationThemeProvider>

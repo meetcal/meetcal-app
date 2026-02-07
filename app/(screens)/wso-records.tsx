@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { WeightClassRecord, RecordsData, AgeGroupRecords } from '@/types/records';
-import { fetchWSORecords, fetchWSOList, fetchWSOAgeGroups } from '@/lib/database/fetch-wso-records';
+import { fetchWSORecords, fetchWSOList } from '@/lib/database/fetch-wso-records';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import PaywallScreen from './paywall';
 
@@ -20,6 +20,31 @@ interface Filters {
 
 const windowHeight = Dimensions.get('window').height;
 const maxOptionsHeight = windowHeight * 0.4;
+const AGE_GROUP_ORDER = ['u11', 'u13', 'u15', 'u17', 'youth', 'junior', 'senior'];
+
+function sortAgeGroups(ageGroups: string[]): string[] {
+  return [...ageGroups].sort((a, b) => {
+    const aLower = a.toLowerCase();
+    const bLower = b.toLowerCase();
+    const aIdx = AGE_GROUP_ORDER.indexOf(aLower);
+    const bIdx = AGE_GROUP_ORDER.indexOf(bLower);
+
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    if (aIdx !== -1) return -1;
+    if (bIdx !== -1) return 1;
+
+    const mastersA = aLower.startsWith('masters');
+    const mastersB = bLower.startsWith('masters');
+    if (mastersA && mastersB) {
+      const numA = parseInt(aLower.replace(/[^0-9]/g, ''), 10);
+      const numB = parseInt(bLower.replace(/[^0-9]/g, ''), 10);
+      return numA - numB;
+    }
+    if (mastersA) return 1;
+    if (mastersB) return -1;
+    return a.localeCompare(b);
+  });
+}
 
 export default function RecordsScreen() {
   const { currentTheme } = useTheme();
@@ -39,7 +64,6 @@ export default function RecordsScreen() {
   const [records, setRecords] = useState<RecordsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [allRecords, setAllRecords] = useState<RecordsData | null>(null);
 
   useEffect(() => {
     async function fetchWSOs() {
@@ -50,7 +74,7 @@ export default function RecordsScreen() {
           setFilters(f => ({ ...f, wso: wsos[0] }));
           setTempFilters(f => ({ ...f, wso: wsos[0] }));
         }
-      } catch (error) {
+      } catch {
         setFetchError('Failed to load WSOs');
       }
     }
@@ -58,56 +82,34 @@ export default function RecordsScreen() {
   }, []);
 
   useEffect(() => {
-    if (!tempFilters.wso) return;
-    async function fetchAgeGroupsForWSO() {
-      try {
-        let ageGroups = Array.from(new Set(await fetchWSOAgeGroups(tempFilters.wso)));
-      const order = ['u11','u13', 'u15', 'u17', 'youth','junior', 'senior'];
-      ageGroups = ageGroups.sort((a, b) => {
-        const aLower = a.toLowerCase();
-        const bLower = b.toLowerCase();
-        const aIdx = order.indexOf(aLower);
-        const bIdx = order.indexOf(bLower);
-        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-        if (aIdx !== -1) return -1;
-        if (bIdx !== -1) return 1;
-        // Masters sort
-        const mastersA = aLower.startsWith('masters');
-        const mastersB = bLower.startsWith('masters');
-        if (mastersA && mastersB) {
-          // Extract number after 'Masters'
-          const numA = parseInt(aLower.replace(/[^0-9]/g, ''));
-          const numB = parseInt(bLower.replace(/[^0-9]/g, ''));
-          return numA - numB;
-        }
-        if (mastersA) return 1;
-        if (mastersB) return -1;
-        // Otherwise, alphabetical
-        return a.localeCompare(b);
-      });
-      setAvailableAgeGroups(ageGroups);
-      if (ageGroups.length > 0 && !ageGroups.includes(tempFilters.ageGroup)) {
-        setTempFilters(prev => ({ ...prev, ageGroup: ageGroups[0] }));
-      }
-      } catch (error) {
-        setFetchError('Failed to load age groups');
-      }
-    }
-    fetchAgeGroupsForWSO();
-  }, [tempFilters.wso]);
-
-  useEffect(() => {
     let cancelled = false;
+    if (!filters.wso) {
+      setLoading(false);
+      setRecords(null);
+      setAvailableAgeGroups([]);
+      return () => { cancelled = true; };
+    }
+
     setLoading(true);
     setRecords(null);
     setFetchError(null);
 
-    if (!filters.wso || !filters.ageGroup) return;
-    fetchWSORecords(filters.wso, filters.ageGroup, filters.gender)
+    fetchWSORecords(filters.wso)
       .then((data) => {
         if (!cancelled) {
+          const ageGroups = sortAgeGroups(Object.keys(data));
+          setAvailableAgeGroups(ageGroups);
+
+          const fallbackAgeGroup = ageGroups[0] ?? '';
+          setFilters((prev) => {
+            if (!fallbackAgeGroup || ageGroups.includes(prev.ageGroup)) return prev;
+            return { ...prev, ageGroup: fallbackAgeGroup };
+          });
+          setTempFilters((prev) => {
+            if (!fallbackAgeGroup || ageGroups.includes(prev.ageGroup)) return prev;
+            return { ...prev, ageGroup: fallbackAgeGroup };
+          });
           setRecords(data);
-          setAllRecords(data);
           setLoading(false);
         }
       })
@@ -117,17 +119,13 @@ export default function RecordsScreen() {
           setLoading(false);
         }
       });
-    fetchWSORecords(filters.wso)
-      .then((data) => {
-        if (!cancelled) setAllRecords(data);
-      })
-      .catch(() => {});
+
     return () => { cancelled = true; };
-  }, [filters.wso, filters.ageGroup, filters.gender]);
+  }, [filters.wso]);
 
   const recordsData = useMemo<RecordsData | null>(() => {
-    return records || allRecords || null;
-  }, [records, allRecords]);
+    return records || null;
+  }, [records]);
 
   const colors = {
     background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',

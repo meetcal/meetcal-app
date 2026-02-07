@@ -2,6 +2,8 @@ import { NativeModules } from 'react-native';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import { MeetName } from '@/data/types/meet';
 
+let hasLoggedMissingWidgetModule = false;
+
 export const syncSavedWidget = (
   selectedMeet: MeetName | null,
   sessions: SavedSession[],
@@ -9,7 +11,10 @@ export const syncSavedWidget = (
 ) => {
   const module = NativeModules.SavedWidget;
   if (!module?.updateSavedWidget) {
-    console.log('[Widget] Native module not available');
+    if (!hasLoggedMissingWidgetModule) {
+      console.log('[Widget] Native module not available');
+      hasLoggedMissingWidgetModule = true;
+    }
     return;
   }
 

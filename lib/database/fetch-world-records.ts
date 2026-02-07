@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import { WorldRecord, WorldRecordDisplay } from '@/types/world-records';
 
+const worldRecordsCache = new Map<string, WorldRecordDisplay[]>();
+const worldRecordsInFlight = new Map<string, Promise<WorldRecordDisplay[]>>();
+
 /**
  * Helper function to determine if a weight class contains a "+" sign
  */
@@ -36,35 +39,54 @@ export async function fetchWorldRecords(
   gender: string,
   ageCategory: string
 ): Promise<WorldRecordDisplay[]> {
-  const { data, error } = await supabase
-    .from('world_records')
-    .select('*')
-    .eq('gender', gender)
-    .eq('age_category', ageCategory);
-
-  if (error) {
-    console.error('Error fetching world records:', error);
-    throw error;
+  const cacheKey = `${gender}::${ageCategory}`;
+  const cached = worldRecordsCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
-  if (!data) {
-    return [];
+  const inFlight = worldRecordsInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
   }
 
-  // Transform the data to match display format
-  const records: WorldRecordDisplay[] = (data as WorldRecord[]).map(record => ({
-    weightClass: record.weight_class,
-    snatchRecord: record.snatch_record,
-    cjRecord: record.cj_record,
-    totalRecord: record.total_record,
-    isPlusClass: isPlusClass(record.weight_class),
-    numericWeight: getNumericWeight(record.weight_class),
-  }));
+  const request = (async () => {
+    const { data, error } = await supabase
+      .from('world_records')
+      .select('weight_class,snatch_record,cj_record,total_record')
+      .eq('gender', gender)
+      .eq('age_category', ageCategory);
 
-  // Sort records
-  records.sort(sortWorldRecords);
+    if (error) {
+      console.error('Error fetching world records:', error);
+      throw error;
+    }
 
-  return records;
+    if (!data) {
+      worldRecordsCache.set(cacheKey, []);
+      return [];
+    }
+
+    // Transform the data to match display format
+    const records: WorldRecordDisplay[] = (data as WorldRecord[]).map(record => ({
+      weightClass: record.weight_class,
+      snatchRecord: record.snatch_record,
+      cjRecord: record.cj_record,
+      totalRecord: record.total_record,
+      isPlusClass: isPlusClass(record.weight_class),
+      numericWeight: getNumericWeight(record.weight_class),
+    }));
+
+    // Sort records
+    records.sort(sortWorldRecords);
+    worldRecordsCache.set(cacheKey, records);
+    return records;
+  })().finally(() => {
+    worldRecordsInFlight.delete(cacheKey);
+  });
+
+  worldRecordsInFlight.set(cacheKey, request);
+  return request;
 }
 
 /**

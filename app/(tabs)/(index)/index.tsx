@@ -1,10 +1,7 @@
 import { StyleSheet, View, FlatList, useWindowDimensions, ViewToken, ScrollView, Pressable, Modal, RefreshControl, Alert, Platform, Animated, Image } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useNavigation, useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useRef, useState, useMemo, useEffect, useLayoutEffect } from 'react';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { SyncManager } from '@/lib/database/sync-manager';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -13,40 +10,15 @@ import { Session, Platform as PlatformType, DaySchedule, Schedule } from '@/type
 import { useTheme } from '@/contexts/ThemeContext';
 import { PageIndicator } from '@/components/PageIndicator';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { initStore, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
-import { fetchSchedule } from '@/lib/database/queries';
+import { initStore, getMeetData } from '@/lib/database/offline-store';
 import { MeetName } from '@/data/types/meet';
 import { VersionAnnouncement } from '@/components/VersionAnnouncement';
 import { useAuth } from '@clerk/clerk-expo';
+import { OnboardingView, checkOnboardingComplete } from '@/components/OnboardingView';
 
-// Helper function to calculate weigh-in time
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === 'PM' && hours !== 12) hour24 += 12;
-  if (period === 'AM' && hours === 12) hour24 = 0;
-  
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-  
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-  
-  // Convert back to 12 hour format
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
+const PLATFORM_SORT_ORDER = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'] as const;
 
-function SessionView({ session, letterFilter, timeZone }: { session: Session; letterFilter: string; timeZone: string }) {
+function SessionView({ session, timeZone }: { session: Session; timeZone: string }) {
   const router = useRouter();
   const platformColors = getPlatformColors();
   const { currentTheme } = useTheme();
@@ -60,19 +32,15 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
     pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
   };
 
-  // Filter platforms based on letterFilter
-  const filteredPlatforms = letterFilter 
-    ? session.platforms.filter(platform => platform.weightClass.slice(-1) === letterFilter)
-    : session.platforms;
-
-  // Custom sort order for platforms
-  const platformSortOrder = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  const sortedPlatforms = [...filteredPlatforms].sort((a, b) => {
-    const idxA = platformSortOrder.indexOf(a.platform);
-    const idxB = platformSortOrder.indexOf(b.platform);
-    // If not found, push to end
-    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-  });
+  const sortedPlatforms = useMemo(
+    () =>
+      [...session.platforms].sort((a, b) => {
+        const idxA = PLATFORM_SORT_ORDER.indexOf(a.platform as (typeof PLATFORM_SORT_ORDER)[number]);
+        const idxB = PLATFORM_SORT_ORDER.indexOf(b.platform as (typeof PLATFORM_SORT_ORDER)[number]);
+        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+      }),
+    [session.platforms]
+  );
 
   const handlePlatformPress = (platform: PlatformType) => {
     router.push({
@@ -141,100 +109,34 @@ function SessionView({ session, letterFilter, timeZone }: { session: Session; le
   );
 }
 
-function DayView({ day, letterFilter, timeZone, onRefreshComplete }: { 
-  day: DaySchedule; 
-  letterFilter: string; 
+function DayView({ day, timeZone, onRefreshComplete, refreshing }: {
+  day: DaySchedule;
   timeZone: string;
-  onRefreshComplete?: () => void;
+  onRefreshComplete?: () => Promise<void>;
+  refreshing: boolean;
 }) {
-  const { selectedMeet } = useSelectedMeet();
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const { currentTheme } = useTheme();
-  const [scheduleData, setScheduleData] = useState(day);
-
-  // Get time zone abbreviation
-  const timeZoneAbbreviation = useMemo(() => {
-    if (!selectedMeet) return 'Local';
-    const date = new Date();
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timeZone,
-      timeZoneName: 'short'
-    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || 'Local';
-  }, [selectedMeet, timeZone]);
-
-  const currentDate = day.date;
-  const currentDay = day;
-
-  useEffect(() => {
-    if (selectedMeet && typeof selectedMeet === 'string') {
-      const manager = new SyncManager(selectedMeet);
-      setSyncManager(manager);
-
-      const loadData = async () => {
-        setRefreshing(true);
-        try {
-          const meetData = await manager.getMeetData();
-          setScheduleData(meetData.schedule?.find(d => d.date === currentDate) || currentDay);
-        } catch (error) {
-          console.error('Error loading schedule:', error);
-          setScheduleData(currentDay);
-        } finally {
-          setRefreshing(false);
-        }
-      };
-
-      loadData();
-    } else {
-      setSyncManager(null);
-      setScheduleData(currentDay);
-    }
-  }, [selectedMeet, currentDate, currentDay]);
 
   const colors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
 
   const onRefresh = useCallback(async () => {
-    if (!syncManager) return;
-
-    setRefreshing(true);
     try {
-      const meetData = await syncManager.getMeetData();
-      if (meetData.schedule) {
-        // Find and update the current day's data
-        const updatedDay = meetData.schedule.find(d => d.date === day.date);
-        if (updatedDay) {
-          setScheduleData(updatedDay);
-        }
-      }
-      // Notify parent component to reload full schedule
-      onRefreshComplete?.();
+      await onRefreshComplete?.();
     } catch (error) {
       console.error('Refresh failed:', error);
-    } finally {
-      setRefreshing(false);
     }
-  }, [syncManager, day.date, onRefreshComplete]);
-
-  const filteredSessions = useMemo(() => {
-    if (!letterFilter) return scheduleData.sessions;
-    return scheduleData.sessions.filter(session => 
-      session.platforms.some(platform => 
-        platform.weightClass.slice(-1) === letterFilter
-      )
-    );
-  }, [scheduleData.sessions, letterFilter]);
+  }, [onRefreshComplete]);
 
   return (
     <FlatList
-      data={filteredSessions}
+      data={day.sessions}
       keyExtractor={item => item.id}
       renderItem={({ item }) => (
         <SessionView 
           session={item} 
-          letterFilter={letterFilter}
-          timeZone={timeZoneAbbreviation}
+          timeZone={timeZone}
         />
       )}
       showsVerticalScrollIndicator={false}
@@ -249,7 +151,7 @@ function DayView({ day, letterFilter, timeZone, onRefreshComplete }: {
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
           <ThemedText style={styles.emptyText}>
-            No {letterFilter} sessions found
+            No sessions found
           </ThemedText>
         </View>
       )}
@@ -272,14 +174,14 @@ export default function ScheduleScreen() {
   const { selectedMeet, meetDetails, isLoading: isMeetLoading, setSelectedMeet, availableMeets, refreshAvailableMeets } = useSelectedMeet();
   const [schedule, setSchedule] = useState<Schedule>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
-  const [currentDate, setCurrentDate] = useState(() => schedule[0]?.date || '');
-  const [letterFilter, setLetterFilter] = useState('');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const { currentTheme } = useTheme();
   const { isSignedIn } = useAuth();
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const headerColors = {
     text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
   };
@@ -294,6 +196,8 @@ export default function ScheduleScreen() {
   const [currentPage, setCurrentPage] = useState(0);
   const [initialScrollIndex, setInitialScrollIndex] = useState(0);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
+  const previousHeaderTitleRef = useRef<string>('');
+  const lastAppliedInitialIndexRef = useRef<string>('');
 
   const upcomingMeets = useMemo(() => {
     const getDateInTimeZone = (timeZone: string) => {
@@ -352,7 +256,7 @@ export default function ScheduleScreen() {
             </Pressable>
             )}
           <Pressable
-            style={styles.headerIconButton}
+            style={[styles.headerIconButton, {paddingTop: 8}]}
             onPress={() => {
               if (isSignedIn) {
                 router.push('/(screens)/profile');
@@ -391,6 +295,34 @@ export default function ScheduleScreen() {
     animation.start();
     return () => animation.stop();
   }, [skeletonPulse]);
+
+  useEffect(() => {
+    initStore();
+  }, []);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    let aborted = false;
+
+    const checkOnboarding = async () => {
+      try {
+        const completed = await checkOnboardingComplete();
+        if (!aborted && !completed) {
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        if (!aborted) {
+          console.error('Error checking onboarding status:', error);
+        }
+      }
+    };
+
+    checkOnboarding();
+
+    return () => {
+      aborted = true;
+    };
+  }, []);
 
   const SkeletonBlock = useCallback(({ style }: { style: any }) => {
     const backgroundColor = currentTheme === 'dark' ? '#2C2C2E' : '#E6E6EA';
@@ -477,64 +409,39 @@ export default function ScheduleScreen() {
     return currentDateIndex;
   }, []);
 
-  // Revised loadData function (Supabase-first, Cache-fallback)
-  const loadData = useCallback(async (meet: MeetName) => {
-    setIsLoading(true);
+  // Load schedule from cache (context handles syncing)
+  const loadData = useCallback(async (meet: MeetName, options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? true;
+    if (showLoading) setIsLoading(true);
     let scheduleData: Schedule = [];
-    let loadedFromCache = false;
 
     try {
-      // 1. Try fetching from Supabase
-      const freshSchedule = await fetchSchedule(meet);
-      scheduleData = freshSchedule;
-      // 2. Save successful fetch to cache (don't wait for it)
-      if (freshSchedule.length > 0) {
-        saveMeetSchedule(meet, freshSchedule).catch(err => 
-          console.error(`ScheduleScreen: Failed to save fresh schedule to cache for ${meet}:`, err)
-        );
+      // Get cached data - context's SyncManager handles fetching/syncing
+      const cachedMeetData = await getMeetData(meet);
+      if (cachedMeetData?.schedule) {
+        scheduleData = cachedMeetData.schedule;
       } else {
-        console.log(`ScheduleScreen: Empty schedule from DB for ${meet}; skipping cache save`);
+        console.log(`ScheduleScreen: No schedule found in cache for ${meet}`);
       }
-    } catch (fetchError) {
-      // 3. Fallback to cache if Supabase fetch fails
-      try {
-        const cachedMeetData = await getMeetData(meet);
-        if (cachedMeetData?.schedule) {
-          scheduleData = cachedMeetData.schedule;
-          loadedFromCache = true;
-        } else {
-          console.log(`ScheduleScreen: No schedule found in cache for ${meet}`);
-        }
-      } catch (cacheError) {
-        console.error(`ScheduleScreen: Failed to load schedule from cache for ${meet}:`, cacheError);
-        Alert.alert('Error', 'Failed to load schedule data. Please check connection or try refreshing.');
-      }
+    } catch (cacheError) {
+      console.error(`ScheduleScreen: Failed to load schedule from cache for ${meet}:`, cacheError);
     }
 
-    setSchedule(scheduleData); 
-    
+    setSchedule(scheduleData);
+
     // Calculate and set the initial page based on current UTC date
     if (scheduleData && scheduleData.length > 0) {
       const initialPage = calculateInitialPage(scheduleData);
       setInitialScrollIndex(initialPage);
       setCurrentPage(initialPage);
-      setCurrentDate(scheduleData[initialPage]?.date || '');
     }
-    
-    // If loaded from cache, maybe show an indicator?
-    // For now, just log it.
-    if (loadedFromCache) {
-        console.log("ScheduleScreen: Displaying data loaded from cache.");
-    }
-    setIsLoading(false);
 
-  }, [calculateInitialPage]); // Dependencies managed by the calling useEffect
+    if (showLoading) setIsLoading(false);
+
+  }, [calculateInitialPage]);
 
   // Load data when selectedMeet changes
   useEffect(() => {
-    // Initialize store once
-    initStore(); 
-
     if (selectedMeet && typeof selectedMeet === 'string') {
       // Ensure selectedMeet is treated as MeetName type
       loadData(selectedMeet as MeetName);
@@ -548,6 +455,9 @@ export default function ScheduleScreen() {
   // Scroll to initial position after data is loaded
   useEffect(() => {
     if (!isLoading && schedule.length > 0 && initialScrollIndex > 0) {
+      const applyKey = `${selectedMeet ?? 'none'}:${schedule.length}:${initialScrollIndex}`;
+      if (lastAppliedInitialIndexRef.current === applyKey) return;
+      lastAppliedInitialIndexRef.current = applyKey;
       // Use a small delay to ensure the FlatList is fully rendered
       const timer = setTimeout(() => {
         flatListRef.current?.scrollToIndex({ 
@@ -558,13 +468,17 @@ export default function ScheduleScreen() {
       
       return () => clearTimeout(timer);
     }
-  }, [isLoading, schedule.length, initialScrollIndex]);
+  }, [isLoading, schedule.length, initialScrollIndex, selectedMeet]);
 
   // Revised refresh handler
   const handleRefresh = useCallback(async () => {
     if (selectedMeet && typeof selectedMeet === 'string') {
-      // Re-run the loadData logic on refresh
-      await loadData(selectedMeet as MeetName); 
+      setIsRefreshing(true);
+      try {
+        await loadData(selectedMeet as MeetName, { showLoading: false });
+      } finally {
+        setIsRefreshing(false);
+      }
     } else {
       console.log("Refresh skipped: No meet selected");
     }
@@ -582,21 +496,13 @@ export default function ScheduleScreen() {
     }
   }, [refreshAvailableMeets]);
 
-  // Extract unique letters from all weight classes
-  const filterOptions = useMemo(() => {
-    const letterSet = new Set<string>();
-    schedule.forEach((day: DaySchedule) => {
-      day.sessions.forEach((session: Session) => {
-        session.platforms.forEach((platform: PlatformType) => {
-          const lastChar = platform.weightClass.slice(-1);
-          if (/^[A-G]$/.test(lastChar)) {
-            letterSet.add(lastChar);
-          }
-        });
-      });
-    });
-    return Array.from(letterSet).sort();
-  }, [schedule]);
+  const timeZoneAbbreviation = useMemo(() => {
+    const timeZoneId = meetDetails?.time.timeZoneIdentifier || 'America/New_York';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZoneId,
+      timeZoneName: 'short',
+    }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value || 'Local';
+  }, [meetDetails?.time.timeZoneIdentifier]);
 
   const formatDayTitle = useCallback((day: DaySchedule) => {
     const sourceDate = day.fullDate || day.date;
@@ -632,45 +538,63 @@ export default function ScheduleScreen() {
   }) => {
     if (viewableItems.length > 0) {
       const currentItem = viewableItems[0].item as DaySchedule;
-      setCurrentDate(currentItem.date);
+      const formattedTitle = formatDayTitle(currentItem);
+      if (previousHeaderTitleRef.current === formattedTitle) return;
+      previousHeaderTitleRef.current = formattedTitle;
       navigation.setOptions({
-        title: formatDayTitle(currentItem)
+        title: formattedTitle
       });
     }
   }, [formatDayTitle, navigation]);
+
+  // Set title to start date when there's no schedule loaded
+  useEffect(() => {
+    if (!isLoading && schedule.length === 0 && meetDetails?.dates?.start) {
+      const startDate = new Date(meetDetails.dates.start);
+      if (!Number.isNaN(startDate.getTime())) {
+        const formattedDate = new Intl.DateTimeFormat('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+        }).format(startDate);
+        navigation.setOptions({
+          title: formattedDate
+        });
+        previousHeaderTitleRef.current = formattedDate;
+      }
+    }
+  }, [isLoading, schedule.length, meetDetails, navigation]);
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50
   }).current;
 
-  const handleFilterSelect = (letter: string) => {
-    setLetterFilter(letter);
-    setShowFilterModal(false);
-  };
-
   const handlePageChange = useCallback((index: number) => {
+    if (index === currentPage) return;
     setCurrentPage(index);
     flatListRef.current?.scrollToIndex({ index, animated: true });
-  }, []);
+  }, [currentPage]);
 
   const flatListRef = useRef<FlatList>(null);
 
-  const onScroll = useCallback((event: any) => {
+  const onMomentumScrollEnd = useCallback((event: any) => {
     const newPage = Math.round(event.nativeEvent.contentOffset.x / width);
-    setCurrentPage(newPage);
-  }, [width]);
+    if (newPage !== currentPage) {
+      setCurrentPage(newPage);
+    }
+  }, [currentPage, width]);
 
   // Update the renderDayView to use handleRefresh
   const renderDayView = useCallback(({ item }: { item: DaySchedule }) => (
     <View style={[styles.pageContainer, { width }]}>
       <DayView 
         day={item} 
-        letterFilter={letterFilter}
-        timeZone={meetDetails?.time.timeZoneIdentifier || 'America/New_York'}
+        timeZone={timeZoneAbbreviation}
         onRefreshComplete={handleRefresh}
+        refreshing={isRefreshing}
       />
     </View>
-  ), [width, letterFilter, meetDetails, handleRefresh]);
+  ), [width, timeZoneAbbreviation, handleRefresh, isRefreshing]);
 
   if (isMeetLoading) {
     return renderLoadingSkeleton('Loading meets...');
@@ -694,7 +618,12 @@ export default function ScheduleScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { 
+      <OnboardingView
+        visible={showOnboarding}
+        onComplete={() => setShowOnboarding(false)}
+      />
+
+      <View style={[styles.filterContainer, {
         backgroundColor: colors.background,
         borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
         borderBottomWidth: 1,
@@ -703,9 +632,9 @@ export default function ScheduleScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.filterButton,
-              { 
+              {
                 backgroundColor: colors.card,
-                borderColor: colors.border 
+                borderColor: colors.border
               },
               pressed && { backgroundColor: colors.pressed }
             ]}
@@ -731,7 +660,7 @@ export default function ScheduleScreen() {
           contentContainerStyle={styles.emptyStateContainer}
           refreshControl={
             <RefreshControl
-              refreshing={isLoading}
+              refreshing={isRefreshing}
               onRefresh={handleRefresh}
               tintColor={colors.text}
             />
@@ -754,7 +683,7 @@ export default function ScheduleScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             data={schedule}
-            keyExtractor={item => item.date}
+            keyExtractor={(item, index) => item.fullDate || `${item.date}-${index}`}
             renderItem={renderDayView}
             initialScrollIndex={initialScrollIndex}
             getItemLayout={(data, index) => ({
@@ -764,8 +693,7 @@ export default function ScheduleScreen() {
             })}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
+            onMomentumScrollEnd={onMomentumScrollEnd}
           />
 
           {schedule.length > 0 && (
