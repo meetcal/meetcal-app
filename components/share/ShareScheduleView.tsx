@@ -44,15 +44,31 @@ const formatTime = (time: string): string => {
   return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
 };
 
-// Format date
+// Format schedule date without shifting the calendar day by local timezone.
 const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  const options: Intl.DateTimeFormatOptions = {
+  if (!dateString) return '';
+
+  const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const formatOptions: Intl.DateTimeFormatOptions = {
     weekday: 'short',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'UTC',
   };
-  return date.toLocaleDateString('en-US', options);
+
+  if (isoDateMatch) {
+    const [, yearRaw, monthRaw, dayRaw] = isoDateMatch;
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+      return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', formatOptions);
+    }
+  }
+
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return dateString;
+  return parsed.toLocaleDateString('en-US', formatOptions);
 };
 
 export default function ShareScheduleView({
