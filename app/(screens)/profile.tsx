@@ -156,7 +156,7 @@ export default function ProfileScreen() {
   const sendEmailFeedback = () => {
     const email = "maddisen@meetcal.app";
     const subject = "MeetCal App Feedback";
-    const body = `Device Details: ${getManufacturer} ${getDevice} ${getDeviceType}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
+    const body = `Device Details: ${getManufacturer} ${getDevice} ${getDeviceType} ${Platform.OS} ${Platform.Version}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
 
     const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
