@@ -17,10 +17,12 @@ export const Colors = {
     screenBackground: '#F5F5F5',
     card: '#FFFFFF',
     border: '#E1E1E1',
+    borderBottom: "#C6C6C8",
     primaryText: '#000000',
     secondaryText: '#6B6B6B',
     pressed: '#F5F5F5',
     link: '#007AFF',
+    modalBackground: "rgba(0,0,0,0.4)"
   },
   dark: {
     text: '#ECEDEE',
@@ -31,11 +33,13 @@ export const Colors = {
     tabIconSelected: '#0a7ea4',
     screenBackground: '#000000',
     card: '#1C1C1E',
-    border: '#38383A',
+    border: '#1C1C1E',
+    borderBottom: "#2C2C2E",
     primaryText: '#FFFFFF',
     secondaryText: '#8E8E93',
     pressed: '#2C2C2E',
     link: '#007AFF',
+    modalBackground: "rgba(0,0,0,0.6)"
   },
 };
 

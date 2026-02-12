@@ -3,13 +3,12 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { useTheme } from "@/contexts/ThemeContext";
+import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import { Stack, useRouter } from "expo-router";
-import * as StoreReview from "expo-store-review";
-import React, { useCallback, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -36,7 +35,7 @@ type EditableField = "firstName" | "lastName" | "email";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime";
 
 export default function ProfileScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const { signOut } = useClerk();
   const { user } = useUser();
   const router = useRouter();
@@ -47,27 +46,6 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
   const { requireAuth } = useAuthGuard();
-  const requestStoreReview = useCallback(async () => {
-    try {
-      const isAvailable = await StoreReview.isAvailableAsync();
-      if (isAvailable) {
-        await StoreReview.requestReview();
-      }
-    } catch (error) {
-      console.warn("Profile: Store review unavailable", error);
-    }
-  }, []);
-
-  // Define theme colors to match other screens
-  const colors = {
-    background: currentTheme === "dark" ? "#000000" : "#F5F5F5",
-    card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
-    border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
-    text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
-    secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
-    pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
-    link: "#007AFF",
-  };
 
   const handleSignOut = async () => {
     try {
@@ -370,15 +348,7 @@ export default function ProfileScreen() {
           style={{ flex: 1 }}
         >
           <Pressable
-            style={[
-              styles.modalOverlay,
-              {
-                backgroundColor:
-                  currentTheme === "dark"
-                    ? "rgba(0,0,0,0.6)"
-                    : "rgba(0,0,0,0.4)",
-              },
-            ]}
+            style={styles.modalOverlay}
             onPress={() => {
               Keyboard.dismiss();
               setIsEditing(false);
@@ -428,8 +398,7 @@ export default function ProfileScreen() {
                       styles.input,
                       {
                         color: colors.text,
-                        backgroundColor:
-                          currentTheme === "dark" ? "#2C2C2E" : "#F6F6F7",
+                        backgroundColor: colors.pressed,
                         borderColor: colors.border,
                       },
                     ]}
@@ -534,6 +503,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   modalContent: {
     borderTopLeftRadius: 12,
@@ -579,21 +549,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "600",
-  },
-  roleOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  roleOptionText: {
-    fontSize: 17,
-    lineHeight: 22,
-  },
-  link: {
-    fontSize: 17,
-    lineHeight: 22,
   },
   legalLinks: {
     flexDirection: "row",
