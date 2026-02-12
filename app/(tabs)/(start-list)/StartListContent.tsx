@@ -1,60 +1,90 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { View, StyleSheet, Pressable, ScrollView, Platform, Modal, Alert, TextInput, Dimensions, RefreshControl, Animated } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useSavedSessions } from '@/contexts/SavedSessionsContext';
-import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { LiftResult } from '@/data/types/athletes';
-import * as Calendar from 'expo-calendar';
-import { getMeetConfig, convertToUTC, formatTimeWithZone, getMeetVenueLocation } from '@/data/meets/config';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { saveMeetAthletes, getMeetData, saveMeetSchedule } from '@/lib/database/offline-store';
-import { MeetName } from '@/data/types/meet';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import { ExpandedIdProvider } from '@/contexts/ExpandedIdContext';
-import { useAuthGuard } from '@/utils/authGuard';
-import { fetchAthletes, fetchSchedule } from '@/lib/database/queries';
-import { preloadYearBests } from '@/lib/start-list-api';
-import type { Schedule as ScheduleType } from '@/types/schedule';
-import ShareScheduleView from '@/components/share/ShareScheduleView';
-import ImagePreviewModal from '@/components/share/ImagePreviewModal';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import { AthleteItem, SessionDetails } from '@/components/start-list/AthleteItem';
-import { StartListSkeleton } from '@/components/start-list/StartListSkeleton';
-import { isNetworkAvailable } from '@/lib/networkUtils';
+import ImagePreviewModal from "@/components/share/ImagePreviewModal";
+import ShareScheduleView from "@/components/share/ShareScheduleView";
 import {
-  sortWeightClasses,
-  sortAthletes,
+  AthleteItem,
+  SessionDetails,
+} from "@/components/start-list/AthleteItem";
+import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
+import { useSavedSessions } from "@/contexts/SavedSessionsContext";
+import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import {
+  convertToUTC,
+  formatTimeWithZone,
+  getMeetConfig,
+  getMeetVenueLocation,
+} from "@/data/meets/config";
+import { LiftResult } from "@/data/types/athletes";
+import { MeetName } from "@/data/types/meet";
+import { useAppColors } from "@/hooks/useAppColors";
+import {
+  getMeetData,
+  saveMeetAthletes,
+  saveMeetSchedule,
+} from "@/lib/database/offline-store";
+import { fetchAthletes, fetchSchedule } from "@/lib/database/queries";
+import { isNetworkAvailable } from "@/lib/networkUtils";
+import { preloadYearBests } from "@/lib/start-list-api";
+import {
   getAgeCategory,
-  parseWeightClasses,
   getChevronIcon,
-  getSaveIcon,
   getCloseIcon,
-  STARRED_CLUBS_FILTER,
+  getSaveIcon,
   isMeetName,
+  parseWeightClasses,
   requestCalendarPermissions,
-} from '@/lib/start-list-utils';
+  sortAthletes,
+  sortWeightClasses,
+  STARRED_CLUBS_FILTER,
+} from "@/lib/start-list-utils";
+import type { Schedule as ScheduleType } from "@/types/schedule";
+import { useAuthGuard } from "@/utils/authGuard";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { FlashList } from "@shopify/flash-list";
+import * as Calendar from "expo-calendar";
+import * as FileSystem from "expo-file-system";
+import { useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Alert,
+  Animated,
+  Dimensions,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const REVIEW_COUNT_KEY = 'startListFilterApplyCount';
-const REVIEW_PROMPTED_KEY = 'startListReviewPromptedCounts';
+const REVIEW_COUNT_KEY = "startListFilterApplyCount";
+const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
 const REVIEW_COUNTS = [5, 50, 100] as const;
 
 export default function StartListScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [weightClassFilter, setWeightClassFilter] = useState('');
-  const [clubFilter, setClubFilter] = useState('');
-  const [ageGroupFilter, setAgeGroupFilter] = useState('');
-  const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState('');
-  const [genderFilter, setGenderFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [clubSearchQuery, setClubSearchQuery] = useState('');
-  const { currentTheme } = useTheme();
+  const [weightClassFilter, setWeightClassFilter] = useState("");
+  const [clubFilter, setClubFilter] = useState("");
+  const [ageGroupFilter, setAgeGroupFilter] = useState("");
+  const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [clubSearchQuery, setClubSearchQuery] = useState("");
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { saveSessionsFromAthletes } = useSavedSessions();
@@ -69,23 +99,28 @@ export default function StartListScreen() {
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
   const latestLoadIdRef = useRef(0);
-  const [generatedImageWhiteUri, setGeneratedImageWhiteUri] = useState<string | null>(null);
-  const [generatedImageTransparentUri, setGeneratedImageTransparentUri] = useState<string | null>(null);
+  const [generatedImageWhiteUri, setGeneratedImageWhiteUri] = useState<
+    string | null
+  >(null);
+  const [generatedImageTransparentUri, setGeneratedImageTransparentUri] =
+    useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showShareViews, setShowShareViews] = useState(false);
   const shareScheduleRef = useRef<View>(null);
   const shareScheduleTransparentRef = useRef<View>(null);
   const [filterApplyCount, setFilterApplyCount] = useState(0);
-  const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>([]);
+  const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
+    [],
+  );
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
 
   const loadStoreReview = useCallback(async () => {
     try {
-      const module = await import('expo-store-review');
+      const module = await import("expo-store-review");
       return module;
     } catch (error) {
-      console.warn('StartList: expo-store-review not available', error);
+      console.warn("StartList: expo-store-review not available", error);
       return null;
     }
   }, []);
@@ -104,7 +139,7 @@ export default function StartListScreen() {
         setFilterApplyCount(Number.isFinite(count) ? count : 0);
         setReviewPromptedCounts(Array.isArray(prompted) ? prompted : []);
       } catch (error) {
-        console.warn('StartList: Failed to load review state', error);
+        console.warn("StartList: Failed to load review state", error);
       }
     };
     loadReviewState();
@@ -127,38 +162,35 @@ export default function StartListScreen() {
           duration: 900,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     animation.start();
     return () => animation.stop();
   }, [loading, skeletonPulse]);
 
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
+  const requestReviewIfEligible = useCallback(
+    async (nextCount: number) => {
+      if (!REVIEW_COUNTS.includes(nextCount)) return;
+      if (reviewPromptedCounts.includes(nextCount)) return;
+      try {
+        const StoreReview = await loadStoreReview();
+        if (!StoreReview) return;
+        const isAvailable = await StoreReview.isAvailableAsync();
+        if (!isAvailable) return;
+        await StoreReview.requestReview();
+        const updated = [...reviewPromptedCounts, nextCount];
+        setReviewPromptedCounts(updated);
+        await AsyncStorage.setItem(
+          REVIEW_PROMPTED_KEY,
+          JSON.stringify(updated),
+        );
+      } catch (error) {
+        console.warn("StartList: requestReview failed", error);
+      }
+    },
+    [reviewPromptedCounts, loadStoreReview],
+  );
 
-  const requestReviewIfEligible = useCallback(async (nextCount: number) => {
-    if (!REVIEW_COUNTS.includes(nextCount)) return;
-    if (reviewPromptedCounts.includes(nextCount)) return;
-    try {
-      const StoreReview = await loadStoreReview();
-      if (!StoreReview) return;
-      const isAvailable = await StoreReview.isAvailableAsync();
-      if (!isAvailable) return;
-      await StoreReview.requestReview();
-      const updated = [...reviewPromptedCounts, nextCount];
-      setReviewPromptedCounts(updated);
-      await AsyncStorage.setItem(REVIEW_PROMPTED_KEY, JSON.stringify(updated));
-    } catch (error) {
-      console.warn('StartList: requestReview failed', error);
-    }
-  }, [reviewPromptedCounts, loadStoreReview]);
-  
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
     const [hasNetwork, cachedMeetData] = await Promise.all([
       isNetworkAvailable(),
@@ -171,74 +203,84 @@ export default function StartListScreen() {
     };
   }, []);
 
-  const loadStartListData = useCallback(async (forceRefresh = false) => {
-    if (!selectedMeet || !isMeetName(selectedMeet)) {
-      setAthletes([]);
-      setScheduleData([]);
-      setLoading(false);
-      return;
-    }
-
-    if (loadInFlightRef.current) {
-      await loadInFlightRef.current;
-      return;
-    }
-
-    const validMeet = selectedMeet;
-    const requestId = ++latestLoadIdRef.current;
-    if (!forceRefresh) setLoading(true);
-
-    const requestPromise = (async () => {
-      const snapshot = await loadMeetSnapshot(validMeet);
-
-      if (!forceRefresh) {
-        setAthletes(snapshot.cachedAthletes);
-        setScheduleData(snapshot.cachedSchedule);
-      }
-
-      if (!snapshot.hasNetwork) {
-        if (!forceRefresh) setLoading(false);
+  const loadStartListData = useCallback(
+    async (forceRefresh = false) => {
+      if (!selectedMeet || !isMeetName(selectedMeet)) {
+        setAthletes([]);
+        setScheduleData([]);
+        setLoading(false);
         return;
       }
 
-      const [athletesResult, scheduleResult] = await Promise.allSettled([
-        fetchAthletes(validMeet),
-        fetchSchedule(validMeet),
-      ]);
-
-      if (requestId !== latestLoadIdRef.current) return;
-
-      let nextAthletes = snapshot.cachedAthletes;
-      let nextSchedule = snapshot.cachedSchedule;
-
-      if (athletesResult.status === 'fulfilled') {
-        nextAthletes = athletesResult.value;
-        saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
+      if (loadInFlightRef.current) {
+        await loadInFlightRef.current;
+        return;
       }
 
-      if (scheduleResult.status === 'fulfilled') {
-        nextSchedule = scheduleResult.value;
-        if (nextSchedule.length > 0) {
-          saveMeetSchedule(validMeet, nextSchedule).catch(() => {});
+      const validMeet = selectedMeet;
+      const requestId = ++latestLoadIdRef.current;
+      if (!forceRefresh) setLoading(true);
+
+      const requestPromise = (async () => {
+        const snapshot = await loadMeetSnapshot(validMeet);
+
+        if (!forceRefresh) {
+          setAthletes(snapshot.cachedAthletes);
+          setScheduleData(snapshot.cachedSchedule);
         }
+
+        if (!snapshot.hasNetwork) {
+          if (!forceRefresh) setLoading(false);
+          return;
+        }
+
+        const [athletesResult, scheduleResult] = await Promise.allSettled([
+          fetchAthletes(validMeet),
+          fetchSchedule(validMeet),
+        ]);
+
+        if (requestId !== latestLoadIdRef.current) return;
+
+        let nextAthletes = snapshot.cachedAthletes;
+        let nextSchedule = snapshot.cachedSchedule;
+
+        if (athletesResult.status === "fulfilled") {
+          nextAthletes = athletesResult.value;
+          saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
+        }
+
+        if (scheduleResult.status === "fulfilled") {
+          nextSchedule = scheduleResult.value;
+          if (nextSchedule.length > 0) {
+            saveMeetSchedule(validMeet, nextSchedule).catch(() => {});
+          }
+        }
+
+        if (
+          athletesResult.status === "rejected" &&
+          scheduleResult.status === "rejected" &&
+          forceRefresh
+        ) {
+          Alert.alert(
+            "Error",
+            "Failed to refresh start list data. Please try again.",
+          );
+        }
+
+        setAthletes(nextAthletes);
+        setScheduleData(nextSchedule);
+        if (!forceRefresh) setLoading(false);
+      })();
+
+      loadInFlightRef.current = requestPromise;
+      try {
+        await requestPromise;
+      } finally {
+        loadInFlightRef.current = null;
       }
-
-      if (athletesResult.status === 'rejected' && scheduleResult.status === 'rejected' && forceRefresh) {
-        Alert.alert('Error', 'Failed to refresh start list data. Please try again.');
-      }
-
-      setAthletes(nextAthletes);
-      setScheduleData(nextSchedule);
-      if (!forceRefresh) setLoading(false);
-    })();
-
-    loadInFlightRef.current = requestPromise;
-    try {
-      await requestPromise;
-    } finally {
-      loadInFlightRef.current = null;
-    }
-  }, [loadMeetSnapshot, selectedMeet]);
+    },
+    [loadMeetSnapshot, selectedMeet],
+  );
 
   useEffect(() => {
     loadStartListData(false);
@@ -254,7 +296,13 @@ export default function StartListScreen() {
   }, [loadStartListData]);
 
   const sessionIndex = useMemo(() => {
-    const index = new Map<number, { day: ScheduleType[number]; session: ScheduleType[number]['sessions'][number] }>();
+    const index = new Map<
+      number,
+      {
+        day: ScheduleType[number];
+        session: ScheduleType[number]["sessions"][number];
+      }
+    >();
     for (const day of scheduleData) {
       for (const session of day.sessions) {
         index.set(session.number, { day, session });
@@ -263,165 +311,200 @@ export default function StartListScreen() {
     return index;
   }, [scheduleData]);
 
-  const getSessionDetails = useCallback((sessionNumber: number): SessionDetails | null => {
-    const indexed = sessionIndex.get(sessionNumber);
-    if (!indexed) return null;
-    return {
-      date: indexed.day.fullDate,
-      startTime: indexed.session.startTime,
-      weighInTime: indexed.session.weighInTime,
-      displayDate: indexed.day.date,
-      platforms: indexed.session.platforms,
-    };
-  }, [sessionIndex]);
+  const getSessionDetails = useCallback(
+    (sessionNumber: number): SessionDetails | null => {
+      const indexed = sessionIndex.get(sessionNumber);
+      if (!indexed) return null;
+      return {
+        date: indexed.day.fullDate,
+        startTime: indexed.session.startTime,
+        weighInTime: indexed.session.weighInTime,
+        displayDate: indexed.day.date,
+        platforms: indexed.session.platforms,
+      };
+    },
+    [sessionIndex],
+  );
 
   // Add back useEffect for starred clubs
   useEffect(() => {
     const loadStarredClubs = async () => {
       try {
-        const stored = await AsyncStorage.getItem('starredClubs');
+        const stored = await AsyncStorage.getItem("starredClubs");
         if (stored) {
           setStarredClubs(JSON.parse(stored));
         }
       } catch (error) {
-        console.error('Error loading starred clubs:', error);
+        console.error("Error loading starred clubs:", error);
       }
     };
     loadStarredClubs();
   }, []);
 
-
-
-  const clubOptions = useMemo(() =>
-    Array.from(new Set(athletes.map(a => a.club))).sort(),
-  [athletes]);
+  const clubOptions = useMemo(
+    () => Array.from(new Set(athletes.map((a) => a.club))).sort(),
+    [athletes],
+  );
 
   const sortedClubOptions = useMemo(() => {
     return [...clubOptions].sort((a, b) => {
       const aIsStarred = starredClubs.includes(a);
       const bIsStarred = starredClubs.includes(b);
-      
+
       if (aIsStarred && !bIsStarred) return -1;
       if (!aIsStarred && bIsStarred) return 1;
-      
+
       return a.localeCompare(b);
     });
   }, [clubOptions, starredClubs]);
 
-  const renderListItem = useCallback(({ item }: { item: LiftResult }) => (
-    <AthleteItem
-      athlete={item}
-      router={router}
-      getSessionDetails={getSessionDetails}
-    />
-  ), [router, getSessionDetails]);
+  const renderListItem = useCallback(
+    ({ item }: { item: LiftResult }) => (
+      <AthleteItem
+        athlete={item}
+        router={router}
+        getSessionDetails={getSessionDetails}
+      />
+    ),
+    [router, getSessionDetails],
+  );
 
-  const keyExtractor = useCallback((item: LiftResult) => `${item.memberId}_${item.name}`, []);
+  const keyExtractor = useCallback(
+    (item: LiftResult) => `${item.memberId}_${item.name}`,
+    [],
+  );
 
   // Add new state for age group filter
-  const [expandedSection, setExpandedSection] = useState<'ageGroup' | 'weightClass' | 'club' | 'adaptiveAthlete' | 'gender' | null>(null);
+  const [expandedSection, setExpandedSection] = useState<
+    "ageGroup" | "weightClass" | "club" | "adaptiveAthlete" | "gender" | null
+  >(null);
 
   // Add new state for temporary filters
-  const [tempAgeGroupFilter, setTempAgeGroupFilter] = useState('');
-  const [tempWeightClassFilter, setTempWeightClassFilter] = useState('');
-  const [tempClubFilter, setTempClubFilter] = useState('');
-  const [tempAdaptiveAthleteFilter, setTempAdaptiveAthleteFilter] = useState('');
-  const [tempGenderFilter, setTempGenderFilter] = useState('');
+  const [tempAgeGroupFilter, setTempAgeGroupFilter] = useState("");
+  const [tempWeightClassFilter, setTempWeightClassFilter] = useState("");
+  const [tempClubFilter, setTempClubFilter] = useState("");
+  const [tempAdaptiveAthleteFilter, setTempAdaptiveAthleteFilter] =
+    useState("");
+  const [tempGenderFilter, setTempGenderFilter] = useState("");
 
   const weightClassOptions = useMemo(() => {
     if (!showFilterModal) return [];
     const weightClasses = new Set<string>();
-    
+
     // First, collect all weight classes and separate by gender and age group to identify heaviest classes
     const maleWeightClasses = new Set<string>();
     const femaleWeightClasses = new Set<string>();
-    
-    athletes.forEach(athlete => {
+
+    athletes.forEach((athlete) => {
       // Filter by age group if one is selected
-      if (tempAgeGroupFilter && getAgeCategory(athlete.age) !== tempAgeGroupFilter) {
+      if (
+        tempAgeGroupFilter &&
+        getAgeCategory(athlete.age) !== tempAgeGroupFilter
+      ) {
         return; // Skip athletes that don't match the selected age group
       }
-      
+
       // Filter by adaptive athlete status if one is selected
       if (tempAdaptiveAthleteFilter) {
-        if (tempAdaptiveAthleteFilter === 'Adaptive Athletes' && athlete.adaptive !== true) {
+        if (
+          tempAdaptiveAthleteFilter === "Adaptive Athletes" &&
+          athlete.adaptive !== true
+        ) {
           return; // Skip non-adaptive athletes when adaptive filter is selected
         }
-        if (tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && athlete.adaptive !== false) {
+        if (
+          tempAdaptiveAthleteFilter === "Non-Adaptive Athletes" &&
+          athlete.adaptive !== false
+        ) {
           return; // Skip adaptive athletes when non-adaptive filter is selected
         }
       }
-      
+
       if (athlete.weightClass) {
         const parsed = parseWeightClasses(athlete.weightClass);
-        parsed.forEach(wc => {
-          if (athlete.gender.toLowerCase() === 'male') {
+        parsed.forEach((wc) => {
+          if (athlete.gender.toLowerCase() === "male") {
             maleWeightClasses.add(wc);
-          } else if (athlete.gender.toLowerCase() === 'female') {
+          } else if (athlete.gender.toLowerCase() === "female") {
             femaleWeightClasses.add(wc);
           }
         });
       }
     });
-    
+
     // Find the heaviest weight class for each gender (within the age group and adaptive filters)
     const getHeaviestWeightClass = (weightClassSet: Set<string>) => {
       const sorted = Array.from(weightClassSet).sort(sortWeightClasses);
       return sorted[sorted.length - 1];
     };
-    
+
     const heaviestMale = getHeaviestWeightClass(maleWeightClasses);
     const heaviestFemale = getHeaviestWeightClass(femaleWeightClasses);
-    
+
     // Convert heaviest classes to plus classes
     const plusClasses = new Set<string>();
     if (heaviestMale) {
-      const num = heaviestMale.replace(/\+?kg$/, ''); // Remove + and kg
+      const num = heaviestMale.replace(/\+?kg$/, ""); // Remove + and kg
       plusClasses.add(`${num}+kg`);
     }
     if (heaviestFemale && heaviestFemale !== heaviestMale) {
-      const num = heaviestFemale.replace(/\+?kg$/, ''); // Remove + and kg
+      const num = heaviestFemale.replace(/\+?kg$/, ""); // Remove + and kg
       plusClasses.add(`${num}+kg`);
     }
-    
+
     // Add plus classes based on gender filter
     if (tempGenderFilter) {
       // If a gender is selected, only add the plus class for that gender
-      const relevantHeaviest = tempGenderFilter.toLowerCase() === 'male' ? heaviestMale : heaviestFemale;
+      const relevantHeaviest =
+        tempGenderFilter.toLowerCase() === "male"
+          ? heaviestMale
+          : heaviestFemale;
       if (relevantHeaviest) {
-        const num = relevantHeaviest.replace(/\+?kg$/, '');
+        const num = relevantHeaviest.replace(/\+?kg$/, "");
         weightClasses.add(`${num}+kg`);
       }
     } else {
       // If no gender filter, add all plus classes
-      plusClasses.forEach(wc => weightClasses.add(wc));
+      plusClasses.forEach((wc) => weightClasses.add(wc));
     }
-    
+
     // Then add gender-specific regular weight classes (excluding the heaviest ones)
-    athletes.forEach(athlete => {
+    athletes.forEach((athlete) => {
       // Filter by gender if one is selected
-      if (tempGenderFilter && athlete.gender.toLowerCase() !== tempGenderFilter.toLowerCase()) {
+      if (
+        tempGenderFilter &&
+        athlete.gender.toLowerCase() !== tempGenderFilter.toLowerCase()
+      ) {
         return; // Skip athletes that don't match the selected gender
       }
-      
+
       // Filter by age group if one is selected
-      if (tempAgeGroupFilter && getAgeCategory(athlete.age) !== tempAgeGroupFilter) {
+      if (
+        tempAgeGroupFilter &&
+        getAgeCategory(athlete.age) !== tempAgeGroupFilter
+      ) {
         return; // Skip athletes that don't match the selected age group
       }
-      
+
       // Filter by adaptive athlete status if one is selected
       if (tempAdaptiveAthleteFilter) {
-        if (tempAdaptiveAthleteFilter === 'Adaptive Athletes' && athlete.adaptive !== true) {
+        if (
+          tempAdaptiveAthleteFilter === "Adaptive Athletes" &&
+          athlete.adaptive !== true
+        ) {
           return; // Skip non-adaptive athletes when adaptive filter is selected
         }
-        if (tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && athlete.adaptive !== false) {
+        if (
+          tempAdaptiveAthleteFilter === "Non-Adaptive Athletes" &&
+          athlete.adaptive !== false
+        ) {
           return; // Skip adaptive athletes when non-adaptive filter is selected
         }
       }
-      
+
       if (athlete.weightClass) {
         const parsed = parseWeightClasses(athlete.weightClass);
-        parsed.forEach(wc => {
+        parsed.forEach((wc) => {
           // Don't add the heaviest weight classes as regular classes since they're now plus classes
           if (wc !== heaviestMale && wc !== heaviestFemale) {
             weightClasses.add(wc);
@@ -429,21 +512,30 @@ export default function StartListScreen() {
         });
       }
     });
-    
+
     const options = Array.from(weightClasses).sort(sortWeightClasses);
     return options;
-  }, [athletes, tempGenderFilter, tempAgeGroupFilter, tempAdaptiveAthleteFilter, showFilterModal]);
+  }, [
+    athletes,
+    tempGenderFilter,
+    tempAgeGroupFilter,
+    tempAdaptiveAthleteFilter,
+    showFilterModal,
+  ]);
 
   // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
     const filters = [];
     if (weightClassFilter) filters.push(weightClassFilter);
-    if (clubFilter) filters.push(clubFilter === STARRED_CLUBS_FILTER ? 'Starred Clubs' : clubFilter);
+    if (clubFilter)
+      filters.push(
+        clubFilter === STARRED_CLUBS_FILTER ? "Starred Clubs" : clubFilter,
+      );
     if (ageGroupFilter) filters.push(ageGroupFilter);
     if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
     if (genderFilter) filters.push(genderFilter);
-    
-    return filters.length > 0 ? filters.join(' • ') : 'Filter';
+
+    return filters.length > 0 ? filters.join(" • ") : "Filter";
   };
 
   const normalizedAthletes = useMemo(() => {
@@ -461,54 +553,89 @@ export default function StartListScreen() {
     const gender = genderFilter.toLowerCase();
 
     return normalizedAthletes
-      .filter(({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
-        const matchesWeightClass = weightClassFilter ? weightClasses.includes(weightClassFilter) : true;
-        const matchesClub = clubFilter
-          ? clubFilter === STARRED_CLUBS_FILTER
-            ? starredClubs.includes(athlete.club)
-            : athlete.club === clubFilter
-          : true;
-        const matchesSearch = search ? nameLower.includes(search) : true;
-        const matchesAgeGroup = ageGroupFilter ? ageCategory === ageGroupFilter : true;
-        const matchesAdaptiveAthlete = adaptiveAthleteFilter
-          ? adaptiveAthleteFilter === 'Adaptive Athletes'
-            ? athlete.adaptive === true
-            : adaptiveAthleteFilter === 'Non-Adaptive Athletes'
-              ? athlete.adaptive === false
-              : true
-          : true;
-        const matchesGender = gender ? genderLower === gender : true;
+      .filter(
+        ({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
+          const matchesWeightClass = weightClassFilter
+            ? weightClasses.includes(weightClassFilter)
+            : true;
+          const matchesClub = clubFilter
+            ? clubFilter === STARRED_CLUBS_FILTER
+              ? starredClubs.includes(athlete.club)
+              : athlete.club === clubFilter
+            : true;
+          const matchesSearch = search ? nameLower.includes(search) : true;
+          const matchesAgeGroup = ageGroupFilter
+            ? ageCategory === ageGroupFilter
+            : true;
+          const matchesAdaptiveAthlete = adaptiveAthleteFilter
+            ? adaptiveAthleteFilter === "Adaptive Athletes"
+              ? athlete.adaptive === true
+              : adaptiveAthleteFilter === "Non-Adaptive Athletes"
+                ? athlete.adaptive === false
+                : true
+            : true;
+          const matchesGender = gender ? genderLower === gender : true;
 
-        return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete && matchesGender;
-      })
+          return (
+            matchesWeightClass &&
+            matchesClub &&
+            matchesSearch &&
+            matchesAgeGroup &&
+            matchesAdaptiveAthlete &&
+            matchesGender
+          );
+        },
+      )
       .map(({ athlete }) => athlete)
       .sort(sortAthletes);
-  }, [normalizedAthletes, weightClassFilter, clubFilter, searchQuery, ageGroupFilter, adaptiveAthleteFilter, genderFilter, starredClubs]);
+  }, [
+    normalizedAthletes,
+    weightClassFilter,
+    clubFilter,
+    searchQuery,
+    ageGroupFilter,
+    adaptiveAthleteFilter,
+    genderFilter,
+    starredClubs,
+  ]);
 
   const tempFilteredAthleteCount = useMemo(() => {
     const search = searchQuery.toLowerCase();
     const gender = tempGenderFilter.toLowerCase();
 
-    return normalizedAthletes.filter(({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
-      const matchesWeightClass = tempWeightClassFilter ? weightClasses.includes(tempWeightClassFilter) : true;
-      const matchesClub = tempClubFilter
-        ? tempClubFilter === STARRED_CLUBS_FILTER
-          ? starredClubs.includes(athlete.club)
-          : athlete.club === tempClubFilter
-        : true;
-      const matchesSearch = search ? nameLower.includes(search) : true;
-      const matchesAgeGroup = tempAgeGroupFilter ? ageCategory === tempAgeGroupFilter : true;
-      const matchesAdaptiveAthlete = tempAdaptiveAthleteFilter
-        ? tempAdaptiveAthleteFilter === 'Adaptive Athletes'
-          ? athlete.adaptive === true
-          : tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes'
-            ? athlete.adaptive === false
-            : true
-        : true;
-      const matchesGender = gender ? genderLower === gender : true;
+    return normalizedAthletes.filter(
+      ({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
+        const matchesWeightClass = tempWeightClassFilter
+          ? weightClasses.includes(tempWeightClassFilter)
+          : true;
+        const matchesClub = tempClubFilter
+          ? tempClubFilter === STARRED_CLUBS_FILTER
+            ? starredClubs.includes(athlete.club)
+            : athlete.club === tempClubFilter
+          : true;
+        const matchesSearch = search ? nameLower.includes(search) : true;
+        const matchesAgeGroup = tempAgeGroupFilter
+          ? ageCategory === tempAgeGroupFilter
+          : true;
+        const matchesAdaptiveAthlete = tempAdaptiveAthleteFilter
+          ? tempAdaptiveAthleteFilter === "Adaptive Athletes"
+            ? athlete.adaptive === true
+            : tempAdaptiveAthleteFilter === "Non-Adaptive Athletes"
+              ? athlete.adaptive === false
+              : true
+          : true;
+        const matchesGender = gender ? genderLower === gender : true;
 
-      return matchesWeightClass && matchesClub && matchesSearch && matchesAgeGroup && matchesAdaptiveAthlete && matchesGender;
-    }).length;
+        return (
+          matchesWeightClass &&
+          matchesClub &&
+          matchesSearch &&
+          matchesAgeGroup &&
+          matchesAdaptiveAthlete &&
+          matchesGender
+        );
+      },
+    ).length;
   }, [
     normalizedAthletes,
     searchQuery,
@@ -522,14 +649,17 @@ export default function StartListScreen() {
 
   useEffect(() => {
     if (athletes.length === 0) return;
-    const firstNameStartsWithA = (a: LiftResult) => ((a.name || '').trim().split(/\s+/)[0] || '').toUpperCase().startsWith('A');
-    const aNames = athletes.filter(firstNameStartsWithA).map(a => a.name);
+    const firstNameStartsWithA = (a: LiftResult) =>
+      ((a.name || "").trim().split(/\s+/)[0] || "")
+        .toUpperCase()
+        .startsWith("A");
+    const aNames = athletes.filter(firstNameStartsWithA).map((a) => a.name);
     if (aNames.length === 0) return;
     const t = setTimeout(() => preloadYearBests(aNames.slice(0, 80)), 500);
     return () => clearTimeout(t);
   }, [athletes]);
 
-  const windowHeight = Dimensions.get('window').height;
+  const windowHeight = Dimensions.get("window").height;
   const maxOptionsHeight = windowHeight * 0.4; // 40% of screen height
 
   const buildSessionExportRows = useCallback(() => {
@@ -541,14 +671,15 @@ export default function StartListScreen() {
         if (!sessionDetails) return null;
 
         const platformDetails = sessionDetails.platforms.find(
-          (platform) => platform.platform === athlete.session?.platform
+          (platform) => platform.platform === athlete.session?.platform,
         );
-        const startTime = platformDetails?.platformStartTime || sessionDetails.startTime;
+        const startTime =
+          platformDetails?.platformStartTime || sessionDetails.startTime;
 
         return {
           athlete,
           sessionNumber,
-          platform: athlete.session?.platform || '',
+          platform: athlete.session?.platform || "",
           date: sessionDetails.date,
           displayDate: sessionDetails.displayDate,
           startTime,
@@ -561,60 +692,66 @@ export default function StartListScreen() {
 
   const handleSaveAll = async () => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      Alert.alert('Error', 'Please select a meet before saving sessions.');
+      Alert.alert("Error", "Please select a meet before saving sessions.");
       return;
     }
 
     const validMeet = selectedMeet;
 
     Alert.alert(
-      'Save Sessions',
-      `Save sessions from ${filteredAthletes.length} athlete${filteredAthletes.length === 1 ? '' : 's'} to your saved list?`,
+      "Save Sessions",
+      `Save sessions from ${filteredAthletes.length} athlete${filteredAthletes.length === 1 ? "" : "s"} to your saved list?`,
       [
         {
-          text: 'Cancel',
-          style: 'cancel'
+          text: "Cancel",
+          style: "cancel",
         },
         {
-          text: 'Save',
+          text: "Save",
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(filteredAthletes, validMeet);
+              const success = await saveSessionsFromAthletes(
+                filteredAthletes,
+                validMeet,
+              );
               if (success) {
                 Alert.alert(
-                  'Success', 
-                  'Sessions have been saved to your list.',
+                  "Success",
+                  "Sessions have been saved to your list.",
                   [
                     {
-                      text: 'View Saved',
-                      onPress: () => router.push('/saved'),
+                      text: "View Saved",
+                      onPress: () => router.push("/(tabs)/(saved)"),
                     },
                     {
-                      text: 'OK',
-                    }
-                  ]
+                      text: "OK",
+                    },
+                  ],
                 );
               } else {
-                Alert.alert('Error', 'Failed to save sessions.');
+                Alert.alert("Error", "Failed to save sessions.");
               }
             } catch (error) {
-              Alert.alert('Error', 'Failed to save sessions.');
+              Alert.alert("Error", "Failed to save sessions.");
               console.error(error);
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     );
   };
 
   const handleSaveToCalendar = async () => {
     if (!isSubscribed) {
-      router.push('/paywall');
+      router.push("/paywall");
       return;
     }
 
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      Alert.alert('Error', 'Please select a meet before adding events to calendar.');
+      Alert.alert(
+        "Error",
+        "Please select a meet before adding events to calendar.",
+      );
       return;
     }
 
@@ -628,58 +765,69 @@ export default function StartListScreen() {
     }));
 
     if (sessionsToAdd.length === 0) {
-      Alert.alert('No Sessions', 'There are no sessions to add to calendar.');
+      Alert.alert("No Sessions", "There are no sessions to add to calendar.");
       return;
     }
 
     Alert.alert(
-      'Add to Calendar',
-      `Add ${sessionsToAdd.length} session${sessionsToAdd.length === 1 ? '' : 's'} to your calendar?`,
+      "Add to Calendar",
+      `Add ${sessionsToAdd.length} session${sessionsToAdd.length === 1 ? "" : "s"} to your calendar?`,
       [
         {
-          text: 'Cancel',
-          style: 'cancel'
+          text: "Cancel",
+          style: "cancel",
         },
         {
-          text: 'Add',
+          text: "Add",
           onPress: async () => {
             try {
               const hasPermission = await requestCalendarPermissions();
               if (!hasPermission) {
-                Alert.alert('Permission Required', 'Calendar permission is required to add sessions.');
+                Alert.alert(
+                  "Permission Required",
+                  "Calendar permission is required to add sessions.",
+                );
                 return;
               }
               await createCalendarEvents(sessionsToAdd);
-              Alert.alert('Success', 'Sessions have been added to your calendar.');
+              Alert.alert(
+                "Success",
+                "Sessions have been added to your calendar.",
+              );
             } catch (error) {
-              Alert.alert('Error', error instanceof Error ? error.message : 'Failed to add sessions to calendar.');
+              Alert.alert(
+                "Error",
+                error instanceof Error
+                  ? error.message
+                  : "Failed to add sessions to calendar.",
+              );
               console.error(error);
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     );
   };
 
   // Update the age group options
   const ageGroupOptions = [
-    'U13',
-    'U15',
-    'U17',
-    'Junior',
-    'Senior',
-    'Masters 35',
-    'Masters 40',
-    'Masters 45',
-    'Masters 50',
-    'Masters 55',
-    'Masters 60',
-    'Masters 65',
-    'Masters 70',
-    'Masters 75',
-    'Masters 80',
-    'Masters 85',
-    'Masters 90+'
+    "U13",
+    "U15",
+    "U17",
+    "Junior",
+    "Senior",
+    "Masters 35",
+    "Masters 40",
+    "Masters 45",
+    "Masters 50",
+    "Masters 55",
+    "Masters 60",
+    "Masters 65",
+    "Masters 70",
+    "Masters 75",
+    "Masters 80",
+    "Masters 85",
+    "Masters 90+",
   ];
 
   // Update modal open handler
@@ -704,25 +852,25 @@ export default function StartListScreen() {
 
     const nextCount = filterApplyCount + 1;
     setFilterApplyCount(nextCount);
-    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch(error => {
-      console.warn('StartList: Failed to persist filter apply count', error);
+    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch((error) => {
+      console.warn("StartList: Failed to persist filter apply count", error);
     });
     requestReviewIfEligible(nextCount);
   };
 
   // Add resetFilters function before the return statement
   const resetFilters = () => {
-    setTempWeightClassFilter('');
-    setTempClubFilter('');
-    setTempAgeGroupFilter('');
-    setTempAdaptiveAthleteFilter('');
-    setTempGenderFilter('');
-    setWeightClassFilter('');
-    setClubFilter('');
-    setAgeGroupFilter('');
-    setAdaptiveAthleteFilter('');
-    setGenderFilter('');
-    setSearchQuery('');
+    setTempWeightClassFilter("");
+    setTempClubFilter("");
+    setTempAgeGroupFilter("");
+    setTempAdaptiveAthleteFilter("");
+    setTempGenderFilter("");
+    setWeightClassFilter("");
+    setClubFilter("");
+    setAgeGroupFilter("");
+    setAdaptiveAthleteFilter("");
+    setGenderFilter("");
+    setSearchQuery("");
     setShowFilterModal(false);
     setExpandedSection(null);
   };
@@ -731,23 +879,30 @@ export default function StartListScreen() {
   const toggleStarredClub = async (club: string) => {
     try {
       const newStarredClubs = starredClubs.includes(club)
-        ? starredClubs.filter(c => c !== club)
+        ? starredClubs.filter((c) => c !== club)
         : [...starredClubs, club];
 
       setStarredClubs(newStarredClubs);
-      await AsyncStorage.setItem('starredClubs', JSON.stringify(newStarredClubs));
+      await AsyncStorage.setItem(
+        "starredClubs",
+        JSON.stringify(newStarredClubs),
+      );
     } catch (error) {
-      console.error('Error saving starred clubs:', error);
+      console.error("Error saving starred clubs:", error);
     }
   };
 
   // Capture schedule image for sharing
   const captureScheduleImage = async () => {
     // Validate that a specific club is selected
-    if (!tempClubFilter || tempClubFilter === '' || tempClubFilter === STARRED_CLUBS_FILTER) {
+    if (
+      !tempClubFilter ||
+      tempClubFilter === "" ||
+      tempClubFilter === STARRED_CLUBS_FILTER
+    ) {
       Alert.alert(
-        'Select a Club',
-        'Please select a specific club from the filters to create a shareable schedule.'
+        "Select a Club",
+        "Please select a specific club from the filters to create a shareable schedule.",
       );
       return;
     }
@@ -755,89 +910,104 @@ export default function StartListScreen() {
     // Ensure there are filtered athletes
     if (filteredAthletes.length === 0) {
       Alert.alert(
-        'Nothing to Share',
-        'No athletes were found for the current filters.'
+        "Nothing to Share",
+        "No athletes were found for the current filters.",
       );
       return;
     }
 
     try {
       // Dynamically import captureRef to avoid native module errors on startup
-      const { captureRef } = await import('react-native-view-shot');
+      const { captureRef } = await import("react-native-view-shot");
       setShowShareViews(true);
-      await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
 
       if (!shareScheduleRef.current || !shareScheduleTransparentRef.current) {
         setShowShareViews(false);
-        Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
+        Alert.alert(
+          "Error",
+          "Failed to generate schedule image. Please try again.",
+        );
         return;
       }
 
       // Add a small delay to ensure the view is fully rendered
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const whiteUri = await captureRef(shareScheduleRef.current, {
-        format: 'png',
+        format: "png",
         quality: 1.0,
-        result: 'tmpfile',
+        result: "tmpfile",
         width: 850,
         height: undefined,
       });
-      const transparentUri = await captureRef(shareScheduleTransparentRef.current, {
-        format: 'png',
-        quality: 1.0,
-        result: 'tmpfile',
-        width: 850,
-        height: undefined,
-      });
+      const transparentUri = await captureRef(
+        shareScheduleTransparentRef.current,
+        {
+          format: "png",
+          quality: 1.0,
+          result: "tmpfile",
+          width: 850,
+          height: undefined,
+        },
+      );
       setGeneratedImageWhiteUri(whiteUri);
       setGeneratedImageTransparentUri(transparentUri);
       setSelectedImageIndex(0);
       setShowImagePreview(true);
     } catch (error) {
       setShowShareViews(false);
-      console.error('Error capturing image:', error);
-      Alert.alert('Error', 'Failed to generate schedule image. Please try again.');
+      console.error("Error capturing image:", error);
+      Alert.alert(
+        "Error",
+        "Failed to generate schedule image. Please try again.",
+      );
     }
   };
 
   const generateShareableScheduleCsv = async () => {
-    if (!tempClubFilter || tempClubFilter === '' || tempClubFilter === STARRED_CLUBS_FILTER) {
+    if (
+      !tempClubFilter ||
+      tempClubFilter === "" ||
+      tempClubFilter === STARRED_CLUBS_FILTER
+    ) {
       Alert.alert(
-        'Select a Club',
-        'Please select a specific club from the filters to create a shareable schedule.'
+        "Select a Club",
+        "Please select a specific club from the filters to create a shareable schedule.",
       );
       return;
     }
 
     if (filteredAthletes.length === 0) {
       Alert.alert(
-        'Nothing to Share',
-        'No athletes were found for the current filters.'
+        "Nothing to Share",
+        "No athletes were found for the current filters.",
       );
       return;
     }
 
     const formatTime = (time: string) => {
-      if (!time) return '';
-      if (time.includes('AM') || time.includes('PM')) {
+      if (!time) return "";
+      if (time.includes("AM") || time.includes("PM")) {
         return time;
       }
-      const [hours, minutes] = time.split(':').map(Number);
+      const [hours, minutes] = time.split(":").map(Number);
       if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-      const period = hours >= 12 ? 'PM' : 'AM';
+      const period = hours >= 12 ? "PM" : "AM";
       const hour12 = hours % 12 || 12;
-      return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+      return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
     };
 
     const formatDate = (dateString: string) => {
-      if (!dateString) return '';
+      if (!dateString) return "";
       const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
       const formatOptions: Intl.DateTimeFormatOptions = {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'UTC',
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
       };
 
       if (isoDateMatch) {
@@ -846,13 +1016,16 @@ export default function StartListScreen() {
         const month = Number(monthRaw);
         const day = Number(dayRaw);
         if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-          return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', formatOptions);
+          return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(
+            "en-US",
+            formatOptions,
+          );
         }
       }
 
       const parsed = new Date(dateString);
       if (Number.isNaN(parsed.getTime())) return dateString;
-      return parsed.toLocaleDateString('en-US', formatOptions);
+      return parsed.toLocaleDateString("en-US", formatOptions);
     };
 
     const csvEscape = (value: string) => {
@@ -861,96 +1034,126 @@ export default function StartListScreen() {
     };
 
     const sanitizeFileName = (value: string) =>
-      value.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+      value
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase();
 
-    const groupedByDate: Record<string, { athlete: LiftResult; startTime: string }[]> = {};
+    const groupedByDate: Record<
+      string,
+      { athlete: LiftResult; startTime: string }[]
+    > = {};
     for (const row of buildSessionExportRows()) {
       if (!groupedByDate[row.date]) {
         groupedByDate[row.date] = [];
       }
-      groupedByDate[row.date].push({ athlete: row.athlete, startTime: row.startTime });
+      groupedByDate[row.date].push({
+        athlete: row.athlete,
+        startTime: row.startTime,
+      });
     }
 
     const orderedRows = Object.entries(groupedByDate)
       .map(([date, athletes]) => ({
         date,
-        athletes: athletes.sort((a, b) => a.startTime.localeCompare(b.startTime)),
+        athletes: athletes.sort((a, b) =>
+          a.startTime.localeCompare(b.startTime),
+        ),
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const header = ['Club', 'Meet', 'Name', 'Weight Class', 'Session', 'Platform', 'Date', 'Start Time'];
+    const header = [
+      "Club",
+      "Meet",
+      "Name",
+      "Weight Class",
+      "Session",
+      "Platform",
+      "Date",
+      "Start Time",
+    ];
     const rows = [header];
 
     orderedRows.forEach((group) => {
       group.athletes.forEach(({ athlete, startTime }) => {
         const details = getSessionDetails(athlete.session?.number ?? 0);
-        const dateStr = details?.date ?? '';
+        const dateStr = details?.date ?? "";
 
         rows.push([
           tempClubFilter,
-          selectedMeet || '',
-          athlete.name || '',
-          athlete.weightClass || '',
-          athlete.session?.number?.toString() || '',
-          athlete.session?.platform || '',
+          selectedMeet || "",
+          athlete.name || "",
+          athlete.weightClass || "",
+          athlete.session?.number?.toString() || "",
+          athlete.session?.platform || "",
           formatDate(dateStr),
-          formatTime(startTime)
+          formatTime(startTime),
         ]);
       });
     });
 
-    const csvContent = rows.map((row) => row.map((cell) => csvEscape(cell)).join(',')).join('\n');
+    const csvContent = rows
+      .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+      .join("\n");
 
     try {
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
-        Alert.alert('Sharing Unavailable', 'Sharing is not available on this device.');
+        Alert.alert(
+          "Sharing Unavailable",
+          "Sharing is not available on this device.",
+        );
         return;
       }
 
       const fileName = `meetcal-schedule-${sanitizeFileName(tempClubFilter)}-${Date.now()}.csv`;
       const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
-      file.write(csvContent, { encoding: 'utf8' });
+      file.write(csvContent, { encoding: "utf8" });
 
       await Sharing.shareAsync(file.uri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Share Schedule CSV',
-        UTI: 'public.comma-separated-values-text'
+        mimeType: "text/csv",
+        dialogTitle: "Share Schedule CSV",
+        UTI: "public.comma-separated-values-text",
       });
     } catch (error) {
-      console.error('Error generating CSV:', error);
-      Alert.alert('Error', 'Failed to generate CSV. Please try again.');
+      console.error("Error generating CSV:", error);
+      Alert.alert("Error", "Failed to generate CSV. Please try again.");
     }
   };
 
   // Update createCalendarEvents function
-  async function createCalendarEvents(sessions: {
-    date: string;
-    startTime: string;
-    weighInTime: string;
-    sessionNumber: string;
-    platform: string;
-    weightClass: string;
-  }[]) {
+  async function createCalendarEvents(
+    sessions: {
+      date: string;
+      startTime: string;
+      weighInTime: string;
+      sessionNumber: string;
+      platform: string;
+      weightClass: string;
+    }[],
+  ) {
     try {
       if (!selectedMeet || !isMeetName(selectedMeet)) {
-        throw new Error('No meet selected');
+        throw new Error("No meet selected");
       }
 
       let calendarId;
 
-      if (Platform.OS === 'ios') {
+      if (Platform.OS === "ios") {
         const calendar = await Calendar.getDefaultCalendarAsync();
         calendarId = calendar.id;
       } else {
-        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-        const primaryCalendar = calendars.find(cal => 
-          cal.accessLevel === Calendar.CalendarAccessLevel.OWNER && 
-          cal.allowsModifications
+        const calendars = await Calendar.getCalendarsAsync(
+          Calendar.EntityTypes.EVENT,
+        );
+        const primaryCalendar = calendars.find(
+          (cal) =>
+            cal.accessLevel === Calendar.CalendarAccessLevel.OWNER &&
+            cal.allowsModifications,
         );
 
         if (!primaryCalendar) {
-          throw new Error('no_calendar');
+          throw new Error("no_calendar");
         }
 
         calendarId = primaryCalendar.id;
@@ -963,7 +1166,11 @@ export default function StartListScreen() {
         const meetConfig = await getMeetConfig(validMeet);
 
         // Convert times to UTC using the meet's time zone
-        const startDate = convertToUTC(session.startTime, session.date, validMeet);
+        const startDate = convertToUTC(
+          session.startTime,
+          session.date,
+          validMeet,
+        );
         const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
         await Calendar.createEventAsync(calendarId, {
@@ -973,64 +1180,80 @@ export default function StartListScreen() {
           startDate: startDate,
           endDate: endDate,
           timeZone: meetConfig.time.timeZoneIdentifier,
-          alarms: [{
-            relativeOffset: -60,
-          }],
+          alarms: [
+            {
+              relativeOffset: -60,
+            },
+          ],
         });
       }
     } catch (error) {
-      console.error('Error creating calendar events:', error);
-      
+      console.error("Error creating calendar events:", error);
+
       if (error instanceof Error) {
-        if (error.message === 'no_calendar') {
-          throw new Error('No suitable calendar found. Please make sure you have at least one calendar set up on your device.');
-        } else if (error.message === 'No meet selected') {
-          throw new Error('Please select a meet before adding events to calendar.');
+        if (error.message === "no_calendar") {
+          throw new Error(
+            "No suitable calendar found. Please make sure you have at least one calendar set up on your device.",
+          );
+        } else if (error.message === "No meet selected") {
+          throw new Error(
+            "Please select a meet before adding events to calendar.",
+          );
         }
       }
-      
+
       const errorMessage = Platform.select({
-        ios: 'Could not add events to calendar. Please try again.',
-        android: 'Could not add events to calendar. Please make sure you have a calendar app installed and try again.',
-        default: 'Could not add events to calendar. Please try again.'
+        ios: "Could not add events to calendar. Please try again.",
+        android:
+          "Could not add events to calendar. Please make sure you have a calendar app installed and try again.",
+        default: "Could not add events to calendar. Please try again.",
       });
-      
+
       throw new Error(errorMessage);
     }
   }
 
   if (loading) {
-    return <StartListSkeleton colors={colors} currentTheme={currentTheme} skeletonPulse={skeletonPulse} />;
+    return <StartListSkeleton skeletonPulse={skeletonPulse} />;
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]} key={selectedMeet}>
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      key={selectedMeet}
+    >
+      <View
+        style={[
+          styles.filterContainer,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.borderBottom,
+            borderBottomWidth: 1,
+          },
+        ]}
+      >
         <View style={styles.searchContainer}>
-          <View style={[
-            styles.searchBar,
-            { 
-              backgroundColor: colors.card,
-              borderColor: colors.border
-            }
-          ]}>
-            <IconSymbol 
-              name={Platform.select({
-                ios: "magnifyingglass",
-                android: "search"
-              }) || "magnifyingglass"}
-              size={16} 
+          <View
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <IconSymbol
+              name={
+                Platform.select({
+                  ios: "magnifyingglass",
+                  android: "search",
+                }) || "magnifyingglass"
+              }
+              size={16}
               color={colors.secondaryText}
             />
             <TextInput
-              style={[
-                styles.searchInput,
-                { color: colors.text }
-              ]}
+              style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search athletes..."
               placeholderTextColor={colors.secondaryText}
               value={searchQuery}
@@ -1038,18 +1261,20 @@ export default function StartListScreen() {
             />
             {searchQuery.length > 0 && (
               <Pressable
-                onPress={() => setSearchQuery('')}
+                onPress={() => setSearchQuery("")}
                 style={({ pressed }) => [
                   styles.clearButton,
-                  pressed && { opacity: 0.7 }
+                  pressed && { opacity: 0.7 },
                 ]}
               >
-                <IconSymbol 
-                  name={Platform.select({
-                    ios: "xmark.circle.fill",
-                    android: "close"
-                  }) || "xmark.circle.fill"}
-                  size={16} 
+                <IconSymbol
+                  name={
+                    Platform.select({
+                      ios: "xmark.circle.fill",
+                      android: "close",
+                    }) || "xmark.circle.fill"
+                  }
+                  size={16}
                   color={colors.secondaryText}
                 />
               </Pressable>
@@ -1060,64 +1285,66 @@ export default function StartListScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.button,
-              { 
+              {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
               },
-              pressed && { backgroundColor: colors.pressed }
+              pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={handleOpenModal}
           >
-            <ThemedText style={[styles.buttonText, { color: colors.secondaryText }]}>
+            <ThemedText
+              style={[styles.buttonText, { color: colors.secondaryText }]}
+            >
               {getFilterDisplayText()}
             </ThemedText>
-            <IconSymbol 
-              name={getChevronIcon('down')} 
-              size={12} 
-              color={colors.secondaryText} 
+            <IconSymbol
+              name={getChevronIcon("down")}
+              size={12}
+              color={colors.secondaryText}
             />
           </Pressable>
 
           <Pressable
             style={({ pressed }) => [
               styles.saveButton,
-              { 
+              {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
               },
-              pressed && { backgroundColor: colors.pressed }
+              pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => setShowSaveModal(true)}
           >
-            <IconSymbol 
-              name={getSaveIcon()} 
-              size={16} 
-              color={colors.secondaryText} 
+            <IconSymbol
+              name={getSaveIcon()}
+              size={16}
+              color={colors.secondaryText}
             />
           </Pressable>
         </View>
       </View>
 
       <ExpandedIdProvider>
-      <FlashList
-        data={filteredAthletes}
-        keyExtractor={keyExtractor}
-        renderItem={renderListItem}
-        removeClippedSubviews={true}
-        drawDistance={350}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: 80 + insets.bottom }
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.text}
-          />
-        }
-      />
+        <FlashList
+          data={filteredAthletes}
+          keyExtractor={keyExtractor}
+          renderItem={renderListItem}
+          removeClippedSubviews={true}
+          drawDistance={350}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: 80 + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.text}
+            />
+          }
+        />
       </ExpandedIdProvider>
 
       <Modal
@@ -1129,59 +1356,80 @@ export default function StartListScreen() {
           setShowFilterModal(false);
         }}
       >
-        <Pressable 
+        <Pressable
           style={[
             styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+            { backgroundColor: colors.modalBackground },
           ]}
           onPress={() => {
             setExpandedSection(null);
             setShowFilterModal(false);
           }}
         >
-          <View style={[
-            styles.modalContent,
-            { 
-              backgroundColor: colors.card,
-              maxHeight: windowHeight * 0.8
-            }
-          ]}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: colors.card,
+                maxHeight: windowHeight * 0.8,
+              },
+            ]}
+          >
             <View style={styles.modalScrollContent}>
               <ScrollView bounces={false}>
                 {/* Age Group Filter */}
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.filterSection,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
                       { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'ageGroup' ? null : 'ageGroup'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "ageGroup" ? null : "ageGroup",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Age Group
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempAgeGroupFilter || 'All Age Groups'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempAgeGroupFilter || "All Age Groups"}
                         </ThemedText>
                       </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'ageGroup' ? 'down' : 'right')} 
-                        size={16} 
+                      <IconSymbol
+                        name={getChevronIcon(
+                          expandedSection === "ageGroup" ? "down" : "right",
+                        )}
+                        size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
-                  
-                  {expandedSection === 'ageGroup' && (
-                    <ScrollView 
+
+                  {expandedSection === "ageGroup" && (
+                    <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                       nestedScrollEnabled={true}
@@ -1190,24 +1438,32 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempAgeGroupFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempAgeGroupFilter === "" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempAgeGroupFilter('');
-                          setTempWeightClassFilter(''); // Clear weight class when age group changes
+                          setTempAgeGroupFilter("");
+                          setTempWeightClassFilter(""); // Clear weight class when age group changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAgeGroupFilter === '' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempAgeGroupFilter === "" && { color: colors.link },
+                          ]}
+                        >
                           All Age Groups
                         </ThemedText>
-                        {tempAgeGroupFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempAgeGroupFilter === "" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1217,24 +1473,34 @@ export default function StartListScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            tempAgeGroupFilter === ageGroup && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
+                            tempAgeGroupFilter === ageGroup && {
+                              backgroundColor: colors.pressed,
+                            },
+                            pressed && { opacity: 0.8 },
                           ]}
                           onPress={() => {
                             setTempAgeGroupFilter(ageGroup);
-                            setTempWeightClassFilter(''); // Clear weight class when age group changes
+                            setTempWeightClassFilter(""); // Clear weight class when age group changes
                             setExpandedSection(null);
                           }}
                         >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempAgeGroupFilter === ageGroup && { color: '#007AFF' }
-                          ]}>
+                          <ThemedText
+                            style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempAgeGroupFilter === ageGroup && {
+                                color: colors.link,
+                              },
+                            ]}
+                          >
                             {ageGroup}
                           </ThemedText>
                           {tempAgeGroupFilter === ageGroup && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            <IconSymbol
+                              name="checkmark"
+                              size={16}
+                              color={colors.link}
+                            />
                           )}
                         </Pressable>
                       ))}
@@ -1243,39 +1509,58 @@ export default function StartListScreen() {
                 </View>
 
                 {/* Gender Filter */}
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.filterSection,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
                       { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'gender' ? null : 'gender'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "gender" ? null : "gender",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Gender
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempGenderFilter || 'All Genders'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempGenderFilter || "All Genders"}
                         </ThemedText>
                       </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'gender' ? 'down' : 'right')} 
-                        size={16} 
+                      <IconSymbol
+                        name={getChevronIcon(
+                          expandedSection === "gender" ? "down" : "right",
+                        )}
+                        size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
-                  
-                  {expandedSection === 'gender' && (
-                    <ScrollView 
+
+                  {expandedSection === "gender" && (
+                    <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                       nestedScrollEnabled={true}
@@ -1284,24 +1569,32 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempGenderFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempGenderFilter === "" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempGenderFilter('');
-                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setTempGenderFilter("");
+                          setTempWeightClassFilter(""); // Clear weight class when gender changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === '' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempGenderFilter === "" && { color: colors.link },
+                          ]}
+                        >
                           All Genders
                         </ThemedText>
-                        {tempGenderFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempGenderFilter === "" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1309,24 +1602,34 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempGenderFilter === 'Male' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempGenderFilter === "Male" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempGenderFilter('Male');
-                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setTempGenderFilter("Male");
+                          setTempWeightClassFilter(""); // Clear weight class when gender changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === 'Male' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempGenderFilter === "Male" && {
+                              color: colors.link,
+                            },
+                          ]}
+                        >
                           Male
                         </ThemedText>
-                        {tempGenderFilter === 'Male' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempGenderFilter === "Male" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1334,24 +1637,34 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempGenderFilter === 'Female' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempGenderFilter === "Female" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempGenderFilter('Female');
-                          setTempWeightClassFilter(''); // Clear weight class when gender changes
+                          setTempGenderFilter("Female");
+                          setTempWeightClassFilter(""); // Clear weight class when gender changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === 'Female' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempGenderFilter === "Female" && {
+                              color: colors.link,
+                            },
+                          ]}
+                        >
                           Female
                         </ThemedText>
-                        {tempGenderFilter === 'Female' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempGenderFilter === "Female" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
                     </ScrollView>
@@ -1359,39 +1672,62 @@ export default function StartListScreen() {
                 </View>
 
                 {/* Adaptive Athlete Filter */}
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.filterSection,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
                       { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'adaptiveAthlete' ? null : 'adaptiveAthlete'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "adaptiveAthlete"
+                          ? null
+                          : "adaptiveAthlete",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Adaptive Athlete
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempAdaptiveAthleteFilter || 'All Athletes'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempAdaptiveAthleteFilter || "All Athletes"}
                         </ThemedText>
                       </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'adaptiveAthlete' ? 'down' : 'right')} 
-                        size={16} 
+                      <IconSymbol
+                        name={getChevronIcon(
+                          expandedSection === "adaptiveAthlete"
+                            ? "down"
+                            : "right",
+                        )}
+                        size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
-                  
-                  {expandedSection === 'adaptiveAthlete' && (
-                    <ScrollView 
+
+                  {expandedSection === "adaptiveAthlete" && (
+                    <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                       nestedScrollEnabled={true}
@@ -1400,24 +1736,34 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempAdaptiveAthleteFilter === "" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempAdaptiveAthleteFilter('');
-                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setTempAdaptiveAthleteFilter("");
+                          setTempWeightClassFilter(""); // Clear weight class when adaptive filter changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === '' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempAdaptiveAthleteFilter === "" && {
+                              color: colors.link,
+                            },
+                          ]}
+                        >
                           All Athletes
                         </ThemedText>
-                        {tempAdaptiveAthleteFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempAdaptiveAthleteFilter === "" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1425,24 +1771,33 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempAdaptiveAthleteFilter === "Adaptive Athletes" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempAdaptiveAthleteFilter('Adaptive Athletes');
-                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setTempAdaptiveAthleteFilter("Adaptive Athletes");
+                          setTempWeightClassFilter(""); // Clear weight class when adaptive filter changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === 'Adaptive Athletes' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempAdaptiveAthleteFilter ===
+                              "Adaptive Athletes" && { color: colors.link },
+                          ]}
+                        >
                           Adaptive Athletes
                         </ThemedText>
-                        {tempAdaptiveAthleteFilter === 'Adaptive Athletes' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempAdaptiveAthleteFilter === "Adaptive Athletes" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1450,64 +1805,96 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempAdaptiveAthleteFilter ===
+                            "Non-Adaptive Athletes" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempAdaptiveAthleteFilter('Non-Adaptive Athletes');
-                          setTempWeightClassFilter(''); // Clear weight class when adaptive filter changes
+                          setTempAdaptiveAthleteFilter("Non-Adaptive Athletes");
+                          setTempWeightClassFilter(""); // Clear weight class when adaptive filter changes
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempAdaptiveAthleteFilter ===
+                              "Non-Adaptive Athletes" && { color: colors.link },
+                          ]}
+                        >
                           Non-Adaptive Athletes
                         </ThemedText>
-                        {tempAdaptiveAthleteFilter === 'Non-Adaptive Athletes' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempAdaptiveAthleteFilter ===
+                          "Non-Adaptive Athletes" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
                     </ScrollView>
                   )}
                 </View>
-                
+
                 {/* Weight Class Filter */}
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.filterSection,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
                       { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'weightClass' ? null : 'weightClass'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "weightClass"
+                          ? null
+                          : "weightClass",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Weight Class
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempWeightClassFilter || 'All Classes'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempWeightClassFilter || "All Classes"}
                         </ThemedText>
                       </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'weightClass' ? 'down' : 'right')} 
-                        size={16} 
+                      <IconSymbol
+                        name={getChevronIcon(
+                          expandedSection === "weightClass" ? "down" : "right",
+                        )}
+                        size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
-                  
-                  {expandedSection === 'weightClass' && (
-                    <ScrollView 
+
+                  {expandedSection === "weightClass" && (
+                    <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                       nestedScrollEnabled={true}
@@ -1516,23 +1903,33 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempWeightClassFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempWeightClassFilter === "" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempWeightClassFilter('');
+                          setTempWeightClassFilter("");
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempWeightClassFilter === '' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempWeightClassFilter === "" && {
+                              color: colors.link,
+                            },
+                          ]}
+                        >
                           All Classes
                         </ThemedText>
-                        {tempWeightClassFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempWeightClassFilter === "" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
                       {weightClassOptions.map((weightClass) => (
@@ -1541,23 +1938,34 @@ export default function StartListScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            tempWeightClassFilter === weightClass && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
+                            tempWeightClassFilter === weightClass && {
+                              backgroundColor: colors.pressed,
+                            },
+                            pressed && { opacity: 0.8 },
                           ]}
                           onPress={() => {
                             setTempWeightClassFilter(weightClass);
                             setExpandedSection(null);
                           }}
                         >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempWeightClassFilter === weightClass && { color: '#007AFF' }
-                          ]}>
-                            {weightClass.replace('kg', '')}kg
+                          <ThemedText
+                            style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempWeightClassFilter === weightClass && {
+                                color: colors.link,
+                              },
+                            ]}
+                          >
+                            {weightClass.replace("kg", "")}
+                            kg
                           </ThemedText>
                           {tempWeightClassFilter === weightClass && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            <IconSymbol
+                              name="checkmark"
+                              size={16}
+                              color={colors.link}
+                            />
                           )}
                         </Pressable>
                       ))}
@@ -1565,65 +1973,87 @@ export default function StartListScreen() {
                   )}
                 </View>
 
-
                 {/* Club Filter */}
                 <View style={styles.filterSection}>
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'club' ? null : 'club'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "club" ? null : "club",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Club
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempClubFilter || 'All Clubs'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempClubFilter || "All Clubs"}
                         </ThemedText>
                       </View>
-                      <IconSymbol 
-                        name={getChevronIcon(expandedSection === 'club' ? 'down' : 'right')} 
-                        size={16} 
+                      <IconSymbol
+                        name={getChevronIcon(
+                          expandedSection === "club" ? "down" : "right",
+                        )}
+                        size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
 
-                  {expandedSection === 'club' && (
-                    <ScrollView 
+                  {expandedSection === "club" && (
+                    <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                       nestedScrollEnabled={true}
                     >
                       {/* Add search bar for clubs */}
-                      <View style={[styles.filterSearchContainer, { borderBottomColor: colors.border }]}>
-                        <View style={[
-                          styles.filterSearchBar,
-                          { 
-                            backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F2F2F7',
-                            borderColor: colors.border
-                          }
-                        ]}>
-                          <IconSymbol 
-                            name={Platform.select({
-                              ios: "magnifyingglass",
-                              android: "search"
-                            }) || "magnifyingglass"}
-                            size={16} 
+                      <View
+                        style={[
+                          styles.filterSearchContainer,
+                          { borderBottomColor: colors.border },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.filterSearchBar,
+                            {
+                              backgroundColor: colors.borderBottom,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        >
+                          <IconSymbol
+                            name={
+                              Platform.select({
+                                ios: "magnifyingglass",
+                                android: "search",
+                              }) || "magnifyingglass"
+                            }
+                            size={16}
                             color={colors.secondaryText}
                           />
                           <TextInput
                             style={[
                               styles.filterSearchInput,
-                              { color: colors.text }
+                              { color: colors.text },
                             ]}
                             placeholder="Search clubs..."
                             placeholderTextColor={colors.secondaryText}
@@ -1632,18 +2062,20 @@ export default function StartListScreen() {
                           />
                           {clubSearchQuery.length > 0 && (
                             <Pressable
-                              onPress={() => setClubSearchQuery('')}
+                              onPress={() => setClubSearchQuery("")}
                               style={({ pressed }) => [
                                 styles.clearButton,
-                                pressed && { opacity: 0.7 }
+                                pressed && { opacity: 0.7 },
                               ]}
                             >
-                              <IconSymbol 
-                                name={Platform.select({
-                                  ios: "xmark.circle.fill",
-                                  android: "close"
-                                }) || "xmark.circle.fill"}
-                                size={16} 
+                              <IconSymbol
+                                name={
+                                  Platform.select({
+                                    ios: "xmark.circle.fill",
+                                    android: "close",
+                                  }) || "xmark.circle.fill"
+                                }
+                                size={16}
                                 color={colors.secondaryText}
                               />
                             </Pressable>
@@ -1656,23 +2088,31 @@ export default function StartListScreen() {
                         style={({ pressed }) => [
                           styles.filterOption,
                           { borderBottomColor: colors.border },
-                          tempClubFilter === '' && { backgroundColor: colors.pressed },
-                          pressed && { opacity: 0.8 }
+                          tempClubFilter === "" && {
+                            backgroundColor: colors.pressed,
+                          },
+                          pressed && { opacity: 0.8 },
                         ]}
                         onPress={() => {
-                          setTempClubFilter('');
+                          setTempClubFilter("");
                           setExpandedSection(null);
                         }}
                       >
-                        <ThemedText style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempClubFilter === '' && { color: '#007AFF' }
-                        ]}>
+                        <ThemedText
+                          style={[
+                            styles.filterOptionText,
+                            { color: colors.text },
+                            tempClubFilter === "" && { color: colors.link },
+                          ]}
+                        >
                           All Clubs
                         </ThemedText>
-                        {tempClubFilter === '' && (
-                          <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                        {tempClubFilter === "" && (
+                          <IconSymbol
+                            name="checkmark"
+                            size={16}
+                            color={colors.link}
+                          />
                         )}
                       </Pressable>
 
@@ -1682,8 +2122,10 @@ export default function StartListScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            tempClubFilter === STARRED_CLUBS_FILTER && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
+                            tempClubFilter === STARRED_CLUBS_FILTER && {
+                              backgroundColor: colors.pressed,
+                            },
+                            pressed && { opacity: 0.8 },
                           ]}
                           onPress={() => {
                             setTempClubFilter(STARRED_CLUBS_FILTER);
@@ -1691,29 +2133,39 @@ export default function StartListScreen() {
                           }}
                         >
                           <View style={styles.filterOptionContent}>
-                            <ThemedText style={[
-                              styles.filterOptionText,
-                              { color: colors.text },
-                              tempClubFilter === STARRED_CLUBS_FILTER && { color: '#007AFF' }
-                            ]}>
+                            <ThemedText
+                              style={[
+                                styles.filterOptionText,
+                                { color: colors.text },
+                                tempClubFilter === STARRED_CLUBS_FILTER && {
+                                  color: colors.link,
+                                },
+                              ]}
+                            >
                               Favorites
                             </ThemedText>
-                            <IconSymbol 
+                            <IconSymbol
                               name="star.fill"
                               size={22}
                               color="#FFB340"
                             />
                           </View>
                           {tempClubFilter === STARRED_CLUBS_FILTER && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            <IconSymbol
+                              name="checkmark"
+                              size={16}
+                              color={colors.link}
+                            />
                           )}
                         </Pressable>
                       )}
 
                       {/* Filter clubs based on search query */}
                       {sortedClubOptions
-                        .filter(club => 
-                          club.toLowerCase().includes(clubSearchQuery.toLowerCase())
+                        .filter((club) =>
+                          club
+                            .toLowerCase()
+                            .includes(clubSearchQuery.toLowerCase()),
                         )
                         .map((club) => (
                           <Pressable
@@ -1721,19 +2173,23 @@ export default function StartListScreen() {
                             style={({ pressed }) => [
                               styles.filterOption,
                               { borderBottomColor: colors.border },
-                              tempClubFilter === club && { backgroundColor: colors.pressed },
-                              pressed && { opacity: 0.8 }
+                              tempClubFilter === club && {
+                                backgroundColor: colors.pressed,
+                              },
+                              pressed && { opacity: 0.8 },
                             ]}
                             onPress={() => {
                               setTempClubFilter(club);
                               setExpandedSection(null);
                             }}
                           >
-                            <ThemedText 
+                            <ThemedText
                               style={[
                                 styles.filterOptionText,
                                 { color: colors.text },
-                                tempClubFilter === club && { color: '#007AFF' }
+                                tempClubFilter === club && {
+                                  color: colors.link,
+                                },
                               ]}
                               numberOfLines={2}
                             >
@@ -1741,7 +2197,11 @@ export default function StartListScreen() {
                             </ThemedText>
                             <View style={styles.filterOptionRight}>
                               {tempClubFilter === club && (
-                                <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                                <IconSymbol
+                                  name="checkmark"
+                                  size={16}
+                                  color={colors.link}
+                                />
                               )}
                               <Pressable
                                 onPress={(e) => {
@@ -1751,9 +2211,17 @@ export default function StartListScreen() {
                                 style={styles.starButton}
                               >
                                 <IconSymbol
-                                  name={starredClubs.includes(club) ? 'star.fill' : 'star'}
+                                  name={
+                                    starredClubs.includes(club)
+                                      ? "star.fill"
+                                      : "star"
+                                  }
                                   size={22}
-                                  color={starredClubs.includes(club) ? '#FFB340' : colors.secondaryText}
+                                  color={
+                                    starredClubs.includes(club)
+                                      ? "#FFB340"
+                                      : colors.secondaryText
+                                  }
                                 />
                               </Pressable>
                             </View>
@@ -1765,27 +2233,35 @@ export default function StartListScreen() {
               </ScrollView>
             </View>
 
-            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+            <View
+              style={[styles.modalFooter, { borderTopColor: colors.border }]}
+            >
               <View style={styles.modalFooterContent}>
                 <View style={styles.modalFooterRight}>
-                  <ThemedText style={[styles.resultCount, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[
+                      styles.resultCount,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     {tempFilteredAthleteCount} athletes
                   </ThemedText>
                   <Pressable
-                  style={({ pressed }) => [
-                    styles.resetButton,
-                    pressed && { opacity: 0.8 }
-                  ]}
-                  onPress={resetFilters}
-                >
-                  <ThemedText style={styles.resetButtonText}>
-                    Reset
-                  </ThemedText>
-                </Pressable>
+                    style={({ pressed }) => [
+                      styles.resetButton,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={resetFilters}
+                  >
+                    <ThemedText style={styles.resetButtonText}>
+                      Reset
+                    </ThemedText>
+                  </Pressable>
                   <Pressable
                     style={({ pressed }) => [
                       styles.applyButton,
-                      pressed && { opacity: 0.8 }
+                      { backgroundColor: colors.link },
+                      pressed && { opacity: 0.8 },
                     ]}
                     onPress={handleApplyFilters}
                   >
@@ -1806,32 +2282,36 @@ export default function StartListScreen() {
         animationType="fade"
         onRequestClose={() => setShowSaveModal(false)}
       >
-        <Pressable 
+        <Pressable
           style={[
             styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+            { backgroundColor: colors.modalBackground },
           ]}
           onPress={() => setShowSaveModal(false)}
         >
-          <View style={[
-            styles.modalContent,
-            { backgroundColor: colors.card }
-          ]}>
-            <View style={[styles.saveModalHeader, { borderBottomColor: colors.border }]}>
-              <ThemedText style={[styles.saveModalTitle, { color: colors.text }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View
+              style={[
+                styles.saveModalHeader,
+                { borderBottomColor: colors.border },
+              ]}
+            >
+              <ThemedText
+                style={[styles.saveModalTitle, { color: colors.text }]}
+              >
                 Save {filteredAthletes.length} Athletes
               </ThemedText>
               <Pressable
                 style={({ pressed }) => [
                   styles.closeButton,
-                  pressed && { opacity: 0.8 }
+                  pressed && { opacity: 0.8 },
                 ]}
                 onPress={() => setShowSaveModal(false)}
               >
-                <IconSymbol 
-                  name={getCloseIcon()} 
-                  size={20} 
-                  color={colors.secondaryText} 
+                <IconSymbol
+                  name={getCloseIcon()}
+                  size={20}
+                  color={colors.secondaryText}
                 />
               </Pressable>
             </View>
@@ -1840,7 +2320,7 @@ export default function StartListScreen() {
               style={({ pressed }) => [
                 styles.saveOption,
                 { borderBottomColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
+                pressed && { backgroundColor: colors.pressed },
               ]}
               onPress={() => {
                 setShowSaveModal(false);
@@ -1850,18 +2330,25 @@ export default function StartListScreen() {
               <View style={styles.saveOptionContent}>
                 <IconSymbol name="bookmark" size={22} color={colors.text} />
                 <View style={styles.saveOptionText}>
-                  <ThemedText style={[styles.saveOptionTitle, { color: colors.text }]}>
+                  <ThemedText
+                    style={[styles.saveOptionTitle, { color: colors.text }]}
+                  >
                     Add to Saved
                   </ThemedText>
-                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[
+                      styles.saveOptionSubtitle,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     Save sessions to your list
                   </ThemedText>
                 </View>
               </View>
-              <IconSymbol 
-                name={getChevronIcon('right')} 
-                size={16} 
-                color={colors.secondaryText} 
+              <IconSymbol
+                name={getChevronIcon("right")}
+                size={16}
+                color={colors.secondaryText}
               />
             </Pressable>
 
@@ -1869,7 +2356,7 @@ export default function StartListScreen() {
               style={({ pressed }) => [
                 styles.saveOption,
                 { borderBottomColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
+                pressed && { backgroundColor: colors.pressed },
               ]}
               onPress={() => {
                 setShowSaveModal(false);
@@ -1883,19 +2370,30 @@ export default function StartListScreen() {
                   color={!isSubscribed ? colors.secondaryText : colors.text}
                 />
                 <View style={styles.saveOptionText}>
-                  <ThemedText style={[
-                    styles.saveOptionTitle,
-                    { color: !isSubscribed ? colors.secondaryText : colors.text }
-                  ]}>
+                  <ThemedText
+                    style={[
+                      styles.saveOptionTitle,
+                      {
+                        color: !isSubscribed
+                          ? colors.secondaryText
+                          : colors.text,
+                      },
+                    ]}
+                  >
                     Add to Calendar
                   </ThemedText>
-                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[
+                      styles.saveOptionSubtitle,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     Save sessions to your calendar
                   </ThemedText>
                 </View>
               </View>
               <IconSymbol
-                name={getChevronIcon('right')}
+                name={getChevronIcon("right")}
                 size={16}
                 color={colors.secondaryText}
               />
@@ -1905,15 +2403,15 @@ export default function StartListScreen() {
               style={({ pressed }) => [
                 styles.saveOption,
                 { borderBottomColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
+                pressed && { backgroundColor: colors.pressed },
               ]}
               onPress={() => {
                 setShowSaveModal(false);
                 // 1. Check auth
                 const authResult = requireAuth({
-                  feature: 'share-schedule-image',
-                  message: 'Sign in to share schedule images.',
-                  returnPath: '/(tabs)/(start-list)',
+                  feature: "share-schedule-image",
+                  message: "Sign in to share schedule images.",
+                  returnPath: "/(tabs)/(start-list)",
                 });
                 if (authResult === null || authResult === false) {
                   return;
@@ -1923,49 +2421,73 @@ export default function StartListScreen() {
                   captureScheduleImage();
                 } else {
                   router.push({
-                    pathname: '/(screens)/paywall',
-                    params: { from: '/(tabs)/(start-list)', feature: 'share-schedule-image' },
+                    pathname: "/(screens)/paywall",
+                    params: {
+                      from: "/(tabs)/(start-list)",
+                      feature: "share-schedule-image",
+                    },
                   } as any);
                 }
               }}
             >
               <View style={styles.saveOptionContent}>
                 <IconSymbol
-                  name={Platform.select({
-                    ios: 'photo',
-                    android: 'image',
-                  }) || 'photo'}
+                  name={
+                    Platform.select({
+                      ios: "photo",
+                      android: "image",
+                    }) || "photo"
+                  }
                   size={22}
                   color={!isSubscribed ? colors.secondaryText : colors.text}
                 />
                 <View style={styles.saveOptionText}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <ThemedText style={[
-                      styles.saveOptionTitle,
-                      { color: !isSubscribed ? colors.secondaryText : colors.text }
-                    ]}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.saveOptionTitle,
+                        {
+                          color: !isSubscribed
+                            ? colors.secondaryText
+                            : colors.text,
+                        },
+                      ]}
+                    >
                       Create Shareable Schedule
                     </ThemedText>
                     {!isSubscribed && (
                       <IconSymbol
-                        name={Platform.select({
-                          ios: 'lock.fill',
-                          android: 'lock',
-                        }) || 'lock.fill'}
+                        name={
+                          Platform.select({
+                            ios: "lock.fill",
+                            android: "lock",
+                          }) || "lock.fill"
+                        }
                         size={14}
                         color={colors.secondaryText}
                       />
                     )}
                   </View>
-                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[
+                      styles.saveOptionSubtitle,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     {isSubscribed
-                      ? 'Generate an image to share'
-                      : 'Pro feature - Upgrade to access'}
+                      ? "Generate an image to share"
+                      : "Pro feature - Upgrade to access"}
                   </ThemedText>
                 </View>
               </View>
               <IconSymbol
-                name={getChevronIcon('right')}
+                name={getChevronIcon("right")}
                 size={16}
                 color={colors.secondaryText}
               />
@@ -1975,15 +2497,15 @@ export default function StartListScreen() {
               style={({ pressed }) => [
                 styles.saveOption,
                 { borderBottomColor: colors.border },
-                pressed && { backgroundColor: colors.pressed }
+                pressed && { backgroundColor: colors.pressed },
               ]}
               onPress={() => {
                 setShowSaveModal(false);
                 // 1. Check auth
                 const authResult = requireAuth({
-                  feature: 'export-csv',
-                  message: 'Sign in to export schedules.',
-                  returnPath: '/(tabs)/(start-list)',
+                  feature: "export-csv",
+                  message: "Sign in to export schedules.",
+                  returnPath: "/(tabs)/(start-list)",
                 });
                 if (authResult === null || authResult === false) {
                   return;
@@ -1993,49 +2515,73 @@ export default function StartListScreen() {
                   generateShareableScheduleCsv();
                 } else {
                   router.push({
-                    pathname: '/(screens)/paywall',
-                    params: { from: '/(tabs)/(start-list)', feature: 'export-csv' },
+                    pathname: "/(screens)/paywall",
+                    params: {
+                      from: "/(tabs)/(start-list)",
+                      feature: "export-csv",
+                    },
                   } as any);
                 }
               }}
             >
               <View style={styles.saveOptionContent}>
                 <IconSymbol
-                  name={Platform.select({
-                    ios: 'square.and.arrow.down',
-                    android: 'download',
-                  }) || 'square.and.arrow.down'}
+                  name={
+                    Platform.select({
+                      ios: "square.and.arrow.down",
+                      android: "download",
+                    }) || "square.and.arrow.down"
+                  }
                   size={22}
                   color={!isSubscribed ? colors.secondaryText : colors.text}
                 />
                 <View style={styles.saveOptionText}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <ThemedText style={[
-                      styles.saveOptionTitle,
-                      { color: !isSubscribed ? colors.secondaryText : colors.text }
-                    ]}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.saveOptionTitle,
+                        {
+                          color: !isSubscribed
+                            ? colors.secondaryText
+                            : colors.text,
+                        },
+                      ]}
+                    >
                       Download Shareable Schedule
                     </ThemedText>
                     {!isSubscribed && (
                       <IconSymbol
-                        name={Platform.select({
-                          ios: 'lock.fill',
-                          android: 'lock',
-                        }) || 'lock.fill'}
+                        name={
+                          Platform.select({
+                            ios: "lock.fill",
+                            android: "lock",
+                          }) || "lock.fill"
+                        }
                         size={14}
                         color={colors.secondaryText}
                       />
                     )}
                   </View>
-                  <ThemedText style={[styles.saveOptionSubtitle, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[
+                      styles.saveOptionSubtitle,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     {isSubscribed
-                      ? 'Export the schedule as a CSV file'
-                      : 'Pro feature - Upgrade to access'}
+                      ? "Export the schedule as a CSV file"
+                      : "Pro feature - Upgrade to access"}
                   </ThemedText>
                 </View>
               </View>
               <IconSymbol
-                name={getChevronIcon('right')}
+                name={getChevronIcon("right")}
                 size={16}
                 color={colors.secondaryText}
               />
@@ -2045,13 +2591,13 @@ export default function StartListScreen() {
       </Modal>
 
       {showShareViews && (
-        <View style={{ position: 'absolute', left: -10000, top: 0 }}>
+        <View style={{ position: "absolute", left: -10000, top: 0 }}>
           <View ref={shareScheduleRef} collapsable={false}>
             <ShareScheduleView
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
-              selectedMeet={selectedMeet || ''}
-              selectedClub={tempClubFilter || ''}
+              selectedMeet={selectedMeet || ""}
+              selectedClub={tempClubFilter || ""}
               getSessionDetails={getSessionDetails}
               transparentBackground={false}
             />
@@ -2060,8 +2606,8 @@ export default function StartListScreen() {
             <ShareScheduleView
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
-              selectedMeet={selectedMeet || ''}
-              selectedClub={tempClubFilter || ''}
+              selectedMeet={selectedMeet || ""}
+              selectedClub={tempClubFilter || ""}
               getSessionDetails={getSessionDetails}
               transparentBackground={true}
             />
@@ -2100,21 +2646,21 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
     marginTop: 6,
   },
   button: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -2124,14 +2670,14 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -2143,19 +2689,17 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginHorizontal: 16,
-    maxHeight: '80%', // Fallback if windowHeight not available
+    maxHeight: "80%", // Fallback if windowHeight not available
   },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -2165,9 +2709,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   filterSectionButtonContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   filterSectionLabel: {
     fontSize: 13,
@@ -2175,15 +2719,15 @@ const styles = StyleSheet.create({
   },
   filterSectionValue: {
     fontSize: 17,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   filterOptions: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   filterOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -2196,14 +2740,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     gap: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -2225,56 +2769,55 @@ const styles = StyleSheet.create({
   modalFooter: {
     padding: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   modalFooterContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
   },
   modalFooterRight: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 8,
   },
   resetButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: "#FF3B30",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   resetButtonText: {
     fontSize: 17,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   resultCount: {
     fontSize: 15,
-    marginRight: 'auto',
+    marginRight: "auto",
   },
   applyButton: {
-    backgroundColor: '#007AFF',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 8,
   },
   applyButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   saveModalHeader: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    position: 'relative',
+    position: "relative",
   },
   closeButton: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     top: 16,
     padding: 4,
@@ -2282,19 +2825,19 @@ const styles = StyleSheet.create({
   },
   saveModalTitle: {
     fontSize: 17,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
   },
   saveOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   saveOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 16,
   },
   saveOptionText: {
@@ -2302,14 +2845,14 @@ const styles = StyleSheet.create({
   },
   saveOptionTitle: {
     fontSize: 17,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   saveOptionSubtitle: {
     fontSize: 13,
   },
   filterOptionRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     flexShrink: 0,
   },
@@ -2318,22 +2861,9 @@ const styles = StyleSheet.create({
     marginRight: -6,
   },
   filterOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-  },
-  starredClubsIcon: {
-    marginTop: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginTop: 12,
   },
   clearButton: {
     padding: 4,
@@ -2344,8 +2874,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   filterSearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -2358,21 +2888,4 @@ const styles = StyleSheet.create({
     height: 24,
     marginRight: 8,
   },
-  premiumOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8, // Add slight rounding to match the container
-  },
-  premiumBadge: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  premiumText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-}); 
+});
