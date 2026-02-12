@@ -1,22 +1,39 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert, Platform, Modal, TextInput, Pressable, ScrollView, Linking, KeyboardAvoidingView, Keyboard } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { useClerk, useUser } from '@clerk/clerk-expo';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
-import RevenueCatUI from 'react-native-purchases-ui';
-import { NotificationSettings } from '@/components/NotificationSettings';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import * as StoreReview from 'expo-store-review';
-import { clearAuthCache } from '@/lib/authCache';
-import { useAuthGuard } from '@/utils/authGuard';
+import { NotificationSettings } from "@/components/NotificationSettings";
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { clearAuthCache } from "@/lib/authCache";
+import { useAuthGuard } from "@/utils/authGuard";
+import { useClerk, useUser } from "@clerk/clerk-expo";
+import { Stack, useRouter } from "expo-router";
+import * as StoreReview from "expo-store-review";
+import React, { useCallback, useState } from "react";
+import {
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import {
+  getDevice,
+  getDeviceType,
+  getManufacturer,
+} from "react-native-device-info";
+import RevenueCatUI from "react-native-purchases-ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type EditableField = 'firstName' | 'lastName' | 'email';
-export type SubscriptionStatus = 'free' | 'quarterly' | 'lifetime';
+type EditableField = "firstName" | "lastName" | "email";
+export type SubscriptionStatus = "free" | "quarterly" | "lifetime";
 
 export default function ProfileScreen() {
   const { currentTheme } = useTheme();
@@ -25,7 +42,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editValue, setEditValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
@@ -37,43 +54,43 @@ export default function ProfileScreen() {
         await StoreReview.requestReview();
       }
     } catch (error) {
-      console.warn('Profile: Store review unavailable', error);
+      console.warn("Profile: Store review unavailable", error);
     }
   }, []);
 
   // Define theme colors to match other screens
   const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF',
+    background: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+    card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
+    border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
+    text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
+    secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
+    pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
+    link: "#007AFF",
   };
 
   const handleSignOut = async () => {
     try {
       await clearAuthCache();
       await signOut();
-      router.replace('/(tabs)/(index)');
+      router.replace("/(tabs)/(index)");
     } catch (err) {
-      console.error('Error signing out:', err);
-      Alert.alert('Error', 'Failed to sign out. Please try again.');
+      console.error("Error signing out:", err);
+      Alert.alert("Error", "Failed to sign out. Please try again.");
     }
   };
 
   const handleEdit = (field: EditableField) => {
-    let currentValue = '';
+    let currentValue = "";
     switch (field) {
-      case 'firstName':
-        currentValue = user?.firstName || '';
+      case "firstName":
+        currentValue = user?.firstName || "";
         break;
-      case 'lastName':
-        currentValue = user?.lastName || '';
+      case "lastName":
+        currentValue = user?.lastName || "";
         break;
-      case 'email':
-        currentValue = user?.primaryEmailAddress?.emailAddress || '';
+      case "email":
+        currentValue = user?.primaryEmailAddress?.emailAddress || "";
         break;
     }
     setEditValue(currentValue);
@@ -83,21 +100,21 @@ export default function ProfileScreen() {
 
   const handleSave = async () => {
     if (!editingField || !user) return;
-    
+
     setIsLoading(true);
     try {
       switch (editingField) {
-        case 'firstName':
+        case "firstName":
           await user.update({
             firstName: editValue,
           });
           break;
-        case 'lastName':
+        case "lastName":
           await user.update({
             lastName: editValue,
           });
           break;
-        case 'email':
+        case "email":
           // Ensure email is different before creating
           if (editValue === user.primaryEmailAddress?.emailAddress) {
             setIsEditing(false);
@@ -108,20 +125,20 @@ export default function ProfileScreen() {
             email: editValue,
           });
           await emailAddress.prepareVerification({
-            strategy: 'email_code',
+            strategy: "email_code",
           });
 
           Alert.alert(
-            'Verification Required',
-            'Please check your email to verify your new email address.'
+            "Verification Required",
+            "Please check your email to verify your new email address.",
           );
           break;
       }
       setIsEditing(false);
       setEditingField(null);
     } catch (err) {
-      console.error('Error updating profile:', err);
-      Alert.alert('Error', 'Failed to update profile. Please try again.');
+      console.error("Error updating profile:", err);
+      Alert.alert("Error", "Failed to update profile. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -129,11 +146,21 @@ export default function ProfileScreen() {
 
   const formatTitle = (field: string) => {
     return field
-      .replace(/([A-Z])/g, ' $1')
+      .replace(/([A-Z])/g, " $1")
       .trim()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  const sendEmailFeedback = () => {
+    const email = "maddisen@meetcal.app";
+    const subject = "MeetCal App Feedback";
+    const body = `Device Details: ${getManufacturer} ${getDevice} ${getDeviceType}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
+
+    const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    Linking.openURL(url).catch((err) => console.error("Error", err));
   };
 
   const renderField = (label: string, value: string, field: EditableField) => (
@@ -141,7 +168,7 @@ export default function ProfileScreen() {
       style={({ pressed }) => [
         styles.section,
         { backgroundColor: colors.card },
-        pressed && { backgroundColor: colors.pressed }
+        pressed && { backgroundColor: colors.pressed },
       ]}
       onPress={() => handleEdit(field)}
     >
@@ -151,11 +178,11 @@ export default function ProfileScreen() {
             {label}
           </ThemedText>
           <ThemedText style={[styles.value, { color: colors.secondaryText }]}>
-            {value || 'Not set'}
+            {value || "Not set"}
           </ThemedText>
         </View>
         <IconSymbol
-          name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
           size={20}
           color={colors.link}
         />
@@ -163,32 +190,36 @@ export default function ProfileScreen() {
     </Pressable>
   );
 
-  const divider = <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />;
+  const divider = (
+    <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />
+  );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
-        options={{ 
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
           headerShown: true,
-          headerTitle: '',
+          headerTitle: "",
           headerTintColor: colors.text,
-          headerBackTitle: 'Back',
+          headerBackTitle: "Back",
           headerStyle: {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
-        }} 
+        }}
       />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { 
+          {
             paddingHorizontal: 20,
             paddingTop: 20,
-            paddingBottom: Math.max(80, insets.bottom + 60)
-          }
+            paddingBottom: Math.max(80, insets.bottom + 60),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -197,35 +228,45 @@ export default function ProfileScreen() {
         </ThemedText>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          {renderField('First Name', user?.firstName || '', 'firstName')}
+          {renderField("First Name", user?.firstName || "", "firstName")}
           {divider}
-          {renderField('Last Name', user?.lastName || '', 'lastName')}
+          {renderField("Last Name", user?.lastName || "", "lastName")}
           {divider}
-          {renderField('Email', user?.primaryEmailAddress?.emailAddress || '', 'email')}
+          {renderField(
+            "Email",
+            user?.primaryEmailAddress?.emailAddress || "",
+            "email",
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <NotificationSettings
             colors={colors}
-            subscriptionStatus={subscriptionType || 'free'}
+            subscriptionStatus={subscriptionType || "free"}
             requireAuth={requireAuth}
             router={router}
           />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-        <Pressable
+          <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
+              {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+              pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={async () => {
               try {
                 await RevenueCatUI.presentCustomerCenter();
               } catch (error) {
-                console.error('Error opening Customer Center:', error);
-                Alert.alert('Error', 'Unable to open Customer Center. Please try again later.');
+                console.error("Error opening Customer Center:", error);
+                Alert.alert(
+                  "Error",
+                  "Unable to open Customer Center. Please try again later.",
+                );
               }
             }}
           >
@@ -240,10 +281,13 @@ export default function ProfileScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
+              {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+              pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push('/(screens)/feedback')}
+            onPress={sendEmailFeedback}
           >
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -255,29 +299,52 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.legalLinks}>
-          <Pressable onPress={() => Linking.openURL('https://meetcal.app/privacy')}>
+          <Pressable
+            onPress={() => Linking.openURL("https://meetcal.app/privacy")}
+          >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Privacy Policy
             </ThemedText>
           </Pressable>
-          <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
-          <Pressable onPress={() => Linking.openURL('https://meetcal.app/terms')}>
+          <ThemedText
+            style={[styles.legalText, { color: colors.secondaryText }]}
+          >
+            {" "}
+            •{" "}
+          </ThemedText>
+          <Pressable
+            onPress={() => Linking.openURL("https://meetcal.app/terms")}
+          >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Terms of Use
             </ThemedText>
           </Pressable>
-          <ThemedText style={[styles.legalText, { color: colors.secondaryText }]}> • </ThemedText>
-          <Pressable onPress={() => Linking.openURL(
-            Platform.OS === 'ios' 
-              ? 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'
-              : 'https://meetcal.app/eula'
-          )}>
+          <ThemedText
+            style={[styles.legalText, { color: colors.secondaryText }]}
+          >
+            {" "}
+            •{" "}
+          </ThemedText>
+          <Pressable
+            onPress={() =>
+              Linking.openURL(
+                Platform.OS === "ios"
+                  ? "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                  : "https://meetcal.app/eula",
+              )
+            }
+          >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               User Agreement
             </ThemedText>
           </Pressable>
         </View>
-        <Pressable onPress={() => Linking.openURL(`https://accounts.meetcal.app/sign-in`)} style={{ alignSelf: 'center', marginBottom: 8 }}>
+        <Pressable
+          onPress={() =>
+            Linking.openURL(`https://accounts.meetcal.app/sign-in`)
+          }
+          style={{ alignSelf: "center", marginBottom: 8 }}
+        >
           <ThemedText style={[styles.legalText, { color: colors.link }]}>
             Delete Your Account
           </ThemedText>
@@ -287,9 +354,7 @@ export default function ProfileScreen() {
           style={[styles.signOutButton]}
           onPress={handleSignOut}
         >
-          <ThemedText style={styles.signOutButtonText}>
-            Sign Out
-          </ThemedText>
+          <ThemedText style={styles.signOutButtonText}>Sign Out</ThemedText>
         </TouchableOpacity>
       </ScrollView>
 
@@ -300,33 +365,43 @@ export default function ProfileScreen() {
         animationType="fade"
         onRequestClose={() => setIsEditing(false)}
       >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
-          <Pressable 
+          <Pressable
             style={[
               styles.modalOverlay,
-              { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+              {
+                backgroundColor:
+                  currentTheme === "dark"
+                    ? "rgba(0,0,0,0.6)"
+                    : "rgba(0,0,0,0.4)",
+              },
             ]}
             onPress={() => {
               Keyboard.dismiss();
               setIsEditing(false);
             }}
           >
-            <View 
+            <View
               style={[
-                styles.modalContent, 
-                { 
+                styles.modalContent,
+                {
                   backgroundColor: colors.card,
                   paddingBottom: insets.bottom + 20,
-                  maxHeight: '80%'
-                }
+                  maxHeight: "80%",
+                },
               ]}
             >
-              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View
+                style={[
+                  styles.modalHeader,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
                 <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                  Edit {editingField ? formatTitle(editingField) : ''}
+                  Edit {editingField ? formatTitle(editingField) : ""}
                 </ThemedText>
                 <TouchableOpacity
                   style={styles.closeButton}
@@ -335,15 +410,15 @@ export default function ProfileScreen() {
                     setIsEditing(false);
                   }}
                 >
-                  <IconSymbol 
-                    name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                    size={20} 
-                    color={colors.secondaryText} 
+                  <IconSymbol
+                    name={Platform.OS === "ios" ? "xmark" : "close"}
+                    size={20}
+                    color={colors.secondaryText}
                   />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView 
+              <ScrollView
                 style={styles.modalBody}
                 keyboardShouldPersistTaps="handled"
               >
@@ -353,21 +428,27 @@ export default function ProfileScreen() {
                       styles.input,
                       {
                         color: colors.text,
-                        backgroundColor: currentTheme === 'dark' ? '#2C2C2E' : '#F6F6F7',
+                        backgroundColor:
+                          currentTheme === "dark" ? "#2C2C2E" : "#F6F6F7",
                         borderColor: colors.border,
                       },
                     ]}
                     value={editValue}
                     onChangeText={setEditValue}
-                    placeholder={`Enter ${formatTitle(editingField || '')}`}
+                    placeholder={`Enter ${formatTitle(editingField || "")}`}
                     placeholderTextColor={colors.secondaryText}
-                    autoCapitalize={editingField === 'email' ? 'none' : 'words'}
-                    keyboardType={editingField === 'email' ? 'email-address' : 'default'}
+                    autoCapitalize={editingField === "email" ? "none" : "words"}
+                    keyboardType={
+                      editingField === "email" ? "email-address" : "default"
+                    }
                     autoFocus
                   />
 
                   <TouchableOpacity
-                    style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+                    style={[
+                      styles.saveButton,
+                      isLoading && styles.saveButtonDisabled,
+                    ]}
                     onPress={() => {
                       Keyboard.dismiss();
                       handleSave();
@@ -400,15 +481,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 24,
-    textAlign: 'left',
+    textAlign: "left",
     lineHeight: 40,
   },
   card: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -416,7 +497,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   section: {
     paddingVertical: 12,
@@ -426,33 +507,33 @@ const styles = StyleSheet.create({
     height: 1,
   },
   fieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   label: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     marginBottom: 4,
   },
   value: {
     fontSize: 15,
   },
   signOutButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: "#FF3B30",
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 14,
   },
   signOutButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   modalContent: {
     borderTopLeftRadius: 12,
@@ -461,16 +542,16 @@ const styles = StyleSheet.create({
   modalHeader: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalTitle: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   closeButton: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     padding: 4,
   },
@@ -486,23 +567,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   saveButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   saveButtonDisabled: {
     opacity: 0.5,
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   roleOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -515,12 +596,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   legalLinks: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   legalText: {
     fontSize: 14,
   },
-}); 
+});
