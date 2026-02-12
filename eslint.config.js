@@ -2,6 +2,7 @@
 const { defineConfig } = require("eslint/config");
 const expoConfig = require("eslint-config-expo/flat");
 const react = require("eslint-plugin-react");
+const reactNative = require("eslint-plugin-react-native");
 
 module.exports = defineConfig([
   expoConfig,
@@ -12,6 +13,7 @@ module.exports = defineConfig([
     files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
       react,
+      "react-native": reactNative,
     },
     settings: {
       react: {
@@ -19,11 +21,11 @@ module.exports = defineConfig([
       },
     },
     rules: {
-      // Force JSX props onto multiple lines - max 1 prop per line always
+      // Force JSX props onto multiple lines - max 2 props per line
       "react/jsx-max-props-per-line": [
         "error",
         {
-          maximum: 1,
+          maximum: 3,
           when: "always",
         },
       ],
@@ -45,6 +47,12 @@ module.exports = defineConfig([
 
       // Disable prop-types (using TypeScript)
       "react/prop-types": "off",
+
+      // React Native specific rules (from eslint-config-expo)
+      "react-native/no-unused-styles": "error",
+      // "react-native/no-inline-styles": "warn",
+      "react-native/no-color-literals": "warn",
+      "react-native/no-raw-text": "off", // Can be too strict
     },
   },
 ]);
