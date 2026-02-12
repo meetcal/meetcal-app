@@ -1,28 +1,14 @@
-import { useTheme } from "@/contexts/ThemeContext";
-import {
-  DarkTheme,
-  DefaultTheme,
-  useNavigation,
-} from "@react-navigation/native";
+import { HapticTab } from "@/components/HapticTab";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAppColors } from "@/hooks/useAppColors";
+import { useNavigation } from "@react-navigation/native";
 import { Tabs } from "expo-router";
 import React from "react";
 import { Platform, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-import { HapticTab } from "@/components/HapticTab";
-import { IconSymbol } from "@/components/ui/IconSymbol";
 
 export default function TabLayout() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-
-  const colors = {
-    background: currentTheme === "dark" ? "#000000" : "#F5F5F5",
-    border: currentTheme === "dark" ? "#1C1C1E" : "#E1E1E1",
-    text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
-    secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
-  };
 
   // Check if iOS 26+ for NativeTabs
   const iosVersion =
@@ -34,9 +20,9 @@ export default function TabLayout() {
   // Update navigation theme when theme changes
   React.useEffect(() => {
     navigation.setOptions({
-      ...(currentTheme === "dark" ? DarkTheme : DefaultTheme),
+      ...colors,
     });
-  }, [currentTheme, navigation]);
+  }, [colors, navigation]);
 
   // if (Platform.OS === 'ios' && isIOS26OrHigher) {
   //   return (
