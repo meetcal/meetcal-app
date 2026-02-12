@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Modal, Platform } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/contexts/ThemeContext';
-import * as Calendar from 'expo-calendar';
-import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ThemedText } from "@/components/ThemedText";
+import { useAppColors } from "@/hooks/useAppColors";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Calendar from "expo-calendar";
+import * as Notifications from "expo-notifications";
+import React, { useState } from "react";
+import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 
-const ONBOARDING_COMPLETED_KEY = '@onboarding_completed';
+const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
 
 interface OnboardingViewProps {
   visible: boolean;
@@ -14,60 +14,54 @@ interface OnboardingViewProps {
 }
 
 export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const [pageCounter, setPageCounter] = useState(1);
-
-  const colors = {
-    background: currentTheme === 'dark' ? '#2C2C2E' : '#FFFFFF',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-  };
 
   const requestCalendarAccess = async () => {
     try {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status === 'granted') {
+      if (status === "granted") {
         if (__DEV__) {
-          console.log('Calendar access granted');
+          console.log("Calendar access granted");
         }
       } else {
         if (__DEV__) {
-          console.log('Calendar access denied');
+          console.log("Calendar access denied");
         }
       }
     } catch (error) {
       if (__DEV__) {
-        console.error('Calendar permission error:', error);
+        console.error("Calendar permission error:", error);
       }
     }
   };
 
   const requestNotificationAccess = async () => {
     try {
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "default",
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
+          lightColor: "#FF231F7C",
         });
       }
 
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status === 'granted') {
+      if (status === "granted") {
         if (__DEV__) {
-          console.log('Notification access granted');
+          console.log("Notification access granted");
         }
-        await AsyncStorage.setItem('@notification_enabled', 'true');
+        await AsyncStorage.setItem("@notification_enabled", "true");
       } else {
         if (__DEV__) {
-          console.log('Notification access denied');
+          console.log("Notification access denied");
         }
-        await AsyncStorage.setItem('@notification_enabled', 'false');
+        await AsyncStorage.setItem("@notification_enabled", "false");
       }
     } catch (error) {
       if (__DEV__) {
-        console.error('Notification permission error:', error);
+        console.error("Notification permission error:", error);
       }
     }
   };
@@ -75,7 +69,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const requestPermissions = async () => {
     await requestCalendarAccess();
     await requestNotificationAccess();
-    await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+    await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
     onComplete();
   };
 
@@ -88,7 +82,8 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               👋 Welcome to MeetCal!
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              We have 6 main features that help you have as much data as possible to compete and coach your best at meets.
+              We have 6 main features that help you have as much data as
+              possible to compete and coach your best at meets.
             </ThemedText>
           </View>
         );
@@ -99,7 +94,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📅 Schedule View
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              We have the Schedule and Start List for all USAW National meets, WSO meets, and all USAMW competitions. On this page you can swipe left to see each day of the meet.
+              We have the Schedule and Start List for all USAW National meets,
+              WSO meets, and all USAMW competitions. On this page you can swipe
+              left to see each day of the meet.
             </ThemedText>
           </View>
         );
@@ -110,7 +107,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📋 Schedule Details
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              After selecting a session you'll see all the athletes in the session. Alongside that you'll see age, club, weight class, entry total, and all their USAW meet results.
+              After selecting a session you'll see all the athletes in the
+              session. Alongside that you'll see age, club, weight class, entry
+              total, and all their USAW meet results.
             </ThemedText>
           </View>
         );
@@ -121,7 +120,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               🥇 Start List
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Click the search button in the bottom right to see the entire Start List. In here you can filter through the start list to get all the info you need.
+              Click the search button in the bottom right to see the entire
+              Start List. In here you can filter through the start list to get
+              all the info you need.
             </ThemedText>
           </View>
         );
@@ -132,7 +133,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📸 Start List
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Pro members can also create and share Start Lists for their club on this page. Easily share when and where your athletes will be lifting.
+              Pro members can also create and share Start Lists for their club
+              on this page. Easily share when and where your athletes will be
+              lifting.
             </ThemedText>
           </View>
         );
@@ -143,7 +146,10 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               🏋️‍♀️ Competition Data
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Click the tab in the bottom right and you'll have all the pertinent competition data you'll need such as: Qualifying Totals, A/B Standards, American and WSO Records, and International Rankings.
+              Click the tab in the bottom right and you'll have all the
+              pertinent competition data you'll need such as: Qualifying Totals,
+              A/B Standards, American and WSO Records, and International
+              Rankings.
             </ThemedText>
           </View>
         );
@@ -154,7 +160,10 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📲 Saved Sessions
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Through the Start List and Session Details pages you can save important sessions both in the app and right to your calendar. From there you'll get push notifications 60 minutes before the session begins.
+              Through the Start List and Session Details pages you can save
+              important sessions both in the app and right to your calendar.
+              From there you'll get push notifications 60 minutes before the
+              session begins.
             </ThemedText>
           </View>
         );
@@ -165,7 +174,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               ⬇️ Download
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Need to view schedules offline? Download any meet schedule and competition data to access session details, start lists, and records even without an internet connection.
+              Need to view schedules offline? Download any meet schedule and
+              competition data to access session details, start lists, and
+              records even without an internet connection.
             </ThemedText>
           </View>
         );
@@ -176,7 +187,10 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               Calendar & Notification Access
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              We ask for access to write to your calendar and to send you notifications. This allows us to put sessions on your calendar, alert you ahead of your session, and send updates such as platform changes.
+              We ask for access to write to your calendar and to send you
+              notifications. This allows us to put sessions on your calendar,
+              alert you ahead of your session, and send updates such as platform
+              changes.
             </ThemedText>
           </View>
         );
@@ -192,9 +206,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       animationType="slide"
       onRequestClose={() => {}}
     >
-      <Pressable
-        style={styles.modalOverlay}
-      >
+      <Pressable style={styles.modalOverlay}>
         <Pressable
           style={[styles.container, { backgroundColor: colors.background }]}
           onPress={(e) => e.stopPropagation()}
@@ -204,7 +216,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
           <Pressable
             style={({ pressed }) => [
               styles.button,
-              pressed && styles.buttonPressed
+              pressed && styles.buttonPressed,
             ]}
             onPress={() => {
               if (pageCounter === 9) {
@@ -215,7 +227,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
             }}
           >
             <ThemedText style={styles.buttonText}>
-              {pageCounter === 9 ? 'Done' : 'Next'}
+              {pageCounter === 9 ? "Done" : "Next"}
             </ThemedText>
           </Pressable>
         </Pressable>
@@ -227,16 +239,16 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   container: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 24,
     paddingTop: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    shadowColor: '#000',
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: -2,
@@ -246,12 +258,12 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   pageContent: {
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     marginBottom: 16,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 16,
   },
   description: {
@@ -260,31 +272,31 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     paddingVertical: 12,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
     minHeight: 50,
-    justifyContent: 'center',
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.2)',
+    borderColor: "rgba(128, 128, 128, 0.2)",
   },
   buttonPressed: {
     opacity: 0.8,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 
 export async function checkOnboardingComplete(): Promise<boolean> {
   try {
     const completed = await AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY);
-    return completed === 'true';
+    return completed === "true";
   } catch (error) {
-    console.error('Error checking onboarding status:', error);
+    console.error("Error checking onboarding status:", error);
     return false;
   }
 }
@@ -293,6 +305,6 @@ export async function resetOnboarding(): Promise<void> {
   try {
     await AsyncStorage.removeItem(ONBOARDING_COMPLETED_KEY);
   } catch (error) {
-    console.error('Error resetting onboarding:', error);
+    console.error("Error resetting onboarding:", error);
   }
 }
