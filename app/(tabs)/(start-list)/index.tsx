@@ -1,9 +1,9 @@
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
-import React, { Suspense } from "react";
+import { Suspense, lazy } from "react";
 import { ActivityIndicator, StyleSheet } from "react-native";
 
-const StartListContent = React.lazy(() => import("./StartListContent"));
+const StartListContent = lazy(() => import("./StartListContent"));
 
 function StartListFallback() {
   const { currentTheme } = useTheme();
