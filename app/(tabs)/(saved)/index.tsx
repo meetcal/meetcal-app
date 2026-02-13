@@ -23,6 +23,7 @@ import {
   makeLookupKey,
 } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
+import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
@@ -175,14 +176,7 @@ export default function SavedScreen() {
 
   const timeZoneAbbr = useMemo(() => {
     if (!meetDetails?.time.timeZoneIdentifier) return "";
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: meetDetails.time.timeZoneIdentifier,
-        timeZoneName: "short",
-      })
-        .formatToParts(new Date())
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
+    return getTimeZoneAbbreviation(meetDetails.time.timeZoneIdentifier);
   }, [meetDetails?.time.timeZoneIdentifier]);
 
   const sessionLookupByMeet = useMemo(() => {
