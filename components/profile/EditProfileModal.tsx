@@ -1,4 +1,4 @@
-import { EditableField } from "@/app/(tabs)/(index)/profile";
+import { EditableField } from "@/app/schedule-toolbar/profile";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useUser } from "@clerk/clerk-expo";
 import React from "react";
@@ -16,8 +16,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ThemedText } from "./ThemedText";
-import { IconSymbol } from "./ui/IconSymbol";
+import { IconSymbol } from "../ui/IconSymbol";
+import { ThemedText } from "../ui/ThemedText";
 
 interface EditProfileModalProps {
   isEditing: boolean;

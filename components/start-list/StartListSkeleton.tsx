@@ -1,4 +1,4 @@
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import React, { useCallback } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";

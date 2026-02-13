@@ -1,5 +1,5 @@
-import { ThemedText } from "@/components/ThemedText";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   Modal,

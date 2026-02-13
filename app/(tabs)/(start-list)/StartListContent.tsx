@@ -5,9 +5,9 @@ import {
   SessionDetails,
 } from "@/components/start-list/AthleteItem";
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
@@ -2159,10 +2159,8 @@ export default function StartListScreen() {
                       { color: colors.secondaryText },
                     ]}
                   >
-                    {tempFilteredAthleteCount}
-{' '}
-athletes
-</ThemedText>
+                    {tempFilteredAthleteCount} athletes
+                  </ThemedText>
                   <Pressable
                     style={({ pressed }) => [
                       styles.resetButton,
@@ -2216,12 +2214,8 @@ athletes
               <ThemedText
                 style={[styles.saveModalTitle, { color: colors.text }]}
               >
-                Save 
-{' '}
-{filteredAthletes.length}
-{' '}
-Athletes
-</ThemedText>
+                Save {filteredAthletes.length} Athletes
+              </ThemedText>
               <Pressable
                 style={({ pressed }) => [
                   styles.closeButton,

@@ -1,6 +1,13 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useNavigation, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   FlatList,
@@ -14,17 +21,17 @@ import {
   View,
 } from "react-native";
 
+import { DayView } from "@/components/schedule/DayView";
+import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
 import {
   checkOnboardingComplete,
   OnboardingView,
-} from "@/components/OnboardingView";
-import { PageIndicator } from "@/components/PageIndicator";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { VersionAnnouncement } from "@/components/VersionAnnouncement";
-import { DayView } from "@/components/schedule/DayView";
-import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
+} from "@/components/schedule/OnboardingView";
+import { PageIndicator } from "@/components/schedule/PageIndicator";
 import { ScheduleSkeleton } from "@/components/schedule/ScheduleSkeleton";
+import { VersionAnnouncement } from "@/components/schedule/VersionAnnouncement";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
@@ -100,15 +107,11 @@ export default function ScheduleScreen() {
         headerLeft: () => (
           <Pressable
             style={styles.headerIconButton}
-            onPress={() => router.push("/(tabs)/(index)/offline-data")}
+            onPress={() => router.push("/schedule-toolbar/offline-data")}
             accessibilityRole="button"
             accessibilityLabel="Offline data"
           >
-            <IconSymbol
-              name={offlineDataIcon}
-              size={24}
-              color={colors.text}
-            />
+            <IconSymbol name={offlineDataIcon} size={24} color={colors.text} />
           </Pressable>
         ),
       }),
@@ -117,7 +120,7 @@ export default function ScheduleScreen() {
           {Platform.OS === "android" && (
             <Pressable
               style={styles.headerIconButton}
-              onPress={() => router.push("/(tabs)/(index)/offline-data")}
+              onPress={() => router.push("/schedule-toolbar/offline-data")}
               accessibilityRole="button"
               accessibilityLabel="Offline data"
             >
@@ -132,7 +135,7 @@ export default function ScheduleScreen() {
             style={[styles.headerIconButton, { paddingTop: 8 }]}
             onPress={() => {
               if (isSignedIn) {
-                router.push("/(tabs)/(index)/profile");
+                router.push("/schedule-toolbar/profile");
               } else {
                 router.push({
                   pathname: "/(auth)/sign-in",
@@ -204,7 +207,13 @@ export default function ScheduleScreen() {
 
       return () => clearTimeout(timer);
     }
-  }, [isLoading, schedule.length, initialScrollIndex, selectedMeet, flatListRef]);
+  }, [
+    isLoading,
+    schedule.length,
+    initialScrollIndex,
+    selectedMeet,
+    flatListRef,
+  ]);
 
   // Set title to start date when there's no schedule loaded
   useEffect(() => {

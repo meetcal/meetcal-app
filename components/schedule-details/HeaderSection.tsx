@@ -1,6 +1,6 @@
 import { PlatformBadge } from "@/components/schedule-details/PlatformBadge";
-import { ThemedText } from "@/components/ThemedText";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -10,8 +10,8 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { DaySchedule, Schedule, Session } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
-  requestCalendarPermissions,
   createCalendarEvents,
+  requestCalendarPermissions,
 } from "@/utils/calendar";
 import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";

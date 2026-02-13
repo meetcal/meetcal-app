@@ -1,8 +1,8 @@
-import EditProfileModal from "@/components/EditProfileModal";
-import { NotificationSettings } from "@/components/NotificationSettings";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
+import EditProfileModal from "@/components/profile/EditProfileModal";
+import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
@@ -230,8 +230,7 @@ export default function ProfileScreen() {
             style={[styles.legalText, { color: colors.secondaryText }]}
           >
             {" "}
-            •
-{" "}
+            •{" "}
           </ThemedText>
           <Pressable
             onPress={() => Linking.openURL("https://meetcal.app/terms")}
@@ -244,8 +243,7 @@ export default function ProfileScreen() {
             style={[styles.legalText, { color: colors.secondaryText }]}
           >
             {" "}
-            •
-{" "}
+            •{" "}
           </ThemedText>
           <Pressable
             onPress={() =>

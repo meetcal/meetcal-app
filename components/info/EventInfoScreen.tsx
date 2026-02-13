@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Stack } from "expo-router";

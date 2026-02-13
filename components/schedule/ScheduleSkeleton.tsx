@@ -1,5 +1,5 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCallback, useEffect, useRef } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";

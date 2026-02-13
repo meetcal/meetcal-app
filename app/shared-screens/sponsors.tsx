@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
 import { posthog } from "@/lib/posthog";
 import { Stack } from "expo-router";

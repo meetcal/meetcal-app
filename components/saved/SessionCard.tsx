@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ThemedText";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { MeetName, isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -92,10 +92,7 @@ const SessionCard = React.memo<SessionCardProps>(
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           {/* Use displayDate derived from schedule map */}
-          Session 
-{' '}
-{sessionNumber}
-{" "}
+          Session {sessionNumber}{" "}
           {displayDate !== "Date TBD" ? `• ${displayDate}` : ""}
         </ThemedText>
 
@@ -194,11 +191,8 @@ const SessionCard = React.memo<SessionCardProps>(
                       { color: colors.secondaryText },
                     ]}
                   >
-                    +
-{item.athleteNames.length - 3}
-{' '}
-more
-</ThemedText>
+                    +{item.athleteNames.length - 3} more
+                  </ThemedText>
                 )}
               </View>
             </View>

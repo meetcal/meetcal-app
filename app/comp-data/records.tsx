@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
@@ -402,18 +402,10 @@ export default function RecordsScreen() {
                   color: colors.secondaryText,
                 }}
               >
-                No 
-{' '}
-{filters.federation}
-{' '}
-records available for
-{" "}
+                No {filters.federation} records available for{" "}
                 {filters.gender === "Men" ? "men" : "women"}
-                in the 
-{' '}
-{getAgeGroupDisplayText(displayAgeGroup) ||
-                  "selected"}
-{" "}
+                in the {getAgeGroupDisplayText(displayAgeGroup) ||
+                  "selected"}{" "}
                 age group.
               </ThemedText>
             )}

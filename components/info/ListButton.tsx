@@ -1,8 +1,8 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { ThemedText } from "../ThemedText";
 import { IconSymbol } from "../ui/IconSymbol";
+import { ThemedText } from "../ui/ThemedText";
 
 interface ListButtonProps {
   title: string;

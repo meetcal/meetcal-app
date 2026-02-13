@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { fetchAthletesByClub } from "@/lib/database/fetch-club-stats";
 import {
@@ -163,16 +163,12 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            No meets found for 
-{' '}
-{club}
+            No meets found for {club}
           </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
           >
-            Athletes: 
-{' '}
-{athletesInClub.length}
+            Athletes: {athletesInClub.length}
           </ThemedText>
         </View>
       );

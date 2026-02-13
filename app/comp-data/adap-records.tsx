@@ -1,5 +1,5 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
@@ -226,11 +226,9 @@ export default function AdaptiveRecordsScreen() {
                 color: colors.secondaryText,
               }}
             >
-              No adaptive records available for
-{" "}
-              {appliedGender === "Men" ? "men" : "women"}
-.
-</ThemedText>
+              No adaptive records available for{" "}
+              {appliedGender === "Men" ? "men" : "women"}.
+            </ThemedText>
           )}
 
           {!loading &&
