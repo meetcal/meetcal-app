@@ -2,6 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { onApplePress, onGooglePress } from "@/utils/handleSignIn";
+import { useSSO } from "@clerk/clerk-expo";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect } from "react";
@@ -44,6 +45,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
   const { currentTheme } = useTheme();
+  const { startSSOFlow } = useSSO();
   const router = useRouter();
   const colors = useAppColors();
   const { from, feature } = useLocalSearchParams<{
