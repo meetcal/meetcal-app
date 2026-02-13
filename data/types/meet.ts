@@ -70,4 +70,17 @@ export type MeetSpecificData<T> = {
 };
 
 // Helper type for accessing meet-specific data
-export type MeetDataAccessor<T> = (meetName: MeetName) => T; 
+export type MeetDataAccessor<T> = (meetName: MeetName) => T;
+
+/**
+ * Type guard to check if a string is a valid MeetName
+ */
+export function isMeetName(
+  meet: string | null,
+  allowedNames?: ReadonlySet<string>,
+): meet is MeetName {
+  if (meet === null || typeof meet !== "string") return false;
+  if (allowedNames !== undefined && allowedNames.size > 0)
+    return allowedNames.has(meet);
+  return true;
+} 

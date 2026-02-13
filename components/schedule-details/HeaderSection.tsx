@@ -15,6 +15,7 @@ import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { DaySchedule, Schedule, Session } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
+import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar";
 import * as Haptics from "expo-haptics";
@@ -43,32 +44,6 @@ interface HeaderSectionProps {
   platformStartTime: string;
   platformWeighInTime: string;
   athleteName?: string;
-}
-
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(" ");
-  const [hours, minutes] = time.split(":").map(Number);
-
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === "PM" && hours !== 12) hour24 += 12;
-  if (period === "AM" && hours === 12) hour24 = 0;
-
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-
-  // Convert back to 12 hour format
-  let weighInPeriod = "AM";
-  if (weighInHour >= 12) {
-    weighInPeriod = "PM";
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-
-  return `${weighInHour}:${minutes.toString().padStart(2, "0")} ${weighInPeriod}`;
 }
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
