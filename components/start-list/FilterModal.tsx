@@ -1,5 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
+import { LiftResult } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   getAgeCategory,
@@ -8,7 +9,6 @@ import {
   sortWeightClasses,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
-import { LiftResult } from "@/data/types/athletes";
 import React, { useMemo, useState } from "react";
 import {
   Dimensions,
@@ -20,6 +20,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import FilterModalOptions from "../ui/FilterModalOptions";
+import FilterModalTitle from "../ui/FilterModalTitle";
 
 interface FilterModalProps {
   visible: boolean;
@@ -355,127 +357,34 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   { borderBottomColor: colors.border },
                 ]}
               >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.filterSectionButton,
-                    { borderBottomColor: colors.border },
-                    pressed && { opacity: 0.8 },
-                  ]}
+                <FilterModalTitle
+                  title="Age Group"
+                  value={tempAgeGroupFilter || "All Age Groups"}
                   onPress={() =>
                     setExpandedSection(
                       expandedSection === "ageGroup" ? null : "ageGroup",
                     )
                   }
-                >
-                  <View style={styles.filterSectionButtonContent}>
-                    <View>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionLabel,
-                          { color: colors.secondaryText },
-                        ]}
-                      >
-                        Age Group
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {tempAgeGroupFilter || "All Age Groups"}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol
-                      name={getChevronIcon(
-                        expandedSection === "ageGroup" ? "down" : "right",
-                      )}
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  </View>
-                </Pressable>
+                  icon={getChevronIcon(
+                    expandedSection === "ageGroup" ? "down" : "right",
+                  )}
+                />
 
                 {expandedSection === "ageGroup" && (
-                  <ScrollView
-                    style={[
-                      styles.filterOptions,
-                      { maxHeight: maxOptionsHeight },
-                    ]}
-                    bounces={false}
-                    nestedScrollEnabled={true}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempAgeGroupFilter === "" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempAgeGroupFilter("");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAgeGroupFilter === "" && { color: colors.link },
-                        ]}
-                      >
-                        All Age Groups
-                      </ThemedText>
-                      {tempAgeGroupFilter === "" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-
-                    {ageGroupOptions.map((ageGroup) => (
-                      <Pressable
-                        key={ageGroup}
-                        style={({ pressed }) => [
-                          styles.filterOption,
-                          { borderBottomColor: colors.border },
-                          tempAgeGroupFilter === ageGroup && {
-                            backgroundColor: colors.pressed,
-                          },
-                          pressed && { opacity: 0.8 },
-                        ]}
-                        onPress={() => {
-                          setTempAgeGroupFilter(ageGroup);
-                          setTempWeightClassFilter("");
-                          setExpandedSection(null);
-                        }}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempAgeGroupFilter === ageGroup && {
-                              color: colors.link,
-                            },
-                          ]}
-                        >
-                          {ageGroup}
-                        </ThemedText>
-                        {tempAgeGroupFilter === ageGroup && (
-                          <IconSymbol
-                            name="checkmark"
-                            size={16}
-                            color={colors.link}
-                          />
-                        )}
-                      </Pressable>
-                    ))}
-                  </ScrollView>
+                  <FilterModalOptions
+                    options={ageGroupOptions.map((ageGroup) => ({
+                      value: ageGroup,
+                      label: ageGroup,
+                    }))}
+                    selectedValue={tempAgeGroupFilter}
+                    onSelect={(value) => {
+                      setTempAgeGroupFilter(value);
+                      setTempWeightClassFilter("");
+                      setExpandedSection(null);
+                    }}
+                    maxHeight={maxOptionsHeight}
+                    allOptionLabel="All Age Groups"
+                  />
                 )}
               </View>
 
@@ -486,159 +395,34 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   { borderBottomColor: colors.border },
                 ]}
               >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.filterSectionButton,
-                    { borderBottomColor: colors.border },
-                    pressed && { opacity: 0.8 },
-                  ]}
+                <FilterModalTitle
+                  title="Gender"
+                  value={tempGenderFilter || "All Genders"}
                   onPress={() =>
                     setExpandedSection(
                       expandedSection === "gender" ? null : "gender",
                     )
                   }
-                >
-                  <View style={styles.filterSectionButtonContent}>
-                    <View>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionLabel,
-                          { color: colors.secondaryText },
-                        ]}
-                      >
-                        Gender
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {tempGenderFilter || "All Genders"}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol
-                      name={getChevronIcon(
-                        expandedSection === "gender" ? "down" : "right",
-                      )}
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  </View>
-                </Pressable>
+                  icon={getChevronIcon(
+                    expandedSection === "gender" ? "down" : "right",
+                  )}
+                />
 
                 {expandedSection === "gender" && (
-                  <ScrollView
-                    style={[
-                      styles.filterOptions,
-                      { maxHeight: maxOptionsHeight },
+                  <FilterModalOptions
+                    options={[
+                      { value: "Male", label: "Male" },
+                      { value: "Female", label: "Female" },
                     ]}
-                    bounces={false}
-                    nestedScrollEnabled={true}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempGenderFilter === "" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempGenderFilter("");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === "" && { color: colors.link },
-                        ]}
-                      >
-                        All Genders
-                      </ThemedText>
-                      {tempGenderFilter === "" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempGenderFilter === "Male" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempGenderFilter("Male");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === "Male" && {
-                            color: colors.link,
-                          },
-                        ]}
-                      >
-                        Male
-                      </ThemedText>
-                      {tempGenderFilter === "Male" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempGenderFilter === "Female" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempGenderFilter("Female");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempGenderFilter === "Female" && {
-                            color: colors.link,
-                          },
-                        ]}
-                      >
-                        Female
-                      </ThemedText>
-                      {tempGenderFilter === "Female" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-                  </ScrollView>
+                    selectedValue={tempGenderFilter}
+                    onSelect={(value) => {
+                      setTempGenderFilter(value);
+                      setTempWeightClassFilter("");
+                      setExpandedSection(null);
+                    }}
+                    maxHeight={maxOptionsHeight}
+                    allOptionLabel="All Genders"
+                  />
                 )}
               </View>
 
@@ -649,12 +433,9 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   { borderBottomColor: colors.border },
                 ]}
               >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.filterSectionButton,
-                    { borderBottomColor: colors.border },
-                    pressed && { opacity: 0.8 },
-                  ]}
+                <FilterModalTitle
+                  title="Adaptive Athlete"
+                  value={tempAdaptiveAthleteFilter || "All Athletes"}
                   onPress={() =>
                     setExpandedSection(
                       expandedSection === "adaptiveAthlete"
@@ -662,152 +443,32 @@ const FilterModal: React.FC<FilterModalProps> = ({
                         : "adaptiveAthlete",
                     )
                   }
-                >
-                  <View style={styles.filterSectionButtonContent}>
-                    <View>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionLabel,
-                          { color: colors.secondaryText },
-                        ]}
-                      >
-                        Adaptive Athlete
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {tempAdaptiveAthleteFilter || "All Athletes"}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol
-                      name={getChevronIcon(
-                        expandedSection === "adaptiveAthlete"
-                          ? "down"
-                          : "right",
-                      )}
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  </View>
-                </Pressable>
+                  icon={getChevronIcon(
+                    expandedSection === "adaptiveAthlete" ? "down" : "right",
+                  )}
+                />
 
                 {expandedSection === "adaptiveAthlete" && (
-                  <ScrollView
-                    style={[
-                      styles.filterOptions,
-                      { maxHeight: maxOptionsHeight },
+                  <FilterModalOptions
+                    options={[
+                      {
+                        value: "Adaptive Athletes",
+                        label: "Adaptive Athletes",
+                      },
+                      {
+                        value: "Non-Adaptive Athletes",
+                        label: "Non-Adaptive Athletes",
+                      },
                     ]}
-                    bounces={false}
-                    nestedScrollEnabled={true}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempAdaptiveAthleteFilter === "" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempAdaptiveAthleteFilter("");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter === "" && {
-                            color: colors.link,
-                          },
-                        ]}
-                      >
-                        All Athletes
-                      </ThemedText>
-                      {tempAdaptiveAthleteFilter === "" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempAdaptiveAthleteFilter === "Adaptive Athletes" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempAdaptiveAthleteFilter("Adaptive Athletes");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter ===
-                            "Adaptive Athletes" && { color: colors.link },
-                        ]}
-                      >
-                        Adaptive Athletes
-                      </ThemedText>
-                      {tempAdaptiveAthleteFilter === "Adaptive Athletes" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempAdaptiveAthleteFilter ===
-                          "Non-Adaptive Athletes" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempAdaptiveAthleteFilter("Non-Adaptive Athletes");
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempAdaptiveAthleteFilter ===
-                            "Non-Adaptive Athletes" && { color: colors.link },
-                        ]}
-                      >
-                        Non-Adaptive Athletes
-                      </ThemedText>
-                      {tempAdaptiveAthleteFilter ===
-                        "Non-Adaptive Athletes" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-                  </ScrollView>
+                    selectedValue={tempAdaptiveAthleteFilter}
+                    onSelect={(value) => {
+                      setTempAdaptiveAthleteFilter(value);
+                      setTempWeightClassFilter("");
+                      setExpandedSection(null);
+                    }}
+                    maxHeight={maxOptionsHeight}
+                    allOptionLabel="All Athletes"
+                  />
                 )}
               </View>
 
@@ -818,173 +479,50 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   { borderBottomColor: colors.border },
                 ]}
               >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.filterSectionButton,
-                    { borderBottomColor: colors.border },
-                    pressed && { opacity: 0.8 },
-                  ]}
+                <FilterModalTitle
+                  title="Weight Class"
+                  value={tempWeightClassFilter || "All Classes"}
                   onPress={() =>
                     setExpandedSection(
-                      expandedSection === "weightClass"
-                        ? null
-                        : "weightClass",
+                      expandedSection === "weightClass" ? null : "weightClass",
                     )
                   }
-                >
-                  <View style={styles.filterSectionButtonContent}>
-                    <View>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionLabel,
-                          { color: colors.secondaryText },
-                        ]}
-                      >
-                        Weight Class
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {tempWeightClassFilter || "All Classes"}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol
-                      name={getChevronIcon(
-                        expandedSection === "weightClass" ? "down" : "right",
-                      )}
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  </View>
-                </Pressable>
+                  icon={getChevronIcon(
+                    expandedSection === "weightClass" ? "down" : "right",
+                  )}
+                />
 
                 {expandedSection === "weightClass" && (
-                  <ScrollView
-                    style={[
-                      styles.filterOptions,
-                      { maxHeight: maxOptionsHeight },
-                    ]}
-                    bounces={false}
-                    nestedScrollEnabled={true}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterOption,
-                        { borderBottomColor: colors.border },
-                        tempWeightClassFilter === "" && {
-                          backgroundColor: colors.pressed,
-                        },
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        setTempWeightClassFilter("");
-                        setExpandedSection(null);
-                      }}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.filterOptionText,
-                          { color: colors.text },
-                          tempWeightClassFilter === "" && {
-                            color: colors.link,
-                          },
-                        ]}
-                      >
-                        All Classes
-                      </ThemedText>
-                      {tempWeightClassFilter === "" && (
-                        <IconSymbol
-                          name="checkmark"
-                          size={16}
-                          color={colors.link}
-                        />
-                      )}
-                    </Pressable>
-                    {weightClassOptions.map((weightClass) => (
-                      <Pressable
-                        key={weightClass}
-                        style={({ pressed }) => [
-                          styles.filterOption,
-                          { borderBottomColor: colors.border },
-                          tempWeightClassFilter === weightClass && {
-                            backgroundColor: colors.pressed,
-                          },
-                          pressed && { opacity: 0.8 },
-                        ]}
-                        onPress={() => {
-                          setTempWeightClassFilter(weightClass);
-                          setExpandedSection(null);
-                        }}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempWeightClassFilter === weightClass && {
-                              color: colors.link,
-                            },
-                          ]}
-                        >
-                          {weightClass.replace("kg", "")}
-                          kg
-                        </ThemedText>
-                        {tempWeightClassFilter === weightClass && (
-                          <IconSymbol
-                            name="checkmark"
-                            size={16}
-                            color={colors.link}
-                          />
-                        )}
-                      </Pressable>
-                    ))}
-                  </ScrollView>
+                  <FilterModalOptions
+                    options={weightClassOptions.map((weightClass) => ({
+                      value: weightClass,
+                      label: `${weightClass.replace("kg", "")}kg`,
+                    }))}
+                    selectedValue={tempWeightClassFilter}
+                    onSelect={(value) => {
+                      setTempWeightClassFilter(value);
+                      setExpandedSection(null);
+                    }}
+                    maxHeight={maxOptionsHeight}
+                    allOptionLabel="All Classes"
+                  />
                 )}
               </View>
 
               {/* Club Filter */}
               <View style={styles.filterSection}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.filterSectionButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
+                <FilterModalTitle
+                  title="Club"
+                  value={tempClubFilter || "All Clubs"}
                   onPress={() =>
                     setExpandedSection(
                       expandedSection === "club" ? null : "club",
                     )
                   }
-                >
-                  <View style={styles.filterSectionButtonContent}>
-                    <View>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionLabel,
-                          { color: colors.secondaryText },
-                        ]}
-                      >
-                        Club
-                      </ThemedText>
-                      <ThemedText
-                        style={[
-                          styles.filterSectionValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {tempClubFilter || "All Clubs"}
-                      </ThemedText>
-                    </View>
-                    <IconSymbol
-                      name={getChevronIcon(
-                        expandedSection === "club" ? "down" : "right",
-                      )}
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  </View>
-                </Pressable>
+                  icon={getChevronIcon(
+                    expandedSection === "club" ? "down" : "right",
+                  )}
+                />
 
                 {expandedSection === "club" && (
                   <ScrollView
@@ -1204,19 +742,16 @@ const FilterModal: React.FC<FilterModalProps> = ({
             </ScrollView>
           </View>
 
-          <View
-            style={[styles.modalFooter, { borderTopColor: colors.border }]}
-          >
+          <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
             <View style={styles.modalFooterContent}>
               <View style={styles.modalFooterRight}>
                 <ThemedText
-                  style={[
-                    styles.resultCount,
-                    { color: colors.secondaryText },
-                  ]}
+                  style={[styles.resultCount, { color: colors.secondaryText }]}
                 >
-                  {tempFilteredAthleteCount} athletes
-                </ThemedText>
+                  {tempFilteredAthleteCount}
+{' '}
+athletes
+</ThemedText>
                 <Pressable
                   style={({ pressed }) => [
                     styles.resetButton,
@@ -1224,9 +759,7 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   ]}
                   onPress={handleReset}
                 >
-                  <ThemedText style={styles.resetButtonText}>
-                    Reset
-                  </ThemedText>
+                  <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [
@@ -1236,9 +769,7 @@ const FilterModal: React.FC<FilterModalProps> = ({
                   ]}
                   onPress={handleApply}
                 >
-                  <ThemedText style={styles.applyButtonText}>
-                    Apply
-                  </ThemedText>
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </Pressable>
               </View>
             </View>
@@ -1267,23 +798,6 @@ const styles = StyleSheet.create({
   },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterSectionButton: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterSectionButtonContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  filterSectionLabel: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  filterSectionValue: {
-    fontSize: 17,
-    fontWeight: "400",
   },
   filterOptions: {
     borderTopWidth: StyleSheet.hairlineWidth,
