@@ -1,21 +1,32 @@
-import { StyleSheet, View, ActivityIndicator, FlatList, Pressable, Platform, TextInput } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { searchAthletesByName } from '@/lib/database/queries';
-import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
-import { posthog } from '@/lib/posthog';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAppColors } from "@/hooks/useAppColors";
+import { searchAthletesByName } from "@/lib/database/queries";
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
+import { posthog } from "@/lib/posthog";
+import { Stack, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AllMeetResultsScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +35,8 @@ export default function AllMeetResultsScreen() {
 
   // Track screen view on mount
   useEffect(() => {
-    posthog.capture('screen_viewed', {
-      screen_name: 'All Meet Results'
+    posthog.capture("screen_viewed", {
+      screen_name: "All Meet Results",
     });
   }, []);
 
@@ -44,20 +55,6 @@ export default function AllMeetResultsScreen() {
       unsubscribe();
     };
   }, []);
-
-  // Define theme colors
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF',
-    searchBackground: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    searchBorder: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    placeholder: currentTheme === 'dark' ? '#8E8E93' : '#999999',
-  };
 
   // Debounced search effect
   useEffect(() => {
@@ -97,14 +94,14 @@ export default function AllMeetResultsScreen() {
       setSearchResults(results);
 
       // Track the search
-      posthog.capture('athlete_history_searched', {
+      posthog.capture("athlete_history_searched", {
         query: query,
-        results_count: results.length
+        results_count: results.length,
       });
     } catch (err) {
       if (requestVersion !== searchRequestVersion.current) return;
-      console.error('Error searching athletes:', err);
-      setError('Failed to search athletes');
+      console.error("Error searching athletes:", err);
+      setError("Failed to search athletes");
       setSearchResults([]);
     } finally {
       if (requestVersion !== searchRequestVersion.current) return;
@@ -112,24 +109,32 @@ export default function AllMeetResultsScreen() {
     }
   };
 
-  const handleAthletePress = useCallback((athleteName: string) => {
-    // Track athlete selection
-    posthog.capture('athlete_history_viewed', {
-      athlete_name: athleteName
-    });
+  const handleAthletePress = useCallback(
+    (athleteName: string) => {
+      // Track athlete selection
+      posthog.capture("athlete_history_viewed", {
+        athlete_name: athleteName,
+      });
 
-    router.push({
-      pathname: '/(screens)/athlete-results',
-      params: { name: athleteName }
-    });
-  }, [router]);
+      router.push({
+        pathname: "/(screens)/athlete-results",
+        params: { name: athleteName },
+      });
+    },
+    [router],
+  );
 
   const renderEmptyState = () => {
     if (isLoading) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.link} />
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText, marginTop: 16 }]}>
+          <ThemedText
+            style={[
+              styles.emptyText,
+              { color: colors.secondaryText, marginTop: 16 },
+            ]}
+          >
             Searching...
           </ThemedText>
         </View>
@@ -142,7 +147,9 @@ export default function AllMeetResultsScreen() {
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
             Error loading athletes
           </ThemedText>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
             Try searching again
           </ThemedText>
         </View>
@@ -155,7 +162,9 @@ export default function AllMeetResultsScreen() {
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
             Offline
           </ThemedText>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
             Meet results search is not available without an internet connection
           </ThemedText>
         </View>
@@ -166,14 +175,18 @@ export default function AllMeetResultsScreen() {
       return (
         <View style={styles.centerContainer}>
           <IconSymbol
-            name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'}
+            name={Platform.OS === "ios" ? "magnifyingglass" : "search"}
             size={48}
             color={colors.secondaryText}
           />
-          <ThemedText style={[styles.emptyTitle, { color: colors.text, marginTop: 16 }]}>
+          <ThemedText
+            style={[styles.emptyTitle, { color: colors.text, marginTop: 16 }]}
+          >
             Search for an athlete
           </ThemedText>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
             Enter a name to view their meet history
           </ThemedText>
         </View>
@@ -184,11 +197,16 @@ export default function AllMeetResultsScreen() {
       return (
         <View style={styles.centerContainer}>
           <IconSymbol
-            name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'}
+            name={Platform.OS === "ios" ? "magnifyingglass" : "search"}
             size={48}
             color={colors.secondaryText}
           />
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText, marginTop: 16 }]}>
+          <ThemedText
+            style={[
+              styles.emptyText,
+              { color: colors.secondaryText, marginTop: 16 },
+            ]}
+          >
             Type at least 3 characters to search
           </ThemedText>
         </View>
@@ -198,7 +216,9 @@ export default function AllMeetResultsScreen() {
     if (searchResults.length === 0) {
       return (
         <View style={styles.centerContainer}>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
             No athletes found
           </ThemedText>
         </View>
@@ -216,7 +236,7 @@ export default function AllMeetResultsScreen() {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
         },
-        pressed && { backgroundColor: colors.pressed }
+        pressed && { backgroundColor: colors.pressed },
       ]}
       onPress={() => handleAthletePress(item)}
     >
@@ -224,7 +244,7 @@ export default function AllMeetResultsScreen() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
         size={20}
         color={colors.link}
       />
@@ -232,36 +252,48 @@ export default function AllMeetResultsScreen() {
   );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
       <Stack.Screen
         options={{
-          title: 'Meet Results',
-          headerBackTitle: 'Back',
+          title: "Meet Results",
+          headerBackTitle: "Back",
           headerShown: true,
           gestureEnabled: true,
-          gestureDirection: 'horizontal',
-          animation: 'slide_from_right',
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
           headerTitleStyle: {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+            backgroundColor: colors.background,
           },
           headerShadowVisible: false,
         }}
       />
 
       {/* Search Bar */}
-      <View style={[styles.searchContainer, {
-        backgroundColor: colors.background,
-        paddingTop: Platform.OS === 'android' ? 12 : 12
-      }]}>
-        <View style={[styles.searchInputContainer, {
-          backgroundColor: colors.searchBackground,
-          borderColor: colors.searchBorder
-        }]}>
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: colors.background,
+            paddingTop: Platform.OS === "android" ? 12 : 12,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.searchInputContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+          ]}
+        >
           <IconSymbol
-            name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'}
+            name={Platform.OS === "ios" ? "magnifyingglass" : "search"}
             size={20}
             color={colors.secondaryText}
           />
@@ -276,9 +308,14 @@ export default function AllMeetResultsScreen() {
             returnKeyType="search"
           />
           {searchText.length > 0 && (
-            <Pressable onPress={() => setSearchText('')} style={styles.clearButton}>
+            <Pressable
+              onPress={() => setSearchText("")}
+              style={styles.clearButton}
+            >
               <IconSymbol
-                name={Platform.OS === 'ios' ? 'xmark.circle.fill' : 'close-circle'}
+                name={
+                  Platform.OS === "ios" ? "xmark.circle.fill" : "close-circle"
+                }
                 size={20}
                 color={colors.secondaryText}
               />
@@ -293,7 +330,7 @@ export default function AllMeetResultsScreen() {
           renderItem={renderAthleteItem}
           keyExtractor={(item) => item}
           contentContainerStyle={{
-            paddingBottom: Math.max(80, insets.bottom + 60)
+            paddingBottom: Math.max(80, insets.bottom + 60),
           }}
         />
       ) : (
@@ -312,15 +349,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 12,
     height: 44,
-  },
-  searchIcon: {
-    marginRight: 8,
   },
   searchInput: {
     flex: 1,
@@ -332,23 +366,23 @@ const styles = StyleSheet.create({
   },
   centerContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   athleteItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,

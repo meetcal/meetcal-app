@@ -1,18 +1,29 @@
-import { StyleSheet, View, ActivityIndicator, FlatList, Pressable, Platform, TextInput } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
-import { fetchAthletesByClub } from '@/lib/database/fetch-club-stats';
-import type { AthleteClub } from '@/types/club';
-import { posthog } from '@/lib/posthog';
-import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAppColors } from "@/hooks/useAppColors";
+import { fetchAthletesByClub } from "@/lib/database/fetch-club-stats";
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
+import { posthog } from "@/lib/posthog";
+import type { AthleteClub } from "@/types/club";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ClubMeetsListScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { club } = useLocalSearchParams<{ club: string }>();
@@ -20,14 +31,14 @@ export default function ClubMeetsListScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [athletesInClub, setAthletesInClub] = useState<AthleteClub[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [isOffline, setIsOffline] = useState(false);
 
   // Track screen view on mount
   useEffect(() => {
-    posthog.capture('screen_viewed', {
-      screen_name: 'Club Meets List',
-      club_name: club
+    posthog.capture("screen_viewed", {
+      screen_name: "Club Meets List",
+      club_name: club,
     });
   }, [club]);
 
@@ -47,17 +58,6 @@ export default function ClubMeetsListScreen() {
     };
   }, []);
 
-  // Define theme colors
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF',
-  };
-
   // Load athletes and meets on mount
   useEffect(() => {
     if (club) {
@@ -76,46 +76,58 @@ export default function ClubMeetsListScreen() {
       if (!hasNetwork) {
         setIsOffline(true);
         setAthletesInClub([]);
-        setError('Offline - meet results are not available');
+        setError("Offline - meet results are not available");
         return;
       }
       const athletes = await fetchAthletesByClub(club);
       setAthletesInClub(athletes);
     } catch (err) {
-      console.error('Error loading athletes:', err);
-      setError('Failed to load meets');
+      console.error("Error loading athletes:", err);
+      setError("Failed to load meets");
     } finally {
       setIsLoading(false);
     }
   };
 
   // Get unique meets from athletes
-  const allMeets = Array.from(new Set(athletesInClub.map(a => a.meet))).sort();
-  
+  const allMeets = Array.from(
+    new Set(athletesInClub.map((a) => a.meet)),
+  ).sort();
+
   // Filter meets based on search query
   const uniqueMeets = searchQuery
-    ? allMeets.filter(meet => meet.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? allMeets.filter((meet) =>
+        meet.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
     : allMeets;
 
-  const handleMeetPress = useCallback((meet: string) => {
-    // Track meet selection
-    posthog.capture('club_meet_selected', {
-      club_name: club,
-      meet_name: meet
-    });
+  const handleMeetPress = useCallback(
+    (meet: string) => {
+      // Track meet selection
+      posthog.capture("club_meet_selected", {
+        club_name: club,
+        meet_name: meet,
+      });
 
-    router.push({
-      pathname: '/(screens)/meet-results-by-club',
-      params: { club, meet }
-    });
-  }, [router, club]);
+      router.push({
+        pathname: "/(screens)/meet-results-by-club",
+        params: { club, meet },
+      });
+    },
+    [router, club],
+  );
 
   const renderEmptyState = () => {
     if (isLoading) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.link} />
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText, marginTop: 16 }]}>
+          <ThemedText
+            style={[
+              styles.emptyText,
+              { color: colors.secondaryText, marginTop: 16 },
+            ]}
+          >
             Loading meets...
           </ThemedText>
         </View>
@@ -126,19 +138,21 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            {isOffline ? 'Offline' : 'Error loading meets'}
+            {isOffline ? "Offline" : "Error loading meets"}
           </ThemedText>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-            {isOffline ? 'Meet results are not available without an internet connection' : error}
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
+            {isOffline
+              ? "Meet results are not available without an internet connection"
+              : error}
           </ThemedText>
           {!isOffline && (
             <Pressable
               style={[styles.retryButton, { backgroundColor: colors.link }]}
               onPress={loadAthletes}
             >
-              <ThemedText style={styles.retryButtonText}>
-                Retry
-              </ThemedText>
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
             </Pressable>
           )}
         </View>
@@ -149,10 +163,16 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            No meets found for {club}
+            No meets found for 
+{' '}
+{club}
           </ThemedText>
-          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-            Athletes: {athletesInClub.length}
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
+            Athletes: 
+{' '}
+{athletesInClub.length}
           </ThemedText>
         </View>
       );
@@ -169,7 +189,7 @@ export default function ClubMeetsListScreen() {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
         },
-        pressed && { backgroundColor: colors.pressed }
+        pressed && { backgroundColor: colors.pressed },
       ]}
       onPress={() => handleMeetPress(item)}
     >
@@ -177,7 +197,7 @@ export default function ClubMeetsListScreen() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
+        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
         size={20}
         color={colors.link}
       />
@@ -185,33 +205,52 @@ export default function ClubMeetsListScreen() {
   );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
       <Stack.Screen
         options={{
           headerShown: false,
         }}
       />
 
-      <View style={[styles.searchWrapper, {
-        backgroundColor: colors.background,
-        borderBottomColor: colors.border,
-        paddingTop: insets.top + 12,
-      }]}>
+      <View
+        style={[
+          styles.searchWrapper,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+            paddingTop: insets.top + 12,
+          },
+        ]}
+      >
         <View style={styles.searchRow}>
           <Pressable
             onPress={() => router.back()}
-            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && { opacity: 0.7 },
+            ]}
             hitSlop={12}
           >
             <IconSymbol
-              name={Platform.OS === 'ios' ? 'chevron.left' : 'arrow.back'}
+              name={Platform.OS === "ios" ? "chevron.left" : "arrow.back"}
               size={24}
               color={colors.text}
             />
           </Pressable>
           <View style={[styles.searchContainer, { flex: 1 }]}>
-            <View style={[styles.searchInputContainer, { backgroundColor: colors.card }]}>
-              <IconSymbol name={Platform.OS === 'ios' ? 'magnifyingglass' : 'search'} size={18} color={colors.secondaryText} />
+            <View
+              style={[
+                styles.searchInputContainer,
+                { backgroundColor: colors.card },
+              ]}
+            >
+              <IconSymbol
+                name={Platform.OS === "ios" ? "magnifyingglass" : "search"}
+                size={18}
+                color={colors.secondaryText}
+              />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Search meets..."
@@ -222,8 +261,16 @@ export default function ClubMeetsListScreen() {
                 autoCorrect={false}
               />
               {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
-                  <IconSymbol name={Platform.OS === 'ios' ? 'xmark.circle.fill' : 'close-circle'} size={18} color={colors.secondaryText} />
+                <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+                  <IconSymbol
+                    name={
+                      Platform.OS === "ios"
+                        ? "xmark.circle.fill"
+                        : "close-circle"
+                    }
+                    size={18}
+                    color={colors.secondaryText}
+                  />
                 </Pressable>
               )}
             </View>
@@ -240,8 +287,8 @@ export default function ClubMeetsListScreen() {
             styles.listContent,
             {
               paddingTop: 16,
-              paddingBottom: 80 + insets.bottom
-            }
+              paddingBottom: 80 + insets.bottom,
+            },
           ]}
           showsVerticalScrollIndicator={false}
         />
@@ -262,8 +309,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   backButton: {
@@ -274,8 +321,8 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
@@ -292,23 +339,23 @@ const styles = StyleSheet.create({
   },
   centerContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   meetItem: {
     borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -316,9 +363,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
   },
   meetName: {
@@ -332,8 +379,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

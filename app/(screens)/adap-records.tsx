@@ -1,40 +1,54 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Stack } from 'expo-router';
-import { ThemedView } from '@/components/ThemedView';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/contexts/ThemeContext';
-import { WeightClassRecord, RecordsData } from '@/types/records';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import PaywallScreen from './paywall';
-import { fetchAdaptiveRecords } from '@/lib/database/fetch-adaptive-records';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useAppColors } from "@/hooks/useAppColors";
+import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
+import { RecordsData, WeightClassRecord } from "@/types/records";
+import { Stack } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import PaywallScreen from "./paywall";
 
-type Gender = 'Men' | 'Women';
+type Gender = "Men" | "Women";
 
-const AGE_GROUP_KEY = 'Adaptive';
+const AGE_GROUP_KEY = "Adaptive";
 
-const MENS_WEIGHT_CLASSES = ['60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '110kg', '110+kg'];
-const WOMENS_WEIGHT_CLASSES = ['48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '86kg', '86+kg'];
+const MENS_WEIGHT_CLASSES = [
+  "60kg",
+  "65kg",
+  "71kg",
+  "79kg",
+  "88kg",
+  "94kg",
+  "110kg",
+  "110+kg",
+];
+const WOMENS_WEIGHT_CLASSES = [
+  "48kg",
+  "53kg",
+  "58kg",
+  "63kg",
+  "69kg",
+  "77kg",
+  "86kg",
+  "86+kg",
+];
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
 export default function AdaptiveRecordsScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
-  const [appliedGender, setAppliedGender] = useState<Gender>('Men');
+  const [appliedGender, setAppliedGender] = useState<Gender>("Men");
   const [records, setRecords] = useState<RecordsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F0F0F0',
-    link: '#007AFF',
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +63,7 @@ export default function AdaptiveRecordsScreen() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setFetchError(err?.message || 'Failed to fetch adaptive records');
+          setFetchError(err?.message || "Failed to fetch adaptive records");
         }
       })
       .finally(() => {
@@ -63,7 +77,8 @@ export default function AdaptiveRecordsScreen() {
 
   const recordsData = useMemo(() => records || EMPTY_RECORDS_DATA, [records]);
 
-  const weightClasses = appliedGender === 'Men' ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
+  const weightClasses =
+    appliedGender === "Men" ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
 
   const filteredRecords = useMemo(() => {
     const list = recordsData[AGE_GROUP_KEY]?.[appliedGender] || [];
@@ -73,7 +88,16 @@ export default function AdaptiveRecordsScreen() {
 
   if (isSubscriptionLoading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}> 
+      <ThemedView
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
         <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
@@ -84,21 +108,35 @@ export default function AdaptiveRecordsScreen() {
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}> 
-      <Stack.Screen options={{
-        title: 'Adaptive American Records',
-        headerBackTitle: 'Back',
-        headerShown: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        animation: 'slide_from_right',
-        headerStyle: { backgroundColor: colors.background },
-        headerShadowVisible: false,
-      }} />
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
+          title: "Adaptive American Records",
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
+          headerStyle: { backgroundColor: colors.background },
+          headerShadowVisible: false,
+        }}
+      />
 
-      <View style={[styles.segmentedContainer, { backgroundColor: colors.background }]}> 
-        <View style={[styles.segmentedControl, { backgroundColor: colors.card, borderColor: colors.border }]}> 
-          {(['Men', 'Women'] as Gender[]).map((gender) => (
+      <View
+        style={[
+          styles.segmentedContainer,
+          { backgroundColor: colors.background },
+        ]}
+      >
+        <View
+          style={[
+            styles.segmentedControl,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          {(["Men", "Women"] as Gender[]).map((gender) => (
             <Pressable
               key={gender}
               style={({ pressed }) => [
@@ -111,7 +149,12 @@ export default function AdaptiveRecordsScreen() {
               <ThemedText
                 style={[
                   styles.segmentText,
-                  { color: appliedGender === gender ? '#FFFFFF' : colors.secondaryText }
+                  {
+                    color:
+                      appliedGender === gender
+                        ? "#FFFFFF"
+                        : colors.secondaryText,
+                  },
                 ]}
               >
                 {gender}
@@ -121,33 +164,76 @@ export default function AdaptiveRecordsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.card, { backgroundColor: colors.card }]}> 
-          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}> 
-            <ThemedText style={[styles.headerCell, { flex: 2, color: colors.secondaryText }]}>Class</ThemedText>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>Snatch</ThemedText>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>CJ</ThemedText>
-            <ThemedText style={[styles.headerCell, { color: colors.secondaryText }]}>Total</ThemedText>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View
+            style={[styles.headerRow, { borderBottomColor: colors.border }]}
+          >
+            <ThemedText
+              style={[
+                styles.headerCell,
+                { flex: 2, color: colors.secondaryText },
+              ]}
+            >
+              Class
+            </ThemedText>
+            <ThemedText
+              style={[styles.headerCell, { color: colors.secondaryText }]}
+            >
+              Snatch
+            </ThemedText>
+            <ThemedText
+              style={[styles.headerCell, { color: colors.secondaryText }]}
+            >
+              CJ
+            </ThemedText>
+            <ThemedText
+              style={[styles.headerCell, { color: colors.secondaryText }]}
+            >
+              Total
+            </ThemedText>
           </View>
 
           {loading && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.link} />
-              <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>Loading...</ThemedText>
+              <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
+                Loading...
+              </ThemedText>
             </View>
           )}
 
           {fetchError && !loading && (
-            <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
-          )}
-
-          {!loading && !fetchError && filteredRecords.length === 0 && (
-            <ThemedText style={{ textAlign: 'center', marginTop: 16, color: colors.secondaryText }}>
-              No adaptive records available for {appliedGender === 'Men' ? 'men' : 'women'}.
+            <ThemedText
+              style={{
+                color: colors.danger,
+                textAlign: "center",
+                marginTop: 16,
+              }}
+            >
+              {fetchError}
             </ThemedText>
           )}
 
-          {!loading && !fetchError && filteredRecords.length > 0 && (
+          {!loading && !fetchError && filteredRecords.length === 0 && (
+            <ThemedText
+              style={{
+                textAlign: "center",
+                marginTop: 16,
+                color: colors.secondaryText,
+              }}
+            >
+              No adaptive records available for{" "}
+              {appliedGender === "Men" ? "men" : "women"}.
+            </ThemedText>
+          )}
+
+          {!loading &&
+            !fetchError &&
+            filteredRecords.length > 0 &&
             filteredRecords.map((record: WeightClassRecord, index: number) => (
               <View
                 key={`${appliedGender}-${record.weightClass}-${index}`}
@@ -156,16 +242,28 @@ export default function AdaptiveRecordsScreen() {
                   index < filteredRecords.length - 1 && {
                     borderBottomWidth: StyleSheet.hairlineWidth,
                     borderBottomColor: colors.border,
-                  }
+                  },
                 ]}
               >
-                <ThemedText style={[styles.cell, { flex: 2, color: colors.text }]}>{record.weightClass}</ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>{record.snatchRecord}kg</ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>{record.cjRecord}kg</ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>{record.totalRecord}kg</ThemedText>
+                <ThemedText
+                  style={[styles.cell, { flex: 2, color: colors.text }]}
+                >
+                  {record.weightClass}
+                </ThemedText>
+                <ThemedText style={[styles.cell, { color: colors.text }]}>
+                  {record.snatchRecord}
+                  kg
+                </ThemedText>
+                <ThemedText style={[styles.cell, { color: colors.text }]}>
+                  {record.cjRecord}
+                  kg
+                </ThemedText>
+                <ThemedText style={[styles.cell, { color: colors.text }]}>
+                  {record.totalRecord}
+                  kg
+                </ThemedText>
               </View>
-            ))
-          )}
+            ))}
         </View>
       </ScrollView>
     </ThemedView>
@@ -182,20 +280,20 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   segmentedControl: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   segment: {
     flex: 1,
     paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   segmentText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   scrollView: {
     flex: 1,
@@ -205,8 +303,8 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -216,18 +314,18 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(60, 60, 67, 0.03)',
+    backgroundColor: "rgba(60, 60, 67, 0.03)",
   },
   headerCell: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   row: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
   },
   cell: {
@@ -236,6 +334,6 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     padding: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
 });
