@@ -12,12 +12,6 @@ import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import {
-  convertToUTC,
-  formatTimeWithZone,
-  getMeetConfig,
-  getMeetVenueLocation,
-} from "@/data/meets/config";
 import { LiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -43,9 +37,9 @@ import {
 } from "@/lib/start-list-utils";
 import type { Schedule as ScheduleType } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
+import { createCalendarEvents } from "@/utils/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList } from "@shopify/flash-list";
-import * as Calendar from "expo-calendar";
 import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
@@ -762,6 +756,7 @@ export default function StartListScreen() {
       sessionNumber: row.sessionNumber.toString(),
       platform: row.platform,
       weightClass: row.weightClass,
+      meet: selectedMeet,
     }));
 
     if (sessionsToAdd.length === 0) {
@@ -1120,98 +1115,6 @@ export default function StartListScreen() {
       Alert.alert("Error", "Failed to generate CSV. Please try again.");
     }
   };
-
-  // Update createCalendarEvents function
-  async function createCalendarEvents(
-    sessions: {
-      date: string;
-      startTime: string;
-      weighInTime: string;
-      sessionNumber: string;
-      platform: string;
-      weightClass: string;
-    }[],
-  ) {
-    try {
-      if (!selectedMeet || !isMeetName(selectedMeet)) {
-        throw new Error("No meet selected");
-      }
-
-      let calendarId;
-
-      if (Platform.OS === "ios") {
-        const calendar = await Calendar.getDefaultCalendarAsync();
-        calendarId = calendar.id;
-      } else {
-        const calendars = await Calendar.getCalendarsAsync(
-          Calendar.EntityTypes.EVENT,
-        );
-        const primaryCalendar = calendars.find(
-          (cal) =>
-            cal.accessLevel === Calendar.CalendarAccessLevel.OWNER &&
-            cal.allowsModifications,
-        );
-
-        if (!primaryCalendar) {
-          throw new Error("no_calendar");
-        }
-
-        calendarId = primaryCalendar.id;
-      }
-
-      const validMeet = selectedMeet; // This is now typed as MeetName
-
-      for (const session of sessions) {
-        // Get meet config first
-        const meetConfig = await getMeetConfig(validMeet);
-
-        // Convert times to UTC using the meet's time zone
-        const startDate = convertToUTC(
-          session.startTime,
-          session.date,
-          validMeet,
-        );
-        const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-
-        await Calendar.createEventAsync(calendarId, {
-          title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-          location: getMeetVenueLocation(validMeet),
-          notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(session.weighInTime, validMeet)}`,
-          startDate: startDate,
-          endDate: endDate,
-          timeZone: meetConfig.time.timeZoneIdentifier,
-          alarms: [
-            {
-              relativeOffset: -60,
-            },
-          ],
-        });
-      }
-    } catch (error) {
-      console.error("Error creating calendar events:", error);
-
-      if (error instanceof Error) {
-        if (error.message === "no_calendar") {
-          throw new Error(
-            "No suitable calendar found. Please make sure you have at least one calendar set up on your device.",
-          );
-        } else if (error.message === "No meet selected") {
-          throw new Error(
-            "Please select a meet before adding events to calendar.",
-          );
-        }
-      }
-
-      const errorMessage = Platform.select({
-        ios: "Could not add events to calendar. Please try again.",
-        android:
-          "Could not add events to calendar. Please make sure you have a calendar app installed and try again.",
-        default: "Could not add events to calendar. Please try again.",
-      });
-
-      throw new Error(errorMessage);
-    }
-  }
 
   if (loading) {
     return <StartListSkeleton skeletonPulse={skeletonPulse} />;
