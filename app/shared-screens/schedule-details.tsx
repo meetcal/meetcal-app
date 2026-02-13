@@ -10,10 +10,10 @@ import {
   Platform as PlatformDetails,
   Schedule,
 } from "@/types/schedule";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Calendar from "expo-calendar";
+import { requestCalendarPermissions } from "@/utils/calendar";
+import { generateSessionId } from "@/utils/session";
+import { calculateWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
-import * as StoreReview from "expo-store-review";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
@@ -27,66 +27,6 @@ interface SessionPlatformDetails {
 interface Session {
   number: number;
   platforms: SessionPlatformDetails[];
-}
-
-// Add this helper function (or import it if you want to move it to a utilities file)
-function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(" ");
-  const [hours, minutes] = time.split(":").map(Number);
-
-  // Convert to 24 hour format
-  let hour24 = hours;
-  if (period === "PM" && hours !== 12) hour24 += 12;
-  if (period === "AM" && hours === 12) hour24 = 0;
-
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
-
-  // Handle day wrap
-  if (weighInHour < 0) weighInHour += 24;
-
-  // Convert back to 12 hour format
-  let weighInPeriod = "AM";
-  if (weighInHour >= 12) {
-    weighInPeriod = "PM";
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-
-  return `${weighInHour}:${minutes.toString().padStart(2, "0")} ${weighInPeriod}`;
-}
-
-const checkAndShowReviewPrompt = async () => {
-  try {
-    const hasShownReview = await AsyncStorage.getItem("hasShownReview");
-    const hasSavedBefore = await AsyncStorage.getItem("hasSavedBefore");
-
-    if (!hasSavedBefore && !hasShownReview) {
-      // Mark that user has saved a session
-      await AsyncStorage.setItem("hasSavedBefore", "true");
-      // Use native store review prompt
-      try {
-        const isAvailable = await StoreReview.isAvailableAsync();
-        if (isAvailable) {
-          await StoreReview.requestReview();
-        }
-      } catch (error) {
-        console.warn("ScheduleDetails: Store review unavailable", error);
-      }
-      await AsyncStorage.setItem("hasShownReview", "true");
-    }
-  } catch (error) {
-    console.error("Error checking review status:", error);
-  }
-};
-
-// Function to generate unique session IDs
-function generateSessionId(
-  meet: MeetName,
-  sessionNumber: number | string,
-  platform: string,
-): string {
-  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, "-");
 }
 
 export default function SessionDetailsScreen() {
@@ -126,8 +66,8 @@ export default function SessionDetailsScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      setHasCalendarPermission(status === "granted");
+      const hasPermission = await requestCalendarPermissions();
+      setHasCalendarPermission(hasPermission);
     })();
   }, []);
 
