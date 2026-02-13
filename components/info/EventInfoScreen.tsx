@@ -84,19 +84,6 @@ export default function EventInfoScreen() {
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      {/* <Stack.Screen options={{ 
-        title: "Event Info",
-        headerBackTitle: "Back",
-        headerShown: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        animation: 'slide_from_right',
-        headerStyle: {
-          backgroundColor: colors.background,
-        },
-        headerShadowVisible: false,
-      }} /> */}
-
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View style={styles.section}>
           <ThemedText style={[styles.mainTitle, { color: colors.text }]}>
@@ -124,11 +111,8 @@ export default function EventInfoScreen() {
                   {meetDetails.venue.address.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.address.city}
-,
-{" "}
-                  {meetDetails.venue.address.state}
-{" "}
+                  {meetDetails.venue.address.city},{" "}
+                  {meetDetails.venue.address.state}{" "}
                   {meetDetails.venue.address.zip}
                 </ThemedText>
               </View>
@@ -158,6 +142,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    marginBottom: 16,
   },
   section: {
     paddingVertical: 12,
