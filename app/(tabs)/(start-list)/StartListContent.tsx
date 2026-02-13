@@ -2244,8 +2244,10 @@ export default function StartListScreen() {
                       { color: colors.secondaryText },
                     ]}
                   >
-                    {tempFilteredAthleteCount} athletes
-                  </ThemedText>
+                    {tempFilteredAthleteCount}
+{' '}
+athletes
+</ThemedText>
                   <Pressable
                     style={({ pressed }) => [
                       styles.resetButton,
@@ -2299,8 +2301,12 @@ export default function StartListScreen() {
               <ThemedText
                 style={[styles.saveModalTitle, { color: colors.text }]}
               >
-                Save {filteredAthletes.length} Athletes
-              </ThemedText>
+                Save 
+{' '}
+{filteredAthletes.length}
+{' '}
+Athletes
+</ThemedText>
               <Pressable
                 style={({ pressed }) => [
                   styles.closeButton,

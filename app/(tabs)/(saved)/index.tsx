@@ -83,7 +83,7 @@ async function requestCalendarPermissions() {
 }
 
 async function createCalendarEvents(
-  sessions: Array<{
+  sessions: {
     date: string;
     startTime: string;
     weighInTime: string;
@@ -91,7 +91,7 @@ async function createCalendarEvents(
     platform: string;
     weightClass: string;
     meet: MeetName;
-  }>,
+  }[],
 ) {
   try {
     let calendarId;
@@ -333,7 +333,10 @@ const SessionCard = React.memo(
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           {/* Use displayDate derived from schedule map */}
-          Session {sessionNumber}{" "}
+          Session 
+{' '}
+{sessionNumber}
+{" "}
           {displayDate !== "Date TBD" ? `• ${displayDate}` : ""}
         </ThemedText>
 
@@ -465,8 +468,11 @@ const SessionCard = React.memo(
                       { color: colors.secondaryText },
                     ]}
                   >
-                    +{item.athleteNames.length - 3} more
-                  </ThemedText>
+                    +
+{item.athleteNames.length - 3}
+{' '}
+more
+</ThemedText>
                 )}
               </View>
             </View>
@@ -574,11 +580,11 @@ export default function SavedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
   const [savedWarmups, setSavedWarmups] = useState<
-    Array<{
+    {
       id: string;
       name: string;
       meet: string;
-    }>
+    }[]
   >([]);
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
@@ -639,11 +645,11 @@ export default function SavedScreen() {
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
                 if (stored) {
-                  let sessions: Array<{ meet?: string }> = [];
+                  let sessions: { meet?: string }[] = [];
                   try {
                     const parsed: unknown = JSON.parse(stored);
                     if (Array.isArray(parsed))
-                      sessions = parsed as Array<{ meet?: string }>;
+                      sessions = parsed as { meet?: string }[];
                   } catch (err) {
                     console.error("Failed to parse stored sessions:", err, {
                       key,
@@ -898,7 +904,7 @@ export default function SavedScreen() {
                 )
                   return false;
                 return sessionLookupByMeet.has(session.meet);
-              }) as Array<SavedSession & { meet: MeetName }>;
+              }) as (SavedSession & { meet: MeetName })[];
 
               if (validSessions.length === 0) {
                 Alert.alert(
@@ -1350,8 +1356,10 @@ export default function SavedScreen() {
                     letterFilter === letter && { color: "#007AFF" },
                   ]}
                 >
-                  {letter} Session
-                </ThemedText>
+                  {letter}
+{' '}
+Session
+</ThemedText>
                 {letterFilter === letter && (
                   <IconSymbol name="checkmark" size={16} color="#007AFF" />
                 )}
@@ -1392,9 +1400,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-  },
-  sessionContainerPressed: {
-    opacity: 0.9,
   },
   sessionTitle: {
     fontSize: 17,
@@ -1509,12 +1514,6 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     marginLeft: 16,
     marginTop: 4,
-  },
-  buttonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
   },
   athleteRow: {
     flexDirection: "row",

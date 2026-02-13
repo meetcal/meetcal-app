@@ -107,7 +107,9 @@ function SessionView({
   return (
     <View style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-        Session {session.number}
+        Session 
+{' '}
+{session.number}
       </ThemedText>
 
       <View
@@ -153,7 +155,10 @@ function SessionView({
                     { color: colors.secondaryText },
                   ]}
                 >
-                  Start: {platform.platformStartTime || session.startTime}{" "}
+                  Start: 
+{' '}
+{platform.platformStartTime || session.startTime}
+{" "}
                   {timeZone}
                 </ThemedText>
               </View>
@@ -1020,31 +1025,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 4,
   },
-  timeContainer: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  timeBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  timeSeparator: {
-    width: 24,
-  },
-  timeLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginRight: 4,
-  },
-  timeText: {
-    fontSize: 15,
-    color: "#666",
-  },
   platformsContainer: {
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
@@ -1061,9 +1041,6 @@ const styles = StyleSheet.create({
   platformCardBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E1E1E1",
-  },
-  platformCardPressed: {
-    backgroundColor: "#F5F5F5",
   },
   platformContent: {
     flex: 1,
@@ -1159,13 +1136,6 @@ const styles = StyleSheet.create({
     padding: 4,
     zIndex: 1,
   },
-  refreshButton: {
-    position: "absolute",
-    left: 16,
-    top: 16,
-    padding: 4,
-    zIndex: 1,
-  },
   modalOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -1210,12 +1180,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     position: "relative",
-  },
-
-  syncInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
   },
   loadingContainer: {
     flex: 1,

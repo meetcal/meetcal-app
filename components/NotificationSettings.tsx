@@ -207,7 +207,8 @@ export function NotificationSettings({
       <View style={styles.row}>
         <View style={styles.textContainer}>
           <ThemedText style={[styles.label, { color: colors.text }]}>
-            Session Reminders{" "}
+            Session Reminders
+{" "}
             {!isSubscribed && (
               <IconSymbol name="crown.fill" size={16} color="#FFD700" />
             )}

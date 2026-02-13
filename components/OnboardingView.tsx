@@ -107,9 +107,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               📋 Schedule Details
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              After selecting a session you'll see all the athletes in the
-              session. Alongside that you'll see age, club, weight class, entry
-              total, and all their USAW meet results.
+              After selecting a session you&apos;ll see all the athletes in the
+              session. Alongside that you&apos;ll see age, club, weight class,
+              entry total, and all their USAW meet results.
             </ThemedText>
           </View>
         );
@@ -146,9 +146,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               🏋️‍♀️ Competition Data
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
-              Click the tab in the bottom right and you'll have all the
-              pertinent competition data you'll need such as: Qualifying Totals,
-              A/B Standards, American and WSO Records, and International
+              Click the tab in the bottom right and you&apos;ll have all the
+              pertinent competition data you&apos;ll need such as: Qualifying
+              Totals, A/B Standards, American and WSO Records, and International
               Rankings.
             </ThemedText>
           </View>
@@ -162,8 +162,8 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
             <ThemedText style={[styles.description, { color: colors.text }]}>
               Through the Start List and Session Details pages you can save
               important sessions both in the app and right to your calendar.
-              From there you'll get push notifications 60 minutes before the
-              session begins.
+              From there you&apos;ll get push notifications 60 minutes before
+              the session begins.
             </ThemedText>
           </View>
         );
@@ -208,7 +208,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
     >
       <Pressable style={styles.modalOverlay}>
         <Pressable
-          style={[styles.container, { backgroundColor: colors.background }]}
+          style={[styles.container, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}
         >
           {renderPage()}

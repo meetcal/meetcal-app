@@ -15,7 +15,7 @@ interface ShareScheduleViewProps {
     startTime: string;
     weighInTime: string;
     displayDate: string;
-    platforms: Array<{ platform: string; platformStartTime?: string }>;
+    platforms: { platform: string; platformStartTime?: string }[];
   } | null;
 }
 
@@ -81,7 +81,7 @@ export default function ShareScheduleView({
 }: ShareScheduleViewProps) {
   // Group athletes by date and sort
   const athletesByDate = React.useMemo(() => {
-    const grouped: { [key: string]: Array<{ athlete: LiftResult; sessionDetails: any }> } = {};
+    const grouped: { [key: string]: { athlete: LiftResult; sessionDetails: any }[] } = {};
 
     filteredAthletes.forEach((athlete) => {
       if (!athlete.session) return;

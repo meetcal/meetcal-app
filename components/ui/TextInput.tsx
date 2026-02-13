@@ -1,24 +1,24 @@
-import { TextInput as RNTextInput, StyleSheet } from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAppColors } from "@/hooks/useAppColors";
+import { TextInput as RNTextInput, StyleSheet } from "react-native";
 
 interface TextInputProps extends React.ComponentProps<typeof RNTextInput> {
   style?: any;
 }
 
 export const TextInput = ({ style, ...props }: TextInputProps) => {
-  const { currentTheme } = useTheme();
-  
+  const colors = useAppColors();
+
   return (
     <RNTextInput
       style={[
         styles.input,
         style,
         {
-          backgroundColor: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-          color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-        }
+          backgroundColor: colors.background,
+          color: colors.primaryText,
+        },
       ]}
-      placeholderTextColor={currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B'}
+      placeholderTextColor={colors.secondaryText}
       {...props}
     />
   );
@@ -30,4 +30,4 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 15,
   },
-}); 
+});
