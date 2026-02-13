@@ -1,24 +1,38 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
-import { Stack } from 'expo-router';
-import { formatDistanceToNow } from 'date-fns';
-import { ThemedView } from '@/components/ThemedView';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/contexts/ThemeContext';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import PaywallScreen from './paywall';
-import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getLastSyncTime, clearMeetData } from '@/lib/database/offline-store';
-import { prefetchMeetData } from '@/lib/database/meet-manager';
-import { fetchStandards } from '@/lib/database/fetch-standards';
-import { fetchQualifyingTotals } from '@/lib/database/fetch-qualifying-totals';
-import { fetchIntlRankings } from '@/lib/database/fetchIntlRankings';
-import { fetchRecords, fetchFederations } from '@/lib/database/fetch-records';
-import { fetchWSOList, fetchWSORecords } from '@/lib/database/fetch-wso-records';
-import { fetchAdaptiveRecords } from '@/lib/database/fetch-adaptive-records';
-import { fetchNationalRankings } from '@/lib/database/fetch-national-rankings';
-import { clearOfflineCache, getOfflineCache, OFFLINE_CACHE_KEYS } from '@/lib/database/offline-cache';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useAppColors } from "@/hooks/useAppColors";
+import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
+import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
+import { fetchQualifyingTotals } from "@/lib/database/fetch-qualifying-totals";
+import { fetchFederations, fetchRecords } from "@/lib/database/fetch-records";
+import { fetchStandards } from "@/lib/database/fetch-standards";
+import {
+  fetchWSOList,
+  fetchWSORecords,
+} from "@/lib/database/fetch-wso-records";
+import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
+import { prefetchMeetData } from "@/lib/database/meet-manager";
+import {
+  clearOfflineCache,
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+} from "@/lib/database/offline-cache";
+import { clearMeetData, getLastSyncTime } from "@/lib/database/offline-store";
+import { formatDistanceToNow } from "date-fns";
+import { Stack } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import PaywallScreen from "./paywall";
 
 type DownloadStatus = {
   isDownloaded: boolean;
@@ -35,68 +49,85 @@ type DownloadItem = {
 };
 
 const NATIONAL_RANKINGS_AGE_GROUPS = [
-  'U11', 'U13', 'U15', 'U17', 'Junior', 'Senior',
-  'Masters 35', 'Masters 40', 'Masters 45', 'Masters 50', 'Masters 55',
-  'Masters 60', 'Masters 65', 'Masters 70', 'Masters 75', 'Masters 80',
-  'Masters 85', 'Masters 90+'
+  "U11",
+  "U13",
+  "U15",
+  "U17",
+  "Junior",
+  "Senior",
+  "Masters 35",
+  "Masters 40",
+  "Masters 45",
+  "Masters 50",
+  "Masters 55",
+  "Masters 60",
+  "Masters 65",
+  "Masters 70",
+  "Masters 75",
+  "Masters 80",
+  "Masters 85",
+  "Masters 90+",
 ] as const;
 
-function getNationalRankingsWeightClasses(gender: 'Men' | 'Women', ageGroup: string): string[] {
+function getNationalRankingsWeightClasses(
+  gender: "Men" | "Women",
+  ageGroup: string,
+): string[] {
   let prefix = `Open ${gender}`;
 
   switch (ageGroup) {
-    case 'U11':
+    case "U11":
       prefix = `${gender}'s 11 Under Age Group`;
       break;
-    case 'U13':
+    case "U13":
       prefix = `${gender}'s 13 Under Age Group`;
       break;
-    case 'U15':
+    case "U15":
       prefix = `${gender}'s 14-15 Age Group`;
       break;
-    case 'U17':
+    case "U17":
       prefix = `${gender}'s 16-17 Age Group`;
       break;
-    case 'Junior':
+    case "Junior":
       prefix = `Junior ${gender}`;
       break;
-    case 'Senior':
+    case "Senior":
       prefix = `Open ${gender}`;
       break;
-    case 'Masters 35':
+    case "Masters 35":
       prefix = `${gender}'s Masters (35-39)`;
       break;
-    case 'Masters 40':
+    case "Masters 40":
       prefix = `${gender}'s Masters (40-44)`;
       break;
-    case 'Masters 45':
+    case "Masters 45":
       prefix = `${gender}'s Masters (45-49)`;
       break;
-    case 'Masters 50':
+    case "Masters 50":
       prefix = `${gender}'s Masters (50-54)`;
       break;
-    case 'Masters 55':
+    case "Masters 55":
       prefix = `${gender}'s Masters (55-59)`;
       break;
-    case 'Masters 60':
+    case "Masters 60":
       prefix = `${gender}'s Masters (60-64)`;
       break;
-    case 'Masters 65':
+    case "Masters 65":
       prefix = `${gender}'s Masters (65-69)`;
       break;
-    case 'Masters 70':
+    case "Masters 70":
       prefix = `${gender}'s Masters (70-74)`;
       break;
-    case 'Masters 75':
+    case "Masters 75":
       prefix = `${gender}'s Masters (75-79)`;
       break;
-    case 'Masters 80':
+    case "Masters 80":
       prefix = `${gender}'s Masters (80-84)`;
       break;
-    case 'Masters 85':
+    case "Masters 85":
       prefix = `${gender}'s Masters (85-89)`;
       break;
-    case 'Masters 90+':
+    case "Masters 90+":
       prefix = `${gender}'s Masters (90+)`;
       break;
     default:
@@ -104,59 +135,149 @@ function getNationalRankingsWeightClasses(gender: 'Men' | 'Women', ageGroup: str
   }
 
   switch (`${gender}-${ageGroup}`) {
-    case 'Men-Masters 35':
-    case 'Men-Masters 40':
-    case 'Men-Masters 45':
-    case 'Men-Masters 50':
-    case 'Men-Masters 55':
-    case 'Men-Masters 60':
-    case 'Men-Masters 65':
-    case 'Men-Masters 70':
-    case 'Men-Masters 75':
-    case 'Men-Masters 80':
-    case 'Men-Masters 85':
-    case 'Men-Masters 90+':
-      return ['60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '110kg', '110+kg'].map(w => `${prefix} ${w}`);
-    case 'Women-Masters 35':
-    case 'Women-Masters 40':
-    case 'Women-Masters 45':
-    case 'Women-Masters 50':
-    case 'Women-Masters 55':
-    case 'Women-Masters 60':
-    case 'Women-Masters 65':
-    case 'Women-Masters 70':
-    case 'Women-Masters 75':
-    case 'Women-Masters 80':
-    case 'Women-Masters 85':
-    case 'Women-Masters 90+':
-      return ['48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '86kg', '86+kg'].map(w => `${prefix} ${w}`);
-    case 'Men-Junior':
-    case 'Men-Senior':
-      return ['60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '110kg', '110+kg'].map(w => `${prefix}'s ${w}`);
-    case 'Women-Junior':
-    case 'Women-Senior':
-      return ['48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '86kg', '86+kg'].map(w => `${prefix}'s ${w}`);
-    case 'Men-U17':
-      return ['56kg', '60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '94+kg'].map(w => `${prefix} ${w}`);
-    case 'Women-U17':
-      return ['44kg', '48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '77+kg'].map(w => `${prefix} ${w}`);
-    case 'Men-U15':
-      return ['48kg', '52kg', '56kg', '60kg', '65kg', '71kg', '79kg', '79+kg'].map(w => `${prefix} ${w}`);
-    case 'Women-U15':
-      return ['40kg', '44kg', '48kg', '53kg', '58kg', '63kg', '69kg', '69+kg'].map(w => `${prefix} ${w}`);
-    case 'Men-U13':
-    case 'Men-U11':
-      return ['40kg', '44kg', '48kg', '52kg', '56kg', '60kg', '65kg', '65+kg'].map(w => `${prefix} ${w}`);
-    case 'Women-U13':
-    case 'Women-U11':
-      return ['36kg', '40kg', '44kg', '48kg', '53kg', '58kg', '63kg', '63+kg'].map(w => `${prefix} ${w}`);
+    case "Men-Masters 35":
+    case "Men-Masters 40":
+    case "Men-Masters 45":
+    case "Men-Masters 50":
+    case "Men-Masters 55":
+    case "Men-Masters 60":
+    case "Men-Masters 65":
+    case "Men-Masters 70":
+    case "Men-Masters 75":
+    case "Men-Masters 80":
+    case "Men-Masters 85":
+    case "Men-Masters 90+":
+      return [
+        "60kg",
+        "65kg",
+        "71kg",
+        "79kg",
+        "88kg",
+        "94kg",
+        "110kg",
+        "110+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Women-Masters 35":
+    case "Women-Masters 40":
+    case "Women-Masters 45":
+    case "Women-Masters 50":
+    case "Women-Masters 55":
+    case "Women-Masters 60":
+    case "Women-Masters 65":
+    case "Women-Masters 70":
+    case "Women-Masters 75":
+    case "Women-Masters 80":
+    case "Women-Masters 85":
+    case "Women-Masters 90+":
+      return [
+        "48kg",
+        "53kg",
+        "58kg",
+        "63kg",
+        "69kg",
+        "77kg",
+        "86kg",
+        "86+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Men-Junior":
+    case "Men-Senior":
+      return [
+        "60kg",
+        "65kg",
+        "71kg",
+        "79kg",
+        "88kg",
+        "94kg",
+        "110kg",
+        "110+kg",
+      ].map((w) => `${prefix}'s ${w}`);
+    case "Women-Junior":
+    case "Women-Senior":
+      return [
+        "48kg",
+        "53kg",
+        "58kg",
+        "63kg",
+        "69kg",
+        "77kg",
+        "86kg",
+        "86+kg",
+      ].map((w) => `${prefix}'s ${w}`);
+    case "Men-U17":
+      return [
+        "56kg",
+        "60kg",
+        "65kg",
+        "71kg",
+        "79kg",
+        "88kg",
+        "94kg",
+        "94+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Women-U17":
+      return [
+        "44kg",
+        "48kg",
+        "53kg",
+        "58kg",
+        "63kg",
+        "69kg",
+        "77kg",
+        "77+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Men-U15":
+      return [
+        "48kg",
+        "52kg",
+        "56kg",
+        "60kg",
+        "65kg",
+        "71kg",
+        "79kg",
+        "79+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Women-U15":
+      return [
+        "40kg",
+        "44kg",
+        "48kg",
+        "53kg",
+        "58kg",
+        "63kg",
+        "69kg",
+        "69+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Men-U13":
+    case "Men-U11":
+      return [
+        "40kg",
+        "44kg",
+        "48kg",
+        "52kg",
+        "56kg",
+        "60kg",
+        "65kg",
+        "65+kg",
+      ].map((w) => `${prefix} ${w}`);
+    case "Women-U13":
+    case "Women-U11":
+      return [
+        "36kg",
+        "40kg",
+        "44kg",
+        "48kg",
+        "53kg",
+        "58kg",
+        "63kg",
+        "63+kg",
+      ].map((w) => `${prefix} ${w}`);
     default:
       return [];
   }
 }
 
 async function downloadAllNationalRankings(): Promise<void> {
-  const genders: Array<'Men' | 'Women'> = ['Men', 'Women'];
+  const genders: ("Men" | "Women")[] = ["Men", "Women"];
 
   for (const gender of genders) {
     for (const ageGroup of NATIONAL_RANKINGS_AGE_GROUPS) {
@@ -169,11 +290,15 @@ async function downloadAllNationalRankings(): Promise<void> {
 }
 
 export default function OfflineDataScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { availableMeets, isLoading: isMeetLoading } = useSelectedMeet();
-  const [downloadingItems, setDownloadingItems] = useState<Set<string>>(new Set());
-  const [downloadStatuses, setDownloadStatuses] = useState<Record<string, DownloadStatus>>({});
+  const [downloadingItems, setDownloadingItems] = useState<Set<string>>(
+    new Set(),
+  );
+  const [downloadStatuses, setDownloadStatuses] = useState<
+    Record<string, DownloadStatus>
+  >({});
   const [refreshCounter, setRefreshCounter] = useState(0);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
@@ -193,19 +318,8 @@ export default function OfflineDataScreen() {
     });
   }, [availableMeets]);
 
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF',
-    danger: '#FF3B30',
-  };
-
   const formatLastSynced = (lastSynced: number | null | undefined) => {
-    if (!lastSynced) return 'Not downloaded yet';
+    if (!lastSynced) return "Not downloaded yet";
     return `Last synced ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}`;
   };
 
@@ -244,31 +358,31 @@ export default function OfflineDataScreen() {
 
     nextStatuses.standards = {
       isDownloaded: Boolean(standardsCache?.data),
-      lastSynced: standardsCache?.lastSynced ?? null
+      lastSynced: standardsCache?.lastSynced ?? null,
     };
     nextStatuses.qualifyingTotals = {
       isDownloaded: Boolean(totalsCache?.data),
-      lastSynced: totalsCache?.lastSynced ?? null
+      lastSynced: totalsCache?.lastSynced ?? null,
     };
     nextStatuses.intlRankings = {
       isDownloaded: Boolean(rankingsCache?.data),
-      lastSynced: rankingsCache?.lastSynced ?? null
+      lastSynced: rankingsCache?.lastSynced ?? null,
     };
     nextStatuses.records = {
       isDownloaded: Boolean(recordsCache?.data),
-      lastSynced: recordsCache?.lastSynced ?? null
+      lastSynced: recordsCache?.lastSynced ?? null,
     };
     nextStatuses.wsoRecords = {
       isDownloaded: Boolean(wsoCache?.data),
-      lastSynced: wsoCache?.lastSynced ?? null
+      lastSynced: wsoCache?.lastSynced ?? null,
     };
     nextStatuses.adaptiveRecords = {
       isDownloaded: Boolean(adaptiveCache?.data),
-      lastSynced: adaptiveCache?.lastSynced ?? null
+      lastSynced: adaptiveCache?.lastSynced ?? null,
     };
     nextStatuses.nationalRankings = {
       isDownloaded: Boolean(nationalRankingsCache?.data),
-      lastSynced: nationalRankingsCache?.lastSynced ?? null
+      lastSynced: nationalRankingsCache?.lastSynced ?? null,
     };
 
     await Promise.all(
@@ -276,9 +390,9 @@ export default function OfflineDataScreen() {
         const lastSynced = await getLastSyncTime(meet.name);
         nextStatuses[`meet:${meet.name}`] = {
           isDownloaded: Boolean(lastSynced && lastSynced > 0),
-          lastSynced: lastSynced ?? null
+          lastSynced: lastSynced ?? null,
         };
-      })
+      }),
     );
 
     setDownloadStatuses(nextStatuses);
@@ -294,37 +408,40 @@ export default function OfflineDataScreen() {
       await action();
       setRefreshCounter((count) => count + 1);
     } catch (error) {
-      console.error('Download failed:', error);
-      Alert.alert('Download Failed', 'Please check your connection and try again.');
+      console.error("Download failed:", error);
+      Alert.alert(
+        "Download Failed",
+        "Please check your connection and try again.",
+      );
     } finally {
       updateDownloading(id, false);
     }
   };
 
-  const handleDelete = async (title: string, id: string, action: () => Promise<void>) => {
-    Alert.alert(
-      'Remove Download',
-      `Remove ${title} from this device?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            updateDownloading(id, true);
-            try {
-              await action();
-              setRefreshCounter((count) => count + 1);
-            } catch (error) {
-              console.error('Delete failed:', error);
-              Alert.alert('Remove Failed', 'Please try again.');
-            } finally {
-              updateDownloading(id, false);
-            }
+  const handleDelete = async (
+    title: string,
+    id: string,
+    action: () => Promise<void>,
+  ) => {
+    Alert.alert("Remove Download", `Remove ${title} from this device?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          updateDownloading(id, true);
+          try {
+            await action();
+            setRefreshCounter((count) => count + 1);
+          } catch (error) {
+            console.error("Delete failed:", error);
+            Alert.alert("Remove Failed", "Please try again.");
+          } finally {
+            updateDownloading(id, false);
           }
-        }
-      ]
-    );
+        },
+      },
+    ]);
   };
 
   const refreshAllDownloadedData = async () => {
@@ -337,7 +454,7 @@ export default function OfflineDataScreen() {
         .map((meet) => meet.name);
 
       const downloadedCompetitionItems = competitionItems.filter(
-        (item) => downloadStatuses[item.id]?.isDownloaded
+        (item) => downloadStatuses[item.id]?.isDownloaded,
       );
 
       await deleteAllOfflineData(false);
@@ -351,10 +468,16 @@ export default function OfflineDataScreen() {
       }
 
       setRefreshCounter((count) => count + 1);
-      Alert.alert('Refresh Complete', 'All downloaded data has been refreshed.');
+      Alert.alert(
+        "Refresh Complete",
+        "All downloaded data has been refreshed.",
+      );
     } catch (error) {
-      console.error('Refresh all failed:', error);
-      Alert.alert('Refresh Failed', 'Please check your connection and try again.');
+      console.error("Refresh all failed:", error);
+      Alert.alert(
+        "Refresh Failed",
+        "Please check your connection and try again.",
+      );
     } finally {
       setIsRefreshingAll(false);
     }
@@ -380,11 +503,14 @@ export default function OfflineDataScreen() {
 
       setRefreshCounter((count) => count + 1);
       if (showSuccessAlert) {
-        Alert.alert('Deleted', 'All offline data has been removed from your device.');
+        Alert.alert(
+          "Deleted",
+          "All offline data has been removed from your device.",
+        );
       }
     } catch (error) {
-      console.error('Delete all failed:', error);
-      Alert.alert('Delete Failed', 'Please try again.');
+      console.error("Delete all failed:", error);
+      Alert.alert("Delete Failed", "Please try again.");
     } finally {
       setIsDeletingAll(false);
     }
@@ -393,109 +519,126 @@ export default function OfflineDataScreen() {
   const confirmRefreshAll = () => {
     if (isRefreshingAll || isDeletingAll) return;
     Alert.alert(
-      'Refresh All Downloads',
-      'This will re-download everything you already saved for offline use.',
+      "Refresh All Downloads",
+      "This will re-download everything you already saved for offline use.",
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Refresh All', onPress: refreshAllDownloadedData }
-      ]
+        { text: "Cancel", style: "cancel" },
+        { text: "Refresh All", onPress: refreshAllDownloadedData },
+      ],
     );
   };
 
   const confirmDeleteAll = () => {
     if (isRefreshingAll || isDeletingAll) return;
     Alert.alert(
-      'Delete All Offline Data',
-      'This will remove all offline data from your device.',
+      "Delete All Offline Data",
+      "This will remove all offline data from your device.",
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete All', style: 'destructive', onPress: () => deleteAllOfflineData(true) }
-      ]
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete All",
+          style: "destructive",
+          onPress: () => deleteAllOfflineData(true),
+        },
+      ],
     );
   };
 
-  const competitionItems: Omit<DownloadItem, 'status' | 'isDownloading'>[] = useMemo(() => ([
-    {
-      id: 'standards',
-      title: 'A/B Standards',
-      onDownload: async () => {
-        await fetchStandards();
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.standards);
-      },
-    },
-    {
-      id: 'adaptiveRecords',
-      title: 'Adaptive Records',
-      onDownload: async () => {
-        await fetchAdaptiveRecords();
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords);
-      },
-    },
-    {
-      id: 'nationalRankings',
-      title: 'National Rankings',
-      onDownload: async () => {
-        await downloadAllNationalRankings();
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.nationalRankings);
-      },
-    },
-    {
-      id: 'records',
-      title: 'National & World Records',
-      onDownload: async () => {
-        const federations = await fetchFederations();
-        for (const federation of federations) {
-          await fetchRecords(federation);
-        }
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.records);
-      },
-    },
-    {
-      id: 'intlRankings',
-      title: 'International Rankings',
-      onDownload: async () => {
-        await fetchIntlRankings();
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.intlRankings);
-      },
-    },
-    {
-      id: 'qualifyingTotals',
-      title: 'Qualifying Totals',
-      onDownload: async () => {
-        await fetchQualifyingTotals();
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals);
-      },
-    },
-    {
-      id: 'wsoRecords',
-      title: 'WSO Records',
-      onDownload: async () => {
-        const wsos = await fetchWSOList();
-        for (const wso of wsos) {
-          await fetchWSORecords(wso);
-        }
-      },
-      onDelete: async () => {
-        await clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords);
-      },
-    },
-  ]), []);
+  const competitionItems: Omit<DownloadItem, "status" | "isDownloading">[] =
+    useMemo(
+      () => [
+        {
+          id: "standards",
+          title: "A/B Standards",
+          onDownload: async () => {
+            await fetchStandards();
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.standards);
+          },
+        },
+        {
+          id: "adaptiveRecords",
+          title: "Adaptive Records",
+          onDownload: async () => {
+            await fetchAdaptiveRecords();
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords);
+          },
+        },
+        {
+          id: "nationalRankings",
+          title: "National Rankings",
+          onDownload: async () => {
+            await downloadAllNationalRankings();
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.nationalRankings);
+          },
+        },
+        {
+          id: "records",
+          title: "National & World Records",
+          onDownload: async () => {
+            const federations = await fetchFederations();
+            for (const federation of federations) {
+              await fetchRecords(federation);
+            }
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.records);
+          },
+        },
+        {
+          id: "intlRankings",
+          title: "International Rankings",
+          onDownload: async () => {
+            await fetchIntlRankings();
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.intlRankings);
+          },
+        },
+        {
+          id: "qualifyingTotals",
+          title: "Qualifying Totals",
+          onDownload: async () => {
+            await fetchQualifyingTotals();
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals);
+          },
+        },
+        {
+          id: "wsoRecords",
+          title: "WSO Records",
+          onDownload: async () => {
+            const wsos = await fetchWSOList();
+            for (const wso of wsos) {
+              await fetchWSORecords(wso);
+            }
+          },
+          onDelete: async () => {
+            await clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords);
+          },
+        },
+      ],
+      [],
+    );
 
   if (isSubscriptionLoading || isMeetLoading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+      <ThemedView
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
         <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
@@ -506,61 +649,76 @@ export default function OfflineDataScreen() {
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ 
-        title: 'Offline Data',
-        headerBackTitle: 'Back',
-        headerShown: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        animation: 'slide_from_right',
-        headerStyle: {
-          backgroundColor: colors.background,
-        },
-        headerShadowVisible: false,
-        headerRight: () => (
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={confirmRefreshAll}
-              disabled={isRefreshingAll || isDeletingAll}
-              style={({ pressed }) => [
-                styles.headerButton,
-                pressed && { opacity: 0.7 }
-              ]}
-            >
-              {isRefreshingAll ? (
-                <ActivityIndicator size="small" color={colors.link} />
-              ) : (
-                <IconSymbol name="arrow.clockwise" size={20} color={colors.link} />
-              )}
-            </Pressable>
-            <Pressable
-              onPress={confirmDeleteAll}
-              disabled={isRefreshingAll || isDeletingAll}
-              style={({ pressed }) => [
-                styles.headerButton,
-                pressed && { opacity: 0.7 }
-              ]}
-            >
-              {isDeletingAll ? (
-                <ActivityIndicator size="small" color={colors.danger} />
-              ) : (
-                <IconSymbol name="trash" size={20} color={colors.danger} />
-              )}
-            </Pressable>
-          </View>
-        ),
-      }} />
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
+          title: "Offline Data",
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerShadowVisible: false,
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={confirmRefreshAll}
+                disabled={isRefreshingAll || isDeletingAll}
+                style={({ pressed }) => [
+                  styles.headerButton,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                {isRefreshingAll ? (
+                  <ActivityIndicator size="small" color={colors.link} />
+                ) : (
+                  <IconSymbol
+                    name="arrow.clockwise"
+                    size={20}
+                    color={colors.link}
+                  />
+                )}
+              </Pressable>
+              <Pressable
+                onPress={confirmDeleteAll}
+                disabled={isRefreshingAll || isDeletingAll}
+                style={({ pressed }) => [
+                  styles.headerButton,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                {isDeletingAll ? (
+                  <ActivityIndicator size="small" color={colors.danger} />
+                ) : (
+                  <IconSymbol name="trash" size={20} color={colors.danger} />
+                )}
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
             Schedule & Start List
           </ThemedText>
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             {filteredMeets.length === 0 && (
               <View style={styles.emptyRow}>
-                <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+                <ThemedText
+                  style={[styles.emptyText, { color: colors.secondaryText }]}
+                >
                   No meets available right now.
                 </ThemedText>
               </View>
@@ -577,8 +735,12 @@ export default function OfflineDataScreen() {
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
                   colors={colors}
-                  onDownload={() => handleDownload(id, () => prefetchMeetData(meet.name))}
-                  onDelete={() => handleDelete(meet.name, id, () => clearMeetData(meet.name))}
+                  onDownload={() =>
+                    handleDownload(id, () => prefetchMeetData(meet.name))
+                  }
+                  onDelete={() =>
+                    handleDelete(meet.name, id, () => clearMeetData(meet.name))
+                  }
                 />
               );
             })}
@@ -589,7 +751,12 @@ export default function OfflineDataScreen() {
           <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
             Competition Data
           </ThemedText>
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             {competitionItems.map((item) => {
               const status = downloadStatuses[item.id];
               const isDownloading = downloadingItems.has(item.id);
@@ -602,7 +769,9 @@ export default function OfflineDataScreen() {
                   isDownloading={isDownloading}
                   colors={colors}
                   onDownload={() => handleDownload(item.id, item.onDownload)}
-                  onDelete={() => handleDelete(item.title, item.id, item.onDelete)}
+                  onDelete={() =>
+                    handleDelete(item.title, item.id, item.onDelete)
+                  }
                 />
               );
             })}
@@ -638,7 +807,7 @@ function DownloadRow({
     danger: string;
   };
 }) {
-  const iconName = isDownloaded ? 'trash' : 'arrow.down.circle';
+  const iconName = isDownloaded ? "trash" : "arrow.down.circle";
   const iconColor = isDownloaded ? colors.danger : colors.link;
 
   return (
@@ -647,14 +816,16 @@ function DownloadRow({
       style={({ pressed }) => [
         styles.row,
         { borderBottomColor: colors.border },
-        pressed && { backgroundColor: colors.pressed }
+        pressed && { backgroundColor: colors.pressed },
       ]}
     >
       <View style={styles.rowText}>
         <ThemedText style={[styles.rowTitle, { color: colors.text }]}>
           {title}
         </ThemedText>
-        <ThemedText style={[styles.rowSubtitle, { color: colors.secondaryText }]}>
+        <ThemedText
+          style={[styles.rowSubtitle, { color: colors.secondaryText }]}
+        >
           {subtitle}
         </ThemedText>
       </View>
@@ -682,19 +853,19 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   card: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
   },
   row: {
     paddingHorizontal: 16,
     paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowText: {
@@ -704,14 +875,14 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   rowSubtitle: {
     fontSize: 13,
   },
   rowAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   emptyRow: {
@@ -722,8 +893,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   headerButton: {

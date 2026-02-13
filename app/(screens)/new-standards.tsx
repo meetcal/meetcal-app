@@ -1,17 +1,24 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, Pressable, Modal, Dimensions, ActivityIndicator } from 'react-native';
-import { Stack } from 'expo-router';
-import { ThemedView } from '@/components/ThemedView';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/contexts/ThemeContext';
-import { fetchStandards } from '@/lib/database/fetch-standards';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useState, useEffect, useMemo } from 'react';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import PaywallScreen from './paywall';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useAppColors } from "@/hooks/useAppColors";
+import { fetchStandards } from "@/lib/database/fetch-standards";
+import { Stack } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Dimensions,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import PaywallScreen from "./paywall";
 
-type Gender = 'men' | 'women';
-type AgeGroup = 'senior' | 'junior' | 'youth' | 'u15';
+type Gender = "men" | "women";
+type AgeGroup = "senior" | "junior" | "youth" | "u15";
 
 interface Filters {
   gender: Gender;
@@ -28,18 +35,20 @@ interface StandardsData {
   };
 }
 
-const windowHeight = Dimensions.get('window').height;
+const windowHeight = Dimensions.get("window").height;
 const maxOptionsHeight = windowHeight * 0.4;
 
 export default function NewStandardsScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [filters, setFilters] = useState<Filters>({
-    gender: 'men',
-    ageGroup: 'senior'
+    gender: "men",
+    ageGroup: "senior",
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<'gender' | 'ageGroup' | null>(null);
+  const [expandedSection, setExpandedSection] = useState<
+    "gender" | "ageGroup" | null
+  >(null);
   const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
   const [standards, setStandards] = useState<StandardsData | null>(null);
@@ -62,12 +71,14 @@ export default function NewStandardsScreen() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setFetchError(err.message || 'Failed to fetch standards');
+          setFetchError(err.message || "Failed to fetch standards");
           setLoading(false);
         }
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const standardsData = useMemo(() => {
@@ -77,18 +88,12 @@ export default function NewStandardsScreen() {
     return dataToUse[filters.ageGroup][filters.gender];
   }, [allStandards, standards, filters.ageGroup, filters.gender]);
 
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
-
   const getFilterDisplayText = () => {
-    const genderText = filters.gender === 'men' ? 'Men' : 'Women';
-    const ageGroupText = filters.ageGroup === 'u15' ? 'U15' : filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1);
+    const genderText = filters.gender === "men" ? "Men" : "Women";
+    const ageGroupText =
+      filters.ageGroup === "u15"
+        ? "U15"
+        : filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1);
     return `${genderText} • ${ageGroupText}`;
   };
 
@@ -99,21 +104,30 @@ export default function NewStandardsScreen() {
   };
 
   const genderOptions: { id: Gender; label: string }[] = [
-    { id: 'men', label: 'Men' },
-    { id: 'women', label: 'Women' },
+    { id: "men", label: "Men" },
+    { id: "women", label: "Women" },
   ];
 
   const ageGroupOptions: { id: AgeGroup; label: string }[] = [
-    { id: 'u15', label: 'U15' },
-    { id: 'youth', label: 'Youth' },
-    { id: 'junior', label: 'Junior' },
-    { id: 'senior', label: 'Senior' },
+    { id: "u15", label: "U15" },
+    { id: "youth", label: "Youth" },
+    { id: "junior", label: "Junior" },
+    { id: "senior", label: "Senior" },
   ];
 
   if (isSubscriptionLoading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <ThemedView
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
   }
@@ -123,85 +137,135 @@ export default function NewStandardsScreen() {
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ 
-        title: "A/B Standards",
-        headerBackTitle: "Back",
-        headerShown: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        animation: 'slide_from_right',
-        headerStyle: {
-          backgroundColor: colors.background,
-        },
-        headerShadowVisible: false,
-      }} />
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
+          title: "A/B Standards",
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerShadowVisible: false,
+        }}
+      />
 
-      <View style={[styles.filterContainer, { 
-        backgroundColor: colors.background,
-        borderBottomColor: currentTheme === 'dark' ? '#2C2C2E' : '#C6C6C8',
-        borderBottomWidth: 1,
-      }]}>
+      <View
+        style={[
+          styles.filterContainer,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.borderBottom,
+            borderBottomWidth: 1,
+          },
+        ]}
+      >
         <View style={styles.filterButtons}>
           <Pressable
             style={({ pressed }) => [
               styles.filterButton,
-              { 
+              {
                 backgroundColor: colors.card,
-                borderColor: colors.border 
+                borderColor: colors.border,
               },
-              pressed && { backgroundColor: colors.pressed }
+              pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
               setTempFilters(filters);
               setShowFilterModal(true);
             }}
           >
-            <ThemedText style={[styles.filterButtonText, { color: colors.secondaryText }]}>
+            <ThemedText
+              style={[styles.filterButtonText, { color: colors.secondaryText }]}
+            >
               {getFilterDisplayText()}
             </ThemedText>
-            <IconSymbol name="chevron.down" size={12} color={colors.secondaryText} />
+            <IconSymbol
+              name="chevron.down"
+              size={12}
+              color={colors.secondaryText}
+            />
           </Pressable>
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={[styles.card, { backgroundColor: colors.card }]}> 
-          <View style={[styles.headerRow, { borderBottomColor: colors.border }]}> 
-            <ThemedText style={[styles.headerCell, { flex: 2 }]}>Weight Class</ThemedText>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View
+            style={[styles.headerRow, { borderBottomColor: colors.border }]}
+          >
+            <ThemedText style={[styles.headerCell, { flex: 2 }]}>
+              Weight Class
+            </ThemedText>
             <ThemedText style={styles.headerCell}>A</ThemedText>
             <ThemedText style={styles.headerCell}>B</ThemedText>
           </View>
 
           {loading && (
-            <ThemedText style={{ textAlign: 'center', marginTop: 16 }}>Loading...</ThemedText>
+            <ThemedText style={{ textAlign: "center", marginTop: 16 }}>
+              Loading...
+            </ThemedText>
           )}
           {fetchError && (
-            <ThemedText style={{ color: 'red', textAlign: 'center', marginTop: 16 }}>{fetchError}</ThemedText>
-          )}
-          {standardsData && standardsData.length > 0 ? standardsData.map((record, index) => (
-            <View 
-              key={record.weightClass}
-              style={[
-                styles.row,
-                index < standardsData.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border
-                }
-              ]}
+            <ThemedText
+              style={{ color: "red", textAlign: "center", marginTop: 16 }}
             >
-              <ThemedText style={[styles.cell, { flex: 2 }]}>{record.weightClass}</ThemedText>
-              <ThemedText style={styles.cell}>{record.a}kg</ThemedText>
-              <ThemedText style={styles.cell}>{record.b}kg</ThemedText>
-            </View>
-          )) : !loading && !fetchError && (
-             <View style={[styles.row, { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 120 }]}>
-                <ThemedText style={[styles.cell, { flex: 1, textAlign: 'center' }]}>No standards found for the selected filters.</ThemedText>
-             </View>
+              {fetchError}
+            </ThemedText>
           )}
+          {standardsData && standardsData.length > 0
+            ? standardsData.map((record, index) => (
+                <View
+                  key={record.weightClass}
+                  style={[
+                    styles.row,
+                    index < standardsData.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: colors.border,
+                    },
+                  ]}
+                >
+                  <ThemedText style={[styles.cell, { flex: 2 }]}>
+                    {record.weightClass}
+                  </ThemedText>
+                  <ThemedText style={styles.cell}>
+{record.a}
+kg
+</ThemedText>
+                  <ThemedText style={styles.cell}>
+{record.b}
+kg
+</ThemedText>
+                </View>
+              ))
+            : !loading &&
+              !fetchError && (
+                <View
+                  style={[
+                    styles.row,
+                    {
+                      flex: 1,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      minHeight: 120,
+                    },
+                  ]}
+                >
+                  <ThemedText
+                    style={[styles.cell, { flex: 1, textAlign: "center" }]}
+                  >
+                    No standards found for the selected filters.
+                  </ThemedText>
+                </View>
+              )}
         </View>
       </ScrollView>
 
@@ -217,7 +281,7 @@ export default function NewStandardsScreen() {
         <Pressable
           style={[
             styles.modalOverlay,
-            { backgroundColor: currentTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+            { backgroundColor: colors.modalBackground },
           ]}
           onPress={() => {
             setExpandedSection(null);
@@ -225,46 +289,67 @@ export default function NewStandardsScreen() {
           }}
         >
           <Pressable
-             onPress={(e) => e.stopPropagation()}
-             style={[
-               styles.modalContent,
-               {
-                 backgroundColor: colors.card,
-                 maxHeight: windowHeight * 0.8
-               }
-             ]}
-           >
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: colors.card,
+                maxHeight: windowHeight * 0.8,
+              },
+            ]}
+          >
             <View style={styles.modalScrollContent}>
               <ScrollView bounces={false}>
-                <View style={[styles.filterSection, { borderBottomColor: colors.border }]}>
+                <View
+                  style={[
+                    styles.filterSection,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
                       { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'gender' ? null : 'gender'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "gender" ? null : "gender",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Gender
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {tempFilters.gender === 'men' ? 'Men' : 'Women'}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {tempFilters.gender === "men" ? "Men" : "Women"}
                         </ThemedText>
                       </View>
                       <IconSymbol
-                        name={expandedSection === 'gender' ? 'chevron.down' : 'chevron.right'}
+                        name={
+                          expandedSection === "gender"
+                            ? "chevron.down"
+                            : "chevron.right"
+                        }
                         size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
 
-                  {expandedSection === 'gender' && (
+                  {expandedSection === "gender" && (
                     <ScrollView style={styles.filterOptions} bounces={false}>
                       {genderOptions.map((gender) => (
                         <Pressable
@@ -272,23 +357,36 @@ export default function NewStandardsScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            tempFilters.gender === gender.id && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
+                            tempFilters.gender === gender.id && {
+                              backgroundColor: colors.pressed,
+                            },
+                            pressed && { opacity: 0.8 },
                           ]}
                           onPress={() => {
-                            setTempFilters(prev => ({ ...prev, gender: gender.id }));
+                            setTempFilters((prev) => ({
+                              ...prev,
+                              gender: gender.id,
+                            }));
                             setExpandedSection(null);
                           }}
                         >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempFilters.gender === gender.id && { color: '#007AFF' }
-                          ]}>
+                          <ThemedText
+                            style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempFilters.gender === gender.id && {
+                                color: colors.link,
+                              },
+                            ]}
+                          >
                             {gender.label}
                           </ThemedText>
                           {tempFilters.gender === gender.id && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            <IconSymbol
+                              name="checkmark"
+                              size={16}
+                              color={colors.link}
+                            />
                           )}
                         </Pressable>
                       ))}
@@ -300,34 +398,52 @@ export default function NewStandardsScreen() {
                   <Pressable
                     style={({ pressed }) => [
                       styles.filterSectionButton,
-                      pressed && { opacity: 0.8 }
+                      pressed && { opacity: 0.8 },
                     ]}
-                    onPress={() => setExpandedSection(
-                      expandedSection === 'ageGroup' ? null : 'ageGroup'
-                    )}
+                    onPress={() =>
+                      setExpandedSection(
+                        expandedSection === "ageGroup" ? null : "ageGroup",
+                      )
+                    }
                   >
                     <View style={styles.filterSectionButtonContent}>
                       <View>
-                        <ThemedText style={[styles.filterSectionLabel, { color: colors.secondaryText }]}>
+                        <ThemedText
+                          style={[
+                            styles.filterSectionLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
                           Age Group
                         </ThemedText>
-                        <ThemedText style={[styles.filterSectionValue, { color: colors.text }]}>
-                          {ageGroupOptions.find(opt => opt.id === tempFilters.ageGroup)?.label || tempFilters.ageGroup}
+                        <ThemedText
+                          style={[
+                            styles.filterSectionValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {ageGroupOptions.find(
+                            (opt) => opt.id === tempFilters.ageGroup,
+                          )?.label || tempFilters.ageGroup}
                         </ThemedText>
                       </View>
                       <IconSymbol
-                        name={expandedSection === 'ageGroup' ? 'chevron.down' : 'chevron.right'}
+                        name={
+                          expandedSection === "ageGroup"
+                            ? "chevron.down"
+                            : "chevron.right"
+                        }
                         size={16}
                         color={colors.secondaryText}
                       />
                     </View>
                   </Pressable>
 
-                  {expandedSection === 'ageGroup' && (
+                  {expandedSection === "ageGroup" && (
                     <ScrollView
                       style={[
                         styles.filterOptions,
-                        { maxHeight: maxOptionsHeight }
+                        { maxHeight: maxOptionsHeight },
                       ]}
                       bounces={false}
                     >
@@ -337,23 +453,36 @@ export default function NewStandardsScreen() {
                           style={({ pressed }) => [
                             styles.filterOption,
                             { borderBottomColor: colors.border },
-                            tempFilters.ageGroup === ageGroup.id && { backgroundColor: colors.pressed },
-                            pressed && { opacity: 0.8 }
+                            tempFilters.ageGroup === ageGroup.id && {
+                              backgroundColor: colors.pressed,
+                            },
+                            pressed && { opacity: 0.8 },
                           ]}
                           onPress={() => {
-                            setTempFilters(prev => ({ ...prev, ageGroup: ageGroup.id }));
+                            setTempFilters((prev) => ({
+                              ...prev,
+                              ageGroup: ageGroup.id,
+                            }));
                             setExpandedSection(null);
                           }}
                         >
-                          <ThemedText style={[
-                            styles.filterOptionText,
-                            { color: colors.text },
-                            tempFilters.ageGroup === ageGroup.id && { color: '#007AFF' }
-                          ]}>
+                          <ThemedText
+                            style={[
+                              styles.filterOptionText,
+                              { color: colors.text },
+                              tempFilters.ageGroup === ageGroup.id && {
+                                color: colors.link,
+                              },
+                            ]}
+                          >
                             {ageGroup.label}
                           </ThemedText>
                           {tempFilters.ageGroup === ageGroup.id && (
-                            <IconSymbol name="checkmark" size={16} color="#007AFF" />
+                            <IconSymbol
+                              name="checkmark"
+                              size={16}
+                              color={colors.link}
+                            />
                           )}
                         </Pressable>
                       ))}
@@ -363,17 +492,17 @@ export default function NewStandardsScreen() {
               </ScrollView>
             </View>
 
-            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+            <View
+              style={[styles.modalFooter, { borderTopColor: colors.border }]}
+            >
               <Pressable
                 style={({ pressed }) => [
                   styles.applyButton,
-                  pressed && { opacity: 0.8 }
+                  pressed && { opacity: 0.8 },
                 ]}
                 onPress={handleApplyFilters}
               >
-                <ThemedText style={styles.applyButtonText}>
-                  Apply
-                </ThemedText>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </Pressable>
             </View>
           </Pressable>
@@ -392,19 +521,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   filterButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   filterButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -415,7 +544,7 @@ const styles = StyleSheet.create({
   },
   filterButtonText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   scrollView: {
     flex: 1,
@@ -425,8 +554,8 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -436,18 +565,18 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(60, 60, 67, 0.03)',
+    backgroundColor: "rgba(60, 60, 67, 0.03)",
   },
   headerCell: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   row: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
   },
   cell: {
@@ -456,17 +585,17 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 16,
   },
   modalContent: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginHorizontal: 16,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   modalScrollContent: {
-     flexGrow: 0,
+    flexGrow: 0,
   },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -475,9 +604,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   filterSectionButtonContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   filterSectionLabel: {
     fontSize: 13,
@@ -485,15 +614,15 @@ const styles = StyleSheet.create({
   },
   filterSectionValue: {
     fontSize: 17,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   filterOptions: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   filterOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -503,21 +632,21 @@ const styles = StyleSheet.create({
   modalFooter: {
     padding: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   applyButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     paddingHorizontal: 20,
     paddingVertical: 10,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     borderRadius: 8,
   },
   applyButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-}); 
+});
