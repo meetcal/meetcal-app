@@ -1,4 +1,4 @@
-import EventInfoScreen from "@/app/(screens)/event-info";
+import EventInfoScreen from "@/app/(screens)/EventInfoScreen";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";

@@ -1,11 +1,9 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { useSSO } from "@clerk/clerk-expo";
 import * as AuthSession from "expo-auth-session";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
 
 
-const { startSSOFlow } = useSSO();
 const { isSubscribed } = useSubscription();
 
 const { from, feature } = useLocalSearchParams<{
@@ -70,7 +68,7 @@ const handlePostSignIn = useCallback(() => {
     }
   };
 
-export const onGooglePress = useCallback(async () => {
+export const onGooglePress = useCallback(async (startSSOFlow: any) => {
     try {
       console.log("Starting Google OAuth flow...");
       const redirectUrl = AuthSession.makeRedirectUri({
@@ -193,7 +191,7 @@ export const onGooglePress = useCallback(async () => {
   }, [handlePostSignIn]);
 
   // Handle Apple OAuth
-  export const onApplePress = useCallback(async () => {
+  export const onApplePress = useCallback(async (startSSOFlow: any) => {
     try {
       console.log("Starting Apple OAuth flow...");
       const redirectUrl = AuthSession.makeRedirectUri({
