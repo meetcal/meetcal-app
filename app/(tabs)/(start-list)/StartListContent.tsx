@@ -749,15 +749,27 @@ export default function StartListScreen() {
       return;
     }
 
-    const sessionsToAdd = buildSessionExportRows().map((row) => ({
-      date: row.date,
-      startTime: row.startTime,
-      weighInTime: row.weighInTime,
-      sessionNumber: row.sessionNumber.toString(),
-      platform: row.platform,
-      weightClass: row.weightClass,
-      meet: selectedMeet,
-    }));
+    // Deduplicate sessions by unique key (session number + platform only)
+    // Multiple weight classes on the same platform are part of the same calendar event
+    const sessionMap = new Map<string, any>();
+
+    buildSessionExportRows().forEach((row) => {
+      const sessionKey = `${row.sessionNumber}-${row.platform}`;
+
+      if (!sessionMap.has(sessionKey)) {
+        sessionMap.set(sessionKey, {
+          date: row.date,
+          startTime: row.startTime,
+          weighInTime: row.weighInTime,
+          sessionNumber: row.sessionNumber.toString(),
+          platform: row.platform,
+          weightClass: row.weightClass,
+          meet: selectedMeet,
+        });
+      }
+    });
+
+    const sessionsToAdd = Array.from(sessionMap.values());
 
     if (sessionsToAdd.length === 0) {
       Alert.alert("No Sessions", "There are no sessions to add to calendar.");
