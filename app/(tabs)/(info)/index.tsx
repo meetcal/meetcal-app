@@ -1,8 +1,8 @@
 import EventInfoScreen from "@/components/info/EventInfoScreen";
+import ListButton from "@/components/info/ListButton";
+import SectionTitle from "@/components/info/SectionTitle";
 import { OnboardingView, resetOnboarding } from "@/components/OnboardingView";
-import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
-import { IconSymbol } from "@/components/ui/IconSymbol";
 import {
   resetVersionAnnouncement,
   VersionAnnouncement,
@@ -10,13 +10,7 @@ import {
 import { useAppColors } from "@/hooks/useAppColors";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function InfoScreen() {
@@ -53,283 +47,82 @@ export default function InfoScreen() {
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <EventInfoScreen />
+        <EventInfoScreen />
 
-          {/* <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/shared-screens/weightlifting-wrapped')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Weightlifting Wrapped
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable> */}
-        </View>
-
-        <ThemedText
-          style={[styles.sectionHeader, { color: colors.secondaryText }]}
-        >
-          National
-        </ThemedText>
+        <SectionTitle title="National" />
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="Adaptive American Records"
+            lastSection={true}
             onPress={() => router.push("/comp-data/adap-records")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Adaptive American Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="All Meet Results"
             onPress={() => router.push("/comp-data/all-meet-results")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                All Meet Results
-              </ThemedText>
-              <IconSymbol
-                name={
-                  Platform.OS === "ios" ? "chevron.right" : "chevron-forward"
-                }
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="Club Meet Results"
             onPress={() => router.push("/comp-data/club-results/clubs-list")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Club Meet Results
-              </ThemedText>
-              <IconSymbol
-                name={
-                  Platform.OS === "ios" ? "chevron.right" : "chevron-forward"
-                }
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="National Rankings"
             onPress={() => router.push("/comp-data/national-rankings")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                National Rankings
-              </ThemedText>
-              <IconSymbol
-                name={
-                  Platform.OS === "ios" ? "chevron.right" : "chevron-forward"
-                }
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="National & World Records"
             onPress={() => router.push("/comp-data/records")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                National & World Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="WSO Records"
             onPress={() => router.push("/comp-data/wso-records")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                WSO Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="Qualifying Totals"
+            lastSection={true}
             onPress={() => router.push("/comp-data/new-qualifying-totals")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Qualifying Totals
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
         </View>
 
-        <ThemedText
-          style={[styles.sectionHeader, { color: colors.secondaryText }]}
-        >
-          International
-        </ThemedText>
+        <SectionTitle title="International" />
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="A/B Standards"
             onPress={() => router.push("/comp-data/new-standards")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                A/B Standards
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+          <ListButton
+            title="International Rankings"
+            lastSection={true}
             onPress={() => router.push("/comp-data/rankings")}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                International Rankings
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          />
         </View>
 
         {__DEV__ && (
           <>
-            <ThemedText
-              style={[styles.sectionHeader, { color: colors.secondaryText }]}
-            >
-              Development Tools
-            </ThemedText>
+            <SectionTitle title="Development Tools" />
+
             <View style={[styles.card, { backgroundColor: colors.card }]}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.section,
-                  {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                  pressed && { backgroundColor: colors.pressed },
-                ]}
+              <ListButton
+                title="Show Onboarding"
                 onPress={async () => {
                   await resetOnboarding();
                   setShowOnboarding(true);
                 }}
-              >
-                <View style={styles.linkRow}>
-                  <ThemedText style={[styles.label, { color: colors.text }]}>
-                    Show Onboarding
-                  </ThemedText>
-                  <IconSymbol
-                    name="chevron.right"
-                    size={20}
-                    color={colors.link}
-                  />
-                </View>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.section,
-                  styles.lastSection,
-                  pressed && { backgroundColor: colors.pressed },
-                ]}
+              />
+              <ListButton
+                title="Show Version Announcement"
+                lastSection={true}
                 onPress={async () => {
                   await resetVersionAnnouncement();
                   setVersionAnnouncementKey((prev) => prev + 1);
                 }}
-              >
-                <View style={styles.linkRow}>
-                  <ThemedText style={[styles.label, { color: colors.text }]}>
-                    Show Version Announcement
-                  </ThemedText>
-                  <IconSymbol
-                    name="chevron.right"
-                    size={20}
-                    color={colors.link}
-                  />
-                </View>
-              </Pressable>
+              />
             </View>
           </>
         )}
@@ -365,28 +158,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-  },
-  sectionHeader: {
-    fontSize: 17,
-    fontWeight: "600",
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  section: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  lastSection: {
-    borderBottomWidth: 0,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  linkRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
   },
 });
