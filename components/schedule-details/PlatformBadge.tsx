@@ -1,7 +1,7 @@
 import { getPlatformColors } from "@/constants/Colors";
 import { Platform as PlatformType } from "@/data/types/athletes";
 import { StyleSheet, View } from "react-native";
-import { ThemedText } from "../ThemedText";
+import { ThemedText } from "../ui/ThemedText";
 
 export function PlatformBadge({ platform }: { platform: PlatformType }) {
   const platformColors = getPlatformColors();

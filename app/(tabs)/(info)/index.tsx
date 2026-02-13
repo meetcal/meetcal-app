@@ -1,12 +1,15 @@
 import EventInfoScreen from "@/components/info/EventInfoScreen";
 import ListButton from "@/components/info/ListButton";
 import SectionTitle from "@/components/info/SectionTitle";
-import { OnboardingView, resetOnboarding } from "@/components/OnboardingView";
-import { ThemedView } from "@/components/ThemedView";
+import {
+  OnboardingView,
+  resetOnboarding,
+} from "@/components/schedule/OnboardingView";
 import {
   resetVersionAnnouncement,
   VersionAnnouncement,
-} from "@/components/VersionAnnouncement";
+} from "@/components/schedule/VersionAnnouncement";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";

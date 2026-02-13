@@ -1,7 +1,7 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { StyleSheet } from "react-native";
-import { ThemedText } from "../ThemedText";
+import { ThemedText } from "../ui/ThemedText";
 
 const SectionTitle = ({ title }: { title: string }) => {
   const colors = useAppColors();

@@ -1,5 +1,5 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
@@ -167,15 +167,12 @@ function AthleteStats({
       <ThemedText
         style={[styles.attemptRateValue, { color: getRateColor(rates.rate) }]}
       >
-        {rates.rate.toFixed(1)}
-%
-</ThemedText>
+        {rates.rate.toFixed(1)}%
+      </ThemedText>
       <ThemedText
         style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}
       >
-        {rates.makes}
-/
-{rates.total}
+        {rates.makes}/{rates.total}
       </ThemedText>
     </View>
   );
@@ -203,9 +200,8 @@ function AthleteStats({
                 { color: getRateColor(stats.snatchMakeRate) },
               ]}
             >
-              {stats.snatchMakeRate.toFixed(1)}
-%
-</ThemedText>
+              {stats.snatchMakeRate.toFixed(1)}%
+            </ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -245,9 +241,8 @@ function AthleteStats({
                 { color: getRateColor(stats.cjMakeRate) },
               ]}
             >
-              {stats.cjMakeRate.toFixed(1)}
-%
-</ThemedText>
+              {stats.cjMakeRate.toFixed(1)}%
+            </ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -411,9 +406,7 @@ export default function AthleteResultsScreen() {
               <ThemedText
                 style={[styles.emptyStateText, { color: colors.secondaryText }]}
               >
-                No meet results found for 
-{' '}
-{name}
+                No meet results found for {name}
               </ThemedText>
             </View>
           </View>
@@ -436,9 +429,7 @@ export default function AthleteResultsScreen() {
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
-                    Date: 
-{' '}
-{new Date(result.date).toLocaleDateString()}
+                    Date: {new Date(result.date).toLocaleDateString()}
                   </ThemedText>
                   <ThemedText
                     style={[
@@ -495,11 +486,8 @@ export default function AthleteResultsScreen() {
 
                 <View style={styles.section}>
                   <ThemedText style={styles.total}>
-                    {result.snatch_best ?? "—"}
-/
-{result.cj_best ?? "—"}
-/
-{result.total ?? "—"}
+                    {result.snatch_best ?? "—"}/{result.cj_best ?? "—"}/
+                    {result.total ?? "—"}
                   </ThemedText>
                 </View>
               </View>

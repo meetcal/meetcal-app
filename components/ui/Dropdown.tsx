@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ThemedText";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import React, { useState } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";

@@ -1,8 +1,9 @@
-import { HapticTab } from "@/components/HapticTab";
+import { HapticTab } from "@/components/ui/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useNavigation } from "@react-navigation/native";
 import { Tabs } from "expo-router";
+// import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import React from "react";
 import { Platform, StyleSheet } from "react-native";
 
@@ -24,11 +25,12 @@ export default function TabLayout() {
     });
   }, [colors, navigation]);
 
-  // if (Platform.OS === 'ios' && isIOS26OrHigher) {
+  // if (Platform.OS === "ios" && isIOS26OrHigher) {
   //   return (
   //     <NativeTabs
   //       labelStyle={{ color: colors.secondaryText }}
-  //       tintColor={colors.text}>
+  //       tintColor={colors.text}
+  //     >
   //       <NativeTabs.Trigger name="(index)">
   //         <Icon sf="calendar" />
   //         <Label hidden />

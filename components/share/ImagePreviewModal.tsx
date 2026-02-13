@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import * as Sharing from "expo-sharing";
 import React from "react";
@@ -207,12 +207,8 @@ export default function ImagePreviewModal({
                   color="#FFFFFF"
                 />
                 <ThemedText style={styles.shareButtonText}>
-                  Share 
-{' '}
-{activeIndex === 0 ? "White" : "Transparent"}
-{' '}
-Background
-</ThemedText>
+                  Share {activeIndex === 0 ? "White" : "Transparent"} Background
+                </ThemedText>
               </Pressable>
             </View>
           ) : (

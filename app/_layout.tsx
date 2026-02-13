@@ -1,39 +1,49 @@
-import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Redirect, Stack, Slot, usePathname , useRouter } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, useCallback, useRef } from 'react';
-import 'react-native-reanimated';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Purchases from 'react-native-purchases';
-import { Platform, View, Alert, Linking } from 'react-native';
-import Constants from 'expo-constants';
-import { PostHogProvider } from 'posthog-react-native';
-import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
-import { tokenCache } from '@clerk/clerk-expo/token-cache'
-import * as SecureStore from 'expo-secure-store'
-import * as Notifications from 'expo-notifications';
-import { supabase } from '@/lib/supabase';
-import { registerForPushNotificationsAsync } from '@/utils/notifications';
-import NetInfo from '@react-native-community/netinfo';
-import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
+import { registerForPushNotificationsAsync } from "@/utils/notifications";
+import { ClerkProvider, useUser } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider as NavigationThemeProvider,
+} from "@react-navigation/native";
+import { useFonts } from "expo-font";
+import * as Notifications from "expo-notifications";
+import { Stack, usePathname, useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { PostHogProvider } from "posthog-react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Linking, Platform } from "react-native";
+import Purchases from "react-native-purchases";
+import "react-native-reanimated";
 
-import { SavedSessionsProvider } from '@/contexts/SavedSessionsContext';
-import { ThemeProvider as CustomThemeProvider, useTheme } from '@/contexts/ThemeContext';
-import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
-import { SelectedMeetProvider } from '@/contexts/SelectedMeetContext';
-import { getSimulatedSubscriptionStatus } from '@/config/development';
-import { posthog } from '@/lib/posthog';
-import { UpdateNotification } from '@/components/UpdateNotification';
-import { OfflineIndicator } from '@/components/OfflineIndicator';
+import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
+import { UpdateNotification } from "@/components/schedule/UpdateNotification";
+import { SavedSessionsProvider } from "@/contexts/SavedSessionsContext";
+import { SelectedMeetProvider } from "@/contexts/SelectedMeetContext";
+import {
+  SubscriptionProvider,
+  useSubscription,
+} from "@/contexts/SubscriptionContext";
+import {
+  ThemeProvider as CustomThemeProvider,
+  useTheme,
+} from "@/contexts/ThemeContext";
+import { posthog } from "@/lib/posthog";
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
-const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID!;
+const REVENUECAT_ANDROID_KEY =
+  process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID!;
 
 if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
-  throw new Error('RevenueCat API keys are required');
+  throw new Error("RevenueCat API keys are required");
 }
 
 // Keep splash screen visible while we fetch resources
@@ -42,10 +52,10 @@ SplashScreen.preventAutoHideAsync();
 // Configure NetInfo IMMEDIATELY with shorter timeout for faster offline detection
 // This MUST run synchronously before any NetInfo.fetch() calls
 NetInfo.configure({
-  reachabilityUrl: 'https://clients3.google.com/generate_204',
-  reachabilityRequestTimeout: 3000,  // 3 seconds instead of default 15s
+  reachabilityUrl: "https://clients3.google.com/generate_204",
+  reachabilityRequestTimeout: 3000, // 3 seconds instead of default 15s
   reachabilityShortTimeout: 3000,
-  useNativeReachability: true
+  useNativeReachability: true,
 });
 
 // PostHog page view tracking component
@@ -54,7 +64,7 @@ function PostHogPageView() {
 
   useEffect(() => {
     if (pathname) {
-      posthog?.capture('$pageview', {
+      posthog?.capture("$pageview", {
         $current_url: pathname,
       });
     }
@@ -65,45 +75,45 @@ function PostHogPageView() {
 
 async function requestNotificationPermissions() {
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  
-  if (existingStatus === 'granted') return true;
-  
-  if (existingStatus === 'denied') {
+
+  if (existingStatus === "granted") return true;
+
+  if (existingStatus === "denied") {
     Alert.alert(
-      'Notifications Required',
-      'To receive session reminders, please enable notifications in your device settings.',
+      "Notifications Required",
+      "To receive session reminders, please enable notifications in your device settings.",
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Open Settings', 
-          onPress: () => Linking.openSettings()
-        }
-      ]
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Open Settings",
+          onPress: () => Linking.openSettings(),
+        },
+      ],
     );
     return false;
   }
 
   const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+  return status === "granted";
 }
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
-  
+
   const [fontsLoaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
   useEffect(() => {
     async function prepare() {
       try {
         // Initialize RevenueCat first
-        if (Platform.OS === 'ios') {
-          await Purchases.configure({ 
-            apiKey: REVENUECAT_IOS_KEY
+        if (Platform.OS === "ios") {
+          await Purchases.configure({
+            apiKey: REVENUECAT_IOS_KEY,
           });
-        } else if (Platform.OS === 'android') {
-          await Purchases.configure({ 
+        } else if (Platform.OS === "android") {
+          await Purchases.configure({
             apiKey: REVENUECAT_ANDROID_KEY,
             appUserID: null,
           });
@@ -114,26 +124,28 @@ export default function RootLayout() {
         }
 
         // Request notification permissions
-        if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('default', {
-            name: 'default',
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "default",
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF231F7C',
+            lightColor: "#FF231F7C",
           });
         }
-        
+
         // Request notification permissions early
-        const hasCheckedNotifications = await AsyncStorage.getItem('hasCheckedNotifications');
+        const hasCheckedNotifications = await AsyncStorage.getItem(
+          "hasCheckedNotifications",
+        );
         if (!hasCheckedNotifications) {
           await requestNotificationPermissions();
-          await AsyncStorage.setItem('hasCheckedNotifications', 'true');
+          await AsyncStorage.setItem("hasCheckedNotifications", "true");
         }
 
         // Optional: Add a small delay for smoother transition
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e) {
-        console.warn('Initialization error:', e);
+        console.warn("Initialization error:", e);
       } finally {
         setAppIsReady(true);
       }
@@ -149,7 +161,7 @@ export default function RootLayout() {
   return (
     <CustomThemeProvider>
       <NavigationThemeProvider value={DefaultTheme}>
-        <ClerkProvider 
+        <ClerkProvider
           publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
           tokenCache={tokenCache}
         >
@@ -174,14 +186,18 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
-  const { isLoaded: isUserLoaded, isSignedIn: isUserSignedIn, user } = useUser();
-  
+  const {
+    isLoaded: isUserLoaded,
+    isSignedIn: isUserSignedIn,
+    user,
+  } = useUser();
+
   useEffect(() => {
     async function initialize() {
       try {
         setIsInitialized(true);
       } catch (error) {
-        console.error('Initialization error:', error);
+        console.error("Initialization error:", error);
         setIsInitialized(true);
       }
     }
@@ -221,12 +237,12 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         try {
           const email = user.primaryEmailAddress?.emailAddress;
           if (email) {
-            console.log('Syncing user email with RevenueCat:', email);
+            console.log("Syncing user email with RevenueCat:", email);
             await Purchases.setEmail(email);
             await Purchases.logIn(user.id);
           }
         } catch (error) {
-          console.error('Error syncing user with RevenueCat:', error);
+          console.error("Error syncing user with RevenueCat:", error);
         }
       }
     }
@@ -234,44 +250,63 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     syncUserWithRevenueCat();
   }, [isUserLoaded, user]);
 
-  // Push Notification Registration useEffect 
+  // Push Notification Registration useEffect
   useEffect(() => {
     // Check if user is loaded and has an ID before registering
-    if (isUserLoaded && user?.id) { 
+    if (isUserLoaded && user?.id) {
       // Introduce a short delay (e.g., 1 second) before registering
       const timer = setTimeout(() => {
-          registerForPushNotificationsAsync(user.id);
+        registerForPushNotificationsAsync(user.id);
       }, 1000); // 1000ms = 1 second delay
-      
+
       // Cleanup function to clear the timer if the component unmounts
       // or if user state changes before the timer fires
       return () => clearTimeout(timer);
     }
     // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
-  }, [isUserLoaded, user?.id]); 
+  }, [isUserLoaded, user?.id]);
 
   useEffect(() => {
     async function hideSplash() {
-      if (!hasAttemptedSplashHide.current && isInitialized && fontsLoaded && (offlineBypass || (!isSubscriptionLoading && isUserLoaded))) {
+      if (
+        !hasAttemptedSplashHide.current &&
+        isInitialized &&
+        fontsLoaded &&
+        (offlineBypass || (!isSubscriptionLoading && isUserLoaded))
+      ) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
 
         const initialUrl = await Linking.getInitialURL();
 
         if (initialUrl) {
-          console.log('[RootLayout] App launched with initial URL, letting router handle:', initialUrl);
+          console.log(
+            "[RootLayout] App launched with initial URL, letting router handle:",
+            initialUrl,
+          );
           // Let router handle deep links - auth will be guarded per-feature
         } else {
           // Always navigate to tabs - authentication handled just-in-time
-          router.replace('/(tabs)' as any);
+          router.replace("/(tabs)" as any);
         }
       }
     }
 
     hideSplash();
-  }, [isInitialized, isSubscriptionLoading, fontsLoaded, isUserLoaded, isUserSignedIn, router, offlineBypass]);
+  }, [
+    isInitialized,
+    isSubscriptionLoading,
+    fontsLoaded,
+    isUserLoaded,
+    isUserSignedIn,
+    router,
+    offlineBypass,
+  ]);
 
-  if (!isInitialized || (!offlineBypass && (isSubscriptionLoading || !isUserLoaded))) {
+  if (
+    !isInitialized ||
+    (!offlineBypass && (isSubscriptionLoading || !isUserLoaded))
+  ) {
     return null;
   }
 
@@ -280,18 +315,18 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
 function RootLayoutNav() {
   const { currentTheme } = useTheme();
-  const theme = currentTheme === 'dark' ? DarkTheme : DefaultTheme;
+  const theme = currentTheme === "dark" ? DarkTheme : DefaultTheme;
 
   return (
     <NavigationThemeProvider value={theme}>
       <UpdateNotification />
       <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+        <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
         <Stack.Screen name="(screens)" />
         <Stack.Screen name="(auth)" />
       </Stack>
-      <StatusBar style={currentTheme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
     </NavigationThemeProvider>
   );
 }

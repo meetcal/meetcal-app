@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { LiftResult } from '@/data/types/athletes';
-import type { Schedule as ScheduleType } from '@/types/schedule';
+import { ThemedText } from "@/components/ui/ThemedText";
+import { LiftResult } from "@/data/types/athletes";
+import type { Schedule as ScheduleType } from "@/types/schedule";
+import React from "react";
+import { Image, StyleSheet, View } from "react-native";
 
 interface ShareScheduleViewProps {
   filteredAthletes: LiftResult[];
@@ -22,38 +22,38 @@ interface ShareScheduleViewProps {
 // Platform color mapping
 const getPlatformColor = (platform: string): string => {
   const platformLower = platform.toLowerCase();
-  if (platformLower === 'red') return '#FF3B30';
-  if (platformLower === 'white') return '#8E8E93';
-  if (platformLower === 'stars') return '#5856D6';
-  if (platformLower === 'stripes') return '#34C759';
-  if (platformLower === 'rogue') return '#000000';
-  return '#007AFF'; // Blue as default
+  if (platformLower === "red") return "#FF3B30";
+  if (platformLower === "white") return "#8E8E93";
+  if (platformLower === "stars") return "#5856D6";
+  if (platformLower === "stripes") return "#34C759";
+  if (platformLower === "rogue") return "#000000";
+  return "#007AFF"; // Blue as default
 };
 
 // Format time from HH:mm:ss or h:mm a format
 const formatTime = (time: string): string => {
   // If already in 12-hour format, return as is
-  if (time.includes('AM') || time.includes('PM')) {
+  if (time.includes("AM") || time.includes("PM")) {
     return time;
   }
 
   // Parse 24-hour format
-  const [hours, minutes] = time.split(':').map(Number);
-  const period = hours >= 12 ? 'PM' : 'AM';
+  const [hours, minutes] = time.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
   const hour12 = hours % 12 || 12;
-  return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
 };
 
 // Format schedule date without shifting the calendar day by local timezone.
 const formatDate = (dateString: string): string => {
-  if (!dateString) return '';
+  if (!dateString) return "";
 
   const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const formatOptions: Intl.DateTimeFormatOptions = {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   };
 
   if (isoDateMatch) {
@@ -62,13 +62,16 @@ const formatDate = (dateString: string): string => {
     const month = Number(monthRaw);
     const day = Number(dayRaw);
     if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-      return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', formatOptions);
+      return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(
+        "en-US",
+        formatOptions,
+      );
     }
   }
 
   const parsed = new Date(dateString);
   if (Number.isNaN(parsed.getTime())) return dateString;
-  return parsed.toLocaleDateString('en-US', formatOptions);
+  return parsed.toLocaleDateString("en-US", formatOptions);
 };
 
 export default function ShareScheduleView({
@@ -81,13 +84,15 @@ export default function ShareScheduleView({
 }: ShareScheduleViewProps) {
   // Group athletes by date and sort
   const athletesByDate = React.useMemo(() => {
-    const grouped: { [key: string]: { athlete: LiftResult; sessionDetails: any }[] } = {};
+    const grouped: {
+      [key: string]: { athlete: LiftResult; sessionDetails: any }[];
+    } = {};
 
     filteredAthletes.forEach((athlete) => {
       if (!athlete.session) return;
 
       const sessionDay = schedule.find((day) =>
-        day.sessions.some((s) => s.number === athlete.session?.number)
+        day.sessions.some((s) => s.number === athlete.session?.number),
       );
 
       if (!sessionDay) return;
@@ -159,17 +164,19 @@ export default function ShareScheduleView({
           dateGroup.athletes.map((item, athleteIndex) => {
             const { athlete, sessionDetails } = item;
             const sessionDay = schedule.find((day) =>
-              day.sessions.some((s) => s.number === athlete.session?.number)
+              day.sessions.some((s) => s.number === athlete.session?.number),
             );
             const session = sessionDay?.sessions.find(
-              (s) => s.number === athlete.session?.number
+              (s) => s.number === athlete.session?.number,
             );
             const platform = session?.platforms.find(
-              (p) => p.platform === athlete.session?.platform
+              (p) => p.platform === athlete.session?.platform,
             );
-            const startTime = platform?.platformStartTime || sessionDetails.startTime;
+            const startTime =
+              platform?.platformStartTime || sessionDetails.startTime;
 
-            const isLastInGroup = athleteIndex === dateGroup.athletes.length - 1;
+            const isLastInGroup =
+              athleteIndex === dateGroup.athletes.length - 1;
             const isLastGroup = groupIndex === athletesByDate.length - 1;
 
             return (
@@ -196,7 +203,7 @@ export default function ShareScheduleView({
                         styles.platformBadge,
                         {
                           backgroundColor: getPlatformColor(
-                            athlete.session?.platform || ''
+                            athlete.session?.platform || "",
                           ),
                         },
                       ]}
@@ -208,7 +215,7 @@ export default function ShareScheduleView({
                   </View>
                   <View style={[styles.cell, styles.dateColumn]}>
                     <ThemedText style={styles.cellText}>
-                      {formatDate(sessionDay?.fullDate || '')}
+                      {formatDate(sessionDay?.fullDate || "")}
                     </ThemedText>
                   </View>
                   <View style={[styles.cell, styles.timeColumn]}>
@@ -224,7 +231,7 @@ export default function ShareScheduleView({
                 )}
               </View>
             );
-          })
+          }),
         )}
       </View>
 
@@ -232,7 +239,7 @@ export default function ShareScheduleView({
       <View style={styles.footer}>
         <ThemedText style={styles.footerText}>Generated by MeetCal</ThemedText>
         <Image
-          source={require('@/assets/images/MeetCal-no-bg.png')}
+          source={require("@/assets/images/MeetCal-no-bg.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -244,48 +251,48 @@ export default function ShareScheduleView({
 const styles = StyleSheet.create({
   container: {
     width: 850,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     paddingTop: 40,
   },
   containerTransparent: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   header: {
     paddingVertical: 30,
-    alignItems: 'center',
+    alignItems: "center",
     gap: 8,
-    width: '100%',
+    width: "100%",
   },
   clubName: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#000000',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#000000",
+    textAlign: "center",
   },
   meetName: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#007AFF',
-    textAlign: 'center',
+    fontWeight: "600",
+    color: "#007AFF",
+    textAlign: "center",
   },
   tableHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
   headerCell: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerText: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#000000',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#000000",
+    textAlign: "center",
   },
   divider: {
     height: 1,
-    backgroundColor: '#000000',
+    backgroundColor: "#000000",
     marginBottom: 8,
   },
   groupDivider: {
@@ -295,18 +302,18 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   tableRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 12,
     paddingVertical: 2,
   },
   cell: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   cellText: {
     fontSize: 14,
-    color: '#000000',
-    textAlign: 'center',
+    color: "#000000",
+    textAlign: "center",
   },
   // Column widths - evenly distributed
   // Total width: 850 - 24 (padding) = 826
@@ -315,7 +322,7 @@ const styles = StyleSheet.create({
   // Name gets more space, rest distributed evenly
   nameColumn: {
     width: 280,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     marginRight: 12,
   },
   weightColumn: {
@@ -342,27 +349,27 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
     minWidth: 60,
-    alignItems: 'center',
+    alignItems: "center",
   },
   platformText: {
     fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '500',
+    color: "#FFFFFF",
+    fontWeight: "500",
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 20,
     gap: 8,
   },
   footerText: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: "#8E8E93",
   },
   logo: {
     width: 40,
     height: 40,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 });

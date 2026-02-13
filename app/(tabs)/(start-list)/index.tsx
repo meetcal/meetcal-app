@@ -1,13 +1,13 @@
-import React, { Suspense } from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { ThemedView } from '@/components/ThemedView';
+import { ThemedView } from "@/components/ui/ThemedView";
+import { useTheme } from "@/contexts/ThemeContext";
+import React, { Suspense } from "react";
+import { ActivityIndicator, StyleSheet } from "react-native";
 
-const StartListContent = React.lazy(() => import('./StartListContent'));
+const StartListContent = React.lazy(() => import("./StartListContent"));
 
 function StartListFallback() {
   const { currentTheme } = useTheme();
-  const bg = currentTheme === 'dark' ? '#000000' : '#F5F5F5';
+  const bg = currentTheme === "dark" ? "#000000" : "#F5F5F5";
   return (
     <ThemedView style={[styles.fallback, { backgroundColor: bg }]}>
       <ActivityIndicator size="large" />
@@ -26,7 +26,7 @@ export default function StartListScreen() {
 const styles = StyleSheet.create({
   fallback: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

@@ -1,6 +1,6 @@
 import HeaderSection from "@/components/schedule-details/HeaderSection";
 import SessionAthletes from "@/components/schedule-details/SessionAthletes";
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";

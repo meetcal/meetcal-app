@@ -1,9 +1,9 @@
+import { ThemedText } from "@/components/ui/ThemedText";
+import { useAppColors } from "@/hooks/useAppColors";
+import { DaySchedule } from "@/types/schedule";
 import { useCallback } from "react";
 import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { SessionView } from "./SessionView";
-import { ThemedText } from "@/components/ThemedText";
-import { useAppColors } from "@/hooks/useAppColors";
-import { DaySchedule } from "@/types/schedule";
 
 interface DayViewProps {
   day: DaySchedule;

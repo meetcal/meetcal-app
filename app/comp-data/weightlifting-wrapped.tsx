@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { supabase } from "@/lib/supabase";
 import { Stack } from "expo-router";
@@ -395,12 +395,8 @@ export default function WeightliftingWrappedScreen() {
             {/* Year Overview Card */}
             <View style={[styles.card, { backgroundColor: colors.card }]}>
               <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-                Your 
-{' '}
-{selectedYear}
-{' '}
-Weightlifting Year
-</ThemedText>
+                Your {selectedYear} Weightlifting Year
+              </ThemedText>
               <View style={styles.yearOverview}>
                 <ThemedText
                   style={[styles.athleteName, { color: colors.text }]}
@@ -415,13 +411,9 @@ Weightlifting Year
                 <ThemedText
                   style={[styles.overview, { color: colors.secondaryText }]}
                 >
-                  {wrappedStats.totalMeets}
-{' '}
-meets •
-{" "}
-                  {wrappedStats.makePercentage.toFixed(0)}
-% success rate
-</ThemedText>
+                  {wrappedStats.totalMeets} meets •{" "}
+                  {wrappedStats.makePercentage.toFixed(0)}% success rate
+                </ThemedText>
               </View>
             </View>
 
@@ -451,12 +443,9 @@ meets •
                   { color: colors.secondaryText },
                 ]}
               >
-                That&apos;s equivalent to lifting
-{" "}
-                {Math.round(wrappedStats.totalWeightLifted / 180)}
-{' '}
-people!
-</ThemedText>
+                That&apos;s equivalent to lifting{" "}
+                {Math.round(wrappedStats.totalWeightLifted / 180)} people!
+              </ThemedText>
             </View>
 
             {/* Personal Records Card */}
@@ -540,9 +529,8 @@ people!
                   <ThemedText
                     style={[styles.performanceValue, { color: colors.success }]}
                   >
-                    {wrappedStats.makePercentage.toFixed(1)}
-%
-</ThemedText>
+                    {wrappedStats.makePercentage.toFixed(1)}%
+                  </ThemedText>
                 </View>
                 <View style={styles.performanceRow}>
                   <ThemedText

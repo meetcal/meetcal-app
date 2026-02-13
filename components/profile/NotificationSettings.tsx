@@ -1,4 +1,4 @@
-import { SubscriptionStatus } from "@/app/(tabs)/(index)/profile";
+import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
@@ -13,8 +13,8 @@ import {
   Switch,
   View,
 } from "react-native";
-import { ThemedText } from "./ThemedText";
-import { IconSymbol } from "./ui/IconSymbol";
+import { IconSymbol } from "../ui/IconSymbol";
+import { ThemedText } from "../ui/ThemedText";
 
 interface NotificationSettingsProps {
   colors: {
@@ -207,8 +207,7 @@ export function NotificationSettings({
       <View style={styles.row}>
         <View style={styles.textContainer}>
           <ThemedText style={[styles.label, { color: colors.text }]}>
-            Session Reminders
-{" "}
+            Session Reminders{" "}
             {!isSubscribed && (
               <IconSymbol name="crown.fill" size={16} color="#FFD700" />
             )}

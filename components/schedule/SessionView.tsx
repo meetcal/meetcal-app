@@ -1,11 +1,11 @@
-import { useMemo } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { ThemedText } from "@/components/ThemedText";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Platform as PlatformType, Session } from "@/types/schedule";
+import { useRouter } from "expo-router";
+import { useMemo } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 
 const PLATFORM_SORT_ORDER = [
   "Red",

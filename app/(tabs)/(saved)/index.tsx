@@ -1,7 +1,7 @@
 import SessionCard from "@/components/saved/SessionCard";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -12,18 +12,14 @@ import { fetchSchedule } from "@/lib/database/queries";
 import { Schedule as ScheduleType } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
-  requestCalendarPermissions,
-  createCalendarEvents,
   CalendarSession,
+  createCalendarEvents,
+  requestCalendarPermissions,
 } from "@/utils/calendar";
-import { migrateSessionsToMeetSpecific } from "@/utils/migration";
-import {
-  getSavedSessionsKey,
-  generateSessionId,
-  makeLookupKey,
-} from "@/utils/session";
-import { calculateWeighInTime } from "@/utils/time";
 import { getTimeZoneAbbreviation } from "@/utils/dateTime";
+import { migrateSessionsToMeetSpecific } from "@/utils/migration";
+import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
+import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";

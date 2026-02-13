@@ -1,5 +1,5 @@
-import { ThemedText } from "@/components/ThemedText";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
 import {
   recordExpandTapTime,
   useExpandedId,
@@ -231,16 +231,9 @@ export const AthleteItem = React.memo(function AthleteItem({
                   <ThemedText
                     style={[styles.detailValue, { color: "#007AFF" }]}
                   >
-                    Session 
-{' '}
-{athlete.session.number}
-{' '}
-•
-{" "}
-                    {athlete.session.platform}
-{' '}
-Platform
-</ThemedText>
+                    Session {athlete.session.number} •{" "}
+                    {athlete.session.platform} Platform
+                  </ThemedText>
                   <IconSymbol
                     name={getChevronIcon("right")}
                     size={13}
@@ -266,10 +259,8 @@ Platform
                       athlete.session.date ??
                         getSessionDetails(athlete.session.number)?.date,
                       meetDetails?.time.timeZoneIdentifier,
-                    )}
-{" "}
-                    •
-{" "}
+                    )}{" "}
+                    •{" "}
                     {formatSessionTime(
                       athlete.session.startTime ??
                         getSessionDetails(
@@ -324,8 +315,8 @@ Platform
             </ThemedText>
             <ThemedText style={styles.detailValue}>
               {athlete.entryTotal}
-kg
-</ThemedText>
+              kg
+            </ThemedText>
           </View>
           {isSubscribed && (
             <View

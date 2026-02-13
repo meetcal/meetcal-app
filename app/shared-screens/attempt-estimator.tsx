@@ -1,6 +1,6 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
 import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
@@ -209,12 +209,8 @@ export default function AttemptEstimatorScreen() {
                         { color: colors.secondaryText },
                       ]}
                     >
-                      Snatch: 
-{' '}
-{estimate.snatchAttemptsOut}
-{' '}
-attempts out
-</ThemedText>
+                      Snatch: {estimate.snatchAttemptsOut} attempts out
+                    </ThemedText>
                   ) : (
                     <ThemedText
                       style={[
@@ -234,12 +230,8 @@ attempts out
                         { color: colors.secondaryText },
                       ]}
                     >
-                      CJ: 
-{' '}
-{estimate.cjAttemptsOut}
-{' '}
-attempts out
-</ThemedText>
+                      CJ: {estimate.cjAttemptsOut} attempts out
+                    </ThemedText>
                   ) : (
                     <ThemedText
                       style={[
