@@ -1,4 +1,4 @@
-import { EditableField } from "@/app/(screens)/profile";
+import { EditableField } from "@/app/(tabs)/(index)/profile";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useUser } from "@clerk/clerk-expo";
 import React from "react";

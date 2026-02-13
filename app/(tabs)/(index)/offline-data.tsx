@@ -32,7 +32,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import PaywallScreen from "./paywall";
+import PaywallScreen from "../../shared-screens/paywall";
 
 type DownloadStatus = {
   isDownloaded: boolean;

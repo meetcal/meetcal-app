@@ -1,4 +1,4 @@
-import EventInfoScreen from "@/app/(screens)/EventInfoScreen";
+import EventInfoScreen from "@/components/info/EventInfoScreen";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
@@ -54,7 +54,7 @@ export default function InfoScreen() {
               { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
               pressed && { backgroundColor: colors.pressed }
             ]}
-            onPress={() => router.push('/(screens)/weightlifting-wrapped')}
+            onPress={() => router.push('/shared-screens/weightlifting-wrapped')}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -84,7 +84,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/adap-records")}
+            onPress={() => router.push("/comp-data/adap-records")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -103,7 +103,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/all-meet-results")}
+            onPress={() => router.push("/comp-data/all-meet-results")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -128,7 +128,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/share-results-by-club")}
+            onPress={() => router.push("/comp-data/club-results/clubs-list")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -153,7 +153,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/national-rankings")}
+            onPress={() => router.push("/comp-data/national-rankings")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -178,7 +178,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/records")}
+            onPress={() => router.push("/comp-data/records")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -197,7 +197,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/wso-records")}
+            onPress={() => router.push("/comp-data/wso-records")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -213,7 +213,7 @@ export default function InfoScreen() {
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/new-qualifying-totals")}
+            onPress={() => router.push("/comp-data/new-qualifying-totals")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -239,7 +239,7 @@ export default function InfoScreen() {
               },
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/new-standards")}
+            onPress={() => router.push("/comp-data/new-standards")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
@@ -255,7 +255,7 @@ export default function InfoScreen() {
               styles.lastSection,
               pressed && { backgroundColor: colors.pressed },
             ]}
-            onPress={() => router.push("/(screens)/rankings")}
+            onPress={() => router.push("/comp-data/rankings")}
           >
             <View style={styles.linkRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>

@@ -117,7 +117,7 @@ export default function AllMeetResultsScreen() {
       });
 
       router.push({
-        pathname: "/(screens)/athlete-results",
+        pathname: "/shared-screens/athlete-results",
         params: { name: athleteName },
       });
     },

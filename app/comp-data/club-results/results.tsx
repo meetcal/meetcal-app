@@ -394,13 +394,12 @@ function StatCard({
   value: string;
   icon: string;
   color: string;
-  currentTheme: string;
 }) {
-  const cardBg = currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF";
+  const colors = useAppColors();
 
   return (
-    <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-      <IconSymbol name={icon} size={30} color={color} />
+    <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+      <IconSymbol name={icon} size={30} color={colors.link} />
       <ThemedText style={styles.statValue}>{value}</ThemedText>
       <ThemedText style={styles.statTitle}>{title}</ThemedText>
     </View>
@@ -557,7 +556,6 @@ function ImagePreviewModal({
   imageUri: string | null;
   onClose: () => void;
   onShare: () => void;
-  currentTheme: string;
 }) {
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
