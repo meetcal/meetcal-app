@@ -402,10 +402,18 @@ export default function RecordsScreen() {
                   color: colors.secondaryText,
                 }}
               >
-                No {filters.federation} records available for{" "}
+                No 
+{' '}
+{filters.federation}
+{' '}
+records available for
+{" "}
                 {filters.gender === "Men" ? "men" : "women"}
-                in the {getAgeGroupDisplayText(displayAgeGroup) ||
-                  "selected"}{" "}
+                in the 
+{' '}
+{getAgeGroupDisplayText(displayAgeGroup) ||
+                  "selected"}
+{" "}
                 age group.
               </ThemedText>
             )}

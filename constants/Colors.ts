@@ -44,7 +44,7 @@ export const Colors = {
     tabIconSelected: '#0a7ea4',
     screenBackground: '#000000',
     card: '#1C1C1E',
-    border: '#1C1C1E',
+    border: '#2C2C2E',
     borderBottom: "#2C2C2E",
     placeholder: '#8E8E93',
     primaryText: '#FFFFFF',

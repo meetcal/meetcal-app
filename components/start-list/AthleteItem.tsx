@@ -231,9 +231,16 @@ export const AthleteItem = React.memo(function AthleteItem({
                   <ThemedText
                     style={[styles.detailValue, { color: "#007AFF" }]}
                   >
-                    Session {athlete.session.number} •{" "}
-                    {athlete.session.platform} Platform
-                  </ThemedText>
+                    Session 
+{' '}
+{athlete.session.number}
+{' '}
+•
+{" "}
+                    {athlete.session.platform}
+{' '}
+Platform
+</ThemedText>
                   <IconSymbol
                     name={getChevronIcon("right")}
                     size={13}
@@ -259,8 +266,10 @@ export const AthleteItem = React.memo(function AthleteItem({
                       athlete.session.date ??
                         getSessionDetails(athlete.session.number)?.date,
                       meetDetails?.time.timeZoneIdentifier,
-                    )}{" "}
-                    •{" "}
+                    )}
+{" "}
+                    •
+{" "}
                     {formatSessionTime(
                       athlete.session.startTime ??
                         getSessionDetails(
@@ -314,8 +323,9 @@ export const AthleteItem = React.memo(function AthleteItem({
               Entry Total:
             </ThemedText>
             <ThemedText style={styles.detailValue}>
-              {athlete.entryTotal}kg
-            </ThemedText>
+              {athlete.entryTotal}
+kg
+</ThemedText>
           </View>
           {isSubscribed && (
             <View

@@ -1,11 +1,18 @@
-import { StyleSheet, View, ScrollView, Pressable, Linking, Image, Platform } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { posthog } from '@/lib/posthog';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useTheme } from "@/contexts/ThemeContext";
+import { posthog } from "@/lib/posthog";
+import { Stack } from "expo-router";
+import {
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Update the sponsor type
 type Sponsor = {
@@ -19,28 +26,29 @@ type Sponsor = {
 
 const sponsors: Sponsor[] = [
   {
-    id: '1',
-    name: 'The Art of Barbell',
-    description: 'Capture The Moments That Matter Most',
-    website: 'https://nikkijeanphotography.pixieset.com/contact-form/cf_ZnYPcTFnBcJEyiV6tpsKab7NbOdQ',
-    discount: 'Use code MEETCAL for 20% off!',
-    image: require('@/assets/images/theartofbarbell.png') // Use your image
+    id: "1",
+    name: "The Art of Barbell",
+    description: "Capture The Moments That Matter Most",
+    website:
+      "https://nikkijeanphotography.pixieset.com/contact-form/cf_ZnYPcTFnBcJEyiV6tpsKab7NbOdQ",
+    discount: "Use code MEETCAL for 20% off!",
+    image: require("@/assets/images/theartofbarbell.png"), // Use your image
   },
   {
-    id: '2',
-    name: 'War Games',
-    description: 'Better Coaches, Better Athletes',
-    website: 'https://wl-wargames.com',
-    discount: 'Use code MEETCAL20 for 20% off!',
-    image: require('@/assets/images/wg-ad.png') // Use your image
+    id: "2",
+    name: "War Games",
+    description: "Better Coaches, Better Athletes",
+    website: "https://wl-wargames.com",
+    discount: "Use code MEETCAL20 for 20% off!",
+    image: require("@/assets/images/wg-ad.png"), // Use your image
   },
   {
-    id: '3',
-    name: 'Power & Grace Performance',
-    description: 'Data Driven Programming, Nation Wide',
-    website: 'https://powerandgraceperformance.com/programming-2/',
-    discount: 'Team Support, and Coaching Education',
-    image: require('@/assets/images/powergrace.png') // Use your image
+    id: "3",
+    name: "Power & Grace Performance",
+    description: "Data Driven Programming, Nation Wide",
+    website: "https://powerandgraceperformance.com/programming-2/",
+    discount: "Team Support, and Coaching Education",
+    image: require("@/assets/images/powergrace.png"), // Use your image
   },
   // {
   //   id: '3',
@@ -69,102 +77,110 @@ const NoImage = () => (
 export default function SponsorsScreen() {
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  
+
   // Define theme colors
   const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF', // iOS blue stays the same in both modes
-    gold: '#FFD700',
-    silver: '#C0C0C0',
-    bronze: '#CD7F32',
+    background: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+    card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
+    border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
+    text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
+    secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
+    pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
+    link: "#007AFF", // iOS blue stays the same in both modes
+    gold: "#FFD700",
+    silver: "#C0C0C0",
+    bronze: "#CD7F32",
   };
 
   const handleOpenWebsite = (url: string, sponsorName: string) => {
     // Track the sponsor click event
-    posthog.capture('sponsor_clicked', {
+    posthog.capture("sponsor_clicked", {
       sponsor_name: sponsorName,
-      sponsor_url: url
+      sponsor_url: url,
     });
-    
+
     // Open the website
     Linking.openURL(url);
   };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
         options={{
-          headerTitle: 'Partners',
+          headerTitle: "Partners",
           headerTitleStyle: {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#FFFFFF",
           },
           headerShadowVisible: false,
         }}
       />
-      
-      <ScrollView 
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 20 }
+          { paddingBottom: insets.bottom + 20 },
         ]}
       >
-        
-        <ThemedText style={[styles.subHeaderText, { color: colors.secondaryText }]}>
-          Support the businesses that support weightlifting. For the community, by the community.
+        <ThemedText
+          style={[styles.subHeaderText, { color: colors.secondaryText }]}
+        >
+          Support the businesses that support weightlifting. For the community,
+          by the community.
         </ThemedText>
-        
+
         {sponsors.map((sponsor) => (
-          <Pressable 
-            key={sponsor.id} 
+          <Pressable
+            key={sponsor.id}
             style={({ pressed }) => [
-              styles.sponsorCard, 
+              styles.sponsorCard,
               { backgroundColor: colors.card },
-              pressed && { backgroundColor: colors.pressed }
+              pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => handleOpenWebsite(sponsor.website, sponsor.name)}
           >
-            <Image 
+            <Image
               source={sponsor.image}
               style={styles.sponsorImage}
               resizeMode="cover"
             />
             <View style={styles.cardContent}>
               <View style={styles.textContent}>
-                <ThemedText style={[styles.sponsorName, { color: colors.text }]}>
+                <ThemedText
+                  style={[styles.sponsorName, { color: colors.text }]}
+                >
                   {sponsor.name}
                 </ThemedText>
-                <ThemedText 
+                <ThemedText
                   style={[styles.description, { color: colors.secondaryText }]}
                   numberOfLines={2}
                 >
                   {sponsor.description}
                 </ThemedText>
-                <ThemedText 
+                <ThemedText
                   style={[styles.description, { color: colors.secondaryText }]}
                   numberOfLines={1}
                 >
                   {sponsor.discount}
                 </ThemedText>
               </View>
-              <IconSymbol 
-                name="chevron.right" 
-                size={20} 
-                color={colors.secondaryText} 
+              <IconSymbol
+                name="chevron.right"
+                size={20}
+                color={colors.secondaryText}
               />
             </View>
           </Pressable>
         ))}
-        
-        <ThemedText style={[styles.footerText, { color: colors.secondaryText }]}>
+
+        <ThemedText
+          style={[styles.footerText, { color: colors.secondaryText }]}
+        >
           Interested in partnering with us? Contact us at maddisen@meetcal.app
         </ThemedText>
       </ScrollView>
@@ -182,22 +198,16 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
-  headerText: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
   subHeaderText: {
     fontSize: 16,
     marginBottom: 24,
-    textAlign: 'center',
+    textAlign: "center",
   },
   sponsorCard: {
     borderRadius: 12,
     marginBottom: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -208,21 +218,21 @@ const styles = StyleSheet.create({
   },
   noImage: {
     height: 160,
-    backgroundColor: '#E5E5E5',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#E5E5E5",
+    justifyContent: "center",
+    alignItems: "center",
   },
   noImageText: {
     fontSize: 16,
-    color: '#999999',
+    color: "#999999",
   },
   sponsorImage: {
-    width: '100%',
+    width: "100%",
     height: 160,
   },
   cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
   },
   textContent: {
@@ -231,7 +241,7 @@ const styles = StyleSheet.create({
   },
   sponsorName: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 4,
   },
   description: {
@@ -240,7 +250,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 40,
   },
-}); 
+});

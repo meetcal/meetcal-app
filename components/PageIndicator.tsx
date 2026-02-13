@@ -25,14 +25,16 @@ export function PageIndicator({ count, currentPage, onPageChange }: PageIndicato
       { 
         bottom: Platform.OS === 'ios' ? insets.bottom + 50 : insets.bottom + 70,
       }
-    ]}>
+    ]}
+    >
       <View style={[
         styles.dotsContainer,
         {
           backgroundColor: containerBackground,
           borderColor: containerBorder,
         }
-      ]}>
+      ]}
+      >
         {Array.from({ length: count }).map((_, index) => (
           <Pressable
             key={index}

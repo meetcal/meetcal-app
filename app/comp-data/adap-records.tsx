@@ -226,9 +226,11 @@ export default function AdaptiveRecordsScreen() {
                 color: colors.secondaryText,
               }}
             >
-              No adaptive records available for{" "}
-              {appliedGender === "Men" ? "men" : "women"}.
-            </ThemedText>
+              No adaptive records available for
+{" "}
+              {appliedGender === "Men" ? "men" : "women"}
+.
+</ThemedText>
           )}
 
           {!loading &&

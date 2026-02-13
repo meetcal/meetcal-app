@@ -1,14 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, Platform, ScrollView } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-import { useTheme } from '@/contexts/ThemeContext';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { getAnnouncementForVersion } from '@/config/version-announcements';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getAnnouncementForVersion } from "@/config/version-announcements";
+import { useAppColors } from "@/hooks/useAppColors";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import React, { useEffect, useState } from "react";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const VERSION_ANNOUNCEMENT_KEY = '@version_announcement_seen';
-const CURRENT_VERSION = Constants.expoConfig?.version || '5.2.5';
+const VERSION_ANNOUNCEMENT_KEY = "@version_announcement_seen";
+const CURRENT_VERSION = Constants.expoConfig?.version || "5.2.5";
 
 interface VersionAnnouncementProps {
   announcement?: {
@@ -18,13 +27,15 @@ interface VersionAnnouncementProps {
   };
 }
 
-export function VersionAnnouncement({ announcement: propAnnouncement }: VersionAnnouncementProps) {
+export function VersionAnnouncement({
+  announcement: propAnnouncement,
+}: VersionAnnouncementProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const isDark = currentTheme === 'dark';
+  const colors = useAppColors();
 
-  const announcement = propAnnouncement || getAnnouncementForVersion(CURRENT_VERSION);
+  const announcement =
+    propAnnouncement || getAnnouncementForVersion(CURRENT_VERSION);
 
   useEffect(() => {
     if (announcement) {
@@ -36,12 +47,12 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
     try {
       const seenVersions = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
       const seenVersionsArray = seenVersions ? JSON.parse(seenVersions) : [];
-      
+
       if (!seenVersionsArray.includes(CURRENT_VERSION)) {
         setIsVisible(true);
       }
     } catch (error) {
-      console.error('Error checking version announcement:', error);
+      console.error("Error checking version announcement:", error);
     }
   };
 
@@ -49,15 +60,18 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
     try {
       const seenVersions = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
       const seenVersionsArray = seenVersions ? JSON.parse(seenVersions) : [];
-      
+
       if (!seenVersionsArray.includes(CURRENT_VERSION)) {
         seenVersionsArray.push(CURRENT_VERSION);
-        await AsyncStorage.setItem(VERSION_ANNOUNCEMENT_KEY, JSON.stringify(seenVersionsArray));
+        await AsyncStorage.setItem(
+          VERSION_ANNOUNCEMENT_KEY,
+          JSON.stringify(seenVersionsArray),
+        );
       }
-      
+
       setIsVisible(false);
     } catch (error) {
-      console.error('Error dismissing version announcement:', error);
+      console.error("Error dismissing version announcement:", error);
       setIsVisible(false);
     }
   };
@@ -66,15 +80,6 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
     return null;
   }
 
-  const colors = {
-    background: isDark ? '#1c1c1e' : '#f2f2f7',
-    card: isDark ? '#2c2c2e' : '#ffffff',
-    text: isDark ? '#ffffff' : '#000000',
-    secondaryText: isDark ? '#8e8e93' : '#6b6b6b',
-    border: isDark ? '#38383a' : '#e1e1e1',
-    accent: isDark ? '#0a84ff' : '#007aff',
-  };
-
   return (
     <Modal
       visible={isVisible}
@@ -82,20 +87,20 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
       animationType="slide"
       onRequestClose={handleDismiss}
     >
-      <Pressable 
+      <Pressable
         style={[
           styles.modalOverlay,
-          { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)' }
+          { backgroundColor: colors.modalBackground },
         ]}
         onPress={handleDismiss}
       >
-        <Pressable 
+        <Pressable
           style={[
             styles.modalContent,
-            { 
+            {
               backgroundColor: colors.card,
               paddingBottom: Math.max(insets.bottom, 20),
-            }
+            },
           ]}
           onPress={(e) => e.stopPropagation()}
         >
@@ -113,15 +118,15 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
               onPress={handleDismiss}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <IconSymbol 
-                name={Platform.OS === 'ios' ? 'xmark' : 'close'}
-                size={20} 
-                color={colors.secondaryText} 
+              <IconSymbol
+                name={Platform.OS === "ios" ? "xmark" : "close"}
+                size={20}
+                color={colors.secondaryText}
               />
             </TouchableOpacity>
           </View>
 
-          <ScrollView 
+          <ScrollView
             style={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
@@ -133,10 +138,10 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
               <View style={styles.featuresContainer}>
                 {announcement.features.map((feature, index) => (
                   <View key={index} style={styles.featureItem}>
-                    <IconSymbol 
-                      name="checkmark.circle.fill" 
-                      size={18} 
-                      color={colors.accent} 
+                    <IconSymbol
+                      name="checkmark.circle.fill"
+                      size={18}
+                      color={colors.link}
                     />
                     <Text style={[styles.featureText, { color: colors.text }]}>
                       {feature}
@@ -148,7 +153,7 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.dismissButton, { backgroundColor: colors.accent }]}
+            style={[styles.dismissButton, { backgroundColor: colors.link }]}
             onPress={handleDismiss}
           >
             <Text style={styles.dismissButtonText}>Got it</Text>
@@ -162,14 +167,14 @@ export function VersionAnnouncement({ announcement: propAnnouncement }: VersionA
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   modalContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: '80%',
-    shadowColor: '#000',
+    maxHeight: "80%",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: -2,
@@ -179,9 +184,9 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 16,
   },
   headerContent: {
@@ -190,12 +195,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 4,
   },
   version: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     opacity: 0.7,
   },
   closeButton: {
@@ -214,8 +219,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginBottom: 12,
     gap: 12,
   },
@@ -228,12 +233,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingVertical: 16,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   dismissButtonText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
+
+export async function resetVersionAnnouncement(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(VERSION_ANNOUNCEMENT_KEY);
+  } catch (error) {
+    console.error("Error resetting version announcement:", error);
+  }
+}

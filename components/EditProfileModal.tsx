@@ -110,7 +110,10 @@ const EditProfileModal = ({
         style={{ flex: 1 }}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[
+            styles.modalOverlay,
+            { backgroundColor: colors.modalBackground },
+          ]}
           onPress={() => {
             Keyboard.dismiss();
             setIsEditing(false);
@@ -202,7 +205,6 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.6)",
   },
   modalContent: {
     borderTopLeftRadius: 12,

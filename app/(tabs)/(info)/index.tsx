@@ -1,9 +1,15 @@
 import EventInfoScreen from "@/components/info/EventInfoScreen";
+import { OnboardingView, resetOnboarding } from "@/components/OnboardingView";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import {
+  resetVersionAnnouncement,
+  VersionAnnouncement,
+} from "@/components/VersionAnnouncement";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Stack, useRouter } from "expo-router";
+import { useState } from "react";
 import {
   Platform,
   Pressable,
@@ -17,6 +23,8 @@ export default function InfoScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
 
   return (
     <ThemedView
@@ -265,7 +273,77 @@ export default function InfoScreen() {
             </View>
           </Pressable>
         </View>
+
+        {__DEV__ && (
+          <>
+            <ThemedText
+              style={[styles.sectionHeader, { color: colors.secondaryText }]}
+            >
+              Development Tools
+            </ThemedText>
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.section,
+                  {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: colors.border,
+                  },
+                  pressed && { backgroundColor: colors.pressed },
+                ]}
+                onPress={async () => {
+                  await resetOnboarding();
+                  setShowOnboarding(true);
+                }}
+              >
+                <View style={styles.linkRow}>
+                  <ThemedText style={[styles.label, { color: colors.text }]}>
+                    Show Onboarding
+                  </ThemedText>
+                  <IconSymbol
+                    name="chevron.right"
+                    size={20}
+                    color={colors.link}
+                  />
+                </View>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.section,
+                  styles.lastSection,
+                  pressed && { backgroundColor: colors.pressed },
+                ]}
+                onPress={async () => {
+                  await resetVersionAnnouncement();
+                  setVersionAnnouncementKey((prev) => prev + 1);
+                }}
+              >
+                <View style={styles.linkRow}>
+                  <ThemedText style={[styles.label, { color: colors.text }]}>
+                    Show Version Announcement
+                  </ThemedText>
+                  <IconSymbol
+                    name="chevron.right"
+                    size={20}
+                    color={colors.link}
+                  />
+                </View>
+              </Pressable>
+            </View>
+          </>
+        )}
       </ScrollView>
+
+      {__DEV__ && (
+        <>
+          <OnboardingView
+            visible={showOnboarding}
+            onComplete={() => setShowOnboarding(false)}
+          />
+          <VersionAnnouncement key={versionAnnouncementKey} />
+        </>
+      )}
     </ThemedView>
   );
 }

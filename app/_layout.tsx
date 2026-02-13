@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Redirect, Stack, Slot, usePathname } from 'expo-router';
+import { Redirect, Stack, Slot, usePathname , useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -8,7 +8,6 @@ import 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
 import { Platform, View, Alert, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { PostHogProvider } from 'posthog-react-native';
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'

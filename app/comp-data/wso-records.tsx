@@ -305,9 +305,20 @@ export default function RecordsScreen() {
                   color: colors.secondaryText,
                 }}
               >
-                No {filters.wso} records available for {filters.gender} in the{" "}
-                {getAgeGroupDisplayText(filters.ageGroup)} age group.
-              </ThemedText>
+                No 
+{' '}
+{filters.wso}
+{' '}
+records available for 
+{' '}
+{filters.gender}
+{' '}
+in the
+{" "}
+                {getAgeGroupDisplayText(filters.ageGroup)}
+{' '}
+age group.
+</ThemedText>
             )}
           {!loading &&
             !fetchError &&

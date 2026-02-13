@@ -230,7 +230,8 @@ export default function ProfileScreen() {
             style={[styles.legalText, { color: colors.secondaryText }]}
           >
             {" "}
-            •{" "}
+            •
+{" "}
           </ThemedText>
           <Pressable
             onPress={() => Linking.openURL("https://meetcal.app/terms")}
@@ -243,7 +244,8 @@ export default function ProfileScreen() {
             style={[styles.legalText, { color: colors.secondaryText }]}
           >
             {" "}
-            •{" "}
+            •
+{" "}
           </ThemedText>
           <Pressable
             onPress={() =>

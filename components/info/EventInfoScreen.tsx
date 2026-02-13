@@ -124,8 +124,11 @@ export default function EventInfoScreen() {
                   {meetDetails.venue.address.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.address.city},{" "}
-                  {meetDetails.venue.address.state}{" "}
+                  {meetDetails.venue.address.city}
+,
+{" "}
+                  {meetDetails.venue.address.state}
+{" "}
                   {meetDetails.venue.address.zip}
                 </ThemedText>
               </View>
@@ -168,18 +171,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 4,
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
   sectionText: {
     fontSize: 16,
     lineHeight: 24,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 4,
   },
   link: {
     fontSize: 16,
