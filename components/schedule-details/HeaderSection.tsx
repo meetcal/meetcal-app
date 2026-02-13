@@ -4,20 +4,17 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import {
-  convertToUTC,
-  formatTimeWithZone,
-  getMeetConfig,
-  getMeetVenueLocation,
-} from "@/data/meets/config";
 import { Platform as PlatformType } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { DaySchedule, Schedule, Session } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
+import {
+  requestCalendarPermissions,
+  createCalendarEvents,
+} from "@/utils/calendar";
 import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Calendar from "expo-calendar";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
@@ -87,8 +84,8 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
   useEffect(() => {
     (async () => {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      setHasCalendarPermission(status === "granted");
+      const hasPermission = await requestCalendarPermissions();
+      setHasCalendarPermission(hasPermission);
     })();
   }, []);
 
@@ -191,9 +188,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   };
 
   const addToCalendar = async () => {
+    // Check permissions first
     if (!hasCalendarPermission) {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status !== "granted") {
+      const hasPermission = await requestCalendarPermissions();
+      if (!hasPermission) {
         Alert.alert(
           "Calendar Permission Required",
           "Please enable calendar access in your device settings to add events.",
@@ -231,9 +229,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     }
 
     try {
-      // Get meet config first
-      const meetConfig = await getMeetConfig(meet);
-
       // Use platform-specific start time if available, otherwise use session start time
       const session = sessionDay.sessions.find(
         (s) => s.number === parseInt(sessionNumber),
@@ -244,58 +239,33 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       const startTimeToUse = platformData?.platformStartTime || startTime;
       const weighInTime = calculateWeighInTime(startTimeToUse);
 
-      // Convert times to UTC using the meet's time zone
-      const startDate = convertToUTC(startTimeToUse, sessionDay.fullDate, meet);
-      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+      // Use the shared createCalendarEvents utility
+      await createCalendarEvents([
+        {
+          date: sessionDay.fullDate,
+          startTime: startTimeToUse,
+          weighInTime: weighInTime,
+          sessionNumber: sessionNumber,
+          platform: platform,
+          weightClass: sessionWeightClass,
+          meet: meet,
+        },
+      ]);
 
-      const eventDetails = {
-        title: `Session ${sessionNumber} - Platform ${platform}`,
-        location: getMeetVenueLocation(meet),
-        notes: `Weight Class: ${sessionWeightClass}\nWeigh-in Time: ${formatTimeWithZone(weighInTime, meet)}`,
-        startDate: startDate,
-        endDate: endDate,
-        timeZone: meetConfig.time.timeZoneIdentifier,
-        alarms: [
-          {
-            relativeOffset: -60,
-          },
-        ],
-      };
-
-      let calendarId;
-
-      if (Platform.OS === "ios") {
-        const calendar = await Calendar.getDefaultCalendarAsync();
-        calendarId = calendar.id;
-      } else {
-        const calendars = await Calendar.getCalendarsAsync(
-          Calendar.EntityTypes.EVENT,
-        );
-        const primaryCalendar = calendars.find(
-          (cal) =>
-            cal.accessLevel === Calendar.CalendarAccessLevel.OWNER &&
-            cal.allowsModifications,
-        );
-
-        if (!primaryCalendar) {
-          throw new Error("no_calendar");
-        }
-
-        calendarId = primaryCalendar.id;
-      }
-
-      await Calendar.createEventAsync(calendarId, eventDetails);
       showSuccessAlert();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error("Error creating calendar event:", error);
 
-      const errorMessage = Platform.select({
-        ios: "Could not add event to calendar. Please try again.",
-        android:
-          "Could not add event to calendar. Please make sure you have a calendar app installed and try again.",
-        default: "Could not add event to calendar. Please try again.",
-      });
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : Platform.select({
+              ios: "Could not add event to calendar. Please try again.",
+              android:
+                "Could not add event to calendar. Please make sure you have a calendar app installed and try again.",
+              default: "Could not add event to calendar. Please try again.",
+            });
 
       Alert.alert("Error", errorMessage, [{ text: "OK" }], {
         userInterfaceStyle: "light",
