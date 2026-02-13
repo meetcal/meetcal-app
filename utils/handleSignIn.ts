@@ -15,7 +15,7 @@ export function useSignInHandlers() {
     if (!isSubscribed) {
       // User needs subscription - redirect to paywall with context
       router.replace({
-        pathname: "/(screens)/paywall",
+        pathname: "/shared-screens/paywall",
         params: {
           from: from || "/(tabs)",
           feature: feature,

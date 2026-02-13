@@ -2421,7 +2421,7 @@ export default function StartListScreen() {
                   captureScheduleImage();
                 } else {
                   router.push({
-                    pathname: "/(screens)/paywall",
+                    pathname: "/shared-screens/paywall",
                     params: {
                       from: "/(tabs)/(start-list)",
                       feature: "share-schedule-image",
@@ -2515,7 +2515,7 @@ export default function StartListScreen() {
                   generateShareableScheduleCsv();
                 } else {
                   router.push({
-                    pathname: "/(screens)/paywall",
+                    pathname: "/shared-screens/paywall",
                     params: {
                       from: "/(tabs)/(start-list)",
                       feature: "export-csv",

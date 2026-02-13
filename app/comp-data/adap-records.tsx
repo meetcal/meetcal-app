@@ -13,7 +13,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import PaywallScreen from "./paywall";
+import PaywallScreen from "../shared-screens/paywall";
 
 type Gender = "Men" | "Women";
 
