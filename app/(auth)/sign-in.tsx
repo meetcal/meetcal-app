@@ -1,7 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import { onApplePress, onGooglePress } from "@/utils/handleSignIn";
+import { useSignInHandlers } from "@/utils/handleSignIn";
 import { useSSO } from "@clerk/clerk-expo";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -53,7 +53,7 @@ export default function SignInScreen() {
     feature?: string;
   }>();
   const isFromInfo = from === "info";
-
+  const { onGooglePress, onApplePress } = useSignInHandlers();
   useWarmUpBrowser();
 
   return (
@@ -107,7 +107,7 @@ export default function SignInScreen() {
               borderColor: colors.border,
             },
           ]}
-          onPress={onGooglePress}
+          onPress={() => onGooglePress(startSSOFlow)}
         >
           <View style={styles.googleIconContainer}>
             <Image
@@ -138,7 +138,7 @@ export default function SignInScreen() {
                   currentTheme === "dark" ? "#FFFFFF" : "#000000",
               },
             ]}
-            onPress={onApplePress}
+            onPress={() => onApplePress(startSSOFlow)}
           >
             <View style={styles.iconContainer}>
               <IconSymbol
