@@ -1,23 +1,19 @@
-import { IconSymbol } from "@/components/ui/IconSymbol";
+import { DataTable } from "@/components/ui/DataTable";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useFilterState } from "@/hooks/useFilterState";
 import {
   fetchIntlRankings,
   IntlRanking,
 } from "@/lib/database/fetchIntlRankings";
+import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
-import PaywallScreen from "../shared-screens/paywall";
+import { StyleSheet, View } from "react-native";
 
 interface Filters {
   meet: string;
@@ -25,67 +21,22 @@ interface Filters {
   gender: string;
 }
 
-// Number of rows to load initially
-const PAGE_SIZE = 30;
-
-const AGE_CATEGORY_ORDER = [
-  "u11",
-  "u13",
-  "u15",
-  "u17",
-  "youth",
-  "junior",
-  "university",
-  "u23",
-  "u25",
-  "senior",
-];
-
-function sortAgeCategories(ageCategories: string[]): string[] {
-  return [...ageCategories].sort((a, b) => {
-    const aLower = a.toLowerCase();
-    const bLower = b.toLowerCase();
-    const aIdx = AGE_CATEGORY_ORDER.indexOf(aLower);
-    const bIdx = AGE_CATEGORY_ORDER.indexOf(bLower);
-
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-    if (aIdx !== -1) return -1;
-    if (bIdx !== -1) return 1;
-
-    const mastersA = aLower.startsWith("masters");
-    const mastersB = bLower.startsWith("masters");
-
-    if (mastersA && mastersB) {
-      const numA = parseInt(aLower.replace(/[^0-9]/g, ""), 10);
-      const numB = parseInt(bLower.replace(/[^0-9]/g, ""), 10);
-      if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-        return numA - numB;
-      }
-      return a.localeCompare(b, undefined, { sensitivity: "base" });
-    }
-    if (mastersA) return 1;
-    if (mastersB) return -1;
-
-    return a.localeCompare(b, undefined, { sensitivity: "base" });
-  });
-}
-
 export default function RecordsScreen() {
   const colors = useAppColors();
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
-  const [filters, setFilters] = useState<Filters>({
-    meet: "",
-    age_category: "",
-    gender: "",
+  const {
+    filters,
+    setFilters,
+    tempFilters,
+    setTempFilters,
+    openFilters,
+    filterModalProps,
+  } = useFilterState<Filters>({
+    defaultFilters: { meet: "", age_category: "", gender: "" },
   });
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
   const [intlRankings, setIntlRankings] = useState<IntlRanking[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [backgroundLoading, setBackgroundLoading] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -94,17 +45,8 @@ export default function RecordsScreen() {
     fetchIntlRankings()
       .then((data) => {
         if (cancelled) return;
-        setIntlRankings(data.slice(0, PAGE_SIZE));
+        setIntlRankings(data);
         setLoading(false);
-        // If more data, load the rest in background
-        if (data.length > PAGE_SIZE) {
-          setBackgroundLoading(true);
-          setTimeout(() => {
-            if (cancelled) return;
-            setIntlRankings(data);
-            setBackgroundLoading(false);
-          }, 0);
-        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -159,7 +101,7 @@ export default function RecordsScreen() {
       ? intlRankings.filter((r) => r.meet === tempFilters.meet)
       : intlRankings;
 
-    return sortAgeCategories(
+    return sortAgeGroups(
       Array.from(
         new Set(
           filteredData.map((r) =>
@@ -167,6 +109,7 @@ export default function RecordsScreen() {
           ),
         ),
       ).filter(Boolean),
+      { includeExtended: true },
     );
   }, [intlRankings, tempFilters.meet]);
 
@@ -206,11 +149,6 @@ export default function RecordsScreen() {
     const age_category = filters.age_category;
     const gender = filters.gender;
     return `${meet} • ${age_category} • ${gender}`;
-  };
-
-  const handleApplyFilters = () => {
-    setFilters(tempFilters);
-    setShowFilterModal(false);
   };
 
   const handleResetFilters = () => {
@@ -260,191 +198,74 @@ export default function RecordsScreen() {
     },
   ];
 
-  if (isSubscriptionLoading) {
-    return (
-      <ThemedView
-        style={[
-          styles.container,
-          {
-            backgroundColor: colors.background,
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={colors.link} />
-      </ThemedView>
-    );
-  }
-
-  if (!isSubscribed) {
-    return <PaywallScreen />;
-  }
-
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      <Stack.Screen
-        options={{
-          title: `International Rankings`,
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-        }}
-      />
-
-      <View
-        style={[
-          styles.filterContainer,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.borderBottom,
-            borderBottomWidth: 1,
-          },
-        ]}
+    <SubscriptionGate>
+      <ThemedView
+        style={[styles.container, { backgroundColor: colors.background }]}
       >
-        <View style={styles.filterButtons}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButton,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => {
-              setTempFilters(filters);
-              setShowFilterModal(true);
-            }}
-          >
-            <ThemedText
-              style={[styles.filterButtonText, { color: colors.secondaryText }]}
-            >
-              {getFilterDisplayText()}
-            </ThemedText>
-            <IconSymbol
-              name="chevron.down"
-              size={12}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-        </View>
-      </View>
+        <Stack.Screen
+          options={{
+            title: `International Rankings`,
+            headerBackTitle: "Back",
+            headerShown: true,
+            gestureEnabled: true,
+            gestureDirection: "horizontal",
+            animation: "slide_from_right",
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerShadowVisible: false,
+            headerBackButtonDisplayMode: "minimal",
+          }}
+        />
 
-      {/* --- TABLE SECTION START --- */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View>
-          {/* Apply minWidth to the container View */}
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            {/* Header Row */}
+        <FilterBar displayText={getFilterDisplayText()} onPress={openFilters} />
+
+        <DataTable
+          columns={[
+            { label: "Name", width: "50%", headerStyle: styles.headerCell },
+            { label: "Total", width: "25%", headerStyle: styles.headerCell },
+            { label: "% of A", width: "25%", headerStyle: styles.headerCell },
+          ]}
+          data={filteredRankings}
+          keyExtractor={(_ranking, index) => String(index)}
+          loading={loading}
+          error={fetchError}
+          emptyMessage="No rankings available."
+          renderRow={(ranking, index) => (
             <View
-              style={[styles.headerRow, { borderBottomColor: colors.border }]}
+              style={[
+                styles.row,
+                index < filteredRankings.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                },
+              ]}
             >
-              <ThemedText style={[styles.headerCell, { width: "50%" }]}>
-                Name
+              <ThemedText style={[styles.cell, { width: "50%" }]}>
+                {ranking.name ?? ""}
               </ThemedText>
-              <ThemedText style={[styles.headerCell, { width: "25%" }]}>
-                Total
+              <ThemedText style={[styles.cell, { width: "25%" }]}>
+                {ranking.total ?? ""}
               </ThemedText>
-              <ThemedText style={[styles.headerCell, { width: "25%" }]}>
-                % of A
+              <ThemedText style={[styles.cell, { width: "25%" }]}>
+                {typeof ranking.percent_a === "number"
+                  ? `${ranking.percent_a.toFixed(2)}%`
+                  : ""}
               </ThemedText>
             </View>
+          )}
+        />
 
-            {/* Loading/Error/Empty/Data States (single ternary for exclusivity) */}
-            {loading ? (
-              <ThemedText style={styles.statusText}>Loading...</ThemedText>
-            ) : fetchError ? (
-              <ThemedText style={[styles.statusText, { color: "red" }]}>
-                {fetchError}
-              </ThemedText>
-            ) : !loading &&
-              filteredRankings.length === 0 &&
-              intlRankings.length > 0 ? (
-              <ThemedText
-                style={[styles.statusText, { color: colors.secondaryText }]}
-              >
-                No rankings available.
-              </ThemedText>
-            ) : (
-              <>
-                {filteredRankings.map((ranking: IntlRanking, index: number) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.row,
-                      index < filteredRankings.length - 1 && {
-                        borderBottomWidth: StyleSheet.hairlineWidth,
-                        borderBottomColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <ThemedText style={[styles.cell, { width: "50%" }]}>
-                      {ranking.name ?? ""}
-                    </ThemedText>
-                    <ThemedText style={[styles.cell, { width: "25%" }]}>
-                      {ranking.total ?? ""}
-                    </ThemedText>
-                    <ThemedText style={[styles.cell, { width: "25%" }]}>
-                      {typeof ranking.percent_a === "number"
-                        ? `${ranking.percent_a.toFixed(2)}%`
-                        : ""}
-                    </ThemedText>
-                  </View>
-                ))}
-                {backgroundLoading && filteredRankings.length > 0 && (
-                  <ThemedText
-                    style={[
-                      styles.statusText,
-                      { marginTop: 8, color: colors.secondaryText },
-                    ]}
-                  >
-                    Loading more results...
-                  </ThemedText>
-                )}
-              </>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-      {/* --- TABLE SECTION END --- */}
-
-      <GenericFilterModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
-        sections={filterSections}
-        filters={{
-          meet: tempFilters.meet,
-          age_category: tempFilters.age_category,
-          gender: tempFilters.gender,
-        }}
-        onApplyFilters={(newFilters) => {
-          const updatedFilters = {
-            meet: newFilters.meet,
-            age_category: newFilters.age_category,
-            gender: newFilters.gender,
-          };
-          setFilters(updatedFilters);
-          setTempFilters(updatedFilters);
-          setShowFilterModal(false);
-        }}
-        onResetFilters={handleResetFilters}
-        resultCount={filteredRankings.length}
-        resultLabel="rankings"
-      />
-    </ThemedView>
+        <GenericFilterModal
+          {...filterModalProps}
+          sections={filterSections}
+          onResetFilters={handleResetFilters}
+          resultCount={filteredRankings.length}
+          resultLabel="rankings"
+        />
+      </ThemedView>
+    </SubscriptionGate>
   );
 }
 
@@ -452,163 +273,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  filterContainer: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  filterButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  filterButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingVertical: 16, // Keep vertical padding
-    paddingHorizontal: 0, // Remove horizontal padding here, apply to card/rows if needed
-    alignItems: "flex-start", // Align the horizontal scrollview container to the start
-  },
-  card: {
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    marginHorizontal: 16, // Add horizontal margin to the card itself
-    // minWidth is set dynamically inline
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 44,
-    // No paddingHorizontal here, width is controlled by cells
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60, 60, 67, 0.03)",
-  },
   row: {
     flexDirection: "row",
     alignItems: "center",
     minHeight: 44,
-    // No paddingHorizontal here, width is controlled by cells
     paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   headerCell: {
-    fontSize: 15,
-    fontWeight: "600",
-    textAlign: "center", // Center text within the cell
-    paddingHorizontal: 4, // Add small horizontal padding within cells if needed
-    // width is applied inline
+    textAlign: "center",
+    paddingHorizontal: 4,
   },
   cell: {
     fontSize: 17,
-    textAlign: "center", // Center text within the cell
-    paddingHorizontal: 4, // Add small horizontal padding within cells if needed
-    // width is applied inline
-  },
-  statusText: {
     textAlign: "center",
-    marginTop: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 16, // Add padding to status text as it's outside the row structure
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalContent: {
-    borderRadius: 14,
-    overflow: "hidden",
-    marginHorizontal: 24,
-    maxHeight: "80%",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalScrollContent: {
-    flexGrow: 0,
-  },
-  filterSection: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterSectionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  filterSectionButtonContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  filterSectionLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  filterSectionValue: {
-    fontSize: 17,
-    fontWeight: "400",
-  },
-  filterOptions: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  filterOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterOptionText: {
-    fontSize: 17,
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-  },
-  applyButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 30,
-    paddingVertical: 10,
-    borderRadius: 8,
-    width: "100%",
-    alignItems: "center",
-  },
-  applyButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "600",
+    paddingHorizontal: 4,
   },
 });

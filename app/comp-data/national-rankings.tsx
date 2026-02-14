@@ -1,23 +1,18 @@
-import { IconSymbol } from "@/components/ui/IconSymbol";
+import { DataTable } from "@/components/ui/DataTable";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useFilterState } from "@/hooks/useFilterState";
 import {
   fetchNationalRankings,
   NationalRanking,
 } from "@/lib/database/fetch-national-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
-import PaywallScreen from "../shared-screens/paywall";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 type Gender = "Men" | "Women";
 
@@ -254,15 +249,19 @@ function getWeightClasses(gender: Gender, ageGroup: string): string[] {
 
 export default function NationalRankingsScreen() {
   const colors = useAppColors();
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
 
-  const [filters, setFilters] = useState<FilterState>({
-    gender: "Men",
-    ageGroup: "Senior",
-    weightClass: "Open Men's 60kg",
+  const {
+    filters,
+    setFilters,
+    openFilters,
+    filterModalProps,
+  } = useFilterState<FilterState>({
+    defaultFilters: {
+      gender: "Men",
+      ageGroup: "Senior",
+      weightClass: "Open Men's 60kg",
+    },
   });
-  const [tempFilters, setTempFilters] = useState<FilterState>(filters);
-  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const [rankings, setRankings] = useState<NationalRanking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -304,19 +303,13 @@ export default function NationalRankingsScreen() {
 
   const rows = useMemo(() => rankings, [rankings]);
 
-  const handleOpenFilters = () => {
-    setTempFilters(filters);
-    setShowFilterModal(true);
-  };
-
   const handleResetFilters = () => {
-    const resetFilters = {
+    const reset = {
       gender: "Men" as Gender,
       ageGroup: "Senior",
       weightClass: "",
     };
-    setFilters(resetFilters);
-    setTempFilters(resetFilters);
+    setFilters(reset);
   };
 
   // Build filter sections dynamically based on tempFilters
@@ -351,28 +344,8 @@ export default function NationalRankingsScreen() {
     ];
   };
 
-  if (isSubscriptionLoading) {
-    return (
-      <ThemedView
-        style={[
-          styles.container,
-          {
-            backgroundColor: colors.background,
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={colors.link} />
-      </ThemedView>
-    );
-  }
-
-  if (!isSubscribed) {
-    return <PaywallScreen />;
-  }
-
   return (
+    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -390,152 +363,60 @@ export default function NationalRankingsScreen() {
         }}
       />
 
-      <View
-        style={[
-          styles.filterContainer,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.borderBottom,
-            borderBottomWidth: 1,
-          },
-        ]}
-      >
-        <View style={styles.filterButtons}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButton,
-              { backgroundColor: colors.card, borderColor: colors.border },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={handleOpenFilters}
-          >
-            <ThemedText
-              style={[styles.filterButtonText, { color: colors.secondaryText }]}
-            >
-              {filters.weightClass}
-            </ThemedText>
-            <IconSymbol
-              name="chevron.down"
-              size={12}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-        </View>
-      </View>
+      <FilterBar
+        displayText={filters.weightClass}
+        onPress={openFilters}
+      />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        contentInsetAdjustmentBehavior="automatic"
-      >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View
-            style={[styles.headerRow, { borderBottomColor: colors.border }]}
-          >
-            <ThemedText
-              style={[
-                styles.headerCell,
-                { width: 50, color: colors.secondaryText },
-              ]}
-            >
-              Rank
-            </ThemedText>
-            <ThemedText
-              style={[
-                styles.headerCell,
-                { flex: 1, color: colors.secondaryText },
-              ]}
-            >
-              Name
-            </ThemedText>
-            <ThemedText
-              style={[
-                styles.headerCell,
-                { width: 80, color: colors.secondaryText },
-              ]}
-            >
-              Total
+      <DataTable
+        columns={[
+          { label: "Rank", width: 50 },
+          { label: "Name", flex: 1 },
+          { label: "Total", width: 80 },
+        ]}
+        data={rows}
+        keyExtractor={(athlete, index) => `${athlete.id}-${index}`}
+        loading={loading}
+        error={fetchError}
+        emptyMessage="No rankings available."
+        loadingContent={
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={colors.link} />
+            <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
+              Loading...
             </ThemedText>
           </View>
-
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.link} />
-              <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
-                Loading...
-              </ThemedText>
-            </View>
-          ) : fetchError ? (
-            <ThemedText
-              style={{
-                color: colors.danger,
-                textAlign: "center",
-                marginTop: 16,
-              }}
-            >
-              {fetchError}
+        }
+        renderRow={(athlete, index) => (
+          <View
+            style={[
+              styles.row,
+              index < rows.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <ThemedText style={styles.rankText}>{index + 1}</ThemedText>
+            <ThemedText style={styles.nameText}>
+              {athlete.name}
             </ThemedText>
-          ) : rows.length === 0 ? (
-            <ThemedText
-              style={{
-                textAlign: "center",
-                marginTop: 16,
-                color: colors.secondaryText,
-              }}
-            >
-              No rankings available.
+            <ThemedText style={styles.totalText}>
+              {athlete.total}kg
             </ThemedText>
-          ) : (
-            <ScrollView>
-              {rows.map((athlete, index) => (
-                <View
-                  key={`${athlete.id}-${index}`}
-                  style={[
-                    styles.row,
-                    index < rows.length - 1 && {
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                      borderBottomColor: colors.border,
-                    },
-                  ]}
-                >
-                  <ThemedText style={styles.rankText}>{index + 1}</ThemedText>
-                  <ThemedText style={styles.nameText}>
-                    {athlete.name}
-                  </ThemedText>
-                  <ThemedText style={styles.totalText}>
-                    {athlete.total}kg
-                  </ThemedText>
-                </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      </ScrollView>
+          </View>
+        )}
+      />
 
       <GenericFilterModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
+        {...filterModalProps}
         sections={buildFilterSections}
-        filters={{
-          gender: tempFilters.gender,
-          ageGroup: tempFilters.ageGroup,
-          weightClass: tempFilters.weightClass,
-        }}
-        onApplyFilters={(newFilters) => {
-          const updatedFilters = {
-            gender: newFilters.gender as Gender,
-            ageGroup: newFilters.ageGroup,
-            weightClass: newFilters.weightClass,
-          };
-          setFilters(updatedFilters);
-          setTempFilters(updatedFilters);
-          setShowFilterModal(false);
-        }}
         onResetFilters={handleResetFilters}
         resultCount={rankings.length}
         resultLabel="rankings"
       />
     </ThemedView>
+    </SubscriptionGate>
   );
 }
 
@@ -543,147 +424,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  filterContainer: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  filterButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  filterButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  card: {
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  headerRow: {
-    flexDirection: "row",
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60, 60, 67, 0.03)",
-  },
-  headerCell: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
   row: {
     flexDirection: "row",
     padding: 16,
     alignItems: "center",
   },
-  cell: {
-    fontSize: 16,
-  },
   loadingContainer: {
     padding: 24,
     alignItems: "center",
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalContent: {
-    borderRadius: 14,
-    overflow: "hidden",
-    marginHorizontal: 24,
-    maxHeight: "80%",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  modalScrollContent: {
-    flexGrow: 0,
-  },
-  filterSection: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterSectionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  filterSectionButtonContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  filterSectionLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  filterSectionValue: {
-    fontSize: 17,
-    fontWeight: "400",
-  },
-  filterOptions: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  filterOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterOptionText: {
-    fontSize: 17,
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-  },
-  applyButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 30,
-    paddingVertical: 10,
-    borderRadius: 8,
-    width: "100%",
-    alignItems: "center",
-  },
-  applyButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "600",
   },
   nameText: {
     flex: 1,

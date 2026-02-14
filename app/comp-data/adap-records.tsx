@@ -1,19 +1,19 @@
+import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useFetchData } from "@/hooks/useFetchData";
 import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
-import { RecordsData, WeightClassRecord } from "@/types/records";
+import { RecordsData } from "@/types/records";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
-import PaywallScreen from "../shared-screens/paywall";
 
 type Gender = "Men" | "Women";
 
@@ -44,38 +44,17 @@ const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
 export default function AdaptiveRecordsScreen() {
   const colors = useAppColors();
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
-  const [records, setRecords] = useState<RecordsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setFetchError(null);
-
-    fetchAdaptiveRecords(appliedGender)
-      .then((data) => {
-        if (!cancelled) {
-          setRecords(data);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFetchError(err?.message || "Failed to fetch adaptive records");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appliedGender]);
-
-  const recordsData = useMemo(() => records || EMPTY_RECORDS_DATA, [records]);
+  const fetchFn = useCallback(
+    () => fetchAdaptiveRecords(appliedGender),
+    [appliedGender],
+  );
+  const {
+    data: recordsData,
+    loading,
+    error: fetchError,
+  } = useFetchData<RecordsData>(fetchFn, EMPTY_RECORDS_DATA, [fetchFn]);
 
   const weightClasses =
     appliedGender === "Men" ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
@@ -86,28 +65,8 @@ export default function AdaptiveRecordsScreen() {
     return list.filter((record) => allowed.has(record.weightClass));
   }, [recordsData, appliedGender, weightClasses]);
 
-  if (isSubscriptionLoading) {
-    return (
-      <ThemedView
-        style={[
-          styles.container,
-          {
-            backgroundColor: colors.background,
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={colors.link} />
-      </ThemedView>
-    );
-  }
-
-  if (!isSubscribed) {
-    return <PaywallScreen />;
-  }
-
   return (
+    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -165,109 +124,58 @@ export default function AdaptiveRecordsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View
-            style={[styles.headerRow, { borderBottomColor: colors.border }]}
-          >
-            <ThemedText
-              style={[
-                styles.headerCell,
-                { flex: 2, color: colors.secondaryText },
-              ]}
-            >
-              Class
-            </ThemedText>
-            <ThemedText
-              style={[styles.headerCell, { color: colors.secondaryText }]}
-            >
-              Snatch
-            </ThemedText>
-            <ThemedText
-              style={[styles.headerCell, { color: colors.secondaryText }]}
-            >
-              CJ
-            </ThemedText>
-            <ThemedText
-              style={[styles.headerCell, { color: colors.secondaryText }]}
-            >
-              Total
+      <DataTable
+        columns={[
+          { label: "Class", flex: 2 },
+          { label: "Snatch" },
+          { label: "CJ" },
+          { label: "Total" },
+        ]}
+        data={filteredRecords}
+        keyExtractor={(record, index) =>
+          `${appliedGender}-${record.weightClass}-${index}`
+        }
+        loading={loading}
+        error={fetchError}
+        emptyMessage={`No adaptive records available for ${appliedGender === "Men" ? "men" : "women"}.`}
+        loadingContent={
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={colors.link} />
+            <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
+              Loading...
             </ThemedText>
           </View>
-
-          {loading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.link} />
-              <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
-                Loading...
-              </ThemedText>
-            </View>
-          )}
-
-          {fetchError && !loading && (
-            <ThemedText
-              style={{
-                color: colors.danger,
-                textAlign: "center",
-                marginTop: 16,
-              }}
-            >
-              {fetchError}
+        }
+        renderRow={(record, index) => (
+          <View
+            style={[
+              dataTableStyles.row,
+              index < filteredRecords.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
+              {record.weightClass}
             </ThemedText>
-          )}
-
-          {!loading && !fetchError && filteredRecords.length === 0 && (
-            <ThemedText
-              style={{
-                textAlign: "center",
-                marginTop: 16,
-                color: colors.secondaryText,
-              }}
-            >
-              No adaptive records available for{" "}
-              {appliedGender === "Men" ? "men" : "women"}.
+            <ThemedText style={dataTableStyles.cell}>
+              {record.snatchRecord}
+              kg
             </ThemedText>
-          )}
-
-          {!loading &&
-            !fetchError &&
-            filteredRecords.length > 0 &&
-            filteredRecords.map((record: WeightClassRecord, index: number) => (
-              <View
-                key={`${appliedGender}-${record.weightClass}-${index}`}
-                style={[
-                  styles.row,
-                  index < filteredRecords.length - 1 && {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-              >
-                <ThemedText
-                  style={[styles.cell, { flex: 2, color: colors.text }]}
-                >
-                  {record.weightClass}
-                </ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>
-                  {record.snatchRecord}
-                  kg
-                </ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>
-                  {record.cjRecord}
-                  kg
-                </ThemedText>
-                <ThemedText style={[styles.cell, { color: colors.text }]}>
-                  {record.totalRecord}
-                  kg
-                </ThemedText>
-              </View>
-            ))}
-        </View>
-      </ScrollView>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.cjRecord}
+              kg
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.totalRecord}
+              kg
+            </ThemedText>
+          </View>
+        )}
+      />
     </ThemedView>
+    </SubscriptionGate>
   );
 }
 
@@ -295,43 +203,6 @@ const styles = StyleSheet.create({
   segmentText: {
     fontSize: 15,
     fontWeight: "600",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  card: {
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  headerRow: {
-    flexDirection: "row",
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60, 60, 67, 0.03)",
-  },
-  headerCell: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  row: {
-    flexDirection: "row",
-    padding: 16,
-  },
-  cell: {
-    flex: 1,
-    fontSize: 16,
   },
   loadingContainer: {
     padding: 24,
