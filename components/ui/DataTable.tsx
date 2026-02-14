@@ -91,6 +91,7 @@ export function DataTable<T>({
   );
 }
 
+/* eslint-disable react-native/no-unused-styles */
 export const dataTableStyles = StyleSheet.create({
   row: {
     flexDirection: "row" as const,
@@ -101,6 +102,7 @@ export const dataTableStyles = StyleSheet.create({
     fontSize: 17,
   },
 });
+/* eslint-enable react-native/no-unused-styles */
 
 const styles = StyleSheet.create({
   scrollView: {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';

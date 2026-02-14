@@ -48,7 +48,7 @@ export default function SignInScreen() {
   const { startSSOFlow } = useSSO();
   const router = useRouter();
   const colors = useAppColors();
-  const { from, feature } = useLocalSearchParams<{
+  const { from } = useLocalSearchParams<{
     from?: string;
     feature?: string;
   }>();

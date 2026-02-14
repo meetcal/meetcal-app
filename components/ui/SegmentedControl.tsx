@@ -18,6 +18,7 @@ export function SegmentedControl({
   const [segmentWidth, setSegmentWidth] = useState(0);
   const slideAnimation = useRef(new Animated.Value(0)).current;
 
+   
   useEffect(() => {
     Animated.spring(slideAnimation, {
       toValue: selectedIndex * segmentWidth,
@@ -25,7 +26,7 @@ export function SegmentedControl({
       tension: 100,
       friction: 20,
     }).start();
-  }, [selectedIndex, segmentWidth]);
+  }, [selectedIndex, segmentWidth, slideAnimation]);
 
   return (
     <View

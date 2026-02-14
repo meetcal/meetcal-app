@@ -4,26 +4,12 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Stack } from "expo-router";
-import { useMemo } from "react";
+import React from "react";
 import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 
 export default function EventInfoScreen() {
   const colors = useAppColors();
-  const { selectedMeet, meetDetails, isLoading } = useSelectedMeet();
-
-  // Get full time zone name
-  const timeZoneName = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return "Local Time";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: meetDetails.time.timeZoneIdentifier,
-        timeZoneName: "long",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || "Local Time"
-    );
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  const { meetDetails, isLoading } = useSelectedMeet();
 
   const handleAddressPress = () => {
     if (!meetDetails?.venue) return;
@@ -111,8 +97,11 @@ export default function EventInfoScreen() {
                   {meetDetails.venue.address.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.address.city},{" "}
-                  {meetDetails.venue.address.state}{" "}
+                  {meetDetails.venue.address.city}
+,
+{" "}
+                  {meetDetails.venue.address.state}
+{" "}
                   {meetDetails.venue.address.zip}
                 </ThemedText>
               </View>

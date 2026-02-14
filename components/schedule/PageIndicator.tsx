@@ -1,7 +1,6 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useThemeColor } from "../../hooks/useThemeColor";
 
 interface PageIndicatorProps {
   count: number;
@@ -14,7 +13,6 @@ export function PageIndicator({
   currentPage,
   onPageChange,
 }: PageIndicatorProps) {
-  const tintColor = useThemeColor({}, "tint");
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -22,8 +20,6 @@ export function PageIndicator({
     currentTheme === "dark" ? "rgba(58,58,60,0.65)" : "rgba(0,0,0,0.08)";
   const containerBorder =
     currentTheme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-  const inactiveDotColor =
-    currentTheme === "dark" ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.25)";
   const activeDotShadow =
     currentTheme === "dark" ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.2)";
 

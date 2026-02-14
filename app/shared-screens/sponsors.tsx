@@ -68,12 +68,6 @@ const sponsors: Sponsor[] = [
   // },
 ];
 
-const NoImage = () => (
-  <View style={styles.noImage}>
-    <ThemedText style={styles.noImageText}>No Image</ThemedText>
-  </View>
-);
-
 export default function SponsorsScreen() {
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -215,16 +209,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-  },
-  noImage: {
-    height: 160,
-    backgroundColor: "#E5E5E5",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  noImageText: {
-    fontSize: 16,
-    color: "#999999",
   },
   sponsorImage: {
     width: "100%",

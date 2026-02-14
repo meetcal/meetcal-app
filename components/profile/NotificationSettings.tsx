@@ -54,6 +54,7 @@ export function NotificationSettings({
       );
       handleToggle();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSubscribed, isEnabled, isLoading]);
 
   const loadNotificationSettings = async () => {
@@ -207,7 +208,8 @@ export function NotificationSettings({
       <View style={styles.row}>
         <View style={styles.textContainer}>
           <ThemedText style={[styles.label, { color: colors.text }]}>
-            Session Reminders{" "}
+            Session Reminders
+{" "}
             {!isSubscribed && (
               <IconSymbol name="crown.fill" size={16} color="#FFD700" />
             )}
