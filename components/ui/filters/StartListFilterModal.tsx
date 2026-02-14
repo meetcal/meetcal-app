@@ -57,13 +57,6 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
 }) => {
   const colors = useAppColors();
   const [clubSearchQuery, setClubSearchQuery] = useState("");
-  const [tempFilters, setTempFilters] = useState({
-    weightClass: "",
-    club: "",
-    ageGroup: "",
-    adaptiveAthlete: "",
-    gender: "",
-  });
 
   const windowHeight = Dimensions.get("window").height;
   const maxOptionsHeight = windowHeight * 0.4;
@@ -88,20 +81,6 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     "Masters 90+",
   ];
 
-  // Initialize temp filters when modal opens (only on visibility change)
-  React.useEffect(() => {
-    if (visible) {
-      setTempFilters({
-        weightClass: weightClassFilter,
-        club: clubFilter,
-        ageGroup: ageGroupFilter,
-        adaptiveAthlete: adaptiveAthleteFilter,
-        gender: genderFilter,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-
   const clubOptions = useMemo(
     () => Array.from(new Set(athletes.map((a) => a.club))).sort(),
     [athletes],
@@ -119,7 +98,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     });
   }, [clubOptions, starredClubs]);
 
-  const weightClassOptions = useMemo(() => {
+  const getWeightClassOptions = (tempFilters: Record<string, string>) => {
     if (!visible) return [];
     const weightClasses = new Set<string>();
 
@@ -234,16 +213,10 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
 
     const options = Array.from(weightClasses).sort(sortWeightClasses);
     return options;
-  }, [
-    athletes,
-    tempFilters.gender,
-    tempFilters.ageGroup,
-    tempFilters.adaptiveAthlete,
-    visible,
-  ]);
+  };
 
-  const tempFilteredAthleteCount = useMemo(() => {
-    return athletes.filter((athlete) => {
+  const getFilteredAthleteCount = (tempFilters: Record<string, string>) =>
+    athletes.filter((athlete) => {
       const weightClasses = parseWeightClasses(athlete.weightClass);
       const ageCategory = getAgeCategory(athlete.age);
       const genderLower = athlete.gender.toLowerCase();
@@ -278,265 +251,252 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         matchesGender
       );
     }).length;
-  }, [
-    athletes,
-    tempFilters,
-    starredClubs,
-  ]);
 
-  // Build sections for the generic modal
-  const sections: FilterSection[] = [
-    {
-      id: "ageGroup",
-      title: "Age Group",
-      options: ageGroupOptions.map((ag) => ({ value: ag, label: ag })),
-      allOptionLabel: "All Age Groups",
-    },
-    {
-      id: "gender",
-      title: "Gender",
-      options: [
-        { value: "Male", label: "Male" },
-        { value: "Female", label: "Female" },
-      ],
-      allOptionLabel: "All Genders",
-    },
-    {
-      id: "adaptiveAthlete",
-      title: "Adaptive Athlete",
-      options: [
-        { value: "Adaptive Athletes", label: "Adaptive Athletes" },
-        { value: "Non-Adaptive Athletes", label: "Non-Adaptive Athletes" },
-      ],
-      allOptionLabel: "All Athletes",
-    },
-    {
-      id: "weightClass",
-      title: "Weight Class",
-      options: weightClassOptions.map((wc) => ({
-        value: wc,
-        label: `${wc.replace("kg", "")}kg`,
-      })),
-      allOptionLabel: "All Classes",
-    },
-    {
-      id: "club",
-      title: "Club",
-      options: [],
-      allOptionLabel: "All Clubs",
-      customContent: (
-        <ScrollView
-          style={[
-            styles.filterOptions,
-            { maxHeight: maxOptionsHeight },
-          ]}
-          bounces={false}
-          nestedScrollEnabled={true}
-        >
-          {/* Search bar */}
-          <View
-            style={[
-              styles.filterSearchContainer,
-              { borderBottomColor: colors.border },
-            ]}
-          >
-            <View
-              style={[
-                styles.filterSearchBar,
-                {
-                  backgroundColor: colors.borderBottom,
-                  borderColor: colors.border,
-                },
-              ]}
+  const sections = useMemo(
+    () =>
+      (modalTempFilters: Record<string, string>): FilterSection[] => [
+        {
+          id: "ageGroup",
+          title: "Age Group",
+          options: ageGroupOptions.map((ag) => ({ value: ag, label: ag })),
+          allOptionLabel: "All Age Groups",
+        },
+        {
+          id: "gender",
+          title: "Gender",
+          options: [
+            { value: "Male", label: "Male" },
+            { value: "Female", label: "Female" },
+          ],
+          allOptionLabel: "All Genders",
+        },
+        {
+          id: "adaptiveAthlete",
+          title: "Adaptive Athlete",
+          options: [
+            { value: "Adaptive Athletes", label: "Adaptive Athletes" },
+            { value: "Non-Adaptive Athletes", label: "Non-Adaptive Athletes" },
+          ],
+          allOptionLabel: "All Athletes",
+        },
+        {
+          id: "weightClass",
+          title: "Weight Class",
+          options: getWeightClassOptions(modalTempFilters).map((wc) => ({
+            value: wc,
+            label: `${wc.replace("kg", "")}kg`,
+          })),
+          allOptionLabel: "All Classes",
+        },
+        {
+          id: "club",
+          title: "Club",
+          options: [],
+          allOptionLabel: "All Clubs",
+          customContent: ({ tempFilters, setTempFilters }) => (
+            <ScrollView
+              style={[styles.filterOptions, { maxHeight: maxOptionsHeight }]}
+              bounces={false}
+              nestedScrollEnabled={true}
             >
-              <IconSymbol
-                name={
-                  Platform.select({
-                    ios: "magnifyingglass",
-                    android: "search",
-                  }) || "magnifyingglass"
-                }
-                size={16}
-                color={colors.secondaryText}
-              />
-              <TextInput
+              <View
                 style={[
-                  styles.filterSearchInput,
-                  { color: colors.text },
+                  styles.filterSearchContainer,
+                  { borderBottomColor: colors.border },
                 ]}
-                placeholder="Search clubs..."
-                placeholderTextColor={colors.secondaryText}
-                value={clubSearchQuery}
-                onChangeText={setClubSearchQuery}
-              />
-              {clubSearchQuery.length > 0 && (
-                <Pressable
-                  onPress={() => setClubSearchQuery("")}
-                  style={({ pressed }) => [
-                    styles.clearButton,
-                    pressed && { opacity: 0.7 },
+              >
+                <View
+                  style={[
+                    styles.filterSearchBar,
+                    {
+                      backgroundColor: colors.borderBottom,
+                      borderColor: colors.border,
+                    },
                   ]}
                 >
                   <IconSymbol
                     name={
                       Platform.select({
-                        ios: "xmark.circle.fill",
-                        android: "close",
-                      }) || "xmark.circle.fill"
+                        ios: "magnifyingglass",
+                        android: "search",
+                      }) || "magnifyingglass"
                     }
                     size={16}
                     color={colors.secondaryText}
                   />
-                </Pressable>
-              )}
-            </View>
-          </View>
-
-          {/* All Clubs option */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterOption,
-              { borderBottomColor: colors.border },
-              tempFilters.club === "" && {
-                backgroundColor: colors.pressed,
-              },
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={() => {
-              setTempFilters((prev) => ({ ...prev, club: "" }));
-            }}
-          >
-            <ThemedText
-              style={[
-                styles.filterOptionText,
-                { color: colors.text },
-                tempFilters.club === "" && { color: colors.link },
-              ]}
-            >
-              All Clubs
-            </ThemedText>
-            {tempFilters.club === "" && (
-              <IconSymbol
-                name="checkmark"
-                size={16}
-                color={colors.link}
-              />
-            )}
-          </Pressable>
-
-          {/* Favorites option */}
-          {starredClubs.length > 0 && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterOption,
-                { borderBottomColor: colors.border },
-                tempFilters.club === STARRED_CLUBS_FILTER && {
-                  backgroundColor: colors.pressed,
-                },
-                pressed && { opacity: 0.8 },
-              ]}
-              onPress={() => {
-                setTempFilters((prev) => ({ ...prev, club: STARRED_CLUBS_FILTER }));
-              }}
-            >
-              <View style={styles.filterOptionContent}>
-                <ThemedText
-                  style={[
-                    styles.filterOptionText,
-                    { color: colors.text },
-                    tempFilters.club === STARRED_CLUBS_FILTER && {
-                      color: colors.link,
-                    },
-                  ]}
-                >
-                  Favorites
-                </ThemedText>
-                <IconSymbol
-                  name="star.fill"
-                  size={22}
-                  color="#FFB340"
-                />
+                  <TextInput
+                    style={[styles.filterSearchInput, { color: colors.text }]}
+                    placeholder="Search clubs..."
+                    placeholderTextColor={colors.secondaryText}
+                    value={clubSearchQuery}
+                    onChangeText={setClubSearchQuery}
+                  />
+                  {clubSearchQuery.length > 0 && (
+                    <Pressable
+                      onPress={() => setClubSearchQuery("")}
+                      style={({ pressed }) => [
+                        styles.clearButton,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <IconSymbol
+                        name={
+                          Platform.select({
+                            ios: "xmark.circle.fill",
+                            android: "close",
+                          }) || "xmark.circle.fill"
+                        }
+                        size={16}
+                        color={colors.secondaryText}
+                      />
+                    </Pressable>
+                  )}
+                </View>
               </View>
-              {tempFilters.club === STARRED_CLUBS_FILTER && (
-                <IconSymbol
-                  name="checkmark"
-                  size={16}
-                  color={colors.link}
-                />
-              )}
-            </Pressable>
-          )}
 
-          {/* Club list */}
-          {sortedClubOptions
-            .filter((club) =>
-              club
-                .toLowerCase()
-                .includes(clubSearchQuery.toLowerCase()),
-            )
-            .map((club) => (
               <Pressable
-                key={club}
                 style={({ pressed }) => [
                   styles.filterOption,
                   { borderBottomColor: colors.border },
-                  tempFilters.club === club && {
+                  tempFilters.club === "" && {
                     backgroundColor: colors.pressed,
                   },
                   pressed && { opacity: 0.8 },
                 ]}
                 onPress={() => {
-                  setTempFilters((prev) => ({ ...prev, club }));
+                  setTempFilters((prev) => ({ ...prev, club: "" }));
                 }}
               >
                 <ThemedText
                   style={[
                     styles.filterOptionText,
                     { color: colors.text },
-                    tempFilters.club === club && {
-                      color: colors.link,
-                    },
+                    tempFilters.club === "" && { color: colors.link },
                   ]}
-                  numberOfLines={2}
                 >
-                  {club}
+                  All Clubs
                 </ThemedText>
-                <View style={styles.filterOptionRight}>
-                  {tempFilters.club === club && (
-                    <IconSymbol
-                      name="checkmark"
-                      size={16}
-                      color={colors.link}
-                    />
-                  )}
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onToggleStarredClub(club);
-                    }}
-                    style={styles.starButton}
-                  >
-                    <IconSymbol
-                      name={
-                        starredClubs.includes(club)
-                          ? "star.fill"
-                          : "star"
-                      }
-                      size={22}
-                      color={
-                        starredClubs.includes(club)
-                          ? "#FFB340"
-                          : colors.secondaryText
-                      }
-                    />
-                  </Pressable>
-                </View>
+                {tempFilters.club === "" && (
+                  <IconSymbol name="checkmark" size={16} color={colors.link} />
+                )}
               </Pressable>
-            ))}
-        </ScrollView>
-      ),
-    },
-  ];
+
+              {starredClubs.length > 0 && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.filterOption,
+                    { borderBottomColor: colors.border },
+                    tempFilters.club === STARRED_CLUBS_FILTER && {
+                      backgroundColor: colors.pressed,
+                    },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => {
+                    setTempFilters((prev) => ({
+                      ...prev,
+                      club: STARRED_CLUBS_FILTER,
+                    }));
+                  }}
+                >
+                  <View style={styles.filterOptionContent}>
+                    <ThemedText
+                      style={[
+                        styles.filterOptionText,
+                        { color: colors.text },
+                        tempFilters.club === STARRED_CLUBS_FILTER && {
+                          color: colors.link,
+                        },
+                      ]}
+                    >
+                      Favorites
+                    </ThemedText>
+                    <IconSymbol name="star.fill" size={22} color="#FFB340" />
+                  </View>
+                  {tempFilters.club === STARRED_CLUBS_FILTER && (
+                    <IconSymbol name="checkmark" size={16} color={colors.link} />
+                  )}
+                </Pressable>
+              )}
+
+              {sortedClubOptions
+                .filter((club) =>
+                  club.toLowerCase().includes(clubSearchQuery.toLowerCase()),
+                )
+                .map((club) => (
+                  <Pressable
+                    key={club}
+                    style={({ pressed }) => [
+                      styles.filterOption,
+                      { borderBottomColor: colors.border },
+                      tempFilters.club === club && {
+                        backgroundColor: colors.pressed,
+                      },
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={() => {
+                      setTempFilters((prev) => ({ ...prev, club }));
+                    }}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.filterOptionText,
+                        { color: colors.text },
+                        tempFilters.club === club && {
+                          color: colors.link,
+                        },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {club}
+                    </ThemedText>
+                    <View style={styles.filterOptionRight}>
+                      {tempFilters.club === club && (
+                        <IconSymbol
+                          name="checkmark"
+                          size={16}
+                          color={colors.link}
+                        />
+                      )}
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          onToggleStarredClub(club);
+                        }}
+                        style={styles.starButton}
+                      >
+                        <IconSymbol
+                          name={starredClubs.includes(club) ? "star.fill" : "star"}
+                          size={22}
+                          color={
+                            starredClubs.includes(club)
+                              ? "#FFB340"
+                              : colors.secondaryText
+                          }
+                        />
+                      </Pressable>
+                    </View>
+                  </Pressable>
+                ))}
+            </ScrollView>
+          ),
+        },
+      ],
+    [
+      ageGroupOptions,
+      clubSearchQuery,
+      colors.border,
+      colors.borderBottom,
+      colors.link,
+      colors.pressed,
+      colors.secondaryText,
+      colors.text,
+      maxOptionsHeight,
+      onToggleStarredClub,
+      sortedClubOptions,
+      starredClubs,
+      visible,
+    ],
+  );
 
   return (
     <GenericFilterModal
@@ -544,11 +504,11 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
       onClose={onClose}
       sections={sections}
       filters={{
-        ageGroup: tempFilters.ageGroup,
-        gender: tempFilters.gender,
-        adaptiveAthlete: tempFilters.adaptiveAthlete,
-        weightClass: tempFilters.weightClass,
-        club: tempFilters.club,
+        ageGroup: ageGroupFilter,
+        gender: genderFilter,
+        adaptiveAthlete: adaptiveAthleteFilter,
+        weightClass: weightClassFilter,
+        club: clubFilter,
       }}
       onApplyFilters={(filters) => {
         onApplyFilters({
@@ -558,16 +518,9 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
           adaptiveAthlete: filters.adaptiveAthlete,
           gender: filters.gender,
         });
-        setTempFilters({
-          weightClass: filters.weightClass,
-          club: filters.club,
-          ageGroup: filters.ageGroup,
-          adaptiveAthlete: filters.adaptiveAthlete,
-          gender: filters.gender,
-        });
       }}
       onResetFilters={onResetFilters}
-      resultCount={tempFilteredAthleteCount}
+      resultCount={getFilteredAthleteCount}
       resultLabel="athletes"
     />
   );

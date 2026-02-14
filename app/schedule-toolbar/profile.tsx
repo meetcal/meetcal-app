@@ -121,13 +121,14 @@ export default function ProfileScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: "",
+          headerTitle: "My Profile",
           headerTintColor: colors.text,
           headerBackTitle: "Back",
           headerStyle: {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -143,10 +144,6 @@ export default function ProfileScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <ThemedText style={[styles.title, { color: colors.text }]}>
-          My Profile
-        </ThemedText>
-
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           {renderField("First Name", user?.firstName || "", "firstName")}
           {divider}

@@ -198,11 +198,13 @@ export default function SessionDetailsScreen() {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: 16 }]}
+        contentInsetAdjustmentBehavior="automatic"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

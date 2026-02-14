@@ -331,23 +331,6 @@ export default function StartListScreen() {
     loadStarredClubs();
   }, []);
 
-  const clubOptions = useMemo(
-    () => Array.from(new Set(athletes.map((a) => a.club))).sort(),
-    [athletes],
-  );
-
-  const sortedClubOptions = useMemo(() => {
-    return [...clubOptions].sort((a, b) => {
-      const aIsStarred = starredClubs.includes(a);
-      const bIsStarred = starredClubs.includes(b);
-
-      if (aIsStarred && !bIsStarred) return -1;
-      if (!aIsStarred && bIsStarred) return 1;
-
-      return a.localeCompare(b);
-    });
-  }, [clubOptions, starredClubs]);
-
   const renderListItem = useCallback(
     ({ item }: { item: LiftResult }) => (
       <AthleteItem
@@ -611,27 +594,6 @@ export default function StartListScreen() {
       ],
     );
   };
-
-  // Update the age group options
-  const ageGroupOptions = [
-    "U13",
-    "U15",
-    "U17",
-    "Junior",
-    "Senior",
-    "Masters 35",
-    "Masters 40",
-    "Masters 45",
-    "Masters 50",
-    "Masters 55",
-    "Masters 60",
-    "Masters 65",
-    "Masters 70",
-    "Masters 75",
-    "Masters 80",
-    "Masters 85",
-    "Masters 90+",
-  ];
 
   // Update apply handler
   const handleApplyFilters = (filters: {
@@ -1222,16 +1184,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     flexShrink: 1,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  modalContent: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginHorizontal: 16,
-    maxHeight: "80%",
   },
   searchContainer: {
     marginBottom: 6,

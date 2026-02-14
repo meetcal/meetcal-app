@@ -29,24 +29,6 @@ interface SupabaseLiftResult {
   total: number | null;
 }
 
-// Add new interface for stats
-interface AthleteStats {
-  snatchMakeRate: number;
-  cjMakeRate: number;
-  totalSnatchAttempts: number;
-  totalCJAttempts: number;
-  snatchAttemptRates: {
-    attempt1: { makes: number; total: number; rate: number };
-    attempt2: { makes: number; total: number; rate: number };
-    attempt3: { makes: number; total: number; rate: number };
-  };
-  cjAttemptRates: {
-    attempt1: { makes: number; total: number; rate: number };
-    attempt2: { makes: number; total: number; rate: number };
-    attempt3: { makes: number; total: number; rate: number };
-  };
-}
-
 function AthleteStats({
   results,
   colors,
@@ -167,12 +149,15 @@ function AthleteStats({
       <ThemedText
         style={[styles.attemptRateValue, { color: getRateColor(rates.rate) }]}
       >
-        {rates.rate.toFixed(1)}%
-      </ThemedText>
+        {rates.rate.toFixed(1)}
+%
+</ThemedText>
       <ThemedText
         style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}
       >
-        {rates.makes}/{rates.total}
+        {rates.makes}
+/
+{rates.total}
       </ThemedText>
     </View>
   );
@@ -200,8 +185,9 @@ function AthleteStats({
                 { color: getRateColor(stats.snatchMakeRate) },
               ]}
             >
-              {stats.snatchMakeRate.toFixed(1)}%
-            </ThemedText>
+              {stats.snatchMakeRate.toFixed(1)}
+%
+</ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -241,8 +227,9 @@ function AthleteStats({
                 { color: getRateColor(stats.cjMakeRate) },
               ]}
             >
-              {stats.cjMakeRate.toFixed(1)}%
-            </ThemedText>
+              {stats.cjMakeRate.toFixed(1)}
+%
+</ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -374,6 +361,7 @@ export default function AthleteResultsScreen() {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -406,7 +394,9 @@ export default function AthleteResultsScreen() {
               <ThemedText
                 style={[styles.emptyStateText, { color: colors.secondaryText }]}
               >
-                No meet results found for {name}
+                No meet results found for 
+{' '}
+{name}
               </ThemedText>
             </View>
           </View>
@@ -429,7 +419,9 @@ export default function AthleteResultsScreen() {
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
-                    Date: {new Date(result.date).toLocaleDateString()}
+                    Date: 
+{' '}
+{new Date(result.date).toLocaleDateString()}
                   </ThemedText>
                   <ThemedText
                     style={[
@@ -486,8 +478,11 @@ export default function AthleteResultsScreen() {
 
                 <View style={styles.section}>
                   <ThemedText style={styles.total}>
-                    {result.snatch_best ?? "—"}/{result.cj_best ?? "—"}/
-                    {result.total ?? "—"}
+                    {result.snatch_best ?? "—"}
+/
+{result.cj_best ?? "—"}
+/
+{result.total ?? "—"}
                   </ThemedText>
                 </View>
               </View>

@@ -1,7 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import { LiftResult } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   AthleteAttemptEstimate,
@@ -10,7 +10,7 @@ import {
 } from "@/lib/attempt-estimator";
 import { supabase } from "@/lib/supabase";
 import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -27,21 +27,13 @@ export default function AttemptEstimatorScreen() {
     meet: string;
   }>();
 
-  const [athletes, setAthletes] = useState<LiftResult[]>([]);
-  const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(
-    [],
-  );
   const [estimates, setEstimates] = useState<AthleteAttemptEstimate[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAthletes, setExpandedAthletes] = useState<Set<string>>(
     new Set(),
   );
 
-  useEffect(() => {
-    loadData();
-  }, [params.sessionNumber, params.platform, params.meet]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // Load session athletes
@@ -71,8 +63,6 @@ export default function AttemptEstimatorScreen() {
         }),
       );
 
-      setAthletes(loadedAthletes);
-
       // Load all historical results for these athletes
       const athleteNames = loadedAthletes.map((a) => a.name);
 
@@ -83,8 +73,6 @@ export default function AttemptEstimatorScreen() {
           .in("name", athleteNames);
 
         if (resultsError) throw resultsError;
-
-        setAthleteResults(resultsData || []);
 
         // Calculate estimates
         const calculatedEstimates = calculateEstimates(
@@ -98,7 +86,11 @@ export default function AttemptEstimatorScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.sessionNumber, params.platform, params.meet]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const toggleAthlete = (athleteId: string) => {
     const newExpanded = new Set(expandedAthletes);
@@ -147,6 +139,7 @@ export default function AttemptEstimatorScreen() {
           headerShown: true,
           headerTitle: "Attempt Estimator",
           headerBackTitle: "Back",
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -209,8 +202,12 @@ export default function AttemptEstimatorScreen() {
                         { color: colors.secondaryText },
                       ]}
                     >
-                      Snatch: {estimate.snatchAttemptsOut} attempts out
-                    </ThemedText>
+                      Snatch: 
+{' '}
+{estimate.snatchAttemptsOut}
+{' '}
+attempts out
+</ThemedText>
                   ) : (
                     <ThemedText
                       style={[
@@ -230,8 +227,12 @@ export default function AttemptEstimatorScreen() {
                         { color: colors.secondaryText },
                       ]}
                     >
-                      CJ: {estimate.cjAttemptsOut} attempts out
-                    </ThemedText>
+                      CJ: 
+{' '}
+{estimate.cjAttemptsOut}
+{' '}
+attempts out
+</ThemedText>
                   ) : (
                     <ThemedText
                       style={[
