@@ -58,14 +58,7 @@ export default function ClubMeetsListScreen() {
     };
   }, []);
 
-  // Load athletes and meets on mount
-  useEffect(() => {
-    if (club) {
-      loadAthletes();
-    }
-  }, [club]);
-
-  const loadAthletes = async () => {
+  const loadAthletes = useCallback(async () => {
     if (!club) return;
 
     setIsLoading(true);
@@ -87,7 +80,14 @@ export default function ClubMeetsListScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [club]);
+
+  // Load athletes and meets on mount
+  useEffect(() => {
+    if (club) {
+      loadAthletes();
+    }
+  }, [club, loadAthletes]);
 
   // Get unique meets from athletes
   const allMeets = Array.from(
@@ -163,12 +163,16 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            No meets found for {club}
+            No meets found for 
+{' '}
+{club}
           </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
           >
-            Athletes: {athletesInClub.length}
+            Athletes: 
+{' '}
+{athletesInClub.length}
           </ThemedText>
         </View>
       );

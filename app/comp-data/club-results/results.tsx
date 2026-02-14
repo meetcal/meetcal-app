@@ -11,7 +11,7 @@ import { posthog } from "@/lib/posthog";
 import type { ClubMeetStats } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -68,14 +68,7 @@ export default function MeetResultsByClubScreen() {
     };
   }, []);
 
-  // Load stats on mount
-  useEffect(() => {
-    if (club && meet) {
-      loadStats();
-    }
-  }, [club, meet]);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     if (!club || !meet) return;
 
     setIsLoading(true);
@@ -97,7 +90,14 @@ export default function MeetResultsByClubScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [club, meet]);
+
+  // Load stats on mount
+  useEffect(() => {
+    if (club && meet) {
+      loadStats();
+    }
+  }, [club, meet, loadStats]);
 
   const generateImage = async () => {
     if (
@@ -501,6 +501,8 @@ const ShareableRecapView = React.forwardRef<
     </View>
   );
 });
+
+ShareableRecapView.displayName = "ShareableRecapView";
 
 // Shareable Stat Card
 function ShareableStatCard({

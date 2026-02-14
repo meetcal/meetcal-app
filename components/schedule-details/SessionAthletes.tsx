@@ -8,7 +8,6 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
 import { supabase } from "@/lib/supabase";
 import { useAuthGuard } from "@/utils/authGuard";
-import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -136,7 +135,7 @@ async function getAthleteBestsBatch(
     });
 
     return bestsByName;
-  } catch (error) {
+  } catch {
     // Fall back to locally cached lifting results when network fetch fails.
     await Promise.all(
       uniqueNames.map(async (name) => {
@@ -181,18 +180,14 @@ export default function SessionAthletes({
   type SortKey = "entryTotal" | "snatch" | "cj" | "total";
   type SortDirection = "asc" | "desc";
 
-  const { user } = useUser();
   const router = useRouter();
   const colors = useAppColors();
-  const { selectedMeet, meetDetails } = useSelectedMeet();
+  const { selectedMeet } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>(
-    {},
-  );
-  const [athleteWarmups, setAthleteWarmups] = useState<Record<string, boolean>>(
     {},
   );
   const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
@@ -202,7 +197,7 @@ export default function SessionAthletes({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
-  const loadAthletes = async () => {
+  const loadAthletes = useCallback(async () => {
     setLoading(true);
     try {
       const sessionAthletes = await getSessionAthletes(
@@ -215,7 +210,7 @@ export default function SessionAthletes({
       // Initialize loading states for each athlete
       const newLoadingBests: Record<string, boolean> = {};
       const athleteNames: string[] = [];
-      for (const [_, platformAthletes] of Object.entries(sessionAthletes)) {
+      for (const [, platformAthletes] of Object.entries(sessionAthletes)) {
         for (const athlete of platformAthletes) {
           newLoadingBests[athlete.name] = true;
           athleteNames.push(athlete.name);
@@ -243,22 +238,9 @@ export default function SessionAthletes({
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionNumber, platform, selectedMeet]);
 
   // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    const timeZoneId = meetDetails?.time.timeZoneIdentifier || "America/Denver";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: timeZoneId,
-        timeZoneName: "short",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
-  }, [meetDetails?.time.timeZoneIdentifier]);
-
   const getSortValue = useCallback(
     (athlete: SessionAthlete) => {
       if (sortKey === "entryTotal") {
@@ -358,9 +340,10 @@ export default function SessionAthletes({
     [],
   );
 
+   
   useEffect(() => {
     loadAthletes();
-  }, [sessionNumber, platform, refreshKey, selectedMeet]);
+  }, [loadAthletes, refreshKey]);
 
   if (!athletes[platform]?.length) {
     if (loading) {
@@ -517,7 +500,13 @@ export default function SessionAthletes({
                     { color: colors.secondaryText },
                   ]}
                 >
-                  Age: {athlete.age} | Weight Class: {athlete.weightClass}
+                  Age: 
+{' '}
+{athlete.age}
+{' '}
+| Weight Class: 
+{' '}
+{athlete.weightClass}
                 </ThemedText>
                 <ThemedText
                   style={[
@@ -774,6 +763,11 @@ export default function SessionAthletes({
 }
 
 const styles = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: "hidden",
+  },
   athletesContainer: {
     marginTop: 16,
   },

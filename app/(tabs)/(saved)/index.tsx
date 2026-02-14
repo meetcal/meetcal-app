@@ -96,7 +96,7 @@ export default function SavedScreen() {
     loadSavedSessionsRef.current = loadSavedSessions;
   }, [loadSavedSessions]);
 
-  const handleResetSessions = () => {
+  const handleResetSessions = useCallback(() => {
     // Check authentication first
     const authResult = requireAuth({
       feature: "delete-sessions",
@@ -120,9 +120,8 @@ export default function SavedScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              let success = false;
               if (typeof resetAllSessions === "function") {
-                success = await resetAllSessions(selectedMeet ?? undefined);
+                await resetAllSessions(selectedMeet ?? undefined);
               }
               const STORAGE_KEYS = [
                 getSavedSessionsKey(user!.id),
@@ -168,7 +167,7 @@ export default function SavedScreen() {
         },
       ],
     );
-  };
+  }, [requireAuth, user, resetAllSessions, selectedMeet]);
 
   const timeZoneAbbr = useMemo(() => {
     if (!meetDetails?.time.timeZoneIdentifier) return "";
@@ -296,7 +295,7 @@ export default function SavedScreen() {
     return Array.from(letterSet).sort();
   }, [savedSessions, selectedMeet]);
 
-  const handleSaveToCalendar = async () => {
+  const handleSaveToCalendar = useCallback(async () => {
     // 1. Check authentication first
     const authResult = requireAuth({
       feature: "add-to-calendar",
@@ -430,7 +429,7 @@ export default function SavedScreen() {
         },
       ],
     );
-  };
+  }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames]);
 
   // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
@@ -604,6 +603,7 @@ export default function SavedScreen() {
     });
   }, [
     colors.border,
+    colors.danger,
     colors.secondaryText,
     colors.text,
     handleResetSessions,

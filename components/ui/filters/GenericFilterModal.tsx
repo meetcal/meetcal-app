@@ -25,18 +25,28 @@ export interface FilterSection {
   title: string;
   options: FilterOption[];
   allOptionLabel?: string;
-  customContent?: React.ReactNode;
+  customContent?:
+    | React.ReactNode
+    | ((context: {
+        tempFilters: Record<string, string>;
+        setTempFilters: React.Dispatch<
+          React.SetStateAction<Record<string, string>>
+        >;
+        collapseSection: () => void;
+      }) => React.ReactNode);
   dependsOn?: string[]; // IDs of filters that, when changed, should reset this filter to first option
 }
 
 interface GenericFilterModalProps {
   visible: boolean;
   onClose: () => void;
-  sections: FilterSection[] | ((tempFilters: Record<string, string>) => FilterSection[]);
+  sections:
+    | FilterSection[]
+    | ((tempFilters: Record<string, string>) => FilterSection[]);
   filters: Record<string, string>;
   onApplyFilters: (filters: Record<string, string>) => void;
   onResetFilters: () => void;
-  resultCount?: number;
+  resultCount?: number | ((tempFilters: Record<string, string>) => number);
   resultLabel?: string;
 }
 
@@ -70,9 +80,8 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   }, [visible]);
 
   // Get current sections (either static or dynamically generated)
-  const currentSections = typeof sections === 'function'
-    ? sections(tempFilters)
-    : sections;
+  const currentSections =
+    typeof sections === "function" ? sections(tempFilters) : sections;
 
   // Auto-update dependent filters when their options change OR when dependencies change
   React.useEffect(() => {
@@ -83,10 +92,12 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     currentSections.forEach((section) => {
       const currentValue = tempFilters[section.id];
       const firstOptionValue = section.options[0]?.value || "";
+      const shouldValidateAgainstOptions =
+        section.options.length > 0 || !section.customContent;
 
       if (section.dependsOn && section.dependsOn.length > 0) {
         const dependencyChanged = section.dependsOn.some(
-          (depId) => prevTempFiltersRef.current[depId] !== tempFilters[depId]
+          (depId) => prevTempFiltersRef.current[depId] !== tempFilters[depId],
         );
 
         if (dependencyChanged) {
@@ -109,7 +120,11 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
         }
       }
 
-      if (currentValue && !section.options.some(opt => opt.value === currentValue)) {
+      if (
+        shouldValidateAgainstOptions &&
+        currentValue &&
+        !section.options.some((opt) => opt.value === currentValue)
+      ) {
         updates[section.id] = firstOptionValue;
       }
     });
@@ -120,7 +135,6 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
     // Update ref with current values
     prevTempFiltersRef.current = { ...tempFilters };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSections, tempFilters, visible]);
 
   const handleApply = () => {
@@ -142,6 +156,9 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     setExpandedSection(null);
     onClose();
   };
+
+  const resolvedResultCount =
+    typeof resultCount === "function" ? resultCount(tempFilters) : resultCount;
 
   const getDisplayValue = (section: FilterSection) => {
     const value = tempFilters[section.id] || "";
@@ -200,7 +217,15 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
                   {expandedSection === section.id &&
                     (section.customContent ? (
-                      section.customContent
+                      typeof section.customContent === "function" ? (
+                        section.customContent({
+                          tempFilters,
+                          setTempFilters,
+                          collapseSection: () => setExpandedSection(null),
+                        })
+                      ) : (
+                        section.customContent
+                      )
                     ) : (
                       <FilterModalOptions
                         options={section.options}
@@ -224,14 +249,14 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
           <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
             <View style={styles.modalFooterContent}>
               <View style={styles.modalFooterRight}>
-                {resultCount !== undefined && (
+                {resolvedResultCount !== undefined && (
                   <ThemedText
                     style={[
                       styles.resultCount,
                       { color: colors.secondaryText },
                     ]}
                   >
-                    {resultCount} {resultLabel}
+                    {resolvedResultCount} {resultLabel}
                   </ThemedText>
                 )}
                 <Pressable
