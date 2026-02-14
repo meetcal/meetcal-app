@@ -2,19 +2,9 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon, getCloseIcon } from "@/lib/start-list-utils";
+import { ActionModalProps } from "@/types/start-list";
 import React from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
-
-interface ActionModalProps {
-  visible: boolean;
-  onClose: () => void;
-  athleteCount: number;
-  isSubscribed: boolean | null;
-  onSaveAll: () => void;
-  onSaveToCalendar: () => void;
-  onCreateShareableSchedule: () => void;
-  onDownloadShareableSchedule: () => void;
-}
 
 const ActionModal: React.FC<ActionModalProps> = ({
   visible,

@@ -16,17 +16,10 @@ import {
   RecordsData,
   WeightClassRecord,
 } from "@/types/records";
+import { Filters, Gender } from "@/types/wso-records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
-
-type Gender = "Men" | "Women";
-
-interface Filters {
-  wso: string;
-  gender: Gender;
-  ageGroup: string;
-}
 
 export default function RecordsScreen() {
   const colors = useAppColors();

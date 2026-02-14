@@ -11,15 +11,10 @@ import {
   IntlRanking,
 } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
+import { Filters } from "@/types/rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
-
-interface Filters {
-  meet: string;
-  age_category: string;
-  gender: string;
-}
 
 export default function RecordsScreen() {
   const colors = useAppColors();

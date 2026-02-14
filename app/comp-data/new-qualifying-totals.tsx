@@ -12,19 +12,10 @@ import {
   QualifyingTotalsData,
 } from "@/lib/database/fetch-qualifying-totals";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
+import { Filters } from "@/types/qual_totals";
 import { Stack } from "expo-router";
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-
-type Gender = "Men" | "Women";
-type Event = string;
-type AgeGroup = string;
-
-interface Filters {
-  event: Event;
-  gender: Gender;
-  ageGroup: AgeGroup;
-}
 
 export default function QualifyingTotalsScreen() {
   const colors = useAppColors();

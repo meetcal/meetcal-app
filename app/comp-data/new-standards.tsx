@@ -8,27 +8,11 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useFetchData } from "@/hooks/useFetchData";
 import { useFilterState } from "@/hooks/useFilterState";
 import { fetchStandards } from "@/lib/database/fetch-standards";
+import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
 import { Stack } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
-type Gender = "men" | "women";
-type AgeGroup = "senior" | "junior" | "youth" | "u15";
-
-interface Filters {
-  gender: Gender;
-  ageGroup: AgeGroup;
-}
-
-interface StandardsData {
-  [ageGroup: string]: {
-    [gender: string]: {
-      weightClass: string;
-      a: number;
-      b: number;
-    }[];
-  };
-}
 
 export default function NewStandardsScreen() {
   const colors = useAppColors();

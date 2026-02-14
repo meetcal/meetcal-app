@@ -4,30 +4,12 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
 import { supabase } from "@/lib/supabase";
+import { SupabaseLiftResult } from "@/types/athlete-results";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// First, add the interface for Supabase results
-interface SupabaseLiftResult {
-  id: number;
-  event_id: string;
-  meet: string;
-  date: string;
-  name: string;
-  age: number;
-  body_weight: number;
-  snatch1: number | null;
-  snatch2: number | null;
-  snatch3: number | null;
-  snatch_best: number | null;
-  cj1: number | null;
-  cj2: number | null;
-  cj3: number | null;
-  cj_best: number | null;
-  total: number | null;
-}
 
 function AthleteStats({
   results,

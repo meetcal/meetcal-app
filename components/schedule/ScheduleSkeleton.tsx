@@ -1,12 +1,9 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { ScheduleSkeletonProps } from "@/types/schedule";
 import { useCallback, useEffect, useRef } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";
-
-interface ScheduleSkeletonProps {
-  label?: string;
-}
 
 export function ScheduleSkeleton({
   label = "Loading schedule...",

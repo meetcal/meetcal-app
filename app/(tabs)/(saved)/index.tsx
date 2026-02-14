@@ -9,6 +9,7 @@ import { MeetName, isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SavedSession } from "@/hooks/useSavedSessions";
 import { fetchSchedule } from "@/lib/database/queries";
+import { LegacySavedSession, SessionScheduleLookup } from "@/types/saved";
 import { Schedule as ScheduleType } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
@@ -48,19 +49,6 @@ declare module "@/hooks/useSavedSessions" {
     id: string; // Now we ensure ID is always present
   }
 }
-
-// Add a type that extends SavedSession to include the legacy athleteName property
-interface LegacySavedSession extends SavedSession {
-  athleteName?: string;
-}
-
-type SessionScheduleLookup = {
-  displayDate: string;
-  fullDate: string;
-  startTime: string;
-  weighInTime: string;
-  weightClass: string;
-};
 
 export default function SavedScreen() {
   const { user } = useUser();

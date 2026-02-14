@@ -2,6 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { ImagePreviewModalProps } from "@/types/start-list";
 import * as Sharing from "expo-sharing";
 import React from "react";
 import {
@@ -15,15 +16,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-interface ImagePreviewModalProps {
-  visible: boolean;
-  whiteImageUri: string | null;
-  transparentImageUri: string | null;
-  selectedIndex: number;
-  onChangeIndex: (index: number) => void;
-  onClose: () => void;
-}
 
 export default function ImagePreviewModal({
   visible,

@@ -19,3 +19,57 @@ export type DaySchedule = {
 };
 
 export type Schedule = DaySchedule[]; 
+
+export interface DayViewProps {
+  day: DaySchedule;
+  timeZone: string;
+  onRefreshComplete?: () => Promise<void>;
+  refreshing: boolean;
+}
+
+export interface Meet {
+  id: string;
+  name: string;
+  dates?: {
+    start: string;
+    end?: string;
+  };
+}
+
+export interface MeetSelectionModalProps {
+  visible: boolean;
+  onClose: () => void;
+  meets: Meet[];
+  selectedMeet: string | null;
+  onSelectMeet: (meetName: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+  isRefreshing: boolean;
+}
+
+export interface OnboardingViewProps {
+  visible: boolean;
+  onComplete: () => void;
+}
+
+export interface PageIndicatorProps {
+  count: number;
+  currentPage: number;
+  onPageChange?: (page: number) => void;
+}
+
+export interface ScheduleSkeletonProps {
+  label?: string;
+}
+
+export interface SessionViewProps {
+  session: Session;
+  timeZone: string;
+}
+
+export interface VersionAnnouncementProps {
+  announcement?: {
+    title: string;
+    message: string;
+    features?: string[];
+  };
+}
