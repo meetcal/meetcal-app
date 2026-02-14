@@ -5,7 +5,7 @@ import {
   AthleteItem,
   SessionDetails,
 } from "@/components/start-list/AthleteItem";
-import FilterModal from "@/components/start-list/FilterModal";
+import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -1095,7 +1095,7 @@ export default function StartListScreen() {
         />
       </ExpandedIdProvider>
 
-      <FilterModal
+      <StartListFilterModal
         visible={showFilterModal}
         onClose={() => setShowFilterModal(false)}
         athletes={athletes}

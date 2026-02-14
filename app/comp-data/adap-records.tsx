@@ -121,6 +121,7 @@ export default function AdaptiveRecordsScreen() {
           animation: "slide_from_right",
           headerStyle: { backgroundColor: colors.background },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 

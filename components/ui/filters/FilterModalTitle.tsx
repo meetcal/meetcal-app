@@ -1,8 +1,8 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { IconSymbol } from "./IconSymbol";
-import { ThemedText } from "./ThemedText";
+import { IconSymbol } from "../IconSymbol";
+import { ThemedText } from "../ThemedText";
 
 interface FilterModalTitleProps {
   title: string;

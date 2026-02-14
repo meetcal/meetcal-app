@@ -1,8 +1,8 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { IconSymbol } from "./IconSymbol";
-import { ThemedText } from "./ThemedText";
+import { IconSymbol } from "../IconSymbol";
+import { ThemedText } from "../ThemedText";
 
 interface FilterOption {
   value: string;
@@ -26,7 +26,7 @@ const FilterModalOptions = ({
   selectedValue,
   onSelect,
   maxHeight,
-  allOptionLabel = "All",
+  allOptionLabel,
   renderCustomContent,
 }: FilterModalOptionsProps) => {
   const colors = useAppColors();
@@ -37,31 +37,33 @@ const FilterModalOptions = ({
       bounces={false}
       nestedScrollEnabled={true}
     >
-      {/* "All" option */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.filterOption,
-          { borderBottomColor: colors.border },
-          selectedValue === "" && {
-            backgroundColor: colors.pressed,
-          },
-          pressed && { opacity: 0.8 },
-        ]}
-        onPress={() => onSelect("")}
-      >
-        <ThemedText
-          style={[
-            styles.filterOptionText,
-            { color: colors.text },
-            selectedValue === "" && { color: colors.link },
+      {/* "All" option - only show if allOptionLabel is provided */}
+      {allOptionLabel !== undefined && (
+        <Pressable
+          style={({ pressed }) => [
+            styles.filterOption,
+            { borderBottomColor: colors.border },
+            selectedValue === "" && {
+              backgroundColor: colors.pressed,
+            },
+            pressed && { opacity: 0.8 },
           ]}
+          onPress={() => onSelect("")}
         >
-          {allOptionLabel}
-        </ThemedText>
-        {selectedValue === "" && (
-          <IconSymbol name="checkmark" size={16} color={colors.link} />
-        )}
-      </Pressable>
+          <ThemedText
+            style={[
+              styles.filterOptionText,
+              { color: colors.text },
+              selectedValue === "" && { color: colors.link },
+            ]}
+          >
+            {allOptionLabel}
+          </ThemedText>
+          {selectedValue === "" && (
+            <IconSymbol name="checkmark" size={16} color={colors.link} />
+          )}
+        </Pressable>
+      )}
 
       {/* Mapped options */}
       {options.map((option) => (
@@ -77,7 +79,7 @@ const FilterModalOptions = ({
           ]}
           onPress={() => onSelect(option.value)}
         >
-{renderCustomContent ? (
+          {renderCustomContent ? (
             renderCustomContent(option)
           ) : (
             <>

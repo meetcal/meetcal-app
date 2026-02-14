@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { fetchStandards } from "@/lib/database/fetch-standards";
@@ -8,8 +9,6 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,9 +34,6 @@ interface StandardsData {
   };
 }
 
-const windowHeight = Dimensions.get("window").height;
-const maxOptionsHeight = windowHeight * 0.4;
-
 export default function NewStandardsScreen() {
   const colors = useAppColors();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
@@ -46,9 +42,6 @@ export default function NewStandardsScreen() {
     ageGroup: "senior",
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<
-    "gender" | "ageGroup" | null
-  >(null);
   const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
   const [standards, setStandards] = useState<StandardsData | null>(null);
@@ -100,7 +93,15 @@ export default function NewStandardsScreen() {
   const handleApplyFilters = () => {
     setFilters(tempFilters);
     setShowFilterModal(false);
-    setExpandedSection(null);
+  };
+
+  const handleResetFilters = () => {
+    const resetFilters: Filters = {
+      gender: "men",
+      ageGroup: "senior",
+    };
+    setFilters(resetFilters);
+    setTempFilters(resetFilters);
   };
 
   const genderOptions: { id: Gender; label: string }[] = [
@@ -113,6 +114,21 @@ export default function NewStandardsScreen() {
     { id: "youth", label: "Youth" },
     { id: "junior", label: "Junior" },
     { id: "senior", label: "Senior" },
+  ];
+
+  const filterSections: FilterSection[] = [
+    {
+      id: "gender",
+      title: "Gender",
+      options: genderOptions.map((g) => ({ value: g.id, label: g.label })),
+      allOptionLabel: "All Genders",
+    },
+    {
+      id: "ageGroup",
+      title: "Age Group",
+      options: ageGroupOptions.map((a) => ({ value: a.id, label: a.label })),
+      allOptionLabel: "All Ages",
+    },
   ];
 
   if (isSubscriptionLoading) {
@@ -152,6 +168,7 @@ export default function NewStandardsScreen() {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -269,245 +286,27 @@ export default function NewStandardsScreen() {
         </View>
       </ScrollView>
 
-      <Modal
+      <GenericFilterModal
         visible={showFilterModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => {
-          setExpandedSection(null);
+        onClose={() => setShowFilterModal(false)}
+        sections={filterSections}
+        filters={{
+          gender: tempFilters.gender,
+          ageGroup: tempFilters.ageGroup,
+        }}
+        onApplyFilters={(newFilters) => {
+          const updatedFilters = {
+            gender: newFilters.gender as Gender,
+            ageGroup: newFilters.ageGroup as AgeGroup,
+          };
+          setFilters(updatedFilters);
+          setTempFilters(updatedFilters);
           setShowFilterModal(false);
         }}
-      >
-        <Pressable
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: colors.modalBackground },
-          ]}
-          onPress={() => {
-            setExpandedSection(null);
-            setShowFilterModal(false);
-          }}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            style={[
-              styles.modalContent,
-              {
-                backgroundColor: colors.card,
-                maxHeight: windowHeight * 0.8,
-              },
-            ]}
-          >
-            <View style={styles.modalScrollContent}>
-              <ScrollView bounces={false}>
-                <View
-                  style={[
-                    styles.filterSection,
-                    { borderBottomColor: colors.border },
-                  ]}
-                >
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.filterSectionButton,
-                      { borderBottomColor: colors.border },
-                      pressed && { opacity: 0.8 },
-                    ]}
-                    onPress={() =>
-                      setExpandedSection(
-                        expandedSection === "gender" ? null : "gender",
-                      )
-                    }
-                  >
-                    <View style={styles.filterSectionButtonContent}>
-                      <View>
-                        <ThemedText
-                          style={[
-                            styles.filterSectionLabel,
-                            { color: colors.secondaryText },
-                          ]}
-                        >
-                          Gender
-                        </ThemedText>
-                        <ThemedText
-                          style={[
-                            styles.filterSectionValue,
-                            { color: colors.text },
-                          ]}
-                        >
-                          {tempFilters.gender === "men" ? "Men" : "Women"}
-                        </ThemedText>
-                      </View>
-                      <IconSymbol
-                        name={
-                          expandedSection === "gender"
-                            ? "chevron.down"
-                            : "chevron.right"
-                        }
-                        size={16}
-                        color={colors.secondaryText}
-                      />
-                    </View>
-                  </Pressable>
-
-                  {expandedSection === "gender" && (
-                    <ScrollView style={styles.filterOptions} bounces={false}>
-                      {genderOptions.map((gender) => (
-                        <Pressable
-                          key={gender.id}
-                          style={({ pressed }) => [
-                            styles.filterOption,
-                            { borderBottomColor: colors.border },
-                            tempFilters.gender === gender.id && {
-                              backgroundColor: colors.pressed,
-                            },
-                            pressed && { opacity: 0.8 },
-                          ]}
-                          onPress={() => {
-                            setTempFilters((prev) => ({
-                              ...prev,
-                              gender: gender.id,
-                            }));
-                            setExpandedSection(null);
-                          }}
-                        >
-                          <ThemedText
-                            style={[
-                              styles.filterOptionText,
-                              { color: colors.text },
-                              tempFilters.gender === gender.id && {
-                                color: colors.link,
-                              },
-                            ]}
-                          >
-                            {gender.label}
-                          </ThemedText>
-                          {tempFilters.gender === gender.id && (
-                            <IconSymbol
-                              name="checkmark"
-                              size={16}
-                              color={colors.link}
-                            />
-                          )}
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  )}
-                </View>
-
-                <View style={styles.filterSection}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.filterSectionButton,
-                      pressed && { opacity: 0.8 },
-                    ]}
-                    onPress={() =>
-                      setExpandedSection(
-                        expandedSection === "ageGroup" ? null : "ageGroup",
-                      )
-                    }
-                  >
-                    <View style={styles.filterSectionButtonContent}>
-                      <View>
-                        <ThemedText
-                          style={[
-                            styles.filterSectionLabel,
-                            { color: colors.secondaryText },
-                          ]}
-                        >
-                          Age Group
-                        </ThemedText>
-                        <ThemedText
-                          style={[
-                            styles.filterSectionValue,
-                            { color: colors.text },
-                          ]}
-                        >
-                          {ageGroupOptions.find(
-                            (opt) => opt.id === tempFilters.ageGroup,
-                          )?.label || tempFilters.ageGroup}
-                        </ThemedText>
-                      </View>
-                      <IconSymbol
-                        name={
-                          expandedSection === "ageGroup"
-                            ? "chevron.down"
-                            : "chevron.right"
-                        }
-                        size={16}
-                        color={colors.secondaryText}
-                      />
-                    </View>
-                  </Pressable>
-
-                  {expandedSection === "ageGroup" && (
-                    <ScrollView
-                      style={[
-                        styles.filterOptions,
-                        { maxHeight: maxOptionsHeight },
-                      ]}
-                      bounces={false}
-                    >
-                      {ageGroupOptions.map((ageGroup) => (
-                        <Pressable
-                          key={ageGroup.id}
-                          style={({ pressed }) => [
-                            styles.filterOption,
-                            { borderBottomColor: colors.border },
-                            tempFilters.ageGroup === ageGroup.id && {
-                              backgroundColor: colors.pressed,
-                            },
-                            pressed && { opacity: 0.8 },
-                          ]}
-                          onPress={() => {
-                            setTempFilters((prev) => ({
-                              ...prev,
-                              ageGroup: ageGroup.id,
-                            }));
-                            setExpandedSection(null);
-                          }}
-                        >
-                          <ThemedText
-                            style={[
-                              styles.filterOptionText,
-                              { color: colors.text },
-                              tempFilters.ageGroup === ageGroup.id && {
-                                color: colors.link,
-                              },
-                            ]}
-                          >
-                            {ageGroup.label}
-                          </ThemedText>
-                          {tempFilters.ageGroup === ageGroup.id && (
-                            <IconSymbol
-                              name="checkmark"
-                              size={16}
-                              color={colors.link}
-                            />
-                          )}
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  )}
-                </View>
-              </ScrollView>
-            </View>
-
-            <View
-              style={[styles.modalFooter, { borderTopColor: colors.border }]}
-            >
-              <Pressable
-                style={({ pressed }) => [
-                  styles.applyButton,
-                  pressed && { opacity: 0.8 },
-                ]}
-                onPress={handleApplyFilters}
-              >
-                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        onResetFilters={handleResetFilters}
+        resultCount={standardsData.length}
+        resultLabel="standards"
+      />
     </ThemedView>
   );
 }
