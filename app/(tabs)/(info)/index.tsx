@@ -11,6 +11,7 @@ import {
 } from "@/components/schedule/VersionAnnouncement";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import * as Sentry from '@sentry/react-native';
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -119,12 +120,12 @@ export default function InfoScreen() {
               />
               <ListButton
                 title="Show Version Announcement"
-                lastSection={true}
                 onPress={async () => {
                   await resetVersionAnnouncement();
                   setVersionAnnouncementKey((prev) => prev + 1);
                 }}
               />
+              <ListButton title='Sentry Test' lastSection={true} onPress={ () => { Sentry.captureException(new Error('First error')) }}/>
             </View>
           </>
         )}

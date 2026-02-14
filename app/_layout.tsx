@@ -36,6 +36,33 @@ import {
   useTheme,
 } from "@/contexts/ThemeContext";
 import { posthog } from "@/lib/posthog";
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Set tracesSampleRate to 1.0 to capture 100% of transactions for tracing.
+  // We recommend adjusting this value in production.
+  tracesSampleRate: 1.0,
+  // profilesSampleRate is relative to tracesSampleRate.
+  // Here, we'll capture profiles for 100% of transactions.
+  profilesSampleRate: 1.0,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 // Get RevenueCat keys from environment
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY_IOS!;
@@ -97,7 +124,7 @@ async function requestNotificationPermissions() {
   return status === "granted";
 }
 
-export default function RootLayout() {
+export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   const [fontsLoaded] = useFonts({
@@ -179,7 +206,7 @@ export default function RootLayout() {
       </NavigationThemeProvider>
     </CustomThemeProvider>
   );
-}
+});
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);

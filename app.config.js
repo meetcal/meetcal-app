@@ -66,6 +66,14 @@ export default ({ config }) => ({
     '@bacons/apple-targets',
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
+    [
+      '@sentry/react-native/expo',
+      {
+        url: "https://sentry.io/",
+        project: "react-native",
+        organization: "meetcal-llc"
+      }
+    ]
   ],
   experiments: {
     typedRoutes: true,
