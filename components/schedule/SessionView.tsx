@@ -1,21 +1,13 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
+import { PLATFORM_SORT_ORDER } from "@/constants/platform-sort";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PlatformBadge } from "../schedule-details/PlatformBadge";
-
-const PLATFORM_SORT_ORDER = [
-  "Red",
-  "White",
-  "Blue",
-  "Stars",
-  "Stripes",
-  "Rogue",
-] as const;
 
 export function SessionView({ session, timeZone }: SessionViewProps) {
   const router = useRouter();

@@ -4,60 +4,6 @@ import { StartListSkeletonProps } from "@/types/start-list";
 import React, { useCallback } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";
 
-const skeletonStyles = StyleSheet.create({
-  block: { borderRadius: 6 },
-  icon: { width: 16, height: 16, borderRadius: 8 },
-  searchLine: { height: 12, width: "70%", borderRadius: 6 },
-  buttonIcon: { width: 14, height: 14, borderRadius: 7 },
-  buttonText: { height: 12, width: "60%", borderRadius: 6 },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-  },
-  line: { height: 14, width: "55%", borderRadius: 6 },
-  tiny: { width: 24, height: 12, borderRadius: 6 },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  label: { height: 12, width: 90, borderRadius: 6 },
-  value: { height: 12, width: 140, borderRadius: 6 },
-  valueShort: { height: 12, width: 90, borderRadius: 6 },
-  content: { padding: 16, paddingBottom: 32, gap: 12 },
-  filterContainer: { padding: 16 },
-  searchContainer: { marginBottom: 6 },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: 8,
-  },
-  buttonRow: { flexDirection: "row", gap: 16, marginTop: 6 },
-  button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  athleteCard: { borderRadius: 12, overflow: "hidden", marginBottom: 12 },
-  detailsContainer: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
-  },
-});
-
 export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
   const colors = useAppColors();
   const SkeletonBlock = useCallback(
@@ -163,4 +109,58 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+});
+
+const skeletonStyles = StyleSheet.create({
+  block: { borderRadius: 6 },
+  icon: { width: 16, height: 16, borderRadius: 8 },
+  searchLine: { height: 12, width: "70%", borderRadius: 6 },
+  buttonIcon: { width: 14, height: 14, borderRadius: 7 },
+  buttonText: { height: 12, width: "60%", borderRadius: 6 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+  },
+  line: { height: 14, width: "55%", borderRadius: 6 },
+  tiny: { width: 24, height: 12, borderRadius: 6 },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  label: { height: 12, width: 90, borderRadius: 6 },
+  value: { height: 12, width: 140, borderRadius: 6 },
+  valueShort: { height: 12, width: 90, borderRadius: 6 },
+  content: { padding: 16, paddingBottom: 32, gap: 12 },
+  filterContainer: { padding: 16 },
+  searchContainer: { marginBottom: 6 },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  buttonRow: { flexDirection: "row", gap: 16, marginTop: 6 },
+  button: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  athleteCard: { borderRadius: 12, overflow: "hidden", marginBottom: 12 },
+  detailsContainer: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
 });
