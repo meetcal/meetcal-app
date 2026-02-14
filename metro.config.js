@@ -1,7 +1,9 @@
-const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const {
+  getSentryExpoConfig
+} = require("@sentry/react-native/metro");
 
-const config = getDefaultConfig(__dirname);
+const config = getSentryExpoConfig(__dirname);
 
 // Configure path aliases
 config.resolver.alias = {
@@ -11,4 +13,4 @@ config.resolver.alias = {
 // Ensure we include the root directory in module resolution
 config.resolver.platforms = ['ios', 'android', 'native', 'web'];
 
-module.exports = config; 
+module.exports = config;

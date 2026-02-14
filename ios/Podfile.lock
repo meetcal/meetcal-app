@@ -2287,6 +2287,30 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNSentry (8.0.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-hermes
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Sentry (= 9.4.1)
+    - Yoga
   - RNSVG (15.15.0):
     - hermes-engine
     - RCTRequired
@@ -2403,6 +2427,9 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - Sentry (9.4.1):
+    - Sentry/Core (= 9.4.1)
+  - Sentry/Core (9.4.1)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2525,6 +2552,7 @@ DEPENDENCIES:
   - RNPurchases (from `../node_modules/react-native-purchases`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
+  - "RNSentry (from `../node_modules/@sentry/react-native`)"
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -2536,6 +2564,7 @@ SPEC REPOS:
     - ReachabilitySwift
     - RevenueCat
     - RevenueCatUI
+    - Sentry
 
 EXTERNAL SOURCES:
   EASClient:
@@ -2775,6 +2804,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-reanimated"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  RNSentry:
+    :path: "../node_modules/@sentry/react-native"
   RNSVG:
     :path: "../node_modules/react-native-svg"
   RNWorklets:
@@ -2906,8 +2937,10 @@ SPEC CHECKSUMS:
   RNPurchases: 60cc16dc28bab3e800fdc363b42c0579c8bc4ee3
   RNReanimated: 2a5413dfcf429c7c9ce3f0030e3b7a010c2f9565
   RNScreens: 33bbd1d0f86ed957557620dc94054b71db0a94ee
+  RNSentry: a3c8864f4f11dcef8df22179bc1946080688a33a
   RNSVG: efe59c8616aabb8e2c8bbd995bc3b13587832240
   RNWorklets: 76fce72926e28e304afb44f0da23b2d24f2c1fa0
+  Sentry: 990a381d8592207a52e7be654b31a27738c3a6a8
   Yoga: 65431d43277b661ebc7289c6c5d82f64ce42cfe0
 
 PODFILE CHECKSUM: cca265e01423b512dbe8d08ac8a49e14fcae6e9d

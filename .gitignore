@@ -54,3 +54,4 @@ android/keystores/release.jks
 credentials.json
 
 push-notification-send.md
+.env.local
