@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
   },
   platformText: {
     color: "#FFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
   },
 });

@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   platformWeightRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
   },
   inlineValue: {
     fontSize: 15,
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "600",
   },
   calendarButton: {
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   },
   calendarButtonText: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "600",
   },
   lastSection: {

@@ -6,6 +6,7 @@ import { Platform as PlatformType, Session } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { PlatformBadge } from "../schedule-details/PlatformBadge";
 
 const PLATFORM_SORT_ORDER = [
   "Red",
@@ -80,16 +81,7 @@ export function SessionView({ session, timeZone }: SessionViewProps) {
             onPress={() => handlePlatformPress(platform)}
           >
             <View style={styles.platformContent}>
-              <View
-                style={[
-                  styles.platformIndicator,
-                  { backgroundColor: platformColors[platform.platform] },
-                ]}
-              >
-                <ThemedText style={styles.platformText}>
-                  {platform.platform}
-                </ThemedText>
-              </View>
+              <PlatformBadge platform={platform.platform} />
               <View style={styles.platformInfo}>
                 <ThemedText
                   style={[
@@ -149,7 +141,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   platformCard: {
-    padding: 12,
+    padding: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -164,19 +156,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     marginRight: 12,
-  },
-  platformIndicator: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    width: 64,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 6,
-  },
-  platformText: {
-    color: "#FFF",
-    fontSize: 14,
-    fontWeight: "600",
   },
   platformInfo: {
     flex: 1,
