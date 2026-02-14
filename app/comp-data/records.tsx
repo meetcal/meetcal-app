@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
@@ -13,8 +14,6 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,14 +29,45 @@ type AgeGroup = string; // Changed from specific union
 // For now, an empty object will be used as RecordsData can have dynamic keys
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
+const AGE_GROUP_ORDER = [
+  "u11",
+  "u13",
+  "u15",
+  "u17",
+  "youth",
+  "junior",
+  "senior",
+];
+
+function sortAgeGroups(ageGroups: string[]): string[] {
+  return [...ageGroups].sort((a, b) => {
+    const aLower = a.toLowerCase();
+    const bLower = b.toLowerCase();
+    const aIdx = AGE_GROUP_ORDER.indexOf(aLower);
+    const bIdx = AGE_GROUP_ORDER.indexOf(bLower);
+
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    if (aIdx !== -1) return -1;
+    if (bIdx !== -1) return 1;
+
+    const mastersA = aLower.startsWith("masters");
+    const mastersB = bLower.startsWith("masters");
+    if (mastersA && mastersB) {
+      const numA = parseInt(aLower.replace(/[^0-9]/g, ""), 10);
+      const numB = parseInt(bLower.replace(/[^0-9]/g, ""), 10);
+      return numA - numB;
+    }
+    if (mastersA) return 1;
+    if (mastersB) return -1;
+    return a.localeCompare(b);
+  });
+}
+
 interface Filters {
   federation: Federation;
   gender: Gender;
   ageGroup: AgeGroup;
 }
-
-const windowHeight = Dimensions.get("window").height;
-const maxOptionsHeight = windowHeight * 0.4;
 
 export default function RecordsScreen() {
   const colors = useAppColors();
@@ -45,10 +75,10 @@ export default function RecordsScreen() {
   const [availableFederations, setAvailableFederations] = useState<string[]>(
     [],
   );
-  const [currentAvailableAgeGroupsList, setCurrentAvailableAgeGroupsList] =
-    useState<string[]>([]);
-  const [modalFederationForAgeGroups, setModalFederationForAgeGroups] =
-    useState<string | null>(null);
+  const [ageGroupsCache, setAgeGroupsCache] = useState<
+    Record<string, string[]>
+  >({});
+  const modalDraftFederationRef = React.useRef<string>("");
 
   const [filters, setFilters] = useState<Filters>({
     federation: "",
@@ -56,9 +86,6 @@ export default function RecordsScreen() {
     ageGroup: "",
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [expandedSection, setExpandedSection] = useState<
-    "federation" | "gender" | "ageGroup" | null
-  >(null);
   const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
   const [records, setRecords] = useState<RecordsData | null>(null);
@@ -126,74 +153,49 @@ export default function RecordsScreen() {
     loadInitialFilters();
   }, []);
 
-  // Effect for syncing tempFilters and preparing for modal age group loading when modal opens
-  useEffect(() => {
-    if (showFilterModal) {
-      setTempFilters(filters); // Sync with current applied filters
-      // If the modal is opening with a federation different from what age groups are loaded for,
-      // or if no age groups loaded for it yet, reset modalFederationForAgeGroups to trigger a load.
-      if (filters.federation !== modalFederationForAgeGroups) {
-        setModalFederationForAgeGroups(null);
-      }
-    } else {
-      // Optionally clear modal-specific states when it closes
-      // setCurrentAvailableAgeGroupsList([]);
-      // setModalFederationForAgeGroups(null);
-    }
-  }, [showFilterModal, filters]); // Re-evaluate if modal opens or if main filters change
-
-  // Effect for updating age groups in the modal when tempFilters.federation changes, or when modal needs initial load.
-  useEffect(() => {
-    if (!showFilterModal || !tempFilters.federation) {
-      // If modal is not shown, or no temp federation is selected, do nothing.
-      // Clearing list if modal closes can be done in the previous effect.
-      return;
-    }
-
-    // Fetch if the current temp federation is different from the one we last loaded age groups for.
-    if (tempFilters.federation !== modalFederationForAgeGroups) {
-      let isStale = false;
-      const federationToFetch = tempFilters.federation;
-      const currentTempAgeGroup = tempFilters.ageGroup; // Preserve current selection
-
-      setCurrentAvailableAgeGroupsList([]); // Clear previous list, indicates loading
-
-      fetchAgeGroups(federationToFetch)
+  // Fetch age groups when modal opens for the current federation
+  React.useEffect(() => {
+    if (
+      showFilterModal &&
+      filters.federation &&
+      !ageGroupsCache[filters.federation]
+    ) {
+      fetchAgeGroups(filters.federation)
         .then((fetchedAgeGroups) => {
-          if (isStale || tempFilters.federation !== federationToFetch) return;
-
-          setCurrentAvailableAgeGroupsList(fetchedAgeGroups);
-          setModalFederationForAgeGroups(federationToFetch);
-
-          // Try to preserve the current age group selection if it exists in the new list
-          let newAgeGroup = "";
-          if (fetchedAgeGroups.includes(currentTempAgeGroup)) {
-            newAgeGroup = currentTempAgeGroup;
-          } else if (fetchedAgeGroups.length > 0) {
-            newAgeGroup = fetchedAgeGroups[0];
-          }
-
-          setTempFilters((prev) => ({ ...prev, ageGroup: newAgeGroup }));
+          setAgeGroupsCache((prev) => ({
+            ...prev,
+            [filters.federation]: fetchedAgeGroups,
+          }));
         })
         .catch((err) => {
-          if (isStale || tempFilters.federation !== federationToFetch) return;
           console.error(
-            `Failed to fetch age groups for ${federationToFetch} in modal`,
+            `Failed to fetch age groups for ${filters.federation}`,
             err,
           );
-          setCurrentAvailableAgeGroupsList([]);
-          setModalFederationForAgeGroups(federationToFetch); // Mark attempt to prevent loops
-          // Optionally set a specific error message for the modal filter section
-        })
-        .finally(() => {
-          if (isStale || tempFilters.federation !== federationToFetch) return;
         });
-
-      return () => {
-        isStale = true;
-      };
     }
-  }, [showFilterModal, tempFilters.federation, modalFederationForAgeGroups]);
+  }, [showFilterModal, filters.federation, ageGroupsCache]);
+
+  // Fetch age groups for a federation (used by buildFilterSections)
+  const fetchAgeGroupsForFederation = React.useCallback(
+    (federation: string) => {
+      if (!federation || ageGroupsCache[federation]) {
+        return; // Already cached or no federation
+      }
+
+      fetchAgeGroups(federation)
+        .then((fetchedAgeGroups) => {
+          setAgeGroupsCache((prev) => ({
+            ...prev,
+            [federation]: fetchedAgeGroups,
+          }));
+        })
+        .catch((err) => {
+          console.error(`Failed to fetch age groups for ${federation}`, err);
+        });
+    },
+    [ageGroupsCache],
+  );
 
   // Fetch full federation records once per federation selection.
   useEffect(() => {
@@ -212,8 +214,13 @@ export default function RecordsScreen() {
       .then((data) => {
         if (!cancelled) {
           const nextAgeGroups = Object.keys(data);
-          setCurrentAvailableAgeGroupsList(nextAgeGroups);
-          setModalFederationForAgeGroups(filters.federation);
+
+          // Cache age groups for this federation
+          setAgeGroupsCache((prev) => ({
+            ...prev,
+            [filters.federation]: nextAgeGroups,
+          }));
+
           setAllRecords(data);
           setRecords(data);
 
@@ -222,12 +229,6 @@ export default function RecordsScreen() {
             !nextAgeGroups.includes(filters.ageGroup)
           ) {
             setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroups[0] }));
-          }
-          if (
-            nextAgeGroups.length > 0 &&
-            !nextAgeGroups.includes(tempFilters.ageGroup)
-          ) {
-            setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroups[0] }));
           }
         }
       })
@@ -250,18 +251,20 @@ export default function RecordsScreen() {
   }, [allRecords, records]);
 
   const displayAgeGroup = useMemo(() => {
-    if (!filters.ageGroup && currentAvailableAgeGroupsList.length > 0) {
-      return currentAvailableAgeGroupsList[0];
+    const ageGroupsForFederation = ageGroupsCache[filters.federation] || [];
+
+    if (!filters.ageGroup && ageGroupsForFederation.length > 0) {
+      return ageGroupsForFederation[0];
     }
-    if (currentAvailableAgeGroupsList.includes(filters.ageGroup)) {
+    if (ageGroupsForFederation.includes(filters.ageGroup)) {
       return filters.ageGroup;
     }
     // Fallback if filters.ageGroup is somehow invalid and list has items
-    if (currentAvailableAgeGroupsList.length > 0) {
-      return currentAvailableAgeGroupsList[0];
+    if (ageGroupsForFederation.length > 0) {
+      return ageGroupsForFederation[0];
     }
     return filters.ageGroup || ""; // Default to current or empty if list is empty
-  }, [filters.ageGroup, currentAvailableAgeGroupsList]);
+  }, [filters.ageGroup, filters.federation, ageGroupsCache]);
 
   const getAgeGroupDisplayText = (ageGroup: AgeGroup | undefined) => {
     if (!ageGroup) return "";
@@ -283,11 +286,70 @@ export default function RecordsScreen() {
     return `${fed} • ${gen} • ${age}`;
   };
 
-  const handleApplyFilters = () => {
-    setFilters(tempFilters);
-    setShowFilterModal(false);
-    setExpandedSection(null);
+  const handleResetFilters = () => {
+    const resetFilters = {
+      federation: "",
+      gender: "Men" as Gender,
+      ageGroup: "",
+    };
+    setFilters(resetFilters);
+    setTempFilters(resetFilters);
   };
+
+  // Build filter sections dynamically based on modal's internal tempFilters
+  const buildFilterSections = React.useCallback(
+    (modalTempFilters: Record<string, string>): FilterSection[] => {
+      const selectedFederation =
+        modalTempFilters.federation || filters.federation || "";
+
+      // Trigger fetch if needed (won't cause re-render since it checks cache first)
+      if (
+        selectedFederation &&
+        selectedFederation !== modalDraftFederationRef.current
+      ) {
+        modalDraftFederationRef.current = selectedFederation;
+        fetchAgeGroupsForFederation(selectedFederation);
+      }
+
+      const ageGroupsForFederation = selectedFederation
+        ? ageGroupsCache[selectedFederation] || []
+        : [];
+
+      return [
+        {
+          id: "federation",
+          title: "Federation",
+          options: availableFederations.map((fed) => ({
+            value: fed,
+            label: fed,
+          })),
+        },
+        {
+          id: "gender",
+          title: "Gender",
+          options: [
+            { value: "Men", label: "Men" },
+            { value: "Women", label: "Women" },
+          ],
+        },
+        {
+          id: "ageGroup",
+          title: "Age Group",
+          options: sortAgeGroups(ageGroupsForFederation).map((ag) => ({
+            value: ag,
+            label: getAgeGroupDisplayText(ag),
+          })),
+          dependsOn: ["federation"],
+        },
+      ];
+    },
+    [
+      availableFederations,
+      ageGroupsCache,
+      fetchAgeGroupsForFederation,
+      filters.federation,
+    ],
+  );
 
   if (isSubscriptionLoading) {
     return (
@@ -326,6 +388,7 @@ export default function RecordsScreen() {
             backgroundColor: colors.background,
           },
           headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -351,7 +414,6 @@ export default function RecordsScreen() {
             ]}
             onPress={() => {
               // tempFilters will be synced by useEffect [showFilterModal]
-              setExpandedSection(null);
               setShowFilterModal(true);
             }}
           >
@@ -447,378 +509,27 @@ export default function RecordsScreen() {
         </View>
       </ScrollView>
 
-      <Modal
+      <GenericFilterModal
         visible={showFilterModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setExpandedSection(null);
+        onClose={() => setShowFilterModal(false)}
+        sections={buildFilterSections}
+        filters={{
+          federation: tempFilters.federation,
+          gender: tempFilters.gender,
+          ageGroup: tempFilters.ageGroup,
+        }}
+        onApplyFilters={(newFilters) => {
+          const updatedFilters = {
+            federation: newFilters.federation,
+            gender: newFilters.gender as Gender,
+            ageGroup: newFilters.ageGroup,
+          };
+          setFilters(updatedFilters);
+          setTempFilters(updatedFilters);
           setShowFilterModal(false);
         }}
-      >
-        <Pressable
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: colors.modalBackground },
-          ]}
-          onPress={() => {
-            setExpandedSection(null);
-            setShowFilterModal(false);
-          }}
-        >
-          <View
-            style={[
-              styles.modalContent,
-              {
-                backgroundColor: colors.card,
-                maxHeight: windowHeight * 0.8,
-              },
-            ]}
-          >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalScrollContent}>
-                <ScrollView bounces={false}>
-                  {/* Federation Section */}
-                  <View
-                    style={[
-                      styles.filterSection,
-                      { borderBottomColor: colors.border },
-                    ]}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterSectionButton,
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() =>
-                        setExpandedSection(
-                          expandedSection === "federation"
-                            ? null
-                            : "federation",
-                        )
-                      }
-                    >
-                      <View style={styles.filterSectionButtonContent}>
-                        <View>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Federation
-                          </ThemedText>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionValue,
-                              { color: colors.text },
-                            ]}
-                          >
-                            {tempFilters.federation || "Select..."}
-                          </ThemedText>
-                        </View>
-                        <IconSymbol
-                          name={
-                            expandedSection === "federation"
-                              ? "chevron.down"
-                              : "chevron.right"
-                          }
-                          size={16}
-                          color={colors.secondaryText}
-                        />
-                      </View>
-                    </Pressable>
-                    {expandedSection === "federation" && (
-                      <ScrollView
-                        style={[
-                          styles.filterOptions,
-                          { borderTopColor: colors.border },
-                        ]}
-                        bounces={false}
-                      >
-                        {availableFederations.map((federation) => (
-                          <Pressable
-                            key={federation}
-                            style={({ pressed }) => [
-                              styles.filterOption,
-                              { borderBottomColor: colors.border },
-                              tempFilters.federation === federation && {
-                                backgroundColor: colors.pressed,
-                              },
-                              pressed && { opacity: 0.8 },
-                            ]}
-                            onPress={() => {
-                              // When federation changes in modal, tempFilters.federation is set.
-                              // The useEffect for [showFilterModal, tempFilters.federation, modalFederationForAgeGroups]
-                              // will handle fetching new age groups and resetting tempFilters.ageGroup.
-                              setTempFilters((prev) => ({
-                                ...prev,
-                                federation:
-                                  federation /* ageGroup will be reset by effect */,
-                              }));
-                              setExpandedSection(null);
-                            }}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.filterOptionText,
-                                { color: colors.text },
-                                tempFilters.federation === federation && {
-                                  color: colors.link,
-                                },
-                              ]}
-                            >
-                              {federation}
-                            </ThemedText>
-                            {tempFilters.federation === federation && (
-                              <IconSymbol
-                                name="checkmark"
-                                size={16}
-                                color={colors.link}
-                              />
-                            )}
-                          </Pressable>
-                        ))}
-                      </ScrollView>
-                    )}
-                  </View>
-
-                  {/* Gender Section */}
-                  <View
-                    style={[
-                      styles.filterSection,
-                      { borderBottomColor: colors.border },
-                    ]}
-                  >
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterSectionButton,
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() =>
-                        setExpandedSection(
-                          expandedSection === "gender" ? null : "gender",
-                        )
-                      }
-                    >
-                      <View style={styles.filterSectionButtonContent}>
-                        <View>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Gender
-                          </ThemedText>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionValue,
-                              { color: colors.text },
-                            ]}
-                          >
-                            {tempFilters.gender === "Men" ? "Men" : "Women"}
-                          </ThemedText>
-                        </View>
-                        <IconSymbol
-                          name={
-                            expandedSection === "gender"
-                              ? "chevron.down"
-                              : "chevron.right"
-                          }
-                          size={16}
-                          color={colors.secondaryText}
-                        />
-                      </View>
-                    </Pressable>
-                    {expandedSection === "gender" && (
-                      <ScrollView
-                        style={[
-                          styles.filterOptions,
-                          { borderTopColor: colors.border },
-                        ]}
-                        bounces={false}
-                      >
-                        {(["Men", "Women"] as Gender[]).map((gender) => (
-                          <Pressable
-                            key={gender}
-                            style={({ pressed }) => [
-                              styles.filterOption,
-                              { borderBottomColor: colors.border },
-                              tempFilters.gender === gender && {
-                                backgroundColor: colors.pressed,
-                              },
-                              pressed && { opacity: 0.8 },
-                            ]}
-                            onPress={() => {
-                              setTempFilters((prev) => ({
-                                ...prev,
-                                gender: gender,
-                              }));
-                              setExpandedSection(null);
-                            }}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.filterOptionText,
-                                { color: colors.text },
-                                tempFilters.gender === gender && {
-                                  color: colors.link,
-                                },
-                              ]}
-                            >
-                              {gender === "Men" ? "Men" : "Women"}
-                            </ThemedText>
-                            {tempFilters.gender === gender && (
-                              <IconSymbol
-                                name="checkmark"
-                                size={16}
-                                color={colors.link}
-                              />
-                            )}
-                          </Pressable>
-                        ))}
-                      </ScrollView>
-                    )}
-                  </View>
-
-                  {/* Age Group Section */}
-                  <View style={styles.filterSection}>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.filterSectionButton,
-                        pressed && { opacity: 0.8 },
-                      ]}
-                      onPress={() => {
-                        // Ensure age groups are loaded for tempFilters.federation if not already
-                        if (!tempFilters.federation) {
-                          // Maybe show a message to select federation first
-                          return;
-                        }
-                        // The useEffect for tempFilters.federation should have loaded these.
-                        // If not, it indicates a potential logic issue or race condition.
-                        setExpandedSection(
-                          expandedSection === "ageGroup" ? null : "ageGroup",
-                        );
-                      }}
-                    >
-                      <View style={styles.filterSectionButtonContent}>
-                        <View>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Age Group
-                          </ThemedText>
-                          <ThemedText
-                            style={[
-                              styles.filterSectionValue,
-                              { color: colors.text },
-                            ]}
-                          >
-                            {getAgeGroupDisplayText(tempFilters.ageGroup) ||
-                              (tempFilters.federation
-                                ? "Select..."
-                                : "Select Federation First")}
-                          </ThemedText>
-                        </View>
-                        <IconSymbol
-                          name={
-                            expandedSection === "ageGroup"
-                              ? "chevron.down"
-                              : "chevron.right"
-                          }
-                          size={16}
-                          color={colors.secondaryText}
-                        />
-                      </View>
-                    </Pressable>
-                    {expandedSection === "ageGroup" &&
-                      tempFilters.federation && (
-                        <ScrollView
-                          style={[
-                            styles.filterOptions,
-                            {
-                              maxHeight: maxOptionsHeight,
-                              borderTopColor: colors.border,
-                            },
-                          ]}
-                          bounces={false}
-                        >
-                          {currentAvailableAgeGroupsList.length === 0 && (
-                            <ThemedText
-                              style={{
-                                padding: 16,
-                                color: colors.secondaryText,
-                              }}
-                            >
-                              Loading age groups...
-                            </ThemedText>
-                          )}
-                          {currentAvailableAgeGroupsList.map((ageGroup) => (
-                            <Pressable
-                              key={ageGroup}
-                              style={({ pressed }) => [
-                                styles.filterOption,
-                                { borderBottomColor: colors.border },
-                                tempFilters.ageGroup === ageGroup && {
-                                  backgroundColor: colors.pressed,
-                                },
-                                pressed && { opacity: 0.8 },
-                              ]}
-                              onPress={() => {
-                                setTempFilters((prev) => ({
-                                  ...prev,
-                                  ageGroup: ageGroup,
-                                }));
-                                setExpandedSection(null);
-                              }}
-                            >
-                              <ThemedText
-                                style={[
-                                  styles.filterOptionText,
-                                  { color: colors.text },
-                                  tempFilters.ageGroup === ageGroup && {
-                                    color: colors.link,
-                                  },
-                                ]}
-                              >
-                                {getAgeGroupDisplayText(ageGroup)}
-                              </ThemedText>
-                              {tempFilters.ageGroup === ageGroup && (
-                                <IconSymbol
-                                  name="checkmark"
-                                  size={16}
-                                  color={colors.link}
-                                />
-                              )}
-                            </Pressable>
-                          ))}
-                        </ScrollView>
-                      )}
-                  </View>
-                </ScrollView>
-              </View>
-
-              <View
-                style={[styles.modalFooter, { borderTopColor: colors.border }]}
-              >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.applyButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={handleApplyFilters}
-                >
-                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
-                </Pressable>
-              </View>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+        onResetFilters={handleResetFilters}
+      />
     </ThemedView>
   );
 }
