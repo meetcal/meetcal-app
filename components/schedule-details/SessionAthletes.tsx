@@ -348,7 +348,7 @@ export default function SessionAthletes({
   if (!athletes[platform]?.length) {
     if (loading) {
       return (
-        <View style={styles.athletesContainer}>
+        <View>
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <View
               style={[
@@ -423,7 +423,7 @@ export default function SessionAthletes({
   }
 
   return (
-    <View style={styles.athletesContainer}>
+    <View>
       <View style={[styles.card, { backgroundColor: colors.card }]}>
         <View
           style={[styles.titleSection, { borderBottomColor: colors.border }]}
@@ -767,9 +767,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     overflow: "hidden",
-  },
-  athletesContainer: {
-    marginTop: 16,
   },
   athletesTitle: {
     fontSize: 17,

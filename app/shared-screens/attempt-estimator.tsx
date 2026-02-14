@@ -147,6 +147,7 @@ export default function AttemptEstimatorScreen() {
             headerShown: true,
             headerTitle: "Attempt Estimator",
             headerBackTitle: "Back",
+            headerBackButtonDisplayMode: "minimal",
           }}
         />
         <View style={styles.loadingContainer}>
