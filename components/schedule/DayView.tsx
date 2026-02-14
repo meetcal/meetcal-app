@@ -1,16 +1,9 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
-import { DaySchedule } from "@/types/schedule";
+import { DayViewProps } from "@/types/schedule";
 import { useCallback } from "react";
 import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { SessionView } from "./SessionView";
-
-interface DayViewProps {
-  day: DaySchedule;
-  timeZone: string;
-  onRefreshComplete?: () => Promise<void>;
-  refreshing: boolean;
-}
 
 export function DayView({
   day,

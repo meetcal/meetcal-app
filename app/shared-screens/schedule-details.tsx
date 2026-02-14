@@ -10,23 +10,12 @@ import {
   Platform as PlatformDetails,
   Schedule,
 } from "@/types/schedule";
+import { Session } from "@/types/schedule-details";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-
-// Update interface names
-interface SessionPlatformDetails {
-  platform: string;
-  platformStartTime?: string;
-  weightClass?: string;
-}
-
-interface Session {
-  number: number;
-  platforms: SessionPlatformDetails[];
-}
 
 export default function SessionDetailsScreen() {
   const colors = useAppColors();

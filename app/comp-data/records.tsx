@@ -12,24 +12,14 @@ import {
   fetchRecords,
 } from "@/lib/database/fetch-records";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { RecordsData, WeightClassRecord } from "@/types/records";
+import { AgeGroup, Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
-type Federation = string;
-type Gender = "Men" | "Women";
-type AgeGroup = string; // Changed from specific union
-
 // Helper to create an empty RecordsData structure - this might need refinement
 // For now, an empty object will be used as RecordsData can have dynamic keys
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
-
-interface Filters {
-  federation: Federation;
-  gender: Gender;
-  ageGroup: AgeGroup;
-}
 
 export default function RecordsScreen() {
   const colors = useAppColors();

@@ -1,24 +1,9 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { LiftResult } from "@/data/types/athletes";
-import type { Schedule as ScheduleType } from "@/types/schedule";
+import { ShareScheduleViewProps } from "@/types/start-list";
 import React from "react";
 import { Image, StyleSheet, View } from "react-native";
-
-interface ShareScheduleViewProps {
-  filteredAthletes: LiftResult[];
-  schedule: ScheduleType;
-  selectedMeet: string;
-  selectedClub: string;
-  transparentBackground?: boolean;
-  getSessionDetails: (sessionNumber: number) => {
-    date: string;
-    startTime: string;
-    weighInTime: string;
-    displayDate: string;
-    platforms: { platform: string; platformStartTime?: string }[];
-  } | null;
-}
 
 const getPlatformColor = (platform: string): string => {
   const platformColors = getPlatformColors();

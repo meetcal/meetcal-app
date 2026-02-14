@@ -1,5 +1,6 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { OnboardingViewProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar";
 import * as Notifications from "expo-notifications";
@@ -7,11 +8,6 @@ import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 
 const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
-
-interface OnboardingViewProps {
-  visible: boolean;
-  onComplete: () => void;
-}
 
 export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const colors = useAppColors();

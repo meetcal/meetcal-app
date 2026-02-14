@@ -7,7 +7,6 @@ import {
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import { LiftResult } from "@/data/types/athletes";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
   calculateWeighInTime,
@@ -15,8 +14,8 @@ import {
   getChevronIcon,
   isMeetName,
 } from "@/lib/start-list-utils";
+import { AthleteItemProps } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
-import { useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -31,20 +30,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-
-export interface SessionDetails {
-  date: string;
-  startTime: string;
-  weighInTime: string;
-  displayDate: string;
-  platforms: { platform: string; platformStartTime?: string }[];
-}
-
-export interface AthleteItemProps {
-  athlete: LiftResult;
-  router: ReturnType<typeof useRouter>;
-  getSessionDetails: (sessionNumber: number) => SessionDetails | null;
-}
 
 export const AthleteItem = React.memo(function AthleteItem({
   athlete,

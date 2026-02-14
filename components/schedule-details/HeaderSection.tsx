@@ -5,9 +5,9 @@ import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Platform as PlatformType } from "@/data/types/athletes";
-import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { DaySchedule, Schedule, Session } from "@/types/schedule";
+import { DaySchedule, Session } from "@/types/schedule";
+import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
   createCalendarEvents,
@@ -20,28 +20,6 @@ import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
-
-// Update interface names
-interface SessionPlatformDetails {
-  platform: string;
-  platformStartTime?: string;
-  weightClass?: string;
-}
-
-interface HeaderSectionProps {
-  sessionNumber: string;
-  platform: string;
-  weightClass: string;
-  startTime: string;
-  meet: MeetName;
-  currentSchedule: Schedule;
-  sessionId: string;
-  sessionDate: string;
-  sessionWeightClass: string;
-  platformStartTime: string;
-  platformWeighInTime: string;
-  athleteName?: string;
-}
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
   sessionNumber,

@@ -1,11 +1,8 @@
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { StartListSkeletonProps } from "@/types/start-list";
 import React, { useCallback } from "react";
 import { Animated, ScrollView, StyleSheet, View } from "react-native";
-
-interface StartListSkeletonProps {
-  skeletonPulse: Animated.Value;
-}
 
 const skeletonStyles = StyleSheet.create({
   block: { borderRadius: 6 },

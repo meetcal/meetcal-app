@@ -1,12 +1,7 @@
 import { useTheme } from "@/contexts/ThemeContext";
+import { PageIndicatorProps } from "@/types/schedule";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-interface PageIndicatorProps {
-  count: number;
-  currentPage: number;
-  onPageChange?: (page: number) => void;
-}
 
 export function PageIndicator({
   count,

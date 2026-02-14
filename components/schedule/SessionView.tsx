@@ -2,7 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { useAppColors } from "@/hooks/useAppColors";
-import { Platform as PlatformType, Session } from "@/types/schedule";
+import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -16,11 +16,6 @@ const PLATFORM_SORT_ORDER = [
   "Stripes",
   "Rogue",
 ] as const;
-
-interface SessionViewProps {
-  session: Session;
-  timeZone: string;
-}
 
 export function SessionView({ session, timeZone }: SessionViewProps) {
   const router = useRouter();

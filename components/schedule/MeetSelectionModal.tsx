@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { MeetSelectionModalProps } from "@/types/schedule";
 import { useState } from "react";
 import {
   Modal,
@@ -11,25 +12,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-
-interface Meet {
-  id: string;
-  name: string;
-  dates?: {
-    start: string;
-    end?: string;
-  };
-}
-
-interface MeetSelectionModalProps {
-  visible: boolean;
-  onClose: () => void;
-  meets: Meet[];
-  selectedMeet: string | null;
-  onSelectMeet: (meetName: string) => Promise<void>;
-  onRefresh: () => Promise<void>;
-  isRefreshing: boolean;
-}
 
 export function MeetSelectionModal({
   visible,

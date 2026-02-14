@@ -1,35 +1,12 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
-import { MeetName, isMeetName } from "@/data/types/meet";
+import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { SavedSession } from "@/hooks/useSavedSessions";
+import { SessionCardProps } from "@/types/saved";
 import { makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-
-// Add a type that extends SavedSession to include the legacy athleteName property
-interface LegacySavedSession extends SavedSession {
-  athleteName?: string;
-}
-
-type SessionScheduleLookup = {
-  displayDate: string;
-  fullDate: string;
-  startTime: string;
-  weighInTime: string;
-  weightClass: string;
-};
-
-interface SessionCardProps {
-  item: LegacySavedSession;
-  selectedMeet: MeetName | null;
-  onPress: () => void;
-  sessionLookupByMeet: Map<MeetName, Map<string, SessionScheduleLookup>>;
-  allowedMeetNames: ReadonlySet<string>;
-  timeZoneIdentifier?: string;
-  timeZoneAbbr: string;
-}
 
 const SessionCard = React.memo<SessionCardProps>(
   ({
