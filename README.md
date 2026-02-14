@@ -7,15 +7,15 @@ A cross-platform mobile application for tracking weightlifting competition sched
 | Category | Technology |
 |---|---|
 | **Framework** | React Native 0.81, React 19 |
-| **Platform** | Expo SDK, Expo Router (file-based routing) |
-| **Language** | TypeScript (strict mode) |
-| **Backend** | Supabase (PostgreSQL, real-time subscriptions) |
+| **Platform** | Expo SDK, Expo Router |
+| **Language** | TypeScript |
+| **Backend** | Supabase (PostgreSQL) |
 | **Authentication** | Clerk (JWT, secure token storage) |
 | **Subscriptions** | RevenueCat (in-app purchases, subscription tiers) |
-| **Analytics** | PostHog (event tracking, remote config) |
+| **Analytics** | PostHog & Sentry (event tracking, remote config) |
 | **Animations** | React Native Reanimated, Gesture Handler |
 | **Notifications** | Expo Notifications (scheduled local + remote push) |
-| **Build & Deploy** | EAS Build, EAS Update (OTA), CI/CD workflows |
+| **Build & Deploy** | EAS Build, EAS Update (OTA) |
 
 ## Architecture
 
@@ -45,23 +45,4 @@ The app leverages several native device capabilities through Expo modules:
 - **expo-file-system** — Local file operations for caching
 - **expo-notifications** — Local and remote push notification scheduling
 - **expo-updates** — Over-the-air updates via EAS
-- **expo-blur / expo-glass-effect** — Native blur and frosted glass UI effects
-
-## Project Structure
-
-```
-app/
-  (auth)/          # Authentication flows
-  (tabs)/
-    (index)/       # Calendar / schedule views
-    (saved)/       # Saved sessions
-    (start-list)/  # Athlete start lists
-    (info)/        # Settings and info
-  (screens)/       # Modal screens (details, records, rankings)
-components/
-  ui/              # Reusable UI components (buttons, dropdowns, inputs)
-contexts/          # React Context providers and hooks
-data/types/        # TypeScript type definitions
-lib/               # Supabase client, database types, utilities
-utils/             # Offline store, sync manager, notification helpers
-```
+- **expo-blur / expo-glass-effect** — Native blur and liquid glass UI effects
