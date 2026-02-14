@@ -7,6 +7,7 @@ import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
 import { supabase } from "@/lib/supabase";
+import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,15 +18,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-
-// Type for just the athlete data we need
-type SessionAthlete = {
-  name: string;
-  age: number;
-  club: string;
-  entryTotal: number;
-  weightClass: string;
-};
 
 async function getSessionAthletes(
   sessionNumber: number,

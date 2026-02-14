@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
 import { posthog } from "@/lib/posthog";
+import { Sponsor } from "@/types/sponsors";
 import { Stack } from "expo-router";
 import {
   Image,
@@ -13,16 +14,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-// Update the sponsor type
-type Sponsor = {
-  id: string;
-  name: string;
-  description: string;
-  website: string;
-  discount?: string;
-  image: any; // Add image property
-};
 
 const sponsors: Sponsor[] = [
   {

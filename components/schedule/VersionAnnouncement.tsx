@@ -1,9 +1,8 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { getAnnouncementForVersion } from "@/config/version-announcements";
+import { CURRENT_VERSION, getAnnouncementForVersion, VERSION_ANNOUNCEMENT_KEY } from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
 import { VersionAnnouncementProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
@@ -16,9 +15,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-const VERSION_ANNOUNCEMENT_KEY = "@version_announcement_seen";
-const CURRENT_VERSION = Constants.expoConfig?.version || "5.2.5";
 
 export function VersionAnnouncement({
   announcement: propAnnouncement,

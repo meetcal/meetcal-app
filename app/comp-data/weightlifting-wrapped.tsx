@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { supabase } from "@/lib/supabase";
+import { LiftingResult, WrappedStats } from "@/types/wrapped";
 import { Stack } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -20,40 +21,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: screenWidth } = Dimensions.get("window");
-
-interface LiftingResult {
-  id: number;
-  event_id: string;
-  meet: string;
-  date: string;
-  name: string;
-  age: number;
-  body_weight: number;
-  snatch1: number | null;
-  snatch2: number | null;
-  snatch3: number | null;
-  snatch_best: number | null;
-  cj1: number | null;
-  cj2: number | null;
-  cj3: number | null;
-  cj_best: number | null;
-  total: number | null;
-}
-
-interface WrappedStats {
-  totalWeightLifted: number;
-  totalMeets: number;
-  makePercentage: number;
-  bestSnatch: number;
-  bestCleanJerk: number;
-  bestTotal: number;
-  averageTotal: number;
-  topMeet: string;
-  improvementFromFirst: number;
-  consecutiveMakes: number;
-  favoriteAttempt: string;
-  yearRank: string;
-}
 
 const YEARS = Array.from(
   { length: 10 },

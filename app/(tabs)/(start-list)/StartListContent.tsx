@@ -3,10 +3,9 @@ import ShareScheduleView from "@/components/share/ShareScheduleView";
 import ActionModal from "@/components/start-list/ActionModal";
 import {
   AthleteItem,
-  SessionDetails,
 } from "@/components/start-list/AthleteItem";
-import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
+import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -36,6 +35,7 @@ import {
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
 import type { Schedule as ScheduleType } from "@/types/schedule";
+import { SessionDetails } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
 import { createCalendarEvents } from "@/utils/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";

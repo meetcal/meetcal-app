@@ -32,3 +32,12 @@ export interface HeaderSectionProps {
   platformWeighInTime: string;
   athleteName?: string;
 }
+
+// Type for just the athlete data we need
+export interface SessionAthlete {
+  name: string;
+  age: number;
+  club: string;
+  entryTotal: number;
+  weightClass: string;
+};

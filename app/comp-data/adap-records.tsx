@@ -2,6 +2,7 @@ import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { AGE_GROUP_KEY, EMPTY_RECORDS_DATA, MENS_WEIGHT_CLASSES, WOMENS_WEIGHT_CLASSES } from "@/constants/adapative";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFetchData } from "@/hooks/useFetchData";
 import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
@@ -16,31 +17,6 @@ import {
 } from "react-native";
 
 type Gender = "Men" | "Women";
-
-const AGE_GROUP_KEY = "Adaptive";
-
-const MENS_WEIGHT_CLASSES = [
-  "60kg",
-  "65kg",
-  "71kg",
-  "79kg",
-  "88kg",
-  "94kg",
-  "110kg",
-  "110+kg",
-];
-const WOMENS_WEIGHT_CLASSES = [
-  "48kg",
-  "53kg",
-  "58kg",
-  "63kg",
-  "69kg",
-  "77kg",
-  "86kg",
-  "86+kg",
-];
-
-const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
 export default function AdaptiveRecordsScreen() {
   const colors = useAppColors();
