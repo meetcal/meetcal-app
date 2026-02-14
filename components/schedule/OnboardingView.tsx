@@ -130,7 +130,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
         return (
           <View style={styles.pageContent}>
             <ThemedText style={[styles.title, { color: colors.text }]}>
-              📸 Start List
+              📸 Share Start Lists
             </ThemedText>
             <ThemedText style={[styles.description, { color: colors.text }]}>
               Pro members can also create and share Start Lists for their club

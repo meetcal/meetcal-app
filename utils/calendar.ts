@@ -30,8 +30,37 @@ export async function createCalendarEvents(
     let calendarId;
 
     if (Platform.OS === "ios") {
-      const calendar = await Calendar.getDefaultCalendarAsync();
-      calendarId = calendar.id;
+      try {
+        const calendar = await Calendar.getDefaultCalendarAsync();
+        if (calendar?.id) {
+          calendarId = calendar.id;
+        } else {
+          // Fall back to searching calendars like Android
+          const calendars = await Calendar.getCalendarsAsync(
+            Calendar.EntityTypes.EVENT,
+          );
+          const fallback = calendars.find(
+            (cal) => cal.allowsModifications,
+          );
+          if (!fallback) {
+            throw new Error("no_calendar");
+          }
+          calendarId = fallback.id;
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === "no_calendar") throw e;
+        // Fall back to searching calendars
+        const calendars = await Calendar.getCalendarsAsync(
+          Calendar.EntityTypes.EVENT,
+        );
+        const fallback = calendars.find(
+          (cal) => cal.allowsModifications,
+        );
+        if (!fallback) {
+          throw new Error("no_calendar");
+        }
+        calendarId = fallback.id;
+      }
     } else {
       const calendars = await Calendar.getCalendarsAsync(
         Calendar.EntityTypes.EVENT,

@@ -32,11 +32,11 @@ export function UpdateNotification() {
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={dismissUpdate}
+      onRequestClose={() => { if (!isDownloading) dismissUpdate(); }}
       statusBarTranslucent
       {...(Platform.OS === "ios" && { presentationStyle: "overFullScreen" })}
     >
-      <Pressable style={styles.backdrop} onPress={dismissUpdate}>
+      <Pressable style={styles.backdrop} onPress={() => { if (!isDownloading) dismissUpdate(); }}>
         <Pressable
           style={[styles.modalCard, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}

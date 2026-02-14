@@ -25,6 +25,7 @@ export function DayView({
       await onRefreshComplete?.();
     } catch (error) {
       console.error("Refresh failed:", error);
+      throw error;
     }
   }, [onRefreshComplete]);
 
@@ -46,7 +47,7 @@ export function DayView({
       }
       ListEmptyComponent={() => (
         <View style={styles.emptyContainer}>
-          <ThemedText style={styles.emptyText}>No sessions found</ThemedText>
+          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>No sessions found</ThemedText>
         </View>
       )}
     />
@@ -64,7 +65,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: "#666",
     textAlign: "center",
   },
 });

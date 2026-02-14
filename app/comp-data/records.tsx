@@ -244,7 +244,7 @@ export default function RecordsScreen() {
       ageGroup.length > 1 &&
       !isNaN(Number(ageGroup.substring(1, 3)))
     ) {
-      return ageGroup.toUpperCase().replace("U", "U"); // e.g. U13, U15
+      return ageGroup.toUpperCase(); // e.g. U13, U15
     }
     return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
   };

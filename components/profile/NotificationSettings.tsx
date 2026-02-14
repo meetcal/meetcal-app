@@ -39,6 +39,7 @@ export function NotificationSettings({
 }: NotificationSettingsProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [autoEnableAttempted, setAutoEnableAttempted] = useState(false);
 
   const isSubscribed = subscriptionStatus !== "free";
 
@@ -48,14 +49,15 @@ export function NotificationSettings({
 
   // Automatically enable reminders if user becomes subscribed and reminders are currently off
   useEffect(() => {
-    if (isSubscribed && !isEnabled && !isLoading) {
+    if (isSubscribed && !isEnabled && !isLoading && !autoEnableAttempted) {
       console.log(
         "Subscription active and reminders off, attempting to enable automatically.",
       );
+      setAutoEnableAttempted(true);
       handleToggle();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubscribed, isEnabled, isLoading]);
+  }, [isSubscribed, isEnabled, isLoading, autoEnableAttempted]);
 
   const loadNotificationSettings = async () => {
     try {
@@ -202,8 +204,7 @@ export function NotificationSettings({
   return (
     <Pressable
       style={[styles.container, { borderBottomColor: colors.border }]}
-      disabled={!isSubscribed}
-      onPress={!isSubscribed ? handleToggle : undefined}
+      onPress={handleToggle}
     >
       <View style={styles.row}>
         <View style={styles.textContainer}>

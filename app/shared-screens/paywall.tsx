@@ -52,9 +52,7 @@ export default function PaywallScreen() {
     }
   };
 
-  const handlePurchaseComplete = ({ customerInfo }: any) => {
-    console.log('Purchase completed:', customerInfo);
-    // After successful purchase, return to origin
+  const handleCompletion = () => {
     if (from && typeof from === 'string') {
       router.replace(from as any);
     } else {
@@ -84,11 +82,8 @@ export default function PaywallScreen() {
         options={{
           offering
         }}
-        onRestoreCompleted={({customerInfo}) => {
-          // Handle restore completion
-          console.log('Restore completed:', customerInfo);
-        }}
-        onPurchaseCompleted={handlePurchaseComplete}
+        onRestoreCompleted={handleCompletion}
+        onPurchaseCompleted={handleCompletion}
         onDismiss={handleDismiss}
       />
     </View>

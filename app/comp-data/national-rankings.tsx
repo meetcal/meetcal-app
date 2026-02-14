@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   rankText: {
-    width: 60,
+    width: 50,
     fontSize: 16,
     textAlign: "center",
   },

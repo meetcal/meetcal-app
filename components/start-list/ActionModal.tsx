@@ -42,7 +42,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
         ]}
         onPress={onClose}
       >
-        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
           <View
             style={[
               styles.saveModalHeader,
@@ -295,7 +295,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               color={colors.secondaryText}
             />
           </Pressable>
-        </View>
+        </Pressable>
       </Pressable>
     </Modal>
   );

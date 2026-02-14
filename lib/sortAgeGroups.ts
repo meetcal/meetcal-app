@@ -41,8 +41,10 @@ export function sortAgeGroups(
     const mastersB = bLower.startsWith("masters");
 
     if (mastersA && mastersB) {
-      const numA = parseInt(aLower.replace(/[^0-9]/g, ""), 10);
-      const numB = parseInt(bLower.replace(/[^0-9]/g, ""), 10);
+      const matchA = aLower.match(/\d+/);
+      const matchB = bLower.match(/\d+/);
+      const numA = matchA ? parseInt(matchA[0], 10) : NaN;
+      const numB = matchB ? parseInt(matchB[0], 10) : NaN;
       if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
         return numA - numB;
       }

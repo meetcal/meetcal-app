@@ -73,10 +73,22 @@ export default function ProfileScreen() {
     setIsEditing(true);
   };
 
-  const sendEmailFeedback = () => {
+  const sendEmailFeedback = async () => {
     const email = "maddisen@meetcal.app";
     const subject = "MeetCal App Feedback";
-    const body = `Device Details: ${getManufacturer} ${getDevice} ${getDeviceType} ${Platform.OS} ${Platform.Version}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
+
+    let manufacturer = "";
+    let device = "";
+    let deviceType = "";
+    try {
+      manufacturer = await getManufacturer();
+      device = await getDevice();
+      deviceType = getDeviceType();
+    } catch (err) {
+      console.error("Error getting device info:", err);
+    }
+
+    const body = `Device Details: ${manufacturer} ${device} ${deviceType} ${Platform.OS} ${Platform.Version}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
 
     const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
@@ -191,7 +203,11 @@ export default function ProfileScreen() {
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Customer Support
               </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              <IconSymbol
+                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                size={20}
+                color={colors.link}
+              />
             </View>
           </Pressable>
 
@@ -210,7 +226,11 @@ export default function ProfileScreen() {
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Submit Feedback
               </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+              <IconSymbol
+                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                size={20}
+                color={colors.link}
+              />
             </View>
           </Pressable>
         </View>

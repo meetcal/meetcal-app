@@ -389,6 +389,7 @@ function StatCard({
   title,
   value,
   icon,
+  color,
 }: {
   title: string;
   value: string;
@@ -399,7 +400,7 @@ function StatCard({
 
   return (
     <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-      <IconSymbol name={icon} size={30} color={colors.link} />
+      <IconSymbol name={icon} size={30} color={color ?? colors.link} />
       <ThemedText style={styles.statValue}>{value}</ThemedText>
       <ThemedText style={styles.statTitle}>{title}</ThemedText>
     </View>
@@ -445,25 +446,21 @@ const ShareableRecapView = React.forwardRef<
           title="Athletes"
           value={stats.totalAthletes.toString()}
           emoji="👥"
-          color={colors.link}
         />
         <ShareableStatCard
           title="Total Weight"
           value={`${Math.round(stats.totalWeightLifted)} kg`}
           emoji="⚖️"
-          color={colors.totalColor}
         />
         <ShareableStatCard
           title="Competition PRs"
           value={stats.totalPRs.toString()}
           emoji="⭐"
-          color={colors.prColor}
         />
         <ShareableStatCard
           title="Perfect 6/6"
           value={stats.perfect6for6.toString()}
           emoji="✅"
-          color={colors.success}
         />
       </View>
 
@@ -509,16 +506,14 @@ function ShareableStatCard({
   title,
   value,
   emoji,
-  color,
 }: {
   title: string;
   value: string;
   emoji: string;
-  color: string;
 }) {
   return (
     <View style={shareableStyles.statCard}>
-      <ThemedText style={[shareableStyles.statEmoji, { color }]}>
+      <ThemedText style={shareableStyles.statEmoji}>
         {emoji}
       </ThemedText>
       <ThemedText style={shareableStyles.statValue}>{value}</ThemedText>

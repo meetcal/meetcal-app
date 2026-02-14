@@ -76,6 +76,8 @@ export default function AllMeetResultsScreen() {
 
   const performSearch = async (query: string) => {
     const requestVersion = ++searchRequestVersion.current;
+    setIsLoading(true);
+    setError(null);
     const hasNetwork = await isNetworkAvailable();
     if (!hasNetwork) {
       if (requestVersion !== searchRequestVersion.current) return;
@@ -85,8 +87,6 @@ export default function AllMeetResultsScreen() {
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
-    setError(null);
 
     try {
       const results = await searchAthletesByName(query);

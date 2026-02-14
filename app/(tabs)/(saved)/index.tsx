@@ -240,9 +240,7 @@ export default function SavedScreen() {
                   JSON.stringify(migratedSessions),
                 );
 
-                migratedSessions.forEach((session) => {
-                  saveSession(session);
-                });
+                await Promise.all(migratedSessions.map((session) => saveSession(session)));
               }
             }
           } catch (e) {
@@ -627,7 +625,7 @@ export default function SavedScreen() {
         ]}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>No saved sessions</ThemedText>
+            <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>No saved sessions</ThemedText>
           </View>
         )}
         refreshControl={
@@ -665,7 +663,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: "#666",
     textAlign: "center",
   },
 });

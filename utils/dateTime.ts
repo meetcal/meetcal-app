@@ -6,14 +6,18 @@ import { DaySchedule, Schedule } from "@/types/schedule";
  * @returns Abbreviated timezone (e.g., "EST", "PST") or "Local" if unavailable
  */
 export function getTimeZoneAbbreviation(timeZoneIdentifier: string): string {
-  return (
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: timeZoneIdentifier,
-      timeZoneName: "short",
-    })
-      .formatToParts(new Date())
-      .find((part) => part.type === "timeZoneName")?.value || "Local"
-  );
+  try {
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: timeZoneIdentifier,
+        timeZoneName: "short",
+      })
+        .formatToParts(new Date())
+        .find((part) => part.type === "timeZoneName")?.value || "Local"
+    );
+  } catch {
+    return "Local";
+  }
 }
 
 /**
@@ -46,6 +50,7 @@ export function formatDayTitle(day: DaySchedule): string {
     weekday: "long",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   }).format(parsed);
 }
 
@@ -62,7 +67,7 @@ export function calculateInitialPage(scheduleData: Schedule): number {
 
   // Find the index of the current date or the closest future date using fullDate
   const currentDateIndex = scheduleData.findIndex(
-    (day) => day.fullDate >= currentUTCDate,
+    (day) => day.fullDate != null && day.fullDate >= currentUTCDate,
   );
 
   // If current date is before all schedule dates, return 0 (first day)
@@ -81,22 +86,27 @@ export function calculateInitialPage(scheduleData: Schedule): number {
  * @returns Date object representing the current date in the specified timezone
  */
 export function getDateInTimeZone(timeZone: string): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  }).formatToParts(new Date());
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    }).formatToParts(new Date());
 
-  const year = Number(
-    parts.find((part) => part.type === "year")?.value ?? "0",
-  );
-  const month = Number(
-    parts.find((part) => part.type === "month")?.value ?? "1",
-  );
-  const day = Number(
-    parts.find((part) => part.type === "day")?.value ?? "1",
-  );
+    const year = Number(
+      parts.find((part) => part.type === "year")?.value ?? "0",
+    );
+    const month = Number(
+      parts.find((part) => part.type === "month")?.value ?? "1",
+    );
+    const day = Number(
+      parts.find((part) => part.type === "day")?.value ?? "1",
+    );
 
-  return new Date(year, month - 1, day);
+    return new Date(year, month - 1, day);
+  } catch {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
 }

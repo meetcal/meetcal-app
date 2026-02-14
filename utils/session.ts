@@ -25,5 +25,7 @@ export function makeLookupKey(
   sessionNumber: number | string,
   platform: string,
 ): string {
-  return `${sessionNumber}-${platform}`;
+  const normalizedSession = String(sessionNumber).replace(/\s+/g, "-");
+  const normalizedPlatform = String(platform).replace(/\s+/g, "-");
+  return `${normalizedSession}-${normalizedPlatform}`;
 }

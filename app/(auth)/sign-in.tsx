@@ -7,6 +7,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect } from "react";
 import {
+  Alert,
   Dimensions,
   Image,
   Platform,
@@ -55,6 +56,33 @@ export default function SignInScreen() {
   const isFromInfo = from === "info";
   const { onGooglePress, onApplePress } = useSignInHandlers();
   useWarmUpBrowser();
+
+  const getOAuthErrorMessage = (error: unknown) => {
+    if (error && typeof error === "object" && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim().length > 0) {
+        return message;
+      }
+    }
+
+    return "Please try again.";
+  };
+
+  const handleGooglePress = async () => {
+    try {
+      await onGooglePress(startSSOFlow);
+    } catch (error) {
+      Alert.alert("Google sign in failed", getOAuthErrorMessage(error));
+    }
+  };
+
+  const handleApplePress = async () => {
+    try {
+      await onApplePress(startSSOFlow);
+    } catch (error) {
+      Alert.alert("Apple sign in failed", getOAuthErrorMessage(error));
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -107,7 +135,7 @@ export default function SignInScreen() {
               borderColor: colors.border,
             },
           ]}
-          onPress={() => onGooglePress(startSSOFlow)}
+          onPress={handleGooglePress}
         >
           <View style={styles.googleIconContainer}>
             <Image
@@ -138,7 +166,7 @@ export default function SignInScreen() {
                   currentTheme === "dark" ? "#FFFFFF" : "#000000",
               },
             ]}
-            onPress={() => onApplePress(startSSOFlow)}
+            onPress={handleApplePress}
           >
             <View style={styles.iconContainer}>
               <IconSymbol

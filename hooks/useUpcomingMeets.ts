@@ -25,9 +25,12 @@ export function useUpcomingMeets({
   const upcomingMeets = useMemo(() => {
     const startOfToday = getDateInTimeZone("America/Los_Angeles");
     const rangeStart = new Date(startOfToday);
-    const rangeEnd = new Date(startOfToday);
+    rangeStart.setDate(1);
     rangeStart.setMonth(rangeStart.getMonth() - monthsRange);
-    rangeEnd.setMonth(rangeEnd.getMonth() + monthsRange);
+    const rangeEnd = new Date(startOfToday);
+    rangeEnd.setDate(1);
+    rangeEnd.setMonth(rangeEnd.getMonth() + monthsRange + 1);
+    rangeEnd.setDate(0); // last day of the target month
 
     return availableMeets.filter((meet) => {
       const start = new Date(meet.dates?.start ?? "");
