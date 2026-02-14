@@ -58,6 +58,8 @@ export default function RecordsScreen() {
         }
       } catch {
         setFetchError("Failed to load WSOs");
+      } finally {
+        setLoading(false);
       }
     }
     fetchWSOs();
@@ -148,7 +150,7 @@ export default function RecordsScreen() {
   };
 
   const handleResetFilters = () => {
-    const reset = { wso: "", gender: "Men" as Gender, ageGroup: "" };
+    const reset = { wso: "", gender: "Men" as Gender, ageGroup: "Senior" };
     setFilters(reset);
     setTempFilters(reset);
   };

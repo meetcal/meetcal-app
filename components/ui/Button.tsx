@@ -2,7 +2,7 @@ import { Pressable, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native'
 
 interface ButtonProps {
   onPress: () => void
-  children: React.ReactNode
+  children: string | number | (string | number)[]
   style?: ViewStyle
   textStyle?: TextStyle
   disabled?: boolean

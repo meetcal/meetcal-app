@@ -240,7 +240,7 @@ export default function SessionAthletes({
     }
   }, [sessionNumber, platform, selectedMeet]);
 
-  // Get time zone abbreviation
+  // Compute the numeric sort value for an athlete based on the active sort key
   const getSortValue = useCallback(
     (athlete: SessionAthlete) => {
       if (sortKey === "entryTotal") {
@@ -476,11 +476,11 @@ export default function SessionAthletes({
           </View>
         </View>
 
-        {Object.entries(sortedAthletes).map(([platform, platformAthletes]) => (
-          <View key={platform}>
+        {Object.entries(sortedAthletes).map(([platformKey, platformAthletes]) => (
+          <View key={platformKey}>
             {platformAthletes.map((athlete, index) => (
               <View
-                key={athlete.name}
+                key={`${athlete.name}-${index}`}
                 style={[
                   styles.athleteSection,
                   index !== platformAthletes.length - 1 && {

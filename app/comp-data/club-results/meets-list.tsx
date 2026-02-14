@@ -163,16 +163,12 @@ export default function ClubMeetsListScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            No meets found for 
-{' '}
-{club}
+            {`No meets found for ${club}`}
           </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
           >
-            Athletes: 
-{' '}
-{athletesInClub.length}
+            {`Athletes: ${athletesInClub.length}`}
           </ThemedText>
         </View>
       );

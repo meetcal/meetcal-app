@@ -3,7 +3,6 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import { Stack } from "expo-router";
 import React from "react";
 import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 
@@ -11,27 +10,38 @@ export default function EventInfoScreen() {
   const colors = useAppColors();
   const { meetDetails, isLoading } = useSelectedMeet();
 
-  const handleAddressPress = () => {
+  const handleAddressPress = async () => {
     if (!meetDetails?.venue) return;
 
-    const address = `${meetDetails.venue.name}, ${meetDetails.venue.address.street}, ${meetDetails.venue.address.city}, ${meetDetails.venue.address.state} ${meetDetails.venue.address.zip}`;
-    const encodedAddress = encodeURIComponent(address);
+    const addr = meetDetails.venue.address;
+    const parts = [
+      meetDetails.venue.name,
+      addr?.street,
+      addr?.city,
+      addr?.state && addr?.zip ? `${addr.state} ${addr.zip}` : addr?.state || addr?.zip,
+    ].filter(Boolean);
+
+    if (parts.length === 0) return;
+
+    const encodedAddress = encodeURIComponent(parts.join(", "));
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
 
     const mapsUrl = Platform.select({
-      ios: `maps://maps.apple.com/?address=${encodedAddress}`,
-      android: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-      default: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+      ios: `http://maps.apple.com/?address=${encodedAddress}`,
+      android: googleMapsUrl,
+      default: googleMapsUrl,
     });
 
-    Linking.canOpenURL(mapsUrl).then((supported) => {
+    try {
+      const supported = await Linking.canOpenURL(mapsUrl);
       if (supported) {
-        Linking.openURL(mapsUrl);
+        await Linking.openURL(mapsUrl);
       } else {
-        Linking.openURL(
-          `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-        );
+        await Linking.openURL(googleMapsUrl);
       }
-    });
+    } catch (error) {
+      console.error("Failed to open maps:", error);
+    }
   };
 
   if (isLoading || !meetDetails) {
@@ -39,20 +49,6 @@ export default function EventInfoScreen() {
       <ThemedView
         style={[styles.container, { backgroundColor: colors.background }]}
       >
-        <Stack.Screen
-          options={{
-            title: "Event Info",
-            headerBackTitle: "Back",
-            headerShown: true,
-            gestureEnabled: true,
-            gestureDirection: "horizontal",
-            animation: "slide_from_right",
-            headerStyle: {
-              backgroundColor: colors.background,
-            },
-            headerShadowVisible: false,
-          }}
-        />
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.section}>
             <ThemedText

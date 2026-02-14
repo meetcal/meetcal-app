@@ -67,7 +67,7 @@ export function DataTable<T>({
           ))}
 
         {error && !loading && (
-          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <ThemedText style={[styles.errorText, { color: colors.fail }]}>{error}</ThemedText>
         )}
 
         {!loading && !error && data.length === 0 && (
@@ -140,7 +140,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   errorText: {
-    color: "red",
     textAlign: "center",
     marginTop: 16,
     marginBottom: 16,

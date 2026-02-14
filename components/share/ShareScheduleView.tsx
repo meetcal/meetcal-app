@@ -1,4 +1,5 @@
 import { ThemedText } from "@/components/ui/ThemedText";
+import { getPlatformColors } from "@/constants/Colors";
 import { LiftResult } from "@/data/types/athletes";
 import type { Schedule as ScheduleType } from "@/types/schedule";
 import React from "react";
@@ -19,26 +20,31 @@ interface ShareScheduleViewProps {
   } | null;
 }
 
-// Platform color mapping
 const getPlatformColor = (platform: string): string => {
-  const platformLower = platform.toLowerCase();
-  if (platformLower === "red") return "#FF3B30";
-  if (platformLower === "white") return "#8E8E93";
-  if (platformLower === "stars") return "#5856D6";
-  if (platformLower === "stripes") return "#34C759";
-  if (platformLower === "rogue") return "#000000";
-  return "#007AFF"; // Blue as default
+  const platformColors = getPlatformColors();
+  const normalizedPlatform =
+    platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
+  return platformColors[normalizedPlatform as keyof typeof platformColors] || platformColors.Blue;
 };
 
 // Format time from HH:mm:ss or h:mm a format
 const formatTime = (time: string): string => {
+  if (!time || typeof time !== "string") return "";
+
   // If already in 12-hour format, return as is
   if (time.includes("AM") || time.includes("PM")) {
     return time;
   }
 
+  if (!time.includes(":")) return time;
+
   // Parse 24-hour format
-  const [hours, minutes] = time.split(":").map(Number);
+  const parts = time.split(":");
+  const hours = Number(parts[0]);
+  const minutes = Number(parts[1]);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
+
   const period = hours >= 12 ? "PM" : "AM";
   const hour12 = hours % 12 || 12;
   return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;

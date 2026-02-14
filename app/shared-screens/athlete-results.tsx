@@ -403,13 +403,13 @@ export default function AthleteResultsScreen() {
         ) : (
           <>
             <AthleteStats results={athleteResults} colors={colors} />
-            {athleteResults.map((result) => (
+            {athleteResults.map((result, index) => (
               <View
-                key={`${result.meet}-${result.date}`}
+                key={result.id}
                 style={[
                   styles.card,
                   { backgroundColor: colors.card },
-                  athleteResults.indexOf(result) === 0 && { marginTop: 16 },
+                  index === 0 && { marginTop: 16 },
                 ]}
               >
                 <View

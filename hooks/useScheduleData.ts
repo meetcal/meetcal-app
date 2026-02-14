@@ -86,6 +86,7 @@ export function useScheduleData(
     } else {
       // Clear schedule if no meet is selected
       setSchedule([]);
+      setInitialScrollIndex(0);
       setIsLoading(false);
     }
   }, [selectedMeet, loadSchedule]);

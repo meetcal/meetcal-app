@@ -23,7 +23,7 @@ interface EditProfileModalProps {
   isEditing: boolean;
   setIsEditing: (isEditing: boolean) => void;
   editingField: EditableField | null;
-  setEditingField: (editingField: string | null) => void;
+  setEditingField: (editingField: EditableField | null) => void;
   editValue: string;
   setEditValue: (editValue: string) => void;
   setIsLoading: (isLoading: boolean) => void;
@@ -119,7 +119,7 @@ const EditProfileModal = ({
             setIsEditing(false);
           }}
         >
-          <View
+          <Pressable
             style={[
               styles.modalContent,
               {
@@ -128,6 +128,7 @@ const EditProfileModal = ({
                 maxHeight: "80%",
               },
             ]}
+            onPress={() => Keyboard.dismiss()}
           >
             <View
               style={[styles.modalHeader, { borderBottomColor: colors.border }]}
@@ -192,7 +193,7 @@ const EditProfileModal = ({
                 </TouchableOpacity>
               </>
             </ScrollView>
-          </View>
+          </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>

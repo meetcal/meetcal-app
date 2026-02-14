@@ -1,11 +1,13 @@
 import { useState, useCallback } from "react";
 
-interface UseFilterStateOptions<T> {
+interface UseFilterStateOptions<T extends Record<string, string>> {
   defaultFilters: T;
   onReset?: () => T;
 }
 
-export function useFilterState<T>(options: UseFilterStateOptions<T>) {
+export function useFilterState<T extends Record<string, string>>(
+  options: UseFilterStateOptions<T>,
+) {
   const { defaultFilters, onReset } = options;
   const [filters, setFilters] = useState<T>(defaultFilters);
   const [tempFilters, setTempFilters] = useState<T>(defaultFilters);
@@ -16,8 +18,12 @@ export function useFilterState<T>(options: UseFilterStateOptions<T>) {
     setShowFilterModal(true);
   }, [filters]);
 
+  const closeFilterModal = useCallback(() => {
+    setShowFilterModal(false);
+  }, []);
+
   const applyFilters = useCallback((newFilters: Record<string, string>) => {
-    const updated = newFilters as unknown as T;
+    const updated = newFilters as T;
     setFilters(updated);
     setTempFilters(updated);
     setShowFilterModal(false);
@@ -40,8 +46,8 @@ export function useFilterState<T>(options: UseFilterStateOptions<T>) {
     resetFilters,
     filterModalProps: {
       visible: showFilterModal,
-      onClose: () => setShowFilterModal(false),
-      filters: tempFilters as unknown as Record<string, string>,
+      onClose: closeFilterModal,
+      filters: tempFilters as Record<string, string>,
       onApplyFilters: applyFilters,
       onResetFilters: resetFilters,
     },

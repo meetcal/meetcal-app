@@ -237,7 +237,6 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         try {
           const email = user.primaryEmailAddress?.emailAddress;
           if (email) {
-            console.log("Syncing user email with RevenueCat:", email);
             await Purchases.setEmail(email);
             await Purchases.logIn(user.id);
           }

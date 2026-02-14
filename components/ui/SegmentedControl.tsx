@@ -39,7 +39,7 @@ export function SegmentedControl({
         style={[
           styles.selectedSegment,
           {
-            backgroundColor: "white",
+            backgroundColor: colors.card || colors.background,
             width: segmentWidth,
             transform: [{ translateX: slideAnimation }],
           },
@@ -55,7 +55,7 @@ export function SegmentedControl({
             style={[
               styles.segmentText,
               {
-                color: selectedIndex === index ? "black" : colors.text,
+                color: selectedIndex === index ? colors.primaryText : colors.text,
                 fontWeight: selectedIndex === index ? "600" : "400",
               },
             ]}

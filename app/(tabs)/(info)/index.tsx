@@ -56,7 +56,6 @@ export default function InfoScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ListButton
             title="Adaptive American Records"
-            lastSection={true}
             onPress={() => router.push("/comp-data/adap-records")}
           />
 

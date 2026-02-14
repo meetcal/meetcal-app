@@ -3,6 +3,9 @@ import * as AuthSession from "expo-auth-session";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
 
+type OAuthProvider = "google" | "apple";
+type OAuthStrategy = "oauth_google" | "oauth_apple";
+
 // Export a hook that components can use
 export function useSignInHandlers() {
   const { isSubscribed } = useSubscription();
@@ -67,240 +70,165 @@ export function useSignInHandlers() {
     }
   };
 
-  // Handle Google OAuth
+  const handleOAuthError = (
+    err: unknown,
+    options: { provider: OAuthProvider; context: "sign-in" },
+  ) => {
+    console.error("OAuth provider:", options.provider);
+    console.error("OAuth context:", options.context);
+    console.error("OAuth error (raw):", err);
+    console.error("OAuth error (name):", (err as Error)?.name);
+    console.error("OAuth error (message):", (err as Error)?.message);
+    console.error("OAuth error (stack):", (err as Error)?.stack);
+    try {
+      console.error("OAuth error (string):", String(err));
+    } catch (toStringError) {
+      console.error("OAuth error (string error):", toStringError);
+    }
+    console.error("OAuth error (safe json):", safeStringify(err));
+    dumpErrorDetails(err);
+  };
+
+  const setActiveSession = useCallback(
+    async (
+      result: { setActive?: ((value: { session: string }) => Promise<void>) | null },
+      sessionId: string,
+      provider: OAuthProvider,
+    ) => {
+      if (typeof result?.setActive !== "function") {
+        throw new Error(
+          `Unable to activate ${provider} session because setActive is unavailable`,
+        );
+      }
+
+      await result.setActive({ session: sessionId });
+    },
+    [],
+  );
+
+  const performSSOFlow = useCallback(
+    async (
+      startSSOFlow: any,
+      strategy: OAuthStrategy,
+      provider: OAuthProvider,
+    ) => {
+      console.log(`Starting ${provider} OAuth flow...`);
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: "meetcal",
+        path: "oauth-native-callback",
+      });
+      console.log("Redirect URL:", redirectUrl);
+
+      console.log("Calling startSSOFlow...");
+      const result = await startSSOFlow({
+        strategy,
+        redirectUrl,
+      });
+      console.log("SSO Flow Result:", safeStringify(result));
+
+      if (result.createdSessionId) {
+        console.log("Session created directly:", result.createdSessionId);
+        await setActiveSession(result, result.createdSessionId, provider);
+        handlePostSignIn();
+        return;
+      }
+
+      if (result.signUp) {
+        console.log("Sign up flow initiated:", result.signUp.status);
+        const signUp = result.signUp;
+
+        try {
+          console.log("Attempting to complete sign up...");
+          await signUp.update({
+            emailAddress: signUp.emailAddress || "",
+            firstName: signUp.firstName || "",
+            lastName: signUp.lastName || "",
+            legalAccepted: true,
+          });
+
+          const completeSignUp = await signUp.create({
+            strategy,
+            redirectUrl,
+            transfer: true,
+          });
+
+          console.log("Sign up completion result:", safeStringify(completeSignUp));
+
+          if (completeSignUp.createdSessionId) {
+            console.log(
+              "Session created after sign up:",
+              completeSignUp.createdSessionId,
+            );
+            await setActiveSession(result, completeSignUp.createdSessionId, provider);
+            handlePostSignIn();
+            return;
+          }
+
+          console.log("No session created after sign up completion");
+          if (result.signIn && signUp.emailAddress) {
+            const signInAttempt = await result.signIn.create({
+              identifier: signUp.emailAddress,
+              strategy,
+              redirectUrl,
+            });
+
+            if (signInAttempt.createdSessionId) {
+              await setActiveSession(result, signInAttempt.createdSessionId, provider);
+              handlePostSignIn();
+              return;
+            }
+          }
+
+          throw new Error("No session created after sign-up completion");
+        } catch (signUpErr) {
+          throw signUpErr;
+        }
+      }
+
+      if (result.signIn) {
+        console.log("Sign in flow initiated:", result.signIn.status);
+        const signInAttempt = await result.signIn.create({
+          strategy,
+          redirectUrl,
+        });
+
+        if (signInAttempt.createdSessionId) {
+          console.log("Session created from sign in:", signInAttempt.createdSessionId);
+          await setActiveSession(result, signInAttempt.createdSessionId, provider);
+          handlePostSignIn();
+          return;
+        }
+
+        throw new Error("No session created from sign in");
+      }
+
+      throw new Error("Unexpected OAuth flow state");
+    },
+    [handlePostSignIn, safeStringify, setActiveSession],
+  );
+
   const onGooglePress = useCallback(
     async (startSSOFlow: any) => {
       try {
-        console.log("Starting Google OAuth flow...");
-        const redirectUrl = AuthSession.makeRedirectUri({
-          scheme: "meetcal",
-          path: "oauth-native-callback",
-        });
-        console.log("Redirect URL:", redirectUrl);
-
-        console.log("Calling startSSOFlow...");
-        const result = await startSSOFlow({
-          strategy: "oauth_google",
-          redirectUrl,
-        });
-        console.log("SSO Flow Result:", safeStringify(result));
-
-        if (result.createdSessionId) {
-          console.log("Session created directly:", result.createdSessionId);
-          await result.setActive!({ session: result.createdSessionId });
-          handlePostSignIn();
-        } else if (result.signUp) {
-          console.log("Sign up flow initiated:", result.signUp.status);
-          const signUp = result.signUp;
-
-          try {
-            console.log("Attempting to complete sign up...");
-
-            // First, update the sign-up with required fields
-            await signUp.update({
-              emailAddress: signUp.emailAddress || "",
-              firstName: signUp.firstName || "",
-              lastName: signUp.lastName || "",
-              password: Math.random().toString(36).slice(-8),
-              legalAccepted: true,
-            });
-
-            // Then complete the sign-up
-            const completeSignUp = await signUp.create({
-              strategy: "oauth_google",
-              redirectUrl,
-              transfer: true,
-            });
-
-            console.log(
-              "Sign up completion result:",
-              JSON.stringify(completeSignUp, null, 2),
-            );
-
-            if (completeSignUp.createdSessionId) {
-              console.log(
-                "Session created after sign up:",
-                completeSignUp.createdSessionId,
-              );
-              await result.setActive!({
-                session: completeSignUp.createdSessionId,
-              });
-              handlePostSignIn();
-            } else {
-              console.log("No session created after sign up completion");
-              if (result.signIn && signUp.emailAddress) {
-                const signInAttempt = await result.signIn.create({
-                  identifier: signUp.emailAddress,
-                  strategy: "oauth_google",
-                  redirectUrl,
-                });
-
-                if (signInAttempt.createdSessionId) {
-                  await result.setActive!({
-                    session: signInAttempt.createdSessionId,
-                  });
-                  handlePostSignIn();
-                }
-              }
-            }
-          } catch (signUpErr) {
-            console.error("Sign up error:", JSON.stringify(signUpErr, null, 2));
-          }
-        } else if (result.signIn) {
-          console.log("Sign in flow initiated:", result.signIn.status);
-          const signIn = result.signIn;
-
-          try {
-            const signInAttempt = await signIn.create({
-              strategy: "oauth_google",
-              redirectUrl,
-            });
-
-            if (signInAttempt.createdSessionId) {
-              console.log(
-                "Session created from sign in:",
-                signInAttempt.createdSessionId,
-              );
-              await result.setActive!({
-                session: signInAttempt.createdSessionId,
-              });
-              handlePostSignIn();
-            } else {
-              console.log("No session created from sign in");
-            }
-          } catch (signInErr) {
-            console.error("Sign in error:", JSON.stringify(signInErr, null, 2));
-          }
-        } else {
-          console.log("Unexpected flow state:", JSON.stringify(result, null, 2));
-        }
+        await performSSOFlow(startSSOFlow, "oauth_google", "google");
       } catch (err) {
-        console.error("OAuth error (raw):", err);
-        console.error("OAuth error (name):", (err as Error)?.name);
-        console.error("OAuth error (message):", (err as Error)?.message);
-        console.error("OAuth error (stack):", (err as Error)?.stack);
-        try {
-          console.error("OAuth error (string):", String(err));
-        } catch (toStringError) {
-          console.error("OAuth error (string error):", toStringError);
-        }
-        console.error("OAuth error (safe json):", safeStringify(err));
-        dumpErrorDetails(err);
+        handleOAuthError(err, { provider: "google", context: "sign-in" });
+        throw err;
       }
     },
-    [handlePostSignIn],
+    [performSSOFlow],
   );
 
-  // Handle Apple OAuth
   const onApplePress = useCallback(
     async (startSSOFlow: any) => {
       try {
-        console.log("Starting Apple OAuth flow...");
-        const redirectUrl = AuthSession.makeRedirectUri({
-          scheme: "meetcal",
-          path: "oauth-native-callback",
-        });
-        console.log("Redirect URL:", redirectUrl);
-
-        console.log("Calling startSSOFlow...");
-        const result = await startSSOFlow({
-          strategy: "oauth_apple",
-          redirectUrl,
-        });
-        console.log("SSO Flow Result:", JSON.stringify(result, null, 2));
-
-        if (result.createdSessionId) {
-          console.log("Session created directly:", result.createdSessionId);
-          await result.setActive!({ session: result.createdSessionId });
-          handlePostSignIn();
-        } else if (result.signUp) {
-          console.log("Sign up flow initiated:", result.signUp.status);
-          const signUp = result.signUp;
-
-          try {
-            console.log("Attempting to complete sign up...");
-
-            await signUp.update({
-              emailAddress: signUp.emailAddress || "",
-              firstName: signUp.firstName || "",
-              lastName: signUp.lastName || "",
-              password: Math.random().toString(36).slice(-8),
-              legalAccepted: true,
-            });
-
-            const completeSignUp = await signUp.create({
-              strategy: "oauth_apple",
-              redirectUrl,
-              transfer: true,
-            });
-
-            console.log(
-              "Sign up completion result:",
-              JSON.stringify(completeSignUp, null, 2),
-            );
-
-            if (completeSignUp.createdSessionId) {
-              console.log(
-                "Session created after sign up:",
-                completeSignUp.createdSessionId,
-              );
-              await result.setActive!({
-                session: completeSignUp.createdSessionId,
-              });
-              handlePostSignIn();
-            } else {
-              console.log("No session created after sign up completion");
-              if (result.signIn && signUp.emailAddress) {
-                const signInAttempt = await result.signIn.create({
-                  identifier: signUp.emailAddress,
-                  strategy: "oauth_apple",
-                  redirectUrl,
-                });
-
-                if (signInAttempt.createdSessionId) {
-                  await result.setActive!({
-                    session: signInAttempt.createdSessionId,
-                  });
-                  handlePostSignIn();
-                }
-              }
-            }
-          } catch (signUpErr) {
-            console.error("Sign up error:", JSON.stringify(signUpErr, null, 2));
-          }
-        } else if (result.signIn) {
-          console.log("Sign in flow initiated:", result.signIn.status);
-          const signIn = result.signIn;
-
-          try {
-            const signInAttempt = await signIn.create({
-              strategy: "oauth_apple",
-              redirectUrl,
-            });
-
-            if (signInAttempt.createdSessionId) {
-              console.log(
-                "Session created from sign in:",
-                signInAttempt.createdSessionId,
-              );
-              await result.setActive!({
-                session: signInAttempt.createdSessionId,
-              });
-              handlePostSignIn();
-            } else {
-              console.log("No session created from sign in");
-            }
-          } catch (signInErr) {
-            console.error("Sign in error:", JSON.stringify(signInErr, null, 2));
-          }
-        } else {
-          console.log("Unexpected flow state:", JSON.stringify(result, null, 2));
-        }
+        await performSSOFlow(startSSOFlow, "oauth_apple", "apple");
       } catch (err) {
-        console.error("OAuth error:", JSON.stringify(err, null, 2));
+        handleOAuthError(err, { provider: "apple", context: "sign-in" });
+        throw err;
       }
     },
-    [handlePostSignIn],
+    [performSSOFlow],
   );
 
   return {

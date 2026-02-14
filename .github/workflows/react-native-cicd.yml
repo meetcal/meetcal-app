@@ -72,7 +72,7 @@ jobs:
         if: always()
         uses: stegzilla/discord-notify@v2
         with:
-          WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
           title: Test Results
           message: Tests ${{ job.status == 'success' && 'passed ✅' || 'failed ❌' }}
@@ -188,7 +188,7 @@ jobs:
         if: always()
         uses: stegzilla/discord-notify@v2
         with:
-          WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
           title: Build Results
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
           message: Build for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}

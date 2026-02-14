@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useState } from "react";
 import {
   Modal,
   Platform,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 
 interface Meet {
+  id: string;
   name: string;
   dates?: {
     start: string;
@@ -39,6 +41,19 @@ export function MeetSelectionModal({
   isRefreshing,
 }: MeetSelectionModalProps) {
   const colors = useAppColors();
+  const [isSelecting, setIsSelecting] = useState(false);
+
+  const handleSelectMeet = async (meetName: string) => {
+    if (isSelecting) return;
+    setIsSelecting(true);
+    try {
+      await onSelectMeet(meetName);
+    } catch (error) {
+      console.error("Failed to select meet:", error);
+    } finally {
+      setIsSelecting(false);
+    }
+  };
 
   return (
     <Modal
@@ -56,7 +71,7 @@ export function MeetSelectionModal({
         ]}
         onPress={onClose}
       >
-        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
           <View
             style={[styles.modalHeader, { borderBottomColor: colors.border }]}
           >
@@ -92,7 +107,7 @@ export function MeetSelectionModal({
           >
             {meets.map((meet) => (
               <Pressable
-                key={meet.name}
+                key={meet.id}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },
@@ -101,7 +116,8 @@ export function MeetSelectionModal({
                   },
                   pressed && { opacity: 0.8 },
                 ]}
-                onPress={() => onSelectMeet(meet.name)}
+                disabled={isSelecting}
+                onPress={() => handleSelectMeet(meet.name)}
               >
                 <ThemedText
                   style={[
@@ -120,13 +136,13 @@ export function MeetSelectionModal({
 
             {meets.length === 0 && (
               <View style={styles.emptyContainer}>
-                <ThemedText style={styles.emptyText}>
+                <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
                   No meets available in the next 6 months
                 </ThemedText>
               </View>
             )}
           </ScrollView>
-        </View>
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -179,7 +195,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: "#666",
     textAlign: "center",
   },
   modalScrollView: {

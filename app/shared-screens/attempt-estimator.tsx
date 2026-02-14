@@ -27,20 +27,27 @@ export default function AttemptEstimatorScreen() {
     meet: string;
   }>();
 
+  const sessionNumber = params.sessionNumber
+    ? parseInt(params.sessionNumber)
+    : NaN;
+  const hasValidParams =
+    !isNaN(sessionNumber) && !!params.platform && !!params.meet;
+
   const [estimates, setEstimates] = useState<AthleteAttemptEstimate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(hasValidParams);
   const [expandedAthletes, setExpandedAthletes] = useState<Set<string>>(
     new Set(),
   );
 
   const loadData = useCallback(async () => {
+    if (!hasValidParams) return;
     setLoading(true);
     try {
       // Load session athletes
       const { data: athletesData, error: athletesError } = await supabase
         .from("athletes")
         .select("*")
-        .eq("session_number", parseInt(params.sessionNumber))
+        .eq("session_number", sessionNumber)
         .eq("session_platform", params.platform)
         .eq("meet", params.meet);
 
@@ -86,7 +93,7 @@ export default function AttemptEstimatorScreen() {
     } finally {
       setLoading(false);
     }
-  }, [params.sessionNumber, params.platform, params.meet]);
+  }, [hasValidParams, sessionNumber, params.platform, params.meet]);
 
   useEffect(() => {
     loadData();
@@ -105,6 +112,30 @@ export default function AttemptEstimatorScreen() {
   const sortedEstimates = [...estimates].sort(
     (a, b) => a.snatchAttemptsOut - b.snatchAttemptsOut,
   );
+
+  if (!hasValidParams) {
+    return (
+      <ThemedView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            headerTitle: "Attempt Estimator",
+            headerBackTitle: "Back",
+            headerBackButtonDisplayMode: "minimal",
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ThemedText
+            style={[styles.loadingText, { color: colors.secondaryText }]}
+          >
+            Missing session information.
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
 
   if (loading) {
     return (
@@ -298,7 +329,7 @@ attempts out
                                 { color: colors.secondaryText },
                               ]}
                             >
-                              {estimate.snatchEstimates[0]}
+                              {estimate.snatchEstimates[0] ?? "—"}
                             </ThemedText>
                             <ThemedText
                               style={[
@@ -306,7 +337,9 @@ attempts out
                                 { color: colors.secondaryText },
                               ]}
                             >
-                              {estimate.snatchEstimates[1]}
+                              {estimate.snatchEstimates.length > 1
+                                ? estimate.snatchEstimates[1]
+                                : "—"}
                             </ThemedText>
                             <ThemedText
                               style={[
@@ -314,7 +347,9 @@ attempts out
                                 { color: colors.secondaryText },
                               ]}
                             >
-                              {estimate.snatchEstimates[2]}
+                              {estimate.snatchEstimates.length > 2
+                                ? estimate.snatchEstimates[2]
+                                : "—"}
                             </ThemedText>
                           </View>
                           <View
@@ -340,7 +375,7 @@ attempts out
                               { color: colors.secondaryText },
                             ]}
                           >
-                            {estimate.cjEstimates[0]}
+                            {estimate.cjEstimates[0] ?? "—"}
                           </ThemedText>
                           <ThemedText
                             style={[
@@ -348,7 +383,9 @@ attempts out
                               { color: colors.secondaryText },
                             ]}
                           >
-                            {estimate.cjEstimates[1]}
+                            {estimate.cjEstimates.length > 1
+                              ? estimate.cjEstimates[1]
+                              : "—"}
                           </ThemedText>
                           <ThemedText
                             style={[
@@ -356,7 +393,9 @@ attempts out
                               { color: colors.secondaryText },
                             ]}
                           >
-                            {estimate.cjEstimates[2]}
+                            {estimate.cjEstimates.length > 2
+                              ? estimate.cjEstimates[2]
+                              : "—"}
                           </ThemedText>
                         </View>
                       )}

@@ -130,6 +130,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
       if (!sessionDay) {
         console.error("Session day not found in schedule");
+        Alert.alert(
+          "Error",
+          "Unable to save: session day not found. Please try again.",
+        );
         return;
       }
 
@@ -167,11 +171,11 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           const isAvailable = await StoreReview.isAvailableAsync();
           if (isAvailable) {
             await StoreReview.requestReview();
+            await AsyncStorage.setItem("hasShownReview", "true");
           }
         } catch (error) {
           console.warn("ScheduleDetails: Store review unavailable", error);
         }
-        await AsyncStorage.setItem("hasShownReview", "true");
       }
     } catch (error) {
       console.error("Error checking review status:", error);
@@ -237,7 +241,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         (p) => p.platform === platform,
       );
       const startTimeToUse = platformData?.platformStartTime || startTime;
-      const weighInTime = calculateWeighInTime(startTimeToUse);
+      const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
 
       // Use the shared createCalendarEvents utility
       await createCalendarEvents([

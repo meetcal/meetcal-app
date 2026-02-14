@@ -64,18 +64,37 @@ export default function RecordsScreen() {
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(false);
   useEffect(() => {
     if (!hasSetDefaultFilters && intlRankings.length > 0) {
-      setFilters((prev) => ({
-        meet:
-          typeof intlRankings[0].meet === "string" ? intlRankings[0].meet : "",
-        age_category: "Senior",
-        gender: "Men",
-      }));
-      setTempFilters((prev) => ({
-        meet:
-          typeof intlRankings[0].meet === "string" ? intlRankings[0].meet : "",
-        age_category: "Senior",
-        gender: "Men",
-      }));
+      const availableAgeCategories = Array.from(
+        new Set(
+          intlRankings.map((r) =>
+            typeof r.age_category === "string" ? r.age_category : "",
+          ),
+        ),
+      ).filter(Boolean);
+      const availableGenders = Array.from(
+        new Set(
+          intlRankings.map((r) =>
+            typeof r.gender === "string" ? r.gender : "",
+          ),
+        ),
+      ).filter(Boolean);
+
+      const defaultMeet =
+        typeof intlRankings[0].meet === "string" ? intlRankings[0].meet : "";
+      const defaultAgeCategory = availableAgeCategories.includes("Senior")
+        ? "Senior"
+        : availableAgeCategories[0] || "";
+      const defaultGender = availableGenders.includes("Men")
+        ? "Men"
+        : availableGenders[0] || "";
+
+      const defaults: Filters = {
+        meet: defaultMeet,
+        age_category: defaultAgeCategory,
+        gender: defaultGender,
+      };
+      setFilters(defaults);
+      setTempFilters(defaults);
       setHasSetDefaultFilters(true);
     }
     // Only set once, when data first arrives

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface UseFetchDataResult<T> {
   data: T;
@@ -14,13 +14,16 @@ export function useFetchData<T>(
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const fetchFnRef = useRef(fetchFn);
+  fetchFnRef.current = fetchFn;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetchFn()
+    fetchFnRef
+      .current()
       .then((result) => {
         if (!cancelled) {
           setData(result);

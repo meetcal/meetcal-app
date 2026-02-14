@@ -80,7 +80,6 @@ export function isMeetName(
   allowedNames?: ReadonlySet<string>,
 ): meet is MeetName {
   if (meet === null || typeof meet !== "string") return false;
-  if (allowedNames !== undefined && allowedNames.size > 0)
-    return allowedNames.has(meet);
+  if (allowedNames !== undefined) return allowedNames.has(meet);
   return true;
 } 

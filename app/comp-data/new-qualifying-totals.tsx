@@ -45,11 +45,13 @@ export default function QualifyingTotalsScreen() {
     const parts = [];
     parts.push(filters.event);
     parts.push(filters.gender);
-    parts.push(filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1));
+    if (filters.ageGroup) {
+      parts.push(filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1));
+    }
     return parts.join(" • ");
   };
 
-  const getCurrentTotals = () => {
+  const totals = useMemo(() => {
     // Defensive: check all keys exist
     const eventData = totalsData[filters.event];
     if (!eventData) return [];
@@ -62,7 +64,7 @@ export default function QualifyingTotalsScreen() {
       bodyweightDivision: weightClass,
       qt,
     }));
-  };
+  }, [totalsData, filters.event, filters.ageGroup, filters.gender]);
 
   const eventOptions = useMemo(() => {
     return Object.keys(totalsData ?? {})
@@ -143,38 +145,35 @@ export default function QualifyingTotalsScreen() {
           { label: "Weight Class", flex: 2 },
           { label: "Total" },
         ]}
-        data={getCurrentTotals()}
+        data={totals}
         keyExtractor={(record) => record.bodyweightDivision}
         loading={loading}
         error={fetchError}
-        renderRow={(record, index) => {
-          const totals = getCurrentTotals();
-          return (
-            <View
-              style={[
-                dataTableStyles.row,
-                index < totals.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
-                {record.bodyweightDivision}
-              </ThemedText>
-              <ThemedText style={dataTableStyles.cell}>
-                {record.qt}
-                kg
-              </ThemedText>
-            </View>
-          );
-        }}
+        renderRow={(record, index) => (
+          <View
+            style={[
+              dataTableStyles.row,
+              index < totals.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
+              {record.bodyweightDivision}
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.qt}
+              kg
+            </ThemedText>
+          </View>
+        )}
       />
 
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        resultCount={getCurrentTotals().length}
+        resultCount={totals.length}
         resultLabel="weight classes"
       />
     </ThemedView>

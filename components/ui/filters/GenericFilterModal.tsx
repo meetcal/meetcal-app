@@ -146,9 +146,10 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const handleReset = () => {
     const resetFilters: Record<string, string> = {};
     currentSections.forEach((section) => {
-      resetFilters[section.id] = "";
+      resetFilters[section.id] = section.options[0]?.value || "";
     });
     setTempFilters(resetFilters);
+    prevTempFiltersRef.current = { ...resetFilters };
     onResetFilters();
   };
 
@@ -183,7 +184,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
         ]}
         onPress={handleClose}
       >
-        <View
+        <Pressable
           style={[
             styles.modalContent,
             {
@@ -191,6 +192,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
               maxHeight: windowHeight * 0.8,
             },
           ]}
+          onPress={() => {}}
         >
           <View style={styles.modalScrollContent}>
             <ScrollView bounces={false}>
@@ -281,7 +283,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
               </View>
             </View>
           </View>
-        </View>
+        </Pressable>
       </Pressable>
     </Modal>
   );
