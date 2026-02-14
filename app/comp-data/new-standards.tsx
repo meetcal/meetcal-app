@@ -1,20 +1,16 @@
-import { IconSymbol } from "@/components/ui/IconSymbol";
+import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useFetchData } from "@/hooks/useFetchData";
+import { useFilterState } from "@/hooks/useFilterState";
 import { fetchStandards } from "@/lib/database/fetch-standards";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
-import PaywallScreen from "../shared-screens/paywall";
+import React, { useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 
 type Gender = "men" | "women";
 type AgeGroup = "senior" | "junior" | "youth" | "u15";
@@ -36,50 +32,21 @@ interface StandardsData {
 
 export default function NewStandardsScreen() {
   const colors = useAppColors();
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
-  const [filters, setFilters] = useState<Filters>({
-    gender: "men",
-    ageGroup: "senior",
+  const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
+    defaultFilters: { gender: "men", ageGroup: "senior" },
   });
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [tempFilters, setTempFilters] = useState<Filters>(filters);
 
-  const [standards, setStandards] = useState<StandardsData | null>(null);
-  const [allStandards, setAllStandards] = useState<StandardsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setFetchError(null);
-
-    fetchStandards()
-      .then((data) => {
-        if (!cancelled) {
-          setAllStandards(data);
-          setStandards(data);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFetchError(err.message || "Failed to fetch standards");
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const {
+    data: allStandards,
+    loading,
+    error: fetchError,
+  } = useFetchData<StandardsData>(fetchStandards, {} as StandardsData, []);
 
   const standardsData = useMemo(() => {
-    const dataToUse = allStandards || standards || {};
-    if (!dataToUse[filters.ageGroup]) return [];
-    if (!dataToUse[filters.ageGroup][filters.gender]) return [];
-    return dataToUse[filters.ageGroup][filters.gender];
-  }, [allStandards, standards, filters.ageGroup, filters.gender]);
+    if (!allStandards[filters.ageGroup]) return [];
+    if (!allStandards[filters.ageGroup][filters.gender]) return [];
+    return allStandards[filters.ageGroup][filters.gender];
+  }, [allStandards, filters.ageGroup, filters.gender]);
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
@@ -88,20 +55,6 @@ export default function NewStandardsScreen() {
         ? "U15"
         : filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1);
     return `${genderText} • ${ageGroupText}`;
-  };
-
-  const handleApplyFilters = () => {
-    setFilters(tempFilters);
-    setShowFilterModal(false);
-  };
-
-  const handleResetFilters = () => {
-    const resetFilters: Filters = {
-      gender: "men",
-      ageGroup: "senior",
-    };
-    setFilters(resetFilters);
-    setTempFilters(resetFilters);
   };
 
   const genderOptions: { id: Gender; label: string }[] = [
@@ -131,28 +84,8 @@ export default function NewStandardsScreen() {
     },
   ];
 
-  if (isSubscriptionLoading) {
-    return (
-      <ThemedView
-        style={[
-          styles.container,
-          {
-            backgroundColor: colors.background,
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
-        <ActivityIndicator size="large" color={colors.link} />
-      </ThemedView>
-    );
-  }
-
-  if (!isSubscribed) {
-    return <PaywallScreen />;
-  }
-
   return (
+    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -172,280 +105,60 @@ export default function NewStandardsScreen() {
         }}
       />
 
-      <View
-        style={[
-          styles.filterContainer,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.borderBottom,
-            borderBottomWidth: 1,
-          },
+      <FilterBar
+        displayText={getFilterDisplayText()}
+        onPress={openFilters}
+      />
+
+      <DataTable
+        columns={[
+          { label: "Weight Class", flex: 2 },
+          { label: "A" },
+          { label: "B" },
         ]}
-      >
-        <View style={styles.filterButtons}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButton,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => {
-              setTempFilters(filters);
-              setShowFilterModal(true);
-            }}
-          >
-            <ThemedText
-              style={[styles.filterButtonText, { color: colors.secondaryText }]}
-            >
-              {getFilterDisplayText()}
-            </ThemedText>
-            <IconSymbol
-              name="chevron.down"
-              size={12}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        data={standardsData}
+        keyExtractor={(record) => record.weightClass}
+        loading={loading}
+        error={fetchError}
+        emptyMessage="No standards found for the selected filters."
+        renderRow={(record, index) => (
           <View
-            style={[styles.headerRow, { borderBottomColor: colors.border }]}
+            style={[
+              dataTableStyles.row,
+              index < standardsData.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
           >
-            <ThemedText style={[styles.headerCell, { flex: 2 }]}>
-              Weight Class
+            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
+              {record.weightClass}
             </ThemedText>
-            <ThemedText style={styles.headerCell}>A</ThemedText>
-            <ThemedText style={styles.headerCell}>B</ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.a}
+              kg
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.b}
+              kg
+            </ThemedText>
           </View>
-
-          {loading && (
-            <ThemedText style={{ textAlign: "center", marginTop: 16 }}>
-              Loading...
-            </ThemedText>
-          )}
-          {fetchError && (
-            <ThemedText
-              style={{ color: "red", textAlign: "center", marginTop: 16 }}
-            >
-              {fetchError}
-            </ThemedText>
-          )}
-          {standardsData && standardsData.length > 0
-            ? standardsData.map((record, index) => (
-                <View
-                  key={record.weightClass}
-                  style={[
-                    styles.row,
-                    index < standardsData.length - 1 && {
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                      borderBottomColor: colors.border,
-                    },
-                  ]}
-                >
-                  <ThemedText style={[styles.cell, { flex: 2 }]}>
-                    {record.weightClass}
-                  </ThemedText>
-                  <ThemedText style={styles.cell}>
-                    {record.a}
-                    kg
-                  </ThemedText>
-                  <ThemedText style={styles.cell}>
-                    {record.b}
-                    kg
-                  </ThemedText>
-                </View>
-              ))
-            : !loading &&
-              !fetchError && (
-                <View
-                  style={[
-                    styles.row,
-                    {
-                      flex: 1,
-                      justifyContent: "center",
-                      alignItems: "center",
-                      minHeight: 120,
-                    },
-                  ]}
-                >
-                  <ThemedText
-                    style={[styles.cell, { flex: 1, textAlign: "center" }]}
-                  >
-                    No standards found for the selected filters.
-                  </ThemedText>
-                </View>
-              )}
-        </View>
-      </ScrollView>
+        )}
+      />
 
       <GenericFilterModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
+        {...filterModalProps}
         sections={filterSections}
-        filters={{
-          gender: tempFilters.gender,
-          ageGroup: tempFilters.ageGroup,
-        }}
-        onApplyFilters={(newFilters) => {
-          const updatedFilters = {
-            gender: newFilters.gender as Gender,
-            ageGroup: newFilters.ageGroup as AgeGroup,
-          };
-          setFilters(updatedFilters);
-          setTempFilters(updatedFilters);
-          setShowFilterModal(false);
-        }}
-        onResetFilters={handleResetFilters}
         resultCount={standardsData.length}
         resultLabel="standards"
       />
     </ThemedView>
+    </SubscriptionGate>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  filterContainer: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  filterButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  filterButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  card: {
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  headerRow: {
-    flexDirection: "row",
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60, 60, 67, 0.03)",
-  },
-  headerCell: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  row: {
-    flexDirection: "row",
-    padding: 16,
-  },
-  cell: {
-    flex: 1,
-    fontSize: 17,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalContent: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginHorizontal: 16,
-    maxHeight: "80%",
-  },
-  modalScrollContent: {
-    flexGrow: 0,
-  },
-  filterSection: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterSectionButton: {
-    padding: 16,
-  },
-  filterSectionButtonContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  filterSectionLabel: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  filterSectionValue: {
-    fontSize: 17,
-    fontWeight: "400",
-  },
-  filterOptions: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  filterOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterOptionText: {
-    fontSize: 17,
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  applyButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    width: "100%",
-    alignItems: "center",
-    borderRadius: 8,
-  },
-  applyButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "600",
   },
 });
