@@ -30,12 +30,12 @@ interface Session {
 }
 
 export default function SessionDetailsScreen() {
-  const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
+  const [, setHasCalendarPermission] = useState(false);
   const colors = useAppColors();
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [sessionData, setSessionData] = useState<Session | null>(null);
+  const [, setIsLoading] = useState(true);
+  const [, setSessionData] = useState<Session | null>(null);
   const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 

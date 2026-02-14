@@ -61,6 +61,7 @@ export default function RecordsScreen() {
       }
     }
     fetchWSOs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -109,6 +110,7 @@ export default function RecordsScreen() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.wso]);
 
   const recordsData = useMemo<RecordsData | null>(() => {

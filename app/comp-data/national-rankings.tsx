@@ -267,12 +267,13 @@ export default function NationalRankingsScreen() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+   
   useEffect(() => {
     const classes = getWeightClasses(filters.gender, filters.ageGroup);
     if (!classes.includes(filters.weightClass) && classes.length > 0) {
       setFilters((prev) => ({ ...prev, weightClass: classes[0] }));
     }
-  }, [filters.gender, filters.ageGroup]);
+  }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 
   useEffect(() => {
     let cancelled = false;
@@ -402,8 +403,9 @@ export default function NationalRankingsScreen() {
               {athlete.name}
             </ThemedText>
             <ThemedText style={styles.totalText}>
-              {athlete.total}kg
-            </ThemedText>
+              {athlete.total}
+kg
+</ThemedText>
           </View>
         )}
       />

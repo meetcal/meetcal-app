@@ -41,6 +41,8 @@ const SessionCard = React.memo<SessionCardProps>(
     timeZoneIdentifier,
     timeZoneAbbr,
   }) => {
+    const colors = useAppColors();
+
     // Ensure meet is defined before using it
     const meet = item.meet || selectedMeet;
     if (!meet || !isMeetName(meet, allowedMeetNames)) {
@@ -72,8 +74,6 @@ const SessionCard = React.memo<SessionCardProps>(
           })
         : "Date TBD");
 
-    const colors = useAppColors();
-
     // Format time with the correct timezone abbreviation
     const formatTime = (time: string) => {
       if (!time) return "TBD";
@@ -92,7 +92,10 @@ const SessionCard = React.memo<SessionCardProps>(
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           {/* Use displayDate derived from schedule map */}
-          Session {sessionNumber}{" "}
+          Session 
+{' '}
+{sessionNumber}
+{" "}
           {displayDate !== "Date TBD" ? `• ${displayDate}` : ""}
         </ThemedText>
 
@@ -191,8 +194,11 @@ const SessionCard = React.memo<SessionCardProps>(
                       { color: colors.secondaryText },
                     ]}
                   >
-                    +{item.athleteNames.length - 3} more
-                  </ThemedText>
+                    +
+{item.athleteNames.length - 3}
+{' '}
+more
+</ThemedText>
                 )}
               </View>
             </View>

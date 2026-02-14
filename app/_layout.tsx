@@ -181,7 +181,7 @@ export default function RootLayout() {
   );
 }
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
+  const { isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
   const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);

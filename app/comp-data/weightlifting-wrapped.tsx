@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+const { width: screenWidth } = Dimensions.get("window");
 
 interface LiftingResult {
   id: number;
@@ -66,10 +66,10 @@ export default function WeightliftingWrappedScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<LiftingResult[]>([]);
+  const [, setResults] = useState<LiftingResult[]>([]);
   const [wrappedStats, setWrappedStats] = useState<WrappedStats | null>(null);
   const [showStats, setShowStats] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [, setCurrentSlide] = useState(0);
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -395,8 +395,12 @@ export default function WeightliftingWrappedScreen() {
             {/* Year Overview Card */}
             <View style={[styles.card, { backgroundColor: colors.card }]}>
               <ThemedText style={[styles.cardTitle, { color: colors.text }]}>
-                Your {selectedYear} Weightlifting Year
-              </ThemedText>
+                Your 
+{' '}
+{selectedYear}
+{' '}
+Weightlifting Year
+</ThemedText>
               <View style={styles.yearOverview}>
                 <ThemedText
                   style={[styles.athleteName, { color: colors.text }]}
@@ -411,9 +415,13 @@ export default function WeightliftingWrappedScreen() {
                 <ThemedText
                   style={[styles.overview, { color: colors.secondaryText }]}
                 >
-                  {wrappedStats.totalMeets} meets •{" "}
-                  {wrappedStats.makePercentage.toFixed(0)}% success rate
-                </ThemedText>
+                  {wrappedStats.totalMeets}
+{' '}
+meets •
+{" "}
+                  {wrappedStats.makePercentage.toFixed(0)}
+% success rate
+</ThemedText>
               </View>
             </View>
 
@@ -443,9 +451,12 @@ export default function WeightliftingWrappedScreen() {
                   { color: colors.secondaryText },
                 ]}
               >
-                That&apos;s equivalent to lifting{" "}
-                {Math.round(wrappedStats.totalWeightLifted / 180)} people!
-              </ThemedText>
+                That&apos;s equivalent to lifting
+{" "}
+                {Math.round(wrappedStats.totalWeightLifted / 180)}
+{' '}
+people!
+</ThemedText>
             </View>
 
             {/* Personal Records Card */}
@@ -529,8 +540,9 @@ export default function WeightliftingWrappedScreen() {
                   <ThemedText
                     style={[styles.performanceValue, { color: colors.success }]}
                   >
-                    {wrappedStats.makePercentage.toFixed(1)}%
-                  </ThemedText>
+                    {wrappedStats.makePercentage.toFixed(1)}
+%
+</ThemedText>
                 </View>
                 <View style={styles.performanceRow}>
                   <ThemedText

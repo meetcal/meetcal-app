@@ -115,6 +115,7 @@ export default function RecordsScreen() {
       }
     }
     loadInitialFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch age groups when modal opens for the current federation
@@ -208,6 +209,7 @@ export default function RecordsScreen() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.federation]);
 
   const recordsData = useMemo(() => {
