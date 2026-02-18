@@ -12,6 +12,7 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',
     features: [
+      'Improved offline experience just in time for the Arnold',
       'Bug fixes and optimizations',
     ],
   },
