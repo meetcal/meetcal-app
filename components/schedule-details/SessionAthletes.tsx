@@ -5,7 +5,13 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { getAthleteLiftingResults } from "@/lib/database/offline-store";
+import {
+  getAthleteLiftingResults,
+  getSessionAthletesFromMeetCache,
+  saveMeetAthletes,
+} from "@/lib/database/offline-store";
+import { fetchAthletesWithSession } from "@/lib/database/queries";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import { supabase } from "@/lib/supabase";
 import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
@@ -19,69 +25,41 @@ import {
   View,
 } from "react-native";
 
-async function getSessionAthletes(
+function normalizePlatformKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function toSessionAthletesByPlatform(
+  platform: string,
+  athletes: LiftResult[],
+): Record<string, SessionAthlete[]> {
+  const sortedAthletes = [...athletes].sort(
+    (a, b) => (b.entryTotal || 0) - (a.entryTotal || 0),
+  );
+
+  return {
+    [platform]: sortedAthletes.map((athlete) => ({
+      name: athlete.name,
+      age: athlete.age,
+      club: athlete.club,
+      entryTotal: athlete.entryTotal,
+      weightClass: athlete.weightClass,
+    })),
+  };
+}
+
+function filterSessionAthletes(
+  athletes: LiftResult[],
   sessionNumber: number,
   platform: string,
-  meetId: MeetName,
 ) {
-  try {
-    // Fetch session-scoped athletes from Supabase.
-    const { data, error } = await supabase
-      .from("athletes")
-      .select(
-        "member_id,name,age,club,gender,weight_class,entry_total,adaptive",
-      )
-      .eq("session_number", sessionNumber)
-      .eq("session_platform", platform)
-      .eq("meet", meetId);
-
-    if (error) {
-      console.error("Error fetching athletes:", error);
-      return {};
-    }
-
-    // If no athletes found for this meet/session/platform, return empty
-    if (!data || data.length === 0) {
-      return {};
-    }
-
-    // Transform and sort the data
-    const athletes = data.map(
-      (athlete) =>
-        ({
-          memberId: athlete.member_id || "",
-          name: athlete.name,
-          age: athlete.age,
-          club: athlete.club,
-          gender: athlete.gender || "",
-          weightClass: athlete.weight_class || "",
-          entryTotal: athlete.entry_total,
-          adaptive: athlete.adaptive || false,
-          session: {
-            number: sessionNumber,
-            platform: platform,
-          },
-        }) as LiftResult,
-    );
-
-    // Sort athletes by entry total
-    const sortedAthletes = [...athletes].sort(
-      (a, b) => (b.entryTotal || 0) - (a.entryTotal || 0),
-    );
-
-    return {
-      [platform]: sortedAthletes.map((athlete) => ({
-        name: athlete.name,
-        age: athlete.age,
-        club: athlete.club,
-        entryTotal: athlete.entryTotal,
-        weightClass: athlete.weightClass,
-      })),
-    };
-  } catch (error) {
-    console.error("Error in getSessionAthletes:", error);
-    return {};
-  }
+  const normalizedPlatform = normalizePlatformKey(platform);
+  return athletes.filter((athlete) => {
+    const athleteSession = athlete.session;
+    if (!athleteSession) return false;
+    if (athleteSession.number !== sessionNumber) return false;
+    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
+  });
 }
 
 async function getAthleteBestsBatch(
@@ -192,30 +170,36 @@ export default function SessionAthletes({
   const loadAthletes = useCallback(async () => {
     setLoading(true);
     try {
-      const sessionAthletes = await getSessionAthletes(
-        sessionNumber,
-        platform,
-        selectedMeet || "",
-      );
-      setAthletes(sessionAthletes);
-
-      // Initialize loading states for each athlete
-      const newLoadingBests: Record<string, boolean> = {};
-      const athleteNames: string[] = [];
-      for (const [, platformAthletes] of Object.entries(sessionAthletes)) {
-        for (const athlete of platformAthletes) {
-          newLoadingBests[athlete.name] = true;
-          athleteNames.push(athlete.name);
-        }
+      if (!selectedMeet) {
+        setAthletes({});
+        setAthleteBests({});
+        setLoadingBests({});
+        return;
       }
-      setLoadingBests(newLoadingBests);
 
-      if (athleteNames.length > 0) {
-        const bestsMap = await getAthleteBestsBatch(
-          athleteNames,
-          selectedMeet || "",
+      const meetId = selectedMeet as MeetName;
+      const applySessionAthletes = async (nextAthletes: LiftResult[]) => {
+        const mapped = toSessionAthletesByPlatform(platform, nextAthletes);
+        setAthletes(mapped);
+
+        const athleteNames = nextAthletes.map((athlete) => athlete.name);
+        const loadingState = athleteNames.reduce<Record<string, boolean>>(
+          (acc, name) => {
+            acc[name] = true;
+            return acc;
+          },
+          {},
         );
-        setAthleteBests((prev) => ({ ...prev, ...bestsMap }));
+        setLoadingBests(loadingState);
+
+        if (athleteNames.length === 0) {
+          setAthleteBests({});
+          setLoadingBests({});
+          return;
+        }
+
+        const bestsMap = await getAthleteBestsBatch(athleteNames, meetId);
+        setAthleteBests(bestsMap);
         setLoadingBests((prev) => {
           const next = { ...prev };
           athleteNames.forEach((name) => {
@@ -223,10 +207,42 @@ export default function SessionAthletes({
           });
           return next;
         });
+      };
+
+      const cachedAthletes = await getSessionAthletesFromMeetCache(
+        meetId,
+        sessionNumber,
+        platform,
+      );
+
+      if (cachedAthletes.length > 0) {
+        await applySessionAthletes(cachedAthletes);
+      } else {
+        setAthletes({});
+        setAthleteBests({});
+        setLoadingBests({});
       }
+
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        return;
+      }
+
+      const freshMeetAthletes = await fetchAthletesWithSession(meetId);
+      await saveMeetAthletes(meetId, freshMeetAthletes);
+      const freshSessionAthletes = filterSessionAthletes(
+        freshMeetAthletes,
+        sessionNumber,
+        platform,
+      );
+      await applySessionAthletes(freshSessionAthletes);
     } catch (error) {
       console.error("Error loading athletes:", error);
-      setAthletes({});
+      if (!selectedMeet) {
+        setAthletes({});
+        setAthleteBests({});
+        setLoadingBests({});
+      }
     } finally {
       setLoading(false);
     }

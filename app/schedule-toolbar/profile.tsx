@@ -29,7 +29,7 @@ import RevenueCatUI from "react-native-purchases-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export type EditableField = "firstName" | "lastName" | "email";
-export type SubscriptionStatus = "free" | "quarterly" | "lifetime";
+export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
 
 export default function ProfileScreen() {
   const colors = useAppColors();
@@ -88,7 +88,20 @@ export default function ProfileScreen() {
       console.error("Error getting device info:", err);
     }
 
-    const body = `Device Details: ${manufacturer} ${device} ${deviceType} ${Platform.OS} ${Platform.Version}\n Customer Details: ${user?.id} ${user?.firstName} ${user?.lastName}\n\n`;
+    const body = [
+      "---- Device Info ----",
+      `Manufacturer: ${manufacturer}`,
+      `Model: ${device}`,
+      `Type: ${deviceType}`,
+      `OS: ${Platform.OS} ${Platform.Version}`,
+      "",
+      "---- User Info ----",
+      `Name: ${user?.firstName} ${user?.lastName}`,
+      `User ID: ${user?.id}`,
+      "",
+      "---- Feedback ----",
+      "",
+    ].join("\n");
 
     const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 

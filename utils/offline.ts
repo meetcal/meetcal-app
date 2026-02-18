@@ -15,7 +15,12 @@ import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
 } from "@/lib/database/offline-cache";
-import { clearMeetData, getLastSyncTime } from "@/lib/database/offline-store";
+import {
+  clearMeetData,
+  getLastSyncTime,
+  isMeetExplicitlyDownloaded,
+  markMeetExplicitlyDownloaded,
+} from "@/lib/database/offline-store";
 import { formatDistanceToNow } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
@@ -34,9 +39,24 @@ type DownloadItem = {
   isDownloading: boolean;
 };
 
+const getMeetDownloadId = (meetName: string) => `meet:${meetName}`;
+
+const getMeetNameFromDownloadId = (
+  id: string,
+  meetNames: string[],
+): string | null => {
+  if (!id.startsWith("meet:")) return null;
+  const meetName = id.slice("meet:".length);
+  return meetNames.includes(meetName) ? meetName : null;
+};
+
 export const useOfflineData = () => {
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { availableMeets, isLoading: isMeetLoading } = useSelectedMeet();
+  const availableMeetNames = useMemo(
+    () => availableMeets.map((meet) => meet.name),
+    [availableMeets],
+  );
   const [downloadingItems, setDownloadingItems] = useState<Set<string>>(
     new Set()
   );
@@ -201,9 +221,14 @@ export const useOfflineData = () => {
     
         await Promise.all(
           availableMeets.map(async (meet) => {
-            const lastSynced = await getLastSyncTime(meet.name);
-            nextStatuses[`meet:${meet.name}`] = {
-              isDownloaded: Boolean(lastSynced && lastSynced > 0),
+            const explicitlyDownloaded = await isMeetExplicitlyDownloaded(
+              meet.name,
+            );
+            const lastSynced = explicitlyDownloaded
+              ? await getLastSyncTime(meet.name)
+              : null;
+            nextStatuses[getMeetDownloadId(meet.name)] = {
+              isDownloaded: explicitlyDownloaded,
               lastSynced: lastSynced ?? null,
             };
           }),
@@ -220,6 +245,13 @@ export const useOfflineData = () => {
         updateDownloading(id, true);
         try {
           await action();
+          const meetName = getMeetNameFromDownloadId(
+            id,
+            availableMeetNames,
+          );
+          if (meetName) {
+            await markMeetExplicitlyDownloaded(meetName, true);
+          }
           setRefreshCounter((count) => count + 1);
         } catch (error) {
           console.error("Download failed:", error);
@@ -264,7 +296,10 @@ export const useOfflineData = () => {
     
         try {
           const downloadedMeetNames = availableMeets
-            .filter((meet) => downloadStatuses[`meet:${meet.name}`]?.isDownloaded)
+            .filter(
+              (meet) =>
+                downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
+            )
             .map((meet) => meet.name);
     
           const downloadedCompetitionItems = competitionItems.filter(
@@ -279,6 +314,7 @@ export const useOfflineData = () => {
     
           for (const meetName of downloadedMeetNames) {
             await prefetchMeetData(meetName);
+            await markMeetExplicitlyDownloaded(meetName, true);
           }
     
           setRefreshCounter((count) => count + 1);

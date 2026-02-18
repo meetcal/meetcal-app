@@ -7,6 +7,7 @@ import { MeetName } from '@/data/types/meet';
 const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
 const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
+const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
 
 export interface MeetData {
   schedule: Schedule | null;
@@ -14,6 +15,48 @@ export interface MeetData {
   athletes: LiftResult[];
   liftingResultsKey: string;
   lastSyncTime: number;
+}
+
+async function getExplicitMeetDownloads(): Promise<Set<string>> {
+  try {
+    const raw = await AsyncStorage.getItem(EXPLICIT_MEET_DOWNLOADS_KEY);
+    if (!raw) return new Set<string>();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set<string>();
+    return new Set<string>(parsed.filter((value) => typeof value === 'string'));
+  } catch (error) {
+    console.error('Error reading explicit meet downloads:', error);
+    return new Set<string>();
+  }
+}
+
+async function saveExplicitMeetDownloads(downloads: Set<string>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      EXPLICIT_MEET_DOWNLOADS_KEY,
+      JSON.stringify(Array.from(downloads)),
+    );
+  } catch (error) {
+    console.error('Error saving explicit meet downloads:', error);
+  }
+}
+
+export async function markMeetExplicitlyDownloaded(
+  meetId: MeetName,
+  downloaded: boolean
+): Promise<void> {
+  const downloads = await getExplicitMeetDownloads();
+  if (downloaded) {
+    downloads.add(meetId);
+  } else {
+    downloads.delete(meetId);
+  }
+  await saveExplicitMeetDownloads(downloads);
+}
+
+export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
+  const downloads = await getExplicitMeetDownloads();
+  return downloads.has(meetId);
 }
 
 interface OfflineStore {
@@ -107,6 +150,54 @@ export async function getAthleteLiftingResults(meetId: MeetName, athleteName: st
     return allResults.filter(result => result.name === athleteName);
   } catch (error) {
     console.error('Error getting athlete lifting results:', error);
+    return [];
+  }
+}
+
+// Get all cached lifting results for a meet
+export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseLiftResult[]> {
+  try {
+    const meetData = await getMeetData(meetId);
+    const liftingResultsKey = meetData.liftingResultsKey;
+
+    if (!liftingResultsKey) {
+      return [];
+    }
+
+    const liftingResultsString = await AsyncStorage.getItem(liftingResultsKey);
+    if (!liftingResultsString) {
+      return [];
+    }
+
+    return JSON.parse(liftingResultsString) as SupabaseLiftResult[];
+  } catch (error) {
+    console.error('Error getting meet lifting results:', error);
+    return [];
+  }
+}
+
+function normalizePlatformValue(platform: string | undefined): string {
+  return (platform || '').trim().toLowerCase();
+}
+
+// Get athletes for a specific session/platform from cached meet data
+export async function getSessionAthletesFromMeetCache(
+  meetId: MeetName,
+  sessionNumber: number,
+  platform: string
+): Promise<LiftResult[]> {
+  try {
+    const meetData = await getMeetData(meetId);
+    const normalizedPlatform = normalizePlatformValue(platform);
+
+    return meetData.athletes.filter((athlete) => {
+      const athleteSession = athlete.session;
+      if (!athleteSession) return false;
+      if (athleteSession.number !== sessionNumber) return false;
+      return normalizePlatformValue(athleteSession.platform) === normalizedPlatform;
+    });
+  } catch (error) {
+    console.error('Error getting session athletes from cache:', error);
     return [];
   }
 }
@@ -260,6 +351,7 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
       data.meets[meet] = emptyMeetData;
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(data));
     }
+    await markMeetExplicitlyDownloaded(meet, false);
   } catch (error) {
     console.error('Error clearing meet data:', error);
   }

@@ -1,14 +1,25 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { LiftResult } from "@/data/types/athletes";
+import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
-import { supabase } from "@/lib/supabase";
+import {
+  getMeetLiftingResults,
+  getSessionAthletesFromMeetCache,
+  saveMeetAthletes,
+  saveMeetLiftingResults,
+} from "@/lib/database/offline-store";
+import {
+  fetchAthletesWithSession,
+  fetchLiftingResultsForMeet,
+} from "@/lib/database/queries";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -18,6 +29,24 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+
+function normalizePlatformKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function filterSessionAthletes(
+  athletes: LiftResult[],
+  sessionNumber: number,
+  platform: string,
+) {
+  const normalizedPlatform = normalizePlatformKey(platform);
+  return athletes.filter((athlete) => {
+    const athleteSession = athlete.session;
+    if (!athleteSession) return false;
+    if (athleteSession.number !== sessionNumber) return false;
+    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
+  });
+}
 
 export default function AttemptEstimatorScreen() {
   const colors = useAppColors();
@@ -43,50 +72,65 @@ export default function AttemptEstimatorScreen() {
     if (!hasValidParams) return;
     setLoading(true);
     try {
-      // Load session athletes
-      const { data: athletesData, error: athletesError } = await supabase
-        .from("athletes")
-        .select("*")
-        .eq("session_number", sessionNumber)
-        .eq("session_platform", params.platform)
-        .eq("meet", params.meet);
+      const meetId = params.meet as MeetName;
 
-      if (athletesError) throw athletesError;
+      const cachedSessionAthletes = await getSessionAthletesFromMeetCache(
+        meetId,
+        sessionNumber,
+        params.platform,
+      );
+      const cachedMeetResults = await getMeetLiftingResults(meetId);
 
-      const loadedAthletes: LiftResult[] = (athletesData || []).map(
-        (athlete) => ({
-          memberId: athlete.member_id || "",
-          name: athlete.name,
-          age: athlete.age,
-          club: athlete.club,
-          gender: athlete.gender || "",
-          weightClass: athlete.weight_class || "",
-          entryTotal: athlete.entry_total,
-          adaptive: athlete.adaptive || false,
-          session: {
-            number: parseInt(params.sessionNumber),
-            platform: params.platform as any,
-          },
-        }),
+      if (cachedSessionAthletes.length > 0) {
+        const athleteNameSet = new Set(
+          cachedSessionAthletes.map((athlete) => athlete.name),
+        );
+        const cachedSessionResults = cachedMeetResults.filter((result) =>
+          athleteNameSet.has(result.name),
+        );
+        setEstimates(
+          calculateEstimates(cachedSessionAthletes, cachedSessionResults),
+        );
+      } else {
+        setEstimates([]);
+      }
+
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        return;
+      }
+
+      const freshMeetAthletes = await fetchAthletesWithSession(meetId);
+      await saveMeetAthletes(meetId, freshMeetAthletes);
+
+      const freshSessionAthletes = filterSessionAthletes(
+        freshMeetAthletes,
+        sessionNumber,
+        params.platform,
+      );
+      const freshSessionNameSet = new Set(
+        freshSessionAthletes.map((athlete) => athlete.name),
+      );
+      const freshAllNames = Array.from(
+        new Set(freshMeetAthletes.map((athlete) => athlete.name)),
       );
 
-      // Load all historical results for these athletes
-      const athleteNames = loadedAthletes.map((a) => a.name);
+      let freshResults: SupabaseLiftResult[] = [];
+      if (freshAllNames.length > 0) {
+        freshResults = await fetchLiftingResultsForMeet(meetId, freshAllNames);
+      }
+      await saveMeetLiftingResults(meetId, freshResults);
 
-      if (athleteNames.length > 0) {
-        const { data: resultsData, error: resultsError } = await supabase
-          .from("lifting_results")
-          .select("*")
-          .in("name", athleteNames);
+      const freshSessionResults = freshResults.filter((result) =>
+        freshSessionNameSet.has(result.name),
+      );
 
-        if (resultsError) throw resultsError;
-
-        // Calculate estimates
-        const calculatedEstimates = calculateEstimates(
-          loadedAthletes,
-          resultsData || [],
+      if (freshSessionAthletes.length > 0) {
+        setEstimates(
+          calculateEstimates(freshSessionAthletes, freshSessionResults),
         );
-        setEstimates(calculatedEstimates);
+      } else {
+        setEstimates([]);
       }
     } catch (error) {
       console.error("Error loading data:", error);
