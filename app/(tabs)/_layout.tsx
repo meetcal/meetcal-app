@@ -3,7 +3,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useNavigation } from "@react-navigation/native";
 import { Tabs } from "expo-router";
-// import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
+import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import React from "react";
 import { Platform, StyleSheet } from "react-native";
 
@@ -25,31 +25,31 @@ export default function TabLayout() {
     });
   }, [colors, navigation]);
 
-  // if (Platform.OS === "ios" && isIOS26OrHigher) {
-  //   return (
-  //     <NativeTabs
-  //       labelStyle={{ color: colors.secondaryText }}
-  //       tintColor={colors.text}
-  //     >
-  //       <NativeTabs.Trigger name="(index)">
-  //         <Icon sf="calendar" />
-  //         <Label hidden />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="(saved)">
-  //         <Icon sf="bookmark.fill" />
-  //         <Label hidden />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="(start-list)">
-  //         <Icon sf="list.bullet" />
-  //         <Label hidden />
-  //       </NativeTabs.Trigger>
-  //       <NativeTabs.Trigger name="(info)">
-  //         <Icon sf="info.circle.fill" />
-  //         <Label hidden />
-  //       </NativeTabs.Trigger>
-  //     </NativeTabs>
-  //   );
-  // }
+  if (Platform.OS === "ios" && isIOS26OrHigher) {
+    return (
+      <NativeTabs
+        labelStyle={{ color: colors.secondaryText }}
+        tintColor={colors.text}
+      >
+        <NativeTabs.Trigger name="(index)">
+          <Icon sf="calendar" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(saved)">
+          <Icon sf="bookmark.fill" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(start-list)">
+          <Icon sf="list.bullet" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(info)">
+          <Icon sf="info.circle.fill" />
+          <Label hidden />
+        </NativeTabs.Trigger>
+      </NativeTabs>
+    );
+  }
 
   return (
     <Tabs
