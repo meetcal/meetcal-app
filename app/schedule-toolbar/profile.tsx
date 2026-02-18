@@ -8,8 +8,8 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/clerk-expo";
-import { Stack, useRouter } from "expo-router";
-import React, { useState } from "react";
+import { Stack, usePathname, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
@@ -20,12 +20,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  getDevice,
-  getDeviceType,
-  getManufacturer,
-} from "react-native-device-info";
-import RevenueCatUI from "react-native-purchases-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export type EditableField = "firstName" | "lastName" | "email";
@@ -36,6 +30,7 @@ export default function ProfileScreen() {
   const { signOut } = useClerk();
   const { user } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -43,6 +38,17 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { subscriptionType } = useSubscription();
   const { requireAuth } = useAuthGuard();
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log("[Profile] Mounted", { pathname, userId: user?.id });
+    }
+    return () => {
+      if (__DEV__) {
+        console.log("[Profile] Unmounted");
+      }
+    };
+  }, [pathname, user?.id]);
 
   const handleSignOut = async () => {
     try {
@@ -81,6 +87,9 @@ export default function ProfileScreen() {
     let device = "";
     let deviceType = "";
     try {
+      const { getManufacturer, getDevice, getDeviceType } = await import(
+        "react-native-device-info"
+      );
       manufacturer = await getManufacturer();
       device = await getDevice();
       deviceType = getDeviceType();
@@ -202,6 +211,9 @@ export default function ProfileScreen() {
             ]}
             onPress={async () => {
               try {
+                const { default: RevenueCatUI } = await import(
+                  "react-native-purchases-ui"
+                );
                 await RevenueCatUI.presentCustomerCenter();
               } catch (error) {
                 console.error("Error opening Customer Center:", error);

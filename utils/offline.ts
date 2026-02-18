@@ -250,7 +250,10 @@ export const useOfflineData = () => {
             availableMeetNames,
           );
           if (meetName) {
-            await markMeetExplicitlyDownloaded(meetName, true);
+            const meetDetails = availableMeets.find((meet) => meet.name === meetName);
+            await markMeetExplicitlyDownloaded(meetName, true, {
+              endDate: meetDetails?.dates?.end,
+            });
           }
           setRefreshCounter((count) => count + 1);
         } catch (error) {
@@ -314,7 +317,10 @@ export const useOfflineData = () => {
     
           for (const meetName of downloadedMeetNames) {
             await prefetchMeetData(meetName);
-            await markMeetExplicitlyDownloaded(meetName, true);
+            const meetDetails = availableMeets.find((meet) => meet.name === meetName);
+            await markMeetExplicitlyDownloaded(meetName, true, {
+              endDate: meetDetails?.dates?.end,
+            });
           }
     
           setRefreshCounter((count) => count + 1);
