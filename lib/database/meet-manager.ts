@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/types/meet';
-import { SyncManager } from './sync-manager';
-import { clearMeetData, getMeetData } from './offline-store';
+import { clearMeetData, getMeetData, saveMeetAthletes, saveMeetLiftingResults, saveMeetSchedule } from './offline-store';
 import { supabase } from '@/lib/supabase';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { fetchAthletesWithSession, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -336,7 +336,50 @@ async function manageCacheSize() {
 
 // Prefetch meet data
 export async function prefetchMeetData(meet: MeetName) {
-  const syncManager = new SyncManager(meet);
-  await syncManager.syncIfNeeded();
+  const errors: string[] = [];
+  let athleteNames: string[] = [];
+
+  try {
+    const schedule = await fetchSchedule(meet);
+    if (schedule.length > 0) {
+      await saveMeetSchedule(meet, schedule);
+    }
+  } catch (error) {
+    console.error('Prefetch schedule failed:', { meet, error });
+    errors.push('schedule');
+  }
+
+  try {
+    const athletes = await fetchAthletesWithSession(meet);
+    await saveMeetAthletes(meet, athletes);
+    athleteNames = Array.from(
+      new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
+    );
+  } catch (error) {
+    console.error('Prefetch athletes failed:', { meet, error });
+    errors.push('athletes');
+  }
+
+  if (athleteNames.length > 0) {
+    try {
+      const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+      await saveMeetLiftingResults(meet, liftingResults);
+    } catch (error) {
+      console.error('Prefetch lifting results failed:', { meet, error });
+      errors.push('lifting_results');
+    }
+  } else {
+    try {
+      await saveMeetLiftingResults(meet, []);
+    } catch (error) {
+      console.error('Prefetch empty lifting results save failed:', { meet, error });
+      errors.push('lifting_results');
+    }
+  }
+
   await updateMeetAccess(meet);
+
+  if (errors.length > 0) {
+    throw new Error(`Offline prefetch incomplete (${meet}): ${errors.join(', ')}`);
+  }
 } 
