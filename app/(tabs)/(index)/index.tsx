@@ -1,5 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { useNavigation, useRouter } from "expo-router";
+import { useNavigation, usePathname, useRouter } from "expo-router";
 import {
   useCallback,
   useEffect,
@@ -39,7 +39,7 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
-import { useAuth } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/clerk-expo";
 
 export default function ScheduleScreen() {
   const { width } = useWindowDimensions();
@@ -52,8 +52,9 @@ export default function ScheduleScreen() {
     availableMeets,
     refreshAvailableMeets,
   } = useSelectedMeet();
-  const { isSignedIn } = useAuth();
+  const { isLoaded: isUserLoaded, isSignedIn } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
   const colors = useAppColors();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -134,6 +135,7 @@ export default function ScheduleScreen() {
           <Pressable
             style={[styles.headerIconButton, { paddingTop: 8 }]}
             onPress={() => {
+              if (!isUserLoaded) return;
               if (isSignedIn) {
                 router.push("/schedule-toolbar/profile");
               } else {
@@ -161,7 +163,7 @@ export default function ScheduleScreen() {
         </View>
       ),
     });
-  }, [colors.text, isSignedIn, navigation, router]);
+  }, [colors.text, isSignedIn, isUserLoaded, navigation, pathname, router]);
 
   useEffect(() => {
     initStore();

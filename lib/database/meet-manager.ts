@@ -1,6 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/types/meet';
-import { clearMeetData, getMeetData, saveMeetAthletes, saveMeetLiftingResults, saveMeetSchedule } from './offline-store';
+import {
+  clearImplicitMeetData,
+  clearMeetData,
+  getMeetData,
+  saveMeetAthletes,
+  saveMeetLiftingResults,
+  saveMeetSchedule,
+} from './offline-store';
 import { supabase } from '@/lib/supabase';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { fetchAthletesWithSession, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
@@ -365,8 +372,20 @@ export async function prefetchMeetData(meet: MeetName) {
       const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
       await saveMeetLiftingResults(meet, liftingResults);
     } catch (error) {
-      console.error('Prefetch lifting results failed:', { meet, error });
-      errors.push('lifting_results');
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('SQLITE_FULL')) {
+        try {
+          await clearImplicitMeetData(meet);
+          const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+          await saveMeetLiftingResults(meet, liftingResults);
+        } catch (retryError) {
+          console.error('Prefetch lifting results failed after cleanup retry:', { meet, error: retryError });
+          errors.push('lifting_results');
+        }
+      } else {
+        console.error('Prefetch lifting results failed:', { meet, error });
+        errors.push('lifting_results');
+      }
     }
   } else {
     try {

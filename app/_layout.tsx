@@ -351,6 +351,8 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
         <Stack.Screen name="(screens)" />
         <Stack.Screen name="(auth)" />
+        <Stack.Screen name="schedule-toolbar/offline-data" />
+        <Stack.Screen name="schedule-toolbar/profile" />
       </Stack>
       <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
     </NavigationThemeProvider>
