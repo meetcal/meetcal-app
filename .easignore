@@ -1,6 +1,4 @@
 push-notification-send.md
 .env
 package-lock.json
-bun.lockb
-bun.lock
-node_modules
+node_modules/

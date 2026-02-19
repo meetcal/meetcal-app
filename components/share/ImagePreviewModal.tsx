@@ -19,13 +19,38 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ImagePreviewModal({
   visible,
-  imageOptions,
+  whiteImageUri,
+  transparentImageUri,
   selectedIndex,
   onChangeIndex,
   onClose,
 }: ImagePreviewModalProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const imageOptions = React.useMemo(
+    () =>
+      [
+        whiteImageUri
+          ? {
+              id: "readable",
+              label: "Readable",
+              uri: whiteImageUri,
+              category: "readability" as const,
+              isTransparent: false,
+            }
+          : null,
+        transparentImageUri
+          ? {
+              id: "transparent",
+              label: "Transparent",
+              uri: transparentImageUri,
+              category: "social" as const,
+              isTransparent: true,
+            }
+          : null,
+      ].filter((option): option is NonNullable<typeof option> => Boolean(option)),
+    [whiteImageUri, transparentImageUri],
+  );
   const safeIndex = Math.min(selectedIndex, Math.max(imageOptions.length - 1, 0));
   const selectedOption = imageOptions[safeIndex] || null;
 
@@ -109,7 +134,7 @@ export default function ImagePreviewModal({
                 <OptionRow
                   title="Readable"
                   options={readableOptions}
-                  activeId={selectedOption.id}
+                  activeId={selectedOption?.id ?? ""}
                   onPress={(id) => {
                     const nextIndex = imageOptions.findIndex((o) => o.id === id);
                     if (nextIndex >= 0) onChangeIndex(nextIndex);
@@ -118,7 +143,7 @@ export default function ImagePreviewModal({
                 <OptionRow
                   title="Social"
                   options={socialOptions}
-                  activeId={selectedOption.id}
+                  activeId={selectedOption?.id ?? ""}
                   onPress={(id) => {
                     const nextIndex = imageOptions.findIndex((o) => o.id === id);
                     if (nextIndex >= 0) onChangeIndex(nextIndex);
