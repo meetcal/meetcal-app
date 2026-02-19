@@ -99,9 +99,6 @@ export default function ProfileScreen() {
 
     const body = [
       "---- Device Info ----",
-      `Manufacturer: ${manufacturer}`,
-      `Model: ${device}`,
-      `Type: ${deviceType}`,
       `OS: ${Platform.OS} ${Platform.Version}`,
       "",
       "---- User Info ----",
