@@ -3,6 +3,10 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { fetchAllClubs } from "@/lib/database/fetch-club-stats";
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -26,6 +30,7 @@ export default function ShareResultsByClubScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [allClubs, setAllClubs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Track screen view on mount
   useEffect(() => {
@@ -39,6 +44,30 @@ export default function ShareResultsByClubScreen() {
     loadClubs();
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    isNetworkAvailable()
+      .then((hasNetwork) => {
+        if (mounted) {
+          setIsOffline(!hasNetwork);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setIsOffline(false);
+        }
+      });
+
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   const loadClubs = async () => {
     setIsLoading(true);
     setError(null);
@@ -48,7 +77,13 @@ export default function ShareResultsByClubScreen() {
       setAllClubs(clubs);
     } catch (err) {
       console.error("Error loading clubs:", err);
-      setError("Failed to load clubs");
+      const hasNetwork = await isNetworkAvailable().catch(() => true);
+      setIsOffline(!hasNetwork);
+      setError(
+        hasNetwork
+          ? "Failed to load clubs. Please try again."
+          : "You're offline. Connect to the internet to load club results.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -98,7 +133,7 @@ export default function ShareResultsByClubScreen() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            Error loading clubs
+            {isOffline ? "You're offline" : "Error loading clubs"}
           </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
@@ -130,10 +165,15 @@ export default function ShareResultsByClubScreen() {
     if (allClubs.length === 0) {
       return (
         <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            {isOffline ? "No offline data available" : "No clubs available"}
+          </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
           >
-            No clubs available
+            {isOffline
+              ? "Connect to the internet and try again to load club results."
+              : "No clubs available"}
           </ThemedText>
         </View>
       );

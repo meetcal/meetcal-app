@@ -389,12 +389,12 @@ export const AthleteItem = React.memo(function AthleteItem({
                 return;
               }
               // 2. Check subscription
-              if (isSubscribed) {
+              if (isSubscribed === true) {
                 router.push({
                   pathname: "/shared-screens/athlete-results",
                   params: { name: athlete.name },
                 });
-              } else {
+              } else if (isSubscribed === false) {
                 router.push({
                   pathname: "/shared-screens/paywall",
                   params: {

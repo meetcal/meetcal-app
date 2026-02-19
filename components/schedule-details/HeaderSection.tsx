@@ -321,7 +321,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               if (authResult === null || authResult === false) {
                 return;
               }
-              if (isSubscribed) {
+              if (isSubscribed === true) {
                 router.push({
                   pathname: "/comp-data/new-qualifying-totals",
                   params: {
@@ -330,7 +330,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     meet: meet,
                   },
                 });
-              } else {
+              } else if (isSubscribed === false) {
                 router.push({
                   pathname: "/shared-screens/paywall",
                   params: {
@@ -367,7 +367,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               if (authResult === null || authResult === false) {
                 return;
               }
-              if (isSubscribed) {
+              if (isSubscribed === true) {
                 router.push({
                   pathname: "/shared-screens/attempt-estimator",
                   params: {
@@ -376,7 +376,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     meet: meet,
                   },
                 });
-              } else {
+              } else if (isSubscribed === false) {
                 router.push({
                   pathname: "/shared-screens/paywall",
                   params: {
