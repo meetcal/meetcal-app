@@ -5,14 +5,13 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
 import {
-  getAthleteLiftingResults,
   getSessionAthletesFromMeetCache,
   saveMeetAthletes,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { supabase } from "@/lib/supabase";
 import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useRouter } from "expo-router";
@@ -60,80 +59,6 @@ function filterSessionAthletes(
     if (athleteSession.number !== sessionNumber) return false;
     return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
   });
-}
-
-async function getAthleteBestsBatch(
-  names: string[],
-  meetId: MeetName,
-): Promise<Record<string, SupabaseBests>> {
-  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
-  const bestsByName: Record<string, SupabaseBests> = {};
-
-  uniqueNames.forEach((name) => {
-    bestsByName[name] = { snatch_best: 0, cj_best: 0, total: 0 };
-  });
-
-  if (uniqueNames.length === 0) {
-    return bestsByName;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("lifting_results")
-      .select("name,snatch_best,cj_best,total")
-      .in("name", uniqueNames);
-
-    if (error) {
-      throw error;
-    }
-
-    (data || []).forEach((record) => {
-      if (!record.name) return;
-      const current = bestsByName[record.name] || {
-        snatch_best: 0,
-        cj_best: 0,
-        total: 0,
-      };
-      bestsByName[record.name] = {
-        snatch_best: Math.max(
-          current.snatch_best ?? 0,
-          record.snatch_best ?? 0,
-        ),
-        cj_best: Math.max(current.cj_best ?? 0, record.cj_best ?? 0),
-        total: Math.max(current.total ?? 0, record.total ?? 0),
-      };
-    });
-
-    return bestsByName;
-  } catch {
-    // Fall back to locally cached lifting results when network fetch fails.
-    await Promise.all(
-      uniqueNames.map(async (name) => {
-        try {
-          const cachedResults = await getAthleteLiftingResults(meetId, name);
-          if (!cachedResults || cachedResults.length === 0) return;
-
-          let snatchBest = 0;
-          let cjBest = 0;
-          let totalBest = 0;
-          cachedResults.forEach((row: any) => {
-            snatchBest = Math.max(snatchBest, row?.snatch_best ?? 0);
-            cjBest = Math.max(cjBest, row?.cj_best ?? 0);
-            totalBest = Math.max(totalBest, row?.total ?? 0);
-          });
-          bestsByName[name] = {
-            snatch_best: snatchBest,
-            cj_best: cjBest,
-            total: totalBest,
-          };
-        } catch {
-          // Keep default zeros for this athlete.
-        }
-      }),
-    );
-
-    return bestsByName;
-  }
 }
 
 export default function SessionAthletes({
@@ -558,8 +483,9 @@ export default function SessionAthletes({
                             Best Sn
                           </ThemedText>
                           <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.snatch_best ?? "—"}
-                            kg
+                            {athleteBests[athlete.name]?.snatch_best == null
+                              ? "—"
+                              : `${athleteBests[athlete.name]?.snatch_best}kg`}
                           </ThemedText>
                         </View>
                         <View style={styles.statItem}>
@@ -572,8 +498,9 @@ export default function SessionAthletes({
                             Best CJ
                           </ThemedText>
                           <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.cj_best ?? "—"}
-                            kg
+                            {athleteBests[athlete.name]?.cj_best == null
+                              ? "—"
+                              : `${athleteBests[athlete.name]?.cj_best}kg`}
                           </ThemedText>
                         </View>
                         <View style={styles.statItem}>
@@ -586,8 +513,9 @@ export default function SessionAthletes({
                             Best Total
                           </ThemedText>
                           <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.total ?? "—"}
-                            kg
+                            {athleteBests[athlete.name]?.total == null
+                              ? "—"
+                              : `${athleteBests[athlete.name]?.total}kg`}
                           </ThemedText>
                         </View>
                       </>
@@ -674,12 +602,12 @@ export default function SessionAthletes({
                     if (authResult === null || authResult === false) {
                       return;
                     }
-                    if (isSubscribed) {
+                    if (isSubscribed === true) {
                       router.push({
                         pathname: "/shared-screens/athlete-results",
                         params: { name: athlete.name },
                       });
-                    } else {
+                    } else if (isSubscribed === false) {
                       router.push({
                         pathname: "/shared-screens/paywall",
                         params: {

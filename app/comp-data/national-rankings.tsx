@@ -11,6 +11,10 @@ import {
   fetchNationalRankings,
   NationalRanking,
 } from "@/lib/database/fetch-national-rankings";
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
@@ -36,8 +40,32 @@ export default function NationalRankingsScreen() {
   const [rankings, setRankings] = useState<NationalRanking[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
-   
+  useEffect(() => {
+    let mounted = true;
+    isNetworkAvailable()
+      .then((hasNetwork) => {
+        if (mounted) {
+          setIsOffline(!hasNetwork);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setIsOffline(false);
+        }
+      });
+
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     const classes = getWeightClasses(filters.gender, filters.ageGroup);
     if (!classes.includes(filters.weightClass) && classes.length > 0) {
@@ -60,7 +88,20 @@ export default function NationalRankingsScreen() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setFetchError(err?.message || "Failed to fetch national rankings");
+          isNetworkAvailable()
+            .then((hasNetwork) => {
+              if (cancelled) return;
+              setIsOffline(!hasNetwork);
+              setFetchError(
+                hasNetwork
+                  ? err?.message || "Failed to fetch national rankings"
+                  : "You're offline. Connect to refresh rankings.",
+              );
+            })
+            .catch(() => {
+              if (cancelled) return;
+              setFetchError(err?.message || "Failed to fetch national rankings");
+            });
         }
       })
       .finally(() => {
@@ -149,7 +190,11 @@ export default function NationalRankingsScreen() {
         keyExtractor={(athlete, index) => `${athlete.id}-${index}`}
         loading={loading}
         error={fetchError}
-        emptyMessage="No rankings available."
+        emptyMessage={
+          isOffline
+            ? "You're offline. Connect to refresh rankings."
+            : "No rankings available."
+        }
         loadingContent={
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.link} />
