@@ -202,6 +202,7 @@ export default function SessionDetailsScreen() {
             sessionNumber={parsedSessionNumber}
             platform={params.platform}
             sessionWeightClass={sessionWeightClass || params.weightClass}
+            meetId={params.meet as MeetName}
             refreshKey={refreshKey}
           />
         </View>

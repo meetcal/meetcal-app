@@ -8,6 +8,7 @@ import { SessionView } from "./SessionView";
 export function DayView({
   day,
   timeZone,
+  meet,
   onRefreshComplete,
   refreshing,
 }: DayViewProps) {
@@ -27,7 +28,7 @@ export function DayView({
       data={day.sessions}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
-        <SessionView session={item} timeZone={timeZone} />
+        <SessionView session={item} timeZone={timeZone} meet={meet} />
       )}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}

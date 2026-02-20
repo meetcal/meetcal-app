@@ -8,6 +8,40 @@ function createEmptyBests(): SupabaseBests {
   return { snatch_best: null, cj_best: null, total: null };
 }
 
+function maxSuccessfulAttempt(
+  attempts: Array<number | null | undefined>,
+): number | null {
+  const successful = attempts.filter(
+    (attempt): attempt is number => typeof attempt === "number" && attempt > 0,
+  );
+  if (successful.length === 0) return null;
+  return Math.max(...successful);
+}
+
+function deriveRowBests(row: {
+  snatch_best?: number | null;
+  cj_best?: number | null;
+  total?: number | null;
+  snatch1?: number | null;
+  snatch2?: number | null;
+  snatch3?: number | null;
+  cj1?: number | null;
+  cj2?: number | null;
+  cj3?: number | null;
+}) {
+  const snatchBest =
+    row.snatch_best ??
+    maxSuccessfulAttempt([row.snatch1, row.snatch2, row.snatch3]);
+  const cjBest =
+    row.cj_best ?? maxSuccessfulAttempt([row.cj1, row.cj2, row.cj3]);
+  const total = row.total ?? (snatchBest != null && cjBest != null ? snatchBest + cjBest : null);
+  return {
+    snatch_best: snatchBest,
+    cj_best: cjBest,
+    total,
+  };
+}
+
 function maxNullable(
   current: number | null | undefined,
   incoming: number | null | undefined,
@@ -45,11 +79,7 @@ async function loadCachedBestsForNames(
       try {
         const cachedResults = await getAthleteLiftingResults(meetId, name);
         cachedResults.forEach((row) => {
-          bests = mergeIntoBests(bests, {
-            snatch_best: row?.snatch_best ?? null,
-            cj_best: row?.cj_best ?? null,
-            total: row?.total ?? null,
-          });
+          bests = mergeIntoBests(bests, deriveRowBests(row));
         });
       } catch {}
       bestsByName[name] = bests;
@@ -76,13 +106,14 @@ export async function getAthleteBestsBatch(
 
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
-    return await loadCachedBestsForNames(uniqueNames, meetId);
+    const cachedOnly = await loadCachedBestsForNames(uniqueNames, meetId);
+    return cachedOnly;
   }
 
   try {
     const { data, error } = await supabase
       .from("lifting_results")
-      .select("name,snatch_best,cj_best,total")
+      .select("name,snatch_best,cj_best,total,snatch1,snatch2,snatch3,cj1,cj2,cj3")
       .in("name", uniqueNames);
 
     if (error) {
@@ -92,11 +123,7 @@ export async function getAthleteBestsBatch(
     (data || []).forEach((record) => {
       if (!record.name) return;
       const current = bestsByName[record.name] || createEmptyBests();
-      bestsByName[record.name] = mergeIntoBests(current, {
-        snatch_best: record.snatch_best ?? null,
-        cj_best: record.cj_best ?? null,
-        total: record.total ?? null,
-      });
+      bestsByName[record.name] = mergeIntoBests(current, deriveRowBests(record));
     });
 
     const missingNames = uniqueNames.filter((name) => {
@@ -111,7 +138,6 @@ export async function getAthleteBestsBatch(
         bestsByName[name] = cachedBests[name] ?? createEmptyBests();
       });
     }
-
     return bestsByName;
   } catch {
     return await loadCachedBestsForNames(uniqueNames, meetId);

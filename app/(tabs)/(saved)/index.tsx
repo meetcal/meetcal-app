@@ -447,6 +447,7 @@ export default function SavedScreen() {
                 ...item,
                 startTime: item.startTime,
                 weighInTime: item.weighInTime,
+                meet: item.meet || selectedMeet || "",
               },
             })
           }

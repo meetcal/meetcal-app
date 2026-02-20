@@ -5,6 +5,7 @@ import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 import { Buffer } from 'buffer';
 import pako from 'pako';
+import { Alert } from 'react-native';
 
 const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
@@ -203,6 +204,7 @@ async function readStoredLiftingResults(
 ): Promise<SupabaseLiftResult[]> {
   const payload = await AsyncStorage.getItem(liftingResultsKey);
   if (!payload) {
+    Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nNO payload in AsyncStorage`);
     return [];
   }
 
@@ -210,10 +212,12 @@ async function readStoredLiftingResults(
     const parsed = JSON.parse(payload) as unknown;
 
     if (Array.isArray(parsed)) {
+      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nLegacy array, count: ${parsed.length}`);
       return parsed as SupabaseLiftResult[];
     }
 
     if (!isLiftingResultsManifest(parsed) || parsed.chunks <= 0) {
+      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nNOT a valid manifest: ${JSON.stringify(parsed).slice(0, 200)}`);
       return [];
     }
 
@@ -223,13 +227,18 @@ async function readStoredLiftingResults(
     const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
     const chunkValues = chunkEntries.map(([, value]) => value ?? '');
 
-    if (chunkValues.some((value) => value.length === 0)) {
+    const chunkSizes = chunkValues.map((v) => v.length);
+    const emptyChunks = chunkSizes.filter((len) => len === 0).length;
+    if (emptyChunks > 0) {
+      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nexpected: ${parsed.chunks}\nempty: ${emptyChunks}\nsizes: ${chunkSizes.join(', ')}`);
       return [];
     }
 
-    return decodeLiftingResults(chunkValues.join(''));
+    const results = decodeLiftingResults(chunkValues.join(''));
+    Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nchunks: ${parsed.chunks}\nsizes: ${chunkSizes.join(', ')}\ndecoded: ${results.length}`);
+    return results;
   } catch (error) {
-    console.error('Error parsing stored lifting results:', error);
+    Alert.alert('DEBUG readStored ERROR', `key: ${liftingResultsKey}\nerror: ${error instanceof Error ? error.message : String(error)}`);
     return [];
   }
 }
@@ -247,12 +256,19 @@ async function writeStoredLiftingResults(
     chunks: chunks.length,
   };
 
-  const entries: [string, string][] = [
-    [liftingResultsKey, JSON.stringify(manifest)],
-    ...chunks.map((chunk, index) => [getLiftingResultsChunkKey(liftingResultsKey, index), chunk] as [string, string]),
-  ];
+  const chunkSizes: number[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkKey = getLiftingResultsChunkKey(liftingResultsKey, i);
+    await AsyncStorage.setItem(chunkKey, chunks[i]);
+    chunkSizes.push(chunks[i].length);
+    const verify = await AsyncStorage.getItem(chunkKey);
+    if (!verify || verify.length === 0) {
+      throw new Error(`Chunk ${i} failed to persist for ${liftingResultsKey}`);
+    }
+  }
 
-  await AsyncStorage.multiSet(entries);
+  await AsyncStorage.setItem(liftingResultsKey, JSON.stringify(manifest));
+  Alert.alert('DEBUG writeStored', `key: ${liftingResultsKey}\nresults: ${liftingResults.length}\nchunks: ${chunks.length}\nsizes: ${chunkSizes.join(', ')}`);
 }
 
 async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): Promise<LiftResult[]> {
@@ -288,6 +304,7 @@ export async function initStore(): Promise<void> {
 export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
     const store = await getStore();
+    // getMeetData debug removed to reduce noise
     if (!store.meets[meetId]) {
       const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
       const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
@@ -350,9 +367,11 @@ export async function getAthleteLiftingResults(meetId: MeetName, athleteName: st
     
     const allResults = await readStoredLiftingResults(liftingResultsKey);
     const normalizedTargetName = normalizeAthleteName(athleteName);
-    return allResults.filter(
+    const filteredResults = allResults.filter(
       result => normalizeAthleteName(result.name) === normalizedTargetName
     );
+    // getAthleteLiftingResults debug removed to reduce noise
+    return filteredResults;
   } catch (error) {
     console.error('Error getting athlete lifting results:', error);
     return [];
@@ -366,10 +385,13 @@ export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseL
     const liftingResultsKey = meetData.liftingResultsKey;
 
     if (!liftingResultsKey) {
+      Alert.alert('DEBUG getMeetLiftingResults', `meetId: ${meetId}\nNO liftingResultsKey!`);
       return [];
     }
 
-    return await readStoredLiftingResults(liftingResultsKey);
+    const results = await readStoredLiftingResults(liftingResultsKey);
+    Alert.alert('DEBUG getMeetLiftingResults', `meetId: ${meetId}\nkey: ${liftingResultsKey}\nresultCount: ${results.length}`);
+    return results;
   } catch (error) {
     console.error('Error getting meet lifting results:', error);
     return [];
@@ -520,6 +542,14 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
 export async function saveMeetLiftingResults(meetId: string, liftingResults: SupabaseLiftResult[]): Promise<void> {
   try {
     const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
+
+    if (liftingResults.length === 0) {
+      const existing = await AsyncStorage.getItem(liftingResultsKey);
+      if (existing) {
+        return;
+      }
+    }
+
     await writeStoredLiftingResults(liftingResultsKey, liftingResults);
     
     // Update store metadata

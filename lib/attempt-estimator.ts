@@ -27,6 +27,32 @@ enum LiftType {
   CleanJerk = 'cj'
 }
 
+function normalizeAthleteName(name: string | null | undefined): string {
+  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function maxSuccessfulAttempt(attempts: Array<number | null | undefined>): number | null {
+  const successful = attempts.filter(
+    (attempt): attempt is number => typeof attempt === "number" && attempt > 0,
+  );
+  if (successful.length === 0) return null;
+  return Math.max(...successful);
+}
+
+function getSnatchBest(result: SupabaseLiftResult): number | null {
+  if (typeof result.snatch_best === "number" && result.snatch_best > 0) {
+    return result.snatch_best;
+  }
+  return maxSuccessfulAttempt([result.snatch1, result.snatch2, result.snatch3]);
+}
+
+function getCJBest(result: SupabaseLiftResult): number | null {
+  if (typeof result.cj_best === "number" && result.cj_best > 0) {
+    return result.cj_best;
+  }
+  return maxSuccessfulAttempt([result.cj1, result.cj2, result.cj3]);
+}
+
 function calculateAverageIncrease(
   results: SupabaseLiftResult[],
   liftType: LiftType
@@ -76,14 +102,16 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   for (const result of results) {
     if (result.snatch1 > 0) {
       snatchFirstAttempts++;
-      if (result.snatch_best >= result.snatch1) {
+      const snatchBest = getSnatchBest(result);
+      if (snatchBest != null && snatchBest >= result.snatch1) {
         snatchFirstMakes++;
       }
     }
 
     if (result.cj1 > 0) {
       cjFirstAttempts++;
-      if (result.cj_best >= result.cj1) {
+      const cjBest = getCJBest(result);
+      if (cjBest != null && cjBest >= result.cj1) {
         cjFirstMakes++;
       }
     }
@@ -209,16 +237,23 @@ export function calculateEstimates(
   }[] = [];
 
   for (const athlete of athletes) {
+    const normalizedAthleteName = normalizeAthleteName(athlete.name);
     const athleteHistory = athleteResults.filter(
-      result => result.name === athlete.name && result.date >= twoYearsAgoString
+      result =>
+        normalizeAthleteName(result.name) === normalizedAthleteName &&
+        result.date >= twoYearsAgoString
     );
 
-    const bestSnatch = athleteHistory.length > 0
-      ? Math.max(...athleteHistory.map(r => r.snatch_best).filter(v => v > 0))
-      : null;
-    const bestCJ = athleteHistory.length > 0
-      ? Math.max(...athleteHistory.map(r => r.cj_best).filter(v => v > 0))
-      : null;
+    const bestSnatchCandidates = athleteHistory
+      .map((r) => getSnatchBest(r))
+      .filter((v): v is number => v != null && v > 0);
+    const bestCJCandidates = athleteHistory
+      .map((r) => getCJBest(r))
+      .filter((v): v is number => v != null && v > 0);
+    const bestSnatch =
+      bestSnatchCandidates.length > 0 ? Math.max(...bestSnatchCandidates) : null;
+    const bestCJ =
+      bestCJCandidates.length > 0 ? Math.max(...bestCJCandidates) : null;
 
     const avgSnatchIncrease = calculateAverageIncrease(athleteHistory, LiftType.Snatch);
     const avgCJIncrease = calculateAverageIncrease(athleteHistory, LiftType.CleanJerk);

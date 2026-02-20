@@ -23,6 +23,7 @@ export type Schedule = DaySchedule[];
 export interface DayViewProps {
   day: DaySchedule;
   timeZone: string;
+  meet: string;
   onRefreshComplete?: () => Promise<void>;
   refreshing: boolean;
 }
@@ -64,6 +65,7 @@ export interface ScheduleSkeletonProps {
 export interface SessionViewProps {
   session: Session;
   timeZone: string;
+  meet: string;
 }
 
 export interface VersionAnnouncementProps {
