@@ -1,43 +1,36 @@
-import { Tabs } from 'expo-router';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
-import React from 'react';
-import { Platform, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@/contexts/ThemeContext';
-import { DarkTheme, DefaultTheme, useNavigation } from '@react-navigation/native';
-import Constants from 'expo-constants';
-
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import { HapticTab } from "@/components/ui/HapticTab";
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useAppColors } from "@/hooks/useAppColors";
+import { useNavigation } from "@react-navigation/native";
+import { Tabs } from "expo-router";
+import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
+import React from "react";
+import { Platform, StyleSheet } from "react-native";
 
 export default function TabLayout() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    border: currentTheme === 'dark' ? '#1C1C1E' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-  };
 
   // Check if iOS 26+ for NativeTabs
-  const iosVersion = Platform.OS === 'ios' ? parseInt(String(Platform.Version).split('.')[0], 10) : 0;
+  const iosVersion =
+    Platform.OS === "ios"
+      ? parseInt(String(Platform.Version).split(".")[0], 10)
+      : 0;
   const isIOS26OrHigher = iosVersion >= 26;
 
   // Update navigation theme when theme changes
   React.useEffect(() => {
     navigation.setOptions({
-      ...(currentTheme === 'dark' ? DarkTheme : DefaultTheme),
+      ...colors,
     });
-  }, [currentTheme, navigation]);
+  }, [colors, navigation]);
 
-  if (Platform.OS === 'ios' && isIOS26OrHigher) {
+  if (Platform.OS === "ios" && isIOS26OrHigher) {
     return (
       <NativeTabs
         labelStyle={{ color: colors.secondaryText }}
-        tintColor={colors.text}>
+        tintColor={colors.text}
+      >
         <NativeTabs.Trigger name="(index)">
           <Icon sf="calendar" />
           <Label hidden />
@@ -67,19 +60,19 @@ export default function TabLayout() {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
           borderTopWidth: StyleSheet.hairlineWidth,
-          position: 'absolute',
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-        height: 70,
-        paddingBottom: 15,
-        paddingTop: 0,
-      },
-      tabBarItemStyle: {
-        marginTop: 5,
-      },
+          height: 70,
+          paddingBottom: 15,
+          paddingTop: 0,
+        },
+        tabBarItemStyle: {
+          marginTop: 5,
+        },
         headerStyle: {
           backgroundColor: colors.background,
         },
@@ -87,34 +80,42 @@ export default function TabLayout() {
         headerTransparent: false,
         tabBarButton: HapticTab,
         tabBarShowLabel: false,
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="(index)"
         options={{
-
           headerShown: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="calendar" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="(saved)"
         options={{
           headerShown: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bookmark.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="bookmark.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="(start-list)"
         options={{
           headerShown: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="list.bullet" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="(info)"
         options={{
           headerShown: false,
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="info.circle.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="info.circle.fill" color={color} />
+          ),
         }}
       />
     </Tabs>

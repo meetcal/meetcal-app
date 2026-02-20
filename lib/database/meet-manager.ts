@@ -1,9 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/types/meet';
-import { SyncManager } from './sync-manager';
-import { clearMeetData, getMeetData } from './offline-store';
+import {
+  clearImplicitMeetData,
+  clearMeetData,
+  getMeetData,
+  saveMeetAthletes,
+  saveMeetLiftingResults,
+  saveMeetSchedule,
+} from './offline-store';
 import { supabase } from '@/lib/supabase';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { fetchAthletesWithSession, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -23,6 +30,30 @@ interface MeetInfo {
 interface CacheInfo {
   totalSize: number;
   meets: { [key: string]: MeetInfo };
+}
+
+export function validatePrefetchedLiftingResults(
+  meet: MeetName,
+  athleteNames: string[],
+  liftingResults: { name?: string | null }[],
+): void {
+  const normalizeName = (value: string | null | undefined) =>
+    (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  if (athleteNames.length > 0 && liftingResults.length === 0) {
+    throw new Error(`No lifting results fetched for meet: ${meet}`);
+  }
+
+  if (athleteNames.length > 0 && liftingResults.length > 0) {
+    const athleteSet = new Set(athleteNames.map(normalizeName));
+    const matchedCount = liftingResults.reduce((count, result) => {
+      return athleteSet.has(normalizeName(result.name)) ? count + 1 : count;
+    }, 0);
+
+    if (matchedCount === 0) {
+      throw new Error(`No matched lifting results fetched for meet athletes: ${meet}`);
+    }
+  }
 }
 
 async function getCachedMeets(): Promise<Meet[]> {
@@ -336,7 +367,57 @@ async function manageCacheSize() {
 
 // Prefetch meet data
 export async function prefetchMeetData(meet: MeetName) {
-  const syncManager = new SyncManager(meet);
-  await syncManager.syncIfNeeded();
+  const errors: string[] = [];
+  let athleteNames: string[] = [];
+
+  try {
+    const schedule = await fetchSchedule(meet);
+    if (schedule.length > 0) {
+      await saveMeetSchedule(meet, schedule);
+    }
+  } catch (error) {
+    console.error('Prefetch schedule failed:', { meet, error });
+    errors.push('schedule');
+  }
+
+  try {
+    const athletes = await fetchAthletesWithSession(meet);
+    await saveMeetAthletes(meet, athletes);
+    athleteNames = Array.from(
+      new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
+    );
+  } catch (error) {
+    console.error('Prefetch athletes failed:', { meet, error });
+    errors.push('athletes');
+  }
+
+  if (athleteNames.length > 0) {
+    try {
+      const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+      validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+      await saveMeetLiftingResults(meet, liftingResults);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('SQLITE_FULL')) {
+        try {
+          await clearImplicitMeetData(meet);
+          const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+          validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+          await saveMeetLiftingResults(meet, liftingResults);
+        } catch (retryError) {
+          console.error('Prefetch lifting results failed after cleanup retry:', { meet, error: retryError });
+          errors.push('lifting_results');
+        }
+      } else {
+        console.error('Prefetch lifting results failed:', { meet, error });
+        errors.push('lifting_results');
+      }
+    }
+  }
+
   await updateMeetAccess(meet);
+
+  if (errors.length > 0) {
+    throw new Error(`Offline prefetch incomplete (${meet}): ${errors.join(', ')}`);
+  }
 } 

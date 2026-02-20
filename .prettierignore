@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.expo/
+.expo-shared/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Native
+ios/
+android/
+
+# Cache
+.cache/
+*.log
+
+# Config files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Generated files
+*.generated.*

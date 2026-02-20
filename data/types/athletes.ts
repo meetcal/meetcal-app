@@ -27,21 +27,21 @@ export interface SupabaseLiftResult {
   name: string;
   age: number;
   body_weight: number;
-  snatch1: number;
-  snatch2: number;
-  snatch3: number;
-  snatch_best: number;
-  cj1: number;
-  cj2: number;
-  cj3: number;
-  cj_best: number;
-  total: number;
+  snatch1: number | null;
+  snatch2: number | null;
+  snatch3: number | null;
+  snatch_best: number | null;
+  cj1: number | null;
+  cj2: number | null;
+  cj3: number | null;
+  cj_best: number | null;
+  total: number | null;
 }
 
 export interface SupabaseBests {
-  snatch_best: number;
-  cj_best: number;
-  total: number;
+  snatch_best: number | null;
+  cj_best: number | null;
+  total: number | null;
 }
 
 export type Gender = 'Men' | 'Women';

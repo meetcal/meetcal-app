@@ -1,283 +1,145 @@
-import { StyleSheet, View, Pressable, Platform, ScrollView } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
-import EventInfoScreen from '@/app/(screens)/event-info';
+import EventInfoScreen from "@/components/info/EventInfoScreen";
+import ListButton from "@/components/info/ListButton";
+import SectionTitle from "@/components/info/SectionTitle";
+import {
+  OnboardingView,
+  resetOnboarding,
+} from "@/components/schedule/OnboardingView";
+import {
+  resetVersionAnnouncement,
+  VersionAnnouncement,
+} from "@/components/schedule/VersionAnnouncement";
+import { ThemedView } from "@/components/ui/ThemedView";
+import { useAppColors } from "@/hooks/useAppColors";
+import * as Sentry from '@sentry/react-native';
+import { Stack, useRouter } from "expo-router";
+import { useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function InfoScreen() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-
-  // Define theme colors
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-    link: '#007AFF', // iOS blue stays the same in both modes
-  };
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
         options={{
-          headerTitle: 'Info',
+          headerTitle: "Info",
           headerTitleStyle: {
             color: colors.text,
           },
           headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5'
+            backgroundColor: colors.background,
           },
           headerShadowVisible: false,
         }}
       />
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { 
-            paddingHorizontal: 20, 
-            paddingTop: 20,
-            paddingBottom: Math.max(80, insets.bottom + 60)
-          }
-        ]}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          paddingBottom: Math.max(80, insets.bottom + 60),
+        }}
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
       >
+        <EventInfoScreen />
 
+        <SectionTitle title="National" />
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          {/* <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/event-info')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Event Info
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable> */}
+          <ListButton
+            title="Adaptive American Records"
+            onPress={() => router.push("/comp-data/adap-records")}
+          />
 
-          <EventInfoScreen />
+          <ListButton
+            title="All Meet Results"
+            onPress={() => router.push("/comp-data/all-meet-results")}
+          />
 
-          {/* <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/weightlifting-wrapped')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Weightlifting Wrapped
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable> */}
+          <ListButton
+            title="Club Meet Results"
+            onPress={() => router.push("/comp-data/club-results/clubs-list")}
+          />
 
-          {/* <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/offline-data')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Offline Data
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable> */}
+          <ListButton
+            title="National Rankings"
+            onPress={() => router.push("/comp-data/national-rankings")}
+          />
+
+          <ListButton
+            title="National & World Records"
+            onPress={() => router.push("/comp-data/records")}
+          />
+
+          <ListButton
+            title="WSO Records"
+            onPress={() => router.push("/comp-data/wso-records")}
+          />
+
+          <ListButton
+            title="Qualifying Totals"
+            lastSection={true}
+            onPress={() => router.push("/comp-data/new-qualifying-totals")}
+          />
         </View>
 
-        <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>
-          National
-        </ThemedText>
+        <SectionTitle title="International" />
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/adap-records')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Adaptive American Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          <ListButton
+            title="A/B Standards"
+            onPress={() => router.push("/comp-data/new-standards")}
+          />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/all-meet-results')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                All Meet Results
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/share-results-by-club')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Club Meet Results
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/national-rankings')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                National Rankings
-              </ThemedText>
-              <IconSymbol
-                name={Platform.OS === 'ios' ? 'chevron.right' : 'chevron-forward'}
-                size={20}
-                color={colors.link}
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/records')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                National & World Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/wso-records')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                WSO Records
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/new-qualifying-totals')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Qualifying Totals
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+          <ListButton
+            title="International Rankings"
+            lastSection={true}
+            onPress={() => router.push("/comp-data/rankings")}
+          />
         </View>
 
-        <ThemedText style={[styles.sectionHeader, { color: colors.secondaryText }]}>
-          International
-        </ThemedText>
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/new-standards')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                A/B Standards
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
-            </View>
-          </Pressable>
+        {__DEV__ && (
+          <>
+            <SectionTitle title="Development Tools" />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.section,
-              styles.lastSection,
-              pressed && { backgroundColor: colors.pressed }
-            ]}
-            onPress={() => router.push('/(screens)/rankings')}
-          >
-            <View style={styles.linkRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                International Rankings
-              </ThemedText>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              <ListButton
+                title="Show Onboarding"
+                onPress={async () => {
+                  await resetOnboarding();
+                  setShowOnboarding(true);
+                }}
+              />
+              <ListButton
+                title="Show Version Announcement"
+                onPress={async () => {
+                  await resetVersionAnnouncement();
+                  setVersionAnnouncementKey((prev) => prev + 1);
+                }}
+              />
+              <ListButton title='Sentry Test' lastSection={true} onPress={ () => { Sentry.captureException(new Error('First error')) }}/>
             </View>
-          </Pressable>
-        </View>
+          </>
+        )}
       </ScrollView>
+
+      {__DEV__ && (
+        <>
+          <OnboardingView
+            visible={showOnboarding}
+            onComplete={() => setShowOnboarding(false)}
+          />
+          <VersionAnnouncement key={versionAnnouncementKey} />
+        </>
+      )}
     </ThemedView>
   );
 }
@@ -289,12 +151,9 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  scrollContent: {
-  },
   card: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
@@ -303,153 +162,4 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  sectionHeader: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  section: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  lastSection: {
-    borderBottomWidth: 0,
-  },
-  sectionPressed: {
-    backgroundColor: '#F5F5F5',
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-  },
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  link: {
-    fontSize: 17,
-    lineHeight: 22,
-  },
-  addressContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  sectionText: {
-    fontSize: 16,
-  },
-  subscriptionContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  subscriptionInfo: {
-    flex: 1,
-    marginRight: 16,
-  },
-  subscriptionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  subscriptionPreview: {
-    fontSize: 16,
-    lineHeight: 21,
-  },
-  dangerZone: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  resetButton: {
-    backgroundColor: '#FF3B30', // iOS red
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  resetButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-  },
-  profileContent: {
-    paddingVertical: 4,
-  },
-  profileRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  profileValue: {
-    fontSize: 16,
-  },
-  copyright: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  meetValue: {
-    fontSize: 15,
-    marginTop: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginHorizontal: 16,
-  },
-  modalHeader: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    position: 'relative',
-  },
-  closeButton: {
-    position: 'absolute',
-    right: 16,
-    top: 16,
-    padding: 4,
-    zIndex: 1,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modalOptionText: {
-    fontSize: 17,
-  },
-}); 
+});

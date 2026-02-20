@@ -3,7 +3,7 @@ const IS_DEV = process.env.APP_VARIANT === 'development';
 export default ({ config }) => ({
   name: IS_DEV ? 'MeetCalDev' : 'MeetCal',
   slug: 'meetcal',
-  version: '5.2.5',
+  version: '5.2.6',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   splash: {
@@ -66,6 +66,14 @@ export default ({ config }) => ({
     '@bacons/apple-targets',
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
+    [
+      '@sentry/react-native/expo',
+      {
+        url: "https://sentry.io/",
+        project: "react-native",
+        organization: "meetcal-llc"
+      }
+    ]
   ],
   experiments: {
     typedRoutes: true,
@@ -79,7 +87,7 @@ export default ({ config }) => ({
   },
   scheme: 'meetcal',
   owner: 'memohnsen',
-  runtimeVersion: "5.2.5",
+  runtimeVersion: "5.2.6",
   updates: {
     url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
     enabled: true,

@@ -13,3 +13,13 @@ export type AgeGroupRecords = {
 export type RecordsData = {
   [ageGroup: string]: AgeGroupRecords;
 }; 
+
+export type Federation = string;
+export type Gender = "Men" | "Women";
+export type AgeGroup = string; // Changed from specific union
+
+export interface Filters {
+  federation: Federation;
+  gender: Gender;
+  ageGroup: AgeGroup;
+}

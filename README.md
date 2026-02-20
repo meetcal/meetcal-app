@@ -6,74 +6,52 @@ A React Native application built with Expo for managing athletic schedules and m
 
 ## Features
 
-- 📅 Schedule management for athletes and meets
-- 🏃‍♂️ Athlete data management
-- 📊 Real-time data synchronization with Supabase
-- 📱 Cross-platform support (iOS, Android)
+- Schedule management for athletes and meets
+- Athlete data management
+- Real-time data synchronization with Supabase
+- Cross-platform support (iOS, Android)
 
 ## Tech Stack
 
-- **Framework:** Expo / React Native
-- **Database:** Supabase
-- **Navigation:** Expo Router (file-based routing)
-- **Language:** TypeScript
+| Category | Technology |
+|---|---|
+| **Framework** | React Native 0.81, React 19 |
+| **Platform** | Expo SDK, Expo Router |
+| **Language** | TypeScript |
+| **Backend** | Supabase (PostgreSQL) |
+| **Authentication** | Clerk (JWT, secure token storage) |
+| **Subscriptions** | RevenueCat (in-app purchases, subscription tiers) |
+| **Analytics** | PostHog & Sentry (event tracking, remote config) |
+| **Animations** | React Native Reanimated, Gesture Handler |
+| **Notifications** | Expo Notifications (scheduled local + remote push) |
+| **Build & Deploy** | EAS Build, EAS Update (OTA) |
 
-## Get started
+## Architecture
 
-1. Install dependencies
+- **Offline-first data layer** — Multi-layer caching (in-memory, AsyncStorage, Supabase) with network-aware sync and graceful degradation when offline
+- **Context-based state management** — Custom providers and hooks for theme, subscriptions, saved sessions, and selected meet state
+- **File-based routing** — Expo Router with feature-grouped folders, tab navigation, and modal screen stacks
+- **Push notification system** — Scheduled reminders for weigh-ins and competition sessions with user-configurable timing
+- **Home screen widgets** — Native iOS and Android widget support with app group data sharing
 
-   ```bash
-   npm install
-   ```
+## Key Features
 
-2. Set up environment variables
-   
-   Create a `.env.local` file with your Supabase credentials:
-   ```
-   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
+- Competition schedule browsing with timezone-aware session times
+- Athlete start list lookup with real-time updates
+- National and international rankings and records
+- Save and track sessions across meets
+- Device calendar integration for session reminders
+- Dark mode support with system theme detection
+- Subscription management (free, quarterly, lifetime tiers)
 
-3. Start the development server
+## Native API Integration
 
-   ```bash
-   npx expo start
-   ```
+The app leverages several native device capabilities through Expo modules:
 
-In the output, you'll find options to open the app in a:
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go)
-
-## Project Structure
-
-This project uses [file-based routing](https://docs.expo.dev/router/introduction) with the **app** directory containing all screens and navigation.
-
-## Database
-
-All schedule and athlete data is stored in and fetched from Supabase. The app follows these data access patterns:
-
-- No hardcoded data for schedules or athletes
-- All queries go through Supabase client
-- Real-time updates supported
-
-## Development
-
-- Edit files in the **app** directory to modify screens and navigation
-- Database schema and queries should be documented
-- Maintain consistency with existing Supabase data patterns
-
-## Learn more
-
-- [Expo documentation](https://docs.expo.dev/)
-- [Supabase documentation](https://supabase.com/docs)
-- [React Native documentation](https://reactnative.dev/docs/getting-started)
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **expo-calendar** — Add sessions directly to the device calendar
+- **expo-haptics** — Tactile feedback on tab interactions
+- **expo-secure-store** — Encrypted credential and token storage
+- **expo-file-system** — Local file operations for caching
+- **expo-notifications** — Local and remote push notification scheduling
+- **expo-updates** — Over-the-air updates via EAS
+- **expo-blur / expo-glass-effect** — Native blur and liquid glass UI effects

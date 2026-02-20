@@ -1,8 +1,7 @@
-import React from 'react';
-import { StyleSheet, View, Pressable, Modal } from 'react-native';
-import { useState } from 'react';
-import { ThemedText } from '@/components/ThemedText';
-import { useTheme } from '@/contexts/ThemeContext';
+import { ThemedText } from "@/components/ui/ThemedText";
+import { useAppColors } from "@/hooks/useAppColors";
+import React, { useState } from "react";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 
 interface DropdownProps {
   value: string;
@@ -11,33 +10,34 @@ interface DropdownProps {
   placeholder?: string;
 }
 
-export const Dropdown = ({ value, options = [], onSelect, placeholder = 'Select an option' }: DropdownProps) => {
+export const Dropdown = ({
+  value,
+  options = [],
+  onSelect,
+  placeholder = "Select an option",
+}: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const { currentTheme } = useTheme();
-
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    card: currentTheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-    border: currentTheme === 'dark' ? '#38383A' : '#E1E1E1',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-    pressed: currentTheme === 'dark' ? '#2C2C2E' : '#F5F5F5',
-  };
+  const colors = useAppColors();
 
   return (
     <React.Fragment>
       <Pressable
         style={({ pressed }) => [
           styles.input,
-          { 
+          {
             backgroundColor: colors.background,
             borderColor: colors.border,
           },
-          pressed && { opacity: 0.7 }
+          pressed && { opacity: 0.7 },
         ]}
         onPress={() => setIsOpen(true)}
       >
-        <ThemedText style={[styles.text, { color: value ? colors.text : colors.secondaryText }]}>
+        <ThemedText
+          style={[
+            styles.text,
+            { color: value ? colors.text : colors.secondaryText },
+          ]}
+        >
           {value || placeholder}
         </ThemedText>
       </Pressable>
@@ -48,23 +48,28 @@ export const Dropdown = ({ value, options = [], onSelect, placeholder = 'Select 
         animationType="fade"
         onRequestClose={() => setIsOpen(false)}
       >
-        <Pressable 
-          style={[styles.modalOverlay, { 
-            backgroundColor: currentTheme === 'dark' 
-              ? 'rgba(0,0,0,0.6)' 
-              : 'rgba(0,0,0,0.4)' 
-          }]}
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor: colors.modalBackground,
+            },
+          ]}
           onPress={() => setIsOpen(false)}
         >
-          <View 
+          <View
             style={styles.modalContentContainer}
             onStartShouldSetResponder={() => true}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View
+              style={[styles.modalContent, { backgroundColor: colors.card }]}
+            >
               {options.length === 0 ? (
                 <View style={styles.option}>
-                  <ThemedText style={[styles.optionText, { color: colors.secondaryText }]}>
+                  <ThemedText
+                    style={[styles.optionText, { color: colors.secondaryText }]}
+                  >
                     No options available
                   </ThemedText>
                 </View>
@@ -74,11 +79,12 @@ export const Dropdown = ({ value, options = [], onSelect, placeholder = 'Select 
                     key={option}
                     style={({ pressed }) => [
                       styles.option,
-                      { 
+                      {
                         borderBottomColor: colors.border,
-                        backgroundColor: value === option ? colors.pressed : 'transparent',
+                        backgroundColor:
+                          value === option ? colors.pressed : "transparent",
                       },
-                      pressed && { opacity: 0.7 }
+                      pressed && { opacity: 0.7 },
                     ]}
                     onPress={(e) => {
                       e.stopPropagation();
@@ -86,7 +92,9 @@ export const Dropdown = ({ value, options = [], onSelect, placeholder = 'Select 
                       setIsOpen(false);
                     }}
                   >
-                    <ThemedText style={[styles.optionText, { color: colors.text }]}>
+                    <ThemedText
+                      style={[styles.optionText, { color: colors.text }]}
+                    >
                       {option}
                     </ThemedText>
                   </Pressable>
@@ -113,16 +121,16 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContentContainer: {
-    width: '80%',
-    maxHeight: '80%',
+    width: "80%",
+    maxHeight: "80%",
   },
   modalContent: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     maxHeight: 300,
   },
   option: {
@@ -132,4 +140,4 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 17,
   },
-}); 
+});

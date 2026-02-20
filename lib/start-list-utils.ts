@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import * as Calendar from 'expo-calendar';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 
@@ -22,10 +21,8 @@ export function sortAthletes(a: LiftResult, b: LiftResult): number {
   return a.name.localeCompare(b.name);
 }
 
-export async function requestCalendarPermissions(): Promise<boolean> {
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
-  return status === 'granted';
-}
+// Re-export from utils/calendar for backwards compatibility
+export { requestCalendarPermissions } from '@/utils/calendar';
 
 export const STARRED_CLUBS_FILTER = 'Favorites';
 

@@ -1,20 +1,21 @@
-import React from 'react';
-import { View, StyleSheet, Modal, Pressable, ScrollView, Image, Platform, StatusBar } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import * as Sharing from 'expo-sharing';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-interface ImagePreviewModalProps {
-  visible: boolean;
-  whiteImageUri: string | null;
-  transparentImageUri: string | null;
-  selectedIndex: number;
-  onChangeIndex: (index: number) => void;
-  onClose: () => void;
-}
+import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
+import { ThemedView } from "@/components/ui/ThemedView";
+import { useAppColors } from "@/hooks/useAppColors";
+import { ImagePreviewModalProps } from "@/types/start-list";
+import * as Sharing from "expo-sharing";
+import React from "react";
+import {
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ImagePreviewModal({
   visible,
@@ -24,35 +25,59 @@ export default function ImagePreviewModal({
   onChangeIndex,
   onClose,
 }: ImagePreviewModalProps) {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
-  const hasTransparent = Boolean(transparentImageUri);
-  const activeIndex = hasTransparent ? selectedIndex : 0;
+  const imageOptions = React.useMemo(
+    () =>
+      [
+        whiteImageUri
+          ? {
+              id: "readable",
+              label: "Readable",
+              uri: whiteImageUri,
+              category: "readability" as const,
+              isTransparent: false,
+            }
+          : null,
+        transparentImageUri
+          ? {
+              id: "transparent",
+              label: "Transparent",
+              uri: transparentImageUri,
+              category: "social" as const,
+              isTransparent: true,
+            }
+          : null,
+      ].filter((option): option is NonNullable<typeof option> => Boolean(option)),
+    [whiteImageUri, transparentImageUri],
+  );
+  const safeIndex = Math.min(selectedIndex, Math.max(imageOptions.length - 1, 0));
+  const selectedOption = imageOptions[safeIndex] || null;
 
-  const colors = {
-    background: currentTheme === 'dark' ? '#000000' : '#F5F5F5',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    secondaryText: currentTheme === 'dark' ? '#8E8E93' : '#6B6B6B',
-  };
+  const readableOptions = imageOptions.filter(
+    (option) => option.category === "readability",
+  );
+  const socialOptions = imageOptions.filter(
+    (option) => option.category === "social",
+  );
 
   const handleShare = async () => {
-    const activeUri = activeIndex === 0 ? whiteImageUri : transparentImageUri;
-    if (!activeUri) return;
+    if (!selectedOption?.uri) return;
 
     try {
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
-        alert('Sharing is not available on this device');
+        alert("Sharing is not available on this device");
         return;
       }
 
-      await Sharing.shareAsync(activeUri, {
-        mimeType: 'image/png',
-        dialogTitle: 'Share Schedule',
+      await Sharing.shareAsync(selectedOption.uri, {
+        mimeType: "image/png",
+        dialogTitle: "Share Schedule",
       });
     } catch (error) {
-      console.error('Error sharing image:', error);
-      alert('Failed to share image');
+      console.error("Error sharing image:", error);
+      alert("Failed to share image");
     }
   };
 
@@ -63,90 +88,76 @@ export default function ImagePreviewModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Header */}
+      <ThemedView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
         <View
           style={[
             styles.header,
-            Platform.OS === 'android' && {
-              paddingTop: Math.max(insets.top, StatusBar.currentHeight ?? 0) + 24,
+            Platform.OS === "android" && {
+              paddingTop:
+                Math.max(insets.top, StatusBar.currentHeight ?? 0) + 24,
               paddingBottom: 12,
               minHeight: 64,
             },
           ]}
         >
-          <ThemedText style={[styles.title, { color: colors.text }]}>
+          <ThemedText style={[styles.title, { color: colors.text }]}> 
             Schedule Preview
           </ThemedText>
           <Pressable
             style={({ pressed }) => [
               styles.closeButton,
-              Platform.OS === 'android' && {
+              Platform.OS === "android" && {
                 top: Math.max(insets.top, StatusBar.currentHeight ?? 0) + 8,
               },
               pressed && { opacity: 0.7 },
             ]}
             onPress={onClose}
           >
-            <ThemedText style={[styles.closeButtonText, { color: '#007AFF' }]}>
+            <ThemedText
+              style={[styles.closeButtonText, { color: colors.link }]}
+            >
               Done
             </ThemedText>
           </Pressable>
         </View>
 
-        {/* Image Preview */}
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
         >
-          {whiteImageUri || transparentImageUri ? (
+          {selectedOption ? (
             <View style={styles.imageContainer}>
-              {(whiteImageUri && transparentImageUri) && (
-                <View style={styles.segmentedControl}>
-                  <Pressable
-                    style={[
-                      styles.segment,
-                      activeIndex === 0 && styles.segmentActive,
-                    ]}
-                    onPress={() => onChangeIndex(0)}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.segmentText,
-                        activeIndex === 0 && styles.segmentTextActive,
-                      ]}
-                    >
-                      White
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.segment,
-                      activeIndex === 1 && styles.segmentActive,
-                    ]}
-                    onPress={() => onChangeIndex(1)}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.segmentText,
-                        activeIndex === 1 && styles.segmentTextActive,
-                      ]}
-                    >
-                      Transparent
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              )}
+              <View style={styles.optionSections}>
+                <OptionRow
+                  title="Readable"
+                  options={readableOptions}
+                  activeId={selectedOption?.id ?? ""}
+                  onPress={(id) => {
+                    const nextIndex = imageOptions.findIndex((o) => o.id === id);
+                    if (nextIndex >= 0) onChangeIndex(nextIndex);
+                  }}
+                />
+                <OptionRow
+                  title="Social"
+                  options={socialOptions}
+                  activeId={selectedOption?.id ?? ""}
+                  onPress={(id) => {
+                    const nextIndex = imageOptions.findIndex((o) => o.id === id);
+                    if (nextIndex >= 0) onChangeIndex(nextIndex);
+                  }}
+                />
+              </View>
 
-              {/* Image Preview */}
               <View
                 style={[
                   styles.imageCard,
-                  activeIndex === 1 && styles.imageCardTransparent,
+                  selectedOption.isTransparent && styles.imageCardTransparent,
                 ]}
               >
-                {activeIndex === 1 ? (
+                {selectedOption.isTransparent ? (
                   <View style={styles.checkerboard} pointerEvents="none">
                     {Array.from({ length: 8 }).map((_, rowIndex) => (
                       <View style={styles.checkerRow} key={`row-${rowIndex}`}>
@@ -157,7 +168,9 @@ export default function ImagePreviewModal({
                               key={`cell-${rowIndex}-${colIndex}`}
                               style={[
                                 styles.checkerSquare,
-                                isLight ? styles.checkerLight : styles.checkerDark,
+                                isLight
+                                  ? styles.checkerLight
+                                  : styles.checkerDark,
                               ]}
                             />
                           );
@@ -167,15 +180,12 @@ export default function ImagePreviewModal({
                   </View>
                 ) : null}
                 <Image
-                  source={{
-                    uri: activeIndex === 0 ? (whiteImageUri || '') : (transparentImageUri || ''),
-                  }}
+                  source={{ uri: selectedOption.uri }}
                   style={styles.image}
                   resizeMode="contain"
                 />
               </View>
 
-              {/* Share Button */}
               <Pressable
                 style={({ pressed }) => [
                   styles.shareButton,
@@ -184,21 +194,25 @@ export default function ImagePreviewModal({
                 onPress={handleShare}
               >
                 <IconSymbol
-                  name={Platform.select({
-                    ios: 'square.and.arrow.up',
-                    android: 'share',
-                  }) || 'square.and.arrow.up'}
+                  name={
+                    Platform.select({
+                      ios: "square.and.arrow.up",
+                      android: "share",
+                    }) || "square.and.arrow.up"
+                  }
                   size={20}
                   color="#FFFFFF"
                 />
                 <ThemedText style={styles.shareButtonText}>
-                  Share {activeIndex === 0 ? 'White' : 'Transparent'} Background
+                  Share {selectedOption.label}
                 </ThemedText>
               </Pressable>
             </View>
           ) : (
             <View style={styles.noImageContainer}>
-              <ThemedText style={[styles.noImageText, { color: colors.secondaryText }]}>
+              <ThemedText
+                style={[styles.noImageText, { color: colors.secondaryText }]}
+              >
                 No image available
               </ThemedText>
             </View>
@@ -209,32 +223,74 @@ export default function ImagePreviewModal({
   );
 }
 
+type OptionRowProps = {
+  title: string;
+  options: ImagePreviewModalProps["imageOptions"];
+  activeId: string;
+  onPress: (id: string) => void;
+};
+
+function OptionRow({ title, options, activeId, onPress }: OptionRowProps) {
+  if (options.length === 0) return null;
+
+  return (
+    <View style={styles.optionRowWrap}>
+      <ThemedText style={styles.optionRowTitle}>{title}</ThemedText>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.segmentedControl}
+      >
+        {options.map((option) => {
+          const isActive = option.id === activeId;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.segment, isActive && styles.segmentActive]}
+              onPress={() => onPress(option.id)}
+            >
+              <ThemedText
+                style={[
+                  styles.segmentText,
+                  isActive && styles.segmentTextActive,
+                ]}
+              >
+                {option.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E1E1E1',
-    position: 'relative',
+    borderBottomColor: "#E1E1E1",
+    position: "relative",
   },
   title: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   closeButton: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     padding: 4,
   },
   closeButtonText: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   scrollView: {
     flex: 1,
@@ -243,16 +299,30 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   imageContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 20,
-    width: '100%',
+    width: "100%",
+  },
+  optionSections: {
+    width: "100%",
+    gap: 12,
+  },
+  optionRowWrap: {
+    gap: 6,
+  },
+  optionRowTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#8E8E93",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   imageCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 20,
-    width: '100%',
-    shadowColor: '#000',
+    width: "100%",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -262,77 +332,75 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   imageCardTransparent: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: '#DADADA',
+    borderColor: "#DADADA",
   },
   image: {
-    width: '100%',
+    width: "100%",
     aspectRatio: 850 / 1200,
     borderRadius: 0,
   },
   segmentedControl: {
-    flexDirection: 'row',
-    backgroundColor: '#E9E9EB',
-    borderRadius: 10,
-    padding: 2,
-    width: '100%',
-    maxWidth: 320,
+    flexDirection: "row",
+    gap: 8,
+    paddingRight: 8,
   },
   segment: {
-    flex: 1,
     paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    alignItems: "center",
+    backgroundColor: "#ECEFF3",
   },
   segmentActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#111827",
   },
   segmentText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#6B6B6B',
+    fontWeight: "600",
+    color: "#4B5563",
   },
   segmentTextActive: {
-    color: '#000000',
+    color: "#FFFFFF",
   },
   checkerboard: {
     ...StyleSheet.absoluteFillObject,
   },
   checkerRow: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   checkerSquare: {
     flex: 1,
   },
   checkerLight: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: "#F0F0F0",
   },
   checkerDark: {
-    backgroundColor: '#D8D8D8',
+    backgroundColor: "#D8D8D8",
   },
   shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
   },
   shareButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   noImageContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 60,
   },
   noImageText: {

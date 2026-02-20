@@ -1,4 +1,5 @@
 import { Platform } from './athletes';
+import { calculateWeighInTime } from '@/utils/time';
 
 export interface PlatformSession {
   platform: Platform;
@@ -22,30 +23,10 @@ export interface ScheduleDay {
 
 export type Schedule = ScheduleDay[];
 
-// Helper functions
-export function calculateWeighInTime(startTime: string): string {
-  const [time, period] = startTime.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  let weighInHour = hours - 2;
-  let weighInPeriod = period;
-  
-  if (period === 'PM' && hours !== 12) {
-    weighInHour = hours + 12 - 2;
-  } else if (period === 'AM' && hours === 12) {
-    weighInHour = 10;
-    weighInPeriod = 'PM';
-  } else if (weighInHour < 0) {
-    weighInHour = 12 + weighInHour;
-    weighInPeriod = period === 'AM' ? 'PM' : 'AM';
-  } else if (weighInHour === 0) {
-    weighInHour = 12;
-    weighInPeriod = 'AM';
-  }
-  
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
+// Re-export calculateWeighInTime from utils for backwards compatibility
+export { calculateWeighInTime };
 
+// Helper functions
 export function getSessionTimeRange(session: Session): { start: string; end: string } | null {
   const hasCustomTimes = session.platforms.some(p => p.platformStartTime);
   if (!hasCustomTimes) {
