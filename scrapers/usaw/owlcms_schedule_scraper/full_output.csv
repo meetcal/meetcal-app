@@ -1,0 +1,121 @@
+id,date,meet,sess,plat,age_group_weight_category,weigh,weight_category,time,estimated_entry_totals_(min___max),gender,number_of_lifters
+123,2026-03-05,2026 Virus Weightlifting Series 1,1,Red,,07:00:00,53kg D,09:00:00,0-80,F,11
+124,2026-03-05,2026 Virus Weightlifting Series 1,1,White,,07:00:00,48kg B,09:00:00,70-91,F,10
+125,2026-03-05,2026 Virus Weightlifting Series 1,1,Blue,,07:00:00,32kg–52kg C,09:00:00,40-56,M,11
+126,2026-03-05,2026 Virus Weightlifting Series 1,1,Stars,,07:00:00,56kg & 60kg C,09:00:00,35-113,M,10
+127,2026-03-05,2026 Virus Weightlifting Series 1,1,Stripes,,07:00:00,65kg C,09:00:00,90-142,M,11
+128,2026-03-05,2026 Virus Weightlifting Series 1,2,Red,,09:00:00,53kg C,11:00:00,80-102,F,10
+129,2026-03-05,2026 Virus Weightlifting Series 1,2,White,,09:00:00,30kg–36kg A,11:00:00,0-45,F,13
+130,2026-03-05,2026 Virus Weightlifting Series 1,2,Blue,,09:00:00,32kg–52kg B,11:00:00,57-67,M,10
+131,2026-03-05,2026 Virus Weightlifting Series 1,2,Stars,,09:00:00,56kg & 60kg B,11:00:00,113-165,M,10
+132,2026-03-05,2026 Virus Weightlifting Series 1,2,Stripes,,09:00:00,65kg B,11:00:00,155-190,M,11
+133,2026-03-05,2026 Virus Weightlifting Series 1,3,Red,,11:00:00,53kg B,13:00:00,104-120,F,10
+134,2026-03-05,2026 Virus Weightlifting Series 1,3,White,,11:00:00,32kg–52kg A,13:00:00,71-158,M,10
+135,2026-03-05,2026 Virus Weightlifting Series 1,3,Blue,,11:00:00,63kg J,13:00:00,0-98,F,12
+136,2026-03-05,2026 Virus Weightlifting Series 1,3,Stars,48kg A,11:00:00,,13:00:00,92-140,F,9
+137,2026-03-05,2026 Virus Weightlifting Series 1,3,Stripes,40kg & 44kg A,11:00:00,,13:00:00,48-70,F,10
+138,2026-03-05,2026 Virus Weightlifting Series 1,4,Red,79kg I,13:00:00,,15:00:00,78-160,M,12
+139,2026-03-05,2026 Virus Weightlifting Series 1,4,White,58kg I,13:00:00,,15:00:00,50-90,F,12
+140,2026-03-05,2026 Virus Weightlifting Series 1,4,Blue,63kg I,13:00:00,,15:00:00,100-111,F,12
+141,2026-03-05,2026 Virus Weightlifting Series 1,4,Stars,56kg & 60kg A,13:00:00,,15:00:00,165-233,M,10
+142,2026-03-05,2026 Virus Weightlifting Series 1,4,Stripes,71kg & 65+kg D,13:00:00,,15:00:00,88-180,M,13
+143,2026-03-05,2026 Virus Weightlifting Series 1,5,Red,79kg H,15:00:00,,17:00:00,165-190,M,12
+144,2026-03-05,2026 Virus Weightlifting Series 1,5,White,58kg H,15:00:00,,17:00:00,90-103,F,12
+145,2026-03-05,2026 Virus Weightlifting Series 1,5,Blue,63kg H,15:00:00,,17:00:00,111-115,F,12
+146,2026-03-05,2026 Virus Weightlifting Series 1,5,Stars,53kg A,15:00:00,,17:00:00,124-177,F,10
+147,2026-03-05,2026 Virus Weightlifting Series 1,5,Stripes,71kg & 65+kg C,15:00:00,,17:00:00,180-204,M,12
+148,2026-03-05,2026 Virus Weightlifting Series 1,6,Red,79kg G,17:00:00,,19:00:00,190-200,M,12
+149,2026-03-05,2026 Virus Weightlifting Series 1,6,White,58kg G,17:00:00,,19:00:00,104-110,F,12
+150,2026-03-05,2026 Virus Weightlifting Series 1,6,Blue,63kg G,17:00:00,,19:00:00,116-125,F,12
+151,2026-03-05,2026 Virus Weightlifting Series 1,6,Stars,65kg A,17:00:00,,19:00:00,190-240,M,11
+152,2026-03-05,2026 Virus Weightlifting Series 1,6,Stripes,71kg & 65+kg B,17:00:00,,19:00:00,205-225,M,12
+153,2026-03-06,2026 Virus Weightlifting Series 1,7,Red,58kg F,07:00:00,,09:00:00,110-120,F,12
+154,2026-03-06,2026 Virus Weightlifting Series 1,7,White,63kg F,07:00:00,,09:00:00,130-133,F,12
+155,2026-03-06,2026 Virus Weightlifting Series 1,7,Blue,69kg & 63+kg L,07:00:00,,09:00:00,0-87,F,12
+156,2026-03-06,2026 Virus Weightlifting Series 1,7,Stars,79kg F,07:00:00,,09:00:00,201-210,M,12
+157,2026-03-06,2026 Virus Weightlifting Series 1,7,Stripes,88kg & 79+kg L,07:00:00,,09:00:00,0-160,M,13
+158,2026-03-06,2026 Virus Weightlifting Series 1,8,Red,58kg E,09:00:00,,11:00:00,120-128,F,12
+159,2026-03-06,2026 Virus Weightlifting Series 1,8,White,63kg E,09:00:00,,11:00:00,134-142,F,11
+160,2026-03-06,2026 Virus Weightlifting Series 1,8,Blue,69kg & 63+kg K,09:00:00,,11:00:00,90-105,F,12
+161,2026-03-06,2026 Virus Weightlifting Series 1,8,Stars,79kg E,09:00:00,,11:00:00,211-220,M,12
+162,2026-03-06,2026 Virus Weightlifting Series 1,8,Stripes,88kg & 79+kg K,09:00:00,,11:00:00,166-186,M,13
+164,2026-03-06,2026 Virus Weightlifting Series 1,9,Red,58kg D,11:00:00,,13:00:00,129-142,F,12
+165,2026-03-06,2026 Virus Weightlifting Series 1,9,White,63kg D,11:00:00,,13:00:00,142-145,F,11
+166,2026-03-06,2026 Virus Weightlifting Series 1,9,Blue,71kg & 65+kg A,11:00:00,,13:00:00,225-300,M,12
+167,2026-03-06,2026 Virus Weightlifting Series 1,9,Stars,79kg D,11:00:00,,13:00:00,220-235,M,11
+168,2026-03-06,2026 Virus Weightlifting Series 1,9,Stripes,88kg & 79+kg J,11:00:00,,13:00:00,186-200,M,12
+170,2026-03-06,2026 Virus Weightlifting Series 1,10,Red,58kg C,13:00:00,,15:00:00,142-150,F,11
+171,2026-03-06,2026 Virus Weightlifting Series 1,10,White,63kg C,13:00:00,,15:00:00,150-162,F,11
+172,2026-03-06,2026 Virus Weightlifting Series 1,10,Blue,69kg & 63+kg J,13:00:00,,15:00:00,109-118,F,12
+173,2026-03-06,2026 Virus Weightlifting Series 1,10,Stars,79kg C,13:00:00,,15:00:00,240-245,M,11
+174,2026-03-06,2026 Virus Weightlifting Series 1,10,Stripes,88kg & 79+kg I,13:00:00,,15:00:00,200-205,M,12
+175,2026-03-06,2026 Virus Weightlifting Series 1,11,Red,58kg B,15:00:00,,17:00:00,150-165,F,11
+176,2026-03-06,2026 Virus Weightlifting Series 1,11,White,63kg B,15:00:00,,17:00:00,165-180,F,11
+177,2026-03-06,2026 Virus Weightlifting Series 1,11,Blue,69kg & 63+kg I,15:00:00,,17:00:00,120-130,F,12
+178,2026-03-06,2026 Virus Weightlifting Series 1,11,Stars,79kg B,15:00:00,,17:00:00,245-260,M,11
+179,2026-03-06,2026 Virus Weightlifting Series 1,11,Stripes,88kg & 79+kg H,15:00:00,,17:00:00,205-209,M,12
+180,2026-03-06,2026 Virus Weightlifting Series 1,12,Red,58kg A,17:00:00,,19:00:00,165-225,F,11
+181,2026-03-06,2026 Virus Weightlifting Series 1,12,White,63kg A,17:00:00,,19:00:00,185-233,F,11
+182,2026-03-06,2026 Virus Weightlifting Series 1,12,Blue,69kg & 63+kg H,17:00:00,,19:00:00,130-135,F,12
+183,2026-03-06,2026 Virus Weightlifting Series 1,12,Stars,79kg A,17:00:00,,19:00:00,260-342,M,11
+184,2026-03-06,2026 Virus Weightlifting Series 1,12,Stripes,88kg & 79+kg G,17:00:00,,19:00:00,210-215,M,12
+185,2026-03-07,2026 Virus Weightlifting Series 1,13,Red,69kg & 63+kg G,06:00:00,,08:00:00,137-140,F,12
+186,2026-03-07,2026 Virus Weightlifting Series 1,13,White,88kg & 79+kg F,06:00:00,,08:00:00,215-220,M,12
+187,2026-03-07,2026 Virus Weightlifting Series 1,13,Blue,77kg & 69+kg L,06:00:00,,08:00:00,0-97,F,13
+188,2026-03-07,2026 Virus Weightlifting Series 1,13,Stars,94kg I,06:00:00,,08:00:00,90-195,M,12
+189,2026-03-07,2026 Virus Weightlifting Series 1,13,Stripes,110kg & 94+kg J,06:00:00,,08:00:00,0-180,M,11
+191,2026-03-07,2026 Virus Weightlifting Series 1,14,Red,69kg & 63+kg F,08:00:00,,10:00:00,143-150,F,12
+192,2026-03-07,2026 Virus Weightlifting Series 1,14,White,88kg & 79+kg E,08:00:00,,10:00:00,220-230,M,12
+193,2026-03-07,2026 Virus Weightlifting Series 1,14,Blue,77kg & 69+kg K,08:00:00,,10:00:00,100-115,F,12
+194,2026-03-07,2026 Virus Weightlifting Series 1,14,Stars,94kg H,08:00:00,,10:00:00,200-211,M,12
+195,2026-03-07,2026 Virus Weightlifting Series 1,14,Stripes,110kg & 94+kg I,08:00:00,,10:00:00,180-201,M,11
+196,2026-03-07,2026 Virus Weightlifting Series 1,15,Red,69kg & 63+kg E,10:00:00,,12:00:00,150-160,F,12
+197,2026-03-07,2026 Virus Weightlifting Series 1,15,White,88kg & 79+kg D,10:00:00,,12:00:00,230-245,M,12
+198,2026-03-07,2026 Virus Weightlifting Series 1,15,Blue,77kg & 69+kg J,10:00:00,,12:00:00,117-125,F,12
+199,2026-03-07,2026 Virus Weightlifting Series 1,15,Stars,94kg G,10:00:00,,12:00:00,214-220,M,11
+200,2026-03-07,2026 Virus Weightlifting Series 1,15,Stripes,110kg & 94+kg H,10:00:00,,12:00:00,205-225,M,11
+201,2026-03-07,2026 Virus Weightlifting Series 1,16,Red,69kg & 63+kg D,12:00:00,,14:00:00,160-168,F,12
+202,2026-03-07,2026 Virus Weightlifting Series 1,16,White,88kg & 79+kg C,12:00:00,,14:00:00,245-250,M,12
+203,2026-03-07,2026 Virus Weightlifting Series 1,16,Blue,77kg & 69+kg I,12:00:00,,14:00:00,125-130,F,12
+204,2026-03-07,2026 Virus Weightlifting Series 1,16,Stars,86kg & 77+kg G,12:00:00,,14:00:00,0-101,F,11
+205,2026-03-07,2026 Virus Weightlifting Series 1,16,Stripes,110kg & 94+kg G,12:00:00,,14:00:00,230-240,M,11
+206,2026-03-07,2026 Virus Weightlifting Series 1,17,Red,69kg & 63+kg C,14:00:00,,16:00:00,168-183,F,11
+207,2026-03-07,2026 Virus Weightlifting Series 1,17,White,88kg & 79+kg B,14:00:00,,16:00:00,260-280,M,12
+208,2026-03-07,2026 Virus Weightlifting Series 1,17,Blue,77kg & 69+kg H,14:00:00,,16:00:00,130-135,F,12
+209,2026-03-07,2026 Virus Weightlifting Series 1,17,Stars,94kg F,14:00:00,,16:00:00,220-225,M,11
+210,2026-03-07,2026 Virus Weightlifting Series 1,17,Stripes,86kg & 77+kg F,14:00:00,,16:00:00,105-130,F,11
+211,2026-03-07,2026 Virus Weightlifting Series 1,18,Red,69kg & 63+kg B,16:00:00,,18:00:00,184-195,F,11
+212,2026-03-07,2026 Virus Weightlifting Series 1,18,White,88kg & 79+kg A,16:00:00,,18:00:00,285-334,M,12
+213,2026-03-07,2026 Virus Weightlifting Series 1,18,Blue,77kg & 69+kg G,16:00:00,,18:00:00,135-140,F,12
+214,2026-03-07,2026 Virus Weightlifting Series 1,18,Stars,94kg E,16:00:00,,18:00:00,225-230,M,11
+215,2026-03-07,2026 Virus Weightlifting Series 1,18,Stripes,110kg & 94+kg F,16:00:00,,18:00:00,240-250,M,11
+216,2026-03-07,2026 Virus Weightlifting Series 1,19,Red,69kg & 63+kg A,18:00:00,,20:00:00,195-225,F,11
+217,2026-03-07,2026 Virus Weightlifting Series 1,19,White,86kg & 77+kg E,18:00:00,,20:00:00,130-138,F,11
+218,2026-03-07,2026 Virus Weightlifting Series 1,19,Blue,77kg & 69+kg F,18:00:00,,20:00:00,140-150,F,12
+219,2026-03-07,2026 Virus Weightlifting Series 1,19,Stars,94kg D,18:00:00,,20:00:00,232-250,M,11
+220,2026-03-07,2026 Virus Weightlifting Series 1,19,Stripes,110kg & 94+kg E,18:00:00,,20:00:00,250-260,M,11
+221,2026-03-08,2026 Virus Weightlifting Series 1,20,Red,110kg & 94+kg D,06:00:00,,08:00:00,260-270,M,11
+222,2026-03-08,2026 Virus Weightlifting Series 1,20,White,86+kg E,06:00:00,,08:00:00,90-120,F,12
+223,2026-03-08,2026 Virus Weightlifting Series 1,20,Blue,86kg & 77+kg D,06:00:00,,08:00:00,140-145,F,11
+224,2026-03-08,2026 Virus Weightlifting Series 1,20,Stars,77kg & 69+kg E,06:00:00,,08:00:00,150-158,F,12
+225,2026-03-08,2026 Virus Weightlifting Series 1,20,Stripes,94kg C,06:00:00,,08:00:00,250-260,M,11
+226,2026-03-08,2026 Virus Weightlifting Series 1,21,Red,86kg & 77+kg C,08:00:00,,10:00:00,150-164,F,11
+227,2026-03-08,2026 Virus Weightlifting Series 1,21,White,86+kg D,08:00:00,,10:00:00,130-146,F,12
+228,2026-03-08,2026 Virus Weightlifting Series 1,21,Blue,110+kg D,08:00:00,,10:00:00,125-220,M,11
+229,2026-03-08,2026 Virus Weightlifting Series 1,21,Stars,77kg & 69+kg D,08:00:00,,10:00:00,158-160,F,12
+230,2026-03-08,2026 Virus Weightlifting Series 1,21,Stripes,94kg B,08:00:00,,10:00:00,260-280,M,11
+231,2026-03-08,2026 Virus Weightlifting Series 1,22,Red,110kg & 94+kg C,10:00:00,,12:00:00,270-280,M,11
+232,2026-03-08,2026 Virus Weightlifting Series 1,22,White,86+kg C,10:00:00,,12:00:00,147-165,F,12
+233,2026-03-08,2026 Virus Weightlifting Series 1,22,Blue,110+kg C,10:00:00,,12:00:00,220-250,M,11
+234,2026-03-08,2026 Virus Weightlifting Series 1,22,Stars,77kg & 69+kg C,10:00:00,,12:00:00,160-167,F,12
+235,2026-03-08,2026 Virus Weightlifting Series 1,22,Stripes,94kg A,10:00:00,,12:00:00,280-360,M,11
+236,2026-03-08,2026 Virus Weightlifting Series 1,23,Red,110kg & 94+kg B,12:00:00,,14:00:00,280-290,M,11
+237,2026-03-08,2026 Virus Weightlifting Series 1,23,White,86+kg B,12:00:00,,14:00:00,166-190,F,12
+238,2026-03-08,2026 Virus Weightlifting Series 1,23,Blue,110+kg B,12:00:00,,14:00:00,260-285,M,11
+239,2026-03-08,2026 Virus Weightlifting Series 1,23,Stars,77kg & 69+kg B,12:00:00,,14:00:00,168-190,F,12
+240,2026-03-08,2026 Virus Weightlifting Series 1,23,Stripes,86kg & 77+kg B,12:00:00,,14:00:00,167-187,F,11
+241,2026-03-08,2026 Virus Weightlifting Series 1,24,Red,110kg & 94+kg A,14:00:00,,16:00:00,290-360,M,11
+242,2026-03-08,2026 Virus Weightlifting Series 1,24,White,86+kg A,14:00:00,,16:00:00,195-250,F,12
+243,2026-03-08,2026 Virus Weightlifting Series 1,24,Blue,110+kg A,14:00:00,,16:00:00,285-390,M,11
+244,2026-03-08,2026 Virus Weightlifting Series 1,24,Stars,77kg & 69+kg A,14:00:00,,16:00:00,190-250,F,12
+245,2026-03-08,2026 Virus Weightlifting Series 1,24,Stripes,86kg & 77+kg A,14:00:00,,16:00:00,188-230,F,10

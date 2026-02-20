@@ -1,0 +1,689 @@
+id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total
+382519,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Lucas Diehl,Men's 16-17 Age Group 94+kg,119.75,125,-130,134,134,157,163,169,169,303
+382520,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Madden Mones,Men's 16-17 Age Group 94+kg,129.25,126,132,135,135,157,162,-168,162,297
+382521,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brodie Hollis,Men's 16-17 Age Group 94+kg,118.9,115,120,-125,120,150,158,165,165,285
+382522,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Chase Dooley,Men's 16-17 Age Group 94+kg,126.2,115,123,-130,123,155,-165,-170,155,278
+382523,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Rucker Johnson,Men's 16-17 Age Group 79kg,78.3,-120,120,125,125,145,150,153,153,278
+382524,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Carter Sing,Men's 16-17 Age Group 79kg,77.25,115,120,124,124,145,-150,152,152,276
+382525,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elias Horn,Men's 16-17 Age Group 94kg,93.25,113,118,125,125,140,-150,151,151,276
+382526,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Roy  Maher,Men's 16-17 Age Group 79kg,76.5,112,116,-121,116,146,150,-154,150,266
+382527,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Baron Baker,Men's 16-17 Age Group 94kg,89.4,105,110,-115,110,-145,145,150,150,260
+382528,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Robert Whitlock,Men's 16-17 Age Group 88kg,82.4,110,113,116,116,135,140,-145,140,256
+382529,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Haston Hill,Men's 16-17 Age Group 79kg,75.8,103,106,109,109,141,146,-151,146,255
+382530,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,jacob molina,Men's 16-17 Age Group 94+kg,117.25,93,97,104,104,140,150,-155,150,254
+382531,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brian Begnoche,Men's 16-17 Age Group 88kg,85.55,106,-111,112,112,136,141,-145,141,253
+382532,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Evan  Kniss,Men's 16-17 Age Group 88kg,86.2,105,110,-115,110,135,140,-145,140,250
+382533,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Daniel Nuñez,Men's 16-17 Age Group 88kg,84.3,-102,105,111,111,131,-136,-141,131,242
+382534,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Frank Jimenez,Men's 16-17 Age Group 94+kg,103.7,-110,110,-116,110,130,-135,-136,130,240
+382535,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jackson Young,Men's 16-17 Age Group 94+kg,110.35,100,104,-107,104,128,133,-137,133,237
+382536,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jack Green,Men's 16-17 Age Group 88kg,85.7,105,108,-112,108,123,127,-131,127,235
+382537,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Wyatt Lupo,Men's 16-17 Age Group 94kg,92.85,98,102,107,107,122,127,-135,127,234
+382538,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Maverick  Grimm,Men's 16-17 Age Group 79kg,75.1,96,100,-103,100,125,130,-135,130,230
+382539,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,TYLER NIEDERGESES,Men's 16-17 Age Group 94+kg,103.4,97,102,-106,102,127,-132,-136,127,229
+382540,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Dryden Yates,Men's 14-15 Age Group 71kg,69.6,-100,-100,100,100,-124,-124,128,128,228
+382541,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sebastian Stodel,Men's 16-17 Age Group 65kg,64.05,97,-101,-101,97,-126,126,131,131,228
+382542,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Charles Kuebler,Men's 16-17 Age Group 94+kg,135.45,85,90,95,95,127,132,-137,132,227
+382543,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Desmond Myles,Men's 16-17 Age Group 71kg,69.35,91,96,100,100,122,127,-132,127,227
+382544,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jordon Young,Men's 16-17 Age Group 94kg,91.95,95,101,-106,101,120,125,-130,125,226
+382545,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Joe Korchnak,Men's 16-17 Age Group 94+kg,106.4,96,100,-104,100,120,124,-127,124,224
+382546,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Miguel Romero Colon,Men's 16-17 Age Group 88kg,83.2,85,90,100,100,115,123,-130,123,223
+382547,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jayden Mondesir,Men's 16-17 Age Group 94+kg,99.6,100,-104,-104,100,122,-127,-127,122,222
+382548,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Massimo Shinzato-Barrueto,Men's 16-17 Age Group 94+kg,119.7,89,93,97,97,118,-123,125,125,222
+382549,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elan Mostun,Men's 16-17 Age Group 79kg,77.7,95,98,-102,98,124,-128,-130,124,222
+382550,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Colten  Clyburn,Men's 16-17 Age Group 88kg,86.1,-93,102,-107,102,115,120,-125,120,222
+382551,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Graeme Osteen,Men's 16-17 Age Group 94+kg,123.05,95,100,-105,100,120,-125,-127,120,220
+382552,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Myles Pudenz,Men's 16-17 Age Group 94+kg,108.75,-90,90,93,93,120,125,-130,125,218
+382553,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Nicholas Migliaccio,Men's 16-17 Age Group 79kg,76.35,-93,93,-100,93,116,120,125,125,218
+382554,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Will Rodriquez,Men's 16-17 Age Group 94kg,92.85,98,102,-108,102,115,-120,-121,115,217
+382555,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Genjay Crump,Men's 16-17 Age Group 94+kg,119.95,93,-96,96,96,120,-124,-125,120,216
+382556,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Luke Griesser,Men's 16-17 Age Group 79kg,76.8,90,96,-102,96,120,-125,-125,120,216
+382557,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,HAYDEN MAAKE,Men's 16-17 Age Group 94+kg,128.25,88,95,-100,95,115,120,-125,120,215
+382558,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ian Taylor,Men's 16-17 Age Group 94+kg,121.05,82,87,92,92,113,118,123,123,215
+382559,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bradley Bates,Men's 14-15 Age Group 65kg,61.85,-92,92,94,94,115,119,121,121,215
+382560,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Spencer Davern,Men's 14-15 Age Group 79kg,77.06,85,90,95,95,110,115,120,120,215
+382561,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Asher Fountain,Men's 14-15 Age Group 79+kg,88.95,92,97,-103,97,111,115,118,118,215
+382562,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Nicholas Luna,Men's 16-17 Age Group 65kg,63.75,91,94,-97,94,111,116,119,119,213
+382563,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Daniel Weber,Men's 16-17 Age Group 94kg,94,89,-93,95,95,109,113,117,117,212
+382564,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Judson Carithers,Men's 16-17 Age Group 94+kg,108.9,90,-94,95,95,112,117,-122,117,212
+382565,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Joshua Eliscupides,Men's 16-17 Age Group 65kg,64.1,-97,97,101,101,107,111,-115,111,212
+382566,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,logan walkins,Men's 16-17 Age Group 94+kg,118.65,90,-95,96,96,110,115,-120,115,211
+382567,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jacob Berneathy,Men's 16-17 Age Group 94+kg,109.45,83,86,90,90,115,-120,120,120,210
+382568,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Thomas Chase,Men's 16-17 Age Group 94+kg,107.2,-90,90,-95,90,105,112,120,120,210
+382569,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Xaiden  Shultz,Men's 16-17 Age Group 71kg,70.15,95,-97,-97,95,115,-118,-118,115,210
+382570,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Branden Berthiaume,Men's 16-17 Age Group 79kg,77.55,80,85,90,90,110,115,120,120,210
+382571,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Renzo De Oliveira,Men's 16-17 Age Group 79kg,77.25,88,-92,-93,88,-116,117,122,122,210
+382572,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Braydon Vester,Men's 16-17 Age Group 94+kg,121.05,78,81,-84,81,113,119,128,128,209
+382573,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jesse Castillo,Men's 16-17 Age Group 71kg,66.05,93,-96,-97,93,-110,111,116,116,209
+382574,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Levi Stanley,Men's 16-17 Age Group 71kg,67.95,87,90,95,95,107,-110,112,112,207
+382575,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Maddux Hernandez,Men's 16-17 Age Group 65kg,64.35,85,88,91,91,108,112,115,115,206
+382576,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Christopher  MCDONALD,Men's 16-17 Age Group 79kg,76.25,-88,91,-96,91,106,112,115,115,206
+382577,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Levi Atwell,Men's 14-15 Age Group 71kg,68.55,85,90,-94,90,105,110,115,115,205
+382578,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Griffin Heglie,Men's 14-15 Age Group 79+kg,84.2,84,87,90,90,115,-119,-126,115,205
+382579,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ethan Anderson,Men's 16-17 Age Group 79kg,77.65,-90,-90,90,90,110,115,-120,115,205
+382580,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,William (Van) Selph,Men's 16-17 Age Group 88kg,85.85,90,-95,-100,90,110,115,-120,115,205
+382581,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Olivia Bond-West,Women's 16-17 Age Group 77+kg,89.4,81,84,88,88,-112,112,116,116,204
+382582,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Logan Cheramie,Men's 16-17 Age Group 79kg,77.55,83,87,-90,87,-115,117,-120,117,204
+382583,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ajeet Virk,Men's 16-17 Age Group 88kg,81.15,86,-89,89,89,-115,115,-119,115,204
+382584,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Will Hendrix,Men's 16-17 Age Group 94+kg,96.4,85,89,-94,89,107,114,-121,114,203
+382585,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Preston Sparks,Men's 16-17 Age Group 65kg,63.35,88,90,-92,90,108,-112,113,113,203
+382586,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,TIMOTHY NEAL,Men's 16-17 Age Group 65kg,63.2,82,86,90,90,112,-117,-117,112,202
+382587,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Flynn King,Men's 16-17 Age Group 71kg,69,86,90,-95,90,104,108,112,112,202
+382588,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sidney Porter,Men's 13 Under Age Group 65+kg,131.05,85,90,-94,90,-111,111,-118,111,201
+382589,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Walker Stanley,Men's 14-15 Age Group 79+kg,102.5,83,86,-90,86,106,111,115,115,201
+382590,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Dominic Fruchtenicht,Men's 16-17 Age Group 71kg,69.35,85,88,92,92,105,109,-116,109,201
+382591,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elliot Leet,Men's 16-17 Age Group 94kg,91.85,83,-86,-86,83,-115,115,-120,115,198
+382592,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ahmad Minor,Men's 16-17 Age Group 94+kg,98.7,82,84,86,86,-112,112,-115,112,198
+382593,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Diego Yoo,Men's 16-17 Age Group 56kg,55.1,80,81,86,86,106,112,-117,112,198
+382594,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Anthony Benavides,Men's 16-17 Age Group 79kg,74.5,-80,82,85,85,110,113,-116,113,198
+382595,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Patrick Langfeldt,Men's 16-17 Age Group 94+kg,104.7,82,86,-91,86,101,-107,110,110,196
+382596,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Zaevian Morales,Men's 14-15 Age Group 79kg,78.65,82,-85,85,85,104,108,111,111,196
+382597,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elijah Hathaway,Men's 16-17 Age Group 71kg,70.15,90,-95,-96,90,100,106,-110,106,196
+382598,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Christian Russman,Men's 16-17 Age Group 71kg,69.8,82,86,-89,86,104,110,-113,110,196
+382599,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Quinn Corcoran,Men's 16-17 Age Group 79kg,74.8,-91,91,-96,91,100,105,-110,105,196
+382600,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Daniel Ricklick,Men's 16-17 Age Group 94kg,91.1,-80,80,-90,80,110,-115,115,115,195
+382601,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Josh Reisdorf,Men's 16-17 Age Group 79kg,73.83,77,81,85,85,105,110,-115,110,195
+382602,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaeleb  Havard,Men's 14-15 Age Group 79+kg,108.7,70,75,80,80,105,110,114,114,194
+382603,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Idán Wade-Curiel,Men's 16-17 Age Group 79kg,75.9,88,91,94,94,100,-105,-106,100,194
+382604,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Isaiah Aukerman,Men's 16-17 Age Group 94kg,92.45,75,80,85,85,102,108,-111,108,193
+382605,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kevin Hall,Men's 14-15 Age Group 79kg,73.4,76,80,-84,80,109,113,-117,113,193
+382606,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Coen Hayes,Men's 16-17 Age Group 71kg,71.01,-80,-83,83,83,105,110,-115,110,193
+382607,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Gavin Dahle,Men's 16-17 Age Group 94+kg,115.35,83,-86,87,87,100,105,-108,105,192
+382608,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Andy Arntson,Men's 16-17 Age Group 94+kg,100.1,-80,80,82,82,100,105,110,110,192
+382609,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Keegan McHale,Men's 14-15 Age Group 79kg,74.95,-77,78,-82,78,108,-113,114,114,192
+382610,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Lucas Mansier,Men's 16-17 Age Group 60kg,59.25,-80,80,87,87,95,100,105,105,192
+382611,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Zach Kirson,Men's 16-17 Age Group 71kg,68.75,80,84,88,88,104,-110,-110,104,192
+382612,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Decker Fontenot,Men's 16-17 Age Group 79kg,76.5,80,-85,86,86,-100,103,106,106,192
+382613,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kinsley Rodden,Women's 16-17 Age Group 77+kg,123.45,78,81,82,82,100,105,109,109,191
+382614,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Liam Bujanda,Men's 14-15 Age Group 65kg,63.2,85,-90,-90,85,105,-110,-110,105,190
+382615,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Dylan McCullough,Men's 16-17 Age Group 88kg,86.7,-85,85,-90,85,100,-105,105,105,190
+382616,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Caleb Sprenger,Men's 16-17 Age Group 71kg,69.7,80,83,85,85,100,104,-107,104,189
+382617,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Nathan Combs,Men's 16-17 Age Group 79kg,78.5,77,-80,-80,77,107,110,112,112,189
+382618,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jake Langer,Men's 16-17 Age Group 94+kg,98.75,-80,80,83,83,-100,100,105,105,188
+382619,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Andrew Weymer,Men's 14-15 Age Group 56kg,55.4,80,83,85,85,100,103,0,103,188
+382620,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Preston Griffing,Men's 16-17 Age Group 79kg,74.7,83,87,-91,87,-100,100,-105,100,187
+382621,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Adam Hawrylchak,Men's 16-17 Age Group 79kg,77.4,71,76,80,80,95,102,106,106,186
+382622,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Aiden Chancey,Men's 16-17 Age Group 79kg,78.5,72,76,79,79,95,100,107,107,186
+382623,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Caleb Trueblood,Men's 16-17 Age Group 71kg,69.65,80,83,86,86,-94,94,99,99,185
+382624,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Camdynn Burns,Men's 16-17 Age Group 71kg,68.55,80,-84,-85,80,100,105,-108,105,185
+382625,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ayden He,Men's 16-17 Age Group 79kg,76.1,78,82,-87,82,-101,103,-111,103,185
+382626,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Marcos  Pujol,Men's 16-17 Age Group 88kg,85.5,80,-85,85,85,100,-105,-108,100,185
+382627,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Tai Ferrer,Men's 16-17 Age Group 88kg,83.55,80,-84,85,85,100,-103,-103,100,185
+382628,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ella Bays,Women's 16-17 Age Group 77kg,74,-81,-81,81,81,103,-107,-107,103,184
+382629,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Biji  Blagoev,Men's 16-17 Age Group 71kg,66.95,78,81,84,84,96,100,-103,100,184
+382630,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Preston Merriken,Men's 16-17 Age Group 71kg,68.1,77,81,-85,81,98,-103,103,103,184
+382631,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,McKenzie Hatcher,Women's 16-17 Age Group 69kg,67.8,77,80,-82,80,96,-100,103,103,183
+382632,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kyle  Mager,Men's 16-17 Age Group 65kg,63.3,75,-79,81,81,92,97,101,101,182
+382633,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Max Ferrara,Men's 16-17 Age Group 79kg,76.55,76,79,82,82,100,-104,-105,100,182
+382634,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jared Adkins,Men's 16-17 Age Group 79kg,78.25,76,79,82,82,97,100,-103,100,182
+382635,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Myles  McArthur,Men's 16-17 Age Group 79kg,78.9,75,80,-85,80,95,102,-110,102,182
+382636,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Bruce Adame,Men's 16-17 Age Group 88kg,87.2,82,-85,-87,82,93,-97,100,100,182
+382637,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Adelyn Jones,Women's 16-17 Age Group 69kg,66.7,77,-80,80,80,98,101,-103,101,181
+382638,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jackson Crane,Men's 16-17 Age Group 65kg,60.5,78,82,85,85,93,96,-100,96,181
+382639,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,tyler bullock,Men's 16-17 Age Group 94kg,89.2,70,75,-79,75,95,100,105,105,180
+382640,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,John Lewis,Men's 16-17 Age Group 65kg,63.75,75,79,-84,79,101,-106,-106,101,180
+382641,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Bryson Michalkiewicz,Men's 16-17 Age Group 79kg,76.4,78,82,-86,82,98,-102,-105,98,180
+382642,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Zane Beck,Men's 16-17 Age Group 79kg,76.15,80,-86,-86,80,100,-105,-105,100,180
+382643,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Gianna Van Hofwegen,Women's 14-15 Age Group 69kg,66.75,76,79,-82,79,95,100,-104,100,179
+382644,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jayden Whittaker,Men's 14-15 Age Group 60kg,58.45,75,78,81,81,94,98,-103,98,179
+382645,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Autumn Sands,Women's 16-17 Age Group 69kg,67.6,-74,76,80,80,95,99,-104,99,179
+382646,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,kaiden mcveigh,Men's 16-17 Age Group 65kg,62.7,71,75,79,79,95,100,-103,100,179
+382647,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ashton McAllister,Men's 14-15 Age Group 60kg,59.2,74,-77,77,77,95,98,101,101,178
+382648,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Christian Anderson,Men's 16-17 Age Group 71kg,69.35,74,78,-82,78,95,100,-107,100,178
+382649,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kyler Brown,Men's 16-17 Age Group 79kg,73.55,70,73,-76,73,98,102,105,105,178
+382650,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Hideo Kline,Men's 14-15 Age Group 79+kg,112.1,72,74,77,77,95,97,100,100,177
+382651,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Wyatt Kight,Men's 14-15 Age Group 79+kg,93.8,73,76,-80,76,-100,101,-107,101,177
+382652,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sebastian Perez,Men's 16-17 Age Group 88kg,86.3,73,-77,77,77,95,100,-105,100,177
+382653,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jaden Angel,Men's 14-15 Age Group 71kg,69.6,70,73,76,76,96,100,-106,100,176
+382654,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Erubey Garcia,Men's 14-15 Age Group 79kg,76.1,78,81,-85,81,95,-101,-101,95,176
+382655,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Daniel LoTurco,Men's 16-17 Age Group 56kg,55.8,67,74,78,78,-88,88,98,98,176
+382656,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Rowdy Cearley,Men's 16-17 Age Group 71kg,67.1,75,-78,-78,75,91,96,101,101,176
+382657,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Chassity Del Balso,Women's 14-15 Age Group 63kg,62.4,70,74,77,77,93,98,-103,98,175
+382658,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Nathan Martin,Men's 16-17 Age Group 56kg,55.25,70,-73,-73,70,100,105,-110,105,175
+382659,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Liam Cincotta,Men's 16-17 Age Group 79kg,76.85,-80,81,-84,81,94,-97,-97,94,175
+382660,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Cody Anderson,Men's 14-15 Age Group 60kg,59.45,72,-76,76,76,97,-102,-102,97,173
+382661,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jack Mann,Men's 16-17 Age Group 60kg,59,83,-86,-88,83,88,-92,0,88,171
+382662,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Gunnar Maki,Men's 16-17 Age Group 79kg,77.85,-78,80,-86,80,86,91,-96,91,171
+382663,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Gavin Greenwalt,Men's 16-17 Age Group 79kg,72.75,70,73,76,76,86,90,95,95,171
+382664,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ezekiel Macias,Men's 14-15 Age Group 65kg,63.4,68,-72,73,73,87,92,97,97,170
+382665,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Logan German,Men's 14-15 Age Group 79kg,75.4,-70,70,74,74,91,96,-100,96,170
+382666,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Keilana Brewer,Women's 16-17 Age Group 63kg,61.4,73,76,-79,76,90,-94,94,94,170
+382667,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Trey Peaden,Men's 14-15 Age Group 79+kg,90.55,77,80,-83,80,90,-95,-100,90,170
+382668,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Emma Meads,Women's 16-17 Age Group 77kg,73.85,73,75,-80,75,87,90,95,95,170
+382669,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Symir Tai,Men's 16-17 Age Group 71kg,68.9,63,67,73,73,92,97,-102,97,170
+382670,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Austin Gerard,Men's 16-17 Age Group 79kg,71.85,70,75,-79,75,85,90,95,95,170
+382671,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,madeline francescone,Women's 16-17 Age Group 58kg,54.95,-70,73,75,75,91,94,-97,94,169
+382672,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Dylan Brown,Men's 16-17 Age Group 65kg,64.25,74,-78,-78,74,95,-100,-101,95,169
+382673,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ireland Manor,Women's 14-15 Age Group 69kg,67.65,72,76,-80,76,-92,92,-99,92,168
+382674,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Reese Butler,Women's 16-17 Age Group 77+kg,96.35,71,-74,74,74,87,92,94,94,168
+382675,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Liam Brandis,Men's 16-17 Age Group 88kg,81.5,70,73,-76,73,90,-95,95,95,168
+382676,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Noah Booth,Men's 14-15 Age Group 79kg,72.1,65,69,72,72,91,95,-101,95,167
+382677,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Eleanor Cler,Women's 16-17 Age Group 77+kg,105.5,68,72,75,75,84,-88,91,91,166
+382678,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Julian  Pina,Men's 16-17 Age Group 71kg,69.2,65,68,71,71,95,-101,-102,95,166
+382679,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Zoe Fiala,Women's 16-17 Age Group 58kg,55.85,68,71,-74,71,86,90,94,94,165
+382680,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,liam gargan,Men's 14-15 Age Group 65kg,64.3,-65,65,69,69,86,90,96,96,165
+382681,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Henry Faye,Men's 14-15 Age Group 71kg,70.65,70,75,-77,75,90,-95,-100,90,165
+382682,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Samuel Schulz,Men's 14-15 Age Group 79kg,77.85,67,71,-75,71,90,-93,93,93,164
+382683,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alyssa McMurtrie,Women's 16-17 Age Group 69kg,66.8,66,69,72,72,89,92,-95,92,164
+382684,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Avery Miller,Women's 16-17 Age Group 77+kg,103.3,64,68,72,72,83,88,92,92,164
+382685,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Aidan Griesser,Men's 14-15 Age Group 65kg,63.55,65,-71,72,72,86,91,-97,91,163
+382686,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ellen Lassere,Women's 16-17 Age Group 58kg,55.85,67,70,-74,70,-91,92,-100,92,162
+382687,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Taylor Page,Men's 14-15 Age Group 79kg,79,70,-73,74,74,88,-92,-92,88,162
+382688,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Allie Nichols,Women's 16-17 Age Group 63kg,59.8,70,-73,-73,70,89,-92,92,92,162
+382689,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alexis Rissler,Women's 16-17 Age Group 77kg,75.9,67,70,73,73,85,-89,89,89,162
+382690,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,JONAH BAHARIN,Men's 14-15 Age Group 65kg,61,64,-67,70,70,85,-88,91,91,161
+382691,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Payton Mangay-ayam,Women's 16-17 Age Group 63kg,61.95,-67,68,71,71,87,90,-93,90,161
+382692,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alexander Ling,Men's 16-17 Age Group 71kg,68.65,64,67,70,70,86,91,-95,91,161
+382693,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mateo Jonah Limbo,Men's 16-17 Age Group 71kg,69.6,-65,66,-71,66,91,95,-100,95,161
+382694,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bradley Garza,Men's 14-15 Age Group 79kg,72.65,65,-70,73,73,-85,-87,87,87,160
+382695,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sadie Merritt,Women's 16-17 Age Group 63kg,62.1,66,69,-71,69,85,88,91,91,160
+382696,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jason Goico,Men's 16-17 Age Group 60kg,58.6,65,70,75,75,85,-90,-93,85,160
+382697,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Layah Slaughter,Women's 16-17 Age Group 77kg,73.25,70,-74,-75,70,-88,88,90,90,160
+382698,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brynn Catalano,Women's 16-17 Age Group 58kg,55.3,69,-72,-73,69,87,90,-94,90,159
+382699,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Stephanie Griffith,Women's 16-17 Age Group 77kg,76.65,-70,-70,70,70,82,-88,89,89,159
+382700,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Weston McGrath,Men's 14-15 Age Group 56kg,54.8,61,65,69,69,81,85,89,89,158
+382701,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Aiden  Liao,Men's 14-15 Age Group 71kg,69.1,-65,65,68,68,90,-94,-97,90,158
+382702,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Luke Partin,Men's 14-15 Age Group 79kg,75.3,65,68,70,70,85,88,-90,88,158
+382703,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Diego Cordero,Men's 16-17 Age Group 56kg,53.3,-68,-68,68,68,86,90,-95,90,158
+382704,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Madison Hoblit,Women's 16-17 Age Group 77+kg,99.4,-65,65,-72,65,81,87,93,93,158
+382705,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Benjamin Dufresne,Men's 16-17 Age Group 71kg,66.85,-65,-65,65,65,85,89,93,93,158
+382706,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Eva Windsor,Women's 14-15 Age Group 69+kg,101.9,65,68,-71,68,80,85,89,89,157
+382707,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Erik Hayrapetyan,Men's 16-17 Age Group 71kg,69.5,-65,-65,65,65,87,92,-97,92,157
+382708,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Marquaviun  Holloway,Men's 16-17 Age Group 71kg,67.95,58,61,-64,61,88,93,96,96,157
+382709,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bryant Charles,Men's 14-15 Age Group 79+kg,99.4,65,70,-75,70,80,86,-90,86,156
+382710,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ryan  Murphy,Men's 14-15 Age Group 79+kg,149.7,-61,61,65,65,83,86,91,91,156
+382711,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Vienna Belli,Women's 16-17 Age Group 69kg,64.3,63,66,70,70,83,86,-90,86,156
+382712,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Anahlis Rubio,Women's 16-17 Age Group 77+kg,104.25,65,67,70,70,83,86,-90,86,156
+382713,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Grady Sterling,Men's 14-15 Age Group 71kg,68.2,62,65,68,68,77,82,87,87,155
+382714,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Gavin DiBiasie,Men's 16-17 Age Group 65kg,63.45,-70,70,74,74,80,81,-83,81,155
+382715,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,August Ewing-Sohtun,Men's 16-17 Age Group 65kg,63.95,63,67,71,71,84,-88,-88,84,155
+382716,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Isabella Wray,Women's 16-17 Age Group 77+kg,94.07,67,70,-73,70,85,-89,-90,85,155
+382717,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Daniel Rinaldi,Men's 16-17 Age Group 79kg,77.8,62,-65,-65,62,86,89,92,92,154
+382718,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Samantha Goodman,Women's 16-17 Age Group 69kg,67.2,63,67,-70,67,82,85,-89,85,152
+382719,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Reagan Herchold,Women's 14-15 Age Group 58kg,56.6,64,66,-68,66,82,85,86,86,152
+382720,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Maryam Grafton,Women's 14-15 Age Group 58kg,55.6,62,65,67,67,81,84,-86,84,151
+382721,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bryce Niedzielski,Men's 14-15 Age Group 71kg,70.65,62,-66,68,68,-83,83,-90,83,151
+382722,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Taylor Bush,Women's 16-17 Age Group 63kg,61.8,-63,63,67,67,77,84,-88,84,151
+382723,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Noah Presley,Men's 16-17 Age Group 65kg,63.15,63,66,-69,66,81,85,-91,85,151
+382724,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mason Muench,Men's 16-17 Age Group 71kg,66.5,65,-69,-72,65,-86,86,-90,86,151
+382725,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Alyssa Hines,Women's 14-15 Age Group 69+kg,72.2,65,-68,-68,65,81,84,-89,84,149
+382726,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Stephen Combs,Men's 14-15 Age Group 79+kg,95.1,60,63,66,66,76,79,83,83,149
+382727,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jaxson Van Horn,Men's 16-17 Age Group 60kg,57.55,60,62,64,64,83,84,85,85,149
+382728,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,McKenzie  Kuykendall,Women's 16-17 Age Group 77kg,73.25,58,61,-63,61,86,88,-92,88,149
+382729,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Addison Eicher,Women's 14-15 Age Group 63kg,62.8,57,61,63,63,76,80,85,85,148
+382730,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kodi McBride,Women's 14-15 Age Group 69+kg,78.3,-65,-66,66,66,78,-81,82,82,148
+382731,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bristol Dixon,Women's 14-15 Age Group 69+kg,78.85,59,62,65,65,79,83,-87,83,148
+382732,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jackson Nelson,Men's 14-15 Age Group 79+kg,122.15,68,-72,-73,68,80,-85,-86,80,148
+382733,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Stevie Majoros,Women's 16-17 Age Group 69kg,68.1,-59,59,63,63,78,82,85,85,148
+382734,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,William  Redding,Men's 16-17 Age Group 65kg,63,59,62,65,65,81,83,-85,83,148
+382735,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Chloe Desjardins,Women's 14-15 Age Group 69+kg,70.8,62,65,68,68,74,-78,78,78,146
+382736,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Lucy Korn,Women's 16-17 Age Group 63kg,59.65,63,66,-69,66,77,80,-83,80,146
+382737,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,nya williams,Women's 16-17 Age Group 53kg,52.15,56,60,63,63,75,79,82,82,145
+382738,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jordan Schwenneker,Women's 16-17 Age Group 58kg,56.65,61,64,67,67,75,78,-80,78,145
+382739,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Wyatt Nelson,Men's 16-17 Age Group 56kg,55.35,62,65,-68,65,80,-83,-83,80,145
+382740,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jace Doty,Men's 16-17 Age Group 65kg,63.95,61,64,-67,64,81,-85,-85,81,145
+382741,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Brock Bates,Men's 14-15 Age Group 60kg,57.1,56,59,62,62,76,79,82,82,144
+382742,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Keagan Card,Men's 14-15 Age Group 65kg,63.7,59,61,-65,61,83,-86,-87,83,144
+382743,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Stella Stimpson,Women's 16-17 Age Group 77+kg,109.2,65,-70,-70,65,78,79,-82,79,144
+382744,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ava Myers,Women's 16-17 Age Group 58kg,56.3,62,-66,-67,62,78,81,-84,81,143
+382745,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Manuel Hodgman,Men's 16-17 Age Group 56kg,52.3,63,-67,-67,63,75,80,-86,80,143
+382746,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Brayden Politano,Men's 16-17 Age Group 60kg,60,63,67,70,70,73,-77,-77,73,143
+382747,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Aurora van Ulft,Women's 13 Under Age Group 40kg,39.15,-59,59,61,61,81,-84,-84,81,142
+382748,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Joseph  Dishman,Men's 16-17 Age Group 65kg,61.1,62,65,-71,65,77,-82,-83,77,142
+382749,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Anthony Caceres,Men's 13 Under Age Group 65+kg,116.2,55,60,-70,60,81,-95,-96,81,141
+382750,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Karter Lawson,Men's 16-17 Age Group 56kg,53.3,-62,62,-65,62,73,-77,79,79,141
+382751,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mathea Wendle,Women's 16-17 Age Group 69kg,68.3,56,59,63,63,70,74,77,77,140
+382752,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Caleb Berneathy,Men's 14-15 Age Group 60kg,57.95,56,59,-61,59,75,80,-82,80,139
+382753,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brooklynn Hoover,Women's 16-17 Age Group 69kg,66.1,61,64,-67,64,72,75,-78,75,139
+382754,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Amelia Phillips,Women's 16-17 Age Group 48kg,47.55,58,61,-63,61,77,-79,-79,77,138
+382755,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Rex Stabler,Men's 16-17 Age Group 71kg,70.3,60,63,-67,63,75,-82,-88,75,138
+382756,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Leonardo Davila,Men's 16-17 Age Group 71kg,65.85,55,60,-64,60,70,75,78,78,138
+382757,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Olivia Blatt,Women's 14-15 Age Group 69+kg,70,56,59,62,62,68,72,75,75,137
+382758,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Gavin Burrows,Men's 14-15 Age Group 65kg,64.85,57,60,65,65,-72,72,-77,72,137
+382759,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Dylan Laven,Men's 14-15 Age Group 79+kg,113.2,56,60,-63,60,73,77,-83,77,137
+382760,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ava Luis,Women's 14-15 Age Group 58kg,57.25,-61,61,-65,61,70,75,-80,75,136
+382761,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Katea  Puamau,Women's 14-15 Age Group 69+kg,119.55,53,55,57,57,72,76,79,79,136
+382762,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kai Reynolds,Men's 14-15 Age Group 48kg,47.3,52,55,58,58,71,75,78,78,136
+382763,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Elijah Mondragon,Men's 16-17 Age Group 56kg,53.75,57,60,-62,60,73,76,-79,76,136
+382764,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jacquelyn Roark,Women's 16-17 Age Group 69kg,68.75,58,61,-69,61,64,72,75,75,136
+382765,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Norah Cape,Women's 16-17 Age Group 77kg,76.8,56,59,62,62,68,72,74,74,136
+382766,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Emma Trampp,Women's 16-17 Age Group 77+kg,116.3,60,-63,-64,60,73,76,-79,76,136
+382767,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bella Blitch,Women's 14-15 Age Group 69kg,65,52,56,-60,56,71,75,79,79,135
+382768,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Grayor Opfer,Men's 14-15 Age Group 60kg,58.35,-57,57,60,60,75,-78,-79,75,135
+382769,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jaden Smith,Men's 14-15 Age Group 79kg,77.1,52,55,60,60,70,75,-80,75,135
+382770,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Piper Jones,Women's 16-17 Age Group 48kg,47.7,58,-60,-60,58,74,76,-77,76,134
+382771,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Lila Volovsek,Women's 16-17 Age Group 77kg,71.35,60,-63,-64,60,70,74,-78,74,134
+382772,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Bryleigh Batz,Women's 14-15 Age Group 69kg,64.15,55,57,60,60,70,73,-76,73,133
+382773,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Zoey Morelli,Women's 16-17 Age Group 48kg,47.25,59,-62,-62,59,71,74,-77,74,133
+382774,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,zylia parker,Women's 16-17 Age Group 69kg,65.95,-56,56,59,59,74,-79,-80,74,133
+382775,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Evelyn Lilo,Women's 14-15 Age Group 58kg,57.1,50,53,56,56,72,76,-81,76,132
+382776,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Coen Opfer,Men's 14-15 Age Group 56kg,55.7,53,55,57,57,67,71,75,75,132
+382777,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sadie Bischoff,Women's 16-17 Age Group 63kg,59.95,53,-55,57,57,70,73,75,75,132
+382778,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Savannah Adkins,Women's 14-15 Age Group 69+kg,92.35,-54,-55,55,55,69,73,76,76,131
+382779,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jordan Hernandez,Men's 14-15 Age Group 56kg,54.7,50,53,56,56,68,-72,75,75,131
+382780,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ellen Lehman,Women's 16-17 Age Group 58kg,56.2,55,58,61,61,66,70,-74,70,131
+382781,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mahealani Mason,Women's 16-17 Age Group 58kg,57.2,57,60,-63,60,68,71,-74,71,131
+382782,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Lily Wetzler,Women's 16-17 Age Group 58kg,55.3,55,-58,58,58,70,-73,73,73,131
+382783,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Cole Gauthreaux,Men's 16-17 Age Group 56kg,54.55,58,-60,-61,58,-70,72,-75,72,130
+382784,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Vivienne Bailey,Women's 16-17 Age Group 77+kg,115.55,52,55,-58,55,68,-72,75,75,130
+382785,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jackson Harris,Men's 16-17 Age Group 56kg,55.55,52,56,59,59,-64,64,70,70,129
+382786,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Madeleine Maher,Women's 16-17 Age Group 77kg,75.3,52,54,56,56,70,73,-76,73,129
+382787,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sarah MacMullan,Women's 16-17 Age Group 77kg,75.65,58,61,-63,61,68,-71,-72,68,129
+382788,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Grant Petersen,Men's 14-15 Age Group 56kg,55,54,56,-58,56,68,72,-77,72,128
+382789,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mia Murphy,Women's 16-17 Age Group 58kg,56.05,58,-61,-61,58,67,70,-73,70,128
+382790,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sierra Anderson,Women's 16-17 Age Group 58kg,55.9,53,55,57,57,67,71,-76,71,128
+382791,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Taylor Ford,Women's 16-17 Age Group 63kg,61.25,55,-58,-58,55,-68,69,73,73,128
+382792,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jessie Compton,Women's 16-17 Age Group 77+kg,93.01,50,54,57,57,60,64,71,71,128
+382793,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Atarah Tofibam,Women's 16-17 Age Group 77+kg,110.55,52,-56,-57,52,72,74,76,76,128
+382794,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elizabeth Klinge,Women's 16-17 Age Group 58kg,54.35,55,58,61,61,60,-64,66,66,127
+382795,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Fred Lee,Men's 14-15 Age Group 71kg,68.1,50,53,-55,53,68,71,74,74,127
+382796,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Delaney Brown,Women's 14-15 Age Group 69kg,67,53,56,-59,56,64,67,70,70,126
+382797,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Rowan Scyphers,Women's 16-17 Age Group 63kg,58.9,55,58,61,61,65,-69,-72,65,126
+382798,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Connor Bork,Men's 16-17 Age Group 56kg,52.75,51,54,-56,54,69,72,-74,72,126
+382799,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alizah PIasecki,Women's 16-17 Age Group 69kg,64.45,52,55,57,57,66,69,-71,69,126
+382800,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Parker Myers,Men's 16-17 Age Group 60kg,57.7,50,53,-56,53,73,-76,-76,73,126
+382801,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Laura Griffin,Women's 14-15 Age Group 69+kg,89.8,54,56,-59,56,-66,66,69,69,125
+382802,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Rome Barker,Men's 14-15 Age Group 52kg,50.55,52,55,-58,55,65,68,70,70,125
+382803,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Elliot Skinner,Women's 16-17 Age Group 58kg,57.8,53,55,-57,55,68,70,-72,70,125
+382804,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Saylin Smith,Women's 16-17 Age Group 69kg,66.3,52,54,56,56,66,-69,69,69,125
+382805,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kacey Hopkins,Women's 16-17 Age Group 77kg,75,55,-59,-60,55,65,70,-77,70,125
+382806,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Scarlet Ruiz,Women's 14-15 Age Group 58kg,55.85,49,52,55,55,69,-73,-75,69,124
+382807,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Brinlee Huber,Women's 14-15 Age Group 53kg,51.75,51,53,54,54,64,67,70,70,124
+382808,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Noah Junsay,Men's 14-15 Age Group 48kg,46.4,48,51,54,54,63,66,69,69,123
+382809,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Raiden Nienow,Men's 14-15 Age Group 56kg,54.6,48,51,54,54,65,69,-75,69,123
+382810,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ty’Sun Howard,Men's 16-17 Age Group 56kg,55.55,44,49,-52,49,66,71,74,74,123
+382811,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Amelia Jirak,Women's 16-17 Age Group 69kg,68.1,-47,49,52,52,67,-70,71,71,123
+382812,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kamryn Anderson,Women's 16-17 Age Group 77kg,73.25,47,51,53,53,65,68,70,70,123
+382813,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Morgan Moody,Women's 14-15 Age Group 53kg,51.15,45,50,53,53,63,66,70,70,123
+382814,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Reece Robinson,Women's 14-15 Age Group 58kg,57.15,48,51,-53,51,67,71,-77,71,122
+382815,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Dahlia Sokolow,Women's 14-15 Age Group 69kg,68.05,50,53,55,55,62,67,-71,67,122
+382816,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Taylyn Slater,Women's 16-17 Age Group 53kg,51.1,52,-56,-56,52,70,-72,-72,70,122
+382817,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kaylee Yagi,Women's 16-17 Age Group 58kg,56.3,-54,54,-56,54,65,68,-71,68,122
+382818,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brynn Naylor,Women's 16-17 Age Group 69kg,64,50,-52,55,55,60,64,67,67,122
+382819,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mckenzie Pauli,Women's 16-17 Age Group 77+kg,87.75,47,51,-56,51,60,66,71,71,122
+382820,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lily Ontiveros,Women's 13 Under Age Group 63+kg,86.8,52,-55,-55,52,63,66,70,70,122
+382821,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaya Malia Henn,Women's 14-15 Age Group 48kg,47.6,50,52,-54,52,65,70,-75,70,122
+382822,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ellie Kichler,Women's 14-15 Age Group 69kg,68.55,50,53,-55,53,65,68,-70,68,121
+382823,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Amelia Cone,Women's 16-17 Age Group 53kg,51.3,49,52,54,54,61,64,67,67,121
+382824,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Raegan Franklin,Women's 16-17 Age Group 77+kg,111.25,53,55,-57,55,58,62,66,66,121
+382825,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Abigail Diehl,Women's 13 Under Age Group 63+kg,99.2,54,56,60,60,58,61,-65,61,121
+382826,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Thea Sarhan,Women's 14-15 Age Group 69+kg,89.75,45,48,53,53,58,62,67,67,120
+382827,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Luc   Larson,Men's 14-15 Age Group 52kg,50.6,44,47,50,50,64,67,70,70,120
+382828,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Allee Espinoza Hernandez,Women's 16-17 Age Group 53kg,50.1,45,49,-52,49,65,71,-76,71,120
+382829,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Tyson Jenkins,Men's 14-15 Age Group 60kg,58.8,-53,53,-57,53,67,-69,-70,67,120
+382830,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Emma Stripling,Women's 16-17 Age Group 58kg,56.2,52,56,59,59,61,-66,-67,61,120
+382831,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Myla Bryan,Women's 14-15 Age Group 63kg,62.4,48,-51,52,52,61,64,67,67,119
+382832,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Mariam Petit,Women's 16-17 Age Group 53kg,52.45,48,51,-54,51,62,-66,68,68,119
+382833,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ava Menken,Women's 16-17 Age Group 69kg,67.4,50,53,-56,53,62,66,-70,66,119
+382834,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ciah Crawford,Women's 16-17 Age Group 77kg,76.15,48,50,53,53,63,66,-70,66,119
+382835,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Amelia Ciriaco,Women's 16-17 Age Group 53kg,52,49,51,-54,51,63,67,-71,67,118
+382836,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Aberly Duvall,Women's 16-17 Age Group 53kg,50.25,49,51,-53,51,63,67,-71,67,118
+382837,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alana Kargas,Women's 16-17 Age Group 58kg,55.75,51,54,-59,54,60,64,-67,64,118
+382838,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaelyn Taylor,Women's 14-15 Age Group 63kg,61.05,45,48,51,51,60,63,66,66,117
+382839,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Isabella  Lanclos,Women's 16-17 Age Group 48kg,47.9,-53,-53,53,53,62,64,-66,64,117
+382840,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jason Marsh,Men's 14-15 Age Group 60kg,57.3,45,48,50,50,63,67,-69,67,117
+382841,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Gia  Duva,Women's 16-17 Age Group 58kg,56.2,45,48,50,50,64,67,-70,67,117
+382842,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brooklyn Szukala,Women's 16-17 Age Group 63kg,60.5,45,48,51,51,63,66,-68,66,117
+382843,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,L’Kia Wilson,Women's 16-17 Age Group 77kg,72.75,47,50,53,53,-61,61,64,64,117
+382844,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kallie Otto,Women's 16-17 Age Group 77+kg,136.55,47,51,-55,51,61,-66,66,66,117
+382845,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Alexxandra Ballard,Women's 13 Under Age Group 63+kg,74.25,45,48,51,51,62,66,-71,66,117
+382846,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Amiya Drury,Women's 14-15 Age Group 63kg,60.6,52,-54,54,54,58,60,62,62,116
+382847,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Penelope Perez,Women's 14-15 Age Group 69kg,67.1,53,-56,-56,53,-63,-63,63,63,116
+382848,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Vivienne Lefebvre,Women's 14-15 Age Group 69+kg,100.4,50,-52,53,53,60,63,-66,63,116
+382849,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Noah Wilhoit,Men's 13 Under Age Group 65+kg,89.05,46,49,52,52,58,61,64,64,116
+382850,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,AJ Schunk,Men's 14-15 Age Group 60kg,58.25,49,52,54,54,-62,62,-65,62,116
+382851,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Tyler Evans,Men's 13 Under Age Group 60kg,58.65,45,50,52,52,60,63,-66,63,115
+382852,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,William McAdams,Men's 13 Under Age Group 65kg,62.2,-50,-50,50,50,59,62,65,65,115
+382853,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Hannelore Brown,Women's 14-15 Age Group 69+kg,76.2,-53,53,-57,53,59,62,-65,62,115
+382854,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kinlee Apalategui,Women's 14-15 Age Group 69+kg,79.3,47,50,52,52,-63,-63,63,63,115
+382855,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaige  McDonnell,Men's 14-15 Age Group 52kg,49.85,45,48,-51,48,63,67,-70,67,115
+382856,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Sunrise de la Cruz,Women's 16-17 Age Group 58kg,57.9,46,49,51,51,61,64,-67,64,115
+382857,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Reagan Case,Women's 14-15 Age Group 58kg,56.6,49,-51,51,51,63,-66,-66,63,114
+382858,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jordan Lupkes,Men's 13 Under Age Group 65kg,61.9,44,47,49,49,58,62,65,65,114
+382859,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Rebecca Gaden,Women's 16-17 Age Group 53kg,52.1,47,-51,-54,47,63,67,-73,67,114
+382860,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Arin Santosh,Men's 14-15 Age Group 56kg,54.5,51,54,-57,54,60,-65,-70,60,114
+382861,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jane Levy,Women's 16-17 Age Group 63kg,60.75,45,-48,48,48,-63,63,66,66,114
+382862,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Roxanne  Melinkovich,Women's 16-17 Age Group 69kg,67.8,42,45,48,48,62,66,-70,66,114
+382863,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Max Rotter,Men's 13 Under Age Group 56kg,54.6,45,48,-53,48,62,-65,65,65,113
+382864,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Cameron Comeaux,Men's 14-15 Age Group 52kg,48.65,45,48,-50,48,60,63,65,65,113
+382865,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Bryn Famiglio,Women's 16-17 Age Group 63kg,61.55,45,-47,47,47,60,63,66,66,113
+382866,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mikaella Bowens,Women's 13 Under Age Group 63+kg,91.75,49,-51,-52,49,61,64,-67,64,113
+382867,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Beatrix Wagner,Women's 14-15 Age Group 58kg,54.5,44,-47,49,49,59,63,-67,63,112
+382868,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Bode Bratsburg,Men's 13 Under Age Group 52kg,51.2,45,48,51,51,55,58,61,61,112
+382869,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Sophie Grace Garces,Women's 14-15 Age Group 69+kg,103.05,50,-54,-55,50,62,-66,-68,62,112
+382870,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Abraham Baker,Men's 14-15 Age Group 56kg,54.15,45,48,-53,48,56,58,64,64,112
+382871,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Mateo Zikoyanis,Men's 14-15 Age Group 65kg,60.25,48,51,-54,51,61,-64,-65,61,112
+382872,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Georgia Downs,Women's 16-17 Age Group 69kg,67.9,45,48,51,51,57,61,-66,61,112
+382873,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jared Afu,Men's 13 Under Age Group 65+kg,74.15,45,48,-53,48,57,60,63,63,111
+382874,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Tonya Hinks,Women's 16-17 Age Group 58kg,57.15,-42,42,45,45,58,62,66,66,111
+382875,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Evelyn Andre,Women's 16-17 Age Group 63kg,58.25,-49,49,52,52,56,-59,59,59,111
+382876,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Emerson Holden,Women's 14-15 Age Group 63kg,62.75,47,49,52,52,-58,58,-61,58,110
+382877,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Vincent Myers,Men's 14-15 Age Group 56kg,54.15,45,47,50,50,-55,-57,60,60,110
+382878,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Eden Ranola,Women's 16-17 Age Group 58kg,57.25,46,49,-52,49,55,58,61,61,110
+382879,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Rocco Orovio,Men's 16-17 Age Group 56kg,55.65,47,50,-52,50,-55,55,60,60,110
+382880,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Daniel Hunter,Men's 13 Under Age Group 56kg,55.45,45,49,54,54,55,-60,-62,55,109
+382881,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Leonel Nunez,Men's 13 Under Age Group 60kg,58.45,46,48,51,51,53,56,58,58,109
+382882,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Aiden Aintrazi,Men's 13 Under Age Group 65+kg,84.65,-44,44,47,47,52,55,62,62,109
+382883,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,shayla strickland,Women's 16-17 Age Group 53kg,50.15,-45,45,49,49,56,60,-63,60,109
+382884,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Madison Hatcher,Women's 13 Under Age Group 63kg,61.9,46,47,-49,47,60,62,-64,62,109
+382885,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lei Prescott,Women's 13 Under Age Group 63+kg,76.85,43,45,48,48,57,59,61,61,109
+382886,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jaliyah Thurmon,Women's 14-15 Age Group 58kg,54.85,42,45,47,47,55,58,61,61,108
+382887,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Edisen  Fullhart,Men's 14-15 Age Group 48kg,46.5,44,46,48,48,55,58,60,60,108
+382888,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Nora Paoloni,Women's 16-17 Age Group 48kg,46.5,-45,45,47,47,58,61,-63,61,108
+382889,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Lucy Mullenaux,Women's 16-17 Age Group 53kg,52.25,45,47,-50,47,58,61,-64,61,108
+382890,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jordyn Carreira,Women's 16-17 Age Group 53kg,52.6,-45,45,-48,45,60,63,-66,63,108
+382891,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Anaya Brown,Women's 16-17 Age Group 58kg,56.4,-48,48,-57,48,60,-65,-65,60,108
+382892,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mallory Maritato,Women's 16-17 Age Group 58kg,57,42,45,-48,45,60,63,-66,63,108
+382893,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Isabella abebie,Women's 16-17 Age Group 69kg,68.45,45,-47,-47,45,63,-67,-67,63,108
+382894,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Simeon Anderson,Men's 13 Under Age Group 44kg,42.5,42,45,48,48,55,57,60,60,108
+382895,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Maximus Evans,Men's 13 Under Age Group 65+kg,97.6,39,42,46,46,54,56,61,61,107
+382896,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Abigail Teper,Women's 13 Under Age Group 63+kg,109.05,42,45,-48,45,59,62,-65,62,107
+382897,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaiya Blackhurst,Women's 14-15 Age Group 53kg,51.2,-44,45,-48,45,-58,60,62,62,107
+382898,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Anthony De-La-Cruz,Men's 13 Under Age Group 60kg,57.85,39,42,44,44,55,59,62,62,106
+382899,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Elyse  Presley,Women's 14-15 Age Group 69kg,66.8,40,43,46,46,55,57,60,60,106
+382900,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Emaan Qayyum,Women's 16-17 Age Group 53kg,51.7,44,46,-50,46,-60,-60,60,60,106
+382901,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Emily Paoloni,Women's 16-17 Age Group 63kg,59.9,42,47,-50,47,-55,56,59,59,106
+382902,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ella Sapp,Women's 16-17 Age Group 69kg,68.05,35,38,42,42,57,61,64,64,106
+382903,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ava Broxson,Women's 16-17 Age Group 77kg,75.45,48,51,-55,51,55,-60,-62,55,106
+382904,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Reagan  Frommer,Women's 14-15 Age Group 69+kg,79.55,40,43,46,46,-59,59,-62,59,105
+382905,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,cole furnari,Men's 14-15 Age Group 52kg,50.75,42,-46,-46,42,-63,63,-72,63,105
+382906,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Desirae Phoenix,Women's 16-17 Age Group 53kg,53,-46,-47,47,47,56,58,-60,58,105
+382907,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lila Mangan,Women's 13 Under Age Group 48kg,45.9,44,46,47,47,-54,55,58,58,105
+382908,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Emily Martin,Women's 13 Under Age Group 63+kg,67.85,36,40,-44,40,60,65,-70,65,105
+382909,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Emersyn Formanek,Women's 14-15 Age Group 48kg,46.9,-43,43,45,45,56,58,60,60,105
+382910,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Hazyl Castillo,Women's 14-15 Age Group 58kg,56,45,47,-50,47,-55,55,57,57,104
+382911,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Sofia Rosales,Women's 14-15 Age Group 63kg,61.4,44,-47,47,47,57,-60,-62,57,104
+382912,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Anthony  Samuel,Men's 13 Under Age Group 60kg,59.85,44,46,-48,46,55,58,-61,58,104
+382913,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Skylar  Fernandes,Women's 16-17 Age Group 48kg,46.35,41,43,45,45,56,59,-62,59,104
+382914,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,zaina mrabe,Women's 16-17 Age Group 69kg,65.9,46,48,-50,48,54,56,-58,56,104
+382915,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Taylor Karabetsos,Women's 13 Under Age Group 63+kg,81.4,44,47,-50,47,54,-57,57,57,104
+382916,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Leo Wright,Men's 13 Under Age Group 65kg,62,42,45,47,47,51,54,56,56,103
+382917,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,August Riske,Men's 13 Under Age Group 65kg,65,42,46,-50,46,54,57,-60,57,103
+382918,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Hallie Northcutt,Women's 14-15 Age Group 69+kg,86.45,45,48,-51,48,-55,55,-58,55,103
+382919,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Alexia Mrabe,Women's 16-17 Age Group 63kg,62.55,-43,43,45,45,54,56,58,58,103
+382920,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hailey Sprenger,Women's 13 Under Age Group 48kg,47.7,42,44,46,46,52,55,57,57,103
+382921,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jasmin Salazar,Women's 13 Under Age Group 58kg,53.8,40,43,46,46,51,54,57,57,103
+382922,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Addison Williams,Women's 14-15 Age Group 58kg,55.05,42,-45,-47,42,55,57,60,60,102
+382923,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Amy Giffin,Women's 16-17 Age Group 58kg,55.15,42,44,46,46,52,54,56,56,102
+382924,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Marin Bast,Women's 14-15 Age Group 53kg,51,42,45,48,48,54,-60,-60,54,102
+382925,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Vivian Murray,Women's 14-15 Age Group 58kg,53.7,41,43,-45,43,52,55,58,58,101
+382926,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Armando Gonzalez,Men's 13 Under Age Group 60kg,57.55,-40,40,-45,40,57,61,-64,61,101
+382927,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kloe Beardsley,Women's 16-17 Age Group 48kg,46.35,44,-46,-47,44,-56,57,-60,57,101
+382928,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Zoe Macias,Women's 16-17 Age Group 53kg,52.1,43,45,-47,45,-56,56,-59,56,101
+382929,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Maddi Landers,Women's 13 Under Age Group 63kg,61.5,37,40,-43,40,55,58,61,61,101
+382930,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Makennah Goh,Women's 14-15 Age Group 53kg,52.13,40,43,-46,43,53,56,58,58,101
+382931,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Danielle Do,Women's 14-15 Age Group 58kg,54.7,41,43,45,45,50,55,-60,55,100
+382932,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kayla Doherty,Women's 13 Under Age Group 63kg,60.55,39,41,43,43,52,55,57,57,100
+382933,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Dylan Lee,Women's 14-15 Age Group 53kg,52.95,38,40,42,42,55,58,-61,58,100
+382934,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Sophie Baker,Women's 14-15 Age Group 63kg,60.9,40,43,-46,43,55,-60,-60,55,98
+382935,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Tanner Wright,Men's 13 Under Age Group 60kg,58.9,41,45,-50,45,53,-57,-58,53,98
+382936,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Catherine  Cox,Women's 14-15 Age Group 69kg,65.75,41,43,45,45,53,-55,-57,53,98
+382937,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ethan Dana,Men's 14-15 Age Group 48kg,44.9,43,-46,-46,43,52,55,-60,55,98
+382938,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Sophia Willoughby,Women's 16-17 Age Group 53kg,52.95,36,39,41,41,54,57,-60,57,98
+382939,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Penelope Devereux,Women's 14-15 Age Group 53kg,50.45,40,42,-44,42,53,56,-58,56,98
+382940,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Archer Praetorius,Men's 13 Under Age Group 52kg,49.65,37,40,-43,40,50,54,57,57,97
+382941,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Collette Yokel,Women's 14-15 Age Group 58kg,53.75,38,-41,41,41,53,56,-58,56,97
+382942,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kiptyn Hobby,Men's 13 Under Age Group 65+kg,78.05,39,-42,42,42,50,-54,55,55,97
+382943,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Katy Shade,Women's 14-15 Age Group 69+kg,70.05,37,39,-41,39,55,-58,58,58,97
+382944,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Atticus Cape,Men's 13 Under Age Group 56kg,53.8,41,44,-46,44,-51,-51,51,51,95
+382945,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Owen Hershberger,Men's 13 Under Age Group 65kg,60.15,36,39,-43,39,48,52,56,56,95
+382946,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ciara Livingston,Women's 16-17 Age Group 53kg,50,36,-39,42,42,53,-57,-60,53,95
+382947,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Anna Kent,Women's 16-17 Age Group 58kg,55.95,41,43,45,45,50,-53,-54,50,95
+382948,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ellis  Voyles,Women's 16-17 Age Group 58kg,55.2,-41,41,43,43,52,-55,-55,52,95
+382949,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Annalee Seek,Women's 13 Under Age Group 44kg,40.45,39,42,-44,42,49,-52,53,53,95
+382950,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Riley Tromello,Women's 13 Under Age Group 58kg,56.45,43,-46,-46,43,52,-55,-56,52,95
+382951,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,David Grafton,Men's 13 Under Age Group 40kg,39.3,-41,-41,41,41,50,52,54,54,95
+382952,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Taylor Madlansacay,Women's 13 Under Age Group 63kg,59.85,-40,40,-43,40,51,55,-59,55,95
+382953,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mia Brown,Women's 13 Under Age Group 63+kg,81.15,39,42,45,45,-50,50,-56,50,95
+382954,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jasmin Trinh,Women's 16-17 Age Group 44kg,40.75,-42,42,-45,42,52,-55,-55,52,94
+382955,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jessenia Tyler,Women's 16-17 Age Group 48kg,46.1,37,41,-44,41,53,-58,-60,53,94
+382956,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sophia Hippelheuser,Women's 13 Under Age Group 48kg,46.85,40,43,-46,43,-51,51,-53,51,94
+382957,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Molly Cape,Women's 14-15 Age Group 53kg,50.05,-38,38,41,41,47,50,53,53,94
+382958,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Joleigh Smith,Women's 14-15 Age Group 69+kg,71.5,40,43,-46,43,50,-53,-53,50,93
+382959,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Yuri  Grafman,Men's 14-15 Age Group 48kg,42.8,-40,-40,40,40,50,-53,53,53,93
+382960,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Abigail Angier,Women's 16-17 Age Group 58kg,55,37,39,41,41,48,50,52,52,93
+382961,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Justin Kleppen,Men's 13 Under Age Group 65+kg,71.25,42,-46,-47,42,50,-55,-55,50,92
+382962,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kash Lawson,Men's 14-15 Age Group 48kg,46.6,34,37,40,40,47,50,52,52,92
+382963,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Isabella Martinez,Women's 16-17 Age Group 48kg,46.55,37,-40,41,41,-51,51,-57,51,92
+382964,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kirin Hampton,Men's 14-15 Age Group 52kg,50.25,36,38,40,40,48,50,52,52,92
+382965,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Thevini Withana,Women's 14-15 Age Group 48kg,47.05,-39,39,41,41,49,51,-52,51,92
+382966,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Sonya Nunez,Women's 14-15 Age Group 58kg,56.75,36,38,-40,38,48,50,53,53,91
+382967,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Harrison Lacy,Men's 14-15 Age Group 48kg,47.65,39,41,43,43,48,-51,-53,48,91
+382968,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Eloise Kostal,Women's 13 Under Age Group 53kg,49.55,36,-39,39,39,50,52,-56,52,91
+382969,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ezra Morales,Men's 13 Under Age Group 56kg,53.2,35,-38,-39,35,-51,51,55,55,90
+382970,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Mei Long,Women's 16-17 Age Group 53kg,50.55,38,-42,-42,38,49,52,-54,52,90
+382971,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Abigail Negron,Women's 13 Under Age Group 53kg,50.75,35,38,-40,38,-50,52,-55,52,90
+382972,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hadleigh Lane,Women's 13 Under Age Group 58kg,56.6,35,37,39,39,-49,49,51,51,90
+382973,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Imani Washington,Women's 13 Under Age Group 63+kg,73.15,-40,40,-43,40,48,50,-54,50,90
+382974,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jackson Price,Men's 13 Under Age Group 65+kg,67.95,33,35,37,37,49,52,-55,52,89
+382975,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Roman Jackson,Men's 14-15 Age Group 56kg,55.95,-39,-39,39,39,46,48,50,50,89
+382976,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Audrina Olsen,Women's 13 Under Age Group 58kg,56.45,37,39,41,41,47,48,-50,48,89
+382977,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Katelynn Pearce,Women's 13 Under Age Group 63kg,61.65,35,38,41,41,44,48,-52,48,89
+382978,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Tripp Hillenburg,Men's 13 Under Age Group 44kg,41.9,-34,34,37,37,45,49,52,52,89
+382979,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Emma Hutchison,Women's 14-15 Age Group 58kg,54.1,32,34,-36,34,46,49,54,54,88
+382980,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Easton Sain,Men's 13 Under Age Group 65+kg,88.65,36,38,-40,38,48,-50,50,50,88
+382981,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Anthony Radhay,Men's 14-15 Age Group 48kg,44.01,35,-38,38,38,47,50,-55,50,88
+382982,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Rylie Richards,Women's 16-17 Age Group 58kg,56.6,35,-38,-38,35,50,53,-55,53,88
+382983,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Veda Macaulay,Women's 13 Under Age Group 48kg,47.9,-36,36,38,38,46,48,50,50,88
+382984,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,England Lewis,Men's 13 Under Age Group 44kg,42.95,33,35,-38,35,47,50,53,53,88
+382985,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Reagan Friess,Women's 14-15 Age Group 63kg,58.55,32,35,38,38,45,-49,49,49,87
+382986,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Juliana DaSilva,Women's 14-15 Age Group 63kg,58.15,35,37,-40,37,45,50,-53,50,87
+382987,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jacob Vieyra,Men's 13 Under Age Group 65+kg,79.7,33,35,-37,35,47,50,52,52,87
+382988,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ava Aun,Women's 16-17 Age Group 53kg,52.65,34,36,-38,36,48,51,-53,51,87
+382989,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hadley Chandler,Women's 13 Under Age Group 63kg,59.95,35,37,38,38,45,47,49,49,87
+382990,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Anna Presley,Women's 13 Under Age Group 63+kg,71.95,36,39,-41,39,43,45,48,48,87
+382991,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kacie Cordova,Women's 16-17 Age Group 48kg,45.8,35,-38,38,38,45,48,-51,48,86
+382992,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Juliana Mannino,Women's 16-17 Age Group 48kg,46.5,36,38,-41,38,44,-47,48,48,86
+382993,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaya Burns,Women's 16-17 Age Group 53kg,52.5,29,32,34,34,52,-56,-56,52,86
+382994,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kiera Woods,Women's 13 Under Age Group 63kg,63.05,35,38,-40,38,45,48,-50,48,86
+382995,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Juliette Phillips,Women's 13 Under Age Group 44kg,43,32,34,36,36,46,49,-54,49,85
+382996,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,TIERANY LALLY,Women's 16-17 Age Group 44kg,38.2,36,38,40,40,44,-46,-46,44,84
+382997,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Adalae Caruso,Women's 16-17 Age Group 44kg,42.6,34,36,38,38,42,-45,45,45,83
+382998,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Makayla  Hotchkiss,Women's 16-17 Age Group 53kg,49.75,33,35,-38,35,45,48,-50,48,83
+382999,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Elias Armstrong,Men's 13 Under Age Group 44kg,42.95,-35,35,-38,35,45,48,-51,48,83
+383000,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Zane Chadbourne,Men's 13 Under Age Group 48kg,48.01,34,36,-38,36,42,44,46,46,82
+383001,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Mikayla  Sabino,Women's 16-17 Age Group 53kg,51.95,34,36,-39,36,43,46,-50,46,82
+383002,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Corinne Stickle,Women's 16-17 Age Group 53kg,51.1,33,35,-37,35,47,-49,-50,47,82
+383003,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kaia Maki,Women's 14-15 Age Group 48kg,47.45,-37,-37,37,37,-45,-45,45,45,82
+383004,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Gabriel Almazan,Men's 13 Under Age Group 44kg,40.1,30,-32,32,32,44,47,50,50,82
+383005,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Keilani Minney,Women's 14-15 Age Group 53kg,49.3,34,38,-41,38,41,44,-49,44,82
+383006,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kayden Doherty,Men's 13 Under Age Group 48kg,44.95,-31,31,33,33,45,48,-49,48,81
+383007,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ivan Hoegemeyer,Men's 13 Under Age Group 52kg,48.85,31,33,35,35,40,42,46,46,81
+383008,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Stormy Stindt,Women's 16-17 Age Group 48kg,46.95,30,33,35,35,-46,46,-48,46,81
+383009,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Taylor Hamilton,Women's 16-17 Age Group 48kg,47.25,33,-35,35,35,-43,43,46,46,81
+383010,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sadie Cirbus,Women's 13 Under Age Group 53kg,52.1,32,-38,38,38,43,-46,-48,43,81
+383011,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Lillian Ngo,Women's 14-15 Age Group 53kg,51.5,32,34,36,36,45,-47,-47,45,81
+383012,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Matthew Parento,Men's 13 Under Age Group 48kg,48,33,-36,36,36,42,45,-49,45,81
+383013,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hector Garcia,Men's 13 Under Age Group 48kg,46.25,-33,34,-36,34,43,46,-48,46,80
+383014,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jase Berneathy,Men's 13 Under Age Group 65+kg,87.65,35,38,-41,38,38,-42,42,42,80
+383015,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Alena Griesser,Women's 13 Under Age Group 40kg,38.9,32,35,-40,35,43,45,-50,45,80
+383016,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Charlotte Sullivan,Women's 13 Under Age Group 44kg,40.45,31,33,35,35,42,-45,45,45,80
+383017,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Aurelia Bujanda,Women's 13 Under Age Group 44kg,41.75,-35,35,-37,35,-45,-45,45,45,80
+383018,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ellie  Dobrinski,Women's 13 Under Age Group 53kg,51.15,34,-37,37,37,43,-46,-48,43,80
+383019,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Madison Hovet,Women's 13 Under Age Group 63+kg,64.65,29,32,-34,32,43,46,48,48,80
+383020,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Bridger Soden,Men's 13 Under Age Group 65kg,60.2,30,33,36,36,-40,40,43,43,79
+383021,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Brogan Bratsburg,Men's 13 Under Age Group 40kg,38.15,32,-35,35,35,41,44,-47,44,79
+383022,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hudson Chancey,Men's 13 Under Age Group 56kg,54.85,30,-32,32,32,39,42,46,46,78
+383023,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Taylor Fife,Women's 14-15 Age Group 53kg,48.2,30,32,34,34,40,-43,44,44,78
+383024,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,J Williams,Men's 13 Under Age Group 65+kg,88.5,32,34,-36,34,40,43,-47,43,77
+383025,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Rayya Howard,Women's 13 Under Age Group 36kg,27.65,31,34,-35,34,40,43,-45,43,77
+383026,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Charles Hulderson,Men's 13 Under Age Group 44kg,44,31,34,-37,34,40,43,-46,43,77
+383027,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Eesha Pallath,Women's 13 Under Age Group 58kg,53.35,29,31,33,33,35,40,43,43,76
+383028,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Oliver Combs,Men's 13 Under Age Group 56kg,54.25,30,32,33,33,38,40,42,42,75
+383029,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Layla Johnson,Women's 13 Under Age Group 40kg,37.8,-31,31,-33,31,41,-44,44,44,75
+383030,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Chloe Barrus,Women's 13 Under Age Group 48kg,46.55,29,-31,32,32,39,42,43,43,75
+383031,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Scott Smith,Men's 13 Under Age Group 40kg,36.75,30,-32,33,33,35,38,42,42,75
+383032,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Olivia Vazquez,Women's 13 Under Age Group 63+kg,77.9,29,32,34,34,35,38,41,41,75
+383033,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Veisinia Kaho,Women's 13 Under Age Group 63+kg,64.35,26,28,30,30,42,44,45,45,75
+383034,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Daniel Victor Filkins,Men's 13 Under Age Group 44kg,41.9,27,29,31,31,37,40,44,44,75
+383035,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Angel Santiago,Men's 13 Under Age Group 56kg,53.05,29,32,35,35,35,39,-44,39,74
+383036,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Charlee Meyer,Women's 13 Under Age Group 48kg,47.9,33,35,37,37,33,35,37,37,74
+383037,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Briana DiCosmo,Women's 14-15 Age Group 44kg,42.6,-31,31,-33,31,40,43,-46,43,74
+383038,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Carmen Gurley,Women's 14-15 Age Group 44kg,43.95,26,28,30,30,-39,40,44,44,74
+383039,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Dante Banning,Men's 13 Under Age Group 56kg,53.25,27,29,30,30,41,43,-45,43,73
+383040,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Catherine  Lemire,Women's 13 Under Age Group 53kg,51.9,31,33,-37,33,38,-40,40,40,73
+383041,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Brianna Bowens,Women's 13 Under Age Group 58kg,57.3,28,30,-32,30,37,40,43,43,73
+383042,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Lilly Mullenaux,Women's 14-15 Age Group 40kg,37.2,28,30,31,31,40,42,-44,42,73
+383043,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Finn Earley,Men's 13 Under Age Group 60kg,59.6,26,30,-33,30,36,39,42,42,72
+383044,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Aurora Garland,Women's 13 Under Age Group 44kg,41.05,29,31,33,33,36,39,-40,39,72
+383045,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lindsay Adkins,Women's 13 Under Age Group 53kg,52.1,29,31,-32,31,41,-44,-44,41,72
+383046,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Leah Kaufman,Women's 13 Under Age Group 53kg,51.8,28,-31,31,31,38,41,-43,41,72
+383047,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Meleoni Afu,Women's 13 Under Age Group 58kg,57.9,26,28,30,30,36,39,42,42,72
+383048,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Katelyn Susana Afu,Women's 13 Under Age Group 63+kg,87.7,26,28,31,31,37,39,41,41,72
+383049,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jett Finley,Men's 13 Under Age Group 44kg,42.05,26,28,30,30,37,40,42,42,72
+383050,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mila Kaufman,Women's 13 Under Age Group 58kg,54.75,27,30,33,33,38,-41,-42,38,71
+383051,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Dempsey Opfer,Men's 13 Under Age Group 40kg,39.3,26,28,-30,28,38,41,43,43,71
+383052,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Brynlee Sweet,Women's 13 Under Age Group 63kg,62.25,32,34,-38,34,-37,37,-41,37,71
+383053,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Santiago Hernandez,Men's 13 Under Age Group 48kg,45.85,27,30,32,32,36,38,-40,38,70
+383054,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Noah Mascorro,Men's 14-15 Age Group 48kg,41.25,25,-28,-28,25,40,43,45,45,70
+383055,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Taylor Kunkel,Women's 13 Under Age Group 48kg,46.3,28,-30,30,30,40,-43,-45,40,70
+383056,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Talayna  Britt,Women's 13 Under Age Group 53kg,50.45,30,-33,-33,30,36,38,40,40,70
+383057,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Diya Vijayaraj,Women's 13 Under Age Group 58kg,56.1,26,28,30,30,35,38,40,40,70
+383058,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Eduardo Marquez,Men's 13 Under Age Group 48kg,46,28,30,-33,30,35,39,-41,39,69
+383059,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Gabriella Green,Women's 13 Under Age Group 53kg,49.15,27,-30,30,30,37,39,-42,39,69
+383060,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Leila Marinho,Women's 13 Under Age Group 63+kg,65.75,29,-32,-33,29,37,40,-42,40,69
+383061,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Meg Sherwood,Women's 14-15 Age Group 53kg,49.55,-30,30,-32,30,39,-42,-42,39,69
+383062,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Avery Morelli,Women's 13 Under Age Group 40kg,38.9,25,28,-30,28,35,38,40,40,68
+383063,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sejal Patel,Women's 13 Under Age Group 44kg,42.85,24,26,28,28,35,37,40,40,68
+383064,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ella Sherpy,Women's 14-15 Age Group 40kg,37.2,26,-28,28,28,35,38,40,40,68
+383065,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Raiden Liao,Men's 13 Under Age Group 44kg,43.4,26,28,30,30,35,38,-41,38,68
+383066,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Abraham Xiong,Men's 13 Under Age Group 48kg,44.8,26,28,30,30,-37,37,-39,37,67
+383067,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jacob Carlson,Men's 13 Under Age Group 52kg,49.1,29,30,32,32,32,34,35,35,67
+383068,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Salvador Martinez,Men's 13 Under Age Group 65kg,63.7,26,28,30,30,32,35,37,37,67
+383069,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Avery Deaver,Women's 13 Under Age Group 53kg,50.9,26,-28,-30,26,35,38,41,41,67
+383070,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sadie Baker,Women's 13 Under Age Group 63kg,59.5,26,28,-30,28,36,39,-41,39,67
+383071,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Allana Smith,Women's 13 Under Age Group 63+kg,64.75,28,30,32,32,-35,35,-37,35,67
+383072,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ashlyn Bell,Women's 14-15 Age Group 48kg,45.55,-28,28,30,30,35,37,-39,37,67
+383073,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Logan Feld,Men's 13 Under Age Group 48kg,47.35,25,27,30,30,33,36,-40,36,66
+383074,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kate Yetter,Women's 13 Under Age Group 44kg,40.7,27,29,-30,29,37,-39,-41,37,66
+383075,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ashlyn Reathaford,Women's 13 Under Age Group 53kg,50.9,24,26,-28,26,35,38,40,40,66
+383076,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sydney Maldonado,Women's 13 Under Age Group 58kg,53.45,24,26,28,28,36,38,-40,38,66
+383077,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Daisy Blanchette,Women's 13 Under Age Group 63+kg,75.1,27,29,-32,29,30,33,37,37,66
+383078,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Hazel Dale,Women's 14-15 Age Group 44kg,41.25,24,26,-28,26,37,39,40,40,66
+383079,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Shepard Arena,Men's 13 Under Age Group 44kg,40.5,26,-28,28,28,36,-38,38,38,66
+383080,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,William Taylor,Men's 13 Under Age Group 60kg,59.3,26,28,30,30,32,35,-37,35,65
+383081,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,William Mason Downard,Men's 13 Under Age Group 65+kg,65.09,26,27,29,29,31,34,36,36,65
+383082,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Brooklynn Vella,Women's 13 Under Age Group 36kg,34.9,25,-27,29,29,34,36,-38,36,65
+383083,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Avery Shupe,Women's 13 Under Age Group 40kg,36.2,25,27,29,29,30,33,36,36,65
+383084,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Luke Doherty,Men's 13 Under Age Group 40kg,35.55,28,-29,-29,28,35,37,-39,37,65
+383085,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Vienna Skudlarek,Women's 13 Under Age Group 63kg,59.45,26,-28,29,29,35,-37,-37,35,64
+383086,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Austin Windley,Men's 13 Under Age Group 44kg,41.95,-23,23,26,26,30,35,38,38,64
+383087,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jayden Myers,Men's 13 Under Age Group 52kg,50.85,20,23,26,26,34,-37,37,37,63
+383088,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Karliann Smith,Women's 13 Under Age Group 58kg,55.5,26,-28,-28,26,35,37,-38,37,63
+383089,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ashton Ketchum,Men's 13 Under Age Group 44kg,40.65,26,27,29,29,34,-36,-38,34,63
+383090,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Haadi Qayyum,Men's 13 Under Age Group 60kg,58.9,25,27,-29,27,35,-38,-39,35,62
+383091,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mark Murray,Men's 13 Under Age Group 40kg,37.1,-25,25,27,27,-32,32,35,35,62
+383092,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Blaise Atkinson,Women's 13 Under Age Group 58kg,55.25,23,25,27,27,33,35,-37,35,62
+383093,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Legend Gabourel,Men's 13 Under Age Group 40kg,37.9,23,25,-27,25,35,37,-41,37,62
+383094,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Paden  Branca,Men's 13 Under Age Group 40kg,38.35,22,25,27,27,34,-36,-36,34,61
+383095,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Nixon  Catalano,Men's 13 Under Age Group 40kg,28.1,23,26,28,28,31,33,-36,33,61
+383096,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Harper Haeberle,Women's 13 Under Age Group 63+kg,73.45,23,25,27,27,30,32,34,34,61
+383097,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ben Byrnes,Men's 13 Under Age Group 44kg,44,22,23,24,24,35,37,-38,37,61
+383098,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hayden Eades,Women's 13 Under Age Group 44kg,41.9,22,25,-28,25,32,-35,35,35,60
+383099,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Wednesday Hackleman,Women's 13 Under Age Group 44kg,44.01,24,26,-28,26,-34,-34,34,34,60
+383100,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kira Reynolds,Women's 13 Under Age Group 48kg,46.7,24,-26,-28,24,33,36,-38,36,60
+383101,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Wyatt Graeffe,Men's 13 Under Age Group 40kg,33.1,28,-30,-30,28,-30,30,32,32,60
+383102,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Oliver Berg,Men's 13 Under Age Group 40kg,33.6,25,27,-28,27,32,33,-35,33,60
+383103,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Olivia Fischer,Women's 13 Under Age Group 40kg,38.35,23,25,-27,25,31,-33,34,34,59
+383104,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Julianna  Snyder,Women's 13 Under Age Group 44kg,42.15,21,23,25,25,32,34,-36,34,59
+383105,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jovee Terry,Women's 13 Under Age Group 44kg,43.2,22,24,25,25,30,32,34,34,59
+383106,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jaymir StCharles,Men's 13 Under Age Group 48kg,48.01,24,26,28,28,-30,30,-35,30,58
+383107,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Raelynn Mergen,Women's 13 Under Age Group 40kg,38.9,21,24,-27,24,30,34,-38,34,58
+383108,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ava Prescott,Women's 13 Under Age Group 58kg,56.7,22,25,-27,25,30,33,-36,33,58
+383109,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Richard Konyek IV,Men's 13 Under Age Group 40kg,32.8,23,25,-26,25,31,33,-35,33,58
+383110,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Liam Doherty,Men's 13 Under Age Group 40kg,31.65,22,23,24,24,30,32,34,34,58
+383111,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,James Guinn,Men's 13 Under Age Group 40kg,27.85,22,23,-25,23,31,33,35,35,58
+383112,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Eliza Meyer,Women's 13 Under Age Group 44kg,42.85,22,-24,24,24,30,-32,33,33,57
+383113,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Noelia Torres Perez,Women's 16-17 Age Group 69kg,65.95,23,25,-27,25,28,30,32,32,57
+383114,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Adam Wilkinson,Men's 13 Under Age Group 40kg,37.9,22,24,-27,24,28,31,33,33,57
+383115,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mason Mascorro,Men's 13 Under Age Group 40kg,32.75,22,25,-26,25,-32,32,-35,32,57
+383116,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Layla Hafoka,Women's 13 Under Age Group 40kg,40.01,20,22,24,24,30,32,-34,32,56
+383117,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lucas Konyek,Men's 13 Under Age Group 40kg,35.25,21,23,25,25,27,29,31,31,56
+383118,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ellis Ruiz,Men's 13 Under Age Group 40kg,38.2,-22,23,25,25,27,29,31,31,56
+383119,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Zayne Gillum,Men's 13 Under Age Group 52kg,49.7,22,23,-24,23,-29,29,32,32,55
+383120,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,NOR AMINA BAHARIN,Women's 13 Under Age Group 40kg,40,-22,22,24,24,-31,31,-35,31,55
+383121,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Peyton Pirtle,Women's 13 Under Age Group 53kg,48.85,22,24,-26,24,29,31,-34,31,55
+383122,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Alexander Shupe,Men's 13 Under Age Group 44kg,42.65,25,-27,-27,25,30,-33,-34,30,55
+383123,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Elijah  Guzman,Men's 13 Under Age Group 48kg,48.01,20,21,22,22,30,32,-35,32,54
+383124,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kazu Gilbreth,Men's 13 Under Age Group 40kg,38.45,23,25,-27,25,27,-29,29,29,54
+383125,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Remington Morales,Men's 13 Under Age Group 40kg,35.65,-22,22,24,24,28,30,-32,30,54
+383126,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mason Koroll,Men's 13 Under Age Group 40kg,38.05,20,22,-25,22,27,-30,32,32,54
+383127,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Grayson Ibrahim,Men's 13 Under Age Group 40kg,30.75,24,25,-26,25,-29,29,-31,29,54
+383128,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Miley Vaughan,Women's 16-17 Age Group 58kg,57.3,18,19,20,20,28,30,33,33,53
+383129,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Cianna Heredia,Women's 13 Under Age Group 44kg,40.85,15,18,22,22,25,28,31,31,53
+383130,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mason Batey,Men's 13 Under Age Group 40kg,36.2,20,-22,22,22,-31,-31,31,31,53
+383131,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ezekiel Barboza,Men's 13 Under Age Group 56kg,52.75,20,23,0,23,23,26,29,29,52
+383132,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Emma Fan,Women's 13 Under Age Group 36kg,33.2,20,22,24,24,26,28,-30,28,52
+383133,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Lily Deibert,Women's 13 Under Age Group 53kg,50.1,21,23,24,24,25,-28,28,28,52
+383134,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Bode Dahle,Men's 13 Under Age Group 40kg,35.6,19,21,-23,21,29,-31,31,31,52
+383135,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Leonardo  Rivelli,Men's 13 Under Age Group 44kg,43,18,20,22,22,24,27,30,30,52
+383136,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Everett Lee,Men's 13 Under Age Group 40kg,37.1,18,20,22,22,24,26,28,28,50
+383137,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Francesca Putz,Women's 13 Under Age Group 44kg,40.35,15,18,21,21,25,28,-31,28,49
+383138,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Brooklyn Secrest,Women's 13 Under Age Group 53kg,52.25,19,21,-23,21,25,-27,28,28,49
+383139,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Joah  Kleijwegt,Men's 13 Under Age Group 40kg,38.05,18,20,23,23,23,26,-29,26,49
+383140,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Trace Brown,Men's 13 Under Age Group 40kg,30.45,21,-23,-23,21,24,26,28,28,49
+383141,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Bentley Weis,Men's 13 Under Age Group 40kg,36.35,-17,17,20,20,23,26,29,29,49
+383142,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kenny Fife,Men's 13 Under Age Group 40kg,28.15,20,-21,-21,20,25,27,29,29,49
+383143,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Madison DiCosmo,Women's 13 Under Age Group 36kg,31.6,20,22,-24,22,26,-28,-28,26,48
+383144,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Kamden Opfer,Women's 13 Under Age Group 36kg,33.2,19,20,21,21,27,-29,-29,27,48
+383145,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Dominic Sanchez,Men's 13 Under Age Group 40kg,30.35,-19,19,-21,19,25,27,29,29,48
+383146,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Taliya Bernard,Women's 13 Under Age Group 40kg,38.55,16,18,20,20,24,27,-29,27,47
+383147,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Phoebe Storck,Women's 13 Under Age Group 40kg,37.6,16,18,20,20,24,27,-29,27,47
+383148,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Makena Martin,Women's 13 Under Age Group 48kg,44.6,18,-20,20,20,27,-29,-29,27,47
+383149,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Charles Moss,Men's 13 Under Age Group 48kg,46.55,18,-20,-20,18,25,-28,28,28,46
+383150,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Gianna Palmer,Women's 13 Under Age Group 36kg,31.05,-19,19,21,21,25,-27,-27,25,46
+383151,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Everly Hufford,Women's 13 Under Age Group 44kg,42.85,20,-22,-22,20,26,-28,-28,26,46
+383152,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Rosemary  Sokolow,Women's 13 Under Age Group 48kg,46.15,15,17,19,19,23,-25,27,27,46
+383153,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,James Gargan,Men's 13 Under Age Group 52kg,51.2,18,19,20,20,22,24,25,25,45
+383154,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Autumn Windley,Women's 13 Under Age Group 36kg,34.8,15,17,19,19,21,24,26,26,45
+383155,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Greysen Petersen,Women's 13 Under Age Group 36kg,33.3,16,18,20,20,-24,25,-27,25,45
+383156,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Liliana  Layman,Women's 13 Under Age Group 44kg,41.55,17,18,-20,18,25,26,27,27,45
+383157,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Santiago Puamau,Men's 13 Under Age Group 56kg,53,15,17,19,19,22,-25,25,25,44
+383158,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Viviana Almazan,Women's 13 Under Age Group 36kg,26.9,16,-19,19,19,20,25,-27,25,44
+383159,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Daniel Reynolds,Men's 13 Under Age Group 40kg,31.55,15,17,19,19,23,25,-27,25,44
+383160,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ava Jackson,Women's 13 Under Age Group 44kg,42.4,17,-19,19,19,24,-26,-27,24,43
+383161,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Daniel Baker,Men's 13 Under Age Group 40kg,36.6,14,16,18,18,19,21,25,25,43
+383162,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Oliver  Garland,Men's 13 Under Age Group 40kg,33,15,17,-18,17,20,23,25,25,42
+383163,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Christopher Myers,Men's 13 Under Age Group 40kg,38.5,-16,16,-18,16,22,24,26,26,42
+383164,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Avery Gillum,Women's 13 Under Age Group 36kg,28.65,14,16,18,18,19,21,23,23,41
+383165,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Ace Finley,Women's 13 Under Age Group 36kg,33.15,15,-17,-17,15,21,23,25,25,40
+383166,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jacob Kovach,Men's 13 Under Age Group 40kg,35.95,15,17,19,19,17,19,21,21,40
+383167,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Tristan Schuster,Men's 13 Under Age Group 40kg,27.65,12,14,-16,14,23,25,26,26,40
+383168,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Mia Kleppen,Women's 13 Under Age Group 36kg,33.5,16,-18,-19,16,20,22,-24,22,38
+383169,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,DEANNA BELMONT,Women's 13 Under Age Group 36kg,27.4,14,-16,16,16,18,20,22,22,38
+383170,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jace Bernard,Men's 13 Under Age Group 40kg,28.9,12,14,16,16,18,20,22,22,38
+383171,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Joel Flores,Men's 13 Under Age Group 40kg,29.6,14,-16,-16,14,20,21,23,23,37
+383172,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Abigail Moeder,Women's 13 Under Age Group 36kg,30.4,14,15,16,16,18,19,20,20,36
+383173,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jaxon Vega,Men's 13 Under Age Group 40kg,31.85,14,16,-17,16,17,18,20,20,36
+383174,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Makenna Stewart,Women's 13 Under Age Group 36kg,34.75,12,14,16,16,-16,16,19,19,35
+383175,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Jayde Duncan,Women's 13 Under Age Group 36kg,24.15,13,15,-18,15,17,20,-22,20,35
+383176,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hope Rucker,Women's 13 Under Age Group 36kg,0.9,12,-14,14,14,17,19,20,20,34
+383177,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Charli Burroughs,Women's 13 Under Age Group 36kg,26.45,-13,13,-15,13,18,20,21,21,34
+383178,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Austin Melendez,Men's 13 Under Age Group 40kg,34.35,-15,-15,15,15,17,-19,19,19,34
+383179,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Payton Hernandez,Men's 13 Under Age Group 40kg,31.3,12,13,14,14,16,18,20,20,34
+383180,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Noah Reynolds,Men's 13 Under Age Group 40kg,35.8,14,16,-17,16,16,-18,-20,16,32
+383181,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Emilyrose Myers,Women's 13 Under Age Group 36kg,26.1,-12,12,13,13,16,17,-18,17,30
+383182,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sebastian Flores,Men's 13 Under Age Group 40kg,25.5,-12,-12,12,12,-15,15,17,17,29
+383183,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Analea Garity,Women's 13 Under Age Group 36kg,26.8,10,11,12,12,12,13,14,14,26
+383184,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Landon Schulz,Men's 16-17 Age Group 94kg,92.05,-105,-105,-106,0,135,-140,-143,135,0
+383185,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,McKayleigh Fullard,Women's 14-15 Age Group 69+kg,95.1,35,-40,-40,35,0,0,0,0,0
+383186,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Kyla Monhollen,Women's 14-15 Age Group 69kg,69.01,53,-55,-55,53,-64,-64,-64,0,0
+383187,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Treg Mortensen,Men's 14-15 Age Group 56kg,54.5,-43,-43,-43,0,-50,50,55,55,0
+383188,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Maya Litt,Women's 16-17 Age Group 53kg,51.9,-53,-53,-53,0,70,72,-76,72,0
+383189,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Matias  Navarrete,Men's 14-15 Age Group 71kg,69.35,-75,-76,77,77,-95,-96,-97,0,0
+383190,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Mia Dieppa-Corbin,Women's 16-17 Age Group 58kg,56.8,-45,-46,-47,0,57,61,65,65,0
+383191,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Ethan  Takacs,Men's 14-15 Age Group 79kg,76.45,-72,73,-78,73,-90,-90,-92,0,0
+383192,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jaylynne DeMuth,Women's 16-17 Age Group 58kg,55.65,-48,-48,-48,0,-58,-58,58,58,0
+383193,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Jacob Farrell-Evans,Men's 14-15 Age Group 79+kg,98.8,62,70,-75,70,-80,-80,-80,0,0
+383194,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Hadley Tillman,Women's 13 Under Age Group 36kg,26.95,14,16,-20,16,-22,-22,-22,0,0
+383195,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Niko Labella-choo,Men's 16-17 Age Group 60kg,59.05,-62,-63,-63,0,77,-78,-82,77,0
+383196,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Allison Rebustillo,Women's 16-17 Age Group 69kg,65.45,-79,-79,-80,0,-97,98,-105,98,0
+383197,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,sofia kokorina,Women's 16-17 Age Group 69kg,66.85,63,66,-68,66,-73,-73,-73,0,0
+383198,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Ezekiel Tolentino,Men's 16-17 Age Group 65kg,64.15,79,-82,-82,79,0,0,0,0,0
+383199,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-22,Isaac Rodriguez,Men's 16-17 Age Group 65kg,63.6,62,65,-70,65,-90,-91,-91,0,0
+383200,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Emily Terito,Women's 13 Under Age Group 53kg,49,-35,-35,-35,0,43,45,-50,45,0
+383201,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Brianna Justice,Women's 16-17 Age Group 77kg,77.01,-54,-54,-54,0,-65,-65,65,65,0
+383202,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Kendal  Salter,Women's 16-17 Age Group 77+kg,88.2,-59,-62,62,62,-75,-75,-79,0,0
+383203,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jonathan Zinger,Men's 16-17 Age Group 71kg,70.5,-95,95,-101,95,-110,-112,-112,0,0
+383204,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-21,Sebastian Wood,Men's 13 Under Age Group 40kg,33.6,-25,-25,-25,0,29,30,-32,30,0
+383205,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,Jackson Cato,Men's 16-17 Age Group 88kg,81.6,110,-114,-115,110,-133,-134,-140,0,0
+383206,6948,"2025 National Youth Championships, Powered by Rogue Fitness",2025-06-23,anderson geerdes,Men's 16-17 Age Group 88kg,86.55,93,-97,-100,93,-131,-131,-133,0,0

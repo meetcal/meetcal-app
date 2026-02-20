@@ -1,0 +1,14 @@
+{
+  "name": "meet-to-supabase",
+  "version": "1.0.0",
+  "description": "Script to sync weightlifting meets data with Supabase",
+  "main": "scripts/sync-meets.js",
+  "scripts": {
+    "sync": "node scripts/sync-meets.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1"
+  }
+} 

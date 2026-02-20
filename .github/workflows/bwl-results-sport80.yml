@@ -1,0 +1,35 @@
+name: Daily Sport80 to Supabase Sync
+
+on:
+  schedule:
+    - cron: '10 3 * * *'
+  workflow_dispatch: # Allows manual triggering from GitHub Actions UI
+
+jobs:
+  sync-sport80-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd scrapers/bwl/sport80_api
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run Sport80 sync script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_BWL_RESULTS_WEBHOOK_URL: ${{ secrets.SLACK_BWL_RESULTS_WEBHOOK_URL }}
+        run: |
+          cd scrapers/bwl/sport80_api
+          python update_supabase_from_sport80.py
+

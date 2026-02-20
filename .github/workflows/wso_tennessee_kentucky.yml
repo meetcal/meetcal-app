@@ -1,0 +1,39 @@
+name: Tennessee-Kentucky WSO Records Scraper
+
+on:
+  schedule:
+    # Run daily at 5:35 AM UTC (12:35 AM EST)
+    - cron: '25 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./scrapers/usaw/wso_sheets_scraper
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WSO_WEBHOOK_URL }}
+        run: |
+          python auto_scrapers/scraper_tnky.py \
+            --wso "Tennessee-Kentucky" \
+            --sheet-url "https://docs.google.com/spreadsheets/d/11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU/view?gid=867133960#gid=867133960"
+

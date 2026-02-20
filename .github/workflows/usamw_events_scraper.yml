@@ -1,0 +1,35 @@
+name: Scrape USAMW Events
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Run daily at 05:00 UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./scrapers/usamw/meets
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run scraper
+        run: python scrape_events.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MEET_WEBHOOK_URL }}
+
