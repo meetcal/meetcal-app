@@ -1,6 +1,15 @@
-# MeetCal
+# MeetCal 📅
 
-A cross-platform mobile application for tracking weightlifting competition schedules, athlete start lists, rankings, and records. Built with React Native and Expo, deployed to both iOS and Android.
+A React Native application built with Expo for managing athletic schedules and meet calendars.
+
+[![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
+
+## Features
+
+- Schedule management for athletes and meets
+- Athlete data management
+- Real-time data synchronization with Supabase
+- Cross-platform support (iOS, Android)
 
 ## Tech Stack
 
