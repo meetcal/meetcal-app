@@ -32,6 +32,16 @@ interface CacheInfo {
   meets: { [key: string]: MeetInfo };
 }
 
+export function validatePrefetchedLiftingResults(
+  meet: MeetName,
+  athleteNames: string[],
+  liftingResults: { name?: string | null }[],
+): void {
+  if (athleteNames.length > 0 && liftingResults.length === 0) {
+    throw new Error(`No lifting results fetched for meet: ${meet}`);
+  }
+}
+
 async function getCachedMeets(): Promise<Meet[]> {
   try {
     const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
@@ -370,6 +380,7 @@ export async function prefetchMeetData(meet: MeetName) {
   if (athleteNames.length > 0) {
     try {
       const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+      validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
       await saveMeetLiftingResults(meet, liftingResults);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -377,6 +388,7 @@ export async function prefetchMeetData(meet: MeetName) {
         try {
           await clearImplicitMeetData(meet);
           const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
+          validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
           await saveMeetLiftingResults(meet, liftingResults);
         } catch (retryError) {
           console.error('Prefetch lifting results failed after cleanup retry:', { meet, error: retryError });
