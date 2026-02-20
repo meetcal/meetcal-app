@@ -349,7 +349,10 @@ export async function getAthleteLiftingResults(meetId: MeetName, athleteName: st
     }
     
     const allResults = await readStoredLiftingResults(liftingResultsKey);
-    return allResults.filter(result => result.name === athleteName);
+    const normalizedTargetName = normalizeAthleteName(athleteName);
+    return allResults.filter(
+      result => normalizeAthleteName(result.name) === normalizedTargetName
+    );
   } catch (error) {
     console.error('Error getting athlete lifting results:', error);
     return [];
@@ -375,6 +378,10 @@ export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseL
 
 function normalizePlatformValue(platform: string | undefined): string {
   return (platform || '').trim().toLowerCase();
+}
+
+function normalizeAthleteName(name: string | null | undefined): string {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 // Get athletes for a specific session/platform from cached meet data

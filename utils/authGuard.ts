@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
 import { Alert } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { getCachedAuthState } from '@/lib/authCache';
+import { cacheAuthState, getCachedAuthState } from '@/lib/authCache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export interface AuthGuardOptions {
@@ -23,6 +23,7 @@ export function useAuthGuard() {
   const router = useRouter();
   const [cachedIsSignedIn, setCachedIsSignedIn] = useState<boolean | null>(null);
   const [hasNetwork, setHasNetwork] = useState<boolean | null>(null);
+  const [isCacheResolved, setIsCacheResolved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +36,7 @@ export function useAuthGuard() {
       if (cancelled) return;
       setCachedIsSignedIn(cachedState?.isSignedIn ?? null);
       setHasNetwork(networkAvailable);
+      setIsCacheResolved(true);
     }
 
     loadCachedAuthAndNetwork();
@@ -44,26 +46,58 @@ export function useAuthGuard() {
     };
   }, [user?.id, isLoaded]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function persistResolvedAuthState() {
+      if (!isLoaded) return;
+
+      const networkAvailable = await isNetworkAvailable().catch(() => null);
+      if (networkAvailable !== true) {
+        if (!cancelled && networkAvailable !== null) {
+          setHasNetwork(networkAvailable);
+        }
+        return;
+      }
+
+      if (user) {
+        const email = user?.primaryEmailAddress?.emailAddress;
+        await cacheAuthState(true, user.id, email);
+        if (!cancelled) {
+          setCachedIsSignedIn(true);
+          setHasNetwork(true);
+        }
+        return;
+      }
+
+      await cacheAuthState(false);
+      if (!cancelled) {
+        setCachedIsSignedIn(false);
+        setHasNetwork(true);
+      }
+    }
+
+    persistResolvedAuthState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, user]);
+
   /**
    * Check if user is authenticated. If not, show login prompt.
    * @returns true if authenticated, false if login is required, null if still loading
    */
   const requireAuth = useCallback((options: AuthGuardOptions): boolean | null => {
+    if (!isCacheResolved || hasNetwork === null) {
+      return null;
+    }
+
     const authenticatedByCache = cachedIsSignedIn === true;
     const authenticatedByClerk = !!user;
-    const isOffline = hasNetwork === false;
 
     if (authenticatedByClerk || authenticatedByCache) {
       return true;
-    }
-
-    if (!isLoaded) {
-      if (isOffline && authenticatedByCache) {
-        return true;
-      }
-      if (cachedIsSignedIn === null || hasNetwork === null) {
-        return null;
-      }
     }
 
     if (!isLoaded) {
@@ -96,7 +130,7 @@ export function useAuthGuard() {
     );
 
     return false;
-  }, [user, isLoaded, router, cachedIsSignedIn, hasNetwork]);
+  }, [user, isLoaded, router, cachedIsSignedIn, hasNetwork, isCacheResolved]);
 
   return {
     requireAuth,

@@ -4,7 +4,7 @@ import { act, create } from "react-test-renderer";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import { getCachedAuthState } from "@/lib/authCache";
+import { cacheAuthState, getCachedAuthState } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 
 jest.mock("@clerk/clerk-expo", () => ({
@@ -16,6 +16,7 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("@/lib/authCache", () => ({
+  cacheAuthState: jest.fn(),
   getCachedAuthState: jest.fn(),
 }));
 
@@ -27,6 +28,9 @@ const mockUseUser = useUser as jest.MockedFunction<typeof useUser>;
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockGetCachedAuthState = getCachedAuthState as jest.MockedFunction<
   typeof getCachedAuthState
+>;
+const mockCacheAuthState = cacheAuthState as jest.MockedFunction<
+  typeof cacheAuthState
 >;
 const mockIsNetworkAvailable = isNetworkAvailable as jest.MockedFunction<
   typeof isNetworkAvailable
@@ -86,10 +90,12 @@ describe("useAuthGuard offline behavior", () => {
     mockUseUser.mockReturnValue({ user: { id: "123" }, isLoaded: true } as any);
     mockGetCachedAuthState.mockResolvedValue(null);
     mockIsNetworkAvailable.mockResolvedValue(true);
+    mockCacheAuthState.mockResolvedValue(undefined);
 
     await act(async () => {
       create(<Harness />);
     });
+    await flushEffects();
 
     const result = captured?.requireAuth({
       feature: "athlete-results",
@@ -97,6 +103,7 @@ describe("useAuthGuard offline behavior", () => {
 
     expect(result).toBe(true);
     expect(alertSpy).not.toHaveBeenCalled();
+    expect(mockCacheAuthState).toHaveBeenCalledWith(true, "123", undefined);
   });
 
   it("prompts sign in when unauthenticated and no cache", async () => {
