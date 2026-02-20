@@ -1,0 +1,39 @@
+name: Ohio WSO Records Scraper
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC (9 PM EST / 10 PM EDT)
+    - cron: '10 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./scrapers/usaw/wso_sheets_scraper
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run scraper
+        env:
+          # GOOGLE_SERVICE_ACCOUNT_JSON is optional for public sheets
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WSO_WEBHOOK_URL }}
+        run: |
+          python auto_scrapers/scraper_ohio.py \
+            --wso "Ohio" \
+            --sheet-url "https://docs.google.com/spreadsheets/d/1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8/view?gid=0#gid=0"
+

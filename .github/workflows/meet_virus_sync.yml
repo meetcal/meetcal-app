@@ -1,0 +1,29 @@
+name: Daily Virus Meets Sync
+
+on:
+  schedule:
+    - cron: '10 3 * * *'  # Run daily at 03:10 UTC
+  workflow_dispatch:     # Allow manual triggering
+
+jobs:
+  sync-meets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        working-directory: scrapers/usaw/meet_to_supabase
+        run: npm install
+        
+      - name: Run meets sync script
+        working-directory: scrapers/usaw/meet_to_supabase
+        run: node scripts/sync-virus-meets.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MEET_WEBHOOK_URL }}

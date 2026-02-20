@@ -1,0 +1,1508 @@
+ContactID WSO Lot First Name Last Name StateYear Age Club Name COMPETITIONS Entry Total Group Session Platform Day Comp Time
+1077537Missouri Valley 78Ace Finley MO 2017 8Honey Badger Gym U11 F 36 / U13 F 36 / / / 39B 1RED 21-Jun 8:00 AM
+1081734Mountain North 3Makenna Stewart ID 2012 13CDA Heart and Barbell Club U13 F 36 / / / / 36B 1RED 21-Jun 8:00 AM
+1079042Florida 121Hope Rucker FL 2016 9FULL CIRCLE PERFORMANCE U11 F 36 / U13 F 36 / / / 36B 1RED 21-Jun 8:00 AM
+1069363Carolina 1165Autumn Windley SC 2015 10Stallion Weightlifting Club U11 F 36 / U13 F 36 / / / 36B 1RED 21-Jun 8:00 AM
+1080311Florida 1305Mia Kleppen FL 2016 9TEAM OMNIA U11 F 36 / U13 F 36 / / / 36B 1RED 21-Jun 8:00 AM
+1079459California North Central 312Emilyrose Myers CA 2017 8HASSLE FREE BBC U11 F 36 / U13 F 36 / / / 35B 1RED 21-Jun 8:00 AM
+1075669California North Central 1440Analea Garity CA 2016 9Team Juanatas-Bowens U11 F 36 / U13 F 36 / / / 35B 1RED 21-Jun 8:00 AM
+1071811Florida 1219Charli Burroughs FL 2016 9Palm Beach Weightlifting U11 F 36 / U13 F 36 / / / 33B 1RED 21-Jun 8:00 AM
+1081811Mountain North 205DEANNA BELMONT CO 2015 10Fortis Vita Barbell Club U11 F 36 / U13 F 36 / / / 30B 1RED 21-Jun 8:00 AM
+1080159Georgia 461Hadley Tillman GA 2017 8South Georgia Barbell U11 F 36 / U13 F 36 / / / 30B 1RED 21-Jun 8:00 AM
+1072745Georgia 725Jayde Duncan GA 2017 8South Georgia Barbell U11 F 36 / U13 F 36 / / / 30B 1RED 21-Jun 8:00 AM
+1077011Illinois 740Jace Bernard IL 2014 11Method Weightlifting U11 M 40 / U13 M 40 / / / 41D 1WHITE 21-Jun 8:00 AM
+1081954California North Central 196Austin Melendez CA 2014 11XIOS Strength & Conditioning U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1074555Illinois 427Jacob Kovach IL 2015 10Method Weightlifting U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1077739Illinois 561Daniel Baker IL 2015 10Aegis Barbell U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1079458California North Central 598Christopher Myers CA 2016 9Unaffiliated U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1079679California North Central 626Joel Flores CA 2015 10HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1067267Tennessee-Kentucky 909Noah Reynolds TN 2017 8Unaffiliated U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1079469California North Central 1277Sebastian Flores CA 2018 7HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1079438California North Central 1433liam afa CA 2016 9HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 40D 1WHITE 21-Jun 8:00 AM
+1079270Florida 826Joah Kleijwegt FL 2013 12FULL CIRCLE PERFORMANCE U13 M 40 / / / / 37D 1WHITE 21-Jun 8:00 AM
+1081634Mountain South 770Jaxon Vega NM 2015 10HIGH DESERT ATHLETIC CLUB U11 M 40 / U13 M 40 / / / 36D 1WHITE 21-Jun 8:00 AM
+1074273New York 920Oliver Garland NY 2014 11Gryphon Strength Barbell U11 M 40 / U13 M 40 / / / 35D 1WHITE 21-Jun 8:00 AM
+1070257Mountain South 1111Payton Hernandez NV 2015 10CALAVERA BARBELL U11 M 40 / U13 M 40 / / / 34D 1WHITE 21-Jun 8:00 AM
+1077672Illinois 376Peyton Pirtle IL 2012 13The Bar Weightlifting Club U13 F 53 / / / / 49B 1BLUE 21-Jun 8:00 AM
+1080670California North Central 713Doraly Ruiz CA 2012 13Team Juanatas-Bowens U13 F 53 / / / / 48B 1BLUE 21-Jun 8:00 AM
+1077162Pacific Northwest 859Lily Deibert OR 2012 13PORTLAND OREGON WEIGHTLIFTING U13 F 53 / / / / 40B 1BLUE 21-Jun 8:00 AM
+1078751Florida 775Anna Presley FL 2013 12Full Send Oly U13 F 63+ / / / / 83B 1BLUE 21-Jun 8:00 AM
+1076687Michigan 475Kiera Woods MI 2012 13LILY WEIGHTLIFTING U13 F 63+ / / / / 80B 1BLUE 21-Jun 8:00 AM
+1073242Missouri Valley 226Harper Haeberle KS 2014 11Lion Chaser Barbell U11 F 63+ / U13 F 63+ / / / 72B 1BLUE 21-Jun 8:00 AM
+1075788California North Central 252Katelyn Susana Afu CA 2014 11HASSLE FREE BBC U11 F 63+ / U13 F 63+ / / / 70B 1BLUE 21-Jun 8:00 AM
+1075409California South 1041Madison Hovet CA 2013 12PRECISION BARBELL U13 F 63+ / / / / 70B 1BLUE 21-Jun 8:00 AM
+1074197New England 1033Daisy Blanchette NH 2013 12PAWSitive Barbell Club U13 F 63+ / / / / 65B 1BLUE 21-Jun 8:00 AM
+1081683Florida 893Olivia Vazquez FL 2013 12Full Send Oly U13 F 63+ / / / / 64B 1BLUE 21-Jun 8:00 AM
+1062630Tennessee-Kentucky 1473Rayya Howard TN 2016 9Nashville Weightlifting Club U11 F 36 / U13 F 36 / / / 70A 2RED 21-Jun 9:40 AM
+1057654California North Central 246Brooklynn Vella CA 2013 12POWER AND GRACE PERFORMANCE. U13 F 36 / / / / 67A 2RED 21-Jun 9:40 AM
+1076253Indiana 650Avery Shupe IN 2014 113 Kings Weightlifting Club U11 F 36 / U13 F 36 / / / 57A 2RED 21-Jun 9:40 AM
+1074152Mountain South 677Madison DiCosmo AZ 2013 12POWER AND GRACE PERFORMANCE. U13 F 36 / / / / 50A 2RED 21-Jun 9:40 AM
+1075456Ohio 1347Kamden Opfer OH 2013 12SANDUSKY WEIGHTLIFTING U13 F 36 / / / / 50A 2RED 21-Jun 9:40 AM
+1078377Mountain South 876Gianna Palmer AZ 2015 10POWER AND GRACE PERFORMANCE. U11 F 36 / U13 F 36 / / / 46A 2RED 21-Jun 9:40 AM
+1080265Florida 957Greysen Petersen FL 2015 10VERO BEACH WEIGHTLIFTING U11 F 36 / U13 F 36 / / / 45A 2RED 21-Jun 9:40 AM
+1072086California North Central 645Emma Fan CA 2014 11Standard Strength U11 F 36 / U13 F 36 / / / 44A 2RED 21-Jun 9:40 AM
+1075842Florida 119Viviana Almazan FL 2017 8Freedom Weightlifting U11 F 36 / U13 F 36 / / / 42A 2RED 21-Jun 9:40 AM
+1081256Missouri Valley 128Abigail Moeder KS 2015 10Lion Chaser Barbell U11 F 36 / U13 F 36 / / / 42A 2RED 21-Jun 9:40 AM
+1073302California North Central 305Avery Gillum CA 2016 9Fortified Strength U11 F 36 / U13 F 36 / / / 40A 2RED 21-Jun 9:40 AM
+1080230Pennsylvania-West Virginia 1485Mason Koroll PA 2013 12PHILADELPHIA BARBELL U13 M 40 / / / / 49C 2WHITE 21-Jun 9:40 AM
+1063824Texas-Oklahoma 1343Kazu Gilbreth TX 2013 12Unaffiliated U13 M 40 / / / / 47C 2WHITE 21-Jun 9:40 AM
+1066363Mountain South 576Dominic Sanchez AZ 2014 11Unaffiliated U11 M 40 / U13 M 40 / / / 46C 2WHITE 21-Jun 9:40 AM
+1079582California North Central 336Clyde Moore CA 2012 13Team Juanatas-Bowens U13 M 40 / / / / 45C 2WHITE 21-Jun 9:40 AM
+1078938Texas-Oklahoma 442Adam Wilkinson TX 2014 11Spoon Barbell Club U11 M 40 / U13 M 40 / / / 45C 2WHITE 21-Jun 9:40 AM
+1077613Missouri Valley 952Trace Brown MO 2015 10Honey Badger Gym U11 M 40 / U13 M 40 / / / 45C 2WHITE 21-Jun 9:40 AM
+1081053Texas-Oklahoma 1233Remington Morales TX 2014 11Unaffiliated U11 M 40 / U13 M 40 / / / 45C 2WHITE 21-Jun 9:40 AM
+1068261Iowa-Nebraska 1479Tristan Schuster NE 2015 10Heartland Strength U11 M 40 / U13 M 40 / / / 45C 2WHITE 21-Jun 9:40 AM
+1069223California North Central 294Everett Lee CA 2015 10HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 43C 2WHITE 21-Jun 9:40 AM
+1078137Iowa-Nebraska 857Bentley Weis IA 2015 10Aspire Club U11 M 40 / U13 M 40 / / / 42C 2WHITE 21-Jun 9:40 AM
+1055085Tennessee-Kentucky 1009Daniel Reynolds TN 2014 11Unaffiliated U11 M 40 / U13 M 40 / / / 42C 2WHITE 21-Jun 9:40 AM
+1079164Pacific Northwest 1301Kenny Fife OR 2014 11CFW WEIGHTLIFTING U11 M 40 / U13 M 40 / / / 42C 2WHITE 21-Jun 9:40 AM
+1040761California North Central 447Aurora van Ulft ON 2013 12HASSLE FREE BBC U13 F 40 / / / / 135A 2BLUE 21-Jun 9:30 AM
+1060436Florida 589Annalee Seek FL 2013 12Jacksonville Weightlifting U13 F 40 / / / / 86A 2BLUE 21-Jun 9:30 AM
+1062699Pennsylvania-West Virginia 118Alena Griesser PA 2013 12Country Strong U13 F 40 / / / / 79A 2BLUE 21-Jun 9:30 AM
+1074272New York 846Aurora Garland NY 2013 12Gryphon Strength Barbell U13 F 40 / / / / 70A 2BLUE 21-Jun 9:30 AM
+1067687California North Central 1418Layla Johnson CA 2013 12Fortified Strength U13 F 40 / / / / 68A 2BLUE 21-Jun 9:30 AM
+1081864Florida 26Avery Morelli FL 2012 13FULL CIRCLE PERFORMANCE U13 F 40 / / / / 50A 2BLUE 21-Jun 9:30 AM
+1060871Mountain North 914Olivia Fischer ID 2012 13BOISE BARBELL U13 F 40 / / / / 50A 2BLUE 21-Jun 9:30 AM
+1072221Georgia 7Raelynn Mergen AL 2014 11Unaffiliated U11 F 40 / U13 F 40 / / / 49A 2BLUE 21-Jun 9:30 AM
+1059595Missouri Valley 1109NOR AMINA BAHARIN MO 2015 10KC WEIGHTLIFTING U11 F 40 / U13 F 40 / / / 48A 2BLUE 21-Jun 9:30 AM
+1077010Illinois 930Taliya Bernard IL 2013 12Method Weightlifting U13 F 40 / / / / 46A 2BLUE 21-Jun 9:30 AM
+1074630Georgia 1461Phoebe Storck GA 2013 12ATLANTA PERFORMANCE U13 F 40 / / / / 42A 2BLUE 21-Jun 9:30 AM
+1076655California North Central 431Cianna Heredia CA 2013 12Fortified Strength U13 F 40 / / / / 40A 2BLUE 21-Jun 9:30 AM
+1078848Iowa-Nebraska 1514Francesca Putz IA 2014 11Jake Pudenz Strength & Power U11 F 40 / U13 F 40 / / / 36A 2BLUE 21-Jun 9:30 AM
+1073768Ohio 325Hailey Sprenger OH 2013 12SANDUSKY WEIGHTLIFTING U13 F 48 / / / / 99A 3RED 21-Jun 11:20 AM
+1055551Pacific Northwest 505Lila Mangan WA 2012 13Puget Sound Weightlifting U13 F 48 / / / / 90A 3RED 21-Jun 11:20 AM
+1068370Florida 12Sophia Hippelheuser FL 2012 13Force2Reckon Barbell U13 F 48 / / / / 83A 3RED 21-Jun 11:20 AM
+1062259Texas-Oklahoma 194Veda Macaulay AE 2012 13Unaffiliated U13 F 48 / / / / 80A 3RED 21-Jun 11:20 AM
+1066008California South 1521Chloe Barrus CA 2014 11PRECISION BARBELL U11 F 48 / U13 F 48 / / / 72A 3RED 21-Jun 11:20 AM
+1066543Wisconsin 1250Charlee Meyer WI 2012 13ST. CROIX BARBELL CLUB U13 F 48 / / / / 70A 3RED 21-Jun 11:20 AM
+1076234Indiana 671Taylor Kunkel IN 2014 113 Kings Weightlifting Club U11 F 48 / U13 F 48 / / / 66A 3RED 21-Jun 11:20 AM
+1079606California South 533Kira Reynolds CA 2012 13Unaffiliated U13 F 48 / / / / 65A 3RED 21-Jun 11:20 AM
+1041854Mountain North 346Gabriella Green WY 2012 13IRON KITCHEN U13 F 48 / / / / 55A 3RED 21-Jun 11:20 AM
+1077270Missouri Valley 919Wednesday Hackleman MO 2015 10Honey Badger Gym U11 F 48 / U13 F 48 / / / 53A 3RED 21-Jun 11:20 AM
+1069335Ohio 777Rosemary Sokolow OH 2012 13CLEAN SLATE WEIGHTLIFTING U13 F 48 / / / / 48A 3RED 21-Jun 11:20 AM
+1075965Iowa-Nebraska 33Lucas Konyek NE 2017 8Conqueror Weightlifting U11 M 40 / U13 M 40 / / / 55B 3WHITE 21-Jun 11:20 AM
+1075025Indiana 120Grayson Ibrahim IN 2014 11The Weight Room U11 M 40 / U13 M 40 / / / 55B 3WHITE 21-Jun 11:20 AM
+1075253Iowa-Nebraska 972Richard Konyek IV NE 2015 10Conqueror Weightlifting U11 M 40 / U13 M 40 / / / 55B 3WHITE 21-Jun 11:20 AM
+1058952California South 1191Mark Murray CA 2013 12Southern California Weightlifting Club U13 M 40 / / / / 55B 3WHITE 21-Jun 11:20 AM
+1081395Mountain South 818Bode Dahle AZ 2014 11POWER AND GRACE PERFORMANCE. U11 M 40 / U13 M 40 / / / 54B 3WHITE 21-Jun 11:20 AM
+1082063California North Central 1024Paden Branca CA 2013 12Fortified Strength U13 M 40 / / / / 54B 3WHITE 21-Jun 11:20 AM
+1078117Texas-Oklahoma 1129Mason Batey TX 2014 11TEAM HOUSTON U11 M 40 / U13 M 40 / / / 53B 3WHITE 21-Jun 11:20 AM
+1078116Georgia 236Sebastian Wood GA 2014 11FTF Barbell U11 M 40 / U13 M 40 / / / 50B 3WHITE 21-Jun 11:20 AM
+1069362Carolina 380Austin Windley SC 2013 12Stallion Weightlifting Club U13 M 40 / / / / 50B 3WHITE 21-Jun 11:20 AM
+1065398New Jersey 771Ellis Ruiz NJ 2013 12McKenna Weightlifting U13 M 40 / / / / 50B 3WHITE 21-Jun 11:20 AM
+1075189California North Central 1225Liam Doherty CA 2017 8HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 50B 3WHITE 21-Jun 11:20 AM
+1071674Mountain North 1174Maximus Black CO 2014 11Pinnacle Weightlifting U11 M 40 / U13 M 40 / / / 49B 3WHITE 21-Jun 11:20 AM
+1058851Southern 758Aurelia Bujanda LA 2013 12Bujanda Strong U13 F 44 / / / / 85A 3BLUE 21-Jun 11:30 AM
+1059951California North Central 1201Charlotte Sullivan CA 2013 12HASSLE FREE BBC U13 F 44 / / / / 80A 3BLUE 21-Jun 11:30 AM
+1059141Mountain South 476Juliette Phillips AZ 2012 13POWER AND GRACE PERFORMANCE. U13 F 44 / / / / 70A 3BLUE 21-Jun 11:30 AM
+1079526Ohio 1342Kate Yetter OH 2013 12SANDUSKY WEIGHTLIFTING U13 F 44 / / / / 68A 3BLUE 21-Jun 11:30 AM
+1075258California North Central 900Hayden Eades CA 2012 13Team Juanatas-Bowens U13 F 44 / / / / 64A 3BLUE 21-Jun 11:30 AM
+1079214Carolina 1426Sejal Patel SC 2014 11Powerhouse Functional Fitness U11 F 44 / U13 F 44 / / / 60A 3BLUE 21-Jun 11:30 AM
+1079278Pennsylvania-West Virginia 227Julianna Snyder PA 2012 13DSP Barbell Club U13 F 44 / / / / 55A 3BLUE 21-Jun 11:30 AM
+1066237Missouri Valley 1028Jovee Terry KS 2013 12Lion Chaser Barbell U13 F 44 / / / / 52A 3BLUE 21-Jun 11:30 AM
+1081284Missouri Valley 333Eliza Meyer MO 2014 11WESLEY WEIGHTLIFTERS U11 F 44 / U13 F 44 / / / 45A 3BLUE 21-Jun 11:30 AM
+1080360California North Central 521Layla Hafoka CA 2013 12HASSLE FREE BBC U13 F 44 / / / / 45A 3BLUE 21-Jun 11:30 AM
+1075260California North Central 665Liliana Layman CA 2017 8Team Juanatas-Bowens U11 F 44 / U13 F 44 / / / 44A 3BLUE 21-Jun 11:30 AM
+1078175Missouri Valley 999Ava Jackson KS 2014 11KC WEIGHTLIFTING U11 F 44 / U13 F 44 / / / 44A 3BLUE 21-Jun 11:30 AM
+1077726Missouri Valley 270Everly Hufford KS 2013 12On Track Oly U13 F 44 / / / / 41A 3BLUE 21-Jun 11:30 AM
+1060032Minnesota-Dakotas 938Simeon Anderson MN 2012 13Unaffiliated U13 M 44 / / / / 107A 4RED 21-Jun 1:30 PM
+1069161California North Central 557England Lewis CA 2012 13HASSLE FREE BBC U13 M 44 / / / / 84A 4RED 21-Jun 1:30 PM
+1078354Indiana 24Tripp Hillenburg IN 2013 121Kilo U13 M 44 / / / / 80A 4RED 21-Jun 1:30 PM
+1053047Missouri Valley 287Elias Armstrong MO 2012 13Unaffiliated U13 M 44 / / / / 80A 4RED 21-Jun 1:30 PM
+1078678Pacific Northwest 105Charles Hulderson WA 2012 13Kenmore Barbell Club U13 M 44 / / / / 75A 4RED 21-Jun 1:30 PM
+1077535Missouri Valley 387Jett Finley MO 2013 12Honey Badger Gym U13 M 44 / / / / 67A 4RED 21-Jun 1:30 PM
+1075398California North Central 1443Ashton Ketchum CA 2014 11HASSLE FREE BBC U11 M 44 / U13 M 44 / / / 65A 4RED 21-Jun 1:30 PM
+1080301California North Central 375Shepard Arena CA 2012 13HASSLE FREE BBC U13 M 44 / / / / 64A 4RED 21-Jun 1:30 PM
+1078368Michigan 882Raiden Liao MI 2014 11LILY WEIGHTLIFTING U11 M 44 / U13 M 44 / / / 60A 4RED 21-Jun 1:30 PM
+1076254Indiana 718Alexander Shupe IN 2014 113 Kings Weightlifting Club U11 M 44 / U13 M 44 / / / 59A 4RED 21-Jun 1:30 PM
+1069179California North Central 833Ben Byrnes CA 2015 10HASSLE FREE BBC U11 M 44 / U13 M 44 / / / 56A 4RED 21-Jun 1:30 PM
+1074493Illinois 1014Leonardo Rivelli IL 2013 12Method Weightlifting U13 M 44 / / / / 51A 4RED 21-Jun 1:30 PM
+1070710Mountain North 1065Daniel Victor Filkins WY 2012 13IRON KITCHEN U13 M 44 / / / / 50A 4RED 21-Jun 1:30 PM
+1072503Pennsylvania-West Virginia 141David Grafton WV 2013 12EAST COAST GOLD W/L TEAM U13 M 40 / / / / 89A 4WHITE 21-Jun 1:30 PM
+1068136Iowa-Nebraska 1328Brogan Bratsburg NE 2014 11Conqueror Weightlifting U11 M 40 / U13 M 40 / / / 78A 4WHITE 21-Jun 1:30 PM
+1069896Florida 297Gabriel Almazan FL 2013 12Freedom Weightlifting U13 M 40 / / / / 75A 4WHITE 21-Jun 1:30 PM
+1072504Pennsylvania-West Virginia 592Wyatt Graeffe PA 2013 12Unaffiliated U13 M 40 / / / / 70A 4WHITE 21-Jun 1:30 PM
+1076040Ohio 606Dempsey Opfer OH 2013 12SANDUSKY WEIGHTLIFTING U13 M 40 / / / / 66A 4WHITE 21-Jun 1:30 PM
+1060303Georgia 90Scott Smith GA 2012 13Beyond The Barbell U13 M 40 / / / / 65A 4WHITE 21-Jun 1:30 PM
+1079161California North Central 132Legend Gabourel CA 2016 9Unaffiliated U11 M 40 / U13 M 40 / / / 65A 4WHITE 21-Jun 1:30 PM
+1078333Texas-Oklahoma 345Mason Mascorro TX 2014 11Unaffiliated U11 M 40 / U13 M 40 / / / 60A 4WHITE 21-Jun 1:30 PM
+1081934Indiana 1234Oliver Berg IN 2013 121Kilo U13 M 40 / / / / 60A 4WHITE 21-Jun 1:30 PM
+1065128Southern 1465Nixon Catalano LA 2015 10DSP Barbell Club U11 M 40 / U13 M 40 / / / 60A 4WHITE 21-Jun 1:30 PM
+1068945California North Central 1469Luke Doherty CA 2015 10HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 60A 4WHITE 21-Jun 1:30 PM
+1081024California North Central 1107James Guinn CA 2015 10HASSLE FREE BBC U11 M 40 / U13 M 40 / / / 58A 4WHITE 21-Jun 1:30 PM
+1076915Georgia 572Abigail Negron GA 2012 13Unaffiliated U13 F 53 / / / / 75A 4BLUE 21-Jun 1:30 PM
+1068651California North Central 644Ellie Dobrinski CA 2013 12POWER AND GRACE PERFORMANCE. U13 F 53 / / / / 72A 4BLUE 21-Jun 1:30 PM
+1079675California North Central 371Eloise Kostal CA 2012 13HASSLE FREE BBC U13 F 53 / / / / 70A 4BLUE 21-Jun 1:30 PM
+1074768Georgia 664Lindsay Adkins GA 2012 13Beyond The Barbell U13 F 53 / / / / 70A 4BLUE 21-Jun 1:30 PM
+1058827Southern 1027Emily Terito LA 2014 11Bujanda Strong U11 F 53 / U13 F 53 / / / 70A 4BLUE 21-Jun 1:30 PM
+1073144New York 1177Sadie Cirbus NY 2013 12Warwick Weightlifting Club U13 F 53 / / / / 70A 4BLUE 21-Jun 1:30 PM
+1080358Florida 139Avery Deaver FL 2012 13Rise Weightlifting U13 F 53 / / / / 69A 4BLUE 21-Jun 1:30 PM
+1080332Carolina 490Catherine Lemire NC 2012 13HARRISBURG WEIGHTLIFTING CLUB U13 F 53 / / / / 69A 4BLUE 21-Jun 1:30 PM
+1065875California North Central 64Eesha Pallath CA 2013 12Fortified Strength U13 F 53 / / / / 68A 4BLUE 21-Jun 1:30 PM
+1068964Georgia 871Talayna Britt GA 2015 10WILLIAMS WEIGHTLIFTING U11 F 53 / U13 F 53 / / / 65A 4BLUE 21-Jun 1:30 PM
+1065926Florida 344Leah Kaufman FL 2012 13TEAM SOUL MIAMI U13 F 53 / / / / 60A 4BLUE 21-Jun 1:30 PM
+1070653Pennsylvania-West Virginia 472Sydney Maldonado PA 2012 13West Chester Weightlifting U13 F 53 / / / / 58A 4BLUE 21-Jun 1:30 PM
+1076508Florida 726Brooklyn Secrest FL 2016 9VERO BEACH WEIGHTLIFTING U11 F 53 / U13 F 53 / / / 53A 4BLUE 21-Jun 1:30 PM
+1077907Missouri Valley 1172Ashlyn Reathaford KS 2012 13Bulldog Weightlifting Club U13 F 53 / / / / 53A 4BLUE 21-Jun 1:30 PM
+1053435Mountain South 684Matthew Parento NV 2013 12CALAVERA BARBELL U13 M 48 / / / / 80A 5RED 21-Jun 3:30 PM
+1062718California North Central 697Kayden Doherty CA 2015 10HASSLE FREE BBC U11 M 48 / U13 M 48 / / / 80A 5RED 21-Jun 3:30 PM
+1071393Florida 913Hector Garcia FL 2012 13Exclusive Club Weightlifting U13 M 48 / / / / 73A 5RED 21-Jun 3:30 PM
+1062629Georgia 845Eduardo Marquez GA 2013 12ALLSOUTH Barbell U13 M 48 / / / / 70A 5RED 21-Jun 3:30 PM
+1063639Texas-Oklahoma 621Santiago Hernandez TX 2012 13Bexar Barbell U13 M 48 / / / / 68A 5RED 21-Jun 3:30 PM
+1075676California North Central 187Abraham Xiong CA 2013 12HASSLE FREE BBC U13 M 48 / / / / 61A 5RED 21-Jun 3:30 PM
+1079436Iowa-Nebraska 817Logan Feld IA 2012 13N. Highland WLC U13 M 48 / / / / 59A 5RED 21-Jun 3:30 PM
+1079985California North Central 797Charles Moss CA 2013 12Fortified Strength U13 M 48 / / / / 49A 5RED 21-Jun 3:30 PM
+1066754Iowa-Nebraska 203Bode Bratsburg NE 2012 13Conqueror Weightlifting U13 M 52 / / / / 100A 5WHITE 21-Jun 3:30 PM
+1059491Texas-Oklahoma 369Archer Praetorius OK 2012 13Pure Health Barbell U13 M 52 / / / / 90A 5WHITE 21-Jun 3:30 PM
+1077825Iowa-Nebraska 437Ivan Hoegemeyer NE 2013 12Conqueror Weightlifting U13 M 52 / / / / 75A 5WHITE 21-Jun 3:30 PM
+1078559California South 602Zane Chadbourne CA 2013 12BARBARIAN BARBELL CLUB U13 M 52 / / / / 70A 5WHITE 21-Jun 3:30 PM
+1075355California North Central 1396Elijah Guzman CA 2013 12Unaffiliated U13 M 52 / / / / 59A 5WHITE 21-Jun 3:30 PM
+1079273Minnesota-Dakotas 432Jacob Carlson ND 2012 13Unaffiliated U13 M 52 / / / / 55A 5WHITE 21-Jun 3:30 PM
+1080532Illinois 1430Ezekiel Barboza IL 2016 9Method Weightlifting U11 M 52 / U13 M 52 / / / 53A 5WHITE 21-Jun 3:30 PM
+1080880California North Central 796Jaymir StCharles CA 2014 11Unaffiliated U11 M 52 / U13 M 52 / / / 52A 5WHITE 21-Jun 3:30 PM
+1079635California North Central 1200James Gargan CA 2015 10HASSLE FREE BBC U11 M 52 / U13 M 52 / / / 50A 5WHITE 21-Jun 3:30 PM
+1077656California North Central 1279Zayne Gillum CA 2013 12Fortified Strength U13 M 52 / / / / 49A 5WHITE 21-Jun 3:30 PM
+1080503California North Central 1339Jayden Myers CA 2013 12Unaffiliated U13 M 52 / / / / 45A 5WHITE 21-Jun 3:30 PM
+1057375California South 1246Riley Tromello CA 2012 13PRECISION BARBELL U13 F 58 / / / / 103A 5BLUE 21-Jun 3:30 PM
+1063319Mountain South 1284Audrina Olsen UT 2012 13Praxis Weightlifting U13 F 58 / / / / 88A 5BLUE 21-Jun 3:30 PM
+1069272California North Central 1286Hadleigh Lane CA 2014 11HASSLE FREE BBC U11 F 58 / U13 F 58 / / / 71A 5BLUE 21-Jun 3:30 PM
+1069984California North Central 528Brianna Bowens CA 2014 11KC WEIGHTLIFTING U11 F 58 / U13 F 58 / / / 62A 5BLUE 21-Jun 3:30 PM
+1065927Florida 694Mila Kaufman FL 2012 13TEAM SOUL MIAMI U13 F 58 / / / / 60A 5BLUE 21-Jun 3:30 PM
+1066827California North Central 1195Meleoni Afu CA 2016 9HASSLE FREE BBC U11 F 58 / U13 F 58 / / / 60A 5BLUE 21-Jun 3:30 PM
+1079400Carolina 931Vienna Skudlarek SC 2012 13Butcher Barbell U13 F 58 / / / / 59A 5BLUE 21-Jun 3:30 PM
+1069354Pacific Northwest 57Karliann Smith OR 2014 11Iron Acres Barbell U11 F 58 / U13 F 58 / / / 58A 5BLUE 21-Jun 3:30 PM
+1078348Missouri Valley 1264Blaise Atkinson MO 2015 10WESLEY WEIGHTLIFTERS U11 F 58 / U13 F 58 / / / 58A 5BLUE 21-Jun 3:30 PM
+1077782California North Central 124Diya Vijayaraj CA 2012 13Fortified Strength U13 F 58 / / / / 57A 5BLUE 21-Jun 3:30 PM
+1065681Texas-Oklahoma 189Ava Prescott TX 2012 13TEXAS BARBELL CLUB U13 F 58 / / / / 50A 5BLUE 21-Jun 3:30 PM
+1074909Minnesota-Dakotas 1176Max Rotter MN 2012 13Unaffiliated U13 M 56 / / / / 107A 6RED 21-Jun 5:00 PM
+1071062Indiana 844Daniel Hunter IN 2012 13Muncie Weightlifting Club U13 M 56 / / / / 95A 6RED 21-Jun 5:00 PM
+1070123Texas-Oklahoma 91Atticus Cape TX 2012 13Unaffiliated U13 M 56 / / / / 93A 6RED 21-Jun 5:00 PM
+1057789Texas-Oklahoma 689Ezra Morales TX 2013 12Unaffiliated U13 M 56 / / / / 82A 6RED 21-Jun 5:00 PM
+1060145New York 543Oliver Combs NY 2013 12Unaffiliated U13 M 56 / / / / 70A 6RED 21-Jun 5:00 PM
+1075451California North Central 916Dante Banning CA 2014 11HASSLE FREE BBC U11 M 56 / U13 M 56 / / / 70A 6RED 21-Jun 5:00 PM
+1081310Georgia 764Hudson Chancey GA 2012 13Beyond The Barbell U13 M 56 / / / / 65A 6RED 21-Jun 5:00 PM
+1075992Florida 813Angel Santiago FL 2013 12Maxx Effort Training ADAP U13 M 56 / / / / 60A 6RED 21-Jun 5:00 PM
+1079677California North Central 937Santiago Puamau CA 2015 10HASSLE FREE BBC U11 M 56 / U13 M 56 / / / 55A 6RED 21-Jun 5:00 PM
+1081844Mountain South 1267Tanner Wright UT 2012 13Zion Barbell U13 M 60 / / / / 145A 6WHITE 21-Jun 4:40 PM
+1059012Michigan 180Leonel Nunez MI 2012 134 Star Strength U13 M 60 / / / / 103A 6WHITE 21-Jun 4:40 PM
+1076652Florida 301Armando Gonzalez FL 2012 13Maxx Effort Training U13 M 60 / / / / 101A 6WHITE 21-Jun 4:40 PM
+1073055Missouri Valley 954Tyler Evans MO 2012 13Lebanon Barbell Club U13 M 60 / / / / 95A 6WHITE 21-Jun 4:40 PM
+1075349New England 864Anthony Samuel CT 2012 13Cheshire Weightlifting Club U13 M 60 / / / / 90A 6WHITE 21-Jun 4:40 PM
+1076487Florida 493Anthony De-La-Cruz FL 2012 13TEAM OMNIA U13 M 60 / / / / 89A 6WHITE 21-Jun 4:40 PM
+1081281New York 17Finn Earley NY 2014 11Warwick Weightlifting Club U11 M 60 / U13 M 60 / / / 70A 6WHITE 21-Jun 4:40 PM
+1076753California North Central 1276Haadi Qayyum CA 2012 13Fortified Strength U13 M 60 / / / / 63A 6WHITE 21-Jun 4:40 PM
+1075509Iowa-Nebraska 685William Taylor NE 2014 11Conqueror Weightlifting U11 M 60 / U13 M 60 / / / 62A 6WHITE 21-Jun 4:40 PM
+1080964Pennsylvania-West Virginia 1045BELEN VICTORIA LANDAEZ ROA PA 2012 13DSP Barbell Club U13 F 63 / / / / 138A 6BLUE 21-Jun 4:40 PM
+1073029Florida 70Madison Hatcher FL 2012 13Full Send Oly U13 F 63 / / / / 126A 6BLUE 21-Jun 4:40 PM
+1055634California North Central 488Kayla Doherty CA 2012 13HASSLE FREE BBC U13 F 63 / / / / 91A 6BLUE 21-Jun 4:40 PM
+1068150California North Central 484Taylor Madlansacay CA 2013 12Fortified Strength U13 F 63 / / / / 90A 6BLUE 21-Jun 4:40 PM
+1068087California North Central 256Veisinia Kaho CA 2016 9HASSLE FREE BBC U11 F 63 / U13 F 63 / / / 80A 6BLUE 21-Jun 4:40 PM
+1073265Missouri Valley 961Hadley Chandler KS 2012 13Lion Chaser Barbell U13 F 63 / / / / 80A 6BLUE 21-Jun 4:40 PM
+1079580California North Central 276Allana Smith CA 2012 13Team Juanatas-Bowens U13 F 63 / / / / 75A 6BLUE 21-Jun 4:40 PM
+1072740Florida 1262Katelynn Pearce FL 2012 133P Weightlifting U13 F 63 / / / / 70A 6BLUE 21-Jun 4:40 PM
+1070475Mountain North 1202Maddi Landers WY 2012 13IRON KITCHEN U13 F 63 / / / / 69A 6BLUE 21-Jun 4:40 PM
+1080170Florida 1050Brynlee Sweet FL 2012 13Category 5 Athletics U13 F 63 / / / / 67A 6BLUE 21-Jun 4:40 PM
+1079642Florida 1075Leila Marinho FL 2015 10Exclusive Club Weightlifting U11 F 63 / U13 F 63 / / / 63A 6BLUE 21-Jun 4:40 PM
+1074108Illinois 922Sadie Baker IL 2014 11Aegis Barbell U11 F 63 / U13 F 63 / / / 60A 6BLUE 21-Jun 4:40 PM
+1055923Missouri Valley 107Sidney Porter 2012 13Unaffiliated U13 M 65+ / / / / 175A 7RED 21-Jun 6:30 PM
+1079823Florida 367Anthony Caceres FL 2012 13TEAM OMNIA U13 M 65+ / / / / 128A 7RED 21-Jun 6:30 PM
+1081173Tennessee-Kentucky 1242Noah Wilhoit KY 2012 13Unaffiliated U13 M 65+ / / / / 110A 7RED 21-Jun 6:30 PM
+1078038Florida 253Justin Kleppen FL 2012 13TEAM OMNIA U13 M 65+ / / / / 108A 7RED 21-Jun 6:30 PM
+1057522California North Central 330Jared Afu CA 2012 13Team Divergent U13 M 65+ / / / / 100A 7RED 21-Jun 6:30 PM
+1074986Georgia 422Maximus Evans GA 2012 13Beyond The Barbell U13 M 65+ / / / / 99A 7RED 21-Jun 6:30 PM
+1075446Georgia 1098Kiptyn Hobby GA 2012 13Beyond The Barbell U13 M 65+ / / / / 95A 7RED 21-Jun 6:30 PM
+1080340Carolina 359Aiden Aintrazi NC 2013 12HARRISBURG WEIGHTLIFTING CLUB U13 M 65+ / / / / 90A 7RED 21-Jun 6:30 PM
+1078470Mountain North 235Easton Sain CO 2012 13Fortis Vita Barbell Club U13 M 65+ / / / / 80A 7RED 21-Jun 6:30 PM
+1078826Florida 1240Jacob Vieyra FL 2015 10VERO BEACH WEIGHTLIFTING U11 M 65+ / U13 M 65+ / / / 80A 7RED 21-Jun 6:30 PM
+1075921Texas-Oklahoma 56Jase Berneathy TX 2012 13TEAM HOUSTON U13 M 65+ / / / / 77A 7RED 21-Jun 6:30 PM
+1074121California North Central 1480Jackson Price CA 2012 13Fortified Strength U13 M 65+ / / / / 73A 7RED 21-Jun 6:30 PM
+1081498Texas-Oklahoma 60J Williams TX 2013 12Bull Strength Barbell U13 M 65+ / / / / 70A 7RED 21-Jun 6:30 PM
+1059011Florida 1043William Mason Downard FL 2014 11TEAM SOUL MIAMI U11 M 65+ / U13 M 65+ / / / 70A 7RED 21-Jun 6:30 PM
+1072142Texas-Oklahoma 591Jordan Lupkes TX 2013 12TEXAS BARBELL CLUB U13 M 65 / / / / 115A 7WHITE 21-Jun 6:30 PM
+1069190California North Central 135Brody Laird CA 2012 13HASSLE FREE BBC U13 M 65 / / / / 110A 7WHITE 21-Jun 6:30 PM
+1069701Texas-Oklahoma 887William McAdams TX 2013 12Spoon Barbell Club U13 M 65 / / / / 100A 7WHITE 21-Jun 6:30 PM
+1078833California North Central 163August Riske CA 2012 13The Resilient Strength U13 M 65 / / / / 95A 7WHITE 21-Jun 6:30 PM
+1072186Missouri Valley 1093Leo Wright KS 2013 12KC WEIGHTLIFTING U13 M 65 / / / / 82A 7WHITE 21-Jun 6:30 PM
+1079918Minnesota-Dakotas 593Owen Hershberger MN 2012 13NORTHFIELD WLC U13 M 65 / / / / 79A 7WHITE 21-Jun 6:30 PM
+1081822Indiana 147Bridger Soden IN 2013 123 Kings Weightlifting Club U13 M 65 / / / / 70A 7WHITE 21-Jun 6:30 PM
+1081437Texas-Oklahoma 1390Salvador Martinez TX 2013 12Unaffiliated U13 M 65 / / / / 59A 7WHITE 21-Jun 6:30 PM
+1039846Texas-Oklahoma 1055Alexxandra Ballard TX 2012 13Bull Strength Barbell U13 F 63+ / / / / 115 7BLUE 21-Jun 6:40 PM
+1065991Mountain South 1077Lily Ontiveros AZ 2012 13POWER AND GRACE PERFORMANCE. U13 F 63+ / / / / 110 7BLUE 21-Jun 6:40 PM
+1064673California North Central 1505Mikaella Bowens CA 2012 13KC WEIGHTLIFTING U13 F 63+ / / / / 109 7BLUE 21-Jun 6:40 PM
+1076638Florida 1241Abigail Teper FL 2012 13Jacksonville Weightlifting U13 F 63+ / / / / 108 7BLUE 21-Jun 6:40 PM
+1079434Iowa-Nebraska 61Abigail Diehl IA 2012 13N. Highland WLC U13 F 63+ / / / / 107 7BLUE 21-Jun 6:40 PM
+1079005Mountain South 13Lei Prescott AZ 2012 13POWER AND GRACE PERFORMANCE. U13 F 63+ / / / / 100 7BLUE 21-Jun 6:40 PM
+1079313New England 324Taylor Karabetsos CT 2012 13Viking Barbell Club U13 F 63+ / / / / 98 7BLUE 21-Jun 6:40 PM
+1077137Florida 265Emily Martin FL 2012 13ARK Weightlifting U13 F 63+ / / / / 95 7BLUE 21-Jun 6:40 PM
+1078811Georgia 144Imani Washington GA 2013 12COASTAL EMPIRE WEIGHTLIFTING U13 F 63+ / / / / 90 7BLUE 21-Jun 6:40 PM
+1077217Florida 704Mia Brown FL 2012 13Maxx Effort Training U13 F 63+ / / / / 88 7BLUE 21-Jun 6:40 PM
+1066820California North Central 349Kaya Malia Henn CA 2010 15HASSLE FREE BBC 14-15yo F 48 / / / / 120A 8RED 22-Jun 8:00 AM
+1066183Missouri Valley 126Emersyn Formanek KS 2011 14Lion Chaser Barbell 14-15yo F 48 / / / / 110A 8RED 22-Jun 8:00 AM
+1067307Minnesota-Dakotas 1313Kaia Maki MN 2011 14CANNON FALLS WEIGHTLIFTING 14-15yo F 48 / / / / 88A 8RED 22-Jun 8:00 AM
+1055752California North Central 285Thevini Withana CA 2011 14Fortified Strength 14-15yo F 48 / / / / 82A 8RED 22-Jun 8:00 AM
+1080432Minnesota-Dakotas 1309Lillian Ngo MN 2010 15Unaffiliated 14-15yo F 48 / / / / 81A 8RED 22-Jun 8:00 AM
+1081529Mountain South 692Meg Sherwood AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 48 / / / / 79A 8RED 22-Jun 8:00 AM
+1066192Pacific Northwest 889Taylor Fife OR 2011 14CFW WEIGHTLIFTING 14-15yo F 48 / / / / 72A 8RED 22-Jun 8:00 AM
+1072313Pacific Northwest 1371Ashlyn Bell OR 2011 14Iron Acres Barbell 14-15yo F 44 / / / / 72A 8RED 22-Jun 8:00 AM
+1070137Mountain North 10Hazel Dale WY 2011 14IRON KITCHEN 14-15yo F 44 / / / / 71A 8RED 22-Jun 8:00 AM
+1074151Mountain South 471Briana DiCosmo AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 44 / / / / 71A 8RED 22-Jun 8:00 AM
+1067143Georgia 1340Carmen Gurley GA 2011 14Beyond The Barbell 14-15yo F 44 / / / / 71A 8RED 22-Jun 8:00 AM
+1061542Mountain South 967Lilly Mullenaux AZ 2011 14POWER AND GRACE PERFORMANCE. 14-15yo F 40 / / / / 65A 8RED 22-Jun 8:00 AM
+1075942Missouri Valley 695Ella Sherpy KS 2011 14Lion Chaser Barbell 14-15yo F 40 / / / / 60A 8RED 22-Jun 8:00 AM
+1065579Florida 494Morgan Moody FL 2010 15R 3 Weightlifting 14-15yo F 53 / / / / 118A 8WHITE 22-Jun 8:00 AM
+1072241Florida 863Ava Luis FL 2011 14TEAM OMNIA 14-15yo F 53 / / / / 110A 8WHITE 22-Jun 8:00 AM
+1063929Mountain South 1405Brinlee Huber AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 53 / / / / 105A 8WHITE 22-Jun 8:00 AM
+1066285Mountain South 1503Kaiya Blackhurst AZ 2011 14POWER AND GRACE PERFORMANCE. 14-15yo F 53 / / / / 100A 8WHITE 22-Jun 8:00 AM
+1052130Alabama 1186Penelope Devereux AL 2010 15EAST COAST GOLD W/L TEAM 14-15yo F 53 / / / / 96A 8WHITE 22-Jun 8:00 AM
+1070122Georgia 137Molly Cape GA 2010 15Unaffiliated 14-15yo F 53 / / / / 93A 8WHITE 22-Jun 8:00 AM
+1079446Minnesota-Dakotas 672Marin Bast MN 2011 14Giffy’s Barbell Club 14-15yo F 53 / / / / 93A 8WHITE 22-Jun 8:00 AM
+1058951California South 89Vivian Murray CA 2011 14Southern California Weightlifting Club 14-15yo F 53 / / / / 90A 8WHITE 22-Jun 8:00 AM
+1071772California North Central 640Makennah Goh CA 2010 15Fortified Strength 14-15yo F 53 / / / / 80A 8WHITE 22-Jun 8:00 AM
+1062553California North Central 1038Dylan Lee CA 2011 14HASSLE FREE BBC 14-15yo F 53 / / / / 80A 8WHITE 22-Jun 8:00 AM
+1075262California North Central 1159Evelyn Moore CA 2011 14Team Juanatas-Bowens 14-15yo F 53 / / / / 79A 8WHITE 22-Jun 8:00 AM
+1079684Pacific Northwest 666Keilani Minney OR 2010 15Unaffiliated 14-15yo F 53 / / / / 76A 8WHITE 22-Jun 8:00 AM
+1060610Florida 158Rome Barker FL 2010 15VERO BEACH WEIGHTLIFTING 14-15yo M 52 / / / / 121A 8BLUE 22-Jun 8:00 AM
+1052794California South 1152Kai Reynolds CA 2010 15Unaffiliated 14-15yo M 48 / / / / 120A 8BLUE 22-Jun 8:00 AM
+1055519Southern 438Cameron Comeaux LA 2011 14Bujanda Strong 14-15yo M 52 / / / / 113A 8BLUE 22-Jun 8:00 AM
+1075650California North Central 75Noah Junsay CA 2010 15Speed Power Strength 14-15yo M 48 / / / / 110A 8BLUE 22-Jun 8:00 AM
+1081837Iowa-Nebraska 149Luc Larson IA 2010 15Unaffiliated 14-15yo M 52 / / / / 107A 8BLUE 22-Jun 8:00 AM
+1079974Florida 928Kaige McDonnell FL 2010 15Team Florida Pensacola 14-15yo M 52 / / / / 105A 8BLUE 22-Jun 8:00 AM
+1077523Iowa-Nebraska 1091Edisen Fullhart IA 2011 14Unaffiliated 14-15yo M 48 / / / / 101A 8BLUE 22-Jun 8:00 AM
+1061418Mountain South 1509Ethan Dana UT 2011 14Zion Barbell 14-15yo M 48 / / / / 100A 8BLUE 22-Jun 8:00 AM
+1080379New Jersey 274cole furnari NJ 2010 15CBA Colts Weightlifting 14-15yo M 52 / / / / 96A 8BLUE 22-Jun 8:00 AM
+1076737Florida 241Anthony Radhay FL 2010 15TEAM OMNIA 14-15yo M 48 / / / / 95A 8BLUE 22-Jun 8:00 AM
+1080978California North Central 514Yuri Grafman CA 2011 14HASSLE FREE BBC 14-15yo M 48 / / / / 94A 8BLUE 22-Jun 8:00 AM
+1078338Mountain North 231Kash Lawson CO 2010 15Heavy Athletics 14-15yo M 48 / / / / 88A 8BLUE 22-Jun 8:00 AM
+1079091Carolina 1512Harrison Lacy NC 2011 14Wilmington Strength 14-15yo M 48 / / / / 88A 8BLUE 22-Jun 8:00 AM
+1079699Florida 577Kirin Hampton FL 2011 14Jacksonville Weightlifting 14-15yo M 52 / / / / 86A 8BLUE 22-Jun 8:00 AM
+1078332Texas-Oklahoma 653Noah Mascorro TX 2011 14Unaffiliated 14-15yo M 48 / / / / 73A 8BLUE 22-Jun 8:00 AM
+1072999Pennsylvania-West Virginia 381Andrew Weymer PA 2010 15Fourteen Forty Collective 14-15yo M 56 / / / / 160A 9RED 22-Jun 9:50 AM
+1045660Florida 1515Weston McGrath FL 2010 15Train Harder Barbell Club 14-15yo M 56 / / / / 148A 9RED 22-Jun 9:50 AM
+1072346Ohio 575Coen Opfer OH 2011 14SANDUSKY WEIGHTLIFTING 14-15yo M 56 / / / / 130A 9RED 22-Jun 9:50 AM
+1074092Minnesota-Dakotas 335Raiden Nienow MN 2011 14Unaffiliated 14-15yo M 56 / / / / 120A 9RED 22-Jun 9:50 AM
+1029813Mountain South 99Jordan Hernandez NV 2011 14CALAVERA BARBELL 14-15yo M 56 / / / / 115A 9RED 22-Jun 9:50 AM
+1046295Iowa-Nebraska 1486Grant Petersen NE 2010 15Heartland Strength 14-15yo M 56 / / / / 115A 9RED 22-Jun 9:50 AM
+1068163California North Central 140Arin Santosh CA 2010 15Fortified Strength 14-15yo M 56 / / / / 114A 9RED 22-Jun 9:50 AM
+1081825Mountain South 245Treg Mortensen UT 2011 14Zion Barbell 14-15yo M 56 / / / / 105A 9RED 22-Jun 9:50 AM
+1077143Florida 288Vincent Myers FL 2010 15R 3 Weightlifting 14-15yo M 56 / / / / 105A 9RED 22-Jun 9:50 AM
+1077691Tennessee-Kentucky 679Abraham Baker TN 2010 15Arc Weightlifting Club 14-15yo M 56 / / / / 98A 9RED 22-Jun 9:50 AM
+1081661Missouri Valley 1108Roman Jackson KS 2011 14KC WEIGHTLIFTING ADAP 14-15yo M 56 / / / / 73A 9RED 22-Jun 9:50 AM
+1057472Pennsylvania-West Virginia 1364Maryam Grafton WV 2010 15EAST COAST GOLD W/L TEAM 14-15yo F 58 / / / / 148A 9WHITE 22-Jun 9:50 AM
+1060766Pacific Northwest 742Reagan Herchold WA 2011 14Puget Sound Weightlifting 14-15yo F 58 / / / / 140A 9WHITE 22-Jun 9:50 AM
+1055418Mountain North 894Evelyn Lilo CO 2011 14Heavy Athletics 14-15yo F 58 / / / / 124A 9WHITE 22-Jun 9:50 AM
+1065397New Jersey 446Scarlet Ruiz NJ 2011 14McKenna Weightlifting 14-15yo F 58 / / / / 120A 9WHITE 22-Jun 9:50 AM
+1060135Georgia 571Reece Robinson GA 2010 15Beyond The Barbell 14-15yo F 58 / / / / 112A 9WHITE 22-Jun 9:50 AM
+1053724Missouri Valley 172Addison Williams KS 2010 15Lion Chaser Barbell 14-15yo F 58 / / / / 105A 9WHITE 22-Jun 9:50 AM
+1053238Florida 977Jaliyah Thurmon FL 2011 14Wicked Barbell Club 14-15yo F 58 / / / / 105A 9WHITE 22-Jun 9:50 AM
+1066676Minnesota-Dakotas 537Beatrix Wagner MN 2011 14CANNON FALLS WEIGHTLIFTING 14-15yo F 58 / / / / 103A 9WHITE 22-Jun 9:50 AM
+1078485Mountain South 1275Reagan Case AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 58 / / / / 103A 9WHITE 22-Jun 9:50 AM
+1053236Florida 700Collette Yokel FL 2011 14Wicked Barbell Club 14-15yo F 58 / / / / 97A 9WHITE 22-Jun 9:50 AM
+1061826California North Central 361Danielle Do CA 2011 14Fortified Strength 14-15yo F 58 / / / / 95A 9WHITE 22-Jun 9:50 AM
+1056156Ohio 1269Hazyl Castillo OH 2011 14Glass City Weightlifting 14-15yo F 58 / / / / 90A 9WHITE 22-Jun 9:50 AM
+1056922Michigan 1333Sonya Nunez MI 2011 144 Star Strength 14-15yo F 58 / / / / 89A 9WHITE 22-Jun 9:50 AM
+1070077Georgia 420Emma Hutchison GA 2010 15Beyond The Barbell 14-15yo F 58 / / / / 88A 9WHITE 22-Jun 9:50 AM
+1078430Texas-Oklahoma 627Reagan Friess TX 2010 15Friendswood Highschool Weightlifting Club 14-15yo F 58 / / / / 86A 9WHITE 22-Jun 9:50 AM
+1078701Florida 199Jayden Whittaker FL 2010 15Florida Elite 14-15yo M 60 / / / / 175A 9BLUE 22-Jun 10:10 AM
+1062404Texas-Oklahoma 1194Cody Anderson TX 2010 15Waco Barbell 14-15yo M 60 / / / / 175A 9BLUE 22-Jun 10:10 AM
+1076543Mountain South 516Ashton McAllister AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo M 60 / / / / 160A 9BLUE 22-Jun 10:10 AM
+1059166Texas-Oklahoma 4Caleb Berneathy TX 2010 15TEAM HOUSTON 14-15yo M 60 / / / / 133A 9BLUE 22-Jun 10:10 AM
+1061364Michigan 188Brock Bates MI 2011 14Glass City Weightlifting 14-15yo M 60 / / / / 130A 9BLUE 22-Jun 10:10 AM
+1076039Ohio 1171Grayor Opfer OH 2010 15SANDUSKY WEIGHTLIFTING 14-15yo M 60 / / / / 130A 9BLUE 22-Jun 10:10 AM
+1066319Georgia 1507Tyson Jenkins GA 2010 15FTF Barbell 14-15yo M 60 / / / / 117A 9BLUE 22-Jun 10:10 AM
+1055250New York 1196Mateo Zikoyanis NY 2010 15Gryphon Strength Barbell 14-15yo M 60 / / / / 115A 9BLUE 22-Jun 10:10 AM
+1078323Indiana 1311AJ Schunk IN 2011 141Kilo 14-15yo M 60 / / / / 109A 9BLUE 22-Jun 10:10 AM
+1072573Texas-Oklahoma 624Jason Marsh TX 2011 14Friendswood Highschool Weightlifting Club 14-15yo M 60 / / / / 105A 9BLUE 22-Jun 10:10 AM
+1031981Iowa-Nebraska 1248Chassity Del Balso NE 2010 15Conqueror Weightlifting 14-15yo F 63 / / / / 175A 10RED 22-Jun 11:50 AM
+1066965Minnesota-Dakotas 229Addison Eicher MN 2010 15Unaffiliated 14-15yo F 63 / / / / 145A 10RED 22-Jun 11:50 AM
+1040632Texas-Oklahoma 1247Hadley Parsons OK 2010 15Pure Health Barbell 14-15yo F 63 / / / / 120A 10RED 22-Jun 11:50 AM
+1075279Ohio 151Amiya Drury OH 2010 15SANDUSKY WEIGHTLIFTING 14-15yo F 63 / / / / 110A 10RED 22-Jun 11:50 AM
+1066116Mountain North 450Myla Bryan ID 2011 14CDA Heart and Barbell Club 14-15yo F 63 / / / / 110A 10RED 22-Jun 11:50 AM
+1078069Iowa-Nebraska 1372Kaelyn Taylor NE 2010 15Conqueror Weightlifting 14-15yo F 63 / / / / 110A 10RED 22-Jun 11:50 AM
+1065013Illinois 1056Emerson Holden IL 2010 15PXM Weightlifting 14-15yo F 63 / / / / 105A 10RED 22-Jun 11:50 AM
+1061919Illinois 935Sophie Baker IL 2011 14Aegis Barbell 14-15yo F 63 / / / / 100A 10RED 22-Jun 11:50 AM
+1056219California South 1526Sofia Rosales CA 2010 15Long Beach Weightlifting 14-15yo F 63 / / / / 90A 10RED 22-Jun 11:50 AM
+1081545California South 1354Juliana DaSilva CA 2010 15Grey Castle Strength and Conditioning 14-15yo F 63 / / / / 89A 10RED 22-Jun 11:50 AM
+1080492New England 434Vivienne Lefebvre MA 2010 15Wormtown Weightlifting 14-15yo F 69+ / / / / 120B 10WHITE 22-Jun 12:00 PM
+1050279Tennessee-Kentucky 656Kyla Monhollen KY 2010 15Unaffiliated 14-15yo F 69+ / / / / 117B 10WHITE 22-Jun 12:00 PM
+1077218Florida 1145Hannelore Brown FL 2010 15Maxx Effort Training 14-15yo F 69+ / / / / 111B 10WHITE 22-Jun 12:00 PM
+1076139California North Central 1293Katea Puamau CA 2011 14HASSLE FREE BBC 14-15yo F 69+ / / / / 110B 10WHITE 22-Jun 12:00 PM
+1078603Mountain South 1190Kinlee Apalategui AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 69+ / / / / 102B 10WHITE 22-Jun 12:00 PM
+1066919New York 743Reagan Frommer NY 2011 14Gryphon Strength Barbell 14-15yo F 69+ / / / / 100B 10WHITE 22-Jun 12:00 PM
+1081697Indiana 1374Hallie Northcutt IN 2010 151Kilo 14-15yo F 69+ / / / / 100B 10WHITE 22-Jun 12:00 PM
+1079607Mountain South 860Thea Sarhan AZ 2011 14Kilo Barbell Club 14-15yo F 69+ / / / / 96B 10WHITE 22-Jun 12:00 PM
+1077437Texas-Oklahoma 81Katy Shade OK 2010 15Pure Health Barbell 14-15yo F 69+ / / / / 95B 10WHITE 22-Jun 12:00 PM
+1077874Tennessee-Kentucky 801McKayleigh Fullard TN 2010 15STONEAGE WEIGHTLIFTING CLUB 14-15yo F 69+ / / / / 95B 10WHITE 22-Jun 12:00 PM
+1057923Michigan 546Bradley Bates MI 2010 15Glass City Weightlifting 14-15yo M 65 / / / / 200A 10BLUE 22-Jun 11:50 AM
+1033783Southern 1072Liam Bujanda LA 2011 14Bujanda Strong 14-15yo M 65 / / / / 195A 10BLUE 22-Jun 11:50 AM
+1071426Texas-Oklahoma 1133Ezekiel Macias TX 2011 14Houston Weightlifting Academy 14-15yo M 65 / / / / 165A 10BLUE 22-Jun 11:50 AM
+1050894Pennsylvania-West Virginia 153Aidan Griesser PA 2011 14Country Strong 14-15yo M 65 / / / / 160A 10BLUE 22-Jun 11:50 AM
+1059594Missouri Valley 1134JONAH BAHARIN MO 2010 15KC WEIGHTLIFTING 14-15yo M 65 / / / / 151A 10BLUE 22-Jun 11:50 AM
+1042762California North Central 532liam gargan CA 2010 15HASSLE FREE BBC 14-15yo M 65 / / / / 150A 10BLUE 22-Jun 11:50 AM
+1073743Minnesota-Dakotas 1103Keagan Card MN 2010 15Team Minnesota 14-15yo M 65 / / / / 144A 10BLUE 22-Jun 11:50 AM
+1074529Mountain South 1352Gavin Burrows NV 2011 14Unaffiliated 14-15yo M 65 / / / / 125A 10BLUE 22-Jun 11:50 AM
+1061315Georgia 608Dryden Yates GA 2010 15Bexar Barbell 14-15yo M 71 / / / / 200A 11RED 22-Jun 1:30 PM
+1065673Missouri Valley 906Levi Atwell MO 2010 15Lebanon Barbell Club 14-15yo M 71 / / / / 190A 11RED 22-Jun 1:30 PM
+1030176California North Central 125Jaden Angel CA 2010 15HASSLE FREE BBC 14-15yo M 71 / / / / 175A 11RED 22-Jun 1:30 PM
+1073620Florida 399Matias Navarrete FL 2010 15TEAM OMNIA 14-15yo M 71 / / / / 160A 11RED 22-Jun 1:30 PM
+1059289California North Central 423Henry Faye CA 2011 14Marin Heavy Athletics 14-15yo M 71 / / / / 160A 11RED 22-Jun 1:30 PM
+1082025Florida 542Aiden Liao FL 2010 15Pensacola Strength 14-15yo M 71 / / / / 150A 11RED 22-Jun 1:30 PM
+1075545Texas-Oklahoma 942Bradley Garza TX 2010 15HUSZKA WEIGHTLIFTING CLUB 14-15yo M 71 / / / / 150A 11RED 22-Jun 1:30 PM
+1060124Carolina 804Grady Sterling NC 2010 15Unaffiliated 14-15yo M 71 / / / / 147A 11RED 22-Jun 1:30 PM
+1067981Minnesota-Dakotas 785Bryce Niedzielski MN 2010 15Unaffiliated 14-15yo M 71 / / / / 140A 11RED 22-Jun 1:30 PM
+1075572California North Central 1484Luke Ardinez CA 2011 14Team Juanatas-Bowens 14-15yo M 71 / / / / 125A 11RED 22-Jun 1:30 PM
+1045830Mountain South 1005Fred Lee NV 2010 15CALAVERA BARBELL 14-15yo M 71 / / / / 123A 11RED 22-Jun 1:30 PM
+1063773Ohio 1135Spencer Davern OH 2011 14Steadfast Barbell 14-15yo M 79 / / / / 210A 11WHITE 22-Jun 1:30 PM
+1051716Texas-Oklahoma 306Zaevian Morales TX 2010 15Unaffiliated 14-15yo M 79 / / / / 195A 11WHITE 22-Jun 1:30 PM
+1070453Mountain South 248Keegan McHale AZ 2010 15Kilo Barbell Club 14-15yo M 79 / / / / 190A 11WHITE 22-Jun 1:30 PM
+1077830New Jersey 509Kevin Hall NJ 2011 14Marble Weightlifting 14-15yo M 79 / / / / 180A 11WHITE 22-Jun 1:30 PM
+1077641California North Central 878Erubey Garcia CA 2010 15XIOS Strength & Conditioning 14-15yo M 79 / / / / 180A 11WHITE 22-Jun 1:30 PM
+1077937Missouri Valley 1118Ethan Takacs MO 2010 15Lebanon Barbell Club 14-15yo M 79 / / / / 170A 11WHITE 22-Jun 1:30 PM
+1050399Georgia 1272Noah Booth GA 2010 15Beyond The Barbell 14-15yo M 79 / / / / 170A 11WHITE 22-Jun 1:30 PM
+1067750Minnesota-Dakotas 1227Samuel Schulz MN 2010 15Unaffiliated 14-15yo M 79 / / / / 163A 11WHITE 22-Jun 1:30 PM
+1053800Mountain North 1331Taylor Page CO 2010 15Durango Barbell Club 14-15yo M 79 / / / / 162A 11WHITE 22-Jun 1:30 PM
+1069188Not Found 1441Bo Laird CA 2010 15HASSLE FREE BBC 14-15yo M 79 / / / / 158A 11WHITE 22-Jun 1:30 PM
+1073914Minnesota-Dakotas 458Logan German MN 2010 15CANNON FALLS WEIGHTLIFTING 14-15yo M 79 / / / / 155A 11WHITE 22-Jun 1:30 PM
+1081893Southern 867Luke Partin LA 2010 15Bujanda Strong 14-15yo M 79 / / / / 145A 11WHITE 22-Jun 1:30 PM
+1074491Missouri Valley 1359Jacob Farrell-Evans KS 2010 15KC WEIGHTLIFTING 14-15yo M 79 / / / / 138A 11WHITE 22-Jun 1:30 PM
+1075805Georgia 1435Jaden Smith GA 2010 15COASTAL EMPIRE WEIGHTLIFTING 14-15yo M 79 / / / / 133A 11WHITE 22-Jun 1:30 PM
+1060131California North Central 1035Gianna Van Hofwegen CA 2010 15HASSLE FREE BBC 14-15yo F 69 / / / / 170A 11BLUE 22-Jun 1:20 PM
+1061800Florida 478Ireland Manor FL 2010 15Mako Athletics 14-15yo F 69 / / / / 155A 11BLUE 22-Jun 1:20 PM
+1075494Florida 1287Bryleigh Batz FL 2010 15Rise Weightlifting 14-15yo F 69 / / / / 130A 11BLUE 22-Jun 1:20 PM
+1078482Florida 1332Bella Blitch FL 2010 15Full Send Oly 14-15yo F 69 / / / / 118A 11BLUE 22-Jun 1:20 PM
+1052136Mountain South 1432Delaney Brown AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 69 / / / / 115A 11BLUE 22-Jun 1:20 PM
+1069334Ohio 1097Dahlia Sokolow OH 2011 14CLEAN SLATE WEIGHTLIFTING 14-15yo F 69 / / / / 114A 11BLUE 22-Jun 1:20 PM
+1062505Georgia 1421Ellie Kichler GA 2010 15South Georgia Barbell 14-15yo F 69 / / / / 114A 11BLUE 22-Jun 1:20 PM
+1078240Florida 735Penelope Perez FL 2011 14Freedom Weightlifting 14-15yo F 69 / / / / 106A 11BLUE 22-Jun 1:20 PM
+1078750Florida 284Elyse Presley FL 2010 15Full Send Oly 14-15yo F 69 / / / / 96A 11BLUE 22-Jun 1:20 PM
+1063052Pacific Northwest 681Joleigh Smith OR 2010 15Iron Acres Barbell 14-15yo F 69 / / / / 96A 11BLUE 22-Jun 1:20 PM
+1076819Georgia 651Catherine Cox GA 2010 15Cherokee Barbell 14-15yo F 69 / / / / 93A 11BLUE 22-Jun 1:20 PM
+1058813Missouri Valley 52Eva Windsor MO 2010 15Lebanon Barbell Club 14-15yo F 69+ / / / / 160A 12RED 22-Jun 3:00 PM
+1067685New England 1386Chloe Desjardins MA 2010 15Wormtown Weightlifting 14-15yo F 69+ / / / / 143A 12RED 22-Jun 3:00 PM
+1062750California North Central 776Alyssa Hines CA 2010 15HASSLE FREE BBC 14-15yo F 69+ / / / / 140A 12RED 22-Jun 3:00 PM
+1044479Mountain South 1089Kodi McBride AZ 2010 15POWER AND GRACE PERFORMANCE. 14-15yo F 69+ / / / / 140A 12RED 22-Jun 3:00 PM
+1074769Georgia 1495Savannah Adkins GA 2010 15Beyond The Barbell 14-15yo F 69+ / / / / 136A 12RED 22-Jun 3:00 PM
+1057447California South 16Bristol Dixon CA 2010 15West Coast Weightlifting 14-15yo F 69+ / / / / 135A 12RED 22-Jun 3:00 PM
+1070065Texas-Oklahoma 711Sophie Grace Garces TX 2010 15Bull Strength Barbell 14-15yo F 69+ / / / / 128A 12RED 22-Jun 3:00 PM
+1064260DMV 1285Olivia Blatt VA 2010 15Unaffiliated 14-15yo F 69+ / / / / 125A 12RED 22-Jun 3:00 PM
+1074557Georgia 1217Laura Griffin GA 2010 15Coffee Weightlifting Team 14-15yo F 69+ / / / / 123A 12RED 22-Jun 3:00 PM
+1081056California North Central 250Griffin Heglie CA 2010 15HASSLE FREE BBC 14-15yo M 79+ / / / / 207A 12WHITE 22-Jun 3:30 PM
+1049383Georgia 1053Asher Fountain GA 2010 15South Georgia Barbell 14-15yo M 79+ / / / / 200A 12WHITE 22-Jun 3:30 PM
+1059708Texas-Oklahoma 705Walker Stanley TX 2011 14TEAM HOUSTON 14-15yo M 79+ / / / / 180A 12WHITE 22-Jun 3:30 PM
+1064511Florida 477Trey Peaden FL 2010 15Full Send Oly 14-15yo M 79+ / / / / 176A 12WHITE 22-Jun 3:30 PM
+1044532Mountain North 544Hideo Kline CO 2010 15Fortis Vita Barbell Club 14-15yo M 79+ / / / / 175A 12WHITE 22-Jun 3:30 PM
+1075912Georgia 1497Wyatt Kight GA 2010 15Beyond The Barbell 14-15yo M 79+ / / / / 170A 12WHITE 22-Jun 3:30 PM
+1071839Ohio 97Ryan Murphy OH 2011 14Columbus Weightlifting 14-15yo M 79+ / / / / 160A 12WHITE 22-Jun 3:30 PM
+1080513Texas-Oklahoma 68Kaeleb Havard TX 2010 15TEAM HOUSTON 14-15yo M 79+ / / / / 145A 12WHITE 22-Jun 3:30 PM
+1080605Minnesota-Dakotas 680Jackson Nelson MN 2010 15Unaffiliated 14-15yo M 79+ / / / / 145A 12WHITE 22-Jun 3:30 PM
+1049155New York 710Stephen Combs NY 2010 15Unaffiliated 14-15yo M 79+ / / / / 141A 12WHITE 22-Jun 3:30 PM
+1058148Mountain North 907Dylan Laven CO 2010 15Black Tree Barbell Club 14-15yo M 79+ / / / / 125A 12WHITE 22-Jun 3:30 PM
+1072734Pacific Northwest 852Bryant Charles OR 2010 15PORTLAND OREGON WEIGHTLIFTING 14-15yo M 79+ / / / / 90A 12WHITE 22-Jun 3:30 PM
+1023478Indiana 636Diego Yoo IN 2009 16Unaffiliated 16-17yo M 56 / / / / 185A 12BLUE 22-Jun 3:00 PM
+1072778Southern 773Nathan Martin LA 2008 17Bujanda Strong 16-17yo M 56 / / / / 172A 12BLUE 22-Jun 3:00 PM
+1076201Florida 1012Daniel LoTurco FL 2008 17Full Send Oly 16-17yo M 56 / / / / 165A 12BLUE 22-Jun 3:00 PM
+1077785Florida 924Diego Cordero FL 2008 17Florida Elite 16-17yo M 56 / / / / 150A 12BLUE 22-Jun 3:00 PM
+1081523Florida 1147Manuel Hodgman FL 2009 16Freedom Weightlifting 16-17yo M 56 / / / / 150A 12BLUE 22-Jun 3:00 PM
+1067470Minnesota-Dakotas 830Wyatt Nelson MN 2009 16CANNON FALLS WEIGHTLIFTING 16-17yo M 56 / / / / 146A 12BLUE 22-Jun 3:00 PM
+1077501Mountain North 1208Karter Lawson CO 2008 17Heavy Athletics 16-17yo M 56 / / / / 145A 12BLUE 22-Jun 3:00 PM
+1076780Texas-Oklahoma 266Cole Gauthreaux TX 2009 16Friendswood Highschool Weightlifting Club 16-17yo M 56 / / / / 142A 12BLUE 22-Jun 3:00 PM
+1072065Florida 1244Brayden Politano FL 2008 17Team Florida St. Cloud 16-17yo M 56 / / / / 124A 12BLUE 22-Jun 3:00 PM
+1080997Florida 1411Connor Bork FL 2009 16North Port Weightlifting 16-17yo M 56 / / / / 118A 12BLUE 22-Jun 3:00 PM
+1072580Texas-Oklahoma 1460Elijah Mondragon TX 2008 17TEAM HOUSTON 16-17yo M 56 / / / / 118A 12BLUE 22-Jun 3:00 PM
+1082122Florida 42Jackson Harris FL 2008 17Full Send Oly 16-17yo M 56 / / / / 116A 12BLUE 22-Jun 3:00 PM
+1081797Florida 310Ty’Sun Howard FL 2009 16Full Send Oly 16-17yo M 56 / / / / 114A 12BLUE 22-Jun 3:00 PM
+1078008Florida 214Rocco Orovio FL 2009 16Iron Brotherhood 16-17yo M 56 / / / / 107A 12BLUE 22-Jun 3:00 PM
+1080641Florida 436Jessenia Tyler FL 2008 17Unaffiliated 16-17yo F 48 / / / / 96B 13RED 22-Jun 4:30 PM
+1068141California North Central 1060Skylar Fernandes CA 2009 16Fortified Strength 16-17yo F 48 / / / / 92B 13RED 22-Jun 4:30 PM
+1067577California North Central 631Jasmin Trinh CA 2008 17Fortified Strength 16-17yo F 44 / / / / 90B 13RED 22-Jun 4:30 PM
+1075246Florida 994Juliana Mannino FL 2008 17Jacksonville Weightlifting 16-17yo F 48 / / / / 88B 13RED 22-Jun 4:30 PM
+1052145Mountain South 1185TIERANY LALLY AZ 2008 17POWER AND GRACE PERFORMANCE. 16-17yo F 44 / / / / 82B 13RED 22-Jun 4:30 PM
+1072894Florida 170Alliana Janeiro FL 2009 16North Port Weightlifting 16-17yo F 44 / / / / 80B 13RED 22-Jun 4:30 PM
+1080145Mountain North 765Stormy Stindt CO 2009 16Heavy Athletics 16-17yo F 48 / / / / 80B 13RED 22-Jun 4:30 PM
+1080224Georgia 1117Taylor Hamilton GA 2009 16Beyond The Barbell 16-17yo F 48 / / / / 80B 13RED 22-Jun 4:30 PM
+1080830Florida 1451Adalae Caruso FL 2009 16FULL CIRCLE PERFORMANCE 16-17yo F 44 / / / / 79B 13RED 22-Jun 4:30 PM
+1081868Florida 570Rebecca Gaden FL 2009 16Unaffiliated 16-17yo F 53 / / / / 104B 13WHITE 22-Jun 5:20 PM
+1071427Texas-Oklahoma 892Zoe Macias TX 2009 16Houston Weightlifting Academy 16-17yo F 53 / / / / 104B 13WHITE 22-Jun 5:20 PM
+1056187Mountain South 616Lucy Mullenaux AZ 2008 17POWER AND GRACE PERFORMANCE. 16-17yo F 53 / / / / 100B 13WHITE 22-Jun 5:20 PM
+1081343Florida 35Ciara Livingston FL 2008 17Maxx Effort Training 16-17yo F 53 / / / / 95B 13WHITE 22-Jun 5:20 PM
+1081541Mountain North 106Sophia Willoughby CO 2008 17Heavy Athletics 16-17yo F 53 / / / / 90B 13WHITE 22-Jun 5:20 PM
+1080114Florida 652Mei Long FL 2009 16Unaffiliated 16-17yo F 53 / / / / 88B 13WHITE 22-Jun 5:20 PM
+1071481Florida 1422Ava Aun FL 2008 17Team Florida St. Cloud 16-17yo F 53 / / / / 87B 13WHITE 22-Jun 5:20 PM
+1077469New York 709Kaya Burns NY 2008 17Gryphon Strength Barbell 16-17yo F 53 / / / / 84B 13WHITE 22-Jun 5:20 PM
+1078480Texas-Oklahoma 720Makayla Hotchkiss TX 2008 17TEAM HOUSTON 16-17yo F 53 / / / / 84B 13WHITE 22-Jun 5:20 PM
+1080643Florida 1178Mikayla Sabino FL 2009 16Unaffiliated 16-17yo F 53 / / / / 84B 13WHITE 22-Jun 5:20 PM
+1077984Florida 552Corinne Stickle FL 2009 16Palm Beach Weightlifting 16-17yo F 53 / / / / 82B 13WHITE 22-Jun 5:20 PM
+1076535Florida 558Jackson Crane FL 2008 17Maxx Effort Training 16-17yo M 65 / / / / 173B 13BLUE 22-Jun 5:30 PM
+1073713Minnesota-Dakotas 783Isaac Rodriguez MN 2008 17Eagan High School 16-17yo M 65 / / / / 172B 13BLUE 22-Jun 5:30 PM
+1070265Florida 356Ryan Sarakinis FL 2008 17Oly Concepts 16-17yo M 65 / / / / 160B 13BLUE 22-Jun 5:30 PM
+1077551Florida 1078Kyle Mager FL 2008 17Team Florida Pensacola 16-17yo M 65 / / / / 160B 13BLUE 22-Jun 5:30 PM
+1080364Florida 1080Joseph Dishman FL 2008 17Freedom Weightlifting 16-17yo M 65 / / / / 153B 13BLUE 22-Jun 5:30 PM
+1080553California North Central 1257Maximiliano Sepulveda CA 2008 17HASSLE FREE BBC 16-17yo M 65 / / / / 153B 13BLUE 22-Jun 5:30 PM
+1075002Mountain North 978Jace Doty CO 2009 16Heavy Athletics 16-17yo M 65 / / / / 151B 13BLUE 22-Jun 5:30 PM
+1080999Florida 1114Gavin DiBiasie FL 2008 17North Port Weightlifting 16-17yo M 65 / / / / 150B 13BLUE 22-Jun 5:30 PM
+1081742Michigan 327August Ewing-Sohtun MI 2009 16LILY WEIGHTLIFTING 16-17yo M 65 / / / / 146B 13BLUE 22-Jun 5:30 PM
+1072248Missouri Valley 30William Redding KS 2008 17KC WEIGHTLIFTING 16-17yo M 65 / / / / 142B 13BLUE 22-Jun 5:30 PM
+1059140Mountain South 116Amelia Phillips AZ 2009 16POWER AND GRACE PERFORMANCE. 16-17yo F 48 / JR F 48 / / / 143A 14RED 22-Jun 6:00 PM
+1061757Pacific Northwest 1237Piper Jones OR 2009 16CATALYST ATHLETICS 16-17yo F 48 / / / / 130A 14RED 22-Jun 6:00 PM
+1075508Florida 782Zoey Morelli FL 2008 17Florida Elite 16-17yo F 48 / / / / 122A 14RED 22-Jun 6:00 PM
+1080820Florida 1338Allee Espinoza Hernandez FL 2009 16North Port Weightlifting 16-17yo F 48 / / / / 117A 14RED 22-Jun 6:00 PM
+1075290Southern 969Isabella Lanclos LA 2009 16Unaffiliated 16-17yo F 48 / / / / 115A 14RED 22-Jun 6:00 PM
+1075467Florida 1163Kloe Beardsley FL 2009 16All In Barbell 16-17yo F 48 / / / / 108A 14RED 22-Jun 6:00 PM
+1079792Florida 308Isabella Martinez FL 2009 16TEAM OMNIA 16-17yo F 48 / / / / 103A 14RED 22-Jun 6:00 PM
+1058832New England 566Nora Paoloni MA 2008 17Wormtown Weightlifting 16-17yo F 48 / / / / 100A 14RED 22-Jun 6:00 PM
+1075641Florida 400nya williams FL 2008 17Florida Elite 16-17yo F 53 / / / / 146A 14WHITE 22-Jun 7:00 PM
+1071594Florida 730Aberly Duvall FL 2008 17Train Harder Barbell Club 16-17yo F 53 / / / / 122A 14WHITE 22-Jun 7:00 PM
+1064330Mountain South 277Maya Litt AZ 2009 16Sanctuary Barbell 16-17yo F 53 / / / / 120A 14WHITE 22-Jun 7:00 PM
+1080613Florida 639Amelia Ciriaco FL 2009 16Freedom Weightlifting 16-17yo F 53 / / / / 119A 14WHITE 22-Jun 7:00 PM
+1076228Texas-Oklahoma 539Taylyn Slater TX 2008 17TEAM HOUSTON 16-17yo F 53 / / / / 118A 14WHITE 22-Jun 7:00 PM
+1042699Pacific Northwest 219Amelia Cone OR 2009 16Rising Tide Weightlifting 16-17yo F 53 / / / / 115A 14WHITE 22-Jun 7:00 PM
+1066189California North Central 617Emaan Qayyum CA 2008 17Fortified Strength 16-17yo F 53 / / / / 115A 14WHITE 22-Jun 7:00 PM
+1075393Florida 1289shayla strickland FL 2009 16TEAM OMNIA 16-17yo F 53 / / / / 112A 14WHITE 22-Jun 7:00 PM
+1080015Florida 1253Mariam Petit FL 2008 17Orlando Strength 16-17yo F 53 / / / / 110A 14WHITE 22-Jun 7:00 PM
+1079355Florida 258Jordyn Carreira FL 2008 17Keep Pulling 16-17yo F 53 / / / / 108A 14WHITE 22-Jun 7:00 PM
+1071670Ohio 1376Lucas Mansier OH 2008 17Hive Weightlifting 16-17yo M 60 / / / / 185A 14BLUE 22-Jun 7:10 PM
+1029394Indiana 497Jack Mann IN 2008 17The Weight Room 16-17yo M 60 / / / / 182A 14BLUE 22-Jun 7:10 PM
+1080909Florida 729Jaxson Van Horn FL 2009 16LVL UP WEIGHTLIFTING 16-17yo M 60 / / / / 150A 14BLUE 22-Jun 7:10 PM
+1074859Florida 1299Noah Presley FL 2009 16Full Send Oly 16-17yo M 60 / / / / 149A 14BLUE 22-Jun 7:10 PM
+1081353Florida 587Niko Labella-choo FL 2009 16TEAM OMNIA 16-17yo M 60 / / / / 140A 14BLUE 22-Jun 7:10 PM
+1076623Florida 657Jason Goico FL 2008 17TEAM SOUL MIAMI 16-17yo M 60 / / / / 140A 14BLUE 22-Jun 7:10 PM
+1024140Mountain South 267Parker Myers NV 2009 16CALAVERA BARBELL 16-17yo M 60 / / / / 124A 14BLUE 22-Jun 7:10 PM
+1077644Florida 1353Anaya Brown FL 2008 17TEAM OMNIA 16-17yo F 58 / / / / 110C 15RED 23-Jun 8:00 AM
+1080554Florida 416Alana Kargas FL 2009 16Volusia Barbell 16-17yo F 58 / / / / 108C 15RED 23-Jun 8:00 AM
+1069496Florida 554Desirae Phoenix FL 2008 17Exclusive Club Weightlifting 16-17yo F 58 / / / / 107C 15RED 23-Jun 8:00 AM
+1074463Florida 1160Mallory Maritato FL 2008 17R 3 Weightlifting 16-17yo F 58 / / / / 105C 15RED 23-Jun 8:00 AM
+1061015Pacific Northwest 1470Eden Ranola WA 2008 17Seattle Barbell Club 16-17yo F 58 / / / / 105C 15RED 23-Jun 8:00 AM
+1046865Texas-Oklahoma 981Amy Giffin TX 2009 16Unaffiliated 16-17yo F 58 / / / / 104C 15RED 23-Jun 8:00 AM
+1080074Pennsylvania-West Virginia 234Tonya Hinks PA 2009 16GARAGE STRENGTH 16-17yo F 58 / / / / 101C 15RED 23-Jun 8:00 AM
+1065550Tennessee-Kentucky 1458Ellis Voyles TN 2008 17Nashville Weightlifting Club 16-17yo F 58 / / / / 101C 15RED 23-Jun 8:00 AM
+1072356New England 933Anna Kent MA 2009 16Wormtown Weightlifting 16-17yo F 58 / / / / 93C 15RED 23-Jun 8:00 AM
+1018300New England 648Abigail Angier CT 2008 17Cheshire Weightlifting Club 16-17yo F 58 / / / / 90C 15RED 23-Jun 8:00 AM
+1073833Minnesota-Dakotas 1054Rylie Richards MN 2008 17Unaffiliated 16-17yo F 58 / / / / 90C 15RED 23-Jun 8:00 AM
+1080184Georgia 351Miley Vaughan GA 2008 17Beyond The Barbell ADAP 16-17yo F 58 / / / / 54C 15RED 23-Jun 8:00 AM
+1008992California North Central 281bret tom CA 2009 16HASSLE FREE BBC 16-17yo M 71 / / / / 175B 15WHITE 23-Jun 8:00 AM
+1080158Florida 831Camdynn Burns FL 2008 17Team Florida Pensacola 16-17yo M 71 / / / / 175B 15WHITE 23-Jun 8:00 AM
+1060031Minnesota-Dakotas 943Christian Anderson MN 2009 16Unaffiliated 16-17yo M 71 / / / / 175B 15WHITE 23-Jun 8:00 AM
+1081668Georgia 854Marquaviun Holloway GA 2008 17Unaffiliated 16-17yo M 71 / / / / 165B 15WHITE 23-Jun 8:00 AM
+1072622Texas-Oklahoma 1306Erik Hayrapetyan TX 2008 17Houston Weightlifting Academy 16-17yo M 71 / / / / 165B 15WHITE 23-Jun 8:00 AM
+1068693Minnesota-Dakotas 342Caleb Trueblood MN 2008 17Unaffiliated 16-17yo M 71 / / / / 164B 15WHITE 23-Jun 8:00 AM
+1080209Florida 512Julian Pina FL 2008 17Iron Brotherhood 16-17yo M 71 / / / / 163B 15WHITE 23-Jun 8:00 AM
+1075648Florida 519Benjamin Dufresne FL 2008 17Rise Weightlifting 16-17yo M 71 / / / / 160B 15WHITE 23-Jun 8:00 AM
+1055942Minnesota-Dakotas 736Mason Muench MN 2008 17Unaffiliated 16-17yo M 71 / / / / 159B 15WHITE 23-Jun 8:00 AM
+1063128California South 945Mateo Jonah Limbo CA 2009 16Tribe Barbell Club 16-17yo M 71 / / / / 156B 15WHITE 23-Jun 8:00 AM
+1073065New York 62Symir Tai NY 2008 17S&M Strength 16-17yo M 71 / / / / 155B 15WHITE 23-Jun 8:00 AM
+1079092Carolina 525Alexander Ling NC 2008 17Wilmington Strength 16-17yo M 71 / / / / 155B 15WHITE 23-Jun 8:00 AM
+1081739Mountain South 466Rex Stabler AZ 2009 16Unaffiliated 16-17yo M 71 / / / / 150B 15WHITE 23-Jun 8:00 AM
+1058286Texas-Oklahoma 291Leonardo Davila TX 2008 17HUSZKA WEIGHTLIFTING CLUB 16-17yo M 71 / / / / 145B 15WHITE 23-Jun 8:00 AM
+1076848Florida 1034Bryson Michalkiewicz FL 2008 17Maxx Effort Training 16-17yo M 79 / / / / 177C 15BLUE 23-Jun 8:00 AM
+1060024Minnesota-Dakotas 412Ethan Anderson MN 2008 17Unaffiliated 16-17yo M 79 / / / / 175C 15BLUE 23-Jun 8:00 AM
+1070572New York 792Adam Hawrylchak NY 2009 16Aevitas Weightlifting 16-17yo M 79 / / / / 175C 15BLUE 23-Jun 8:00 AM
+1072010Texas-Oklahoma 1273Max Ferrara TX 2009 16Austin Barbell 16-17yo M 79 / / / / 175C 15BLUE 23-Jun 8:00 AM
+1060008Minnesota-Dakotas 1412Gunnar Maki MN 2008 17CANNON FALLS WEIGHTLIFTING 16-17yo M 79 / / / / 175C 15BLUE 23-Jun 8:00 AM
+1070690Carolina 1263Liam Brandis NC 2009 16Rising Tide Weightlifting 16-17yo M 79 / / / / 170C 15BLUE 23-Jun 8:00 AM
+1067219Florida 1382Josh Reisdorf FL 2008 17FULL CIRCLE PERFORMANCE 16-17yo M 79 / / / / 170C 15BLUE 23-Jun 8:00 AM
+1072502Florida 271Kyler Brown FL 2008 17Maxx Effort Training 16-17yo M 79 / / / / 169C 15BLUE 23-Jun 8:00 AM
+1076515Georgia 49Jared Adkins GA 2009 16Beyond The Barbell 16-17yo M 79 / / / / 168C 15BLUE 23-Jun 8:00 AM
+1078281Florida 719Preston Griffing FL 2009 163P Weightlifting 16-17yo M 79 / / / / 168C 15BLUE 23-Jun 8:00 AM
+1082126Georgia 816Daniel Rinaldi GA 2008 17Beyond The Barbell 16-17yo M 79 / / / / 168C 15BLUE 23-Jun 8:00 AM
+1070713California South 411Gavin Greenwalt CA 2009 16Unaffiliated 16-17yo M 79 / / / / 166C 15BLUE 23-Jun 8:00 AM
+1077366Georgia 722Austin Gerard GA 2009 16Unaffiliated 16-17yo M 79 / / / / 155C 15BLUE 23-Jun 8:00 AM
+1080627Florida 609Jaylynne DeMuth FL 2009 16Volusia Barbell 16-17yo F 58 / / / / 122B 16RED 23-Jun 10:00 AM
+1075697Florida 959Parker Tchekmeian FL 2008 17Orlando Strength 16-17yo F 58 / / / / 121B 16RED 23-Jun 10:00 AM
+1073827Southern 660Elliot Skinner LA 2008 17Unaffiliated 16-17yo F 58 / / / / 120B 16RED 23-Jun 10:00 AM
+1028073Illinois 54Sunrise de la Cruz IL 2009 16FORZA WEIGHTLIFTING CLUB 16-17yo F 58 / / / / 116B 16RED 23-Jun 10:00 AM
+1080116Florida 491Emma Stripling FL 2008 17Unaffiliated 16-17yo F 58 / / / / 115B 16RED 23-Jun 10:00 AM
+1069035Florida 1481Mia Murphy FL 2008 17Rise Weightlifting 16-17yo F 58 / / / / 115B 16RED 23-Jun 10:00 AM
+1079743Florida 100Mia Dieppa-Corbin FL 2009 16Unaffiliated 16-17yo F 58 / / / / 113B 16RED 23-Jun 10:00 AM
+1072525Ohio 36Elizabeth Klinge OH 2008 17Hive Weightlifting 16-17yo F 58 / / / / 110B 16RED 23-Jun 10:00 AM
+1023492Hawaii and International 264Kaylee Yagi HI 2008 17HI PERFORMANCE ATHLETICS 16-17yo F 58 / / / / 110B 16RED 23-Jun 10:00 AM
+201552Mountain South 295Rowan Scyphers NV 2008 17CALAVERA BARBELL 16-17yo F 58 / / / / 110B 16RED 23-Jun 10:00 AM
+1076407Texas-Oklahoma 1223Gia Duva TX 2008 17Bexar Barbell 16-17yo F 58 / / / / 110B 16RED 23-Jun 10:00 AM
+1078108Georgia 950sofia kokorina GA 2009 16Unaffiliated 16-17yo F 69 / / / / 125B 16WHITE 23-Jun 10:15 AM
+1059446Georgia 531Madeleine Maher GA 2009 16Cherokee Barbell 16-17yo F 69 / / / / 123B 16WHITE 23-Jun 10:15 AM
+1075423Florida 313Saylin Smith FL 2009 16Orlando Strength 16-17yo F 69 / / / / 121B 16WHITE 23-Jun 10:15 AM
+1077267Iowa-Nebraska 1259Ava Menken IA 2009 16N. Highland WLC 16-17yo F 69 / / / / 118B 16WHITE 23-Jun 10:15 AM
+1048431Mountain North 1048Isabella abebie CO 2009 16Valhalla Weightlifting 16-17yo F 69 / / / / 115B 16WHITE 23-Jun 10:15 AM
+1081106Florida 465Georgia Downs FL 2008 173P Weightlifting 16-17yo F 69 / / / / 114B 16WHITE 23-Jun 10:15 AM
+1081492Mountain South 309Brynn Naylor AZ 2008 17POWER AND GRACE PERFORMANCE. 16-17yo F 69 / / / / 112B 16WHITE 23-Jun 10:15 AM
+1078955Florida 716Ella Sapp FL 2008 17Full Send Oly 16-17yo F 69 / / / / 112B 16WHITE 23-Jun 10:15 AM
+1015037California North Central 221zaina mrabe CA 2009 16Team Divergent 16-17yo F 69 / / / / 110B 16WHITE 23-Jun 10:15 AM
+1049318Carolina 1349Jacquelyn Roark SC 2008 17Swamp Cabbage Barbell Club 16-17yo F 69 / / / / 110B 16WHITE 23-Jun 10:15 AM
+1062475Tennessee-Kentucky 1087Amelia Jirak KY 2008 17StrengthFix 16-17yo F 69 / / / / 100B 16WHITE 23-Jun 10:15 AM
+1073946Mountain North 352Roxanne Melinkovich WY 2008 17IRON KITCHEN 16-17yo F 69 / / / / 95B 16WHITE 23-Jun 10:15 AM
+1068994California North Central 145Noelia Torres Perez CA 2008 17Marin Heavy Athletics ADAP 16-17yo F 69 / / / / 50B 16WHITE 23-Jun 10:15 AM
+1079708Pennsylvania-West Virginia 908Logan Cheramie PA 2008 17White Rose Barbell Club 16-17yo M 79 / / / / 200B 16BLUE 23-Jun 10:15 AM
+1063351California North Central 1345Idán Wade-Curiel CA 2008 17Speed Power Strength 16-17yo M 79 / / / / 193B 16BLUE 23-Jun 10:15 AM
+1051691Indiana 228Quinn Corcoran IN 2008 171Kilo 16-17yo M 79 / / / / 190B 16BLUE 23-Jun 10:15 AM
+1073655Florida 520Christopher MCDONALD FL 2008 17Florida Elite 16-17yo M 79 / / / / 190B 16BLUE 23-Jun 10:15 AM
+1049154New York 526Nathan Combs NY 2008 17Unaffiliated 16-17yo M 79 / / / / 183B 16BLUE 23-Jun 10:15 AM
+1080212Florida 1036Myles McArthur FL 2008 17Team Florida Pensacola 16-17yo M 79 / / / / 182B 16BLUE 23-Jun 10:15 AM
+1068537Georgia 329Aiden Chancey GA 2009 16Beyond The Barbell 16-17yo M 79 / / / / 180B 16BLUE 23-Jun 10:15 AM
+1052806Texas-Oklahoma 568Decker Fontenot TX 2009 16HUSZKA WEIGHTLIFTING CLUB 16-17yo M 79 / / / / 180B 16BLUE 23-Jun 10:15 AM
+1075587Ohio 809Ayden He OH 2008 17Steadfast Barbell 16-17yo M 79 / / / / 180B 16BLUE 23-Jun 10:15 AM
+1074380Minnesota-Dakotas 929Zane Beck MN 2008 17CANNON FALLS WEIGHTLIFTING 16-17yo M 79 / / / / 180B 16BLUE 23-Jun 10:15 AM
+1075085New England 275Liam Cincotta MA 2008 17Wormtown Weightlifting 16-17yo M 79 / / / / 178B 16BLUE 23-Jun 10:15 AM
+1074903Florida 989Coen Hayes FL 2008 17Maxx Effort Training 16-17yo M 79 / / / / 178B 16BLUE 23-Jun 10:15 AM
+1066488Texas-Oklahoma 1155Xaiden Shultz OK 2008 17ECLIPSE BARBELL CLUB 16-17yo M 71 / / / / 230A 17RED 23-Jun 11:50 AM
+1068355Mountain South 934Jonathan Zinger AZ 2008 17Alee Athletics 16-17yo M 71 / / / / 225A 17RED 23-Jun 11:50 AM
+1029032Iowa-Nebraska 556Desmond Myles NE 2009 16MYLES AHEAD WEIGHTLIFTING 16-17yo M 71 / / / / 220A 17RED 23-Jun 11:50 AM
+1072824Texas-Oklahoma 547Jesse Castillo TX 2009 16Bull Strength Barbell 16-17yo M 71 / / / / 210A 17RED 23-Jun 11:50 AM
+1046984Minnesota-Dakotas 1015Elijah Hathaway MN 2008 17Unaffiliated 16-17yo M 71 / / / / 210A 17RED 23-Jun 11:50 AM
+1073711Pacific Northwest 1362Levi Stanley OR 2009 16RoseCity Barbell 16-17yo M 71 / / / / 200A 17RED 23-Jun 11:50 AM
+1042584Mountain South 1457Flynn King NM 2008 17HIGH DESERT ATHLETIC CLUB 16-17yo M 71 / / / / 195A 17RED 23-Jun 11:50 AM
+1079368Florida 59Zach Kirson FL 2008 17Orlando Strength 16-17yo M 71 / / / / 194A 17RED 23-Jun 11:50 AM
+1068086Ohio 1517Caleb Sprenger OH 2008 17SANDUSKY WEIGHTLIFTING 16-17yo M 71 / / / / 190A 17RED 23-Jun 11:50 AM
+1081709Florida 1415Christian Russman FL 2009 16Unaffiliated 16-17yo M 71 / / / / 188A 17RED 23-Jun 11:50 AM
+1048803Tennessee-Kentucky 148Dominic Fruchtenicht KY 2009 16Unaffiliated 16-17yo M 71 / / / / 186A 17RED 23-Jun 11:50 AM
+1073498Pennsylvania-West Virginia 129Biji Blagoev PENNSYLVA2N00IA8 17West Chester Weightlifting 16-17yo M 71 / / / / 181A 17RED 23-Jun 11:50 AM
+1057455Florida 286Preston Merriken FL 2009 16FULL CIRCLE PERFORMANCE 16-17yo M 71 / / / / 180A 17RED 23-Jun 11:50 AM
+1033325Texas-Oklahoma 988Rowdy Cearley TX 2008 17Bexar Barbell 16-17yo M 71 / / / / 177A 17RED 23-Jun 11:50 AM
+1076323Florida 1290Sebastian Stodel FL 2008 17Florida Elite 16-17yo M 65 / / / / 228A 17WHITE 23-Jun 12:10 PM
+1019833Florida 1463Nicholas Luna FL 2009 16VERO BEACH WEIGHTLIFTING 16-17yo M 65 / / / / 215A 17WHITE 23-Jun 12:10 PM
+1072083Carolina 802TIMOTHY NEAL NC 2008 17ATHLETIC LAB WLC 16-17yo M 65 / / / / 210A 17WHITE 23-Jun 12:10 PM
+1067041Indiana 1319Joshua Eliscupides IN 2008 17HOOSIER BARBELL CLUB 16-17yo M 65 / / / / 210A 17WHITE 23-Jun 12:10 PM
+1024137Mountain South 1131Maddux Hernandez NV 2008 17CALAVERA BARBELL 16-17yo M 65 / / / / 196A 17WHITE 23-Jun 12:10 PM
+1042910California North Central 1315Preston Sparks CA 2009 16Blackketter WL 16-17yo M 65 / / / / 195A 17WHITE 23-Jun 12:10 PM
+1033037California North Central 686Ezekiel Tolentino CA 2008 17HASSLE FREE BBC 16-17yo M 65 / / / / 185A 17WHITE 23-Jun 12:10 PM
+1025951Florida 898Dylan Brown FL 2009 16VERO BEACH WEIGHTLIFTING 16-17yo M 65 / / / / 185A 17WHITE 23-Jun 12:10 PM
+1080713Georgia 237kaiden mcveigh GA 2009 16Beyond The Barbell 16-17yo M 65 / / / / 177A 17WHITE 23-Jun 12:10 PM
+1075913Texas-Oklahoma 832John Lewis TX 2008 17ATHLEO BARBELL CLUB 16-17yo M 65 / / / / 175A 17WHITE 23-Jun 12:10 PM
+1059122Ohio 1500madeline francescone OH 2008 17Steadfast Barbell 16-17yo F 58 / / / / 170A 17BLUE 23-Jun 12:10 PM
+1036664Southern 395Brynn Catalano LA 2009 16DSP Barbell Club 16-17yo F 58 / / / / 165A 17BLUE 23-Jun 12:10 PM
+1074216Florida 663Ava Myers FL 2008 17R 3 Weightlifting 16-17yo F 58 / / / / 145A 17BLUE 23-Jun 12:10 PM
+1080751Florida 873Ellen Lassere AL 2008 17Mako Athletics 16-17yo F 58 / / / / 145A 17BLUE 23-Jun 12:10 PM
+1079701California South 389Zoe Fiala CA 2008 17Unaffiliated 16-17yo F 58 / / / / 140A 17BLUE 23-Jun 12:10 PM
+1049661DMV 1168Lucy Korn MD 2009 16EAST COAST GOLD W/L TEAM 16-17yo F 58 / / / / 136A 17BLUE 23-Jun 12:10 PM
+1037825Mountain South 143Mahealani Mason AZ 2009 16POWER AND GRACE PERFORMANCE. 16-17yo F 58 / / / / 133A 17BLUE 23-Jun 12:10 PM
+1023279Florida 326Jordan Schwenneker FL 2008 17Oly Concepts 16-17yo F 58 / / / / 132A 17BLUE 23-Jun 12:10 PM
+1063695Florida 1044Ellen Lehman FL 2009 16TEAM FLORIDA GULFCOAST WL 16-17yo F 58 / / / / 131A 17BLUE 23-Jun 12:10 PM
+1063793Carolina 623Sierra Anderson NC 2009 16HARRISBURG WEIGHTLIFTING CLUB 16-17yo F 58 / / / / 129A 17BLUE 23-Jun 12:10 PM
+1053144California South 1321Lily Wetzler CA 2008 17Unaffiliated 16-17yo F 58 / / / / 129A 17BLUE 23-Jun 12:10 PM
+1066835Florida 1271Payton Mangay-ayam FL 2008 17TEAM FLORIDA GULFCOAST WL 16-17yo F 63 / / / / 165A 18RED 23-Jun 2:00 PM
+1057512Mountain North 1320Keilana Brewer ID 2009 16POWER AND GRACE PERFORMANCE. 16-17yo F 63 / / / / 160A 18RED 23-Jun 2:00 PM
+1071049Texas-Oklahoma 603Allie Nichols TX 2008 17Austin Barbell 16-17yo F 63 / / / / 159A 18RED 23-Jun 2:00 PM
+1058942Pacific Northwest 599Sadie Merritt WA 2008 17Unaffiliated 16-17yo F 63 / / / / 140A 18RED 23-Jun 2:00 PM
+1074116Florida 1154Taylor Ford FL 2008 17TEAM FLORIDA GULFCOAST WL 16-17yo F 63 / / / / 140A 18RED 23-Jun 2:00 PM
+1075165Florida 485Taylor Bush FL 2008 17Unaffiliated 16-17yo F 63 / / / / 139A 18RED 23-Jun 2:00 PM
+1066674Mountain North 1150Alizah PIasecki CO 2008 17Heavy Athletics 16-17yo F 63 / / / / 128A 18RED 23-Jun 2:00 PM
+1073043California North Central 794Jane Levy CA 2008 17Fortified Strength 16-17yo F 63 / / / / 120A 18RED 23-Jun 2:00 PM
+1075030Florida 1442Bryn Famiglio FL 2008 17RFS Barbell 16-17yo F 63 / / / / 120A 18RED 23-Jun 2:00 PM
+1066196Pennsylvania-West Virginia 564Sadie Bischoff PA 2009 16PFP Barbell Club 16-17yo F 63 / / / / 118A 18RED 23-Jun 2:00 PM
+1081909Florida 693Evelyn Andre FL 2008 17Unaffiliated 16-17yo F 63 / / / / 114A 18RED 23-Jun 2:00 PM
+1066470Mountain North 209Brooklyn Szukala CO 2008 17Heavy Athletics 16-17yo F 63 / / / / 113A 18RED 23-Jun 2:00 PM
+1015039California North Central 774Alexia Mrabe CA 2009 16Team Divergent 16-17yo F 63 / / / / 110A 18RED 23-Jun 2:00 PM
+1058833New England 1476Emily Paoloni MA 2009 16Wormtown Weightlifting 16-17yo F 63 / / / / 95A 18RED 23-Jun 2:00 PM
+1054584Missouri Valley 410Carter Sing MO 2008 17Lebanon Barbell Club 16-17yo M 79 / / / / 270A 18WHITE 23-Jun 2:00 PM
+1062105Georgia 1357Roy Maher GA 2008 17Cherokee Barbell 16-17yo M 79 / / / / 260A 18WHITE 23-Jun 2:00 PM
+1067761Tennessee-Kentucky 154Haston Hill TN 2008 17Tipsy Hill Barbell 16-17yo M 79 / / / / 250A 18WHITE 23-Jun 2:00 PM
+1056197California North Central 865Rucker Johnson CA 2008 17Speed Power Strength 16-17yo M 79 / / / / 250A 18WHITE 23-Jun 2:00 PM
+1081511Florida 31Nicholas Migliaccio FL 2008 173P Weightlifting 16-17yo M 79 / / / / 229A 18WHITE 23-Jun 2:00 PM
+1076181Florida 244Maverick Grimm FL 2008 17Oly Concepts 16-17yo M 79 / / / / 220A 18WHITE 23-Jun 2:00 PM
+1061838Tennessee-Kentucky 441Jeremy Gillihan KY 2008 17Unaffiliated 16-17yo M 79 / / / / 215A 18WHITE 23-Jun 2:00 PM
+1068550California North Central 1304Anthony Benavides CA 2008 17HASSLE FREE BBC 16-17yo M 79 / / / / 210A 18WHITE 23-Jun 2:00 PM
+1075524Florida 317Renzo De Oliveira FL 2008 17Rise Weightlifting 16-17yo M 79 / / / / 205A 18WHITE 23-Jun 2:00 PM
+1078721Florida 1245Elan Mostun FL 2008 17Unaffiliated 16-17yo M 79 / / / / 205A 18WHITE 23-Jun 2:00 PM
+1029603Pennsylvania-West Virginia 1355Luke Griesser PA 2008 17Country Strong 16-17yo M 79 / / / / 205A 18WHITE 23-Jun 2:00 PM
+1069041Florida 1251Branden Berthiaume FL 2008 17Rise Weightlifting 16-17yo M 79 / / / / 201A 18WHITE 23-Jun 2:00 PM
+1061468California North Central 588Robert Whitlock CA 2009 16Speed Power Strength 16-17yo M 88 / / / / 250A 18BLUE 23-Jun 2:00 PM
+1076373Florida 583Brian Begnoche FL 2008 17Volusia Barbell 16-17yo M 88 / / / / 245A 18BLUE 23-Jun 2:00 PM
+1072087Florida 1254Evan Kniss FL 2009 16Maxx Effort Training 16-17yo M 88 / / / / 244A 18BLUE 23-Jun 2:00 PM
+1072703Texas-Oklahoma 1323Daniel Nuñez TX 2008 17Bull Strength Barbell 16-17yo M 88 / / / / 240A 18BLUE 23-Jun 2:00 PM
+1070292Mountain North 1094anderson geerdes CO 2008 17Heavy Athletics 16-17yo M 88 / / / / 235A 18BLUE 23-Jun 2:00 PM
+1074314Georgia 1025Jackson Cato GA 2009 16South Georgia Barbell 16-17yo M 88 / / / / 230A 18BLUE 23-Jun 2:00 PM
+1055093Minnesota-Dakotas 1157Jack Green MT 2009 16Fourteen Forty Collective 16-17yo M 88 / / / / 220A 18BLUE 23-Jun 2:00 PM
+1072393Texas-Oklahoma 337Colten Clyburn TX 2009 16Unaffiliated 16-17yo M 88 / / / / 210A 18BLUE 23-Jun 2:00 PM
+1076746California North Central 1017William (Van) Selph CA 2009 16Marin Heavy Athletics 16-17yo M 88 / / / / 210A 18BLUE 23-Jun 2:00 PM
+1068540California North Central 1158Ajeet Virk CA 2008 17HASSLE FREE BBC 16-17yo M 88 / / / / 207A 18BLUE 23-Jun 2:00 PM
+1079661Minnesota-Dakotas 866Miguel Romero Colon MN 2008 17Unaffiliated 16-17yo M 88 / / / / 200A 18BLUE 23-Jun 2:00 PM
+1076229Texas-Oklahoma 398Bruce Adame TX 2009 16Friendswood Highschool Weightlifting Club 16-17yo M 88 / / / / 182A 18BLUE 23-Jun 2:00 PM
+1071456Florida 1295Sebastian Perez FL 2008 17Rise Weightlifting 16-17yo M 88 / / / / 182A 18BLUE 23-Jun 2:00 PM
+1063188Mountain South 517Dylan McCullough AZ 2008 17PERFORMANCE ONE WEIGHTLIFTING 16-17yo M 88 / / / / 180A 18BLUE 23-Jun 2:00 PM
+1078319Florida 851tyler bullock FL 2008 17Full Send Oly 16-17yo M 88 / / / / 180A 18BLUE 23-Jun 2:00 PM
+1051704Hawaii and International 1252Tai Ferrer HI 2009 16HI PERFORMANCE ATHLETICS 16-17yo M 88 / / / / 180A 18BLUE 23-Jun 2:00 PM
+1080240Florida 232Marcos Pujol FL 2009 16Iron Brotherhood 16-17yo M 88 / / / / 148A 18BLUE 23-Jun 2:00 PM
+1077632Florida 753Allison Rebustillo FL 2008 17Florida Elite 16-17yo F 69 / / / / 180A 19RED 23-Jun 4:30 PM
+1060022Florida 897McKenzie Hatcher FL 2008 17Florida Elite 16-17yo F 69 / / / / 180A 19RED 23-Jun 4:30 PM
+1043688Illinois 1387Adelyn Jones IL 2009 16FORZA WEIGHTLIFTING CLUB 16-17yo F 69 / / / / 174A 19RED 23-Jun 4:30 PM
+1050575Missouri Valley 2Autumn Sands KS 2008 17Lion Chaser Barbell 16-17yo F 69 / / / / 170A 19RED 23-Jun 4:30 PM
+1061068New England 21Vienna Belli MA 2008 17Unaffiliated 16-17yo F 69 / / / / 160A 19RED 23-Jun 4:30 PM
+1040858Tennessee-Kentucky 618Addison Bell KY 2008 17Rising Tide Weightlifting 16-17yo F 69 / / / / 150A 19RED 23-Jun 4:30 PM
+1023189Missouri Valley 174Samantha Goodman MO 2008 17KC WEIGHTLIFTING 16-17yo F 69 / / / / 145A 19RED 23-Jun 4:30 PM
+1080446Florida 1488Alyssa McMurtrie FL 2008 17Heavenly Gains Barbell 16-17yo F 69 / / / / 145A 19RED 23-Jun 4:30 PM
+1062445California North Central 238Stevie Majoros CA 2009 16Fortified Strength 16-17yo F 69 / / / / 140A 19RED 23-Jun 4:30 PM
+1080720Florida 102zylia parker FL 2008 17North Port Weightlifting 16-17yo F 69 / / / / 134A 19RED 23-Jun 4:30 PM
+1080534Florida 756Mathea Wendle FL 2009 16North Port Weightlifting 16-17yo F 69 / / / / 134A 19RED 23-Jun 4:30 PM
+1051442Ohio 394Brooklynn Hoover OH 2009 16POWER AND GRACE PERFORMANCE. 16-17yo F 69 / / / / 125A 19RED 23-Jun 4:30 PM
+1081168California North Central 696Genjay Crump CA 2008 17HASSLE FREE BBC 16-17yo M 94+ / / / / 210B 19WHITE 23-Jun 4:00 PM
+1076338Iowa-Nebraska 1204Myles Pudenz IA 2009 16N. Highland WLC 16-17yo M 94+ / / / / 210B 19WHITE 23-Jun 4:00 PM
+1061018Texas-Oklahoma 454Charles Kuebler TX 2009 16TEAM HOUSTON 16-17yo M 94+ / / / / 205B 19WHITE 23-Jun 4:00 PM
+1082109Florida 675Will Hendrix FL 2008 17Full Send Oly 16-17yo M 94+ / / / / 203B 19WHITE 23-Jun 4:00 PM
+1070302Georgia 202Braydon Vester GA 2008 17Beyond The Barbell 16-17yo M 94+ / / / / 200B 19WHITE 23-Jun 4:00 PM
+1079256Iowa-Nebraska 825Ian Taylor NE 2008 17Conqueror Weightlifting 16-17yo M 94+ / / / / 200B 19WHITE 23-Jun 4:00 PM
+1075063Minnesota-Dakotas 840logan walkins MN 2008 17Unaffiliated 16-17yo M 94+ / / / / 200B 19WHITE 23-Jun 4:00 PM
+1059165Texas-Oklahoma 1120Jacob Berneathy TX 2008 17TEAM HOUSTON 16-17yo M 94+ / / / / 198B 19WHITE 23-Jun 4:00 PM
+196688Georgia 34Ahmad Minor GA 2008 17COASTAL EMPIRE WEIGHTLIFTING 16-17yo M 94+ / / / / 192B 19WHITE 23-Jun 4:00 PM
+1080380California North Central 698HAYDEN MAAKE CA 2008 17Carlmont Scots Athletics 16-17yo M 94+ / / / / 191B 19WHITE 23-Jun 4:00 PM
+1076532Mountain South 1459Gavin Dahle AZ 2009 16POWER AND GRACE PERFORMANCE. 16-17yo M 94+ / / / / 191B 19WHITE 23-Jun 4:00 PM
+1053055Minnesota-Dakotas 958Andy Arntson MN 2009 16Unaffiliated 16-17yo M 94+ / / / / 188B 19WHITE 23-Jun 4:00 PM
+1077887Florida 1424Jake Langer FL 2008 17Iron Brotherhood 16-17yo M 94+ / / / / 182B 19WHITE 23-Jun 4:00 PM
+1059641Minnesota-Dakotas 674Patrick Langfeldt MN 2008 17CANNON FALLS WEIGHTLIFTING 16-17yo M 94+ / / / / 110B 19WHITE 23-Jun 4:00 PM
+1067874New England 348Brooke Buzzell MA 2008 17Arkitect Fitness 16-17yo F 77 / / / / 188A 19BLUE 23-Jun 4:40 PM
+1068571Florida 1467Ella Bays FL 2008 17Jacksonville Weightlifting 16-17yo F 77 / / / / 187A 19BLUE 23-Jun 4:40 PM
+1056171Georgia 1064Emma Meads GA 2008 17South Georgia Barbell 16-17yo F 77 / / / / 160A 19BLUE 23-Jun 4:40 PM
+1073667Minnesota-Dakotas 66Lila Volovsek MN 2008 17Team Minnesota 16-17yo F 77 / / / / 150A 19BLUE 23-Jun 4:40 PM
+1025110Florida 469Layah Slaughter FL 2009 16Heavenly Gains Barbell 16-17yo F 77 / / / / 146A 19BLUE 23-Jun 4:40 PM
+1075134Florida 210Stephanie Griffith FL 2008 17Kaizen Strength 16-17yo F 77 / / / / 139A 19BLUE 23-Jun 4:40 PM
+1080482Florida 355McKenzie Kuykendall FL 2009 16North Port Weightlifting 16-17yo F 77 / / / / 136A 19BLUE 23-Jun 4:40 PM
+1068310Florida 1042Alexis Rissler FL 2008 17Unaffiliated 16-17yo F 77 / / / / 136A 19BLUE 23-Jun 4:40 PM
+1052748Texas-Oklahoma 353Norah Cape TX 2009 16Unaffiliated 16-17yo F 77 / / / / 135A 19BLUE 23-Jun 4:40 PM
+1075710Florida 79Sarah MacMullan FL 2009 16TEAM OMNIA 16-17yo F 77 / / / / 126A 19BLUE 23-Jun 4:40 PM
+1076209Florida 1124Kacey Hopkins FL 2009 16Unaffiliated 16-17yo F 77 / / / / 124A 19BLUE 23-Jun 4:40 PM
+1080684Florida 1366Kamryn Anderson FL 2008 17Jacksonville Weightlifting 16-17yo F 77 / / / / 124A 19BLUE 23-Jun 4:40 PM
+1079670Georgia 1180L’Kia Wilson GA 2008 17Beyond The Barbell 16-17yo F 77 / / / / 120A 19BLUE 23-Jun 4:40 PM
+1082015Florida 1062Ava Broxson FL 2008 173P Weightlifting 16-17yo F 77 / / / / 118A 19BLUE 23-Jun 4:40 PM
+1061725New England 683Ciah Crawford MA 2008 17People's Republic of The Dojo 16-17yo F 77 / / / / 110A 19BLUE 23-Jun 4:40 PM
+1051049Florida 613Olivia Bond-West FL 2008 17Florida Elite 16-17yo F 77+ / / / / 197A 20RED 23-Jun 6:30 PM
+210166Missouri Valley 885Kinsley Rodden KS 2009 16PIONEER WLC 16-17yo F 77+ / / / / 189A 20RED 23-Jun 6:30 PM
+1068466Florida 793Isabella Wray FL 2009 16All In Barbell 16-17yo F 77+ / / / / 161A 20RED 23-Jun 6:30 PM
+1069060Florida 715Reese Butler FL 2008 17Florida Elite 16-17yo F 77+ / / / / 160A 20RED 23-Jun 6:30 PM
+1074946California North Central 1184Eleanor Cler CA 2009 16Fortified Strength 16-17yo F 77+ / / / / 150A 20RED 23-Jun 6:30 PM
+1080789Florida 987Avery Miller FL 2009 16VERO BEACH WEIGHTLIFTING 16-17yo F 77+ / / / / 144A 20RED 23-Jun 6:30 PM
+1075113Florida 443Madison Hoblit FL 2008 17WOLFPACK 16-17yo F 77+ / / / / 140A 20RED 23-Jun 6:30 PM
+1078465Texas-Oklahoma 1019Stella Stimpson TX 2008 17TEAM HOUSTON 16-17yo F 77+ / / / / 139A 20RED 23-Jun 6:30 PM
+1080691Florida 1001Kendal Salter FL 2008 17Heavenly Gains Barbell 16-17yo F 77+ / / / / 136A 20RED 23-Jun 6:30 PM
+1049490Iowa-Nebraska 790Anahlis Rubio NE 2009 16Heartland Strength 16-17yo F 77+ / / / / 135A 20RED 23-Jun 6:30 PM
+1080531Florida 96Brianna Justice FL 2008 17North Port Weightlifting 16-17yo F 77+ / / / / 134A 20RED 23-Jun 6:30 PM
+1067492Minnesota-Dakotas 964Atarah Tofibam MN 2008 17Unaffiliated 16-17yo F 77+ / / / / 129A 20RED 23-Jun 6:30 PM
+1056188Mountain South 76Emma Trampp AZ 2008 17POWER AND GRACE PERFORMANCE. 16-17yo F 77+ / / / / 126A 20RED 23-Jun 6:30 PM
+1070231Florida 573Raegan Franklin FL 2008 17RFS Barbell 16-17yo F 77+ / / / / 125A 20RED 23-Jun 6:30 PM
+1071668California North Central 1102Vivienne Bailey CA 2008 17Fortified Strength 16-17yo F 77+ / / / / 125A 20RED 23-Jun 6:30 PM
+1066681Pacific Northwest 1166Jessie Compton OR 2008 17Iron Acres Barbell 16-17yo F 77+ / / / / 124A 20RED 23-Jun 6:30 PM
+1054650Minnesota-Dakotas 611Kallie Otto MN 2008 17CANNON FALLS WEIGHTLIFTING 16-17yo F 77+ / / / / 121A 20RED 23-Jun 6:30 PM
+1056518Pennsylvania-West Virginia 1498Mckenzie Pauli PA 2008 17Unaffiliated 16-17yo F 77+ / / / / 106A 20RED 23-Jun 6:30 PM
+1068621Iowa-Nebraska 8Lucas Diehl IA 2008 17N. Highland WLC 16-17yo M 94+ / / / / 290A 20WHITE 23-Jun 6:30 PM
+1055967Georgia 184Madden Mones GA 2008 17Unaffiliated 16-17yo M 94+ / / / / 290A 20WHITE 23-Jun 6:30 PM
+1070324Pennsylvania-West Virginia 502Brodie Hollis PA 2008 17DSP Barbell Club 16-17yo M 94+ / / / / 265A 20WHITE 23-Jun 6:30 PM
+1073748Florida 489Chase Dooley FL 2008 173P Weightlifting 16-17yo M 94+ / / / / 264A 20WHITE 23-Jun 6:30 PM
+1075768Florida 27Frank Jimenez FL 2008 17Freedom Weightlifting 16-17yo M 94+ / / / / 240A 20WHITE 23-Jun 6:30 PM
+1053148Tennessee-Kentucky 115TYLER NIEDERGESES TN 2008 17Unaffiliated 16-17yo M 94+ / / / / 240A 20WHITE 23-Jun 6:30 PM
+1077346Mountain North 812Jackson Young CO 2009 16Heavy Athletics 16-17yo M 94+ / / / / 240A 20WHITE 23-Jun 6:30 PM
+1076200Texas-Oklahoma 1266jacob molina TX 2008 17Friendswood Highschool Weightlifting Club 16-17yo M 94+ / / / / 225A 20WHITE 23-Jun 6:30 PM
+1072201Texas-Oklahoma 1303Graeme Osteen TX 2009 16Bull Strength Barbell 16-17yo M 94+ / / / / 220A 20WHITE 23-Jun 6:30 PM
+1070750DMV 1388Joe Korchnak VA 2008 17CHFP WEIGHTLIFTING CLUB 16-17yo M 94+ / / / / 220A 20WHITE 23-Jun 6:30 PM
+1059030California North Central 1182Massimo Shinzato-Barrueto CA 2009 16Unaffiliated 16-17yo M 94+ / / / / 215A 20WHITE 23-Jun 6:30 PM
+1073994DMV 1193Judson Carithers VA 2008 17Unaffiliated 16-17yo M 94+ / / / / 215A 20WHITE 23-Jun 6:30 PM
+1081069Florida 703Jayden Mondesir FL 2008 17North Port Weightlifting 16-17yo M 94+ / / / / 211A 20WHITE 23-Jun 6:30 PM
+1074183Ohio 249Thomas Chase OH 2008 17Columbus Weightlifting 16-17yo M 94+ / / / / 210A 20WHITE 23-Jun 6:30 PM
+1076936New York 1076Elias Horn NY 2008 17TEAM WESTERN NEW YORK 16-17yo M 94 / / / / 270A 20BLUE 23-Jun 7:00 PM
+1060652Minnesota-Dakotas 966Landon Schulz MN 2008 17Unaffiliated 16-17yo M 94 / / / / 250A 20BLUE 23-Jun 7:00 PM
+1070621Carolina 160Wyatt Lupo NC 2008 17Butcher Barbell 16-17yo M 94 / / / / 230A 20BLUE 23-Jun 7:00 PM
+1072882Florida 372Will Rodriquez FL 2008 17Florida Elite 16-17yo M 94 / / / / 224A 20BLUE 23-Jun 7:00 PM
+1075020New Jersey 647Jordon Young NJ 2008 17CBA Colts Weightlifting 16-17yo M 94 / / / / 222A 20BLUE 23-Jun 7:00 PM
+1070961Southern 1302Baron Baker LA 2009 16Bujanda Strong 16-17yo M 94 / / / / 222A 20BLUE 23-Jun 7:00 PM
+1076197Florida 731Daniel Weber FL 2008 17Unaffiliated 16-17yo M 94 / / / / 200A 20BLUE 23-Jun 7:00 PM
+1060275California North Central 1431Elliot Leet CA 2009 16HASSLE FREE BBC 16-17yo M 94 / / / / 200A 20BLUE 23-Jun 7:00 PM
+1060621Minnesota-Dakotas 1312Daniel Ricklick MN 2008 17Unaffiliated 16-17yo M 94 / / / / 199A 20BLUE 23-Jun 7:00 PM
+1078489DMV 619Isaiah Aukerman MD 2009 16Westminster Barbell 16-17yo M 94 / / / / 188A 20BLUE 23-Jun 7:00 PM
+1074965Florida 212Sharanya Gande FL 2007 18Ferox Strength & Performance JR F 63 / / / / 135D 21RED 24-Jun 9:00 AM
+1036496California South 820Starla Toto CA 2000 25West Coast Weightlifting U25 F 63 / / / / 135D 21RED 24-Jun 9:00 AM
+1025328Mountain South 1018Gabriella Schwedt TX 2000 25Austin Barbell U25 F 63 / / / / 135D 21RED 24-Jun 9:00 AM
+1080783Florida 1391Amber Gregory FL 2006 193P Weightlifting JR F 63 / / / / 135D 21RED 24-Jun 9:00 AM
+1059036Florida 323Emily Varga FL 2003 22Jacksonville Weightlifting U23 F 63 / / / / 132D 21RED 24-Jun 9:00 AM
+1076068Florida 1383Genesis Gunabe-morgan FL 2006 19Orlando Strength JR F 63 / / / / 132D 21RED 24-Jun 9:00 AM
+1044478Mountain South 159Brynli McBride AZ 2007 18POWER AND GRACE PERFORMANCE. JR F 63 / / / / 130D 21RED 24-Jun 9:00 AM
+1040704Missouri Valley 303Amber Bailey KY 2003 22LINDENWOOD LIONS U25 F 63 / / / / 130D 21RED 24-Jun 9:00 AM
+1042268Mountain South 1413Carli Houston AZ 2004 21POWER AND GRACE PERFORMANCE. U23 F 63 / / / / 130D 21RED 24-Jun 9:00 AM
+1065726Missouri Valley 213Raegan Stinemetz KS 2002 23On Track Oly U23 F 63 / / / / 125D 21RED 24-Jun 9:00 AM
+1062428Mountain South 1084Maia Burrows NV 2007 18Unaffiliated JR F 63 / / / / 125D 21RED 24-Jun 9:00 AM
+1072222Florida 92Emril Hall FL 2004 21Team Florida Gainesville U25 M 60 / / / / 180B 21WHITE 24-Jun 9:00 AM
+1078999Florida 201Felipe Alanis FL 2007 18Unaffiliated JR M 60 / / / / 180B 21WHITE 24-Jun 9:00 AM
+1082021Florida 94Julio Vizcarrondo FL 2007 183P Weightlifting JR M 60 / / / / 179B 21WHITE 24-Jun 9:00 AM
+1076321Florida 1438Corbin Franklin FL 2007 18Unaffiliated JR M 60 / / / / 175B 21WHITE 24-Jun 9:00 AM
+1077723New York 220Caleb Welser NY 2005 20Unaffiliated JR M 60 / / / / 165B 21WHITE 24-Jun 9:00 AM
+1079360Mountain North 926Jayden Harris CO 2005 20Team Thick Weightlifting JR M 60 / / / / 165B 21WHITE 24-Jun 9:00 AM
+1064112Pennsylvania-West Virginia 1384Joe Dang PA 2000 25Unaffiliated U25 M 60 / / / / 160B 21WHITE 24-Jun 9:00 AM
+1076258California North Central 1393Benjamen Gao CA 2002 23HASSLE FREE BBC U25 M 60 / / / / 160B 21WHITE 24-Jun 9:00 AM
+1071295Florida 131Jeffrey Peters FL 2005 20Orlando Strength JR M 60 / / / / 150B 21WHITE 24-Jun 9:00 AM
+1076513Florida 1454Brian Chadwell FL 2007 183P Weightlifting JR M 65 / / / / 195B 21BLUE 24-Jun 9:00 AM
+1074133Florida 495Christopher Schrum FL 2007 183P Weightlifting JR M 65 / / / / 190B 21BLUE 24-Jun 9:00 AM
+1072931Florida 836Josh Alper FL 2007 18Unaffiliated JR M 65 / / / / 187B 21BLUE 24-Jun 9:00 AM
+1079121California North Central 548Ali Dougish CA 2005 20Unaffiliated JR M 65 / / / / 184B 21BLUE 24-Jun 9:00 AM
+212211Missouri Valley 1059Samuel Leonard MO 2003 22LINDENWOOD LIONS U23 M 65 / / / / 180B 21BLUE 24-Jun 9:00 AM
+1058720Tennessee-Kentucky 1506Jacob Papantonakis FL 2002 23STONEAGE WEIGHTLIFTING CLUB U23 M 65 / / / / 180B 21BLUE 24-Jun 9:00 AM
+1074714Southern 354Dax Perkins LA 2007 18Unaffiliated JR M 65 / / / / 175B 21BLUE 24-Jun 9:00 AM
+1050195New York 122Sahil Gupta NY 2001 24Brooklyn Training Hall U25 M 65 / / / / 170B 21BLUE 24-Jun 9:00 AM
+1075005Florida 767Tyler Nayman FL 2007 18Full Send Oly JR M 65 / / / / 165B 21BLUE 24-Jun 9:00 AM
+1080817Florida 585Robin Humphreys FL 2007 18Heavenly Gains Barbell JR F 58 / / / / 133C 22RED 24-Jun 11:00 AM
+1032883Mountain South 1212Marlie Manning UT 2006 19Unaffiliated JR F 58 / / / / 130C 22RED 24-Jun 11:00 AM
+1056723California North Central 1447Jenna Young CA 2003 22People's Republic of The Dojo U23 F 58 / / / / 130C 22RED 24-Jun 11:00 AM
+1080547Florida 319Alaney Hancock FL 2007 18North Port Weightlifting JR F 58 / / / / 127C 22RED 24-Jun 11:00 AM
+1066748Mountain North 1004Elizabeth Currier MT 2006 19Kaz Barbell Club JR F 58 / / / / 127C 22RED 24-Jun 11:00 AM
+1024287Mountain South 452Kawena Mason AZ 2006 19POWER AND GRACE PERFORMANCE. JR F 58 / / / / 125C 22RED 24-Jun 11:00 AM
+1061732Tennessee-Kentucky 910Jillian Jacobs FL 2005 20STONEAGE WEIGHTLIFTING CLUB JR F 58 / / / / 125C 22RED 24-Jun 11:00 AM
+1068714Mountain North 915Alexa Endsley CO 2001 24Black Tree Barbell Club U25 F 58 / / / / 125C 22RED 24-Jun 11:00 AM
+1071320Mountain South 1092Natalia Frumker AZ 2007 18Unaffiliated JR F 58 / / / / 125C 22RED 24-Jun 11:00 AM
+1048678New England 379Ella Gamache MA 2007 18Wormtown Weightlifting JR F 58 / / / / 120C 22RED 24-Jun 11:00 AM
+1060068New Jersey 1423Melody Lin NJ 2003 22Marble Weightlifting U23 F 58 / / / / 120C 22RED 24-Jun 11:00 AM
+1064594Florida 1161Laurynn Lackey FL 2004 21Team Florida Gainesville U23 F 58 / / / / 119C 22RED 24-Jun 11:00 AM
+1068757Florida 911Taylor Lamont FL 2004 21Unaffiliated U23 M 71 / / / / 208B 22WHITE 24-Jun 10:30 AM
+1063771Carolina 318Ewan McCallum NC 2000 25ATHLETIC LAB WLC U25 M 71 / / / / 205B 22WHITE 24-Jun 10:30 AM
+1081777Florida 821Andrew Cazares FL 2007 18Unaffiliated JR M 71 / / / / 205B 22WHITE 24-Jun 10:30 AM
+1049724Mountain North 1520Steven Mcdermond CO 2000 25Pinnacle Weightlifting U25 M 71 / / / / 200B 22WHITE 24-Jun 10:30 AM
+1082013Florida 917Leighland Davis FL 2007 183P Weightlifting JR M 71 / / / / 192B 22WHITE 24-Jun 10:30 AM
+1076277Florida 1215Jayson Merritt FL 2006 19Unaffiliated JR M 71 / / / / 192B 22WHITE 24-Jun 10:30 AM
+1059974Florida 1416Brice Ford FL 2006 19TEAM FLORIDA GULFCOAST WL JR M 71 / / / / 192B 22WHITE 24-Jun 10:30 AM
+1063661Texas-Oklahoma 1003Seth Barba TX 2006 19HUSZKA WEIGHTLIFTING CLUB JR M 71 / / / / 190B 22WHITE 24-Jun 10:30 AM
+1071020New Jersey 1031Justin Bongcaron NJ 2004 21PHILADELPHIA BARBELL U23 M 71 / / / / 190B 22WHITE 24-Jun 10:30 AM
+1071490Florida 198Michael Salinas FL 2007 18Orlando Strength JR M 71 / / / / 188B 22WHITE 24-Jun 10:30 AM
+1059201California North Central 1136Kason Luu CA 2007 18Fortified Strength JR M 71 / / / / 188B 22WHITE 24-Jun 10:30 AM
+1077956Florida 134Will Kolb FL 2007 18Rise Weightlifting JR M 71 / / / / 185B 22WHITE 24-Jun 10:30 AM
+1071017Florida 670Alexander Paolini FL 2005 20Orlando Strength JR M 71 / / / / 185B 22WHITE 24-Jun 10:30 AM
+1078251Florida 839Jacob St. Aubin FL 2007 18Iron Brotherhood JR M 71 / / / / 185B 22WHITE 24-Jun 10:30 AM
+1049866Tennessee-Kentucky 1317Elias Gerstein TN 2002 23Iron Wolf Weightlifting U23 M 71 / / / / 185B 22WHITE 24-Jun 10:30 AM
+1079811Florida 800Johnathan Williams FL 2006 19Wood Weightlifting JR M 71 / / / / 180B 22WHITE 24-Jun 10:30 AM
+1059713Pennsylvania-West Virginia 536Laney Yost PA 2006 19DSP Barbell Club JR F 48 / / / / 150A 22BLUE 24-Jun 11:00 AM
+1058958Florida 409Grace Masters FL 2005 20Full Send Oly JR F 48 / U23 F 48 / U25 F 48 / / 121A 22BLUE 24-Jun 11:00 AM
+1080050Florida 1452Lily Forster FL 2006 193P Weightlifting JR F 48 / / / / 118A 22BLUE 24-Jun 11:00 AM
+1081118Illinois 1086Gwyneth Graham IL 2003 22Unaffiliated U23 F 48 / / / / 115A 22BLUE 24-Jun 11:00 AM
+1054597Florida 1169Gabrielle Gutierrez FL 2007 18Exclusive Club Weightlifting JR F 48 / / / / 109A 22BLUE 24-Jun 11:00 AM
+1066120Ohio 702Liliana Ray OH 2007 18CLEAN SLATE WEIGHTLIFTING JR F 48 / / / / 105A 22BLUE 24-Jun 11:00 AM
+217380Florida 1022Kaila Corbridge FL 2005 20Mako Athletics JR F 48 / / / / 105A 22BLUE 24-Jun 11:00 AM
+1061742Florida 168Alani Rose FL 2007 18Exclusive Club Weightlifting JR F 48 / / / / 103A 22BLUE 24-Jun 11:00 AM
+1073884California North Central 946Emma Thompson CA 2003 22NorCal Weightlifting U23 F 48 / / / / 102A 22BLUE 24-Jun 11:00 AM
+1073279Georgia 162Lilia Demers GA 2006 19Floyd Farms Weightlifting JR F 48 / / / / 100A 22BLUE 24-Jun 11:00 AM
+1068958Florida 668Isabella Knight FL 2006 19Unaffiliated JR F 48 / / / / 100A 22BLUE 24-Jun 11:00 AM
+1067693Illinois 112Lilly Cottingham IL 2005 20FORZA WEIGHTLIFTING CLUB JR F 48 / / / / 90A 22BLUE 24-Jun 11:00 AM
+1075283Florida 133Shelby Welch FL 2006 19Ablaze Barbell JR F 63 / / / / 145C 23RED 24-Jun 1:00 PM
+1080390Florida 391Cassidy VanderMark FL 2006 19Unaffiliated JR F 63 / / / / 145C 23RED 24-Jun 1:00 PM
+1074137Georgia 1137Halaina Yancey GA 2003 22Bowen Elite Weightlifting U23 F 63 / / / / 142C 23RED 24-Jun 1:00 PM
+1042921Texas-Oklahoma 15Valeria Arellano TX 2003 22Bobcat Barbell U23 F 63 / / / / 141C 23RED 24-Jun 1:00 PM
+1065471Tennessee-Kentucky 243Marlow Nichols TN 2004 21STONEAGE WEIGHTLIFTING CLUB U23 F 63 / / / / 140C 23RED 24-Jun 1:00 PM
+1067558Texas-Oklahoma 474Melody Rodriguez TX 2003 22UNIVERSITY OF TEXAS U25 F 63 / / / / 140C 23RED 24-Jun 1:00 PM
+1076278Florida 799Sophia Calderon FL 2006 19Ablaze Barbell JR F 63 / / / / 138C 23RED 24-Jun 1:00 PM
+1080636Florida 921Alissa Platt FL 2007 18Unaffiliated JR F 63 / / / / 138C 23RED 24-Jun 1:00 PM
+1069285Iowa-Nebraska 513Kayla Bouckhuyt NE 2001 24Heartland Strength U25 F 63 / / / / 137C 23RED 24-Jun 1:00 PM
+1071513California South 169Christabel Lily Graton CA 2007 18Unaffiliated JR F 63 / / / / 135C 23RED 24-Jun 1:00 PM
+1059071Florida 46Ayah Muhammad FL 2007 18No Respect 4 Gravity JR F 58 / / / / 145B 23WHITE 24-Jun 1:00 PM
+1050857Florida 1381Ariana Reyes FL 2002 23Exclusive Club Weightlifting U23 F 58 / / / / 145B 23WHITE 24-Jun 1:00 PM
+1043088Florida 1492Jessica Fuhrman FL 2000 25Oly Concepts U25 F 58 / / / / 145B 23WHITE 24-Jun 1:00 PM
+1055436Carolina 1063Eva Young NC 2007 18ATHLETIC LAB WLC JR F 58 / / / / 144B 23WHITE 24-Jun 1:00 PM
+1075263California North Central 610Genevieve Sharp CA 2007 18Unaffiliated JR F 58 / / / / 142B 23WHITE 24-Jun 1:00 PM
+1059356Texas-Oklahoma 615Ayana Parker OK 2007 18Bexar Barbell JR F 58 / / / / 140B 23WHITE 24-Jun 1:00 PM
+1059037Texas-Oklahoma 1255Ariel Hekier TX 2002 23ATHLETIC LAB WLC U23 F 58 / / / / 140B 23WHITE 24-Jun 1:00 PM
+1073130Texas-Oklahoma 1116Cassie McClure TX 2002 23Bobcat Barbell U25 F 58 / / / / 138B 23WHITE 24-Jun 1:00 PM
+1061748Florida 455Alessanra Arias FL 2006 19Jacksonville Weightlifting JR F 58 / / / / 135B 23WHITE 24-Jun 1:00 PM
+1080654Florida 841haley elkins FL 2007 18Jacksonville Weightlifting JR F 58 / / / / 134B 23WHITE 24-Jun 1:00 PM
+208280Florida 1330Maryah Collins FL 2001 24FULL CIRCLE PERFORMANCE U25 F 58 / / / / 134B 23WHITE 24-Jun 1:00 PM
+1070224Florida 110Samuel Lewis FL 2006 19Jacksonville Weightlifting JR M 60 / / / / 220A 23BLUE 24-Jun 1:00 PM
+1031940Mountain North 815Kaiden Mima CO 2005 20Unaffiliated JR M 60 / / / / 220A 23BLUE 24-Jun 1:00 PM
+1080171Florida 80Justin Thach FL 2007 18Maxx Effort Training JR M 60 / / / / 206A 23BLUE 24-Jun 1:00 PM
+1076369Florida 823Jaime Solano FL 2007 18WOLFPACK JR M 60 / / / / 197A 23BLUE 24-Jun 1:00 PM
+1081519Florida 331Logan Billick FL 2007 18Unaffiliated JR M 60 / / / / 193A 23BLUE 24-Jun 1:00 PM
+1030393Carolina 392Sebastian Rose NC 2007 18HARRISBURG WEIGHTLIFTING CLUB JR M 60 / / / / 190A 23BLUE 24-Jun 1:00 PM
+1070951Florida 701Nick Lawrence FL 2005 20Team Florida Gainesville U23 M 60 / / / / 190A 23BLUE 24-Jun 1:00 PM
+1064771Florida 1394Michael Tucciarone FL 2006 19Florida Elite JR M 60 / / / / 190A 23BLUE 24-Jun 1:00 PM
+1064328Florida 464Jagarii Gardner FL 2007 18Oly Concepts JR M 60 / / / / 185A 23BLUE 24-Jun 1:00 PM
+199382Carolina 1057Ava Oteri TN 2002 23STONEAGE WEIGHTLIFTING CLUB U23 F 63 / U25 F 63 / / / 170B 24RED 24-Jun 2:50 PM
+1059032Carolina 1222Alyssa Jordan NC 2005 20Mars Hill University JR F 63 / / / / 170B 24RED 24-Jun 2:50 PM
+1054615Minnesota-Dakotas 1404Emily Green MT 2007 18Fourteen Forty Collective JR F 63 / / / / 161B 24RED 24-Jun 2:50 PM
+1072742Texas-Oklahoma 982Kareema Salah TX 2005 20Archon Weightlifting JR F 63 / / / / 160B 24RED 24-Jun 2:50 PM
+196436Florida 515Emma Nye MO 2002 23VERO BEACH WEIGHTLIFTING U23 F 63 / / / / 157B 24RED 24-Jun 2:50 PM
+217960California North Central 734Elle Hatamiya CA 2005 20Unaffiliated JR F 63 / / / / 156B 24RED 24-Jun 2:50 PM
+1077820Iowa-Nebraska 622Taylor Hedke KS 2004 21Concordia University Weightlifting U23 F 63 / / / / 155B 24RED 24-Jun 2:50 PM
+1016451Missouri Valley 1156Addison Comstock KS 2006 19On Track Oly JR F 63 / / / / 150B 24RED 24-Jun 2:50 PM
+1074624Florida 1448Zeta Zachman FL 2006 19Orlando Strength JR F 63 / / / / 150B 24RED 24-Jun 2:50 PM
+1039258New York 1450Nia Black NY 2006 19Brooklyn Training Hall JR F 63 / / / / 150B 24RED 24-Jun 2:50 PM
+210346Pennsylvania-West Virginia 486Kathryn Rose PA 2001 24Unaffiliated U25 F 58 / NAT F 58 / / / 175A 24WHITE 24-Jun 2:50 PM
+1064630Pennsylvania-West Virginia 632gretchen messner PA 2002 23DSP Barbell Club U23 F 58 / / / / 175A 24WHITE 24-Jun 2:50 PM
+1074851Florida 1236Karman Holley FL 2005 20Florida Elite JR F 58 / / / / 170A 24WHITE 24-Jun 2:50 PM
+1073273California North Central 1280Jasmine He CA 2000 25HASSLE FREE BBC U25 F 58 / / / / 165A 24WHITE 24-Jun 2:50 PM
+1027335New York 23Zoe Pasetsky NY 2002 23Bexar Barbell U23 F 58 / / / / 160A 24WHITE 24-Jun 2:50 PM
+1058332Mountain South 847Caitlyn Ogami AZ 2004 21Alee Athletics U23 F 58 / / / / 155A 24WHITE 24-Jun 2:50 PM
+1078096Mountain South 983Alexandra Hibbs AZ 2007 18Sanctuary Barbell JR F 58 / / / / 155A 24WHITE 24-Jun 2:50 PM
+1060194Florida 321Madi Muse FL 2005 20Mars Hill University JR F 58 / / / / 150A 24WHITE 24-Jun 2:50 PM
+1068952Florida 810Jaci Renfro FL 2007 18Unaffiliated JR F 58 / / / / 150A 24WHITE 24-Jun 2:50 PM
+1056502Mountain South 1006Grace Le UT 2003 22Praxis Weightlifting U25 F 58 / / / / 150A 24WHITE 24-Jun 2:50 PM
+1036509New England 1074Katherine Greisdorf MA 2002 23BEANTOWN BARBELL CLUB U23 F 58 / / / / 148A 24WHITE 24-Jun 2:50 PM
+1003173Indiana 511Jaycee Mann IN 2005 20The Weight Room JR F 53 / / / / 180A 24BLUE 24-Jun 2:50 PM
+1038699California North Central 855Jade Morales CA 2007 18HASSLE FREE BBC JR F 53 / / / / 180A 24BLUE 24-Jun 2:50 PM
+1074819Florida 1499Adia Tomlinson FL 2007 18Train Harder Barbell Club JR F 53 / / / / 150A 24BLUE 24-Jun 2:50 PM
+1055176Michigan 1361Brynn Cupp MI 2007 18West Michigan Muscle JR F 53 / / / / 149A 24BLUE 24-Jun 2:50 PM
+1055654Florida 360Sophia Milian FL 2006 19Jacksonville Weightlifting U23 F 53 / / / / 139A 24BLUE 24-Jun 2:50 PM
+1050274Mountain North 998Abigail Nelson CO 2006 19Heavy Athletics JR F 53 / / / / 135A 24BLUE 24-Jun 2:50 PM
+1076913Florida 1046Julia Azzopardi FL 2004 21Team Florida Gainesville U23 F 53 / / / / 125A 24BLUE 24-Jun 2:50 PM
+1067413Florida 1128Hailey Harford FL 2006 19RFS Barbell JR F 53 / / / / 121A 24BLUE 24-Jun 2:50 PM
+1078471Illinois 1510Mila Skibinski IL 2005 20FORZA WEIGHTLIFTING CLUB JR F 53 / / / / 120A 24BLUE 24-Jun 2:50 PM
+1079727Pennsylvania-West Virginia 1067Adalynn Smith PA 2007 18EAST COAST GOLD W/L TEAM JR F 53 / / / / 119A 24BLUE 24-Jun 2:50 PM
+1077952Florida 691Daiara Medero FL 2001 24Orlando Strength U25 F 53 / / / / 118A 24BLUE 24-Jun 2:50 PM
+1030316Florida 293Ashley Aun FL 2006 19Gator Weightlifting JR F 53 / / / / 117A 24BLUE 24-Jun 2:50 PM
+1046180Michigan 1039Sophia Shaft MI 2005 20Optimus Barbell Club JR F 63 / / / / 225A 25RED 24-Jun 4:50 PM
+1079109Indiana 984Nina Sterckx Oost-Vlaan2d0e0r2en 231Kilo U23 F 63 / / / / 220A 25RED 24-Jun 4:50 PM
+1036888Texas-Oklahoma 662Brie Gomez TX 2000 25UNIVERSITY OF TEXAS U25 F 63 / / / / 195A 25RED 24-Jun 4:50 PM
+1025560Texas-Oklahoma 1292Anna Rucker TX 2005 20Bexar Barbell JR F 63 / / / / 190A 25RED 24-Jun 4:50 PM
+1058804Florida 581Makiyah Nickerson FL 2005 20Mars Hill University JR F 63 / / / / 188A 25RED 24-Jun 4:50 PM
+1027360California North Central 955Kimberly Wiese CA 2006 19Fortified Strength JR F 63 / NAT F 63 / / / 187A 25RED 24-Jun 4:50 PM
+1055785Pacific Northwest 501Alexis Terterov WA 2001 24Unaffiliated U25 F 63 / / / / 185A 25RED 24-Jun 4:50 PM
+1060616Florida 101danila tuazon FL 2005 20Jacksonville Weightlifting JR F 63 / / / / 180A 25RED 24-Jun 4:50 PM
+1025732New England 152Ava Giorgi RI 2006 19Rhode Island Performance JR F 63 / / / / 180A 25RED 24-Jun 4:50 PM
+1038140Florida 1348Emma Heck FL 2007 18Oly Concepts JR F 63 / / / / 180A 25RED 24-Jun 4:50 PM
+1070848Florida 853Bryson Brown FL 2007 183P Weightlifting JR M 65 / / / / 258A 25WHITE 24-Jun 4:50 PM
+1065230Pennsylvania-West Virginia 993Evan Gehret PA 2005 20GARAGE STRENGTH JR M 65 / / / / 255A 25WHITE 24-Jun 4:50 PM
+1075231Iowa-Nebraska 1462Christopher Cruz NE 2006 19MYLES AHEAD WEIGHTLIFTING JR M 65 / / / / 250A 25WHITE 24-Jun 4:50 PM
+1067579Florida 834Nahshon Paul FL 2004 21Mars Hill University U23 M 65 / / / / 225A 25WHITE 24-Jun 4:50 PM
+1062865Florida 862Noel Walters FL 2005 20Gator Weightlifting JR M 65 / / / / 220A 25WHITE 24-Jun 4:50 PM
+1058490Carolina 1205Chase Overpeck NC 2001 24ATHLETIC LAB WLC U25 M 65 / / / / 220A 25WHITE 24-Jun 4:50 PM
+1058754New York 970Jared Bushaw NY 2000 25Unaffiliated U25 M 65 / / / / 216A 25WHITE 24-Jun 4:50 PM
+1059274Texas-Oklahoma 1337Kennedy Bui TX 2004 21BlueWave Weightlifting U23 M 65 / / / / 204A 25WHITE 24-Jun 4:50 PM
+1056647California North Central 364Jameson Fong CA 2007 18Marin Heavy Athletics JR M 65 / / / / 195A 25WHITE 24-Jun 4:50 PM
+1071402Florida 1367Angel Quintero FL 2006 19Florida Elite JR M 71 / / / / 265A 25BLUE 24-Jun 4:50 PM
+1081824Mountain North 1104Christopher Castellanos CO 2000 25Pinnacle Weightlifting U25 M 71 / / / / 263A 25BLUE 24-Jun 4:50 PM
+1053643California North Central 880James Woodley CA 2002 23Unaffiliated U23 M 71 / / / / 245A 25BLUE 24-Jun 4:50 PM
+1070099Florida 426Alexander Truisi FL 2005 20Rise Weightlifting JR M 71 / / / / 240A 25BLUE 24-Jun 4:50 PM
+1036772Tennessee-Kentucky 1300Andrew Dickey TN 2003 22Unaffiliated U23 M 71 / / / / 240A 25BLUE 24-Jun 4:50 PM
+1071768Florida 1346Nicholas Deshaies FL 2007 18Orlando Strength JR M 71 / / / / 237A 25BLUE 24-Jun 4:50 PM
+1066377Florida 755Jayden Bernstein FL 2005 20Florida Elite JR M 71 / / / / 235A 25BLUE 24-Jun 4:50 PM
+1063065Florida 778James Boesch FL 2004 21Jacksonville Weightlifting U23 M 71 / / / / 235A 25BLUE 24-Jun 4:50 PM
+1061997Georgia 990Benjamin Engelbracht GA 2002 23Floyd Farms Weightlifting U23 M 71 / / / / 225A 25BLUE 24-Jun 4:50 PM
+1063478California South 463Isamu Harrison CA 2000 25Southern California Weightlifting Club U25 M 71 / / / / 220A 25BLUE 24-Jun 4:50 PM
+1076355Florida 1126Jayden Torres FL 2007 18Volusia Barbell JR M 71 / / / / 219A 25BLUE 24-Jun 4:50 PM
+1058177DMV 582Harrison Phelps VA 2007 18EAST COAST GOLD W/L TEAM JR M 71 / / / / 215A 25BLUE 24-Jun 4:50 PM
+1027751Minnesota-Dakotas 1058Gordon olshanski MN 2005 20Unaffiliated JR M 71 / / / / 215A 25BLUE 24-Jun 4:50 PM
+1076149Florida 1123Derrick Hanna FL 2007 18Unaffiliated JR M 71 / / / / 215A 25BLUE 24-Jun 4:50 PM
+1055544Florida 1395Luis Eduardo Leal FL 2000 25Unaffiliated U25 M 71 / / / / 215A 25BLUE 24-Jun 4:50 PM
+1060272Florida 567Aaron Presley FL 2006 19Full Send Oly JR M 88 / U23 M 88 / / / 221E 26RED 25-Jun 9:00 AM
+1062798Mountain North 1475Luis Bustamante CO 2000 25Team Thick Weightlifting U25 M 88 / / / / 221E 26RED 25-Jun 9:00 AM
+1081941California North Central 185David Hernandez CA 2001 24Team Juanatas-Bowens U25 M 88 / / / / 220E 26RED 25-Jun 9:00 AM
+1063483Mountain South 712Logan Black UT 2005 20Circle X Barbell JR M 88 / / / / 220E 26RED 25-Jun 9:00 AM
+1056184Minnesota-Dakotas 995Brayden Gerhardt ND 2002 23Unaffiliated U23 M 88 / / / / 220E 26RED 25-Jun 9:00 AM
+1053402Missouri Valley 1106Justin Miller KS 2000 25Unaffiliated U25 M 88 / / / / 220E 26RED 25-Jun 9:00 AM
+1068631Carolina 1149Cory Nunes NC 2003 22Butcher Barbell U23 M 88 / / / / 217E 26RED 25-Jun 9:00 AM
+1040585Mountain North 396Austin Green WY 2005 20IRON KITCHEN JR M 88 / / / / 216E 26RED 25-Jun 9:00 AM
+1081505Florida 956Jackson Costlow FL 2007 183P Weightlifting JR M 88 / / / / 216E 26RED 25-Jun 9:00 AM
+1079891Pacific Northwest 659Leo Rachmady OR 2007 18Ironside Weightlifting JR M 88 / / / / 215E 26RED 25-Jun 9:00 AM
+1080501Florida 569Joaquin Perez FL 2007 18Freedom Weightlifting JR M 88 / / / / 210E 26RED 25-Jun 9:00 AM
+1059302Texas-Oklahoma 748Luis Leyva TX 2003 22UNIVERSITY OF TEXAS U25 M 88 / / / / 200E 26RED 25-Jun 9:00 AM
+1073603Not Found 545Jackson Goraczkowski MN 2007 18Unaffiliated ADAP JR M 88 / / / / 88E 26RED 25-Jun 9:00 AM
+1074771Florida 314cooper black FL 2007 18Team Florida Pensacola JR M 79 / / / / 219D 26WHITE 25-Jun 9:00 AM
+1073277Florida 744Lane Stewart FL 2007 18Maxx Effort Training JR M 79 / / / / 218D 26WHITE 25-Jun 9:00 AM
+1076148Missouri Valley 714Aedan Sumbaei MO 2006 19KC WEIGHTLIFTING JR M 79 / / / / 215D 26WHITE 25-Jun 9:00 AM
+1061296Florida 751Matthew Castellano FL 2004 21Exclusive Club Weightlifting U25 M 79 / / / / 215D 26WHITE 25-Jun 9:00 AM
+1076120Florida 902Braxton Beard FL 2007 183P Weightlifting JR M 79 / / / / 215D 26WHITE 25-Jun 9:00 AM
+1071504Michigan 1291Braeden Moore MI 2007 18Unaffiliated JR M 79 / / / / 213D 26WHITE 25-Jun 9:00 AM
+1072961Carolina 986Nathan Tran NC 2005 20Endless Strength Weightlifting JR M 79 / / / / 210D 26WHITE 25-Jun 9:00 AM
+1034870Texas-Oklahoma 1023Gabriel Torres TX 2000 25Stonehenge Weightlifting U25 M 79 / / / / 210D 26WHITE 25-Jun 9:00 AM
+1081298Florida 1029Cade Stetson FL 2007 18Maxx Effort Training JR M 79 / / / / 210D 26WHITE 25-Jun 9:00 AM
+1067387Indiana 445Luke Northcutt IN 2007 18HOOSIER BARBELL CLUB JR M 79 / / / / 205D 26WHITE 25-Jun 9:00 AM
+1080769Florida 510Ean Bearden FL 2007 18Full Send Oly JR M 79 / / / / 204D 26WHITE 25-Jun 9:00 AM
+1081368Illinois 1256Nathan Wolski IL 2005 20Unaffiliated JR M 79 / / / / 204D 26WHITE 25-Jun 9:00 AM
+1060916New England 224Michael Habib MA 2003 22Unaffiliated U23 M 79 / / / / 200D 26WHITE 25-Jun 9:00 AM
+1076142Florida 1224Jacob Goode FL 2007 18Unaffiliated JR M 79 / / / / 200D 26WHITE 25-Jun 9:00 AM
+1056437California South 65Alesia Guerrero Castillo CA 2001 24Vice Weightlifting U25 F 69 / / / / 138E 26BLUE 25-Jun 9:00 AM
+1066277Mountain South 1203Quinnie Remick AZ 2000 25Sanctuary Barbell U25 F 69 / / / / 138E 26BLUE 25-Jun 9:00 AM
+1076049California South 1002Nancy Mahmoud CA 2003 22UC-Santa Barbara U23 F 69 / / / / 136E 26BLUE 25-Jun 9:00 AM
+1061529Florida 339Sadie Glassman FL 2005 20Oly Concepts JR F 69 / / / / 134E 26BLUE 25-Jun 9:00 AM
+1062458Iowa-Nebraska 1522Jenna Godfrey NE 2000 25Heartland Strength U25 F 69 / / / / 134E 26BLUE 25-Jun 9:00 AM
+1048698DMV 1049Leah DeMarco MD 2007 18EAST COAST GOLD W/L TEAM JR F 69 / / / / 131E 26BLUE 25-Jun 9:00 AM
+1072422Mountain South 1314Samantha Trendler AZ 2007 18PERFORMANCE ONE WEIGHTLIFTING JR F 69 / / / / 131E 26BLUE 25-Jun 9:00 AM
+1064395Ohio 1228Camille Lafferty OH 2005 20CLEAN SLATE WEIGHTLIFTING JR F 69 / / / / 130E 26BLUE 25-Jun 9:00 AM
+1060385Wisconsin 563Juliann Will MN 2004 21Unaffiliated U23 F 69 / / / / 126E 26BLUE 25-Jun 9:00 AM
+1072566Georgia 620Emily Potts GA 2001 241Kilo U25 F 69 / / / / 125E 26BLUE 25-Jun 9:00 AM
+1072187Florida 708Hannah Duke FL 2006 193P Weightlifting JR F 69 / / / / 125E 26BLUE 25-Jun 9:00 AM
+1081133DMV 996Kailer Ramm MD 2001 24Mach10 Weightlifting Club U25 M 88 / / / / 240D 27RED 25-Jun 11:00 AM
+1030787Pacific Northwest 1099Maxwell Hoffman WA 2000 25ALPHA BARBELL U25 M 88 / / / / 240D 27RED 25-Jun 11:00 AM
+1076519Texas-Oklahoma 175Austin Bastings OK 2006 19Pure Health Barbell JR M 88 / / / / 235D 27RED 25-Jun 11:00 AM
+1062586New York 1220Samuel Lee NY 2000 25Unaffiliated U25 M 88 / / / / 235D 27RED 25-Jun 11:00 AM
+1067182Illinois 1356Erik van Leer IL 2006 19FORZA WEIGHTLIFTING CLUB JR M 88 / / / / 235D 27RED 25-Jun 11:00 AM
+1075944Illinois 1407Ryan Cunningham IL 2007 18FORZA WEIGHTLIFTING CLUB JR M 88 / / / / 235D 27RED 25-Jun 11:00 AM
+1081553Florida 1471Tyler Cannady FL 2007 18Full Send Oly JR M 88 / / / / 235D 27RED 25-Jun 11:00 AM
+1068591Mountain South 1482Joshua Mullen UT 2005 20Unaffiliated JR M 88 / / / / 230D 27RED 25-Jun 11:00 AM
+1079566Texas-Oklahoma 1496Brody Head TX 2006 19TEXAS BARBELL CLUB JR M 88 / / / / 230D 27RED 25-Jun 11:00 AM
+1060395Mountain North 1502Jacob Szukala CO 2006 19Heavy Athletics JR M 88 / / / / 230D 27RED 25-Jun 11:00 AM
+1067555Texas-Oklahoma 208Noah Bailey TX 2006 19Stellar Strength Barbell JR M 88 / / / / 225D 27RED 25-Jun 11:00 AM
+1079671Florida 1199Griffin Filaski FL 2003 22Jacksonville Weightlifting U23 M 88 / / / / 225D 27RED 25-Jun 11:00 AM
+1076078New York 171Liam Parker NY 2000 25Manhattan Barbell U25 M 88 / / / / 221D 27RED 25-Jun 11:00 AM
+1070152Florida 1446Kendrick Parideu FL 2005 20MYLES AHEAD WEIGHTLIFTING JR M 79 / / / / 231C 27WHITE 25-Jun 11:00 AM
+1064085Florida 25Thomas Kniss FL 2006 19Unaffiliated JR M 79 / / / / 230C 27WHITE 25-Jun 11:00 AM
+1063197Tennessee-Kentucky 218Stanley Mason Danner TN 2006 19STONEAGE WEIGHTLIFTING CLUB JR M 79 / / / / 230C 27WHITE 25-Jun 11:00 AM
+1071274Florida 953Damian Guzman FL 2007 18Exclusive Club Weightlifting JR M 79 / / / / 230C 27WHITE 25-Jun 11:00 AM
+1069587Pacific Northwest 419Hyunseo Kim WA 2001 24Unaffiliated U25 M 79 / / / / 225C 27WHITE 25-Jun 11:00 AM
+1062587Florida 682Evan Rosa Gale FL 2007 18Team Florida Pensacola JR M 79 / / / / 224C 27WHITE 25-Jun 11:00 AM
+1046622Minnesota-Dakotas 1016Carson Muench MN 2005 20Team Minnesota JR M 79 / / / / 222C 27WHITE 25-Jun 11:00 AM
+1062710Tennessee-Kentucky 1146Matthew Potter TN 2005 20STONEAGE WEIGHTLIFTING CLUB JR M 79 / / / / 221C 27WHITE 25-Jun 11:00 AM
+1068195New Jersey 296Ethan Caudle NJ 2003 22Unaffiliated U23 M 79 / / / / 220C 27WHITE 25-Jun 11:00 AM
+217910Florida 341Jordan Bryant FL 2005 20Oly Concepts JR M 79 / / / / 220C 27WHITE 25-Jun 11:00 AM
+1067139Pacific Northwest 555Connor Chan CA 2004 21University of Oregon Weightlifting Club U23 M 79 / U25 M 79 / / / 220C 27WHITE 25-Jun 11:00 AM
+1078790Texas-Oklahoma 848Jeremiah Gorman TX 2002 23Austin Barbell U23 M 79 / / / / 220C 27WHITE 25-Jun 11:00 AM
+1080035Hawaii and International 1121Brady Grams HI 2006 19Unaffiliated U23 M 79 / / / / 220C 27WHITE 25-Jun 11:00 AM
+1056096Texas-Oklahoma 1021Cheyenne Warmack FL 2004 21Bexar Barbell U23 F 69 / / / / 149D 27BLUE 25-Jun 11:00 AM
+1080561Florida 1344Cailyn Rowe FL 2007 18North Port Weightlifting JR F 69 / / / / 149D 27BLUE 25-Jun 11:00 AM
+1072866Southern 1206Shelby Miller LA 2006 19Bujanda Strong JR F 69 / / / / 148D 27BLUE 25-Jun 11:00 AM
+1075807New York 14Jane Bowen NY 2003 22Unaffiliated U23 F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1070871New England 127Emerson Goodrich RI 2001 24Rhode Island Performance U25 F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1037254Minnesota-Dakotas 527Ashley Greenfield MN 2004 21Unaffiliated U23 F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1059447DMV 936Wynter Montgomery MD 2007 18CHFP WEIGHTLIFTING CLUB JR F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1074939Florida 973Morgan Carbone FL 2007 18Train Harder Barbell Club JR F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1077271California North Central 1173Anastasia Jimenez CA 2007 18XIOS Strength & Conditioning JR F 69 / / / / 145D 27BLUE 25-Jun 11:00 AM
+1040656Mountain North 1329HarleyJane Carter CO 2006 19Concordia University Weightlifting JR F 69 / / / / 142D 27BLUE 25-Jun 11:00 AM
+1067584California North Central 1288Samantha Kershner CA 2002 23Unaffiliated U23 F 69 / / / / 140D 27BLUE 25-Jun 11:00 AM
+1062746Florida 499Andres Giron FL 2005 20Rise Weightlifting JR M 88 / / / / 250C 28RED 25-Jun 1:00 PM
+1025224Missouri Valley 912Shane Pruitt MO 2005 20LINDENWOOD LIONS JR M 88 / / / / 250C 28RED 25-Jun 1:00 PM
+1076605Florida 963Luke Deal FL 2007 18Unaffiliated JR M 88 / / / / 250C 28RED 25-Jun 1:00 PM
+1066293Iowa-Nebraska 483Gary Evans Jr NE 2000 25Heartland Strength U25 M 88 / / / / 249C 28RED 25-Jun 1:00 PM
+1081597Florida 791Yalal Mustafa FL 2006 193P Weightlifting JR M 88 / / / / 249C 28RED 25-Jun 1:00 PM
+1060717Florida 745Conor Whelan FL 2006 19Oly Concepts JR M 88 / / / / 245C 28RED 25-Jun 1:00 PM
+1074620Pacific Northwest 1297nathaniel Silberman WA 2004 21Puget Sound Weightlifting U23 M 88 / / / / 245C 28RED 25-Jun 1:00 PM
+1080770Florida 1408Caidon Carroll FL 2006 19Full Send Oly JR M 88 / / / / 245C 28RED 25-Jun 1:00 PM
+1055397DMV 1445Matthew Benson VA 2000 25CHFP WEIGHTLIFTING CLUB U25 M 88 / / / / 245C 28RED 25-Jun 1:00 PM
+1070327Florida 1351Trey Barkey FL 2006 19FULL CIRCLE PERFORMANCE JR M 88 / / / / 242C 28RED 25-Jun 1:00 PM
+1069229California South 574Nigel Fang CA 2000 25Rep Max Performance U25 M 88 / / / / 240C 28RED 25-Jun 1:00 PM
+1079687California North Central 976Timon Sun CA 2001 24HASSLE FREE BBC U25 M 88 / / / / 240C 28RED 25-Jun 1:00 PM
+1065780Indiana 365Juan Osorio IN 2003 22Moran Academy U23 M 79 / / / / 251B 28WHITE 25-Jun 1:00 PM
+1067218Indiana 654David Kinslow IN 2002 23The Weight Room U23 M 79 / / / / 250B 28WHITE 25-Jun 1:00 PM
+1018937Pennsylvania-West Virginia 1494David Zhu PA 2000 25PHILADELPHIA BARBELL U25 M 79 / / / / 250B 28WHITE 25-Jun 1:00 PM
+1076380Missouri Valley 604Josh Otero MO 2000 25Unaffiliated U25 M 79 / / / / 245B 28WHITE 25-Jun 1:00 PM
+1028969Pennsylvania-West Virginia 850alec coulter PA 2002 23Country Strong U23 M 79 / / / / 245B 28WHITE 25-Jun 1:00 PM
+1072004Iowa-Nebraska 1363Landon Horn IN 2006 19LINDENWOOD LIONS JR M 79 / / / / 241B 28WHITE 25-Jun 1:00 PM
+1021255Georgia 6Ashby Floyd GA 2005 20Floyd Farms Weightlifting JR M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1070228Florida 538Bobby Hill FL 2005 20LINDENWOOD LIONS JR M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1073113New England 1113Jack Parisien NH 2004 21UVM Weightlifting Club U23 M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1067546New Jersey 1378Ethan Kan NJ 2000 25Unaffiliated U25 M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1066517Florida 1392Zachary Schwartz FL 2005 20Rise Weightlifting JR M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1060827Tennessee-Kentucky 1409Connor Callaway TN 2002 23Unaffiliated U23 M 79 / / / / 240B 28WHITE 25-Jun 1:00 PM
+1065993Florida 85Will Higgins FL 2005 20Gator Weightlifting JR M 79 / / / / 235B 28WHITE 25-Jun 1:00 PM
+1081226Florida 1464Olivia Hall FL 2006 193P Weightlifting JR F 69 / / / / 156C 28BLUE 25-Jun 1:00 PM
+1058006Pennsylvania-West Virginia 861Halie Thornton PA 2004 21Fourteen Forty Collective U23 F 69 / / / / 155C 28BLUE 25-Jun 1:00 PM
+1068970Florida 1508Kaitlyn sheppard TN 2006 19STONEAGE WEIGHTLIFTING CLUB JR F 69 / / / / 155C 28BLUE 25-Jun 1:00 PM
+1068915Florida 667Tiana Bowers FL 2005 20Orlando Strength JR F 69 / / / / 154C 28BLUE 25-Jun 1:00 PM
+165487Southern 164Kela Kauhaahaa HI 2000 25LSU - Shreveport U25 F 69 / / / / 151C 28BLUE 25-Jun 1:00 PM
+1067655Ohio 215Reese Hayward OH 2004 21Hammer Strength WLC U23 F 69 / / / / 151C 28BLUE 25-Jun 1:00 PM
+1028256Illinois 732Summer de la Cruz IL 2006 19FORZA WEIGHTLIFTING CLUB JR F 69 / / / / 151C 28BLUE 25-Jun 1:00 PM
+1075119Florida 190Priscilla Webley FL 2006 19Unaffiliated JR F 69 / / / / 150C 28BLUE 25-Jun 1:00 PM
+1059911California South 500Christina Boyd 2001 24Southern California Weightlifting Club U25 F 69 / / / / 150C 28BLUE 25-Jun 1:00 PM
+1068686Michigan 669Elise Garza MI 2001 244 Star Strength U25 F 69 / / / / 150C 28BLUE 25-Jun 1:00 PM
+1041463Florida 406Emma Simms FL 2006 19Unaffiliated JR F 69 / / / / 149C 28BLUE 25-Jun 1:00 PM
+1060209Florida 247Kevin Hill FL 2006 19STONEAGE WEIGHTLIFTING CLUB JR M 88 / / / / 275B 29RED 25-Jun 3:00 PM
+1081591Florida 824Braxton Ratcliff FL 2006 19Unaffiliated JR M 88 / / / / 272B 29RED 25-Jun 3:00 PM
+1059737Missouri Valley 541Keaton OConnor MO 2002 23Bulldog Weightlifting Club U23 M 88 / / / / 270B 29RED 25-Jun 3:00 PM
+1073048Florida 838Jackson Leonard FL 2005 20Mako Athletics JR M 88 / / / / 270B 29RED 25-Jun 3:00 PM
+1061763Florida 1397Malaquias Coronado FL 2005 20Oly Concepts JR M 88 / / / / 270B 29RED 25-Jun 3:00 PM
+1076362Florida 811Kaden Quick FL 2007 18Freedom Weightlifting JR M 88 / / / / 265B 29RED 25-Jun 3:00 PM
+1065837Florida 1101Alvin Torres FL 2004 21Rise Weightlifting U23 M 88 / / / / 260B 29RED 25-Jun 3:00 PM
+1076332Florida 872Chase Taylor FL 2005 203P Weightlifting JR M 88 / / / / 258B 29RED 25-Jun 3:00 PM
+1030214Pennsylvania-West Virginia 1282John Metzinger PA 2000 25Fourteen Forty Collective U25 M 88 / / / / 258B 29RED 25-Jun 3:00 PM
+1055960Florida 449Peter Lemos FL 2004 21Jacksonville Weightlifting U23 M 88 / / / / 256B 29RED 25-Jun 3:00 PM
+1074427Florida 181Liam Kincaid FL 2005 203P Weightlifting JR M 88 / / / / 255B 29RED 25-Jun 3:00 PM
+1053425California North Central 733Jared Ambrosio CA 2001 24Unaffiliated U25 M 88 / / / / 253B 29RED 25-Jun 3:00 PM
+1039579Texas-Oklahoma 98Eric Zunker TX 2000 25Houston Weightlifting Academy U25 M 79 / / / / 300A 29WHITE 25-Jun 3:00 PM
+1066907Pacific Northwest 1399Zakaria Naas MO 2006 19Team Strength Works JR M 79 / / / / 300A 29WHITE 25-Jun 3:00 PM
+1024286Pennsylvania-West Virginia 1414Colin Manning NJ 2006 19PHILADELPHIA BARBELL JR M 79 / / / / 276A 29WHITE 25-Jun 3:00 PM
+1038703Missouri Valley 1369Henry Ludbrook MO 2007 18Team Strength Works JR M 79 / / / / 262A 29WHITE 25-Jun 3:00 PM
+1059053New Jersey 280Owen Murphy NJ 2002 23PHILADELPHIA BARBELL U23 M 79 / / / / 260A 29WHITE 25-Jun 3:00 PM
+1067980Minnesota-Dakotas 300Stone Larson MN 2007 18Unaffiliated JR M 79 / / / / 260A 29WHITE 25-Jun 3:00 PM
+1078025Iowa-Nebraska 798Dilan Gonzalez NE 2006 19MYLES AHEAD WEIGHTLIFTING JR M 79 / / / / 260A 29WHITE 25-Jun 3:00 PM
+1052539Florida 1326Romeo Thompson FL 2004 21No Respect 4 Gravity U23 M 79 / U25 M 79 / / / 260A 29WHITE 25-Jun 3:00 PM
+1067652Carolina 1350Blain McFarland SC 2003 22POWER AND GRACE PERFORMANCE. U23 M 79 / / / / 260A 29WHITE 25-Jun 3:00 PM
+1076305Florida 605Marcus Sweet FL 2006 19Concordia University Weightlifting JR M 79 / / / / 257A 29WHITE 25-Jun 3:00 PM
+1071152Florida 58Brendan Giddings FL 2005 20Mako Athletics JR M 79 / / / / 255A 29WHITE 25-Jun 3:00 PM
+1060706New York 1090Robert Rohde NY 2006 19TEAM WESTERN NEW YORK JR M 79 / / / / 255A 29WHITE 25-Jun 3:00 PM
+185060Mountain South 1083Alden Chiu UT 2002 23Zion Barbell U23 M 79 / / / / 253A 29WHITE 25-Jun 3:00 PM
+199467Texas-Oklahoma 992Addie Maher TX 2004 21TEXAS BARBELL CLUB U25 F 69 / / / / 175B 29BLUE 25-Jun 3:00 PM
+1063446Pennsylvania-West Virginia 383Allison Ambler PA 2006 19Fourteen Forty Collective JR F 69 / / / / 170B 29BLUE 25-Jun 3:00 PM
+1048953Texas-Oklahoma 1162Juliet Aguilar TX 2000 25Bobcat Barbell U25 F 69 / / / / 170B 29BLUE 25-Jun 3:00 PM
+1069588Mountain North 1360Linda Buitron CO 2006 19Valhalla Weightlifting JR F 69 / / / / 170B 29BLUE 25-Jun 3:00 PM
+1064271Florida 1501Anna Carlson FL 2007 18Full Send Oly JR F 69 / / / / 168B 29BLUE 25-Jun 3:00 PM
+1071011New York 473Ella Ponterio NY 2004 21NEW YORK WEIGHTLIFTING ACADEMY U23 F 69 / / / / 167B 29BLUE 25-Jun 3:00 PM
+1060087DMV 1373Hayden Mentzer MD 2004 21EAST COAST GOLD W/L TEAM U23 F 69 / / / / 166B 29BLUE 25-Jun 3:00 PM
+1059228Texas-Oklahoma 901Amelia Kushner TX 2001 24UNIVERSITY OF TEXAS U25 F 69 / / / / 165B 29BLUE 25-Jun 3:00 PM
+1071469Florida 468Alexa Woodman FL 2006 19Orlando Strength JR F 69 / / / / 163B 29BLUE 25-Jun 3:00 PM
+1066899Florida 944Lindsey Chappell FL 2006 19Jacksonville Weightlifting JR F 69 / / / / 160B 29BLUE 25-Jun 3:00 PM
+1008953Wisconsin 1142Lillian Spry WI 2006 19LINDENWOOD LIONS JR F 69 / / / / 160B 29BLUE 25-Jun 3:00 PM
+1009548Pennsylvania-West Virginia 1379Ryan McDonald PA 2007 18GARAGE STRENGTH JR M 88 / NAT M 88 / / / 326A 30RED 25-Jun 5:00 PM
+1019389DMV 71Caleb Goodman VA 2000 25RVA Weightlifting U25 M 88 / NAT M 88 / / / 315A 30RED 25-Jun 5:00 PM
+1003133Tennessee-Kentucky 340Trevor Owens TN 2003 22STONEAGE WEIGHTLIFTING CLUB U23 M 88 / NAT M 88 / / / 295A 30RED 25-Jun 5:00 PM
+175295Carolina 1011Dean Scicchitano KS 2000 25Fourteen Forty Collective U25 M 88 / NAT M 88 / / / 290A 30RED 25-Jun 5:00 PM
+1071638Florida 1037CJ Fernandez FL 2006 19Ferox Strength & Performance JR M 88 / / / / 290A 30RED 25-Jun 5:00 PM
+1064299Florida 492Roman Rea FL 2005 20Oly Concepts JR M 88 / / / / 286A 30RED 25-Jun 5:00 PM
+1062830Florida 370Samuel Wainwright FL 2004 21Mars Hill University U23 M 88 / / / / 285A 30RED 25-Jun 5:00 PM
+1056689Illinois 699William Sullivan IL 2004 21Heartland Strength U23 M 88 / U25 M 88 / / / 285A 30RED 25-Jun 5:00 PM
+1070935California North Central 259Aidan Kung CA 2000 25HASSLE FREE BBC U25 M 88 / / / / 280A 30RED 25-Jun 5:00 PM
+178606California North Central 612William Prokop CA 2003 22STONEAGE WEIGHTLIFTING CLUB U23 M 88 / / / / 280A 30RED 25-Jun 5:00 PM
+1024179Missouri Valley 1164Cameron Lee MO 2002 23LINDENWOOD LIONS U23 M 88 / / / / 280A 30RED 25-Jun 5:00 PM
+1066737California North Central 1487Jeffy Li CA 2002 23HASSLE FREE BBC U23 M 88 / / / / 280A 30RED 25-Jun 5:00 PM
+1076823Florida 649John Goff FL 2005 20Orlando Strength JR M 94 / / / / 231D 30WHITE 25-Jun 5:00 PM
+1070380Indiana 1052Corbin King IN 2005 20Muncie Weightlifting Club JR M 94 / / / / 231D 30WHITE 25-Jun 5:00 PM
+1074510Indiana 268Jon Vore IN 2000 25Moran Academy U25 M 94 / / / / 230D 30WHITE 25-Jun 5:00 PM
+1070898Texas-Oklahoma 320Bryce Hovorka TX 2007 18Friendswood Highschool Weightlifting Club JR M 94 / / / / 230D 30WHITE 25-Jun 5:00 PM
+1066568New England 1192Joshua Ventura MA 2000 25People's Republic of The Dojo U25 M 94 / / / / 230D 30WHITE 25-Jun 5:00 PM
+1040300Mountain North 737Evan McLaughlin CO 2006 19Unaffiliated JR M 94 / / / / 227D 30WHITE 25-Jun 5:00 PM
+1071536California South 763Billy Wurch CA 2001 24Unaffiliated U25 M 94 / / / / 225D 30WHITE 25-Jun 5:00 PM
+1071127Texas-Oklahoma 1213Jason Cullum TX 2002 23UNIVERSITY OF TEXAS U25 M 94 / / / / 225D 30WHITE 25-Jun 5:00 PM
+1059164Texas-Oklahoma 156Carl Berneathy TX 2007 18TEAM HOUSTON JR M 94 / / / / 224D 30WHITE 25-Jun 5:00 PM
+1073697Mountain North 161Holton Lowrie CO 2007 18Team Thick Weightlifting JR M 94 / / / / 224D 30WHITE 25-Jun 5:00 PM
+1069603Tennessee-Kentucky 53Ryan Jurek TN 2006 19STONEAGE WEIGHTLIFTING CLUB JR M 94 / / / / 220D 30WHITE 25-Jun 5:00 PM
+1061724Florida 222Nicole Caamano FL 2005 20Florida Elite JR F 69 / / / / 218A 30BLUE 25-Jun 5:00 PM
+1031574Florida 805Kailey Papas FL 2005 20Florida Elite JR F 69 / / / / 210A 30BLUE 25-Jun 5:00 PM
+1008993California North Central 762haley trinh CA 2004 21HASSLE FREE BBC U23 F 69 / / / / 195A 30BLUE 25-Jun 5:00 PM
+1049728Pacific Northwest 760Natalie Chappelle WA 2001 24Unaffiliated U25 F 69 / / / / 190A 30BLUE 25-Jun 5:00 PM
+1037786Tennessee-Kentucky 1112Rachael Skinner TN 2001 24Optimus Barbell Club U25 F 69 / / / / 190A 30BLUE 25-Jun 5:00 PM
+1059225Indiana 918Patricia Eliscupides IN 2004 21HOOSIER BARBELL CLUB U23 F 69 / / / / 184A 30BLUE 25-Jun 5:00 PM
+1045006New York 272Natalie Hart NY 2000 25Empire Weightlifting U25 F 69 / / / / 182A 30BLUE 25-Jun 5:00 PM
+1026726Iowa-Nebraska 1283Gracy Johnson IA 2005 20Concordia University Weightlifting JR F 69 / / / / 180A 30BLUE 25-Jun 5:00 PM
+1079604Mountain South 1525Lexi Jenson UT 2006 19Praxis Weightlifting JR F 69 / / / / 180A 30BLUE 25-Jun 5:00 PM
+1034678Michigan 453Brianna Leverenz MI 2004 21Unaffiliated U23 F 69 / / / / 179A 30BLUE 25-Jun 5:00 PM
+1075879Michigan 283Adriana Ufferman MI 2001 24Optimus Barbell Club U25 F 69 / / / / 175A 30BLUE 25-Jun 5:00 PM
+1071803Florida 37Sharlyssa Amaya FL 2007 18Palm Beach Weightlifting JR F 77 / / / / 155C 31RED 26-Jun 9:00 AM
+1081412Illinois 856Shauna Anders IL 2006 19FORZA WEIGHTLIFTING CLUB JR F 77 / / / / 155C 31RED 26-Jun 9:00 AM
+1056314New England 1008Courtney Beale MA 2000 25Rhode Island Performance U25 F 77 / / / / 155C 31RED 26-Jun 9:00 AM
+1056330Pacific Northwest 600Ava Jackson WA 2007 18Puget Sound Weightlifting JR F 77 / / / / 154C 31RED 26-Jun 9:00 AM
+1061727Florida 728Ori Sela FL 2007 18VERO BEACH WEIGHTLIFTING JR F 77 / / / / 154C 31RED 26-Jun 9:00 AM
+1046298New England 1231Brenna Graves CT 2003 22EAST COAST GOLD W/L TEAM U25 F 77 / / / / 151C 31RED 26-Jun 9:00 AM
+1056796Florida 590Tyra Sulph FL 2003 22Orlando Strength U23 F 77 / / / / 150C 31RED 26-Jun 9:00 AM
+1081028Missouri Valley 997Baylee Knorr MO 2002 23Pure Health Barbell U23 F 77 / / / / 150C 31RED 26-Jun 9:00 AM
+1055631New England 457Penelope Desjardins MA 2007 18Wormtown Weightlifting JR F 77 / / / / 148C 31RED 26-Jun 9:00 AM
+1078191Florida 223Addison Barningham FL 2006 19Train Harder Barbell Club JR F 77 / / / / 145C 31RED 26-Jun 9:00 AM
+1071312Florida 676taylor deBritto FL 2001 24Orlando Strength U25 F 77 / / / / 143C 31RED 26-Jun 9:00 AM
+1069675Carolina 769Abigail Goldman VT 2003 22UVM Weightlifting Club U23 F 77 / / / / 142C 31RED 26-Jun 9:00 AM
+1080039Minnesota-Dakotas 780Dana Barsness MN 2007 18CANNON FALLS WEIGHTLIFTING JR F 77 / / / / 135C 31RED 26-Jun 9:00 AM
+1068033DMV 1189Samuel Winiarski VA 2001 24CHFP WEIGHTLIFTING CLUB U25 M 94 / / / / 255C 31WHITE 26-Jun 9:00 AM
+1076403Florida 974Chris McFoley FL 2006 193P Weightlifting JR M 94 / / / / 254C 31WHITE 26-Jun 9:00 AM
+1067107Florida 166Rafael Oliver FL 2004 21Orlando Strength U23 M 94 / / / / 250C 31WHITE 26-Jun 9:00 AM
+216465Florida 1209Brody Stephano FL 2004 21Freedom Weightlifting U23 M 94 / / / / 250C 31WHITE 26-Jun 9:00 AM
+1075031Florida 1270Christian Figueroa FL 2007 18TEAM FLORIDA GULFCOAST WL JR M 94 / / / / 250C 31WHITE 26-Jun 9:00 AM
+1054991Mountain North 1425Nick Radovcich ID 2000 25BARBARIAN BARBELL CLUB U25 M 94 / / / / 250C 31WHITE 26-Jun 9:00 AM
+1042470Florida 1298Logan Thompson FL 2006 19Team Florida Gainesville JR M 94 / / / / 249C 31WHITE 26-Jun 9:00 AM
+1025906New York 311Trever Weeden NY 2006 19EAST COAST GOLD W/L TEAM JR M 94 / / / / 245C 31WHITE 26-Jun 9:00 AM
+1056102Florida 727Sebastian Russo FL 2006 19Unaffiliated JR M 94 / / / / 245C 31WHITE 26-Jun 9:00 AM
+1063618Texas-Oklahoma 868Noah Leggio TX 2007 18Friendswood Highschool Weightlifting Club JR M 94 / / / / 241C 31WHITE 26-Jun 9:00 AM
+1069476Missouri Valley 565Danny Morrow MO 2005 20LINDENWOOD LIONS JR M 94 / / / / 240C 31WHITE 26-Jun 9:00 AM
+1065234California North Central 890Jeshua Ambrosio CA 2004 21Unaffiliated U23 M 94 / / / / 237C 31WHITE 26-Jun 9:00 AM
+1077370California South 150Godfrey Lozada CA 2000 25The Strength Tank Weightlifting Club U25 M 110 / / / / 255C 31BLUE 26-Jun 9:00 AM
+1058046Pennsylvania-West Virginia 206Isaac Piper PA 2003 22EAST COAST GOLD W/L TEAM U23 M 110 / / / / 255C 31BLUE 26-Jun 9:00 AM
+1069997DMV 559Willie Sellers VA 2006 19Unaffiliated JR M 110 / U23 M 110 / / / 255C 31BLUE 26-Jun 9:00 AM
+1076086Florida 1026Noah Taunton FL 2005 20Team Florida Pensacola JR M 110 / / / / 250C 31BLUE 26-Jun 9:00 AM
+1081588Florida 738Owen Davis FL 2007 18Mako Athletics JR M 110 / / / / 244C 31BLUE 26-Jun 9:00 AM
+1016832Mountain North 240Tyler Davis ID 2001 24BOISE BARBELL U25 M 110 / / / / 240C 31BLUE 26-Jun 9:00 AM
+1076157Florida 407Tristan Segrest FL 2006 19LINDENWOOD LIONS JR M 110 / / / / 240C 31BLUE 26-Jun 9:00 AM
+1077252Florida 553Daniel Arevalo FL 2003 22Keep Pulling U23 M 110 / / / / 240C 31BLUE 26-Jun 9:00 AM
+1081113Florida 1455Alex Urtecho FL 2007 18Ablaze Barbell JR M 110 / / / / 240C 31BLUE 26-Jun 9:00 AM
+1075302DMV 1511Ryan Newton MD 2001 24DSP Barbell Club U25 M 110 / / / / 240C 31BLUE 26-Jun 9:00 AM
+1072115Florida 109Giovanni CASTRO-PRIDDEE FL 2005 20Keep Pulling JR M 110 / / / / 235C 31BLUE 26-Jun 9:00 AM
+1060523Pacific Northwest 299Sean Hansen OR 2002 23University of Oregon Weightlifting Club U23 M 110 / / / / 233C 31BLUE 26-Jun 9:00 AM
+1079088Florida 41Nicholas Tisher FL 2006 19Unaffiliated JR M 110 / / / / 232C 31BLUE 26-Jun 9:00 AM
+165463Ohio 968Seth Baden OH 2005 20Glass City Weightlifting JR M 110 / / / / 232C 31BLUE 26-Jun 9:00 AM
+1023100Mountain South 772Zavia Burton NM 2006 19MILLER WEIGHTLIFTING JR F 77 / / / / 168B 32RED 26-Jun 11:00 AM
+1017385Florida 40Delaney Willingham IL 2000 25Team Florida Gainesville U25 F 77 / / / / 165B 32RED 26-Jun 11:00 AM
+1026298Mountain North 768Nina Pollack CO 2005 20Concordia University Weightlifting JR F 77 / / / / 165B 32RED 26-Jun 11:00 AM
+1066056Florida 529Evelyn Ragsdale FL 2005 20Geno Athletics JR F 77 / / / / 162B 32RED 26-Jun 11:00 AM
+1071903Michigan 73Emily Zolotarevsky MI 2005 20Optimus Barbell Club JR F 77 / / / / 160B 32RED 26-Jun 11:00 AM
+1049194Texas-Oklahoma 357Hayden Brandon OK 2006 19Pure Health Barbell JR F 77 / / / / 160B 32RED 26-Jun 11:00 AM
+1054786Minnesota-Dakotas 881Rubie Dobbins ND 2005 20Mars Hill University JR F 77 / / / / 160B 32RED 26-Jun 11:00 AM
+1066132Pacific Northwest 1181McKenzie Borchers AK 2000 25Unaffiliated U25 F 77 / / / / 160B 32RED 26-Jun 11:00 AM
+1049330California South 1336Ameli Patrick CA 2006 19Unaffiliated JR F 77 / / / / 160B 32RED 26-Jun 11:00 AM
+1068189New York 386Julia Polvino VT 2003 22UVM Weightlifting Club U23 F 77 / / / / 158B 32RED 26-Jun 11:00 AM
+1078566Pennsylvania-West Virginia 1079Annabel Kaufman PA 2002 23DSP Barbell Club U23 F 77 / / / / 157B 32RED 26-Jun 11:00 AM
+1053893New Jersey 1032Alaina Collings NJ 2001 24Reach Your Potential Training U25 F 77 / / / / 156B 32RED 26-Jun 11:00 AM
+1068814Florida 262Nick Fenex FL 2001 24VERO BEACH WEIGHTLIFTING U25 M 94 / / / / 275B 32WHITE 26-Jun 11:00 AM
+1060304Indiana 905Tyler Birkla IN 2002 23Unaffiliated U23 M 94 / / / / 275B 32WHITE 26-Jun 11:00 AM
+1065696Texas-Oklahoma 579Joseph Clark TX 2002 23UNIVERSITY OF TEXAS U25 M 94 / / / / 274B 32WHITE 26-Jun 11:00 AM
+1069573Indiana 114Victor Hughes IN 2000 25Unaffiliated U25 M 94 / / / / 270B 32WHITE 26-Jun 11:00 AM
+1057990Ohio 578Daniel Drach OH 2002 23EAST COAST GOLD W/L TEAM U25 M 94 / / / / 270B 32WHITE 26-Jun 11:00 AM
+1069954DMV 1325Derek Travis VA 2005 20Unaffiliated U23 M 94 / / / / 270B 32WHITE 26-Jun 11:00 AM
+1068147Missouri Valley 1069Blake Stewart MO 2006 19PIONEER WLC JR M 94 / / / / 265B 32WHITE 26-Jun 11:00 AM
+1053807Pacific Northwest 111Connor Walker OR 2002 23Unaffiliated U25 M 94 / / / / 260B 32WHITE 26-Jun 11:00 AM
+1055330Georgia 460Ethan Krueck GA 2004 21Unaffiliated U23 M 94 / / / / 260B 32WHITE 26-Jun 11:00 AM
+1060974Minnesota-Dakotas 550Dylan Satkunam ND 2006 19Unaffiliated JR M 94 / / / / 255B 32WHITE 26-Jun 11:00 AM
+204374Texas-Oklahoma 1110Cade Helton TX 2004 21Unaffiliated U23 M 94 / / / / 255B 32WHITE 26-Jun 11:00 AM
+1050871Florida 1437Christian Pommells FL 2002 23Exclusive Club Weightlifting U23 F 86 / / / / 163B 32BLUE 26-Jun 11:00 AM
+1067336Missouri Valley 535Allysen Byerley FL 2005 20LINDENWOOD LIONS JR F 86 / / / / 160B 32BLUE 26-Jun 11:00 AM
+1065140Florida 167Ashlyn Ake FL 2007 18Warner University JR F 86 / / / / 156B 32BLUE 26-Jun 11:00 AM
+1050527Indiana 673Ella Crane 2007 18Notch 8 Barbell JR F 86 / / / / 155B 32BLUE 26-Jun 11:00 AM
+1049413Florida 1138Gillian Peaden FL 2007 18Full Send Oly JR F 86 / / / / 155B 32BLUE 26-Jun 11:00 AM
+1059381Pennsylvania-West Virginia 1436Martina Kampel PA 2001 24Unaffiliated U25 F 86 / / / / 155B 32BLUE 26-Jun 11:00 AM
+1079903Florida 754Airis Majano FL 2005 20Oly Concepts JR F 86 / / / / 153B 32BLUE 26-Jun 11:00 AM
+1072922Florida 204Dana Tolleson FL 2006 193P Weightlifting JR F 86 / / / / 150B 32BLUE 26-Jun 11:00 AM
+1073435Texas-Oklahoma 292Kassidy Girard OK 2000 25Pure Health Barbell U25 F 86 / / / / 150B 32BLUE 26-Jun 11:00 AM
+1061502Minnesota-Dakotas 1000Nevaeh Kellerman MN 2007 18Unaffiliated JR F 86 / / / / 150B 32BLUE 26-Jun 11:00 AM
+1059346Florida 146Ariana Acosta-Ramirez FL 2005 20Mars Hill University JR F 86 / / / / 148B 32BLUE 26-Jun 11:00 AM
+1025289Pacific Northwest 278Makynna Bedgood AK 2005 20POWER AND GRACE PERFORMANCE. JR F 86 / / / / 147B 32BLUE 26-Jun 11:00 AM
+1056229Florida 1406Marielisa Ordonez FL 2005 20Jacksonville Weightlifting JR F 86 / / / / 147B 32BLUE 26-Jun 11:00 AM
+1074725Florida 779Ariadne Rodriguez FL 2007 18VERO BEACH WEIGHTLIFTING JR F 86 / / / / 140B 32BLUE 26-Jun 11:00 AM
+1055916Ohio 1214Ella Nicholson OH 2006 19Hive Weightlifting JR F 77 / / / / 220A 33RED 26-Jun 1:00 PM
+1026578Illinois 506Kristina Robinson IL 2000 25Fourteen Forty Collective U25 F 77 / / / / 200A 33RED 26-Jun 1:00 PM
+1036726Tennessee-Kentucky 211Riley Williams KY 2004 21Rising Tide Weightlifting U23 F 77 / / / / 195A 33RED 26-Jun 1:00 PM
+1038559Carolina 136Julia Daniel NC 2000 251Kilo U25 F 77 / / / / 190A 33RED 26-Jun 1:00 PM
+1063776New Jersey 63Lucie Gehringer NJ 2001 24Fourteen Forty Collective U25 F 77 / / / / 185A 33RED 26-Jun 1:00 PM
+1075889Florida 939Arianna Durrum FL 2006 19Florida Elite JR F 77 / / / / 185A 33RED 26-Jun 1:00 PM
+1079826DMV 83Hanna Gilmore DC 2001 24DC Barbell U25 F 77 / / / / 180A 33RED 26-Jun 1:00 PM
+1069264Mountain South 1096Chloe Pickett UT 2005 20Praxis Weightlifting JR F 77 / / / / 180A 33RED 26-Jun 1:00 PM
+1043558Pennsylvania-West Virginia 225Catessa Guadagnoli PA 2006 19EAST COAST GOLD W/L TEAM JR F 77 / / / / 175A 33RED 26-Jun 1:00 PM
+1081441DMV 430Ryan Westpfahl VA 2000 25EAST COAST GOLD W/L TEAM U25 F 77 / / / / 175A 33RED 26-Jun 1:00 PM
+1079277Pacific Northwest 658maicee Bradley OR 2003 22Unaffiliated U25 F 77 / / / / 175A 33RED 26-Jun 1:00 PM
+1078239Missouri Valley 428Sofía Casalone MO 2007 18Team Strength Works JR F 77 / / / / 170A 33RED 26-Jun 1:00 PM
+215112Pennsylvania-West Virginia 307Kyle Martin Jr. PA 2006 19GARAGE STRENGTH JR M 94 / U23 M 94 / U25 M 94 / / 318A 33WHITE 26-Jun 1:00 PM
+192499Texas-Oklahoma 899Ryan Helton TX 2001 24Unaffiliated U25 M 94 / / / / 310A 33WHITE 26-Jun 1:00 PM
+178605California North Central 1218Nathan Prokop CA 2000 25STONEAGE WEIGHTLIFTING CLUB U25 M 94 / NAT M 94 / / / 305A 33WHITE 26-Jun 1:00 PM
+1081339Florida 1493Brandon Stenger FL 2006 19Unaffiliated JR M 94 / / / / 295A 33WHITE 26-Jun 1:00 PM
+1066264California North Central 298Enzo Mancini CA 2005 20Concordia University Weightlifting JR M 94 / / / / 290A 33WHITE 26-Jun 1:00 PM
+1059993Mountain South 378Spencer Dent UT 2004 21LINDENWOOD LIONS U23 M 94 / / / / 290A 33WHITE 26-Jun 1:00 PM
+1038872Hawaii and International 393Elias Hamp HI 2004 21Alee Athletics U23 M 94 / / / / 290A 33WHITE 26-Jun 1:00 PM
+1065688Missouri Valley 1513Calvin Lackey MO 2004 21LINDENWOOD LIONS U23 M 94 / / / / 287A 33WHITE 26-Jun 1:00 PM
+1060321Indiana 1490Alexander Erdelac IN 2004 21HOOSIER BARBELL CLUB U23 M 94 / / / / 285A 33WHITE 26-Jun 1:00 PM
+1037000Minnesota-Dakotas 343Austin Widmer TX 2001 24Texas A&M Aggie Weightlifting U25 M 94 / / / / 281A 33WHITE 26-Jun 1:00 PM
+1056776Illinois 1119Ethan Darley IL 2000 25Sled-Dog Weightlifting U25 M 94 / / / / 280A 33WHITE 26-Jun 1:00 PM
+1032930Iowa-Nebraska 721Alfred Grenon NE 2000 25Heartland Strength U25 M 110 / / / / 275B 33BLUE 26-Jun 1:00 PM
+1003495Minnesota-Dakotas 1013Colin Fjelsted MN 2002 23Team Minnesota U23 M 110 / / / / 272B 33BLUE 26-Jun 1:00 PM
+1051956Georgia 328Owen Jones GA 2007 18ALLSOUTH Barbell JR M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1066939Indiana 634Zachary Krafft IN 2000 25Team Strength Works U25 M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1071787Florida 655Reef Gingell FL 2004 21Keep Pulling U23 M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1072700California South 1051Brandon Cook CA 2005 20Rep Max Performance U25 M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1055362Mountain North 1061Sam Angell CO 2000 25Unaffiliated U25 M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1052568Ohio 1105Aidan Cunningham OH 2001 24Unaffiliated U25 M 110 / / / / 270B 33BLUE 26-Jun 1:00 PM
+1008889Texas-Oklahoma 858Xander Parsons OK 2003 22Pure Health Barbell U23 M 110 / / / / 265B 33BLUE 26-Jun 1:00 PM
+1057210Ohio 182Jake Quinn OH 2001 24CLEAN SLATE WEIGHTLIFTING U25 M 110 / / / / 261B 33BLUE 26-Jun 1:00 PM
+1073806Mountain North 104Matthew Johnson CO 2004 21Denver Barbell Club U23 M 110 / / / / 260B 33BLUE 26-Jun 1:00 PM
+168022Carolina 413Ian Graham SC 2004 21Beyond The Barbell U23 M 110 / / / / 260B 33BLUE 26-Jun 1:00 PM
+1058966Pacific Northwest 448Kamiakin Craig WA 2002 23Wolf Pack Weightlifting U23 M 110 / / / / 260B 33BLUE 26-Jun 1:00 PM
+1066389Florida 746Joshua Canet FL 2006 19Maxx Effort Training JR M 110 / / / / 260B 33BLUE 26-Jun 1:00 PM
+1067659Wisconsin 903Paige Taylor WI 2000 25ST. CROIX BARBELL CLUB U25 F 86+ / / / / 171B 34RED 26-Jun 3:00 PM
+1065587Florida 752Makayla Waterhouse FL 2007 18North Port Weightlifting JR F 86+ / / / / 170B 34RED 26-Jun 3:00 PM
+1070279Florida 1444Clair Callahan FL 2007 18Volusia Barbell JR F 86+ / / / / 168B 34RED 26-Jun 3:00 PM
+1059339Michigan 1151Cali Reece MI 2002 234 Star Strength U23 F 86+ / / / / 166B 34RED 26-Jun 3:00 PM
+1079301California North Central 1316Maya Nichols CA 2000 25Invincible Barbell U25 F 86+ / / / / 165B 34RED 26-Jun 3:00 PM
+1070173New England 874Grace Worobel NH 2004 21Unaffiliated U23 F 86+ / / / / 162B 34RED 26-Jun 3:00 PM
+1078200California North Central 949Kira Barad HI 2006 19HASSLE FREE BBC JR F 86+ / / / / 158B 34RED 26-Jun 3:00 PM
+1076279Florida 48Jade Jenkins FL 2007 18Ablaze Barbell JR F 86+ / / / / 155B 34RED 26-Jun 3:00 PM
+1035584New England 173Dore Young RI 2002 23Rhode Island Performance U23 F 86+ / / / / 155B 34RED 26-Jun 3:00 PM
+1062775Tennessee-Kentucky 717Addilyn Campbell TN 2004 21Unaffiliated U23 F 86+ / / / / 154B 34RED 26-Jun 3:00 PM
+1055158Florida 138Rianna Griffith FL 2005 20Unaffiliated JR F 86+ / / / / 152B 34RED 26-Jun 3:00 PM
+1015899Carolina 479Nicole Sudol NC 2000 25Orlando Strength U25 F 86+ / / / / 150B 34RED 26-Jun 3:00 PM
+1080069Florida 625Ayana Ouzts FL 2006 19Maxx Effort Training JR F 86+ / / / / 135B 34RED 26-Jun 3:00 PM
+1029270California North Central 1030Amanda Robles CA 2004 21HASSLE FREE BBC U23 F 86 / / / / 215A 34WHITE 26-Jun 3:00 PM
+1051839Mountain South 263Kaylee Landa AZ 2005 20POWER AND GRACE PERFORMANCE. JR F 86 / / / / 203A 34WHITE 26-Jun 3:00 PM
+1019235Mountain North 808Lola Pollack CO 2002 23Pinnacle Weightlifting U25 F 86 / / / / 200A 34WHITE 26-Jun 3:00 PM
+1036777DMV 1385Eva Katsaros VA 1995 30Unaffiliated U25 F 86 / NAT F 86 / / / 195A 34WHITE 26-Jun 3:00 PM
+1072027Florida 29Isabel Zach FL 2007 183P Weightlifting JR F 86 / / / / 193A 34WHITE 26-Jun 3:00 PM
+1055079Florida 1449Grace Bustamante FL 2001 24Oly Concepts U25 F 86 / / / / 190A 34WHITE 26-Jun 3:00 PM
+1075100Florida 401E’mia Jones FL 2006 19Team Florida Gainesville JR F 86 / / / / 182A 34WHITE 26-Jun 3:00 PM
+1024039Mountain South 28celina ortega AZ 2002 23Alee Athletics U23 F 86 / / / / 179A 34WHITE 26-Jun 3:00 PM
+1081520DMV 927Virginia Holloway VA 2007 18CHFP WEIGHTLIFTING CLUB JR F 86 / / / / 176A 34WHITE 26-Jun 3:00 PM
+1055100Florida 706Kayden Arliss FL 2005 20STONEAGE WEIGHTLIFTING CLUB JR F 86 / / / / 174A 34WHITE 26-Jun 3:00 PM
+175057Georgia 20Na'Erykah Goodwin GA 2001 24COASTAL EMPIRE WEIGHTLIFTING U25 F 86 / / / / 170A 34WHITE 26-Jun 3:00 PM
+1064894Florida 886Ivy Autman FL 2004 21Keep Pulling U23 F 86 / / / / 170A 34WHITE 26-Jun 3:00 PM
+1081054Florida 1419Imani Greaves FL 2007 18Maxx Effort Training JR F 86 / / / / 170A 34WHITE 26-Jun 3:00 PM
+217528Indiana 1402Matthew King IN 2000 25Unaffiliated U25 M 110 / / / / 320A 34BLUE 26-Jun 3:00 PM
+1059786Minnesota-Dakotas 1296August Wagner MN 2006 19CANNON FALLS WEIGHTLIFTING JR M 110 / / / / 300A 34BLUE 26-Jun 3:00 PM
+1075940Pennsylvania-West Virginia 257 Luke Shamberger PA 2002 23Born Again Weightlifting U23 M 110 / U25 M 110 / / / 295A 34BLUE 26-Jun 3:00 PM
+1047819Wisconsin 829Colton Krueger WI 2000 25Unaffiliated U25 M 110 / / / / 292A 34BLUE 26-Jun 3:00 PM
+1035760Texas-Oklahoma 397Victor Delgado TX 2001 24UNIVERSITY OF TEXAS U25 M 110 / / / / 290A 34BLUE 26-Jun 3:00 PM
+1045291Mountain South 444Isaac Salas NV 2001 24Unaffiliated U25 M 110 / / / / 290A 34BLUE 26-Jun 3:00 PM
+1028798Texas-Oklahoma 480Grant Reed TX 2001 24Bobcat Barbell U25 M 110 / / / / 290A 34BLUE 26-Jun 3:00 PM
+1058115Mountain South 837Zachary White AZ 2003 22PERFORMANCE ONE WEIGHTLIFTING U23 M 110 / / / / 290A 34BLUE 26-Jun 3:00 PM
+184266Hawaii and International 1524Hanale Kauha'aha'a HI 2005 20Unaffiliated JR M 110 / / / / 290A 34BLUE 26-Jun 3:00 PM
+1013392Minnesota-Dakotas 18Scott Crosswhite MN 2002 23Unaffiliated U25 M 110 / / / / 280A 34BLUE 26-Jun 3:00 PM
+1068277Florida 723Alex Papale FL 2006 19Florida Elite JR M 110 / / / / 280A 34BLUE 26-Jun 3:00 PM
+1051555Pennsylvania-West Virginia 1115Edward Quillin PA 2006 19Country Strong JR M 110 / / / / 280A 34BLUE 26-Jun 3:00 PM
+1062682Tennessee-Kentucky 1519Junius Fullard TN 2006 19STONEAGE WEIGHTLIFTING CLUB JR M 110 / / / / 280A 34BLUE 26-Jun 3:00 PM
+1075647Florida 315Aleah Baron FL 2007 18Maxx Effort Training JR F 86+ / / / / 195A 35RED 26-Jun 5:00 PM
+1080646Florida 1274Asha-Mahri Manzueta FL 2007 18Unaffiliated JR F 86+ / / / / 195A 35RED 26-Jun 5:00 PM
+1068961Florida 1139Lexi Thomas FL 2004 21Maxx Effort Training U23 F 86+ / / / / 194A 35RED 26-Jun 5:00 PM
+1034898Mountain South 363Malia Levy UT 2005 20Praxis Weightlifting JR F 86+ / / / / 190A 35RED 26-Jun 5:00 PM
+215266California North Central 404Julia Yun CA 2004 21HASSLE FREE BBC U23 F 86+ / / / / 190A 35RED 26-Jun 5:00 PM
+1057849Florida 883Ava Haber FL 2004 21Jacksonville Weightlifting U23 F 86+ / / / / 190A 35RED 26-Jun 5:00 PM
+1019864Carolina 1125Ansley Amore NC 2007 18HEAVY METAL BARBELL JR F 86+ / / / / 190A 35RED 26-Jun 5:00 PM
+1071913Florida 1468Arianna Star Keyes FL 2005 20VERO BEACH WEIGHTLIFTING JR F 86+ / / / / 186A 35RED 26-Jun 5:00 PM
+1051408Florida 975Tristain Atwood FL 2005 20Mars Hill University JR F 86+ / / / / 180A 35RED 26-Jun 5:00 PM
+1051407Florida 1472Madison Atwood FL 2005 20Mars Hill University JR F 86+ / / / / 180A 35RED 26-Jun 5:00 PM
+1068941Florida 635Sherrickia King FL 2007 18TEAM FLORIDA GULFCOAST WL JR F 86+ / / / / 175A 35RED 26-Jun 5:00 PM
+1036890Texas-Oklahoma 1410Jamie Pearce TX 2000 25UNIVERSITY OF TEXAS U25 F 86+ / / / / 175A 35RED 26-Jun 5:00 PM
+214881Missouri Valley 1489Renee Hutchins OH 2005 20LINDENWOOD LIONS JR F 86+ / / / / 175A 35RED 26-Jun 5:00 PM
+1009909California North Central 1341sikoti manumua CA 2002 23HASSLE FREE BBC U23 M 110+ / / / / 300A 35BLUE 26-Jun 5:00 PM
+1066586Iowa-Nebraska 522Aidan Perez IA 2005 20STONEAGE WEIGHTLIFTING CLUB JR M 110+ / / / / 299A 35BLUE 26-Jun 5:00 PM
+1071138Texas-Oklahoma 498Enrique Medina III TX 2001 24Oly Concepts U25 M 110+ / / / / 283A 35BLUE 26-Jun 5:00 PM
+1070354Florida 84Bradley Bingham FL 2006 19LINDENWOOD LIONS JR M 110+ / / / / 280A 35BLUE 26-Jun 5:00 PM
+1012737Georgia 191Joshua Bell GA 2000 25Unaffiliated U25 M 110+ / / / / 280A 35BLUE 26-Jun 5:00 PM
+1075986Florida 788Manuel Kimmons FL 2006 193P Weightlifting JR M 110+ / / / / 272A 35BLUE 26-Jun 5:00 PM
+1057529DMV 877Logan Cohn VA 2002 23Unaffiliated U23 M 110+ / U25 M 110+ / / / 270A 35BLUE 26-Jun 5:00 PM
+1077598Pacific Northwest 1358Charlie Merritt WA 2004 21Unaffiliated U23 M 110+ / / / / 270A 35BLUE 26-Jun 5:00 PM
+1064160California South 260Christopher Patterson CA 2002 23Vice Weightlifting U23 M 110+ / / / / 265A 35BLUE 26-Jun 5:00 PM
+1064032New York 230Cooper Johnson NY 2000 25Barbender Academy U25 M 110+ / / / / 260A 35BLUE 26-Jun 5:00 PM
+1056210Florida 1308Jayson Luther FL 2001 24Orlando Strength U25 M 110+ / / / / 250A 35BLUE 26-Jun 5:00 PM
+1048459Illinois 1249Alexis Ayala IL 2000 25Method Weightlifting U25 M 110+ / / / / 245A 35BLUE 26-Jun 5:00 PM
+1072763Missouri Valley 965Nolan Graupmann KS 2005 20Concordia University Weightlifting JR M 110+ / / / / 238A 35BLUE 26-Jun 5:00 PM
+1072501Iowa-Nebraska 470Adrian Hernandez NE 2004 21Unaffiliated U23 M 110+ / / / / 235A 35BLUE 26-Jun 5:00 PM
+1072756Texas-Oklahoma 179Charles Boyer TX 2007 18Friendswood Highschool Weightlifting Club JR M 110+ / / / / 233A 35BLUE 26-Jun 5:00 PM
+1080854Florida 786Samuel Nelson FL 2006 19Ablaze Barbell JR M 110+ / / / / 233A 35BLUE 26-Jun 5:00 PM
+1054950New York 1429Morgan Beattie NY 1997 28Warwick Weightlifting Club NAT F 63 / / / / 180C 36RED 27-Jun 10:00 AM
+1069790New England 402Brittany Panerali RI 1994 31Providence Barbell Club NAT F 63 / / / / 177C 36RED 27-Jun 10:00 AM
+1022932California South 459anna maguire CA 1993 32Unaffiliated NAT F 63 / / / / 177C 36RED 27-Jun 10:00 AM
+193260Pennsylvania-West Virginia 1417Couger Jaramillo DC 1995 30DC WEIGHTLIFTING CLUB NAT F 63 / / / / 177C 36RED 27-Jun 10:00 AM
+1024000Indiana 77Claire Vahary IN 1998 27Unaffiliated NAT F 63 / / / / 175C 36RED 27-Jun 10:00 AM
+1077708New York 642emma sabini NY 1998 27Gryphon Strength Barbell NAT F 63 / / / / 175C 36RED 27-Jun 10:00 AM
+1024282Michigan 795Lauren Lee MI 1992 33Optimus Barbell Club NAT F 63 / / / / 175C 36RED 27-Jun 10:00 AM
+140137Texas-Oklahoma 884Michelle Mantooth TX 1988 37Bexar Barbell NAT F 63 / / / / 175C 36RED 27-Jun 10:00 AM
+1004193Michigan 1088Traci Beaune MI 1985 40Optimus Barbell Club NAT F 63 / / / / 175C 36RED 27-Jun 10:00 AM
+1023814Tennessee-Kentucky 1073Ana Kelly TN 1992 33Full Steam Barbell NAT F 63 / / / / 160C 36RED 27-Jun 10:00 AM
+1055555Pacific Northwest 435Samantha Love WA 1989 36Bexar Barbell ADAP NAT F 63 / / / / 141C 36RED 27-Jun 10:00 AM
+213776Mountain South 1170Derek Nguyen AZ 1989 36Alee Athletics NAT M 71 / / / / 270B 36BLUE 27-Jun 10:00 AM
+1043376Georgia 242Ethan Bowen GA 1998 27Bowen Elite Weightlifting NAT M 71 / / / / 265B 36BLUE 27-Jun 10:00 AM
+169082Florida 1167Chris Santana FL 1993 32VERO BEACH WEIGHTLIFTING NAT M 71 / / / / 264B 36BLUE 27-Jun 10:00 AM
+1023329Missouri Valley 95Blace Eckols MO 2000 25Unaffiliated NAT M 71 / / / / 255B 36BLUE 27-Jun 10:00 AM
+1033021Illinois 1504Cory O'Connor IL 1992 33Bexar Barbell NAT M 71 / / / / 255B 36BLUE 27-Jun 10:00 AM
+1039273Wisconsin 596Andre Sanchez WI 1997 28MILWAUKEE BARBELL WEIGHTLIFTING CLUB NAT M 71 / / / / 250B 36BLUE 27-Jun 10:00 AM
+1069535Mountain South 1318Cameron Dowling AZ 1997 28HIGH DESERT ATHLETIC CLUB NAT M 71 / / / / 250B 36BLUE 27-Jun 10:00 AM
+1040548Texas-Oklahoma 584Daniel Marquez TX 2008 17Bexar Barbell NAT M 71 / / / / 245B 36BLUE 27-Jun 10:00 AM
+1009707California South 487Jeffrey Suarez CA 1996 29BARBARIAN BARBELL CLUB NAT M 71 / / / / 236B 36BLUE 27-Jun 10:00 AM
+1060604Florida 467Shreyas Sathya FL 2003 22Keep Pulling NAT M 71 / / / / 230B 36BLUE 27-Jun 10:00 AM
+209072Texas-Oklahoma 1144Ray Harkness OK 1971 54Spoon Barbell Club ADAP NAT M 71 / / / / 123B 36BLUE 27-Jun 10:00 AM
+186129Florida 39Angelique Matsushima WI 1996 29Florida Elite NAT F 63 / / / / 186B 37RED 27-Jun 12:00 PM
+1030477Pennsylvania-West Virginia 385Haylie Helbig PA 1997 28Unaffiliated NAT F 63 / / / / 186B 37RED 27-Jun 12:00 PM
+1017910Texas-Oklahoma 803Nicole Rucker TX 1991 34Bexar Barbell NAT F 63 / / / / 186B 37RED 27-Jun 12:00 PM
+1040898Indiana 32Erica Sheagley IN 2000 25Myriad Weightlifting NAT F 63 / / / / 185B 37RED 27-Jun 12:00 PM
+1003376Pacific Northwest 200Eve Goldsher WA 1986 39PARAMOUNT BARBELL CLUB NAT F 63 / / / / 185B 37RED 27-Jun 12:00 PM
+1041630Pacific Northwest 403Nicola Benfield CO 1997 28PARAMOUNT BARBELL CLUB NAT F 63 / / / / 185B 37RED 27-Jun 12:00 PM
+205217Michigan 508Joelle Emery MI 1986 39LILY WEIGHTLIFTING NAT F 63 / / / / 185B 37RED 27-Jun 12:00 PM
+1058760Florida 193Aysia Hill FL 2001 24Florida Elite NAT F 63 / / / / 182B 37RED 27-Jun 12:00 PM
+1050748Mountain South 176Brena Andrews AZ 1995 30SAS WEIGHTLIFTING CLUB NAT F 63 / / / / 180B 37RED 27-Jun 12:00 PM
+1079995California North Central 724Amanda Pacheco CA 1987 38Unaffiliated NAT F 63 / / / / 180B 37RED 27-Jun 12:00 PM
+1012065New York 1232Alicia DiSpaltro NJ 1997 28Warwick Weightlifting Club NAT F 63 / / / / 180B 37RED 27-Jun 12:00 PM
+1066126Tennessee-Kentucky 1260Alexa Estevez FL 2004 21STONEAGE WEIGHTLIFTING CLUB NAT F 58 / / / / 177B 37BLUE 27-Jun 12:00 PM
+1021547Mountain North 807Kimberlea Stonewerth CO 1993 32Unaffiliated NAT F 58 / / / / 173B 37BLUE 27-Jun 12:00 PM
+1029356New York 741Gwen Rivero NY 1997 28Empire Weightlifting NAT F 58 / / / / 171B 37BLUE 27-Jun 12:00 PM
+1034914New York 117Jessica Rodriguez NY 1992 33MURDER OF CROWS NAT F 58 / / / / 166B 37BLUE 27-Jun 12:00 PM
+1071061Pacific Northwest 530Mandy O’Shell AK 1994 31Unaffiliated NAT F 58 / / / / 166B 37BLUE 27-Jun 12:00 PM
+1032784DMV 1081Maria Hayden VA 1992 33Renaissance Periodization NAT F 58 / / / / 165B 37BLUE 27-Jun 12:00 PM
+1057771New Jersey 948Tanya LaBell NJ 1986 39Tri State Barbell NAT F 58 / / / / 160B 37BLUE 27-Jun 12:00 PM
+1024629New Jersey 1141Jenna Mooney NJ 1993 32Marble Weightlifting NAT F 58 / / / / 155B 37BLUE 27-Jun 12:00 PM
+1067933Hawaii and International 366Susie Su Husar AE 1991 34Unaffiliated NAT F 58 / / / / 150B 37BLUE 27-Jun 12:00 PM
+1064080Carolina 421Stephanie Kennedy SC 1992 33Greenville Weightlifting NAT F 58 / / / / 150B 37BLUE 27-Jun 12:00 PM
+1010406Georgia 178D. Irizarry GA 2003 22Kuma Weightlifting NAT F 48 / / / / 175A 38RED 27-Jun 2:00 PM
+1030572Florida 749Kaylin White FL 2001 24Bexar Barbell NAT F 48 / / / / 172A 38RED 27-Jun 2:00 PM
+186996Florida 940Cicely Kyle FL 1984 41Unaffiliated NAT F 48 / / / / 167A 38RED 27-Jun 2:00 PM
+1031803Florida 941Virginie Beljour GA 1999 26GARAGE STRENGTH NAT F 48 / / / / 155A 38RED 27-Jun 2:00 PM
+1064794New England 93Lucy Lapane RI 1996 29Providence Barbell Club NAT F 48 / / / / 154A 38RED 27-Jun 2:00 PM
+1017520Florida 72Aria Zayed FL 1998 27Orlando Strength NAT F 48 / / / / 141A 38RED 27-Jun 2:00 PM
+1066662Mountain North 429Jacqueline Viola Moulton CO 1986 39Vardanian Weightlifting NAT F 48 / / / / 140A 38RED 27-Jun 2:00 PM
+1049227Texas-Oklahoma 415Sarah Morris VA 1993 32BlueWave Weightlifting NAT F 48 / / / / 139A 38RED 27-Jun 2:00 PM
+1007746Wisconsin 302Jennifer Fullhart WI 1985 40A1 Barbell Club NAT F 48 / / / / 135A 38RED 27-Jun 2:00 PM
+1012585Minnesota-Dakotas 433Johanna Ssekyaaya MN 1990 35Unaffiliated NAT F 48 / / / / 130A 38RED 27-Jun 2:00 PM
+1067602Florida 451Sonya Somarriba FL 1994 31No Respect 4 Gravity NAT F 48 / / / / 123A 38RED 27-Jun 2:00 PM
+1057975Georgia 338gabe chhum GA 2004 21MAX KANE BARBELL NAT M 60 / / / / 270A 38BLUE 27-Jun 2:00 PM
+174251DMV 1261Christopher Camenares VA 1992 33PHILADELPHIA BARBELL NAT M 60 / / / / 250A 38BLUE 27-Jun 2:00 PM
+1054485California North Central 560Gerald Lebrilla CA 1993 32Unaffiliated NAT M 65 / / / / 243A 38BLUE 27-Jun 2:00 PM
+156917Florida 766Sean Spraggins FL 1989 36Category 5 Athletics NAT M 65 / / / / 235A 38BLUE 27-Jun 2:00 PM
+1049684DMV 879Samuel Lind DC 1996 29Rose Gold Athletics NAT M 65 / / / / 235A 38BLUE 27-Jun 2:00 PM
+179013New York 1238Dean Otsuka NY 1987 38LBH OF NYC DEPT OF PARKS NAT M 65 / / / / 235A 38BLUE 27-Jun 2:00 PM
+1017543DMV 374Quinn Kashishian VA 1996 29EAST COAST GOLD W/L TEAM NAT M 60 / / / / 234A 38BLUE 27-Jun 2:00 PM
+1040087New York 1427Timothy Luistro NY 1991 34NEW YORK WEIGHTLIFTING ACADEMY NAT M 60 / / / / 215A 38BLUE 27-Jun 2:00 PM
+175740New Jersey 1368Estevan Soto NJ 1998 27PHILADELPHIA BARBELL NAT M 60 / / / / 209A 38BLUE 27-Jun 2:00 PM
+1008851Georgia 362Hampton Morris GA 2004 21Unaffiliated NAT M 71 / / / / 310A 39RED 27-Jun 4:00 PM
+1020345Texas-Oklahoma 1389Matthew McCullough TX 1995 30TEAM TEXAS NAT M 71 / / / / 300A 39RED 27-Jun 4:00 PM
+1021628Texas-Oklahoma 157Mario Marquez TX 2003 22Bexar Barbell NAT M 71 / / / / 280A 39RED 27-Jun 4:00 PM
+1005442New York 1175Marc Marquez TN 1996 29Gryphon Strength Barbell NAT M 71 / / / / 280A 39RED 27-Jun 4:00 PM
+200791Tennessee-Kentucky 1183Morgan Rummel TN 1997 28CALIFORNIA STRENGTH NAT M 71 / / / / 280A 39RED 27-Jun 4:00 PM
+1024184Indiana 1335Dominik Polverini IN 2004 211Kilo NAT M 71 / / / / 277A 39RED 27-Jun 4:00 PM
+188287Pacific Northwest 5Christopher Douglas WA 1981 44PARAMOUNT BARBELL CLUB NAT M 71 / / / / 276A 39RED 27-Jun 4:00 PM
+133241Mountain South 43Phil Johnson IN 1988 37Alee Athletics NAT M 71 / / / / 275A 39RED 27-Jun 4:00 PM
+1044024California North Central 1403Evan Fukuhara CA 2003 22Concordia University Weightlifting NAT M 71 / / / / 271A 39RED 27-Jun 4:00 PM
+1071261Texas-Oklahoma 86Nathan Gonzaga TX 2004 21Bexar Barbell NAT M 71 / / / / 270A 39RED 27-Jun 4:00 PM
+1042167New York 197Michael Mo NY 1996 29MURDER OF CROWS NAT M 71 / / / / 270A 39RED 27-Jun 4:00 PM
+1058296Georgia 819Jourdan Delacruz GA 1998 27Unaffiliated NAT F 53 / / / / 190A 39BLUE 27-Jun 3:40 PM
+1058933Georgia 192Isabella Rodriguez GA 2004 21Unaffiliated NAT F 53 / / / / 180A 39BLUE 27-Jun 3:40 PM
+1002284Florida 165Katherine McCuaig FL 1996 29Unaffiliated NAT F 53 / / / / 170A 39BLUE 27-Jun 3:40 PM
+1017055California North Central 368Alice McBroom CA 1995 301Kilo NAT F 53 / / / / 168A 39BLUE 27-Jun 3:40 PM
+1023528Florida 1491Kailey Sidders FL 2000 25Florida Elite NAT F 53 / / / / 167A 39BLUE 27-Jun 3:40 PM
+184651Carolina 123Katherine Lee NC 1990 35HARRISBURG WEIGHTLIFTING CLUB NAT F 53 / / / / 165A 39BLUE 27-Jun 3:40 PM
+1002876Hawaii and International 822Tiffani Lee HI 1991 34HI PERFORMANCE ATHLETICS NAT F 53 / / / / 165A 39BLUE 27-Jun 3:40 PM
+1033458Mountain South 1235Jessica Weiss NV 1994 31Unaffiliated NAT F 53 / / / / 160A 39BLUE 27-Jun 3:40 PM
+201523Missouri Valley 82Rachel Conaway MO 1996 29LINDENWOOD LIONS NAT F 53 / / / / 155A 39BLUE 27-Jun 3:40 PM
+1070706California South 1370Julia Tomasello CA 1994 31Southern California Weightlifting Club NAT F 53 / / / / 155A 39BLUE 27-Jun 3:40 PM
+1039762Florida 597Catherine Bailey FL 1992 33All In Barbell NAT F 53 / / / / 151A 39BLUE 27-Jun 3:40 PM
+1067062Pennsylvania-West Virginia 1140Christa Degidio WV 1993 32EAST COAST GOLD W/L TEAM NAT F 53 / / / / 151A 39BLUE 27-Jun 3:40 PM
+1066809California North Central 38Juliana Flynn CA 1993 32Marin Heavy Athletics NAT F 53 / / / / 148A 39BLUE 27-Jun 3:40 PM
+1076464New Jersey 289Victoria Cascio NJ 1992 33Unaffiliated NAT F 53 / / / / 148A 39BLUE 27-Jun 3:40 PM
+1026496California South 1453Nile Franklin CA 1985 40Unaffiliated NAT F 53 / / / / 145A 39BLUE 27-Jun 3:40 PM
+1054071Pennsylvania-West Virginia 896Amanda Serapiglia PA 2001 24EAST COAST GOLD W/L TEAM NAT F 53 / / / / 140A 39BLUE 27-Jun 3:40 PM
+1048972Pennsylvania-West Virginia 1148Miranda Ulrey PA 2004 21Fourteen Forty Collective NAT F 58 / / / / 220A 40RED 27-Jun 6:00 PM
+215456Florida 849Madeline Staniszewski FL 2000 25Florida Elite NAT F 58 / / / / 203A 40RED 27-Jun 6:00 PM
+1009592New England 239Tiffany Craven MA 1994 31Aspire Athletic Performance NAT F 58 / / / / 195A 40RED 27-Jun 6:00 PM
+1047723California South 417Katie Jones CA 1996 29Unaffiliated NAT F 58 / / / / 190A 40RED 27-Jun 6:00 PM
+1053629Texas-Oklahoma 440Leigh-Ann Trepanier TX 1997 28Fourteen Forty Collective NAT F 58 / / / / 190A 40RED 27-Jun 6:00 PM
+1051395Texas-Oklahoma 925Veronica Bagundes TX 1992 33Bexar Barbell NAT F 58 / / / / 188A 40RED 27-Jun 6:00 PM
+1029126DMV 971Nicole Mercier VA 1994 31CHFP WEIGHTLIFTING CLUB NAT F 58 / / / / 185A 40RED 27-Jun 6:00 PM
+1031334Carolina 1327Elena Schorr NC 1996 29HEAVY METAL BARBELL NAT F 58 / / / / 185A 40RED 27-Jun 6:00 PM
+1066162Florida 418Angelina Dabney FL 2004 21Murdock Barbell Club NAT F 58 / / / / 180A 40RED 27-Jun 6:00 PM
+1031917Ohio 1095Kaziah Jones OH 2002 23Columbus Weightlifting NAT F 58 / / / / 177A 40RED 27-Jun 6:00 PM
+1012015Pacific Northwest 1197Katharine Estep WA 2004 21ALPHA BARBELL NAT F 63 / / / / 222A 40BLUE 27-Jun 6:10 PM
+1053971California North Central 580Jamie Hegg CO 1999 26HASSLE FREE BBC NAT F 63 / / / / 209A 40BLUE 27-Jun 6:10 PM
+1033080Pacific Northwest 481Meaghan Strey WA 2002 23CATALYST ATHLETICS NAT F 63 / / / / 200A 40BLUE 27-Jun 6:10 PM
+1034657Iowa-Nebraska 641Siera Schuster NE 1996 29HEAVY METAL BARBELL NAT F 63 / / / / 198A 40BLUE 27-Jun 6:10 PM
+1032335Ohio 1211Jessica Tatman OH 1994 31CLEAN SLATE WEIGHTLIFTING NAT F 63 / / / / 195A 40BLUE 27-Jun 6:10 PM
+1004033New York 254Shannon Cook NY 1992 33Optimus Barbell Club NAT F 63 / / / / 194A 40BLUE 27-Jun 6:10 PM
+212835Missouri Valley 814Lily Salisbury KS 1997 28CATALYST ATHLETICS NAT F 63 / / / / 194A 40BLUE 27-Jun 6:10 PM
+1053866California South 88Laura Caggiano CA 1992 33POWER AND GRACE PERFORMANCE. NAT F 63 / / / / 190A 40BLUE 27-Jun 6:10 PM
+1065518New Jersey 358Lisa Ho NJ 1991 34Tri State Barbell NAT F 63 / / / / 190A 40BLUE 27-Jun 6:10 PM
+1005753California South 932Christina Sedgwick CA 2002 23BARBARIAN BARBELL CLUB NAT F 63 / / / / 190A 40BLUE 27-Jun 6:10 PM
+1051102Texas-Oklahoma 1239Colby Mapps TX 2004 21ATHLEO BARBELL CLUB NAT M 94 / / / / 310B 41RED 28-Jun 12:00 PM
+206955Texas-Oklahoma 1007Ruben Martinez TX 1994 31BlueWave Weightlifting NAT M 94 / / / / 307B 41RED 28-Jun 12:00 PM
+1064439Michigan 895Cameron Fyffe MI 1997 28Optimus Barbell Club NAT M 94 / / / / 306B 41RED 28-Jun 12:00 PM
+1045308Pacific Northwest 1258Grant Pierson WA 1998 27Bexar Barbell NAT M 94 / / / / 305B 41RED 28-Jun 12:00 PM
+1066154Wisconsin 332Daniel Rafalski WI 1997 28MILWAUKEE BARBELL WEIGHTLIFTING CLUB NAT M 94 / / / / 304B 41RED 28-Jun 12:00 PM
+1050957Iowa-Nebraska 507Mason Palmer IA 1997 28Bexar Barbell NAT M 94 / / / / 300B 41RED 28-Jun 12:00 PM
+201462Indiana 534Samuel Fife IN 1998 27HOOSIER BARBELL CLUB NAT M 94 / / / / 300B 41RED 28-Jun 12:00 PM
+1016271California South 688Griffin Elbert CA 1993 32Myriad Weightlifting NAT M 94 / / / / 300B 41RED 28-Jun 12:00 PM
+1058163Michigan 1380Matthew Krause MI 1997 28Unaffiliated NAT M 94 / / / / 300B 41RED 28-Jun 12:00 PM
+218932New York 273Christian Tsakanikas NY 1998 27Gryphon Strength Barbell NAT M 88 / / / / 298B 41BLUE 28-Jun 12:00 PM
+1019639Pacific Northwest 1294Jacob Marks WA 1994 31PARAMOUNT BARBELL CLUB NAT M 88 / / / / 297B 41BLUE 28-Jun 12:00 PM
+1026087Mountain North 1229Parker Quimby CO 1992 33Denver Barbell Club NAT M 88 / / / / 296B 41BLUE 28-Jun 12:00 PM
+1015325Indiana 761Elias Talcott IN 1999 26Myriad Weightlifting NAT M 88 / / / / 295B 41BLUE 28-Jun 12:00 PM
+1041015Pacific Northwest 1428Tanner Sturm WA 1992 33PARAMOUNT BARBELL CLUB NAT M 88 / / / / 295B 41BLUE 28-Jun 12:00 PM
+1043764Pennsylvania-West Virginia 113Jerod Peters PA 1997 28Unaffiliated NAT M 88 / / / / 292B 41BLUE 28-Jun 12:00 PM
+192385Pennsylvania-West Virginia 51Vinnie Hoffman PA 1992 33Unaffiliated NAT M 88 / / / / 290B 41BLUE 28-Jun 12:00 PM
+195215Texas-Oklahoma 103Taylor Nox TX 1993 32ATHLEO BARBELL CLUB NAT M 88 / / / / 290B 41BLUE 28-Jun 12:00 PM
+1001168Carolina 217Tyree Harris II SC 1994 31House of Weightlifting NAT M 88 / / / / 290B 41BLUE 28-Jun 12:00 PM
+1074353Minnesota-Dakotas 390Jacob Appino MN 2000 25Unaffiliated NAT M 88 / / / / 290B 41BLUE 28-Jun 12:00 PM
+221006New Jersey 1516Connor Houghton NH 1995 30McKenna Weightlifting NAT M 88 / / / / 287B 41BLUE 28-Jun 12:00 PM
+1041428Florida 1268Nathan Moore FL 1993 32Mako Athletics NAT M 88 / / / / 285B 41BLUE 28-Jun 12:00 PM
+205183Southern 518Anthony Kerr LA 1993 321Kilo NAT M 88 / / / / 280B 41BLUE 28-Jun 12:00 PM
+1077763California North Central 784Davin Ancich CA 2001 24Unaffiliated NAT M 88 / / / / 280B 41BLUE 28-Jun 12:00 PM
+162808Mountain North 350Erin Amos CO 1998 27Vardanian Weightlifting NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1053538DMV 595Melissa Salazar VA 1991 34EAST COAST GOLD W/L TEAM NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1061127Mountain South 869Kayli Kullos AZ 1994 31Alee Athletics NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1015165Pacific Northwest 1132Gretchen Stolte OR 1991 34Ironside Weightlifting NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1023761Tennessee-Kentucky 1179Emily Brown GA 1995 30Unaffiliated NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1077425New England 1401Leah Smith RI 1992 33Providence Barbell Club NAT F 69 / / / / 185B 42RED 28-Jun 2:00 PM
+1035943Florida 261Christina Richards FL 1987 38CATALYST ATHLETICS NAT F 69 / / / / 182B 42RED 28-Jun 2:00 PM
+1063275Florida 1071Alexis Boutchie FL 1998 27Oly Concepts NAT F 69 / / / / 182B 42RED 28-Jun 2:00 PM
+1074836DMV 1127Chereese Creel VA 1996 29Unaffiliated NAT F 69 / / / / 182B 42RED 28-Jun 2:00 PM
+1027507New England 757Elsbeth Paige-Jeffers ME 1988 37York County Barbell NAT F 69 / / / / 180B 42RED 28-Jun 2:00 PM
+1031798Texas-Oklahoma 183Jeanna Mullen TX 1995 30Bexar Barbell NAT F 69 / / / / 177B 42RED 28-Jun 2:00 PM
+1015884Carolina 1010Ryan Grimsland NC 2002 23Unaffiliated NAT M 79 / / / / 336A 42BLUE 28-Jun 2:20 PM
+164485Carolina 424Clarence Cummings SC 2000 25Beyond The Barbell NAT M 79 / / / / 330A 42BLUE 28-Jun 2:20 PM
+1030570Illinois 130Edward Ginnan IL 1997 28Myriad Weightlifting NAT M 79 / / / / 320A 42BLUE 28-Jun 2:20 PM
+185861DMV 643Troy Fries VA 1996 29Renaissance Periodization NAT M 79 / / / / 310A 42BLUE 28-Jun 2:20 PM
+1001425Mountain South 586Jack Walbye UT 1998 27Unaffiliated NAT M 79 / / / / 280A 42BLUE 28-Jun 2:20 PM
+1047374Texas-Oklahoma 1398Thomas Osborne Bird TX 1999 26Bexar Barbell NAT M 79 / / / / 272A 42BLUE 28-Jun 2:20 PM
+1063520DMV 316Andrew Raudabaugh WI 1995 30Unaffiliated NAT M 79 / / / / 260A 42BLUE 28-Jun 2:20 PM
+1019902California South 334Emmanuel Amador CA 1993 32Southern California Weightlifting Club NAT M 79 / / / / 260A 42BLUE 28-Jun 2:20 PM
+198416Hawaii and International 1020Andrew Tipon HI 1990 35HI PERFORMANCE ATHLETICS NAT M 79 / / / / 260A 42BLUE 28-Jun 2:20 PM
+1063674Missouri Valley 540Ava Biesterfeld MO 2002 23Team Strength Works NAT F 69 / / / / 226A 43RED 28-Jun 4:00 PM
+1019928Texas-Oklahoma 1216Estelle Rohr TX 1995 30Bexar Barbell NAT F 69 / / / / 225A 43RED 28-Jun 4:00 PM
+1053969Pennsylvania-West Virginia 255Abigail Cooper PA 2002 23Fourteen Forty Collective NAT F 69 / / / / 220A 43RED 28-Jun 4:00 PM
+1060757Mountain South 781Addie Anderson UT 2003 22Zion Barbell NAT F 69 / / / / 205A 43RED 28-Jun 4:00 PM
+1003137Minnesota-Dakotas 806Reba Lewis SD 1991 34Bexar Barbell NAT F 69 / / / / 200A 43RED 28-Jun 4:00 PM
+1053673Texas-Oklahoma 991Nicole Zettlemoyer TX 1991 341Kilo NAT F 69 / / / / 200A 43RED 28-Jun 4:00 PM
+219889DMV 69Cristine Schiavello MD 1991 34CHFP WEIGHTLIFTING CLUB NAT F 69 / / / / 197A 43RED 28-Jun 4:00 PM
+1024143Ohio 207Taylor Lucas OH 1995 30Superfly Barbell Club NAT F 69 / / / / 197A 43RED 28-Jun 4:00 PM
+1007407Carolina 405Mariah merkle NC 1999 26ATHLETIC LAB WLC NAT F 69 / / / / 192A 43RED 28-Jun 4:00 PM
+1038457DMV 960Rachel Clemmer VA 1999 26EAST COAST GOLD W/L TEAM NAT F 69 / / / / 191A 43RED 28-Jun 4:00 PM
+1063740Tennessee-Kentucky 155Hutton Boles TN 2004 21Standard Strength NAT M 88 / / / / 330A 43BLUE 28-Jun 4:10 PM
+1052501Texas-Oklahoma 828Brandon Victorian TX 1996 29BlueWave Weightlifting NAT M 88 / / / / 330A 43BLUE 28-Jun 4:10 PM
+192851California South 290John Downey CA 1991 34Southern California Weightlifting Club NAT M 88 / / / / 320A 43BLUE 28-Jun 4:10 PM
+1041120Tennessee-Kentucky 951Preston Powell TN 2003 22Unaffiliated NAT M 88 / / / / 320A 43BLUE 28-Jun 4:10 PM
+1020803Missouri Valley 1434Beau Brown NE 1994 31Heartland Strength NAT M 88 / / / / 320A 43BLUE 28-Jun 4:10 PM
+1025295Mountain South 482Bryan Cuellar UT 1993 32Waxman's Gym NAT M 88 / / / / 315A 43BLUE 28-Jun 4:10 PM
+206130New England 687Nguyen Huynh MA 1990 35People's Republic of The Dojo NAT M 88 / / / / 315A 43BLUE 28-Jun 4:10 PM
+1002455California North Central 414Conner Sparks CA 2001 24Blackketter WL NAT M 88 / / / / 310A 43BLUE 28-Jun 4:10 PM
+1066091Alabama 750Wyatt Coffey AL 2002 23Unaffiliated NAT M 88 / / / / 310A 43BLUE 28-Jun 4:10 PM
+1025976California South 1068Dominique Laster AR 1993 32Southern California Weightlifting Club NAT M 88 / / / / 310A 43BLUE 28-Jun 4:10 PM
+1051014Indiana 843Austin Davis NC 2000 251Kilo NAT M 88 / / / / 301A 43BLUE 28-Jun 4:10 PM
+1058751Mountain South 384Jacob Johnsson UT 1998 27Waxman's Gym NAT M 88 / / / / 300A 43BLUE 28-Jun 4:10 PM
+214920California South 1085Valera ` Djaghouri CA 1995 30BARBARIAN BARBELL CLUB NAT M 88 / / / / 300A 43BLUE 28-Jun 4:10 PM
+1014341New England 523Chrisanto D'Agostino FL 2001 24EAST COAST GOLD W/L TEAM NAT M 94 / / / / 350A 44RED 28-Jun 6:00 PM
+179975Tennessee-Kentucky 1310Morgan McCullough TN 2003 22CALIFORNIA STRENGTH NAT M 94 / / / / 350A 44RED 28-Jun 6:00 PM
+155457Pacific Northwest 637Daniel Wiitanen WA 1996 29CALPIANS WLC NAT M 94 / / / / 340A 44RED 28-Jun 6:00 PM
+179611Texas-Oklahoma 1243Blaine Brooks TX 2001 24Spoon Barbell Club NAT M 94 / / / / 340A 44RED 28-Jun 6:00 PM
+212456Texas-Oklahoma 9Layne Palm TX 1995 30Bexar Barbell NAT M 94 / / / / 335A 44RED 28-Jun 6:00 PM
+1016964Tennessee-Kentucky 842Timothy Davis KY 2004 21Unaffiliated NAT M 94 / / / / 335A 44RED 28-Jun 6:00 PM
+1056211Carolina 1Jaimerius Williams SC 2001 24Lowcountry Barbell NAT M 94 / / / / 330A 44RED 28-Jun 6:00 PM
+1004368Illinois 425Will Easley IL 2001 24STONEAGE WEIGHTLIFTING CLUB NAT M 94 / / / / 315A 44RED 28-Jun 6:00 PM
+1049114Florida 661Huntington Hayes FL 1992 33Unaffiliated NAT M 94 / / / / 310A 44RED 28-Jun 6:00 PM
+1036060Mountain North 827Jacob Cluff ID 1993 32POWER AND GRACE PERFORMANCE. NAT M 110 / / / / 321B 45RED 29-Jun 10:00 AM
+1027554Iowa-Nebraska 233Colin Reis IA 2004 21Jake Pudenz Strength & Power NAT M 110 / / / / 320B 45RED 29-Jun 10:00 AM
+201423Carolina 279Benson Robles NC 1995 30Unaffiliated NAT M 110 / / / / 320B 45RED 29-Jun 10:00 AM
+1065988Mountain North 1210Colin Castagna CO 1995 30Unaffiliated NAT M 110 / / / / 320B 45RED 29-Jun 10:00 AM
+1026239Minnesota-Dakotas 1278Charles Shervheim MN 1995 30Unaffiliated NAT M 110 / / / / 320B 45RED 29-Jun 10:00 AM
+203748New York 980David McKellar NY 1996 29Unaffiliated NAT M 110 / / / / 310B 45RED 29-Jun 10:00 AM
+211745Mountain North 1070Denali Scoular CO 1999 26Southern California Weightlifting Club NAT M 110 / / / / 310B 45RED 29-Jun 10:00 AM
+175684Texas-Oklahoma 1153Adam White TX 1994 31Unaffiliated NAT M 110 / / / / 300B 45RED 29-Jun 10:00 AM
+137616California South 1483Nick DeShane CA 1983 42The Strength Tank Weightlifting Club NAT M 110 / / / / 290B 45RED 29-Jun 10:00 AM
+1075793DMV 22John-Edward Heath MD 1991 34Unaffiliated ADAP NAT M 110 / / / / 181B 45RED 29-Jun 10:00 AM
+188651Mountain North 377Emily Boyich CO 1993 32Kratos Strength Lab NAT F 86 / / / / 201B 45WHITE 29-Jun 10:00 AM
+1020890New England 177Sydney Collins CT 1992 33Providence Barbell Club NAT F 86 / / / / 200B 45WHITE 29-Jun 10:00 AM
+1048337Mountain North 1143Emma Rogers WY 2003 22IRON KITCHEN NAT F 86 / / / / 200B 45WHITE 29-Jun 10:00 AM
+198276Tennessee-Kentucky 1334Laura Barito KY 1989 361Kilo NAT F 86 / / / / 198B 45WHITE 29-Jun 10:00 AM
+201606Florida 347Jennifer Gusler FL 1987 38Optimus Barbell Club NAT F 86 / / / / 195B 45WHITE 29-Jun 10:00 AM
+1010483Mountain South 629Emily Kessler-Lewis NM 1995 30TEAM WESTERN NEW YORK NAT F 86 / / / / 195B 45WHITE 29-Jun 10:00 AM
+207538Pacific Northwest 74Uchechi Esonu WA 1991 34Unaffiliated NAT F 86 / / / / 193B 45WHITE 29-Jun 10:00 AM
+1059096New England 216Molly Jalbert ME 1995 30Unaffiliated NAT F 86 / / / / 185B 45WHITE 29-Jun 10:00 AM
+1030233DMV 562Victoria Fries VA 1997 28Renaissance Periodization NAT F 77 / / / / 195B 45BLUE 29-Jun 10:00 AM
+1038582Michigan 707Sarah Kajdasz MI 1999 26Optimus Barbell Club NAT F 77 / / / / 195B 45BLUE 29-Jun 10:00 AM
+1043479New England 1400Megan Kudrick CT 1992 33EAST COAST GOLD W/L TEAM NAT F 77 / / / / 194B 45BLUE 29-Jun 10:00 AM
+1061635California South 1188Christine Yee CO 1999 26Vehement Elite Athletics NAT F 77 / / / / 193B 45BLUE 29-Jun 10:00 AM
+1044061Georgia 47Carly Brown GA 2002 23DSSC Weightlifting NAT F 77 / / / / 192B 45BLUE 29-Jun 10:00 AM
+1013719New Jersey 195Taylor Maginnis NJ 1991 34Tri State Barbell NAT F 77 / / / / 190B 45BLUE 29-Jun 10:00 AM
+1003481California North Central 690Brittany Brooks CA 1994 31Unaffiliated NAT F 77 / / / / 190B 45BLUE 29-Jun 10:00 AM
+1045235California South 1082Ashlie Pankonin CA 1995 30POWER AND GRACE PERFORMANCE. NAT F 77 / / / / 190B 45BLUE 29-Jun 10:00 AM
+1046672Mountain North 1281Adrienne Vogelsang CO 1992 33Denver Barbell Club NAT F 77 / / / / 190B 45BLUE 29-Jun 10:00 AM
+1041757Ohio 1307Melissa Zegeer PA 1995 30RUBBER CITY WEIGHTLIFTING NAT F 77 / / / / 190B 45BLUE 29-Jun 10:00 AM
+1071600New England 962M. Claire Akin RI 1993 32Rhode Island Performance NAT F 77 / / / / 186B 45BLUE 29-Jun 10:00 AM
+1048805Carolina 614Jamie Maffeo NC 1993 32ATHLETIC LAB WLC NAT F 77 / / / / 180B 45BLUE 29-Jun 10:00 AM
+1031262Minnesota-Dakotas 628Amber Klaphake MN 1987 38Unaffiliated NAT F 77 / / / / 180B 45BLUE 29-Jun 10:00 AM
+1041440New Jersey 1518Samantha Kuhles NJ 1987 38Marble Weightlifting NAT F 77 / / / / 180B 45BLUE 29-Jun 10:00 AM
+1014931Illinois 373Jamelle Apolinar IL 1990 35RAWW Barbell NAT F 86+ / / / / 200B 46RED 29-Jun 12:00 PM
+1053985Pennsylvania-West Virginia 601Kelsey Koontz PA 1996 29Fourteen Forty Collective NAT F 86+ / / / / 200B 46RED 29-Jun 12:00 PM
+1039016Missouri Valley 638Jennifer Galemmo MO 1994 31Team Strength Works NAT F 86+ / / / / 200B 46RED 29-Jun 12:00 PM
+1056680DMV 923LeKiesha White VA 1989 36RVA Weightlifting NAT F 86+ / / / / 200B 46RED 29-Jun 12:00 PM
+195177Florida 251Autumn Makins-Null FL 1998 27Oly Concepts NAT F 86+ / / / / 197B 46RED 29-Jun 12:00 PM
+1074159California North Central 1040Hannah Wheeler CA 1997 28NorCal Weightlifting NAT F 86+ / / / / 195B 46RED 29-Jun 12:00 PM
+1075584DMV 1365Rebecca Dublin MD 1988 37EAST COAST GOLD W/L TEAM NAT F 86+ / / / / 195B 46RED 29-Jun 12:00 PM
+1071621Florida 891Ashley Collazo FL 1992 33Maxx Effort Training ADAP NAT F 86+ / / / / 109B 46RED 29-Jun 12:00 PM
+1071595California South 1221Anna Stern CA 1993 32Wilder Athletics ADAP NAT F 86+ / / / / 88B 46RED 29-Jun 12:00 PM
+178536Florida 875Martha Rogers FL 1995 30CATALYST ATHLETICS NAT F 77 / / / / 240A 46BLUE 29-Jun 12:20 PM
+214993Missouri Valley 388Shacasia Johnson MO 1996 29Unaffiliated NAT F 77 / / / / 225A 46BLUE 29-Jun 12:20 PM
+1020750California South 439Darci Molina CA 1992 33West Coast Weightlifting NAT F 77 / / / / 220A 46BLUE 29-Jun 12:20 PM
+1042633Mountain South 87Megan Brasee AZ 1994 31Alee Athletics NAT F 77 / / / / 210A 46BLUE 29-Jun 12:20 PM
+1026670Florida 186Alexia Gonzalez FL 1995 30Category 5 Athletics NAT F 77 / / / / 210A 46BLUE 29-Jun 12:20 PM
+169822Carolina 1130Tayler Harris NC 1987 38HEAVY METAL BARBELL NAT F 77 / / / / 210A 46BLUE 29-Jun 12:20 PM
+1030202Florida 496Andrea Barrows FL 2002 23Keep Pulling NAT F 77 / / / / 209A 46BLUE 29-Jun 12:20 PM
+1036400Carolina 549Francesca Dooris CA 1996 29PROJECT LIFT NAT F 77 / / / / 205A 46BLUE 29-Jun 12:20 PM
+213916Texas-Oklahoma 979Deborah Doran TX 1992 33Rising Tide Weightlifting NAT F 77 / / / / 205A 46BLUE 29-Jun 12:20 PM
+1025226DMV 1066Emma Hoffman VA 1993 32EAST COAST GOLD W/L TEAM NAT F 77 / / / / 205A 46BLUE 29-Jun 12:20 PM
+1036712New Jersey 50Heather Mentone NJ 1997 28Marble Weightlifting NAT F 77 / / / / 199A 46BLUE 29-Jun 12:20 PM
+1057676Ohio 1439Kat Carter OH 2004 21RUBBER CITY WEIGHTLIFTING NAT F 77 / / / / 198A 46BLUE 29-Jun 12:20 PM
+1064301Florida 787Brianna Chu FL 1993 32Florida Elite NAT F 77 / / / / 196A 46BLUE 29-Jun 12:20 PM
+210660Florida 888Alejandro Medina FL 1996 29Florida Elite NAT M 110 / / / / 372A 47RED 29-Jun 2:00 PM
+212406Pacific Northwest 382Ryan Sester OR 1996 29Unaffiliated NAT M 110 / / / / 370A 47RED 29-Jun 2:00 PM
+1066054Mountain South 44Xavier Borde AZ 1993 32Alee Athletics NAT M 110 / / / / 355A 47RED 29-Jun 2:00 PM
+1041830Georgia 304Joshua Magee TN 1995 30CALIFORNIA STRENGTH NAT M 110 / / / / 345A 47RED 29-Jun 2:00 PM
+1069174DMV 904Aaron Nice VA 2004 21Unaffiliated NAT M 110 / / / / 345A 47RED 29-Jun 2:00 PM
+1049536Missouri Valley 45James Tice ND 2002 23LINDENWOOD LIONS NAT M 110 / / / / 335A 47RED 29-Jun 2:00 PM
+1044617DMV 739Caleb Weakland VA 2002 23STONEAGE WEIGHTLIFTING CLUB NAT M 110 / / / / 330A 47RED 29-Jun 2:00 PM
+1000932Missouri Valley 1226George Upmeyer MO 2004 21Team Strength Works NAT M 110 / / / / 325A 47RED 29-Jun 2:00 PM
+1003070Missouri Valley 747Michael Banks MO 1994 31Team Strength Works NAT M 110 / / / / 321A 47RED 29-Jun 2:00 PM
+1058355Minnesota-Dakotas 282Katelyn Witte SD 2004 21Sanctuary Barbell NAT F 86 / / / / 227A 47BLUE 29-Jun 2:20 PM
+161986Mountain North 1377Jenny Arthur CO 1993 32Vardanian Weightlifting NAT F 86 / / / / 225A 47BLUE 29-Jun 2:20 PM
+1051520Carolina 1456Harley Creech NC 2003 22HEAVY METAL BARBELL NAT F 86 / / / / 221A 47BLUE 29-Jun 2:20 PM
+1032566Florida 789Victoria Jefferson FL 1998 27Rise Weightlifting NAT F 86 / / / / 220A 47BLUE 29-Jun 2:20 PM
+1034809California North Central 19Laura Alexander CA 1988 37CATALYST ATHLETICS NAT F 86 / / / / 215A 47BLUE 29-Jun 2:20 PM
+1006038California South 870Kayla Kass CA 1995 301Kilo NAT F 86 / / / / 215A 47BLUE 29-Jun 2:20 PM
+1038740Mountain North 835Alexandria Fillmore CO 1993 32Vardanian Weightlifting NAT F 86 / / / / 210A 47BLUE 29-Jun 2:20 PM
+1046582Ohio 947Halle Kotchman OH 1997 28RUBBER CITY WEIGHTLIFTING NAT F 86 / / / / 210A 47BLUE 29-Jun 2:20 PM
+1063866Indiana 503Caitlin Thilges IN 2000 251Kilo NAT F 86+ / / / / 230A 48RED 29-Jun 4:00 PM
+208446Mountain South 55Rebecca Walker AZ 1997 28PERFORMANCE ONE WEIGHTLIFTING NAT F 86+ / / / / 225A 48RED 29-Jun 4:00 PM
+196027Florida 1322Shala McMillan FL 1999 26FULL CIRCLE PERFORMANCE NAT F 86+ / / / / 225A 48RED 29-Jun 4:00 PM
+1023418Indiana 551Mary Theisen-Lappen IN 1990 351Kilo NAT F 86+ / / / / 220A 48RED 29-Jun 4:00 PM
+1016550Pennsylvania-West Virginia 1265Kristen Erickson PA 1994 311Kilo NAT F 86+ / / / / 215A 48RED 29-Jun 4:00 PM
+1077665New York 142Chealsea Enemor KS 2005 20Aegis Barbell NAT F 86+ / / / / 210A 48RED 29-Jun 4:00 PM
+1045014Pacific Northwest 462Kimberlee Douglas OR 1981 44Haworth Weightlifting NAT F 86+ / / / / 205A 48RED 29-Jun 4:00 PM
+1056122Mountain South 1230Brittany Latham NV 1993 32Marin Heavy Athletics NAT F 86+ / / / / 205A 48RED 29-Jun 4:00 PM
+1041402Missouri Valley 408Trisha Mank MO 1995 30POWER AND GRACE PERFORMANCE. NAT F 86+ / / / / 201A 48RED 29-Jun 4:00 PM
+131110Carolina 630Caine Wilkes NC 1987 38HEAVY METAL BARBELL NAT M 110+ / / / / 360 48BLUE 29-Jun 4:00 PM
+1017324California South 1478Cesar Flores CA 1997 28Southern California Weightlifting Club NAT M 110+ / / / / 360 48BLUE 29-Jun 4:00 PM
+192277Missouri Valley 108Zachary Huse MO 1993 32EAST COAST GOLD W/L TEAM NAT M 110+ / / / / 350 48BLUE 29-Jun 4:00 PM
+1008163Pennsylvania-West Virginia 678Dimitri Albury PA 1991 34Rising Tide Weightlifting NAT M 110+ / / / / 350 48BLUE 29-Jun 4:00 PM
+1043909Mountain North 1207Kyle Schulman CO 1999 26Unaffiliated NAT M 110+ / / / / 350 48BLUE 29-Jun 4:00 PM
+1078574Minnesota-Dakotas 1420Kaleb wendricks MN 1993 32Lenka's Lifting Club NAT M 110+ / / / / 345 48BLUE 29-Jun 4:00 PM
+198968Pennsylvania-West Virginia 607Thomas Duer PA 1986 39EAST COAST GOLD W/L TEAM NAT M 110+ / / / / 330 48BLUE 29-Jun 4:00 PM
+1070317New York 11Samuel Anderson IA 2001 24Gryphon Strength Barbell NAT M 110+ / / / / 315 48BLUE 29-Jun 4:00 PM
+1032336Pacific Northwest 322Jabo Nguyen OR 1997 28Unaffiliated NAT M 110+ / / / / 310 48BLUE 29-Jun 4:00 PM
+1032597Iowa-Nebraska 759Eric Gleiter IA 1998 27Unaffiliated NAT M 110+ / / / / 310 48BLUE 29-Jun 4:00 PM
+166492Florida 1466Daniel Russell FL 1987 38Florida Elite NAT M 110+ / / / / 310 48BLUE 29-Jun 4:00 PM

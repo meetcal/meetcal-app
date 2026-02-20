@@ -1,0 +1,41 @@
+name: Scrape National University Championships
+
+on:
+  schedule:
+    - cron: '50 4 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  TARGET_URL: 'https://usaweightlifting.sport80.com/public/events/14333/entries/21209?bl='
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./scrapers/usaw/entry_scraper
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+        
+      - name: Create URL file
+        run: echo "$TARGET_URL" > target_url.txt
+        
+      - name: Run scraper
+        run: node csv_scraper.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_ENTRY_WEBHOOK_URL }} 

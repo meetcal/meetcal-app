@@ -1,0 +1,549 @@
+event_name,gender,age_category,weight_class,qualifying_total
+Virus Finals,Men,U11,32kg,32
+Virus Finals,Men,U11,36kg,36
+Virus Finals,Men,U11,40kg,40
+Virus Finals,Men,U11,45kg,45
+Virus Finals,Men,U11,50kg,50
+Virus Finals,Men,U11,55kg,55
+Virus Finals,Men,U11,60kg,60
+Virus Finals,Men,U11,65kg,65
+Virus Finals,Men,U11,70kg,70
+Virus Finals,Men,U11,70+kg,71
+Virus Finals,Men,U13,32kg,32
+Virus Finals,Men,U13,36kg,36
+Virus Finals,Men,U13,40kg,40
+Virus Finals,Men,U13,45kg,45
+Virus Finals,Men,U13,50kg,50
+Virus Finals,Men,U13,55kg,55
+Virus Finals,Men,U13,60kg,60
+Virus Finals,Men,U13,65kg,65
+Virus Finals,Men,U13,70kg,70
+Virus Finals,Men,U13,70+kg,71
+Virus Finals,Men,U15,50kg,70
+Virus Finals,Men,U15,55kg,93
+Virus Finals,Men,U15,60kg,102
+Virus Finals,Men,U15,65kg,106
+Virus Finals,Men,U15,70kg,110
+Virus Finals,Men,U15,75kg,115
+Virus Finals,Men,U15,85kg,122
+Virus Finals,Men,U15,95kg,127
+Virus Finals,Men,U15,95+kg,129
+Virus Finals,Men,U17,55kg,102
+Virus Finals,Men,U17,60kg,116
+Virus Finals,Men,U17,65kg,128
+Virus Finals,Men,U17,70kg,139
+Virus Finals,Men,U17,75kg,147
+Virus Finals,Men,U17,85kg,157
+Virus Finals,Men,U17,95kg,166
+Virus Finals,Men,U17,95+kg,168
+Virus Finals,Men,Junior,60kg,148
+Virus Finals,Men,Junior,65kg,158
+Virus Finals,Men,Junior,70kg,172
+Virus Finals,Men,Junior,75kg,180
+Virus Finals,Men,Junior,85kg,191
+Virus Finals,Men,Junior,95kg,198
+Virus Finals,Men,Junior,110kg,208
+Virus Finals,Men,Junior,110+kg,210
+Virus Finals,Men,Senior,60kg,188
+Virus Finals,Men,Senior,65kg,204
+Virus Finals,Men,Senior,70kg,239
+Virus Finals,Men,Senior,75kg,260
+Virus Finals,Men,Senior,85kg,280
+Virus Finals,Men,Senior,95kg,289
+Virus Finals,Men,Senior,110kg,300
+Virus Finals,Men,Senior,110+kg,304
+Virus Finals,Men,Masters 35,60kg,156
+Virus Finals,Men,Masters 35,65kg,164
+Virus Finals,Men,Masters 35,70kg,172
+Virus Finals,Men,Masters 35,75kg,181
+Virus Finals,Men,Masters 35,85kg,193
+Virus Finals,Men,Masters 35,95kg,201
+Virus Finals,Men,Masters 35,110kg,212
+Virus Finals,Men,Masters 35,110+kg,217
+Virus Finals,Men,Masters 40,60kg,147
+Virus Finals,Men,Masters 40,65kg,155
+Virus Finals,Men,Masters 40,70kg,162
+Virus Finals,Men,Masters 40,75kg,171
+Virus Finals,Men,Masters 40,85kg,181
+Virus Finals,Men,Masters 40,95kg,190
+Virus Finals,Men,Masters 40,110kg,200
+Virus Finals,Men,Masters 40,110+kg,204
+Virus Finals,Men,Masters 45,60kg,139
+Virus Finals,Men,Masters 45,65kg,146
+Virus Finals,Men,Masters 45,70kg,152
+Virus Finals,Men,Masters 45,75kg,160
+Virus Finals,Men,Masters 45,85kg,171
+Virus Finals,Men,Masters 45,95kg,179
+Virus Finals,Men,Masters 45,110kg,189
+Virus Finals,Men,Masters 45,110+kg,193
+Virus Finals,Men,Masters 50,60kg,130
+Virus Finals,Men,Masters 50,65kg,137
+Virus Finals,Men,Masters 50,70kg,142
+Virus Finals,Men,Masters 50,75kg,150
+Virus Finals,Men,Masters 50,85kg,159
+Virus Finals,Men,Masters 50,95kg,167
+Virus Finals,Men,Masters 50,110kg,177
+Virus Finals,Men,Masters 50,110+kg,181
+Virus Finals,Men,Masters 55,60kg,112
+Virus Finals,Men,Masters 55,65kg,118
+Virus Finals,Men,Masters 55,70kg,123
+Virus Finals,Men,Masters 55,75kg,129
+Virus Finals,Men,Masters 55,85kg,138
+Virus Finals,Men,Masters 55,95kg,144
+Virus Finals,Men,Masters 55,110kg,154
+Virus Finals,Men,Masters 55,110+kg,157
+Virus Finals,Men,Masters 60,60kg,103
+Virus Finals,Men,Masters 60,65kg,107
+Virus Finals,Men,Masters 60,70kg,112
+Virus Finals,Men,Masters 60,75kg,118
+Virus Finals,Men,Masters 60,85kg,125
+Virus Finals,Men,Masters 60,95kg,132
+Virus Finals,Men,Masters 60,110kg,141
+Virus Finals,Men,Masters 60,110+kg,144
+Virus Finals,Men,Masters 65,60kg,88
+Virus Finals,Men,Masters 65,65kg,93
+Virus Finals,Men,Masters 65,70kg,96
+Virus Finals,Men,Masters 65,75kg,101
+Virus Finals,Men,Masters 65,85kg,108
+Virus Finals,Men,Masters 65,95kg,114
+Virus Finals,Men,Masters 65,110kg,123
+Virus Finals,Men,Masters 65,110+kg,125
+Virus Finals,Men,Masters 70,60kg,75
+Virus Finals,Men,Masters 70,65kg,79
+Virus Finals,Men,Masters 70,70kg,82
+Virus Finals,Men,Masters 70,75kg,85
+Virus Finals,Men,Masters 70,85kg,92
+Virus Finals,Men,Masters 70,95kg,97
+Virus Finals,Men,Masters 70,110kg,105
+Virus Finals,Men,Masters 70,110+kg,107
+Virus Finals,Men,Masters 75,60kg,66
+Virus Finals,Men,Masters 75,65kg,67
+Virus Finals,Men,Masters 75,70kg,70
+Virus Finals,Men,Masters 75,75kg,73
+Virus Finals,Men,Masters 75,85kg,79
+Virus Finals,Men,Masters 75,95kg,84
+Virus Finals,Men,Masters 75,110kg,91
+Virus Finals,Men,Masters 75,110+kg,94
+Virus Finals,Men,Masters 80,60kg,54
+Virus Finals,Men,Masters 80,65kg,56
+Virus Finals,Men,Masters 80,70kg,58
+Virus Finals,Men,Masters 80,75kg,60
+Virus Finals,Men,Masters 80,85kg,65
+Virus Finals,Men,Masters 80,95kg,69
+Virus Finals,Men,Masters 80,110kg,77
+Virus Finals,Men,Masters 80,110+kg,79
+Virus Finals,Men,Masters 85,60kg,41
+Virus Finals,Men,Masters 85,65kg,42
+Virus Finals,Men,Masters 85,70kg,42
+Virus Finals,Men,Masters 85,75kg,44
+Virus Finals,Men,Masters 85,85kg,48
+Virus Finals,Men,Masters 85,95kg,52
+Virus Finals,Men,Masters 85,110kg,59
+Virus Finals,Men,Masters 85,110+kg,61
+Virus Finals,Women,U11,30kg,30
+Virus Finals,Women,U11,33kg,33
+Virus Finals,Women,U11,37kg,37
+Virus Finals,Women,U11,41kg,41
+Virus Finals,Women,U11,45kg,45
+Virus Finals,Women,U11,49kg,49
+Virus Finals,Women,U11,53kg,53
+Virus Finals,Women,U11,57kg,57
+Virus Finals,Women,U11,61kg,61
+Virus Finals,Women,U11,61+kg,62
+Virus Finals,Women,U13,30kg,30
+Virus Finals,Women,U13,33kg,33
+Virus Finals,Women,U13,37kg,37
+Virus Finals,Women,U13,41kg,41
+Virus Finals,Women,U13,45kg,45
+Virus Finals,Women,U13,49kg,49
+Virus Finals,Women,U13,53kg,53
+Virus Finals,Women,U13,57kg,57
+Virus Finals,Women,U13,61kg,61
+Virus Finals,Women,U13,61+kg,62
+Virus Finals,Women,U15,41kg,62
+Virus Finals,Women,U15,45kg,65
+Virus Finals,Women,U15,49kg,68
+Virus Finals,Women,U15,53kg,71
+Virus Finals,Women,U15,57kg,76
+Virus Finals,Women,U15,61kg,78
+Virus Finals,Women,U15,69kg,84
+Virus Finals,Women,U15,77kg,86
+Virus Finals,Women,U15,77+kg,89
+Virus Finals,Women,U17,45kg,62
+Virus Finals,Women,U17,49kg,70
+Virus Finals,Women,U17,53kg,76
+Virus Finals,Women,U17,57kg,86
+Virus Finals,Women,U17,61kg,97
+Virus Finals,Women,U17,69kg,101
+Virus Finals,Women,U17,77kg,106
+Virus Finals,Women,U17,77+kg,109
+Virus Finals,Women,Junior,49kg,90
+Virus Finals,Women,Junior,53kg,103
+Virus Finals,Women,Junior,57kg,112
+Virus Finals,Women,Junior,61kg,115
+Virus Finals,Women,Junior,69kg,118
+Virus Finals,Women,Junior,77kg,126
+Virus Finals,Women,Junior,86kg,132
+Virus Finals,Women,Junior,86+kg,137
+Virus Finals,Women,Senior,49kg,129
+Virus Finals,Women,Senior,53kg,146
+Virus Finals,Women,Senior,57kg,157
+Virus Finals,Women,Senior,61kg,166
+Virus Finals,Women,Senior,69kg,172
+Virus Finals,Women,Senior,77kg,181
+Virus Finals,Women,Senior,86kg,185
+Virus Finals,Women,Senior,86+kg,190
+Virus Finals,Women,Masters 35,49kg,80
+Virus Finals,Women,Masters 35,53kg,86
+Virus Finals,Women,Masters 35,57kg,90
+Virus Finals,Women,Masters 35,61kg,95
+Virus Finals,Women,Masters 35,69kg,103
+Virus Finals,Women,Masters 35,77kg,110
+Virus Finals,Women,Masters 35,86kg,113
+Virus Finals,Women,Masters 35,86+kg,118
+Virus Finals,Women,Masters 40,49kg,75
+Virus Finals,Women,Masters 40,53kg,81
+Virus Finals,Women,Masters 40,57kg,85
+Virus Finals,Women,Masters 40,61kg,89
+Virus Finals,Women,Masters 40,69kg,97
+Virus Finals,Women,Masters 40,77kg,105
+Virus Finals,Women,Masters 40,86kg,106
+Virus Finals,Women,Masters 40,86+kg,111
+Virus Finals,Women,Masters 45,49kg,71
+Virus Finals,Women,Masters 45,53kg,76
+Virus Finals,Women,Masters 45,57kg,80
+Virus Finals,Women,Masters 45,61kg,84
+Virus Finals,Women,Masters 45,69kg,91
+Virus Finals,Women,Masters 45,77kg,98
+Virus Finals,Women,Masters 45,86kg,101
+Virus Finals,Women,Masters 45,86+kg,105
+Virus Finals,Women,Masters 50,49kg,67
+Virus Finals,Women,Masters 50,53kg,71
+Virus Finals,Women,Masters 50,57kg,75
+Virus Finals,Women,Masters 50,61kg,79
+Virus Finals,Women,Masters 50,69kg,85
+Virus Finals,Women,Masters 50,77kg,92
+Virus Finals,Women,Masters 50,86kg,94
+Virus Finals,Women,Masters 50,86+kg,98
+Virus Finals,Women,Masters 55,49kg,57
+Virus Finals,Women,Masters 55,53kg,60
+Virus Finals,Women,Masters 55,57kg,64
+Virus Finals,Women,Masters 55,61kg,66
+Virus Finals,Women,Masters 55,69kg,72
+Virus Finals,Women,Masters 55,77kg,79
+Virus Finals,Women,Masters 55,86kg,81
+Virus Finals,Women,Masters 55,86+kg,84
+Virus Finals,Women,Masters 60,49kg,48
+Virus Finals,Women,Masters 60,53kg,51
+Virus Finals,Women,Masters 60,57kg,54
+Virus Finals,Women,Masters 60,61kg,56
+Virus Finals,Women,Masters 60,69kg,61
+Virus Finals,Women,Masters 60,77kg,67
+Virus Finals,Women,Masters 60,86kg,68
+Virus Finals,Women,Masters 60,86+kg,71
+Virus Finals,Women,Masters 65,49kg,43
+Virus Finals,Women,Masters 65,53kg,46
+Virus Finals,Women,Masters 65,57kg,48
+Virus Finals,Women,Masters 65,61kg,50
+Virus Finals,Women,Masters 65,69kg,55
+Virus Finals,Women,Masters 65,77kg,61
+Virus Finals,Women,Masters 65,86kg,62
+Virus Finals,Women,Masters 65,86+kg,65
+Virus Finals,Women,Masters 70,49kg,38
+Virus Finals,Women,Masters 70,53kg,40
+Virus Finals,Women,Masters 70,57kg,43
+Virus Finals,Women,Masters 70,61kg,45
+Virus Finals,Women,Masters 70,69kg,48
+Virus Finals,Women,Masters 70,77kg,54
+Virus Finals,Women,Masters 70,86kg,55
+Virus Finals,Women,Masters 70,86+kg,58
+Virus Finals,Women,Masters 75,49kg,36
+Virus Finals,Women,Masters 75,53kg,36
+Virus Finals,Women,Masters 75,57kg,36
+Virus Finals,Women,Masters 75,61kg,38
+Virus Finals,Women,Masters 75,69kg,42
+Virus Finals,Women,Masters 75,77kg,47
+Virus Finals,Women,Masters 75,86kg,48
+Virus Finals,Women,Masters 75,86+kg,50
+Virus Finals,Women,Masters 80,49kg,42
+Virus Finals,Women,Masters 80,53kg,42
+Virus Finals,Women,Masters 80,57kg,42
+Virus Finals,Women,Masters 80,61kg,42
+Virus Finals,Women,Masters 80,69kg,42
+Virus Finals,Women,Masters 80,77kg,42
+Virus Finals,Women,Masters 80,86kg,44
+Virus Finals,Women,Masters 80,86+kg,46
+Virus Series 2,Men,U11,32kg,32
+Virus Series 2,Men,U11,36kg,36
+Virus Series 2,Men,U11,40kg,40
+Virus Series 2,Men,U11,45kg,45
+Virus Series 2,Men,U11,50kg,50
+Virus Series 2,Men,U11,55kg,55
+Virus Series 2,Men,U11,60kg,60
+Virus Series 2,Men,U11,65kg,65
+Virus Series 2,Men,U11,70kg,70
+Virus Series 2,Men,U11,70+kg,71
+Virus Series 2,Men,U13,32kg,32
+Virus Series 2,Men,U13,36kg,36
+Virus Series 2,Men,U13,40kg,40
+Virus Series 2,Men,U13,45kg,45
+Virus Series 2,Men,U13,50kg,50
+Virus Series 2,Men,U13,55kg,55
+Virus Series 2,Men,U13,60kg,60
+Virus Series 2,Men,U13,65kg,65
+Virus Series 2,Men,U13,70kg,70
+Virus Series 2,Men,U13,70+kg,71
+Virus Series 2,Men,U15,50kg,63
+Virus Series 2,Men,U15,55kg,83
+Virus Series 2,Men,U15,60kg,90
+Virus Series 2,Men,U15,65kg,94
+Virus Series 2,Men,U15,70kg,97
+Virus Series 2,Men,U15,75kg,102
+Virus Series 2,Men,U15,85kg,108
+Virus Series 2,Men,U15,95kg,113
+Virus Series 2,Men,U15,95+kg,115
+Virus Series 2,Men,U17,55kg,90
+Virus Series 2,Men,U17,60kg,103
+Virus Series 2,Men,U17,65kg,114
+Virus Series 2,Men,U17,70kg,123
+Virus Series 2,Men,U17,75kg,130
+Virus Series 2,Men,U17,85kg,139
+Virus Series 2,Men,U17,95kg,147
+Virus Series 2,Men,U17,95+kg,150
+Virus Series 2,Men,Junior,60kg,131
+Virus Series 2,Men,Junior,65kg,140
+Virus Series 2,Men,Junior,70kg,153
+Virus Series 2,Men,Junior,75kg,159
+Virus Series 2,Men,Junior,85kg,170
+Virus Series 2,Men,Junior,95kg,176
+Virus Series 2,Men,Junior,110kg,185
+Virus Series 2,Men,Junior,110+kg,186
+Virus Series 2,Men,Senior,60kg,135
+Virus Series 2,Men,Senior,65kg,162
+Virus Series 2,Men,Senior,70kg,170
+Virus Series 2,Men,Senior,75kg,192
+Virus Series 2,Men,Senior,85kg,202
+Virus Series 2,Men,Senior,95kg,215
+Virus Series 2,Men,Senior,110kg,231
+Virus Series 2,Men,Senior,110+kg,236
+Virus Series 2,Men,Masters 35,60kg,133
+Virus Series 2,Men,Masters 35,65kg,155
+Virus Series 2,Men,Masters 35,70kg,155
+Virus Series 2,Men,Masters 35,75kg,162
+Virus Series 2,Men,Masters 35,85kg,174
+Virus Series 2,Men,Masters 35,95kg,186
+Virus Series 2,Men,Masters 35,110kg,205
+Virus Series 2,Men,Masters 35,110+kg,210
+Virus Series 2,Men,Masters 40,60kg,133
+Virus Series 2,Men,Masters 40,65kg,146
+Virus Series 2,Men,Masters 40,70kg,147
+Virus Series 2,Men,Masters 40,75kg,152
+Virus Series 2,Men,Masters 40,85kg,163
+Virus Series 2,Men,Masters 40,95kg,173
+Virus Series 2,Men,Masters 40,110kg,192
+Virus Series 2,Men,Masters 40,110+kg,198
+Virus Series 2,Men,Masters 45,60kg,124
+Virus Series 2,Men,Masters 45,65kg,132
+Virus Series 2,Men,Masters 45,70kg,133
+Virus Series 2,Men,Masters 45,75kg,139
+Virus Series 2,Men,Masters 45,85kg,148
+Virus Series 2,Men,Masters 45,95kg,158
+Virus Series 2,Men,Masters 45,110kg,175
+Virus Series 2,Men,Masters 45,110+kg,180
+Virus Series 2,Men,Masters 50,60kg,117
+Virus Series 2,Men,Masters 50,65kg,123
+Virus Series 2,Men,Masters 50,70kg,125
+Virus Series 2,Men,Masters 50,75kg,130
+Virus Series 2,Men,Masters 50,85kg,139
+Virus Series 2,Men,Masters 50,95kg,148
+Virus Series 2,Men,Masters 50,110kg,165
+Virus Series 2,Men,Masters 50,110+kg,169
+Virus Series 2,Men,Masters 55,60kg,98
+Virus Series 2,Men,Masters 55,65kg,104
+Virus Series 2,Men,Masters 55,70kg,105
+Virus Series 2,Men,Masters 55,75kg,108
+Virus Series 2,Men,Masters 55,85kg,116
+Virus Series 2,Men,Masters 55,95kg,124
+Virus Series 2,Men,Masters 55,110kg,142
+Virus Series 2,Men,Masters 55,110+kg,145
+Virus Series 2,Men,Masters 60,60kg,90
+Virus Series 2,Men,Masters 60,65kg,95
+Virus Series 2,Men,Masters 60,70kg,96
+Virus Series 2,Men,Masters 60,75kg,99
+Virus Series 2,Men,Masters 60,85kg,106
+Virus Series 2,Men,Masters 60,95kg,114
+Virus Series 2,Men,Masters 60,110kg,129
+Virus Series 2,Men,Masters 60,110+kg,132
+Virus Series 2,Men,Masters 65,60kg,78
+Virus Series 2,Men,Masters 65,65kg,82
+Virus Series 2,Men,Masters 65,70kg,83
+Virus Series 2,Men,Masters 65,75kg,85
+Virus Series 2,Men,Masters 65,85kg,92
+Virus Series 2,Men,Masters 65,95kg,99
+Virus Series 2,Men,Masters 65,110kg,113
+Virus Series 2,Men,Masters 65,110+kg,116
+Virus Series 2,Men,Masters 70,60kg,66
+Virus Series 2,Men,Masters 70,65kg,69
+Virus Series 2,Men,Masters 70,70kg,70
+Virus Series 2,Men,Masters 70,75kg,73
+Virus Series 2,Men,Masters 70,85kg,79
+Virus Series 2,Men,Masters 70,95kg,85
+Virus Series 2,Men,Masters 70,110kg,99
+Virus Series 2,Men,Masters 70,110+kg,100
+Virus Series 2,Men,Masters 75,60kg,57
+Virus Series 2,Men,Masters 75,65kg,59
+Virus Series 2,Men,Masters 75,70kg,60
+Virus Series 2,Men,Masters 75,75kg,60
+Virus Series 2,Men,Masters 75,85kg,65
+Virus Series 2,Men,Masters 75,95kg,70
+Virus Series 2,Men,Masters 75,110kg,82
+Virus Series 2,Men,Masters 75,110+kg,84
+Virus Series 2,Men,Masters 80,60kg,48
+Virus Series 2,Men,Masters 80,65kg,48
+Virus Series 2,Men,Masters 80,70kg,49
+Virus Series 2,Men,Masters 80,75kg,50
+Virus Series 2,Men,Masters 80,85kg,54
+Virus Series 2,Men,Masters 80,95kg,58
+Virus Series 2,Men,Masters 80,110kg,68
+Virus Series 2,Men,Masters 80,110+kg,69
+Virus Series 2,Men,Masters 85,60kg,35
+Virus Series 2,Men,Masters 85,65kg,36
+Virus Series 2,Men,Masters 85,70kg,37
+Virus Series 2,Men,Masters 85,75kg,38
+Virus Series 2,Men,Masters 85,85kg,41
+Virus Series 2,Men,Masters 85,95kg,44
+Virus Series 2,Men,Masters 85,110kg,53
+Virus Series 2,Men,Masters 85,110+kg,54
+Virus Series 2,Women,U11,30kg,30
+Virus Series 2,Women,U11,33kg,33
+Virus Series 2,Women,U11,37kg,37
+Virus Series 2,Women,U11,41kg,41
+Virus Series 2,Women,U11,45kg,45
+Virus Series 2,Women,U11,49kg,49
+Virus Series 2,Women,U11,53kg,53
+Virus Series 2,Women,U11,57kg,57
+Virus Series 2,Women,U11,61kg,61
+Virus Series 2,Women,U11,61+kg,62
+Virus Series 2,Women,U13,30kg,30
+Virus Series 2,Women,U13,33kg,33
+Virus Series 2,Women,U13,37kg,37
+Virus Series 2,Women,U13,41kg,41
+Virus Series 2,Women,U13,45kg,45
+Virus Series 2,Women,U13,49kg,49
+Virus Series 2,Women,U13,53kg,53
+Virus Series 2,Women,U13,57kg,57
+Virus Series 2,Women,U13,61kg,61
+Virus Series 2,Women,U13,61+kg,62
+Virus Series 2,Women,U15,41kg,55
+Virus Series 2,Women,U15,45kg,58
+Virus Series 2,Women,U15,49kg,60
+Virus Series 2,Women,U15,53kg,63
+Virus Series 2,Women,U15,57kg,68
+Virus Series 2,Women,U15,61kg,69
+Virus Series 2,Women,U15,69kg,74
+Virus Series 2,Women,U15,77kg,77
+Virus Series 2,Women,U15,77+kg,80
+Virus Series 2,Women,U17,45kg,55
+Virus Series 2,Women,U17,49kg,63
+Virus Series 2,Women,U17,53kg,67
+Virus Series 2,Women,U17,57kg,77
+Virus Series 2,Women,U17,61kg,86
+Virus Series 2,Women,U17,69kg,90
+Virus Series 2,Women,U17,77kg,94
+Virus Series 2,Women,U17,77+kg,97
+Virus Series 2,Women,Junior,49kg,80
+Virus Series 2,Women,Junior,53kg,91
+Virus Series 2,Women,Junior,57kg,99
+Virus Series 2,Women,Junior,61kg,102
+Virus Series 2,Women,Junior,69kg,105
+Virus Series 2,Women,Junior,77kg,112
+Virus Series 2,Women,Junior,86kg,118
+Virus Series 2,Women,Junior,86+kg,122
+Virus Series 2,Women,Senior,49kg,87
+Virus Series 2,Women,Senior,53kg,94
+Virus Series 2,Women,Senior,57kg,100
+Virus Series 2,Women,Senior,61kg,109
+Virus Series 2,Women,Senior,69kg,121
+Virus Series 2,Women,Senior,77kg,128
+Virus Series 2,Women,Senior,86kg,132
+Virus Series 2,Women,Senior,86+kg,138
+Virus Series 2,Women,Masters 35,49kg,74
+Virus Series 2,Women,Masters 35,53kg,79
+Virus Series 2,Women,Masters 35,57kg,86
+Virus Series 2,Women,Masters 35,61kg,89
+Virus Series 2,Women,Masters 35,69kg,95
+Virus Series 2,Women,Masters 35,77kg,101
+Virus Series 2,Women,Masters 35,86kg,105
+Virus Series 2,Women,Masters 35,86+kg,112
+Virus Series 2,Women,Masters 40,49kg,67
+Virus Series 2,Women,Masters 40,53kg,71
+Virus Series 2,Women,Masters 40,57kg,77
+Virus Series 2,Women,Masters 40,61kg,80
+Virus Series 2,Women,Masters 40,69kg,87
+Virus Series 2,Women,Masters 40,77kg,93
+Virus Series 2,Women,Masters 40,86kg,96
+Virus Series 2,Women,Masters 40,86+kg,103
+Virus Series 2,Women,Masters 45,49kg,64
+Virus Series 2,Women,Masters 45,53kg,67
+Virus Series 2,Women,Masters 45,57kg,72
+Virus Series 2,Women,Masters 45,61kg,77
+Virus Series 2,Women,Masters 45,69kg,80
+Virus Series 2,Women,Masters 45,77kg,87
+Virus Series 2,Women,Masters 45,86kg,91
+Virus Series 2,Women,Masters 45,86+kg,97
+Virus Series 2,Women,Masters 50,49kg,60
+Virus Series 2,Women,Masters 50,53kg,63
+Virus Series 2,Women,Masters 50,57kg,68
+Virus Series 2,Women,Masters 50,61kg,71
+Virus Series 2,Women,Masters 50,69kg,77
+Virus Series 2,Women,Masters 50,77kg,82
+Virus Series 2,Women,Masters 50,86kg,85
+Virus Series 2,Women,Masters 50,86+kg,92
+Virus Series 2,Women,Masters 55,49kg,45
+Virus Series 2,Women,Masters 55,53kg,47
+Virus Series 2,Women,Masters 55,57kg,52
+Virus Series 2,Women,Masters 55,61kg,54
+Virus Series 2,Women,Masters 55,69kg,58
+Virus Series 2,Women,Masters 55,77kg,63
+Virus Series 2,Women,Masters 55,86kg,66
+Virus Series 2,Women,Masters 55,86+kg,71
+Virus Series 2,Women,Masters 60,49kg,41
+Virus Series 2,Women,Masters 60,53kg,43
+Virus Series 2,Women,Masters 60,57kg,47
+Virus Series 2,Women,Masters 60,61kg,49
+Virus Series 2,Women,Masters 60,69kg,53
+Virus Series 2,Women,Masters 60,77kg,58
+Virus Series 2,Women,Masters 60,86kg,61
+Virus Series 2,Women,Masters 60,86+kg,63
+Virus Series 2,Women,Masters 65,49kg,38
+Virus Series 2,Women,Masters 65,53kg,39
+Virus Series 2,Women,Masters 65,57kg,42
+Virus Series 2,Women,Masters 65,61kg,43
+Virus Series 2,Women,Masters 65,69kg,47
+Virus Series 2,Women,Masters 65,77kg,52
+Virus Series 2,Women,Masters 65,86kg,55
+Virus Series 2,Women,Masters 65,86+kg,58
+Virus Series 2,Women,Masters 70,49kg,34
+Virus Series 2,Women,Masters 70,53kg,35
+Virus Series 2,Women,Masters 70,57kg,37
+Virus Series 2,Women,Masters 70,61kg,38
+Virus Series 2,Women,Masters 70,69kg,42
+Virus Series 2,Women,Masters 70,77kg,47
+Virus Series 2,Women,Masters 70,86kg,49
+Virus Series 2,Women,Masters 70,86+kg,51
+Virus Series 2,Women,Masters 75,49kg,29
+Virus Series 2,Women,Masters 75,53kg,30
+Virus Series 2,Women,Masters 75,57kg,32
+Virus Series 2,Women,Masters 75,61kg,33
+Virus Series 2,Women,Masters 75,69kg,36
+Virus Series 2,Women,Masters 75,77kg,41
+Virus Series 2,Women,Masters 75,86kg,43
+Virus Series 2,Women,Masters 75,86+kg,44
+Virus Series 2,Women,Masters 80,49kg,30
+Virus Series 2,Women,Masters 80,53kg,31
+Virus Series 2,Women,Masters 80,57kg,33
+Virus Series 2,Women,Masters 80,61kg,34
+Virus Series 2,Women,Masters 80,69kg,37
+Virus Series 2,Women,Masters 80,77kg,43
+Virus Series 2,Women,Masters 80,86kg,45
+Virus Series 2,Women,Masters 80,86+kg,46
