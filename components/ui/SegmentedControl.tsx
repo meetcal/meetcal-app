@@ -1,7 +1,7 @@
-import { View, Pressable, StyleSheet, Animated } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
-import { useTheme } from '@/contexts/ThemeContext';
-import { ThemedText } from '@/components/ThemedText';
+import { ThemedText } from "@/components/ui/ThemedText";
+import { useAppColors } from "@/hooks/useAppColors";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
 
 interface SegmentedControlProps {
   values: string[];
@@ -9,18 +9,16 @@ interface SegmentedControlProps {
   onChange: (index: number) => void;
 }
 
-export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedControlProps) {
-  const { currentTheme } = useTheme();
+export function SegmentedControl({
+  values,
+  selectedIndex,
+  onChange,
+}: SegmentedControlProps) {
+  const colors = useAppColors();
   const [segmentWidth, setSegmentWidth] = useState(0);
   const slideAnimation = useRef(new Animated.Value(0)).current;
 
-  const colors = {
-    background: currentTheme === 'dark' ? '#1C1C1E' : '#E5E5EA',
-    selected: currentTheme === 'dark' ? '#FFFFFF' : '#FFFFFF',
-    text: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-    selectedText: currentTheme === 'dark' ? '#000000' : '#000000',
-  };
-
+   
   useEffect(() => {
     Animated.spring(slideAnimation, {
       toValue: selectedIndex * segmentWidth,
@@ -28,7 +26,7 @@ export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedC
       tension: 100,
       friction: 20,
     }).start();
-  }, [selectedIndex, segmentWidth]);
+  }, [selectedIndex, segmentWidth, slideAnimation]);
 
   return (
     <View
@@ -41,7 +39,7 @@ export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedC
         style={[
           styles.selectedSegment,
           {
-            backgroundColor: colors.selected,
+            backgroundColor: colors.card || colors.background,
             width: segmentWidth,
             transform: [{ translateX: slideAnimation }],
           },
@@ -57,8 +55,8 @@ export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedC
             style={[
               styles.segmentText,
               {
-                color: selectedIndex === index ? colors.selectedText : colors.text,
-                fontWeight: selectedIndex === index ? '600' : '400',
+                color: selectedIndex === index ? colors.primaryText : colors.text,
+                fontWeight: selectedIndex === index ? "600" : "400",
               },
             ]}
           >
@@ -72,18 +70,18 @@ export function SegmentedControl({ values, selectedIndex, onChange }: SegmentedC
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
     height: 32,
-    position: 'relative',
+    position: "relative",
   },
   selectedSegment: {
-    position: 'absolute',
+    position: "absolute",
     top: 2,
     bottom: 2,
     borderRadius: 6,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -94,11 +92,11 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 1,
   },
   segmentText: {
     fontSize: 13,
   },
-}); 
+});

@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+
 export interface VersionAnnouncement {
   version: string;
   title: string;
@@ -6,12 +8,11 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
-  '5.2.5': {
+  '5.2.6': {
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',
     features: [
-      'New offline data page to save for offline use',
-      'Export your club\'s start list with either a white or transparent background',
+      'Improved offline experience just in time for the Arnold',
       'Bug fixes and optimizations',
     ],
   },
@@ -20,3 +21,6 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
 export function getAnnouncementForVersion(version: string): Omit<VersionAnnouncement, 'version'> | null {
   return VERSION_ANNOUNCEMENTS[version] || null;
 }
+
+export const VERSION_ANNOUNCEMENT_KEY = "@version_announcement_seen";
+export const CURRENT_VERSION = Constants.expoConfig?.version || "5.2.6";

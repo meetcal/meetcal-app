@@ -1,4 +1,8 @@
+import { SupabaseLiftResult } from '@/data/types/athletes';
+import { MeetName } from '@/data/types/meet';
+import { getAthleteLiftingResults } from '@/lib/database/offline-store';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
@@ -6,9 +10,45 @@ const cache = new Map<string, YearBests>();
 
 const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
 
-function setNegativeCache(athleteName: string): YearBests {
-  cache.set(athleteName, ZERO_BESTS);
-  return ZERO_BESTS;
+function maxPositive(values: (number | null | undefined)[]): number {
+  return values.reduce<number>((max, v) => (typeof v === 'number' && v > 0 && v > max ? v : max), 0);
+}
+
+function deriveBestsFromResults(results: SupabaseLiftResult[]): YearBests {
+  let bestSnatch = 0;
+  let bestCJ = 0;
+  let bestTotal = 0;
+  for (const r of results) {
+    const sn = maxPositive([r.snatch_best, r.snatch1, r.snatch2, r.snatch3]);
+    const cj = maxPositive([r.cj_best, r.cj1, r.cj2, r.cj3]);
+    const tot = typeof r.total === 'number' && r.total > 0 ? r.total : sn + cj;
+    if (sn > bestSnatch) bestSnatch = sn;
+    if (cj > bestCJ) bestCJ = cj;
+    if (tot > bestTotal) bestTotal = tot;
+  }
+  return { bestSnatch, bestCJ, bestTotal };
+}
+
+async function getOfflineFallback(athleteName: string): Promise<YearBests> {
+  try {
+    const meetId = await AsyncStorage.getItem('@selected_meet');
+    if (!meetId) return ZERO_BESTS;
+    const results = await getAthleteLiftingResults(meetId as MeetName, athleteName);
+    if (results.length === 0) return ZERO_BESTS;
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const cutoff = oneYearAgo.toISOString().split('T')[0];
+    const recent = results.filter(r => {
+      if (!r.date) return true;
+      const d = new Date(r.date);
+      if (isNaN(d.getTime())) return true;
+      return d.toISOString().split('T')[0] >= cutoff;
+    });
+    if (recent.length === 0) return deriveBestsFromResults(results);
+    return deriveBestsFromResults(recent);
+  } catch {
+    return ZERO_BESTS;
+  }
 }
 
 export async function getLastYearBests(athleteName: string): Promise<YearBests> {
@@ -24,9 +64,17 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
       .eq('name', athleteName)
       .gte('date', oneYearAgo.toISOString())
       .order('date', { ascending: false });
-    if (error) return setNegativeCache(athleteName);
+    if (error) {
+      const fallback = await getOfflineFallback(athleteName);
+      cache.set(athleteName, fallback);
+      return fallback;
+    }
     const results = (athleteResults ?? []) as LiftBestRow[];
-    if (results.length === 0) return setNegativeCache(athleteName);
+    if (results.length === 0) {
+      const fallback = await getOfflineFallback(athleteName);
+      cache.set(athleteName, fallback);
+      return fallback;
+    }
     const result: YearBests = {
       bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
       bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
@@ -35,7 +83,9 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
     cache.set(athleteName, result);
     return result;
   } catch {
-    return setNegativeCache(athleteName);
+    const fallback = await getOfflineFallback(athleteName);
+    cache.set(athleteName, fallback);
+    return fallback;
   }
 }
 

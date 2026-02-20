@@ -1,194 +1,194 @@
-# name: React Native CI/CD
+name: React Native CI/CD
 
-# on:
-#   push:
-#     branches: [main, master]
-#     paths-ignore:
-#       - "**.md"
-#       - "LICENSE"
-#       - "docs/**"
-#   pull_request:
-#     branches: [main, master]
-#   workflow_dispatch:
-#     inputs:
-#       buildType:
-#         type: choice
-#         description: "Build type to run"
-#         options:
-#           - prod-aab
-#           - ios-prod
-#           - publish-expo
-#           - publish-stores
-#           - all
-#       platform:
-#         type: choice
-#         description: "Platform to build"
-#         default: "all"
-#         options:
-#           - android
-#           - ios
-#           - all
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "docs/**"
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      buildType:
+        type: choice
+        description: "Build type to run"
+        options:
+          - prod-aab
+          - ios-prod
+          - publish-expo
+          - publish-stores
+          - all
+      platform:
+        type: choice
+        description: "Platform to build"
+        default: "all"
+        options:
+          - android
+          - ios
+          - all
 
-# env:
-#   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-#   EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
-#   EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
-#   EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
-#   GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
-#   WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-#   NODE_OPTIONS: --openssl-legacy-provider
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+  EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
+  EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
+  GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+  WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+  NODE_OPTIONS: --openssl-legacy-provider
 
-# jobs:
-#   check-skip:
-#     runs-on: ubuntu-latest
-#     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-#     steps:
-#       - name: Skip CI check
-#         run: echo "Proceeding with workflow"
+jobs:
+  check-skip:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - name: Skip CI check
+        run: echo "Proceeding with workflow"
 
-#   test:
-#     needs: check-skip
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: 🏗 Checkout repository
-#         uses: actions/checkout@v4
+  test:
+    needs: check-skip
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: 🏗 Setup Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: "20"
-#           cache: "npm"
+      - name: 🏗 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
 
-#       - name: 📦 Install dependencies
-#         run: npm ci
+      - name: 📦 Install dependencies
+        run: npm ci
 
-#       - name: 🧪 Run TypeScript check
-#         run: npx tsc
+      - name: 🧪 Run TypeScript check
+        run: npx tsc
 
-#       - name: 🧹 Run ESLint
-#         run: npm run lint
+      - name: 🧹 Run ESLint
+        run: npm run lint
 
-#       - name: 📢 Notify test results
-#         if: always()
-#         uses: stegzilla/discord-notify@v2
-#         with:
-#           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
-#           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
-#           title: Test Results
-#           message: Tests ${{ job.status == 'success' && 'passed ✅' || 'failed ❌' }}
-  
-#   build-and-deploy:
-#     needs: check-skip
-#     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
-#     strategy:
-#       matrix:
-#         platform: [android, ios]
-#         include:
-#           - platform: android
-#             runs-on: ubuntu-latest
-#           - platform: ios
-#             runs-on: macos-latest
-#     runs-on: ${{ matrix.runs-on }}
-#     steps:
-#       - name: 🏗 Checkout repository
-#         uses: actions/checkout@v4
+      - name: 📢 Notify test results
+        if: always()
+        uses: stegzilla/discord-notify@v2
+        with:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          colour: ${{ job.status == 'success' && 'good' || 'danger' }}
+          title: Test Results
+          message: Tests ${{ job.status == 'success' && 'passed ✅' || 'failed ❌' }}
 
-#       - name: 🏗 Setup Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: "20"
-#           cache: "npm"
+  build-and-deploy:
+    needs: check-skip
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        platform: [android, ios]
+        include:
+          - platform: android
+            runs-on: ubuntu-latest
+          - platform: ios
+            runs-on: macos-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: 📦 Install dependencies
-#         run: |
-#           npm ci
-#           npm install -g eas-cli@latest
+      - name: 🏗 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
 
-#       - name: 📱 Setup EAS build cache
-#         uses: actions/cache@v3
-#         with:
-#           path: ~/.eas-build-local
-#           key: ${{ runner.os }}-eas-build-local-${{ hashFiles('**/package.json') }}
-#           restore-keys: |
-#             ${{ runner.os }}-eas-build-local-
+      - name: 📦 Install dependencies
+        run: |
+          npm ci
+          npm install -g eas-cli@latest
 
-#       - name: 🔄 Verify EAS CLI installation
-#         run: |
-#           echo "EAS CLI version:"
-#           eas --version
+      - name: 📱 Setup EAS build cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.eas-build-local
+          key: ${{ runner.os }}-eas-build-local-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-eas-build-local-
 
-#       - name: 📋 Verify project configuration
-#         run: |
-#           echo "Verifying package.json configuration..."
-#           if [ -f ./package.json ]; then
-#             echo "Package.json found"
-#             cat package.json | grep "main"
-#           else
-#             echo "package.json not found"
-#             exit 1
-#           fi
+      - name: 🔄 Verify EAS CLI installation
+        run: |
+          echo "EAS CLI version:"
+          eas --version
 
-#       - name: 📋 Verify metro configuration
-#         run: |
-#           if [ -f ./metro.config.js ]; then
-#             echo "Metro configuration found"
-#             head -5 ./metro.config.js
-#           else
-#             echo "Warning: metro.config.js not found"
-#           fi
+      - name: 📋 Verify project configuration
+        run: |
+          echo "Verifying package.json configuration..."
+          if [ -f ./package.json ]; then
+            echo "Package.json found"
+            cat package.json | grep "main"
+          else
+            echo "package.json not found"
+            exit 1
+          fi
 
-#       - name: 🔧 Select Xcode 16
-#         if: matrix.platform == 'ios'
-#         run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+      - name: 📋 Verify metro configuration
+        run: |
+          if [ -f ./metro.config.js ]; then
+            echo "Metro configuration found"
+            head -5 ./metro.config.js
+          else
+            echo "Warning: metro.config.js not found"
+          fi
 
-#       - name: 📱 Build Production AAB
-#         if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event_name == 'push')
-#         run: |
-#           export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-#           eas build --platform android --profile production --local --non-interactive --output=./app-prod.aab
-#         env:
-#           NODE_ENV: production
+      - name: 🔧 Select Xcode 26
+        if: matrix.platform == 'ios'
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
 
-#       - name: 📱 Build iOS Production
-#         if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-prod' || github.event_name == 'push')
-#         run: |
-#           export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-#           eas build --platform ios --profile production --local --non-interactive --output=./app-ios-prod.ipa
-#         env:
-#           NODE_ENV: production
+      - name: 📱 Build Production AAB
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event_name == 'push')
+        run: |
+          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
+          eas build --platform android --profile production --local --non-interactive --output=./app-prod.aab
+        env:
+          NODE_ENV: production
 
-#       - name: 🚀 Submit to Play Store
-#         if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
-#         run: |
-#           eas submit -p android --path ./app-prod.aab --non-interactive
-#         env:
-#           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-#           GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+      - name: 📱 Build iOS Production
+        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-prod' || github.event_name == 'push')
+        run: |
+          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
+          eas build --platform ios --profile production --local --non-interactive --output=./app-ios-prod.ipa
+        env:
+          NODE_ENV: production
 
-#       - name: 🚀 Submit to App Store
-#         if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
-#         run: |
-#           eas submit -p ios --path ./app-ios-prod.ipa --non-interactive
-#         env:
-#           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-#           EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
-#           EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
-#           EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
+      - name: 🚀 Submit to Play Store
+        if: matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
+        run: |
+          eas submit -p android --path ./app-prod.aab --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
 
-#       - name: 📦 Upload build artifacts to GitHub
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: app-builds-${{ matrix.platform }}
-#           path: |
-#             ./app-prod.aab
-#             ./app-ios-prod.ipa
-#           retention-days: 7
+      - name: 🚀 Submit to App Store
+        if: matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')
+        run: |
+          eas submit -p ios --path ./app-ios-prod.ipa --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+          EXPO_APPLE_PASSWORD: ${{ secrets.EXPO_APPLE_PASSWORD }}
+          EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
 
-#       - name: 📢 Notify build completion
-#         if: always()
-#         uses: stegzilla/discord-notify@v2
-#         with:
-#           WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
-#           title: Build Results
-#           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
-#           message: Build for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
+      - name: 📦 Upload build artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-builds-${{ matrix.platform }}
+          path: |
+            ./app-prod.aab
+            ./app-ios-prod.ipa
+          retention-days: 7
+
+      - name: 📢 Notify build completion
+        if: always()
+        uses: stegzilla/discord-notify@v2
+        with:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          title: Build Results
+          colour: ${{ job.status == 'success' && 'good' || 'danger' }}
+          message: Build for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}

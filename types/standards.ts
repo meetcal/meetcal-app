@@ -9,9 +9,20 @@ export type AgeGroupStandards = {
   women: StandardRecord[];
 };
 
-export type StandardsData = {
-  u15: AgeGroupStandards;
-  youth: AgeGroupStandards;
-  junior: AgeGroupStandards;
-  senior: AgeGroupStandards;
-}; 
+export type Gender = "men" | "women";
+export type AgeGroup = "senior" | "junior" | "youth" | "u15";
+
+export interface Filters {
+  gender: Gender;
+  ageGroup: AgeGroup;
+}
+
+export interface StandardsData {
+  [ageGroup: string]: {
+    [gender: string]: {
+      weightClass: string;
+      a: number;
+      b: number;
+    }[];
+  };
+}

@@ -30,6 +30,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="meetcal"/>
         <data android:scheme="exp+meetcal"/>
+        <data android:scheme="com.memohnsen.meetcal"/>
       </intent-filter>
     </activity>
     <receiver android:name="com.memohnsen.meetcal.widget.SavedWidgetProvider" android:exported="true" android:label="Saved Sessions">

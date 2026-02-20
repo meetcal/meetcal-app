@@ -373,7 +373,22 @@ export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: s
       throw error;
     }
 
-    return data || [];
+    if (data && data.length > 0) {
+      return data;
+    }
+
+    const { data: meetData, error: meetError } = await supabase
+      .from('lifting_results')
+      .select('*')
+      .eq('meet', meet)
+      .order('date', { ascending: false });
+
+    if (meetError) {
+      console.error('Error fetching lifting results by meet fallback:', meetError);
+      throw meetError;
+    }
+
+    return meetData || [];
   } catch (error) {
     console.error('Error in fetchLiftingResultsForMeet:', error);
     throw error;

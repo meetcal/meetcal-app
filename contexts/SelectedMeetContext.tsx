@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { needsSync } from '@/lib/database/offline-store';
+import { clearExpiredDownloadedMeets, needsSync } from '@/lib/database/offline-store';
 import { prefetchMeetData, updateMeetAccess, fetchMeets, fetchMeetByName } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
@@ -111,6 +111,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   // Load available meets
   const loadMeets = useCallback(async () => {
       try {
+        await clearExpiredDownloadedMeets();
         const meets = await fetchMeets();
         setAvailableMeets(meets);
 
@@ -205,6 +206,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     try {
       setIsSyncing(true);
       setSyncStatus('syncing');
+      await clearExpiredDownloadedMeets();
       const meets = await fetchMeets();
       setAvailableMeets(meets);
       setSyncStatus('idle');

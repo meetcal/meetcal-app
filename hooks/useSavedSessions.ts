@@ -317,19 +317,20 @@ export function useSavedSessions() {
 
       // 1. Update local state and AsyncStorage
       const currentSessions = await readStoredSessions();
+      const nextSessions = [...currentSessions];
 
-      const existingSessionIndex = currentSessions.findIndex(s => s.id === session.id);
+      const existingSessionIndex = nextSessions.findIndex(s => s.id === session.id);
       let updatedSession: SavedSession;
       if (existingSessionIndex >= 0) {
-        const existingSession = currentSessions[existingSessionIndex];
+        const existingSession = nextSessions[existingSessionIndex];
         updatedSession = { ...existingSession, ...session }; // Merge new data over existing
-        currentSessions[existingSessionIndex] = updatedSession;
+        nextSessions[existingSessionIndex] = updatedSession;
       } else {
         updatedSession = session;
-        currentSessions.push(updatedSession);
+        nextSessions.push(updatedSession);
       }
 
-      await commitSessions(currentSessions);
+      await commitSessions(nextSessions);
 
       // 2. Upsert to Supabase
       const { error: supabaseError } = await supabase
