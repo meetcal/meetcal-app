@@ -296,7 +296,7 @@ export async function initStore(): Promise<void> {
 export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
     const store = await getStore();
-    // getMeetData debug removed to reduce noise
+
     if (!store.meets[meetId]) {
       const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
       const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
@@ -362,7 +362,7 @@ export async function getAthleteLiftingResults(meetId: MeetName, athleteName: st
     const filteredResults = allResults.filter(
       result => normalizeAthleteName(result.name) === normalizedTargetName
     );
-    // getAthleteLiftingResults debug removed to reduce noise
+
     return filteredResults;
   } catch (error) {
     console.error('Error getting athlete lifting results:', error);
