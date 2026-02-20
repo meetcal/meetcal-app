@@ -5,7 +5,7 @@ import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 import { Buffer } from 'buffer';
 import pako from 'pako';
-import { Alert } from 'react-native';
+
 
 const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
@@ -204,7 +204,6 @@ async function readStoredLiftingResults(
 ): Promise<SupabaseLiftResult[]> {
   const payload = await AsyncStorage.getItem(liftingResultsKey);
   if (!payload) {
-    Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nNO payload in AsyncStorage`);
     return [];
   }
 
@@ -212,12 +211,10 @@ async function readStoredLiftingResults(
     const parsed = JSON.parse(payload) as unknown;
 
     if (Array.isArray(parsed)) {
-      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nLegacy array, count: ${parsed.length}`);
       return parsed as SupabaseLiftResult[];
     }
 
     if (!isLiftingResultsManifest(parsed) || parsed.chunks <= 0) {
-      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nNOT a valid manifest: ${JSON.stringify(parsed).slice(0, 200)}`);
       return [];
     }
 
@@ -227,18 +224,14 @@ async function readStoredLiftingResults(
     const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
     const chunkValues = chunkEntries.map(([, value]) => value ?? '');
 
-    const chunkSizes = chunkValues.map((v) => v.length);
-    const emptyChunks = chunkSizes.filter((len) => len === 0).length;
+    const emptyChunks = chunkValues.filter((v) => v.length === 0).length;
     if (emptyChunks > 0) {
-      Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nexpected: ${parsed.chunks}\nempty: ${emptyChunks}\nsizes: ${chunkSizes.join(', ')}`);
       return [];
     }
 
-    const results = decodeLiftingResults(chunkValues.join(''));
-    Alert.alert('DEBUG readStored', `key: ${liftingResultsKey}\nchunks: ${parsed.chunks}\nsizes: ${chunkSizes.join(', ')}\ndecoded: ${results.length}`);
-    return results;
+    return decodeLiftingResults(chunkValues.join(''));
   } catch (error) {
-    Alert.alert('DEBUG readStored ERROR', `key: ${liftingResultsKey}\nerror: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Error reading stored lifting results:', error);
     return [];
   }
 }
@@ -268,7 +261,6 @@ async function writeStoredLiftingResults(
   }
 
   await AsyncStorage.setItem(liftingResultsKey, JSON.stringify(manifest));
-  Alert.alert('DEBUG writeStored', `key: ${liftingResultsKey}\nresults: ${liftingResults.length}\nchunks: ${chunks.length}\nsizes: ${chunkSizes.join(', ')}`);
 }
 
 async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): Promise<LiftResult[]> {
@@ -385,13 +377,10 @@ export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseL
     const liftingResultsKey = meetData.liftingResultsKey;
 
     if (!liftingResultsKey) {
-      Alert.alert('DEBUG getMeetLiftingResults', `meetId: ${meetId}\nNO liftingResultsKey!`);
       return [];
     }
 
-    const results = await readStoredLiftingResults(liftingResultsKey);
-    Alert.alert('DEBUG getMeetLiftingResults', `meetId: ${meetId}\nkey: ${liftingResultsKey}\nresultCount: ${results.length}`);
-    return results;
+    return await readStoredLiftingResults(liftingResultsKey);
   } catch (error) {
     console.error('Error getting meet lifting results:', error);
     return [];

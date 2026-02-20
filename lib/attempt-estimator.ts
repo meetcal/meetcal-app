@@ -215,16 +215,21 @@ function calculateAttemptsOutForEstimates(estimates: AthleteAttemptEstimate[]): 
   });
 }
 
+function normalizeDate(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return d.toISOString().split("T")[0];
+}
+
 export function calculateEstimates(
   athletes: LiftResult[],
   athleteResults: SupabaseLiftResult[]
 ): AthleteAttemptEstimate[] {
-  // Calculate two years ago date
   const twoYearsAgo = new Date();
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
   const twoYearsAgoString = twoYearsAgo.toISOString().split('T')[0];
 
-  // First pass: collect all estimates from athletes WITH history to calculate session averages
   const tempEstimates: {
     athlete: LiftResult;
     history: SupabaseLiftResult[];
@@ -241,7 +246,7 @@ export function calculateEstimates(
     const athleteHistory = athleteResults.filter(
       result =>
         normalizeAthleteName(result.name) === normalizedAthleteName &&
-        result.date >= twoYearsAgoString
+        normalizeDate(result.date) >= twoYearsAgoString
     );
 
     const bestSnatchCandidates = athleteHistory
