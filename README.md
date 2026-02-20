@@ -1,9 +1,8 @@
-![MeetCal Logo](assets/images/MeetCal-no-bg.png)
 # MeetCal 📅
 
 A React Native application built with Expo for managing athletic schedules and meet calendars.
 
-[![MeetCal Demo](https://img.youtube.com/vi/4xoIoYox3C0/0.jpg)](https://www.youtube.com)
+[![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
 
 ## Features
 
