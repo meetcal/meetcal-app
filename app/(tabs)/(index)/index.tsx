@@ -271,12 +271,13 @@ export default function ScheduleScreen() {
         <DayView
           day={item}
           timeZone={timeZoneAbbreviation}
+          meet={selectedMeet || ""}
           onRefreshComplete={refreshSchedule}
           refreshing={isRefreshing}
         />
       </View>
     ),
-    [width, timeZoneAbbreviation, refreshSchedule, isRefreshing],
+    [width, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
   );
 
   if (isMeetLoading) {

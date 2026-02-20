@@ -37,8 +37,22 @@ export function validatePrefetchedLiftingResults(
   athleteNames: string[],
   liftingResults: { name?: string | null }[],
 ): void {
+  const normalizeName = (value: string | null | undefined) =>
+    (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
   if (athleteNames.length > 0 && liftingResults.length === 0) {
     throw new Error(`No lifting results fetched for meet: ${meet}`);
+  }
+
+  if (athleteNames.length > 0 && liftingResults.length > 0) {
+    const athleteSet = new Set(athleteNames.map(normalizeName));
+    const matchedCount = liftingResults.reduce((count, result) => {
+      return athleteSet.has(normalizeName(result.name)) ? count + 1 : count;
+    }, 0);
+
+    if (matchedCount === 0) {
+      throw new Error(`No matched lifting results fetched for meet athletes: ${meet}`);
+    }
   }
 }
 
@@ -398,13 +412,6 @@ export async function prefetchMeetData(meet: MeetName) {
         console.error('Prefetch lifting results failed:', { meet, error });
         errors.push('lifting_results');
       }
-    }
-  } else {
-    try {
-      await saveMeetLiftingResults(meet, []);
-    } catch (error) {
-      console.error('Prefetch empty lifting results save failed:', { meet, error });
-      errors.push('lifting_results');
     }
   }
 

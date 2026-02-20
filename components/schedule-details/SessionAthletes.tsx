@@ -1,6 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
@@ -18,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -65,11 +65,13 @@ export default function SessionAthletes({
   sessionNumber,
   platform,
   sessionWeightClass,
+  meetId,
   refreshKey,
 }: {
   sessionNumber: number;
   platform: string;
   sessionWeightClass: string;
+  meetId: MeetName;
   refreshKey: number;
 }) {
   type SortKey = "entryTotal" | "snatch" | "cj" | "total";
@@ -77,7 +79,6 @@ export default function SessionAthletes({
 
   const router = useRouter();
   const colors = useAppColors();
-  const { selectedMeet } = useSelectedMeet();
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
@@ -94,15 +95,15 @@ export default function SessionAthletes({
 
   const loadAthletes = useCallback(async () => {
     setLoading(true);
+    
     try {
-      if (!selectedMeet) {
+      if (!meetId) {
         setAthletes({});
         setAthleteBests({});
         setLoadingBests({});
         return;
       }
 
-      const meetId = selectedMeet as MeetName;
       const applySessionAthletes = async (nextAthletes: LiftResult[]) => {
         const mapped = toSessionAthletesByPlatform(platform, nextAthletes);
         setAthletes(mapped);
@@ -139,6 +140,7 @@ export default function SessionAthletes({
         sessionNumber,
         platform,
       );
+      
 
       if (cachedAthletes.length > 0) {
         await applySessionAthletes(cachedAthletes);
@@ -163,7 +165,7 @@ export default function SessionAthletes({
       await applySessionAthletes(freshSessionAthletes);
     } catch (error) {
       console.error("Error loading athletes:", error);
-      if (!selectedMeet) {
+      if (!meetId) {
         setAthletes({});
         setAthleteBests({});
         setLoadingBests({});
@@ -171,7 +173,7 @@ export default function SessionAthletes({
     } finally {
       setLoading(false);
     }
-  }, [sessionNumber, platform, selectedMeet]);
+  }, [sessionNumber, platform, meetId]);
 
   // Compute the numeric sort value for an athlete based on the active sort key
   const getSortValue = useCallback(
@@ -605,7 +607,7 @@ export default function SessionAthletes({
                     if (isSubscribed === true) {
                       router.push({
                         pathname: "/shared-screens/athlete-results",
-                        params: { name: athlete.name },
+                        params: { name: athlete.name, meet: meetId },
                       });
                     } else if (isSubscribed === false) {
                       router.push({

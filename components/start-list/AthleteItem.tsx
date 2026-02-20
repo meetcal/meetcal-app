@@ -165,9 +165,10 @@ export const AthleteItem = React.memo(function AthleteItem({
         weighInTime,
         date: dateStr,
         athleteName: athlete.name,
+        ...(validMeet ? { meet: validMeet } : {}),
       },
     });
-  }, [athlete, getSessionDetails, router]);
+  }, [athlete, getSessionDetails, router, validMeet]);
 
   const formatSessionTime = useCallback(
     (time: string | undefined | null) => {
@@ -392,7 +393,10 @@ export const AthleteItem = React.memo(function AthleteItem({
               if (isSubscribed === true) {
                 router.push({
                   pathname: "/shared-screens/athlete-results",
-                  params: { name: athlete.name },
+                  params: {
+                    name: athlete.name,
+                    ...(validMeet ? { meet: validMeet } : {}),
+                  },
                 });
               } else if (isSubscribed === false) {
                 router.push({

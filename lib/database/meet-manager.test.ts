@@ -48,4 +48,24 @@ describe("validatePrefetchedLiftingResults", () => {
       ),
     ).not.toThrow();
   });
+
+  it("throws when lifting results exist but none match athlete names", () => {
+    expect(() =>
+      validatePrefetchedLiftingResults(
+        "Test Meet" as any,
+        ["Athlete A"],
+        [{ name: "Different Athlete" }],
+      ),
+    ).toThrow("No matched lifting results fetched for meet athletes: Test Meet");
+  });
+
+  it("accepts normalized name matches", () => {
+    expect(() =>
+      validatePrefetchedLiftingResults(
+        "Test Meet" as any,
+        [" Athlete A "],
+        [{ name: "athlete   a" }],
+      ),
+    ).not.toThrow();
+  });
 });

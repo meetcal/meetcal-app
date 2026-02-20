@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PlatformBadge } from "../schedule-details/PlatformBadge";
 
-export function SessionView({ session, timeZone }: SessionViewProps) {
+export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   const router = useRouter();
   const platformColors = getPlatformColors();
   const colors = useAppColors();
@@ -38,6 +38,7 @@ export function SessionView({ session, timeZone }: SessionViewProps) {
         weightClass: platform.weightClass,
         startTime: session.startTime,
         weighInTime: session.weighInTime,
+        meet,
       },
     });
   };

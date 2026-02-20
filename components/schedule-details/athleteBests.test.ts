@@ -61,6 +61,10 @@ describe("getAthleteBestsBatch", () => {
     );
 
     expect(mockSupabaseFrom).not.toHaveBeenCalled();
+    expect(mockGetAthleteLiftingResults).toHaveBeenCalledWith(
+      "Test Meet",
+      "Athlete A",
+    );
     expect(result["Athlete A"]).toEqual({
       snatch_best: 100,
       cj_best: 120,
@@ -117,6 +121,31 @@ describe("getAthleteBestsBatch", () => {
       snatch_best: null,
       cj_best: null,
       total: null,
+    });
+  });
+
+  it("derives bests from attempts when *_best fields are null", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+    mockGetAthleteLiftingResults.mockResolvedValue([
+      {
+        snatch_best: null,
+        cj_best: null,
+        total: null,
+        snatch1: 90,
+        snatch2: -94,
+        snatch3: 96,
+        cj1: 110,
+        cj2: 114,
+        cj3: -117,
+      } as any,
+    ]);
+
+    const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);
+
+    expect(result["Athlete A"]).toEqual({
+      snatch_best: 96,
+      cj_best: 114,
+      total: 210,
     });
   });
 });

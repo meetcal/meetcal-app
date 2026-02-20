@@ -34,6 +34,10 @@ function normalizePlatformKey(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeAthleteName(name: string | null | undefined) {
+  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function filterSessionAthletes(
   athletes: LiftResult[],
   sessionNumber: number,
@@ -83,10 +87,10 @@ export default function AttemptEstimatorScreen() {
 
       if (cachedSessionAthletes.length > 0) {
         const athleteNameSet = new Set(
-          cachedSessionAthletes.map((athlete) => athlete.name),
+          cachedSessionAthletes.map((athlete) => normalizeAthleteName(athlete.name)),
         );
         const cachedSessionResults = cachedMeetResults.filter((result) =>
-          athleteNameSet.has(result.name),
+          athleteNameSet.has(normalizeAthleteName(result.name)),
         );
         setEstimates(
           calculateEstimates(cachedSessionAthletes, cachedSessionResults),
@@ -109,7 +113,7 @@ export default function AttemptEstimatorScreen() {
         params.platform,
       );
       const freshSessionNameSet = new Set(
-        freshSessionAthletes.map((athlete) => athlete.name),
+        freshSessionAthletes.map((athlete) => normalizeAthleteName(athlete.name)),
       );
       const freshAllNames = Array.from(
         new Set(freshMeetAthletes.map((athlete) => athlete.name)),
@@ -122,7 +126,7 @@ export default function AttemptEstimatorScreen() {
       await saveMeetLiftingResults(meetId, freshResults);
 
       const freshSessionResults = freshResults.filter((result) =>
-        freshSessionNameSet.has(result.name),
+        freshSessionNameSet.has(normalizeAthleteName(result.name)),
       );
 
       if (freshSessionAthletes.length > 0) {

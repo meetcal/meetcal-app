@@ -1,5 +1,6 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { resolveAthleteResultsMeetScope } from "@/app/shared-screens/athlete-results-scope";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
@@ -238,7 +239,7 @@ function AthleteStats({
 
 export default function AthleteResultsScreen() {
   const colors = useAppColors();
-  const { name } = useLocalSearchParams();
+  const { name, meet } = useLocalSearchParams<{ name?: string; meet?: string }>();
   const { selectedMeet } = useSelectedMeet();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
@@ -254,7 +255,8 @@ export default function AthleteResultsScreen() {
       if (!name) return;
 
       const nameStr = Array.isArray(name) ? name[0] : name;
-      const cacheKey = `${selectedMeet || "all"}::${nameStr}`;
+      const meetScope = resolveAthleteResultsMeetScope(meet, selectedMeet);
+      const cacheKey = `${meetScope || "all"}::${nameStr}`;
       const cachedResults = resultsCacheRef.current.get(cacheKey);
       if (cachedResults) {
         setAthleteResults(cachedResults);
@@ -267,11 +269,11 @@ export default function AthleteResultsScreen() {
       try {
         let results: SupabaseLiftResult[] = [];
 
-        // Try to get from cache first if we have a selected meet
-        if (selectedMeet) {
+        // Try to get from cache first if we have a meet scope
+        if (meetScope) {
           try {
             const offlineResults = await getAthleteLiftingResults(
-              selectedMeet,
+              meetScope,
               nameStr,
             );
             if (offlineResults && offlineResults.length > 0) {
@@ -315,7 +317,7 @@ export default function AthleteResultsScreen() {
     };
 
     fetchAthleteResults();
-  }, [name, selectedMeet]);
+  }, [name, meet, selectedMeet]);
 
   if (!name) {
     return (
