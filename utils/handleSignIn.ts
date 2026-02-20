@@ -1,4 +1,5 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { cacheAuthState } from "@/lib/authCache";
 import * as AuthSession from "expo-auth-session";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
@@ -20,7 +21,7 @@ export function useSignInHandlers() {
       router.replace({
         pathname: "/shared-screens/paywall",
         params: {
-          from: from || "/(tabs)",
+          from: from || "/(tabs)/(index)",
           feature: feature,
         },
       } as any);
@@ -29,7 +30,7 @@ export function useSignInHandlers() {
       router.replace(from as any);
     } else {
       // Default to tabs
-      router.replace("/(tabs)" as any);
+      router.replace("/(tabs)/(index)" as any);
     }
   }, [from, feature, isSubscribed]);
 
@@ -102,6 +103,7 @@ export function useSignInHandlers() {
       }
 
       await result.setActive({ session: sessionId });
+      await cacheAuthState(true);
     },
     [],
   );

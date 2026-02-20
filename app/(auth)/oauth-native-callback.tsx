@@ -22,5 +22,5 @@ export default function OAuthNativeCallback() {
     )
   }
 
-  return <Redirect href={isSignedIn ? '/(tabs)' : '/(auth)/sign-in'} />
+  return <Redirect href={isSignedIn ? '/(tabs)/(index)' : '/(auth)/sign-in'} />
 }
