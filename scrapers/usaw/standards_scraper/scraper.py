@@ -7,7 +7,7 @@ This scraper:
 2. Finds the PDF link containing "Standards"
 3. Downloads and parses the PDF
 4. Extracts A/B standards for each age category, gender, and weight class
-5. Upserts to Supabase
+5. Upserts to Convex
 
 USAGE:
   # Dry-run (preview changes without updating database)
@@ -30,9 +30,9 @@ import pdfplumber
 from bs4 import BeautifulSoup
 
 try:
-    from supabase import create_client, Client
+    from convex import ConvexClient
 except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
+    print("Error: convex library not installed. Run: pip install convex")
     sys.exit(1)
 
 # Load environment variables
@@ -45,20 +45,21 @@ class StandardsScraper:
     def __init__(self):
         """Initialize the scraper."""
         self.base_url = "https://www.usaweightlifting.org/resources/athlete-information-and-programs/selection-procedures"
-        self.supabase: Optional[Client] = None
+        self.convex: Optional[ConvexClient] = None
+        self.scraper_secret: Optional[str] = None
         self.pdf_url: Optional[str] = None
         self.slack_webhook_url: Optional[str] = None
     
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        convex_url = os.getenv("CONVEX_URL")
         
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
+        if not convex_url:
+            raise ValueError("CONVEX_URL must be set in .env")
         
-        self.supabase = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+        self.convex = ConvexClient(convex_url)
+        self.scraper_secret = os.getenv("SCRAPER_SECRET")
+        print("✓ Convex client initialized")
     
     def setup_slack(self):
         """Initialize Slack webhook."""
@@ -339,151 +340,58 @@ class StandardsScraper:
     
     def dry_run(self, standards: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Perform a dry run - show what would be inserted/updated without making changes.
+        Perform a dry run - show what would be upserted without making changes.
         
         Returns:
-            Dictionary with summary of changes
+            Dictionary with summary of what would be upserted
         """
         print("\n" + "="*60)
         print("DRY RUN - No database changes will be made")
         print("="*60 + "\n")
         
-        if not self.supabase:
-            self.setup_supabase_client()
-        
-        to_insert = []
-        to_update = []
-        unchanged = []
-        
-        for standard in standards:
-            # Check if record exists
-            existing = self.supabase.table('standards').select('*').eq(
-                'age_category', standard['age_category']
-            ).eq(
-                'gender', standard['gender']
-            ).eq(
-                'weight_class', standard['weight_class']
-            ).execute()
-            
-            if existing.data:
-                # Record exists - check if update is needed
-                db_record = existing.data[0]
-                
-                changed = False
-                changes = {}
-                
-                if db_record.get('standard_a') != standard['standard_a']:
-                    changed = True
-                    changes['standard_a'] = {
-                        'old': db_record.get('standard_a'),
-                        'new': standard['standard_a']
-                    }
-                
-                if db_record.get('standard_b') != standard['standard_b']:
-                    changed = True
-                    changes['standard_b'] = {
-                        'old': db_record.get('standard_b'),
-                        'new': standard['standard_b']
-                    }
-                
-                if changed:
-                    to_update.append({
-                        'record': standard,
-                        'changes': changes
-                    })
-                else:
-                    unchanged.append(standard)
-            else:
-                # New record
-                to_insert.append(standard)
-        
-        # Print summary
         print(f"Summary:")
-        print(f"  New records to insert: {len(to_insert)}")
-        print(f"  Records to update: {len(to_update)}")
-        print(f"  Unchanged records: {len(unchanged)}")
+        print(f"  Records to upsert: {len(standards)}")
         print(f"  Total records processed: {len(standards)}\n")
         
-        # Print details
-        if to_insert:
-            print("Records to INSERT:")
-            for record in to_insert[:10]:  # Show first 10
-                print(f"  + {record['age_category']} {record['gender']} {record['weight_class']}: "
+        if standards:
+            print("Records to UPSERT:")
+            for record in standards[:10]:  # Show first 10
+                print(f"  ~ {record['age_category']} {record['gender']} {record['weight_class']}: "
                       f"A={record['standard_a']}, B={record['standard_b']}")
-            if len(to_insert) > 10:
-                print(f"  ... and {len(to_insert) - 10} more")
-            print()
-        
-        if to_update:
-            print("Records to UPDATE:")
-            for item in to_update[:10]:  # Show first 10
-                record = item['record']
-                changes = item['changes']
-                change_str = ", ".join([
-                    f"{k}: {v['old']} -> {v['new']}"
-                    for k, v in changes.items()
-                ])
-                print(f"  ~ {record['age_category']} {record['gender']} {record['weight_class']}: {change_str}")
-            if len(to_update) > 10:
-                print(f"  ... and {len(to_update) - 10} more")
+            if len(standards) > 10:
+                print(f"  ... and {len(standards) - 10} more")
             print()
         
         return {
-            'to_insert': to_insert,
-            'to_update': to_update,
-            'unchanged': unchanged,
+            'to_upsert': standards,
             'total': len(standards)
         }
     
-    def upsert_to_supabase(self, standards: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def upsert_to_convex(self, standards: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Upsert standards to Supabase.
+        Upsert standards to Convex via the scraperIngestion:ingestStandard action.
         
         Returns:
-            Dictionary with 'inserted' and 'updated' lists
+            Dictionary with 'upserted' list
         """
-        if not self.supabase:
-            self.setup_supabase_client()
+        if not self.convex:
+            self.setup_convex_client()
         
-        inserted = []
-        updated = []
+        upserted = []
         
         for standard in standards:
-            # Check if record exists
-            existing = self.supabase.table('standards').select('*').eq(
-                'age_category', standard['age_category']
-            ).eq(
-                'gender', standard['gender']
-            ).eq(
-                'weight_class', standard['weight_class']
-            ).execute()
-            
-            if existing.data:
-                # Update existing record
-                db_record = existing.data[0]
-                record_id = db_record['id']
-                
-                # Check if any values changed
-                changed = False
-                if db_record.get('standard_a') != standard['standard_a']:
-                    changed = True
-                if db_record.get('standard_b') != standard['standard_b']:
-                    changed = True
-                
-                if changed:
-                    self.supabase.table('standards').update({
-                        'standard_a': standard['standard_a'],
-                        'standard_b': standard['standard_b']
-                    }).eq('id', record_id).execute()
-                    updated.append(standard)
-                    print(f"  ✓ Updated: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
-            else:
-                # Insert new record
-                self.supabase.table('standards').insert(standard).execute()
-                inserted.append(standard)
-                print(f"  ✓ Inserted: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
+            self.convex.action("scraperIngestion:ingestStandard", {
+                "scraperSecret": self.scraper_secret,
+                "ageCategory": standard['age_category'],
+                "gender": standard['gender'],
+                "weightClass": standard['weight_class'],
+                "standardA": standard['standard_a'],
+                "standardB": standard['standard_b'],
+            })
+            upserted.append(standard)
+            print(f"  ✓ Upserted: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
         
-        return {'inserted': inserted, 'updated': updated}
+        return {'upserted': upserted}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""
@@ -559,9 +467,6 @@ class StandardsScraper:
             print("✗ No standards extracted from PDF. Exiting.")
             return
         
-        # Setup Supabase (needed for both dry-run to check existing records and full run)
-        self.setup_supabase_client()
-        
         # Setup Slack for notifications (works in both modes)
         self.setup_slack()
         
@@ -570,25 +475,26 @@ class StandardsScraper:
             result = self.dry_run(standards)
             # Send Slack notification for dry-run
             self.send_slack_notification(
-                result['to_insert'], 
-                [item['record'] for item in result['to_update']],
+                result['to_upsert'],
+                [],
                 is_dry_run=True
             )
         else:
             print("\n" + "="*60)
             print("UPDATING DATABASE")
             print("="*60 + "\n")
-            result = self.upsert_to_supabase(standards)
-            print(f"\n✓ Complete: {len(result['inserted'])} inserted, {len(result['updated'])} updated")
+            self.setup_convex_client()
+            result = self.upsert_to_convex(standards)
+            print(f"\n✓ Complete: {len(result['upserted'])} upserted")
             
             # Send Slack notification
-            self.send_slack_notification(result['inserted'], result['updated'])
+            self.send_slack_notification(result['upserted'], [])
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Scrape USA Weightlifting standards and update Supabase'
+        description='Scrape USA Weightlifting standards and update Convex'
     )
     parser.add_argument(
         '--dry-run',
@@ -604,4 +510,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

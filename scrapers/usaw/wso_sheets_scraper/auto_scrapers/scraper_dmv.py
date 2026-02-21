@@ -16,7 +16,7 @@ from datetime import datetime
 from collections import defaultdict
 
 import requests
-from supabase import create_client, Client
+from convex import ConvexClient
 
 
 class WSORecordsDMVScraper:
@@ -29,19 +29,15 @@ class WSORecordsDMVScraper:
         self.changes = {"inserted": [], "updated": []}
         
         # Initialize clients
-        self.supabase_client = None
+        self.convex_client = None
+        self.scraper_secret = None
         self.slack_webhook_url = None
         
-    def setup_supabase_client(self):
-        """Set up Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
-        
-        self.supabase_client: Client = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+    def setup_convex_client(self):
+        """Set up Convex client."""
+        self.convex_client = ConvexClient(os.getenv("CONVEX_URL"))
+        self.scraper_secret = os.getenv("SCRAPER_SECRET")
+        print("✓ Convex client initialized")
     
     def setup_slack(self):
         """Set up Slack webhook URL."""
@@ -205,73 +201,23 @@ class WSORecordsDMVScraper:
     
     def upsert_records(self, records: List[Dict[str, Any]]) -> None:
         """
-        Upsert records to Supabase.
-        
-        Tracks changes (inserts vs updates) in self.changes.
+        Upsert records to Convex.
         
         Args:
             records: List of records to upsert
         """
         for record in records:
-            # Query for existing record with same unique key
-            existing = self.supabase_client.table("wso_records").select("*").match({
+            self.convex_client.action("scraperIngestion:ingestWSORecord", {
+                "scraperSecret": self.scraper_secret,
                 "wso": record["wso"],
-                "age_category": record["age_category"],
+                "ageCategory": record["age_category"],
                 "gender": record["gender"],
-                "weight_class": record["weight_class"]
-            }).execute()
-            
-            if existing.data and len(existing.data) > 0:
-                # Record exists - check if update is needed
-                existing_record = existing.data[0]
-                record_id = existing_record["id"]
-                
-                # Compare values to see what changed
-                changes = {}
-                if existing_record.get("snatch_record") != record.get("snatch_record"):
-                    changes["snatch_record"] = {
-                        "old": existing_record.get("snatch_record"),
-                        "new": record.get("snatch_record")
-                    }
-                if existing_record.get("cj_record") != record.get("cj_record"):
-                    changes["cj_record"] = {
-                        "old": existing_record.get("cj_record"),
-                        "new": record.get("cj_record")
-                    }
-                if existing_record.get("total_record") != record.get("total_record"):
-                    changes["total_record"] = {
-                        "old": existing_record.get("total_record"),
-                        "new": record.get("total_record")
-                    }
-                
-                if changes:
-                    # Update the record
-                    self.supabase_client.table("wso_records").update(record).eq("id", record_id).execute()
-                    
-                    # Track the update
-                    self.changes["updated"].append({
-                        "wso": record["wso"],
-                        "age_category": record["age_category"],
-                        "gender": record["gender"],
-                        "weight_class": record["weight_class"],
-                        "changes": changes
-                    })
-                    print(f"  ✓ Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
-            else:
-                # Record doesn't exist - insert it
-                self.supabase_client.table("wso_records").insert(record).execute()
-                
-                # Track the insertion
-                self.changes["inserted"].append({
-                    "wso": record["wso"],
-                    "age_category": record["age_category"],
-                    "gender": record["gender"],
-                    "weight_class": record["weight_class"],
-                    "snatch_record": record.get("snatch_record"),
-                    "cj_record": record.get("cj_record"),
-                    "total_record": record.get("total_record")
-                })
-                print(f"  ✓ Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+                "weightClass": record["weight_class"],
+                "snatchRecord": record.get("snatch_record"),
+                "cjRecord": record.get("cj_record"),
+                "totalRecord": record.get("total_record"),
+            })
+            print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
     
     def send_slack_notification(self) -> None:
         """Send Slack notification with change summary."""
@@ -331,7 +277,7 @@ class WSORecordsDMVScraper:
         print(f"Sheet URL: {self.sheet_url}")
         
         # Setup clients
-        self.setup_supabase_client()
+        self.setup_convex_client()
         self.setup_slack()
         
         # Scrape data
@@ -340,7 +286,7 @@ class WSORecordsDMVScraper:
         print(f"Found {len(records)} records")
         
         # Upsert to database
-        print("Upserting records to Supabase...")
+        print("Upserting records to Convex...")
         self.upsert_records(records)
         
         # Send notification
@@ -364,4 +310,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

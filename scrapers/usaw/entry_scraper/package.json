@@ -8,7 +8,6 @@
     "site": "node scrape_from_site.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.8",
     "csv-writer": "^1.6.0",
     "dotenv": "^16.5.0",
     "playwright": "^1.42.1"

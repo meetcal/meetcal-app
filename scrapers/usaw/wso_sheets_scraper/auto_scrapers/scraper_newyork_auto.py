@@ -282,7 +282,7 @@ class NewYorkAutoScraper:
             
             try:
                 scraper = WSORecordsNewYorkScraper(self.wso_name, pdf_url)
-                scraper.setup_supabase_client()
+                scraper.setup_convex_client()
                 
                 # Don't set up Discord for individual PDFs (we'll send one summary)
                 

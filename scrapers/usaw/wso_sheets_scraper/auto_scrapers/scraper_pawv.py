@@ -27,11 +27,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 
-try:
-    from supabase import create_client, Client
-except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
-    sys.exit(1)
+from convex import ConvexClient
 
 
 class WSORecordsPAWVScraper:
@@ -47,7 +43,8 @@ class WSORecordsPAWVScraper:
         """
         self.wso_name = wso_name
         self.base_sheet_id = base_sheet_id
-        self.supabase: Optional[Client] = None
+        self.convex_client: Optional[ConvexClient] = None
+        self.scraper_secret: Optional[str] = None
         self.slack_webhook_url: Optional[str] = None
         
         # Tab configuration: gender + base age category + GID
@@ -63,16 +60,11 @@ class WSORecordsPAWVScraper:
             ("Women", "Masters", "846901037"),  # Masters Women
         ]
     
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
-        
-        self.supabase = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        self.convex_client = ConvexClient(os.getenv("CONVEX_URL"))
+        self.scraper_secret = os.getenv("SCRAPER_SECRET")
+        print("✓ Convex client initialized")
     
     def setup_slack(self):
         """Initialize Slack webhook."""
@@ -294,54 +286,33 @@ class WSORecordsPAWVScraper:
         
         return all_records
     
-    def upsert_to_supabase(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def upsert_to_convex(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Upsert records to Supabase.
+        Upsert records to Convex.
         
         Returns:
-            Dictionary with 'inserted' and 'updated' lists
+            Dictionary with 'inserted' and 'updated' lists (for notification tracking)
         """
-        if not self.supabase:
-            raise ValueError("Supabase client not initialized")
+        if not self.convex_client:
+            raise ValueError("Convex client not initialized")
         
-        inserted = []
-        updated = []
-        
+        upserted = []
+
         for record in records:
-            # Check if record exists
-            existing = self.supabase.table('wso_records').select('*').eq(
-                'wso', record['wso']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                # Update existing record
-                db_record = existing.data[0]
-                record_id = db_record['id']
-                
-                # Check if any values changed
-                changed = False
-                for field in ['snatch_record', 'cj_record', 'total_record']:
-                    if db_record.get(field) != record.get(field):
-                        changed = True
-                        break
-                
-                if changed:
-                    self.supabase.table('wso_records').update(record).eq('id', record_id).execute()
-                    updated.append(record)
-                    print(f"  ✓ Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
-            else:
-                # Insert new record
-                self.supabase.table('wso_records').insert(record).execute()
-                inserted.append(record)
-                print(f"  ✓ Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
-        
-        return {'inserted': inserted, 'updated': updated}
+            self.convex_client.action("scraperIngestion:ingestWSORecord", {
+                "scraperSecret": self.scraper_secret,
+                "wso": record["wso"],
+                "ageCategory": record["age_category"],
+                "gender": record["gender"],
+                "weightClass": record["weight_class"],
+                "snatchRecord": record.get("snatch_record"),
+                "cjRecord": record.get("cj_record"),
+                "totalRecord": record.get("total_record"),
+            })
+            upserted.append(record)
+            print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+
+        return {'inserted': upserted, 'updated': []}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]]):
         """Send Slack notification with upsert summary."""
@@ -391,72 +362,18 @@ class WSORecordsPAWVScraper:
         response.raise_for_status()
         print("✓ Slack notification sent")
     
-    def dry_run_compare(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Compare scraped records with database without making changes.
-        
-        Returns:
-            Dictionary with comparison results
-        """
-        if not self.supabase:
-            raise ValueError("Supabase client not initialized")
-        
-        to_insert = []
-        to_update = []
-        unchanged = []
-        
-        for record in records:
-            existing = self.supabase.table('wso_records').select('*').eq(
-                'wso', record['wso']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                db_record = existing.data[0]
-                
-                # Check for changes
-                changed = False
-                changes = []
-                for field in ['snatch_record', 'cj_record', 'total_record']:
-                    db_val = db_record.get(field)
-                    new_val = record.get(field)
-                    if db_val != new_val:
-                        changed = True
-                        changes.append((field, db_val, new_val))
-                
-                if changed:
-                    to_update.append({
-                        'record': record,
-                        'changes': changes
-                    })
-                else:
-                    unchanged.append(record)
-            else:
-                to_insert.append(record)
-        
-        return {
-            'to_insert': to_insert,
-            'to_update': to_update,
-            'unchanged': unchanged
-        }
-    
     def run(self, dry_run: bool = False):
         """
         Main execution method.
         
         Args:
-            dry_run: If True, compare with DB but don't make changes
+            dry_run: If True, scrape but don't upsert
         """
         print(f"Starting scraper for {self.wso_name}")
         print(f"Base sheet ID: {self.base_sheet_id}")
         
         # Setup
-        self.setup_supabase_client()
+        self.setup_convex_client()
         if not dry_run:
             self.setup_slack()
         
@@ -466,38 +383,21 @@ class WSORecordsPAWVScraper:
         print(f"Found {len(records)} total records")
         
         if dry_run:
-            # Dry run mode
             print("\n" + "="*80)
-            print("DRY RUN MODE - Comparing with database")
+            print("DRY RUN MODE - Skipping upsert")
             print("="*80)
-            
-            comparison = self.dry_run_compare(records)
-            
-            print(f"\nTo INSERT: {len(comparison['to_insert'])} records")
-            print(f"To UPDATE: {len(comparison['to_update'])} records")
-            print(f"Unchanged: {len(comparison['unchanged'])} records")
-            
-            if comparison['to_insert']:
-                print("\n--- Records to INSERT ---")
-                for rec in comparison['to_insert'][:20]:  # Show first 20
-                    print(f"  {rec['age_category']:15} | {rec['gender']:6} | {rec['weight_class']:5} | "
-                          f"Snatch: {str(rec.get('snatch_record') or '-'):4} | "
-                          f"C&J: {str(rec.get('cj_record') or '-'):4} | "
-                          f"Total: {str(rec.get('total_record') or '-'):4}")
-                if len(comparison['to_insert']) > 20:
-                    print(f"  ... and {len(comparison['to_insert']) - 20} more")
-            
-            if comparison['to_update']:
-                print("\n--- Records to UPDATE ---")
-                for item in comparison['to_update']:
-                    rec = item['record']
-                    print(f"  {rec['age_category']:15} | {rec['gender']:6} | {rec['weight_class']:5}")
-                    for field, old_val, new_val in item['changes']:
-                        print(f"    → {field}: {old_val} → {new_val}")
+            print(f"\nWould upsert: {len(records)} records")
+            for rec in records[:20]:
+                print(f"  {rec['age_category']:15} | {rec['gender']:6} | {rec['weight_class']:5} | "
+                      f"Snatch: {str(rec.get('snatch_record') or '-'):4} | "
+                      f"C&J: {str(rec.get('cj_record') or '-'):4} | "
+                      f"Total: {str(rec.get('total_record') or '-'):4}")
+            if len(records) > 20:
+                print(f"  ... and {len(records) - 20} more")
         else:
             # Real upsert
-            print("Upserting records to Supabase...")
-            result = self.upsert_to_supabase(records)
+            print("Upserting records to Convex...")
+            result = self.upsert_to_convex(records)
             
             print("Sending Slack notification...")
             self.send_slack_notification(result['inserted'], result['updated'])
@@ -523,4 +423,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

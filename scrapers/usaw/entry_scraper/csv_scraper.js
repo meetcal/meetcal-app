@@ -4,24 +4,13 @@ require('dotenv').config();
 const { chromium } = require('playwright');
 const fs = require('fs');
 const https = require('https');
-const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-let supabase;
+// Read Convex configuration from environment
+const convexUrl = process.env.CONVEX_URL;
+const scraperSecret = process.env.SCRAPER_SECRET;
 
-try {
-    if (!supabaseUrl || !supabaseKey) {
-        console.warn('Supabase credentials not provided. Database updates will be skipped.');
-        supabase = null;
-    } else {
-        supabase = createClient(supabaseUrl, supabaseKey);
-        console.log('Supabase client initialized successfully');
-    }
-} catch (error) {
-    console.error('Error initializing Supabase client:', error);
-    supabase = null;
+if (!convexUrl || !scraperSecret) {
+    console.warn('CONVEX_URL or SCRAPER_SECRET not provided. Database updates will be skipped.');
 }
 
 // Read the target URL from file
@@ -223,8 +212,8 @@ async function scrapeWeightliftingData() {
         
         console.log(`Successfully scraped ${allEntries.length} total entries (${Math.ceil(allEntries.length / 20)} pages)`);
         
-        // Update Supabase and get the count of upserted rows
-        const upsertStats = await updateSupabase(sortedEntries);
+        // Update Convex and get the count of upserted rows
+        const upsertStats = await updateConvex(sortedEntries);
         
         return { entries: allEntries, upsertStats };
 
@@ -237,176 +226,78 @@ async function scrapeWeightliftingData() {
     }
 }
 
-async function updateSupabase(entries) {
-    if (!supabase) {
-        console.error('Supabase client not initialized. Skipping database update.');
+async function updateConvex(entries) {
+    if (!convexUrl || !scraperSecret) {
+        console.error('CONVEX_URL or SCRAPER_SECRET not configured. Skipping database update.');
         return;
     }
-    
+
     if (entries.length === 0) {
-        console.log('No entries to update in Supabase');
+        console.log('No entries to update in Convex');
         return;
     }
-    
+
     const meetName = entries[0].meet;
-    console.log(`Updating Supabase with entries for meet: ${meetName}`);
-    
-    try {
-        // Get all existing entries for this meet to check for existing athletes by name
-        const { data: existingMeetEntries, error: fetchMeetError } = await supabase
-            .from('athletes')
-            .select('member_id, name, session_number, session_platform')
-            .eq('meet', meetName);
-            
-        if (fetchMeetError) {
-            console.error('Error fetching existing meet entries:', fetchMeetError);
-            return;
-        }
-        
-        // Create a map of existing entries in this meet by name (case-insensitive)
-        const existingByName = new Map();
-        if (existingMeetEntries) {
-            existingMeetEntries.forEach(entry => {
-                const normalizedName = entry.name.toLowerCase().trim();
-                existingByName.set(normalizedName, entry);
-            });
-        }
-        
-        // Get all existing member IDs from the database to check for duplicates across meets
-        const { data: allExistingMembers, error: fetchAllError } = await supabase
-            .from('athletes')
-            .select('member_id, meet');
-            
-        if (fetchAllError) {
-            console.error('Error fetching all existing members:', fetchAllError);
-        }
-        
-        // Create a set of all existing member IDs across all meets
-        const allExistingMemberIds = new Set();
-        if (allExistingMembers) {
-            allExistingMembers.forEach(member => {
-                allExistingMemberIds.add(member.member_id);
-            });
-        }
-        
-        // Generate a random 9-digit number that doesn't exist in the database
-        const generateUniqueMemberId = () => {
-            let newId;
-            do {
-                // Generate random 9-digit number
-                newId = Math.floor(100000000 + Math.random() * 900000000).toString();
-            } while (allExistingMemberIds.has(newId));
-            
-            // Add to set to avoid duplicates in current batch
-            allExistingMemberIds.add(newId);
-            return newId;
-        };
-        
-        let processedCount = 0;
-        let insertedCount = 0;
-        let updatedCount = 0;
-        let skippedCount = 0;
-        
-        // Process entries one by one
-        for (const entry of entries) {
-            const normalizedEntryName = entry.name.toLowerCase().trim();
-            const existingEntry = existingByName.get(normalizedEntryName);
-            
-            if (existingEntry) {
-                // Athlete name already exists in this meet
-                console.log(`Found existing athlete: ${entry.name} in meet: ${meetName}`);
-                
-                // Check if any important fields have changed (excluding session data)
-                const hasChanges = (
-                    existingEntry.member_id !== entry.member_id ||
-                    entry.age !== parseInt(existingEntry.age) ||
-                    entry.club !== existingEntry.club ||
-                    entry.gender !== existingEntry.gender ||
-                    entry.weight_class !== existingEntry.weight_class ||
-                    entry.entry_total !== parseInt(existingEntry.entry_total)
-                );
-                
-                if (hasChanges) {
-                    // Preserve the existing member_id and session data
-                    entry.member_id = existingEntry.member_id;
-                    
-                    // Preserve session_number and session_platform if they are not null
-                    if (existingEntry.session_number !== null) {
-                        entry.session_number = existingEntry.session_number;
-                    }
-                    
-                    if (existingEntry.session_platform !== null) {
-                        entry.session_platform = existingEntry.session_platform;
-                    }
-                    
-                    // Update the entry
-                    const { error: updateError } = await supabase
-                        .from('athletes')
-                        .update(entry)
-                        .eq('member_id', existingEntry.member_id)
-                        .eq('meet', meetName);
-                        
-                    if (updateError) {
-                        console.error(`Error updating entry for ${entry.name}:`, updateError);
-                    } else {
-                        console.log(`Updated athlete: ${entry.name} in meet: ${meetName}`);
-                        updatedCount++;
-                    }
-                } else {
-                    console.log(`No changes detected for athlete: ${entry.name} in meet: ${meetName} - skipping`);
-                    skippedCount++;
-                }
-            } else {
-                // Athlete name doesn't exist in this meet
-                
-                // Check if the member_id is already used in ANY meet
-                if (allExistingMemberIds.has(entry.member_id)) {
-                    // Member ID exists but name doesn't exist in this meet
-                    // This means it's likely the same person in a different meet
-                    // Generate a new member_id for this meet entry
-                    const originalId = entry.member_id;
-                    entry.member_id = generateUniqueMemberId();
-                    console.log(`Member ID ${originalId} exists in other meets. Generated new ID ${entry.member_id} for ${entry.name} in meet: ${meetName}`);
-                }
-                
-                // Insert new entry
-                const { error: insertError } = await supabase
-                    .from('athletes')
-                    .insert(entry);
-                    
-                if (insertError) {
-                    console.error(`Error inserting entry for ${entry.name}:`, insertError);
-                } else {
-                    console.log(`Inserted new athlete: ${entry.name} in meet: ${meetName}`);
-                    insertedCount++;
-                    // Add the new entry to our local map to avoid duplicates in this batch
-                    existingByName.set(normalizedEntryName, {
-                        member_id: entry.member_id,
+    console.log(`Updating Convex with entries for meet: ${meetName}`);
+
+    let processedCount = 0;
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const entry of entries) {
+        const memberId = (entry.member_id && entry.member_id.trim())
+            ? entry.member_id.trim()
+            : String(Math.floor(Math.random() * 900000000) + 100000000);
+
+        try {
+            const response = await fetch(`${convexUrl}/api/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    path: 'scraperIngestion:ingestAthlete',
+                    args: {
+                        scraperSecret: scraperSecret,
+                        memberId: memberId,
                         name: entry.name,
-                        session_number: entry.session_number,
-                        session_platform: entry.session_platform
-                    });
-                }
+                        age: entry.age,
+                        club: entry.club,
+                        gender: entry.gender,
+                        weightClass: entry.weight_class,
+                        entryTotal: entry.entry_total,
+                        sessionNumber: entry.session_number ?? undefined,
+                        sessionPlatform: entry.session_platform ?? undefined,
+                        meet: entry.meet,
+                        adaptive: false,
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Error ingesting athlete ${entry.name}: HTTP ${response.status} - ${errorText}`);
+                errorCount++;
+            } else {
+                console.log(`Ingested athlete: ${entry.name} in meet: ${meetName}`);
+                successCount++;
             }
-            processedCount++;
+        } catch (error) {
+            console.error(`Error ingesting athlete ${entry.name}:`, error.message);
+            errorCount++;
         }
-        
-        console.log(`Successfully processed ${processedCount} entries for meet: ${meetName}`);
-        console.log(`  - Inserted: ${insertedCount}`);
-        console.log(`  - Updated: ${updatedCount}`);
-        console.log(`  - Skipped (no changes): ${skippedCount}`);
-        
-        // Return the stats for the Slack notification
-        return {
-            inserted: insertedCount,
-            updated: updatedCount,
-            skipped: skippedCount,
-            total: processedCount
-        };
-    } catch (error) {
-        console.error('Error updating Supabase:', error);
-        throw error;
+
+        processedCount++;
     }
+
+    console.log(`Successfully processed ${processedCount} entries for meet: ${meetName}`);
+    console.log(`  - Succeeded: ${successCount}`);
+    console.log(`  - Errors: ${errorCount}`);
+
+    return {
+        inserted: successCount,
+        updated: 0,
+        skipped: errorCount,
+        total: processedCount
+    };
 }
 
 async function sendSlackNotification(upsertStats, meetName) {
@@ -433,10 +324,9 @@ async function sendSlackNotification(upsertStats, meetName) {
     
     // Create the message
     let message = `*Entry Scraper Update - ${meetName}*\n\n`;
-    message += `${upsertedCount} Athlete${upsertedCount !== 1 ? 's' : ''} Upserted to Supabase\n`;
-    message += `• ${upsertStats.inserted} inserted\n`;
-    message += `• ${upsertStats.updated} updated\n`;
-    message += `• ${upsertStats.skipped} skipped (no changes)\n\n`;
+    message += `${upsertedCount} Athlete${upsertedCount !== 1 ? 's' : ''} Upserted to Convex\n`;
+    message += `• ${upsertStats.inserted} succeeded\n`;
+    message += `• ${upsertStats.skipped} errors\n\n`;
     
     const payload = JSON.stringify({
         text: message
@@ -519,4 +409,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { scrapeWeightliftingData }; 
+module.exports = { scrapeWeightliftingData };

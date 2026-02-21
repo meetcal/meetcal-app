@@ -4,6 +4,7 @@ import requests
 import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+from convex import ConvexClient
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,12 +18,9 @@ load_dotenv()
 from sport80 import SportEighty # Adjust if your structure differs
 
 # --- Configuration ---
-# Supabase Configuration
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-SUPABASE_TABLE_NAME = "lifting_results" # Your table name
-# Column in Supabase that stores the unique meet name
-SUPABASE_MEET_NAME_COLUMN = "meet"
+# Convex Configuration
+CONVEX_URL = os.environ.get("CONVEX_URL")
+SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET")
 
 # Sport80 Configuration
 USAW_DOMAIN = "https://bwl.sport80.com"
@@ -84,77 +82,21 @@ def parse_event_date(event_data_dict):
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
-def filter_already_existing_event_ids(candidate_event_ids: list[str]) -> set[str]:
-    """Given a list of candidate event IDs, query Supabase to find which ones already exist."""
-    if not candidate_event_ids:
-        logging.info("No candidate event IDs provided to check for existence.")
-        return set()
-
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        logging.error("Supabase URL or Key not configured for checking event IDs.")
-        return set() # Or raise an error
-
-    # Format for the "in" clause: (id1,id2,id3)
-    # Supabase/PostgREST expects a comma-separated list for the `in` filter.
-    # Ensure IDs are quoted if they are strings, but event_id seems to be stored as text/string non-quoted in db based on logs.
-    # The event_ids extracted are already strings.
-    event_ids_str = ",".join(candidate_event_ids)
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_NAME}?select=event_id&event_id=in.({event_ids_str})"
-    
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Accept": "application/json" # Explicitly ask for JSON
-    }
-    
-    existing_ids_in_db = set()
-    try:
-        logging.info(f"Querying Supabase for existing event_ids: {candidate_event_ids}")
-        resp = requests.get(url, headers=headers, timeout=45)
-        resp.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
-        
-        results = resp.json()
-        for row in results:
-            if "event_id" in row and row["event_id"]:
-                existing_ids_in_db.add(str(row["event_id"]).strip())
-        logging.info(f"Supabase check found {len(existing_ids_in_db)} existing event IDs: {existing_ids_in_db}")
-        return existing_ids_in_db
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error querying Supabase for existing event IDs: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f"Supabase response content for event_id check: {e.response.text}")
-        return set() # Return empty set on error, so script might try to re-add
-    except ValueError: # JSONDecodeError
-        logging.error(f"Error decoding JSON from Supabase event_id check: {resp.text if resp else 'No response'}")
-        return set()
-
-
-def add_meet_results_to_supabase(results_to_insert: list):
-    """Insert a batch of results for a new meet into Supabase."""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        logging.error("Supabase URL or Key not configured for adding results.")
-        return None
+def add_meet_results_to_convex(client: ConvexClient, results_to_insert: list):
+    """Upsert a batch of results for a meet into Convex via ingestLiftingResult."""
     if not results_to_insert:
         logging.info("No results to insert.")
-        return None
+        return
 
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_NAME}"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-    }
-    try:
-        resp = requests.post(url, headers=headers, json=results_to_insert, timeout=60)
-        resp.raise_for_status()
-        logging.info(f"Successfully inserted {len(results_to_insert)} results via Supabase API.")
-        return resp
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error inserting meet results to Supabase: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f"Supabase response content: {e.response.text}")
-        return None
+    success_count = 0
+    for result in results_to_insert:
+        try:
+            client.action("scraperIngestion:ingestLiftingResult", result)
+            success_count += 1
+        except Exception as e:
+            logging.error(f"Error upserting result for '{result.get('name')}' in Convex: {e}")
+
+    logging.info(f"Successfully upserted {success_count}/{len(results_to_insert)} results via Convex.")
 
 
 def fetch_recent_events_from_sport80(api_client: SportEighty, num_events: int = 30) -> list:
@@ -221,32 +163,6 @@ def fetch_meet_results_from_sport80(api_client: SportEighty, event_data_dict: di
         return []
 
 
-def fetch_max_id_from_supabase() -> int:
-    """Fetch the highest ID value from the Supabase database."""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        logging.error("Supabase URL or Key not configured.")
-        return 0
-
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_NAME}?select=id&order=id.desc&limit=1"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        results = resp.json()
-        if results and len(results) > 0:
-            return results[0]["id"]
-        return 0
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching max ID from Supabase: {e}")
-        return 0
-    except (ValueError, KeyError, IndexError) as e:
-        logging.error(f"Error processing max ID from Supabase: {e}")
-        return 0
-
-
 def send_slack_notification(added_meet_names: list[str]):
     """Send a Slack notification with the names of meets added and timestamp."""
     if not SLACK_WEBHOOK_URL:
@@ -280,11 +196,13 @@ def send_slack_notification(added_meet_names: list[str]):
 
 
 def main():
-    logging.info("Starting Sport80 to Supabase sync process...")
+    logging.info("Starting Sport80 to Convex sync process...")
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        logging.critical("SUPABASE_URL and SUPABASE_KEY must be set. Exiting.")
+    if not CONVEX_URL or not SCRAPER_SECRET:
+        logging.critical("CONVEX_URL and SCRAPER_SECRET must be set. Exiting.")
         return
+
+    client = ConvexClient(CONVEX_URL)
 
     sport80_api = SportEighty(subdomain=USAW_DOMAIN, return_dict=True, debug=logging.WARNING)
     # Keeping num_events=1 for this test, can be changed back to 30 later.
@@ -310,9 +228,6 @@ def main():
         
         if not meet_name:
             logging.warning(f"Event data missing 'meet' field. Event ID: {event_id_str}. Data: {str(event_data_item)[:200]}")
-            # Decide if you want to skip or use a placeholder for meet_name
-            # meet_name = f"Unknown Meet (ID: {event_id_str})" # Example placeholder
-            # For now, let's rely on later checks to skip if name is truly essential elsewhere
 
         if event_id_str != "N/A":
             candidate_event_details.append({"id": event_id_str, "name": meet_name, "data": event_data_item})
@@ -322,16 +237,6 @@ def main():
     if not candidate_event_details:
         logging.info("No valid candidate events with IDs to process after initial parsing. Exiting.")
         return
-
-    candidate_ids_to_check_in_db = [details["id"] for details in candidate_event_details]
-    
-    # Query Supabase for which of these candidate IDs already exist
-    already_existing_event_ids_in_db = filter_already_existing_event_ids(candidate_ids_to_check_in_db)
-    logging.info(f"Checked {len(candidate_ids_to_check_in_db)} candidate event IDs. Found {len(already_existing_event_ids_in_db)} existing in DB: {already_existing_event_ids_in_db}")
-
-    max_id_in_db = fetch_max_id_from_supabase()
-    next_id_for_new_rows = max_id_in_db + 1
-    logging.info(f"Highest existing primary ID in Supabase table: {max_id_in_db}. Next row ID will start from: {next_id_for_new_rows}")
 
     processed_event_ids_this_run = set() # To prevent re-processing if Sport80 API sends duplicates in one batch
     added_meet_names = []  # Track the names of meets that were successfully added
@@ -347,15 +252,11 @@ def main():
             logging.warning(f"Skipping event with ID '{current_event_id}' due to missing meet name after all parsing attempts.")
             continue
 
-        if current_event_id in already_existing_event_ids_in_db:
-            logging.info(f"Event ID '{current_event_id}' ('{current_meet_name}') already exists in Supabase (checked via DB query). Skipping.")
-            continue
-        
         if current_event_id in processed_event_ids_this_run:
             logging.info(f"Event ID '{current_event_id}' ('{current_meet_name}') was already processed in this script run. Skipping.")
             continue
 
-        logging.info(f"Treating as new meet for DB: '{current_meet_name}' (Event ID: {current_event_id})")
+        logging.info(f"Processing meet for Convex upsert: '{current_meet_name}' (Event ID: {current_event_id})")
         
         detailed_results_list = fetch_meet_results_from_sport80(sport80_api, event_data_for_api)
 
@@ -364,7 +265,7 @@ def main():
             processed_event_ids_this_run.add(current_event_id)
             continue
 
-        formatted_results_for_supabase = []
+        formatted_results_for_convex = []
         meet_date_obj = parse_event_date(event_data_for_api)
         meet_date_for_db = meet_date_obj.strftime("%Y-%m-%d") if meet_date_obj > datetime.min.replace(tzinfo=timezone.utc) else None
 
@@ -382,31 +283,37 @@ def main():
             best_cj = get_nested_value(result_item, "best_cj", "Best Clean & Jerk") or get_nested_value(result_item, "best_c&j")
             total_lifted = get_nested_value(result_item, "total", "Total")
 
-            formatted_results_for_supabase.append({
-                "id": next_id_for_new_rows,
-                "event_id": current_event_id,
-                SUPABASE_MEET_NAME_COLUMN: current_meet_name,
+            formatted_results_for_convex.append({
+                "scraperSecret": SCRAPER_SECRET,
+                "eventId": current_event_id,
+                "meet": current_meet_name,
                 "date": meet_date_for_db,
                 "name": lifter_name,
                 "age": age_cat,
-                "body_weight": body_w,
-                "snatch1": sn1, "snatch2": sn2, "snatch3": sn3, "snatch_best": best_sn,
-                "cj1": cj1, "cj2": cj2, "cj3": cj3, "cj_best": best_cj,
-                "total": total_lifted,
+                "bodyWeight": float(body_w) if body_w is not None else None,
+                "snatch1": float(sn1) if sn1 is not None else None,
+                "snatch2": float(sn2) if sn2 is not None else None,
+                "snatch3": float(sn3) if sn3 is not None else None,
+                "snatchBest": float(best_sn) if best_sn is not None else None,
+                "cj1": float(cj1) if cj1 is not None else None,
+                "cj2": float(cj2) if cj2 is not None else None,
+                "cj3": float(cj3) if cj3 is not None else None,
+                "cjBest": float(best_cj) if best_cj is not None else None,
+                "total": float(total_lifted) if total_lifted is not None else None,
+                "adaptive": False,
                 "federation": "BWL",
             })
-            next_id_for_new_rows += 1
 
-        if formatted_results_for_supabase:
-            add_meet_results_to_supabase(formatted_results_for_supabase)
+        if formatted_results_for_convex:
+            add_meet_results_to_convex(client, formatted_results_for_convex)
             added_meet_names.append(current_meet_name)  # Add the meet name to our list
-            logging.info(f"Successfully added {len(formatted_results_for_supabase)} results for '{current_meet_name}' (ID: {current_event_id}).")
+            logging.info(f"Successfully upserted {len(formatted_results_for_convex)} results for '{current_meet_name}' (ID: {current_event_id}).")
         else:
-            logging.warning(f"No results formatted for Supabase for meet: '{current_meet_name}' (ID: {current_event_id}).")
+            logging.warning(f"No results formatted for Convex for meet: '{current_meet_name}' (ID: {current_event_id}).")
         
         processed_event_ids_this_run.add(current_event_id) # Add here after attempting to process
 
-    logging.info(f"Finished Sport80 to Supabase sync. Added results for {len(added_meet_names)} new meet(s).")
+    logging.info(f"Finished Sport80 to Convex sync. Upserted results for {len(added_meet_names)} meet(s).")
 
     # Send Slack notification with meet names
     send_slack_notification(added_meet_names)

@@ -23,11 +23,7 @@ from io import BytesIO
 from typing import List, Dict, Any, Optional, Union
 from dotenv import load_dotenv
 
-try:
-    from supabase import create_client, Client
-except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
-    sys.exit(1)
+from convex import ConvexClient
 
 # Load environment variables
 load_dotenv()
@@ -328,7 +324,8 @@ class USAMWQTScraper:
         """Initialize the scraper."""
         self.pdf_url = pdf_url
         self.event_name = event_name
-        self.supabase: Optional[Client] = None
+        self.convex: Optional[ConvexClient] = None
+        self.scraper_secret: Optional[str] = None
     
     def download_pdf(self, url: str) -> BytesIO:
         """Download PDF from URL."""
@@ -344,16 +341,16 @@ class USAMWQTScraper:
         print("✓ PDF downloaded")
         return BytesIO(response.content)
     
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
-        
-        self.supabase = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        convex_url = os.getenv("CONVEX_URL")
+        self.scraper_secret = os.getenv("SCRAPER_SECRET")
+
+        if not convex_url or not self.scraper_secret:
+            raise ValueError("CONVEX_URL and SCRAPER_SECRET must be set in .env")
+
+        self.convex = ConvexClient(convex_url)
+        print("✓ Convex client initialized")
     
     def df_to_records(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Convert DataFrame to list of records for database insertion."""
@@ -369,144 +366,48 @@ class USAMWQTScraper:
         return records
     
     def dry_run(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Preview changes without updating database.
-        
-        Returns:
-            Dictionary with 'to_insert', 'to_update', and 'unchanged' lists
-        """
-        if not self.supabase:
-            self.setup_supabase_client()
-        
-        to_insert = []
-        to_update = []
-        unchanged = []
-        
+        """Preview changes without updating database."""
         print("\n" + "="*60)
         print("DRY RUN - Previewing changes")
         print("="*60 + "\n")
-        
-        for record in records:
-            # Check if record exists
-            existing = self.supabase.table('qualifying_totals').select('*').eq(
-                'event_name', record['event_name']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                # Record exists - check if update is needed
-                db_record = existing.data[0]
-                
-                if db_record.get('qualifying_total') != record['qualifying_total']:
-                    to_update.append({
-                        'record': record,
-                        'changes': {
-                            'qualifying_total': {
-                                'old': db_record.get('qualifying_total'),
-                                'new': record['qualifying_total']
-                            }
-                        }
-                    })
-                else:
-                    unchanged.append(record)
-            else:
-                # New record
-                to_insert.append(record)
-        
-        # Print summary
+
         print(f"Summary:")
-        print(f"  New records to insert: {len(to_insert)}")
-        print(f"  Records to update: {len(to_update)}")
-        print(f"  Unchanged records: {len(unchanged)}")
+        print(f"  Records to upsert: {len(records)}")
         print(f"  Total records processed: {len(records)}\n")
-        
-        # Print details
-        if to_insert:
-            print("Records to INSERT:")
-            for record in to_insert[:10]:  # Show first 10
-                print(f"  + {record['event_name']} | {record['age_category']} {record['gender']} "
-                      f"{record['weight_class']}: {record['qualifying_total']}")
-            if len(to_insert) > 10:
-                print(f"  ... and {len(to_insert) - 10} more")
-            print()
-        
-        if to_update:
-            print("Records to UPDATE:")
-            for item in to_update[:10]:  # Show first 10
-                record = item['record']
-                changes = item['changes']
-                change_str = ", ".join([
-                    f"{k}: {v['old']} -> {v['new']}"
-                    for k, v in changes.items()
-                ])
-                print(f"  ~ {record['event_name']} | {record['age_category']} {record['gender']} "
-                      f"{record['weight_class']}: {change_str}")
-            if len(to_update) > 10:
-                print(f"  ... and {len(to_update) - 10} more")
-            print()
-        
-        return {
-            'to_insert': to_insert,
-            'to_update': to_update,
-            'unchanged': unchanged,
-            'total': len(records)
-        }
-    
-    def upsert_to_supabase(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Upsert qualifying totals to Supabase.
-        
-        Returns:
-            Dictionary with 'inserted' and 'updated' lists
-        """
-        if not self.supabase:
-            self.setup_supabase_client()
-        
-        inserted = []
-        updated = []
-        
+
+        for record in records[:10]:
+            print(f"  ~ {record['event_name']} | {record['age_category']} {record['gender']} "
+                  f"{record['weight_class']}: {record['qualifying_total']}")
+        if len(records) > 10:
+            print(f"  ... and {len(records) - 10} more")
+
+        return {'to_insert': records, 'to_update': [], 'unchanged': [], 'total': len(records)}
+
+    def upsert_to_convex(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Upsert qualifying totals to Convex via scraperIngestion:ingestQualifyingTotal."""
+        if not self.convex:
+            self.setup_convex_client()
+
+        upserted = []
+
         print("\n" + "="*60)
         print("UPDATING DATABASE")
         print("="*60 + "\n")
-        
+
         for record in records:
-            # Check if record exists
-            existing = self.supabase.table('qualifying_totals').select('*').eq(
-                'event_name', record['event_name']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                # Update existing record
-                db_record = existing.data[0]
-                record_id = db_record['id']
-                
-                # Check if value changed
-                if db_record.get('qualifying_total') != record['qualifying_total']:
-                    self.supabase.table('qualifying_totals').update({
-                        'qualifying_total': record['qualifying_total']
-                    }).eq('id', record_id).execute()
-                    updated.append(record)
-                    print(f"  ✓ Updated: {record['event_name']} | {record['age_category']} "
-                          f"{record['gender']} {record['weight_class']}: {record['qualifying_total']}")
-            else:
-                # Insert new record
-                self.supabase.table('qualifying_totals').insert(record).execute()
-                inserted.append(record)
-                print(f"  ✓ Inserted: {record['event_name']} | {record['age_category']} "
-                      f"{record['gender']} {record['weight_class']}: {record['qualifying_total']}")
-        
-        return {'inserted': inserted, 'updated': updated}
+            self.convex.action("scraperIngestion:ingestQualifyingTotal", {
+                "scraperSecret": self.scraper_secret,
+                "eventName": record['event_name'],
+                "gender": record['gender'],
+                "ageCategory": record['age_category'],
+                "weightClass": record['weight_class'],
+                "qualifyingTotal": int(record['qualifying_total']),
+            })
+            upserted.append(record)
+            print(f"  ✓ Upserted: {record['event_name']} | {record['age_category']} "
+                  f"{record['gender']} {record['weight_class']}: {record['qualifying_total']}")
+
+        return {'inserted': upserted, 'updated': []}
     
     def run(self, dry_run: bool = False, pdf_source: Optional[Union[str, BytesIO]] = None, output_path: str = 'output.csv'):
         """
@@ -554,19 +455,15 @@ class USAMWQTScraper:
             
             # Convert to records
             records = self.df_to_records(df)
-            
-            # Setup Supabase (needed for both dry-run and full run)
-            self.setup_supabase_client()
-            
+
             # Process records
             if dry_run:
                 result = self.dry_run(records)
-                print(f"\n✓ Dry run complete: {len(result['to_insert'])} to insert, "
-                      f"{len(result['to_update'])} to update")
+                print(f"\n✓ Dry run complete: {len(result['to_insert'])} to upsert")
             else:
-                result = self.upsert_to_supabase(records)
-                print(f"\n✓ Complete: {len(result['inserted'])} inserted, "
-                      f"{len(result['updated'])} updated")
+                self.setup_convex_client()
+                result = self.upsert_to_convex(records)
+                print(f"\n✓ Complete: {len(result['inserted'])} upserted")
             
             # Display first few rows
             print("\nFirst 5 rows:")

@@ -25,6 +25,6 @@ jobs:
       - name: Run meets sync script
         run: node scripts/sync-nat-meets.js
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          SCRAPER_SECRET: ${{ secrets.SCRAPER_SECRET }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MEET_WEBHOOK_URL }}

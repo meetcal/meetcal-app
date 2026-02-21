@@ -23,9 +23,9 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
 try:
-    from supabase import create_client, Client
+    from convex import ConvexClient
 except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
+    print("Error: convex library not installed. Run: pip install convex")
     sys.exit(1)
 
 # Load environment variables
@@ -38,24 +38,25 @@ class USAMWEventsScraper:
     def __init__(self):
         """Initialize the scraper."""
         self.base_url = "https://usamastersweightlifting.com/events"
-        self.supabase: Optional[Client] = None
+        self.convex: Optional[ConvexClient] = None
+        self.scraper_secret: Optional[str] = None
         self.slack_webhook_url: Optional[str] = None
         
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_KEY')
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        convex_url = os.getenv('CONVEX_URL')
+        self.scraper_secret = os.getenv('SCRAPER_SECRET')
         
-        if not supabase_url or not supabase_key:
-            print("Warning: Supabase credentials not provided. Database updates will be skipped.")
+        if not convex_url or not self.scraper_secret:
+            print("Warning: Convex credentials not provided. Database updates will be skipped.")
             return
         
         try:
-            self.supabase = create_client(supabase_url, supabase_key)
-            print("Supabase client initialized successfully")
+            self.convex = ConvexClient(convex_url)
+            print("Convex client initialized successfully")
         except Exception as e:
-            print(f"Error initializing Supabase client: {e}")
-            self.supabase = None
+            print(f"Error initializing Convex client: {e}")
+            self.convex = None
     
     def get_state_abbreviation(self, state_name: str) -> str:
         """Convert state name to two-letter abbreviation."""
@@ -350,7 +351,7 @@ class USAMWEventsScraper:
             return []
     
     def transform_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Transform scraped events to match Supabase schema."""
+        """Transform scraped events to match Convex schema."""
         transformed = []
         
         for event in events:
@@ -396,51 +397,30 @@ class USAMWEventsScraper:
         
         return transformed
     
-    def meet_exists(self, meet: Dict[str, Any]) -> bool:
-        """Check if meet already exists in Supabase."""
-        if not self.supabase:
-            return False
-        
-        try:
-            response = self.supabase.table('meets').select('id').eq('name', meet['name']).limit(1).execute()
-            return len(response.data) > 0
-        except Exception as e:
-            print(f"Error checking if meet exists: {e}")
-            return False
-    
     def dry_run(self, events: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Preview what would be inserted without actually updating the database."""
-        if not self.supabase:
-            print("Supabase client not initialized. Cannot check existing events.")
-            return {'inserted': [], 'skipped': []}
-        
+        """Preview what would be ingested without actually updating the database."""
         inserted = []
-        skipped = []
-        
+
         print("\n" + "="*60)
         print("DRY RUN - PREVIEW (No database changes will be made)")
         print("="*60 + "\n")
         
         for event in events:
-            if self.meet_exists(event):
-                print(f"  ⊘ Would skip (exists): {event['name']}")
-                skipped.append(event)
-            else:
-                print(f"  ✓ Would insert: {event['name']}")
-                print(f"      Venue: {event.get('venue_name', 'N/A')}")
-                print(f"      Location: {event.get('venue_city', 'N/A')}, {event.get('venue_state', 'N/A')}")
-                print(f"      Dates: {event.get('start_date', 'N/A')} to {event.get('end_date', 'N/A')}")
-                inserted.append(event)
+            print(f"  Would ingest: {event['name']}")
+            print(f"      Venue: {event.get('venue_name', 'N/A')}")
+            print(f"      Location: {event.get('venue_city', 'N/A')}, {event.get('venue_state', 'N/A')}")
+            print(f"      Dates: {event.get('start_date', 'N/A')} to {event.get('end_date', 'N/A')}")
+            inserted.append(event)
         
-        return {'inserted': inserted, 'skipped': skipped}
+        return {'inserted': inserted, 'skipped': []}
     
-    def upsert_to_supabase(self, events: List[Dict[str, Any]], dry_run: bool = False) -> Dict[str, List[Dict[str, Any]]]:
-        """Upsert events to Supabase."""
+    def ingest_to_convex(self, events: List[Dict[str, Any]], dry_run: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+        """Ingest events into Convex via the scraperIngestion:ingestMeet action."""
         if dry_run:
             return self.dry_run(events)
         
-        if not self.supabase:
-            print("Supabase client not initialized. Skipping database update.")
+        if not self.convex:
+            print("Convex client not initialized. Skipping database update.")
             return {'inserted': [], 'skipped': []}
         
         inserted = []
@@ -451,17 +431,25 @@ class USAMWEventsScraper:
         print("="*60 + "\n")
         
         for event in events:
-            if self.meet_exists(event):
-                print(f"  ⊘ Skipped (exists): {event['name']}")
-                skipped.append(event)
-                continue
-            
             try:
-                self.supabase.table('meets').insert(event).execute()
-                print(f"  ✓ Inserted: {event['name']}")
+                self.convex.action("scraperIngestion:ingestMeet", {
+                    "scraperSecret": self.scraper_secret,
+                    "name": event['name'],
+                    "venueName": event['venue_name'],
+                    "venueStreet": event['venue_street'],
+                    "venueCity": event['venue_city'],
+                    "venueState": event['venue_state'],
+                    "venueZip": event['venue_zip'],
+                    "timeZone": event['time_zone'],
+                    "startDate": event['start_date'],
+                    "endDate": event['end_date'],
+                    "status": event['status'],
+                    "federation": event['federation'],
+                })
+                print(f"  Ingested: {event['name']}")
                 inserted.append(event)
             except Exception as e:
-                print(f"  ✗ Error inserting {event['name']}: {e}")
+                print(f"  Error ingesting {event['name']}: {e}")
         
         return {'inserted': inserted, 'skipped': skipped}
     
@@ -476,7 +464,7 @@ class USAMWEventsScraper:
             action = "would be " if is_dry_run else ""
             
             message = f"{title}\n\n"
-            message += f"{len(inserted)} event(s) {action}added to Supabase\n"
+            message += f"{len(inserted)} event(s) {action}added to Convex\n"
             
             if inserted:
                 message += "\nEvents added:\n"
@@ -500,8 +488,8 @@ class USAMWEventsScraper:
         print(f"USAMW EVENTS SCRAPER{' (DRY RUN)' if dry_run else ''}")
         print("="*60 + "\n")
         
-        # Setup Supabase (needed for both dry-run to check existing events and full run)
-        self.setup_supabase_client()
+        # Setup Convex client
+        self.setup_convex_client()
         
         # Get Slack webhook URL
         self.slack_webhook_url = os.getenv('SLACK_WEBHOOK_URL')
@@ -522,25 +510,24 @@ class USAMWEventsScraper:
         
         print(f"\nProcessed {len(transformed_events)} valid events")
         
-        # Upsert to Supabase (or dry-run)
-        results = self.upsert_to_supabase(transformed_events, dry_run=dry_run)
+        # Ingest to Convex (or dry-run)
+        results = self.ingest_to_convex(transformed_events, dry_run=dry_run)
         
         # Send Slack notification
         self.send_slack_notification(results['inserted'], results['skipped'], is_dry_run=dry_run)
         
-        print(f"\n✓ Scraper completed successfully")
+        print(f"\nScraper completed successfully")
         if dry_run:
-            print(f"  - Would insert: {len(results['inserted'])}")
-            print(f"  - Would skip: {len(results['skipped'])}")
+            print(f"  - Would ingest: {len(results['inserted'])}")
         else:
-            print(f"  - Inserted: {len(results['inserted'])}")
+            print(f"  - Ingested: {len(results['inserted'])}")
             print(f"  - Skipped: {len(results['skipped'])}")
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Scrape USAMW events and update Supabase'
+        description='Scrape USAMW events and update Convex'
     )
     parser.add_argument(
         '--dry-run',
@@ -556,4 +543,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

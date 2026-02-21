@@ -19,7 +19,7 @@ from datetime import datetime
 from collections import defaultdict
 
 import requests
-from supabase import create_client, Client
+from convex import ConvexClient
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -57,19 +57,15 @@ class WSORecordsFloridaScraper:
             "Masters 90": "575067900",  # 90+ Master - need to find GID
         }
         
-        self.supabase_client = None
+        self.convex_client = None
+        self.scraper_secret = None
         self.slack_webhook_url = None
         
-    def setup_supabase_client(self):
-        """Set up Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
-        
-        self.supabase_client: Client = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+    def setup_convex_client(self):
+        """Set up Convex client."""
+        self.convex_client = ConvexClient(os.getenv("CONVEX_URL"))
+        self.scraper_secret = os.getenv("SCRAPER_SECRET")
+        print("✓ Convex client initialized")
     
     def setup_slack(self):
         """Set up Slack webhook URL."""
@@ -306,58 +302,19 @@ class WSORecordsFloridaScraper:
             return None
     
     def upsert_records(self, records: List[Dict[str, Any]]) -> None:
-        """Upsert records to Supabase."""
+        """Upsert records to Convex."""
         for record in records:
-            existing = self.supabase_client.table("wso_records").select("*").match({
+            self.convex_client.action("scraperIngestion:ingestWSORecord", {
+                "scraperSecret": self.scraper_secret,
                 "wso": record["wso"],
-                "age_category": record["age_category"],
+                "ageCategory": record["age_category"],
                 "gender": record["gender"],
-                "weight_class": record["weight_class"]
-            }).execute()
-            
-            if existing.data and len(existing.data) > 0:
-                existing_record = existing.data[0]
-                record_id = existing_record["id"]
-                
-                changes = {}
-                if existing_record.get("snatch_record") != record.get("snatch_record"):
-                    changes["snatch_record"] = {
-                        "old": existing_record.get("snatch_record"),
-                        "new": record.get("snatch_record")
-                    }
-                if existing_record.get("cj_record") != record.get("cj_record"):
-                    changes["cj_record"] = {
-                        "old": existing_record.get("cj_record"),
-                        "new": record.get("cj_record")
-                    }
-                if existing_record.get("total_record") != record.get("total_record"):
-                    changes["total_record"] = {
-                        "old": existing_record.get("total_record"),
-                        "new": record.get("total_record")
-                    }
-                
-                if changes:
-                    self.supabase_client.table("wso_records").update(record).eq("id", record_id).execute()
-                    self.changes["updated"].append({
-                        "wso": record["wso"],
-                        "age_category": record["age_category"],
-                        "gender": record["gender"],
-                        "weight_class": record["weight_class"],
-                        "changes": changes
-                    })
-                    print(f"  ✓ Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
-            else:
-                self.supabase_client.table("wso_records").insert(record).execute()
-                self.changes["inserted"].append({
-                    "wso": record["wso"],
-                    "age_category": record["age_category"],
-                    "gender": record["gender"],
-                    "weight_class": record["weight_class"],
-                    "snatch_record": record.get("snatch_record"),
-                    "cj_record": record.get("cj_record"),
-                    "total_record": record.get("total_record")
-                })
-                print(f"  ✓ Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+                "weightClass": record["weight_class"],
+                "snatchRecord": record.get("snatch_record"),
+                "cjRecord": record.get("cj_record"),
+                "totalRecord": record.get("total_record"),
+            })
+            print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
     
     def send_slack_notification(self) -> None:
         """Send Slack notification."""
@@ -416,89 +373,25 @@ class WSORecordsFloridaScraper:
         print(f"Starting scraper for {self.wso_name}")
         print(f"Sheet URL: {self.sheet_url}")
         
+        self.setup_convex_client()
+
         if not dry_run:
-            self.setup_supabase_client()
             self.setup_slack()
         else:
-            print("🧪 DRY RUN MODE - No database or Slack operations")
-            self.setup_supabase_client()  # Still need for comparison
+            print("🧪 DRY RUN MODE - No Slack operations")
         
         print("Scraping Google Sheet...")
         records = self.scrape_sheet()
         print(f"Found {len(records)} total records")
         
-        if dry_run:
-            print("\n🔍 Comparing with database...")
-            self._dry_run_comparison(records)
-        else:
-            print("Upserting records to Supabase...")
+        if not dry_run:
+            print("Upserting records to Convex...")
             self.upsert_records(records)
             
             print("Sending Slack notification...")
             self.send_slack_notification()
         
         print("Done!")
-    
-    def _dry_run_comparison(self, scraped_records: List[Dict[str, Any]]):
-        """Compare scraped records with database without making changes."""
-        to_insert = []
-        to_update = []
-        
-        for record in scraped_records:
-            # Check if record exists in database
-            existing = self.supabase_client.table("wso_records").select("*").eq(
-                "wso", record["wso"]
-            ).eq(
-                "age_category", record["age_category"]
-            ).eq(
-                "gender", record["gender"]
-            ).eq(
-                "weight_class", record["weight_class"]
-            ).execute()
-            
-            if existing.data:
-                # Record exists, check if values changed
-                db_record = existing.data[0]
-                changed = False
-                changes = []
-                
-                for field in ["snatch_record", "cj_record", "total_record"]:
-                    db_val = db_record.get(field)
-                    new_val = record.get(field)
-                    if db_val != new_val:
-                        changed = True
-                        changes.append(f"{field}: {db_val} → {new_val}")
-                
-                if changed:
-                    to_update.append({
-                        "record": record,
-                        "changes": changes
-                    })
-            else:
-                # New record
-                to_insert.append(record)
-        
-        print(f"\n📊 Dry Run Results:")
-        print(f"  Records to INSERT: {len(to_insert)}")
-        print(f"  Records to UPDATE: {len(to_update)}")
-        print(f"  Records unchanged: {len(scraped_records) - len(to_insert) - len(to_update)}")
-        
-        if to_insert:
-            print(f"\n➕ New records ({len(to_insert)}):")
-            for rec in to_insert[:5]:  # Show first 5
-                print(f"  - {rec['age_category']} {rec['gender']} {rec['weight_class']}")
-            if len(to_insert) > 5:
-                print(f"  ... and {len(to_insert) - 5} more")
-        
-        if to_update:
-            print(f"\n🔄 Updated records ({len(to_update)}):")
-            for item in to_update[:5]:  # Show first 5
-                rec = item['record']
-                print(f"  - {rec['age_category']} {rec['gender']} {rec['weight_class']}")
-                for change in item['changes']:
-                    print(f"    {change}")
-            if len(to_update) > 5:
-                print(f"  ... and {len(to_update) - 5} more")
 
 
 def main():
