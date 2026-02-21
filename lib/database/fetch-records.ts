@@ -1,16 +1,17 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { RecordsData } from '@/types/records';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type RecordsCache = Record<string, RecordsData>;
 type RecordsRow = {
-  age_category: string;
+  ageCategory: string;
   gender: 'men' | 'women';
-  weight_class: string;
-  snatch_record: number | null;
-  cj_record: number | null;
-  total_record: number | null;
-  record_type: string;
+  weightClass: string;
+  snatchRecord: number | null;
+  cjRecord: number | null;
+  totalRecord: number | null;
+  recordType: string;
 };
 
 const recordsMemoryCache = new Map<string, RecordsData>();
@@ -57,17 +58,17 @@ function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
   const result: RecordsData = {};
 
   rows.forEach((row) => {
-    const ageKey = row.age_category;
+    const ageKey = row.ageCategory;
     if (!result[ageKey]) {
       result[ageKey] = { Men: [], Women: [] };
     }
 
     const genderProp = row.gender === 'men' ? 'Men' : 'Women';
     result[ageKey][genderProp].push({
-      weightClass: row.weight_class,
-      snatchRecord: row.snatch_record ?? 0,
-      cjRecord: row.cj_record ?? 0,
-      totalRecord: row.total_record ?? 0,
+      weightClass: row.weightClass,
+      snatchRecord: row.snatchRecord ?? 0,
+      cjRecord: row.cjRecord ?? 0,
+      totalRecord: row.totalRecord ?? 0,
     });
   });
 
@@ -80,7 +81,7 @@ function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
 }
 
 /**
- * Fetches records data from Supabase for a given federation and organizes it into the RecordsData shape.
+ * Fetches records data from Convex for a given federation and organizes it into the RecordsData shape.
  * If ageGroup and gender are provided, fetches only that subset.
  */
 export async function fetchRecords(
@@ -102,18 +103,13 @@ export async function fetchRecords(
   const cacheKey = OFFLINE_CACHE_KEYS.records;
   const request = (async () => {
     try {
-      let query = supabase
-        .from('records')
-        .select('age_category, gender, weight_class, snatch_record, cj_record, total_record, record_type')
-        .eq('record_type', federation);
+      const rows = await convex.query(api.records.getByFederation, {
+        recordType: federation,
+        ageCategory: ageGroup,
+        gender: gender?.toLowerCase(),
+      });
 
-      if (ageGroup) query = query.eq('age_category', ageGroup);
-      if (gender) query = query.eq('gender', gender.toLowerCase());
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const result = mapRowsToRecordsData((data || []) as RecordsRow[]);
+      const result = mapRowsToRecordsData(rows as RecordsRow[]);
 
       if (!ageGroup && !gender) {
         recordsMemoryCache.set(federation, result);
@@ -154,33 +150,13 @@ export async function fetchFederations(): Promise<string[]> {
     return inFlightFederations;
   }
 
-  const cacheKey = OFFLINE_CACHE_KEYS.records;
   inFlightFederations = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('records')
-        .select('record_type');
-
-      if (error) {
-        console.error('Error fetching federations:', error);
-        throw error;
-      }
-
-      const federationRows = (data || []) as Pick<RecordsRow, 'record_type'>[];
-      const federations = Array.from(new Set(federationRows.map((row) => row.record_type)))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })) as string[];
-
+      const federations = await convex.query(api.records.listFederations, {});
       federationsMemoryCache = federations;
       return federations;
     } catch (error) {
-      const cached = await getOfflineCache<RecordsCache>(cacheKey);
-      const federations = Object.keys(cached?.data || {});
-      if (federations.length > 0) {
-        const sorted = federations.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-        federationsMemoryCache = sorted;
-        return sorted;
-      }
+      console.error('Error fetching federations:', error);
       throw error;
     } finally {
       inFlightFederations = null;
@@ -238,36 +214,18 @@ export async function fetchAgeGroups(federation: string): Promise<string[]> {
     return inFlightAgeGroups.get(federation)!;
   }
 
-  const cacheKey = OFFLINE_CACHE_KEYS.records;
   const request = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('records')
-        .select('age_category')
-        .eq('record_type', federation)
-        .neq('age_category', null);
+      const rows = await convex.query(api.records.getByFederation, { recordType: federation });
 
-      if (error) {
-        console.error(`Error fetching age groups for ${federation}:`, error);
-        throw error;
-      }
-
-      const ageGroupRows = (data || []) as Pick<RecordsRow, 'age_category'>[];
-      const ageGroups = Array.from(new Set(ageGroupRows.map((row) => row.age_category)))
+      const ageGroups = Array.from(new Set((rows as RecordsRow[]).map((r) => r.ageCategory)))
         .filter(Boolean)
         .sort(ageGroupSort) as string[];
 
       ageGroupsMemoryCache.set(federation, ageGroups);
       return ageGroups;
     } catch (error) {
-      const cached = await getOfflineCache<RecordsCache>(cacheKey);
-      const federationData = cached?.data?.[federation];
-      if (federationData) {
-        recordsMemoryCache.set(federation, federationData);
-        const groups = Object.keys(federationData).sort(ageGroupSort);
-        ageGroupsMemoryCache.set(federation, groups);
-        return groups;
-      }
+      console.error(`Error fetching age groups for ${federation}:`, error);
       throw error;
     } finally {
       inFlightAgeGroups.delete(federation);

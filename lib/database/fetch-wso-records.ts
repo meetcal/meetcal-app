@@ -1,15 +1,16 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type WSORecordsCache = Record<string, RecordsData>;
 type WSORecordRow = {
-  age_category: string;
+  ageCategory: string;
   gender: 'Men' | 'Women';
   weight_class: string;
-  snatch_record: number | null;
-  cj_record: number | null;
-  total_record: number | null;
+  snatchRecord: number | null;
+  cjRecord: number | null;
+  totalRecord: number | null;
   wso: string;
 };
 
@@ -36,7 +37,7 @@ function weightClassSort(a: string, b: string): number {
 }
 
 /**
- * Fetches records data from Supabase for a given WSO and organizes it into the RecordsData shape.
+ * Fetches records data from Convex for a given WSO and organizes it into the RecordsData shape.
  * If ageGroup and gender are provided, fetches only that subset.
  */
 export async function fetchWSORecords(
@@ -56,18 +57,13 @@ export async function fetchWSORecords(
   const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
   const request = (async () => {
     try {
-      let query = supabase
-        .from('wso_records')
-        .select('age_category, gender, weight_class, snatch_record, cj_record, total_record, wso')
-        .eq('wso', wso);
-      if (ageGroup) query = query.eq('age_category', ageGroup);
-      if (gender) query = query.eq('gender', gender);
+      const rows = (await convex.query(api.wsoRecords.getByWso, {
+        wso,
+        ageCategory: ageGroup,
+        gender,
+      })) as WSORecordRow[];
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const rows = (data || []) as WSORecordRow[];
-      const ageGroups = Array.from(new Set(rows.map((row) => row.age_category)));
+      const ageGroups = Array.from(new Set(rows.map((row) => row.ageCategory)));
 
       const result: RecordsData = {};
       ageGroups.forEach((g) => {
@@ -75,16 +71,16 @@ export async function fetchWSORecords(
       });
 
       rows.forEach((row) => {
-        const ageKey = row.age_category;
+        const ageKey = row.ageCategory;
         const genderKey = row.gender as 'Men' | 'Women';
         if (!result[ageKey]) return;
         if (genderKey !== 'Men' && genderKey !== 'Women') return;
 
         result[ageKey][genderKey].push({
           weightClass: row.weight_class,
-          snatchRecord: row.snatch_record ?? 0,
-          cjRecord: row.cj_record ?? 0,
-          totalRecord: row.total_record ?? 0,
+          snatchRecord: row.snatchRecord ?? 0,
+          cjRecord: row.cjRecord ?? 0,
+          totalRecord: row.totalRecord ?? 0,
         });
       });
 
@@ -137,15 +133,7 @@ export async function fetchWSOList(): Promise<string[]> {
   const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
   inFlightWSOList = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('wso_records')
-        .select('wso')
-        .neq('wso', null);
-      if (error) throw error;
-      const wsoRows = (data || []) as Pick<WSORecordRow, 'wso'>[];
-      const wsos = Array.from(new Set(wsoRows.map((row) => row.wso)))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })) as string[];
+      const wsos = await convex.query(api.wsoRecords.listWsos, {}) as string[];
       wsoListMemoryCache.data = wsos;
       return wsos;
     } catch (error) {
@@ -177,14 +165,8 @@ export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
 
   const request = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('wso_records')
-        .select('age_category')
-        .eq('wso', wso)
-        .neq('age_category', null);
-      if (error) throw error;
-      const ageGroupRows = (data || []) as Pick<WSORecordRow, 'age_category'>[];
-      const ageGroups = Array.from(new Set(ageGroupRows.map((row) => row.age_category)));
+      const rows = (await convex.query(api.wsoRecords.getByWso, { wso })) as WSORecordRow[];
+      const ageGroups = Array.from(new Set(rows.map((r) => r.ageCategory))).filter(Boolean) as string[];
       wsoAgeGroupsMemoryCache.set(wso, ageGroups);
       return ageGroups;
     } catch (error) {

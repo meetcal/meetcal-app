@@ -1,14 +1,14 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type Gender = 'Men' | 'Women';
 
 type AdaptiveRecordRow = {
-  id: number;
   age: string | null;
-  snatch_best: number | null;
-  cj_best: number | null;
+  snatchBest: number | null;
+  cjBest: number | null;
   total: number | null;
   name: string | null;
 };
@@ -39,16 +39,8 @@ function extractWeightClass(ageString: string): string | null {
 }
 
 async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
-  const { data, error } = await supabase
-    .from('lifting_results')
-    .select('id, age, snatch_best, cj_best, total, name')
-    .eq('adaptive', true)
-    .neq('federation', 'BWL')
-    .like('age', `%${gender}%`);
-
-  if (error) throw error;
-
-  const rows = (data || []) as AdaptiveRecordRow[];
+  const allAdaptive = await convex.query(api.liftingResults.getAdaptive, { excludeFederation: 'BWL' });
+  const rows = allAdaptive.filter(r => r.age && r.age.includes(gender)) as AdaptiveRecordRow[];
   const weightClassRecords = new Map<string, AdaptiveRecordRow>();
 
   rows.forEach((row) => {
@@ -65,8 +57,8 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
 
   const records = Array.from(weightClassRecords.entries()).map(([weightClass, row]) => ({
     weightClass,
-    snatchRecord: row.snatch_best ?? 0,
-    cjRecord: row.cj_best ?? 0,
+    snatchRecord: row.snatchBest ?? 0,
+    cjRecord: row.cjBest ?? 0,
     totalRecord: row.total ?? 0,
   }));
 

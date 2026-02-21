@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import type {
   AthleteClub,
   ClubMeetStats,
@@ -15,28 +16,14 @@ const athletesByClubInFlight = new Map<string, Promise<AthleteClub[]>>();
 const clubMeetStatsCache = new Map<string, ClubMeetStats>();
 const clubMeetStatsInFlight = new Map<string, Promise<ClubMeetStats>>();
 
-const ATHLETE_RESULTS_SELECT =
-  'id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total';
-
 function getClubMeetStatsKey(club: string, meet: string): string {
   return `${club}::${meet}`;
 }
 
 async function fetchAndStoreClubs(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('athletes')
-    .select('club')
-    .order('club');
-
-  if (error) {
-    console.error('Error fetching clubs:', error);
-    throw error;
-  }
-
-  const clubRows = (data || []) as { club: string | null }[];
-  const uniqueClubs = Array.from(new Set(clubRows.map((row) => row.club).filter(Boolean))).sort() as string[];
-  clubsMemoryCache.data = uniqueClubs;
-  return uniqueClubs;
+  const clubs = await convex.query(api.athletes.listClubs, {});
+  clubsMemoryCache.data = clubs;
+  return clubs;
 }
 
 /**
@@ -86,17 +73,7 @@ export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> 
   const request = (async () => {
     try {
     // First get all athletes from this club
-    const { data: athletesData, error: athletesError } = await supabase
-      .from('athletes')
-      .select('member_id, name, club, meet')
-      .eq('club', club);
-
-    if (athletesError) {
-      console.error('Error fetching athletes:', athletesError);
-      throw athletesError;
-    }
-
-    const allAthletes = athletesData as AthleteClub[];
+    const allAthletes = await convex.query(api.athletes.getByClub, { club }) as AthleteClub[];
 
     // Get the unique meets from these athletes
     const uniqueMeets = Array.from(new Set(allAthletes.map(a => a.meet)));
@@ -106,17 +83,8 @@ export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> 
     }
 
     // Fetch the status of these meets
-    const { data: meetsData, error: meetsError } = await supabase
-      .from('meets')
-      .select('name, status')
-      .in('name', uniqueMeets);
-
-    if (meetsError) {
-      console.error('Error fetching meet status:', meetsError);
-      throw meetsError;
-    }
-
-    const meetsWithStatus = meetsData as MeetStatus[];
+    const meetsData = await Promise.all(uniqueMeets.map(name => convex.query(api.meets.getByName, { name })));
+    const meetsWithStatus = meetsData.filter(Boolean) as MeetStatus[];
 
     // Filter to only keep completed meets
     const completedMeetNames = new Set(
@@ -158,18 +126,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
   const request = (async () => {
     try {
     // Step 1: Get all athletes from this club at this meet
-    const { data: athletesData, error: athletesError } = await supabase
-      .from('athletes')
-      .select('name, age, gender, weight_class')
-      .eq('club', club)
-      .eq('meet', meet);
-
-    if (athletesError) {
-      console.error('Error fetching athletes:', athletesError);
-      throw athletesError;
-    }
-
-    const clubAthletes = athletesData as AthleteInfo[];
+    const clubAthletes = await convex.query(api.athletes.getByClubAndMeet, { club, meet }) as AthleteInfo[];
     const athleteNames = clubAthletes.map(a => a.name);
 
     if (athleteNames.length === 0) {
@@ -185,68 +142,27 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
       };
     }
 
-    // Step 2: Get lifting results for these athletes at this meet
-    const { data: resultsData, error: resultsError } = await supabase
-      .from('lifting_results')
-      .select(ATHLETE_RESULTS_SELECT)
-      .in('name', athleteNames)
-      .eq('meet', meet);
+    // Steps 2+3+4: Fetch all meet data in parallel
+    const [allMeetLiftingRaw, allMeetAthletes] = await Promise.all([
+      convex.query(api.liftingResults.getByMeet, { meet }),
+      convex.query(api.athletes.getByMeet, { meet }),
+    ]);
 
-    if (resultsError) {
-      console.error('Error fetching results:', resultsError);
-      throw resultsError;
-    }
-
-    const results = resultsData as AthleteResult[];
-
-    // Step 3: Get ALL athletes info from this meet for medal calculations
-    const { data: allMeetAthletesData, error: allMeetAthletesError } = await supabase
-      .from('athletes')
-      .select('name, weight_class')
-      .eq('meet', meet);
-
-    if (allMeetAthletesError) {
-      console.error('Error fetching all meet athletes:', allMeetAthletesError);
-      throw allMeetAthletesError;
-    }
-
-    const allMeetAthletes = allMeetAthletesData as AthleteWeightClass[];
-
-    // Step 4: Get all lifting results from this meet
-    const { data: allMeetResultsData, error: allMeetResultsError } = await supabase
-      .from('lifting_results')
-      .select('name,total,snatch_best,cj_best')
-      .eq('meet', meet);
-
-    if (allMeetResultsError) {
-      console.error('Error fetching all meet results:', allMeetResultsError);
-      throw allMeetResultsError;
-    }
-
-    const allMeetResults = allMeetResultsData as AthleteResult[];
+    // Club athletes' results at this meet
+    const results = allMeetLiftingRaw.filter(r => athleteNames.includes(r.name)) as AthleteResult[];
+    const allMeetResults = allMeetLiftingRaw as AthleteResult[];
 
     // Step 5: Get historical results for PR calculations
-    const firstDate = results.length > 0 ? results[0].date : new Date().toISOString();
-    const { data: historicalData, error: historicalError } = await supabase
-      .from('lifting_results')
-      .select('name,total')
-      .neq('federation', 'BWL')
-      .in('name', athleteNames)
-      .lt('date', firstDate);
-
-    if (historicalError) {
-      console.error('Error fetching historical results:', historicalError);
-      throw historicalError;
-    }
+    const firstDate = results.length > 0 ? (results[0] as any).date : new Date().toISOString();
+    const historicalRaw = await convex.query(api.liftingResults.getByNames, { names: athleteNames });
+    const historicalFiltered = historicalRaw.filter(r => r.federation !== 'BWL' && r.date < firstDate);
 
     const historicalByAthlete = new Map<string, number>();
-    (historicalData || []).forEach((row) => {
-      const name = row.name as string | null;
-      const total = row.total as number | null;
-      if (!name || total == null) return;
-      const currentBest = historicalByAthlete.get(name) ?? 0;
-      if (total > currentBest) {
-        historicalByAthlete.set(name, total);
+    historicalFiltered.forEach((row) => {
+      if (!row.name || row.total == null) return;
+      const currentBest = historicalByAthlete.get(row.name) ?? 0;
+      if ((row.total ?? 0) > currentBest) {
+        historicalByAthlete.set(row.name, row.total ?? 0);
       }
     });
 
@@ -289,23 +205,23 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
       if (!athleteResult) continue;
 
       // Get all results in this athlete's weight class
-      const athletesInWeightClass = allMeetAthletes.filter(
-        a => a.weight_class === clubAthlete.weight_class
+      const athletesInWeightClass = (allMeetAthletes as any[]).filter(
+        a => (a.weightClass ?? a.weight_class) === (clubAthlete as any).weightClass
       );
-      const namesInWeightClass = athletesInWeightClass.map(a => a.name);
+      const namesInWeightClass = athletesInWeightClass.map((a: any) => a.name);
       const resultsInWeightClass = allMeetResults.filter(
         r => namesInWeightClass.includes(r.name) && r.total > 0
       );
 
       // Medal for SNATCH
-      const sortedBySnatch = [...resultsInWeightClass].sort((a, b) => b.snatch_best - a.snatch_best);
+      const sortedBySnatch = [...resultsInWeightClass].sort((a, b) => ((b as any).snatchBest ?? (b as any).snatch_best ?? 0) - ((a as any).snatchBest ?? (a as any).snatch_best ?? 0));
       const snatchRank = sortedBySnatch.findIndex(r => r.name === clubAthlete.name);
       if (snatchRank === 0) stats.goldMedals++;
       else if (snatchRank === 1) stats.silverMedals++;
       else if (snatchRank === 2) stats.bronzeMedals++;
 
       // Medal for CLEAN & JERK
-      const sortedByCJ = [...resultsInWeightClass].sort((a, b) => b.cj_best - a.cj_best);
+      const sortedByCJ = [...resultsInWeightClass].sort((a, b) => ((b as any).cjBest ?? (b as any).cj_best ?? 0) - ((a as any).cjBest ?? (a as any).cj_best ?? 0));
       const cjRank = sortedByCJ.findIndex(r => r.name === clubAthlete.name);
       if (cjRank === 0) stats.goldMedals++;
       else if (cjRank === 1) stats.silverMedals++;
