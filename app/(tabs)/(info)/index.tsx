@@ -81,6 +81,11 @@ export default function InfoScreen() {
           />
 
           <ListButton
+            title="Weightlifting Wrapped"
+            onPress={() => router.push("/comp-data/weightlifting-wrapped")}
+          />
+
+          <ListButton
             title="WSO Records"
             onPress={() => router.push("/comp-data/wso-records")}
           />

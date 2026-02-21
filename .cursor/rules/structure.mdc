@@ -1,16 +1,15 @@
 ---
 description: 
-globs: 
 alwaysApply: true
 ---
+
 # Cursor Rules for meetcal
 
-- **Data Source:** All schedule and athlete data must be fetched from the Supabase database. Do not use or create hardcoded data for these entities.
+- **Data Source:** All schedule and athlete data must be fetched from the Convex database. Do not use or create hardcoded data for these entities.
 - **Best Practices:**
   - Never make assumptions about data structure or content. Always search the codebase or ask for the correct answer.
   - If unsure about data access patterns, look for existing Supabase queries or context providers.
   - When adding new features, ensure they are compatible with the Supabase data model.
 - **General Guidance:**
   - Prioritize maintainability and consistency with existing data-fetching patterns.
-  - Document any new data access patterns or changes to the Supabase schema.
   - Never ask for permission to make a chnage to the code, always take the action
