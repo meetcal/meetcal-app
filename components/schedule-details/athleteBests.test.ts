@@ -1,7 +1,8 @@
 import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { supabase } from "@/lib/supabase";
+
+const mockConvexQuery = jest.fn();
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(),
@@ -11,9 +12,17 @@ jest.mock("@/lib/database/offline-store", () => ({
   getAthleteLiftingResults: jest.fn(),
 }));
 
-jest.mock("@/lib/supabase", () => ({
-  supabase: {
-    from: jest.fn(),
+jest.mock("@/lib/convex", () => ({
+  convex: {
+    query: (...args: any[]) => mockConvexQuery(...args),
+  },
+}));
+
+jest.mock("@/convex/_generated/api", () => ({
+  api: {
+    liftingResults: {
+      getByNames: "liftingResults:getByNames",
+    },
   },
 }));
 
@@ -24,22 +33,6 @@ const mockGetAthleteLiftingResults =
   getAthleteLiftingResults as jest.MockedFunction<
     typeof getAthleteLiftingResults
   >;
-const mockSupabaseFrom = supabase.from as jest.Mock;
-
-function mockSupabaseQueryResult(result: {
-  data: Array<{
-    name: string | null;
-    snatch_best: number | null;
-    cj_best: number | null;
-    total: number | null;
-  }> | null;
-  error: unknown;
-}) {
-  const inMock = jest.fn().mockResolvedValue(result);
-  const selectMock = jest.fn().mockReturnValue({ in: inMock });
-  mockSupabaseFrom.mockReturnValue({ select: selectMock });
-  return { inMock, selectMock };
-}
 
 describe("getAthleteBestsBatch", () => {
   beforeEach(() => {
@@ -60,7 +53,7 @@ describe("getAthleteBestsBatch", () => {
       "Test Meet" as any,
     );
 
-    expect(mockSupabaseFrom).not.toHaveBeenCalled();
+    expect(mockConvexQuery).not.toHaveBeenCalled();
     expect(mockGetAthleteLiftingResults).toHaveBeenCalledWith(
       "Test Meet",
       "Athlete A",
@@ -79,10 +72,9 @@ describe("getAthleteBestsBatch", () => {
 
   it("fills missing online athletes from cache", async () => {
     mockIsNetworkAvailable.mockResolvedValue(true);
-    mockSupabaseQueryResult({
-      data: [{ name: "Athlete A", snatch_best: 90, cj_best: 110, total: 200 }],
-      error: null,
-    });
+    mockConvexQuery.mockResolvedValue([
+      { name: "Athlete A", snatchBest: 90, cjBest: 110, total: 200 },
+    ]);
     mockGetAthleteLiftingResults.mockImplementation(async (_meet, name) => {
       if (name === "Athlete B") {
         return [{ snatch_best: 95, cj_best: 115, total: 210 } as any];
@@ -109,10 +101,9 @@ describe("getAthleteBestsBatch", () => {
 
   it("keeps nullable bests when no real values exist", async () => {
     mockIsNetworkAvailable.mockResolvedValue(true);
-    mockSupabaseQueryResult({
-      data: [{ name: "Athlete A", snatch_best: null, cj_best: null, total: null }],
-      error: null,
-    });
+    mockConvexQuery.mockResolvedValue([
+      { name: "Athlete A", snatchBest: null, cjBest: null, total: null },
+    ]);
     mockGetAthleteLiftingResults.mockResolvedValue([]);
 
     const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);

@@ -3,7 +3,9 @@ import {
   subscribeToNetworkChanges,
 } from "@/lib/networkUtils";
 import { registerForPushNotificationsAsync } from "@/utils/notifications";
-import { ClerkProvider, useUser } from "@clerk/clerk-expo";
+import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { convex } from "@/lib/convex";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
@@ -192,16 +194,18 @@ export default Sentry.wrap(function RootLayout() {
           publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
           tokenCache={tokenCache}
         >
-          <PostHogProvider client={posthog}>
-            <SubscriptionProvider>
-              <SelectedMeetProvider>
-                <SavedSessionsProvider>
-                  <PostHogPageView />
-                  <AppContent fontsLoaded={fontsLoaded} />
-                </SavedSessionsProvider>
-              </SelectedMeetProvider>
-            </SubscriptionProvider>
-          </PostHogProvider>
+          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+            <PostHogProvider client={posthog}>
+              <SubscriptionProvider>
+                <SelectedMeetProvider>
+                  <SavedSessionsProvider>
+                    <PostHogPageView />
+                    <AppContent fontsLoaded={fontsLoaded} />
+                  </SavedSessionsProvider>
+                </SelectedMeetProvider>
+              </SubscriptionProvider>
+            </PostHogProvider>
+          </ConvexProviderWithClerk>
         </ClerkProvider>
       </NavigationThemeProvider>
     </CustomThemeProvider>

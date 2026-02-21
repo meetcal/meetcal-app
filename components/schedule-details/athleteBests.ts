@@ -2,7 +2,8 @@ import { SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { supabase } from "@/lib/supabase";
+import { convex } from "@/lib/convex";
+import { api } from "@/convex/_generated/api";
 
 function createEmptyBests(): SupabaseBests {
   return { snatch_best: null, cj_best: null, total: null };
@@ -111,19 +112,23 @@ export async function getAthleteBestsBatch(
   }
 
   try {
-    const { data, error } = await supabase
-      .from("lifting_results")
-      .select("name,snatch_best,cj_best,total,snatch1,snatch2,snatch3,cj1,cj2,cj3")
-      .in("name", uniqueNames);
+    const rows = await convex.query(api.liftingResults.getByNames, { names: uniqueNames });
 
-    if (error) {
-      throw error;
-    }
-
-    (data || []).forEach((record) => {
-      if (!record.name) return;
-      const current = bestsByName[record.name] || createEmptyBests();
-      bestsByName[record.name] = mergeIntoBests(current, deriveRowBests(record));
+    (rows || []).forEach((r: any) => {
+      if (!r.name) return;
+      const record = {
+        snatch_best: r.snatchBest ?? null,
+        cj_best: r.cjBest ?? null,
+        total: r.total ?? null,
+        snatch1: r.snatch1 ?? null,
+        snatch2: r.snatch2 ?? null,
+        snatch3: r.snatch3 ?? null,
+        cj1: r.cj1 ?? null,
+        cj2: r.cj2 ?? null,
+        cj3: r.cj3 ?? null,
+      };
+      const current = bestsByName[r.name] || createEmptyBests();
+      bestsByName[r.name] = mergeIntoBests(current, deriveRowBests(record));
     });
 
     const missingNames = uniqueNames.filter((name) => {

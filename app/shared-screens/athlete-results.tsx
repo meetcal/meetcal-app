@@ -4,7 +4,8 @@ import { resolveAthleteResultsMeetScope } from "@/app/shared-screens/athlete-res
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getAthleteLiftingResults } from "@/lib/database/offline-store";
-import { supabase } from "@/lib/supabase";
+import { convex } from "@/lib/convex";
+import { api } from "@/convex/_generated/api";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -286,22 +287,27 @@ export default function AthleteResultsScreen() {
           }
         }
 
-        // If no cached results, fetch from Supabase
+        // If no cached results, fetch from Convex
         if (results.length === 0) {
-          const { data, error } = await supabase
-            .from("lifting_results")
-            .select(
-              "id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total",
-            )
-            .eq("name", nameStr)
-            .order("date", { ascending: false });
-
-          if (error) {
-            console.error("Error fetching athlete results:", error);
-            return;
-          }
-
-          results = data || [];
+          const rows = await convex.query(api.liftingResults.getByNames, { names: [nameStr] });
+          results = rows.map((r: any): SupabaseLiftResult => ({
+            id: r._id,
+            event_id: r.eventId,
+            meet: r.meet,
+            date: r.date,
+            name: r.name,
+            age: r.age,
+            body_weight: r.bodyWeight,
+            snatch1: r.snatch1,
+            snatch2: r.snatch2,
+            snatch3: r.snatch3,
+            snatch_best: r.snatchBest,
+            cj1: r.cj1,
+            cj2: r.cj2,
+            cj3: r.cj3,
+            cj_best: r.cjBest,
+            total: r.total,
+          }));
         }
 
         if (requestId !== requestIdRef.current) return;
