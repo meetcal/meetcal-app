@@ -602,6 +602,7 @@ export default function WeightliftingWrappedScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.yearRow}
+            style={styles.yearScroll}
           >
             {YEARS.map((year) => {
               const isSelected = selectedYear === year;
@@ -1100,11 +1101,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "500",
   },
+  yearScroll: {
+    marginBottom: 16,
+  },
   yearRow: {
     flexDirection: "row",
     gap: 8,
-    marginBottom: 28,
-    paddingVertical: 2,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
   },
   yearPill: {
     paddingHorizontal: 18,
@@ -1117,11 +1121,6 @@ const styles = StyleSheet.create({
   yearPillActive: {
     backgroundColor: "#1DB954",
     borderColor: "#1DB954",
-    shadowColor: "#1DB954",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
   },
   yearPillText: {
     fontSize: 14,
