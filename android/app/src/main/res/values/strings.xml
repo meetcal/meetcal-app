@@ -1,8 +1,5 @@
 <resources>
   <string name="app_name">MeetCal</string>
-  <string name="meetcal_title">MeetCal</string>
-  <string name="no_saved_sessions">No saved sessions</string>
-  <string name="widget_icon_description">MeetCal app icon</string>
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
   <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>

@@ -17,7 +17,7 @@
       android:id="@+id/widget_icon"
       android:layout_width="16dp"
       android:layout_height="16dp"
-      android:contentDescription="@string/widget_icon_description"
+      android:contentDescription="@string/widget_icon_desc"
       android:src="@android:drawable/ic_menu_my_calendar" />
 
     <TextView
@@ -44,7 +44,7 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_marginTop="8dp"
-    android:text="@string/no_saved_sessions"
+    android:text="@string/widget_empty_state"
     android:textColor="@color/widget_text_secondary"
     android:textSize="12sp"
     android:visibility="gone" />
