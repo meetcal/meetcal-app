@@ -101,6 +101,26 @@ export const getNationalRankings = query({
   },
 });
 
+// Search lifting results by athlete name (partial match) with optional year range
+export const searchByNameAndYear = query({
+  args: {
+    query: v.string(),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+  },
+  handler: async (ctx, { query: q, startDate, endDate }) => {
+    const rows = await ctx.db
+      .query("lifting_results")
+      .withSearchIndex("search_name", (s) => s.search("name", q))
+      .collect();
+    let filtered = rows;
+    if (startDate) filtered = filtered.filter((r) => r.date >= startDate!);
+    if (endDate) filtered = filtered.filter((r) => r.date < endDate!);
+    filtered.sort((a, b) => a.date.localeCompare(b.date));
+    return filtered;
+  },
+});
+
 // Upsert a lifting result (used by scrapers)
 // Deduplication key: (eventId, name) — eventId is the Sport80 competition ID,
 // shared by all athletes in a meet; name identifies the individual athlete.

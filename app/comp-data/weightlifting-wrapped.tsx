@@ -2,7 +2,8 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
-import { supabase } from "@/lib/supabase";
+import { convex } from "@/lib/convex";
+import { api } from "@/convex/_generated/api";
 import { LiftingResult, WrappedStats } from "@/types/wrapped";
 import { Stack } from "expo-router";
 import React, { useRef, useState } from "react";
@@ -52,35 +53,59 @@ export default function WeightliftingWrappedScreen() {
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();
-      const selectFields =
-        "id,event_id,meet,date,name,age,body_weight,snatch1,snatch2,snatch3,snatch_best,cj1,cj2,cj3,cj_best,total";
+      const startDate = `${selectedYear}-01-01`;
+      const endDate = `${selectedYear + 1}-01-01`;
 
-      let { data, error } = await supabase
-        .from("lifting_results")
-        .select(selectFields)
-        .eq("name", normalizedName)
-        .gte("date", `${selectedYear}-01-01`)
-        .lt("date", `${selectedYear + 1}-01-01`)
-        .order("date", { ascending: true })
-        .limit(600);
+      // Exact name lookup first
+      let rows = await convex.query(api.liftingResults.getByNames, { names: [normalizedName] });
+      let data: LiftingResult[] = rows
+        .filter((r: any) => r.date >= startDate && r.date < endDate)
+        .map((r: any): LiftingResult => ({
+          id: r._id,
+          event_id: r.eventId,
+          meet: r.meet,
+          date: r.date,
+          name: r.name,
+          age: r.age,
+          body_weight: r.bodyWeight,
+          snatch1: r.snatch1,
+          snatch2: r.snatch2,
+          snatch3: r.snatch3,
+          snatch_best: r.snatchBest,
+          cj1: r.cj1,
+          cj2: r.cj2,
+          cj3: r.cj3,
+          cj_best: r.cjBest,
+          total: r.total,
+        }))
+        .sort((a: LiftingResult, b: LiftingResult) => a.date.localeCompare(b.date))
+        .slice(0, 600);
 
-      if (!error && (!data || data.length === 0)) {
-        const fallback = await supabase
-          .from("lifting_results")
-          .select(selectFields)
-          .ilike("name", `%${normalizedName}%`)
-          .gte("date", `${selectedYear}-01-01`)
-          .lt("date", `${selectedYear + 1}-01-01`)
-          .order("date", { ascending: true })
-          .limit(600);
-        data = fallback.data;
-        error = fallback.error;
-      }
-
-      if (error) {
-        console.error("Error searching athlete:", error);
-        Alert.alert("Error", "Failed to search for athlete");
-        return;
+      // Fallback: partial name search
+      if (data.length === 0) {
+        const searchRows = await convex.query(api.liftingResults.searchByNameAndYear, {
+          query: normalizedName,
+          startDate,
+          endDate,
+        });
+        data = searchRows.slice(0, 600).map((r: any): LiftingResult => ({
+          id: r._id,
+          event_id: r.eventId,
+          meet: r.meet,
+          date: r.date,
+          name: r.name,
+          age: r.age,
+          body_weight: r.bodyWeight,
+          snatch1: r.snatch1,
+          snatch2: r.snatch2,
+          snatch3: r.snatch3,
+          snatch_best: r.snatchBest,
+          cj1: r.cj1,
+          cj2: r.cj2,
+          cj3: r.cj3,
+          cj_best: r.cjBest,
+          total: r.total,
+        }));
       }
 
       if (!data || data.length === 0) {

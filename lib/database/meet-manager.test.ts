@@ -14,12 +14,6 @@ jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
 
-jest.mock("@/lib/supabase", () => ({
-  supabase: {
-    from: jest.fn(),
-  },
-}));
-
 import { validatePrefetchedLiftingResults } from "@/lib/database/meet-manager";
 
 describe("validatePrefetchedLiftingResults", () => {

@@ -4,7 +4,8 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime } from '@/utils/time';
 import { useUser } from '@clerk/clerk-expo';
-import { supabase } from '@/lib/supabase'; // Import supabase client
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { scheduleNotification, cancelNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
@@ -135,50 +136,37 @@ export function useSavedSessions() {
       sessionsRef.current = localSessions;
       setSavedSessions(localSessions);
 
-      // Fetch from Supabase first
-      const { data: supabaseSessions, error: supabaseError } = await supabase
-        .from('saved_sessions')
-        .select('*')
-        .eq('user_id', user.id);
+      // Fetch from Convex
+      try {
+        const convexSessions = await convex.query(api.savedSessions.getByUser, { userId: user.id });
 
-      if (supabaseError) {
-        console.error('Error fetching saved sessions from Supabase:', supabaseError);
-        
-        // Check if it's an authentication error
-        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
-          console.error('Authentication error with Supabase - this may be due to Clerk token issues');
+        if (convexSessions && convexSessions.length > 0) {
+          const formattedSessions = convexSessions.map(s => ({
+            id: s.sessionId,
+            meet: s.meet as MeetName,
+            sessionNumber: s.sessionNumber,
+            platform: s.platform,
+            weightClass: s.weightClass ?? '',
+            startTime: s.startTime ?? '',
+            weighInTime: calculateWeighInTime(s.startTime ?? ''),
+            date: s.date ?? '',
+            notes: s.notes,
+            athleteNames: s.athleteNames,
+          }));
+          await commitSessions(formattedSessions);
+        } else {
+          if (localSessions.length === 0) {
+            await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
+            sessionsRawRef.current = null;
+            sessionsRef.current = [];
+            setSavedSessions([]);
+          } else {
+            setSavedSessions(localSessions);
+          }
         }
-        
-        // Fallback to local storage if Supabase fails
+      } catch (convexError) {
+        console.error('Error fetching saved sessions from Convex:', convexError);
         setSavedSessions(localSessions);
-      } else if (supabaseSessions) {
-        // Map Supabase data to SavedSession interface
-        const formattedSessions = supabaseSessions.map(s => ({
-          id: s.id,
-          meet: s.meet as MeetName,
-          sessionNumber: s.session_number,
-          platform: s.platform,
-          weightClass: s.weight_class,
-          startTime: s.start_time,
-          // Assuming weighInTime is derived or needs calculation if not stored
-          weighInTime: calculateWeighInTime(s.start_time), 
-          date: s.date || '', // Make sure 'date' is fetched if needed, or derived
-          notes: s.notes,
-          athleteNames: s.athlete_names,
-        }));
-
-        // Update local storage with Supabase data
-        await commitSessions(formattedSessions);
-      } else {
-         // If Supabase returns empty, avoid nuking non-empty local sessions during transient lag.
-         if (localSessions.length === 0) {
-           await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
-           sessionsRawRef.current = null;
-           sessionsRef.current = [];
-           setSavedSessions([]);
-         } else {
-           setSavedSessions(localSessions);
-         }
       }
     } catch (error) {
       console.error('Error loading saved sessions:', error);
@@ -332,33 +320,24 @@ export function useSavedSessions() {
 
       await commitSessions(nextSessions);
 
-      // 2. Upsert to Supabase
-      const { error: supabaseError } = await supabase
-        .from('saved_sessions')
-        .upsert({
-          id: updatedSession.id,
-          user_id: user.id,
+      // 2. Upsert to Convex
+      try {
+        await convex.mutation(api.savedSessions.upsert, {
+          sessionId: updatedSession.id,
+          userId: user.id,
           meet: updatedSession.meet,
-          session_number: updatedSession.sessionNumber,
+          sessionNumber: updatedSession.sessionNumber,
           platform: updatedSession.platform,
-          weight_class: updatedSession.weightClass,
-          start_time: updatedSession.startTime,
-          date: updatedSession.date, // Ensure 'date' is saved to Supabase
+          weightClass: updatedSession.weightClass,
+          startTime: updatedSession.startTime,
+          date: updatedSession.date,
           notes: updatedSession.notes,
-          athlete_names: updatedSession.athleteNames,
-          // Add created_at and updated_at if managed by client? DB defaults usually handle this.
+          athleteNames: updatedSession.athleteNames,
         });
-
-      if (supabaseError) {
-        console.error('Error saving session to Supabase:', supabaseError);
-        
-        // Check if it's an authentication error
-        if (supabaseError.message?.includes('JWT') || supabaseError.message?.includes('authentication')) {
-          console.error('Authentication error while saving session - this may be due to Clerk token issues');
-        }
-        
-        // The local save already succeeded, so the user has their data
-        return false; // Indicate partial failure
+      } catch (convexError) {
+        console.error('Error saving session to Convex:', convexError);
+        // Local save already succeeded, so user has their data
+        return false;
       }
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
@@ -495,17 +474,12 @@ export function useSavedSessions() {
       const updatedSessions = currentSessions.filter(session => session.id !== sessionId);
       await commitSessions(updatedSessions);
 
-      // 2. Delete from Supabase
-      const { error: supabaseError } = await supabase
-        .from('saved_sessions')
-        .delete()
-        .match({ id: sessionId, user_id: user.id }); // Match both id and user_id
-
-      if (supabaseError) {
-        console.error('Error removing session from Supabase:', supabaseError);
-        // Handle error - maybe revert local changes or show message?
-        // For now, just log the error. The local removal already succeeded.
-        return false; // Indicate partial failure
+      // 2. Delete from Convex
+      try {
+        await convex.mutation(api.savedSessions.remove, { sessionId, userId: user.id });
+      } catch (convexError) {
+        console.error('Error removing session from Convex:', convexError);
+        return false;
       }
 
       // *** Cancel notification ***
@@ -542,24 +516,20 @@ export function useSavedSessions() {
         const currentSessions = await readStoredSessions();
         const filteredSessions = currentSessions.filter(s => s.meet !== meet);
         await commitSessions(filteredSessions);
-        // Delete only sessions for this meet from Supabase
-        const { error: supabaseError } = await supabase
-          .from('saved_sessions')
-          .delete()
-          .match({ user_id: user.id, meet });
-        if (supabaseError) {
-          console.error('Error deleting sessions for meet from Supabase:', supabaseError);
+        // Delete only sessions for this meet from Convex
+        try {
+          await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id, meet });
+        } catch (e) {
+          console.error('Error deleting sessions for meet from Convex:', e);
         }
       } else {
         // 1. Clear all local storage and state
         await commitSessions([]);
-        // 2. Delete all sessions for this user from Supabase
-        const { error: supabaseError } = await supabase
-          .from('saved_sessions')
-          .delete()
-          .match({ user_id: user.id });
-        if (supabaseError) {
-          console.error('Error deleting sessions from Supabase:', supabaseError);
+        // 2. Delete all sessions for this user from Convex
+        try {
+          await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id });
+        } catch (e) {
+          console.error('Error deleting sessions from Convex:', e);
         }
       }
       return true;
