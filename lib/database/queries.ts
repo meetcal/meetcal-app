@@ -303,15 +303,10 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
   }
 }
 
-// Fetch lifting results for all athletes in a meet
-// This includes all historical results for these athletes (for PR calculations and "See All Meet Results")
+// Fetch lifting results for all athletes in a meet (scoped to the meet to stay within Convex 8192 row limit)
 export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: string[]): Promise<SupabaseLiftResult[]> {
   try {
-    if (athleteNames.length === 0) {
-      return [];
-    }
-
-    const rows = await convex.query(api.liftingResults.getByNames, { names: athleteNames });
+    const rows = await convex.query(api.liftingResults.getByMeet, { meet: meet as string });
 
     // Map camelCase Convex fields to snake_case SupabaseLiftResult shape for offline store compatibility
     // TODO: update SupabaseLiftResult to camelCase after full migration
@@ -323,13 +318,7 @@ export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: s
       cj_best: (r as any).cjBest ?? r.cjBest,
     } as unknown as SupabaseLiftResult);
 
-    if (rows.length > 0) {
-      return rows.map(toSnake);
-    }
-
-    // Fallback: fetch by meet name
-    const meetRows = await convex.query(api.liftingResults.getByMeet, { meet: meet as string });
-    return meetRows.map(toSnake);
+    return rows.map(toSnake);
   } catch (error) {
     console.error('Error in fetchLiftingResultsForMeet:', error);
     throw error;

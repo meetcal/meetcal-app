@@ -40,8 +40,10 @@ describe("fetchLiftingResultsForMeet", () => {
     jest.clearAllMocks();
   });
 
-  it("returns name-based results when present", async () => {
-    mockQuery.mockResolvedValue([{ name: "Athlete A", total: 200 }]);
+  it("returns meet-scoped results", async () => {
+    mockQuery.mockResolvedValue([
+      { name: "Athlete A", meet: "Test Meet", total: 200 },
+    ]);
 
     const result = await fetchLiftingResultsForMeet("Test Meet" as any, [
       "Athlete A",
@@ -51,16 +53,14 @@ describe("fetchLiftingResultsForMeet", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to meet query when name-based results are empty", async () => {
-    mockQuery
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ name: "Athlete A", meet: "Test Meet", total: 200 }]);
+  it("returns empty array when meet has no results", async () => {
+    mockQuery.mockResolvedValue([]);
 
     const result = await fetchLiftingResultsForMeet("Test Meet" as any, [
       "Athlete A",
     ]);
 
-    expect(result).toBeDefined();
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(result).toEqual([]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

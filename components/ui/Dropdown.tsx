@@ -3,6 +3,8 @@ import { useAppColors } from "@/hooks/useAppColors";
 import React, { useState } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 
+const EMPTY_OPTIONS: string[] = [];
+
 interface DropdownProps {
   value: string;
   options: string[];
@@ -12,7 +14,7 @@ interface DropdownProps {
 
 export const Dropdown = ({
   value,
-  options = [],
+  options = EMPTY_OPTIONS,
   onSelect,
   placeholder = "Select an option",
 }: DropdownProps) => {
