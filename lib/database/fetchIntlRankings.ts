@@ -1,16 +1,16 @@
-// You may want to import your supabase instance instead if you have a shared one
-import { supabase } from '../supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type IntlRanking = {
   meet: string | null;
   ranking: number | null;
   name: string | null;
-  weight_class: string | null;
+  weightClass: string | null;
   total: number | null;
-  percent_a: number | null;
+  percentA: number | null;
   gender: 'Men' | 'Women' | null;
-  age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
+  ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
 };
 
 const rankingsMemoryCache: { data: IntlRanking[] | null } = { data: null };
@@ -28,15 +28,7 @@ export async function fetchIntlRankings(): Promise<IntlRanking[]> {
   const cacheKey = OFFLINE_CACHE_KEYS.intlRankings;
   inFlightRankings = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('intl_rankings')
-        .select('meet, ranking, name, weight_class, total, percent_a, gender, age_category');
-
-      if (error) {
-        throw error;
-      }
-
-      const rankings = data as IntlRanking[];
+      const rankings = await convex.query(api.intlRankings.getAll, {}) as IntlRanking[];
       rankingsMemoryCache.data = rankings;
       await setOfflineCache(cacheKey, rankings);
       return rankings;

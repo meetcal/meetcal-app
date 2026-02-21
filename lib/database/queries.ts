@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import type { Schedule, Session } from '@/types/schedule';
 import type { Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
@@ -25,18 +26,14 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label:
 }
 
 type DbSchedule = {
-  id: number;
   date: string;
-  session_id: number;
-  start_time: string;
-  weigh_in_time: string;
+  sessionId: number;
+  startTime: string;
+  weighInTime: string;
   platform: string;
-  weight_class: string;
+  weightClass: string;
   meet: string;
 };
-
-const SCHEDULE_SELECT_FIELDS =
-  'id,date,session_id,start_time,weigh_in_time,platform,weight_class,meet';
 
 const scheduleCache = new Map<MeetName, DbSchedule[]>();
 const scheduleInFlight = new Map<MeetName, Promise<DbSchedule[]>>();
@@ -91,30 +88,27 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 
   const request = (async () => {
   try {
-    const { data, error } = await withTimeout(
-      supabase
-        .from('session_schedule')
-        .select(SCHEDULE_SELECT_FIELDS)
-        .eq('meet', meet)
-        .order('date')
-        .order('session_id')
-        .order('platform'),
+    const data = await withTimeout(
+      convex.query(api.schedule.getByMeet, { meet: meet as string }),
       INITIAL_LOAD_TIMEOUT_MS,
       'fetchScheduleFromDb:schedule'
     );
-
-    if (error) {
-      console.error('Error fetching schedule:', error);
-      throw error;
-    }
 
     if (!data || data.length === 0) {
       console.log('No schedule data found for meet:', meet);
       return [];
     }
 
-    scheduleCache.set(meet, data);
-    return data as DbSchedule[];
+    const sorted = [...data].sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      if (d !== 0) return d;
+      const s = a.sessionId - b.sessionId;
+      if (s !== 0) return s;
+      return a.platform.localeCompare(b.platform);
+    }) as DbSchedule[];
+
+    scheduleCache.set(meet, sorted);
+    return sorted;
   } catch (error) {
     console.error('Error in fetchScheduleFromDb:', error);
     throw error;
@@ -185,21 +179,21 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
     }
 
     const dayData = scheduleMap.get(row.date)!;
-    if (!dayData.sessions.has(row.session_id)) {
-      dayData.sessions.set(row.session_id, {
-        id: row.session_id.toString(),
-        number: row.session_id,
-        startTime: formatTo12Hour(row.start_time),
-        weighInTime: formatTo12Hour(row.weigh_in_time),
+    if (!dayData.sessions.has(row.sessionId)) {
+      dayData.sessions.set(row.sessionId, {
+        id: row.sessionId.toString(),
+        number: row.sessionId,
+        startTime: formatTo12Hour(row.startTime),
+        weighInTime: formatTo12Hour(row.weighInTime),
         platforms: []
       });
     }
 
-    const session = dayData.sessions.get(row.session_id)!;
+    const session = dayData.sessions.get(row.sessionId)!;
     session.platforms.push({
       platform: validatePlatform(row.platform),
-      weightClass: row.weight_class,
-      platformStartTime: formatTo12Hour(row.start_time) // Format platform-specific time
+      weightClass: row.weightClass,
+      platformStartTime: formatTo12Hour(row.startTime)
     });
   }
 
@@ -226,128 +220,83 @@ export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   }
 }
 
-type AthleteWithSessionRow = {
-  member_id: string;
-  name: string;
-  age: number;
-  club: string;
-  gender: string;
-  weight_class: string;
-  entry_total: number;
-  adaptive: boolean;
-  session_number: number | null;
-  session_platform: string | null;
-  meet: string;
-  session_date: string | null;
-  session_start_time: string | null;
-  session_weigh_in_time: string | null;
-  session_weight_class: string | null;
-};
-
 export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResult[]> {
-  const { data, error } = await supabase
-    .from('athletes_with_session')
-    .select('*')
-    .eq('meet', meet);
+  try {
+    const rows = await convex.query(api.athletes.getWithSessionByMeet, { meet: meet as string });
 
-  if (error) {
+    const meetConfig = await getMeetConfig(meet);
+    const formatDisplayDate = (isoDate: string | null) => {
+      if (!isoDate) return undefined;
+      const [datePart] = isoDate.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return undefined;
+      const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+      return d.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: meetConfig.time.timeZoneIdentifier,
+      });
+    };
+
+    const mappedData: LiftResult[] = rows.map((row) => {
+      const hasSession = row.sessionNumber != null && row.sessionPlatform != null;
+      const scheduleRow = row.scheduleRow;
+      const session = hasSession
+        ? {
+            number: row.sessionNumber!,
+            platform: validatePlatform(row.sessionPlatform!),
+            ...(scheduleRow?.date != null && {
+              date: scheduleRow.date,
+              startTime: formatTo12Hour(scheduleRow.startTime ?? ''),
+              weighInTime: formatTo12Hour(scheduleRow.weighInTime ?? ''),
+              displayDate: formatDisplayDate(scheduleRow.date) ?? undefined,
+            }),
+          }
+        : undefined;
+      return {
+        memberId: row.memberId || '',
+        name: row.name,
+        age: row.age,
+        club: row.club,
+        gender: row.gender || '',
+        weightClass: row.weightClass || '',
+        entryTotal: row.entryTotal,
+        adaptive: row.adaptive || false,
+        session,
+      };
+    });
+
+    return mappedData;
+  } catch (error) {
     console.error('Error fetching athletes_with_session, falling back to fetchAthletes', { meet, error });
     return fetchAthletes(meet);
   }
-
-  const meetConfig = await getMeetConfig(meet);
-  const formatDisplayDate = (isoDate: string | null) => {
-    if (!isoDate) return undefined;
-    const [datePart] = isoDate.split('T');
-    const [year, month, day] = datePart.split('-').map(Number);
-    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return undefined;
-    const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    return d.toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      timeZone: meetConfig.time.timeZoneIdentifier,
-    });
-  };
-
-  const rows = (data || []) as AthleteWithSessionRow[];
-  const mappedData: LiftResult[] = rows.map((row) => {
-    const hasSession = row.session_number != null && row.session_platform != null;
-    const session = hasSession
-      ? {
-          number: row.session_number!,
-          platform: validatePlatform(row.session_platform!),
-          ...(row.session_date != null && {
-            date: row.session_date,
-            startTime: formatTo12Hour(row.session_start_time ?? ''),
-            weighInTime: formatTo12Hour(row.session_weigh_in_time ?? ''),
-            displayDate: formatDisplayDate(row.session_date) ?? undefined,
-          }),
-        }
-      : undefined;
-    return {
-      memberId: row.member_id || '',
-      name: row.name,
-      age: row.age,
-      club: row.club,
-      gender: row.gender || '',
-      weightClass: row.weight_class || '',
-      entryTotal: row.entry_total,
-      adaptive: row.adaptive || false,
-      session,
-    };
-  });
-
-  return mappedData;
 }
 
 export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
-  const { data, error } = await supabase
-    .from('athletes')
-    .select('member_id,name,age,club,gender,weight_class,entry_total,adaptive,session_number,session_platform')
-    .eq('meet', meet);
+  const athletes = await convex.query(api.athletes.getByMeet, { meet: meet as string });
 
-  if (error) {
-    console.error('Error fetching athletes:', error);
-    throw error;
-  }
-
-  const mappedData: LiftResult[] = (data || []).map(athlete => ({
-    memberId: athlete.member_id || '',
+  return athletes.map(athlete => ({
+    memberId: athlete.memberId || '',
     name: athlete.name,
     age: athlete.age,
     club: athlete.club,
     gender: athlete.gender || '',
-    weightClass: athlete.weight_class || '',
-    entryTotal: athlete.entry_total,
+    weightClass: athlete.weightClass || '',
+    entryTotal: athlete.entryTotal,
     adaptive: athlete.adaptive || false,
-    session: athlete.session_number && athlete.session_platform ? {
-      number: athlete.session_number,
-      platform: validatePlatform(athlete.session_platform),
+    session: athlete.sessionNumber && athlete.sessionPlatform ? {
+      number: athlete.sessionNumber,
+      platform: validatePlatform(athlete.sessionPlatform),
     } : undefined,
   }));
-
-  return mappedData;
 }
 
 // Search athletes by name across all meets
 export async function searchAthletesByName(query: string): Promise<string[]> {
   try {
-    const { data, error } = await supabase
-      .from('lifting_results')
-      .select('name')
-      .ilike('name', `%${query}%`)
-      .order('name')
-      .limit(100);
-
-    if (error) {
-      console.error('Error searching athletes:', error);
-      throw error;
-    }
-
-    // Extract unique names
-    const uniqueNames = Array.from(new Set((data || []).map(result => result.name))).sort();
-    return uniqueNames;
+    return await convex.query(api.athletes.searchByName, { query });
   } catch (error) {
     console.error('Error in searchAthletesByName:', error);
     throw error;
@@ -362,33 +311,25 @@ export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: s
       return [];
     }
 
-    const { data, error } = await supabase
-      .from('lifting_results')
-      .select('*')
-      .in('name', athleteNames)
-      .order('date', { ascending: false });
+    const rows = await convex.query(api.liftingResults.getByNames, { names: athleteNames });
 
-    if (error) {
-      console.error('Error fetching lifting results for meet:', error);
-      throw error;
+    // Map camelCase Convex fields to snake_case SupabaseLiftResult shape for offline store compatibility
+    // TODO: update SupabaseLiftResult to camelCase after full migration
+    const toSnake = (r: typeof rows[0]): SupabaseLiftResult => ({
+      ...r,
+      event_id: (r as any).eventId ?? r.eventId,
+      body_weight: (r as any).bodyWeight ?? r.bodyWeight,
+      snatch_best: (r as any).snatchBest ?? r.snatchBest,
+      cj_best: (r as any).cjBest ?? r.cjBest,
+    } as unknown as SupabaseLiftResult);
+
+    if (rows.length > 0) {
+      return rows.map(toSnake);
     }
 
-    if (data && data.length > 0) {
-      return data;
-    }
-
-    const { data: meetData, error: meetError } = await supabase
-      .from('lifting_results')
-      .select('*')
-      .eq('meet', meet)
-      .order('date', { ascending: false });
-
-    if (meetError) {
-      console.error('Error fetching lifting results by meet fallback:', meetError);
-      throw meetError;
-    }
-
-    return meetData || [];
+    // Fallback: fetch by meet name
+    const meetRows = await convex.query(api.liftingResults.getByMeet, { meet: meet as string });
+    return meetRows.map(toSnake);
   } catch (error) {
     console.error('Error in fetchLiftingResultsForMeet:', error);
     throw error;

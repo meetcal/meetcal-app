@@ -1,5 +1,6 @@
-import { supabase } from '@/lib/supabase';
-import { WorldRecord, WorldRecordDisplay } from '@/types/world-records';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
+import { WorldRecordDisplay } from '@/types/world-records';
 
 const worldRecordsCache = new Map<string, WorldRecordDisplay[]>();
 const worldRecordsInFlight = new Map<string, Promise<WorldRecordDisplay[]>>();
@@ -51,30 +52,21 @@ export async function fetchWorldRecords(
   }
 
   const request = (async () => {
-    const { data, error } = await supabase
-      .from('world_records')
-      .select('weight_class,snatch_record,cj_record,total_record')
-      .eq('gender', gender)
-      .eq('age_category', ageCategory);
+    const rows = await convex.query(api.worldRecords.getByGenderAndAge, { gender, ageCategory });
 
-    if (error) {
-      console.error('Error fetching world records:', error);
-      throw error;
-    }
-
-    if (!data) {
+    if (!rows || rows.length === 0) {
       worldRecordsCache.set(cacheKey, []);
       return [];
     }
 
     // Transform the data to match display format
-    const records: WorldRecordDisplay[] = (data as WorldRecord[]).map(record => ({
-      weightClass: record.weight_class,
-      snatchRecord: record.snatch_record,
-      cjRecord: record.cj_record,
-      totalRecord: record.total_record,
-      isPlusClass: isPlusClass(record.weight_class),
-      numericWeight: getNumericWeight(record.weight_class),
+    const records: WorldRecordDisplay[] = rows.map(record => ({
+      weightClass: record.weightClass,
+      snatchRecord: record.snatchRecord ?? 0,
+      cjRecord: record.cjRecord ?? 0,
+      totalRecord: record.totalRecord ?? 0,
+      isPlusClass: isPlusClass(record.weightClass),
+      numericWeight: getNumericWeight(record.weightClass),
     }));
 
     // Sort records
@@ -93,16 +85,8 @@ export async function fetchWorldRecords(
  * Fetches available genders from world_records table
  */
 export async function fetchWorldRecordGenders(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('world_records')
-    .select('gender');
-
-  if (error) {
-    console.error('Error fetching genders:', error);
-    throw error;
-  }
-
-  const uniqueGenders = [...new Set(data?.map(row => row.gender) || [])];
+  const rows = await convex.query(api.worldRecords.getAll, {});
+  const uniqueGenders = [...new Set(rows.map(row => row.gender))].filter(Boolean);
   return uniqueGenders.sort();
 }
 
@@ -110,15 +94,7 @@ export async function fetchWorldRecordGenders(): Promise<string[]> {
  * Fetches available age categories from world_records table
  */
 export async function fetchWorldRecordAgeCategories(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('world_records')
-    .select('age_category');
-
-  if (error) {
-    console.error('Error fetching age categories:', error);
-    throw error;
-  }
-
-  const uniqueAgeCategories = [...new Set(data?.map(row => row.age_category) || [])];
+  const rows = await convex.query(api.worldRecords.getAll, {});
+  const uniqueAgeCategories = [...new Set(rows.map(row => row.ageCategory))].filter(Boolean);
   return uniqueAgeCategories.sort();
 }
