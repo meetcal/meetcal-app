@@ -12,6 +12,41 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+function getRateColor(rate: number, colors: any) {
+  if (rate >= 80) return colors.success;
+  if (rate < 70) return colors.fail;
+  return "#FF9500";
+}
+
+function AttemptRateRow({
+  attemptNumber,
+  rates,
+  colors,
+}: {
+  attemptNumber: number;
+  rates: { makes: number; total: number; rate: number };
+  colors: any;
+}) {
+  return (
+    <View style={styles.attemptRateRow}>
+      <ThemedText
+        style={[styles.attemptRateLabel, { color: colors.secondaryText }]}
+      >
+        {attemptNumber}
+      </ThemedText>
+      <ThemedText
+        style={[styles.attemptRateValue, { color: getRateColor(rates.rate, colors) }]}
+      >
+        {rates.rate.toFixed(1)}%
+      </ThemedText>
+      <ThemedText
+        style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}
+      >
+        {rates.makes}/{rates.total}
+      </ThemedText>
+    </View>
+  );
+}
 
 function AthleteStats({
   results,
@@ -109,43 +144,6 @@ function AthleteStats({
     };
   }, [results]);
 
-  const getRateColor = (rate: number) => {
-    if (rate >= 80) return colors.success;
-    if (rate < 70) return colors.fail;
-    return "#FF9500"; // Amber color
-  };
-
-  const AttemptRateRow = ({
-    attemptNumber,
-    rates,
-    colors,
-  }: {
-    attemptNumber: number;
-    rates: { makes: number; total: number; rate: number };
-    colors: any;
-  }) => (
-    <View style={styles.attemptRateRow}>
-      <ThemedText
-        style={[styles.attemptRateLabel, { color: colors.secondaryText }]}
-      >
-        {attemptNumber}
-      </ThemedText>
-      <ThemedText
-        style={[styles.attemptRateValue, { color: getRateColor(rates.rate) }]}
-      >
-        {rates.rate.toFixed(1)}
-%
-</ThemedText>
-      <ThemedText
-        style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}
-      >
-        {rates.makes}
-/
-{rates.total}
-      </ThemedText>
-    </View>
-  );
-
   return (
     <View
       style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}
@@ -166,12 +164,11 @@ function AthleteStats({
             <ThemedText
               style={[
                 styles.statsValue,
-                { color: getRateColor(stats.snatchMakeRate) },
+                { color: getRateColor(stats.snatchMakeRate, colors) },
               ]}
             >
-              {stats.snatchMakeRate.toFixed(1)}
-%
-</ThemedText>
+              {stats.snatchMakeRate.toFixed(1)}%
+            </ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -208,12 +205,11 @@ function AthleteStats({
             <ThemedText
               style={[
                 styles.statsValue,
-                { color: getRateColor(stats.cjMakeRate) },
+                { color: getRateColor(stats.cjMakeRate, colors) },
               ]}
             >
-              {stats.cjMakeRate.toFixed(1)}
-%
-</ThemedText>
+              {stats.cjMakeRate.toFixed(1)}%
+            </ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -384,9 +380,7 @@ export default function AthleteResultsScreen() {
               <ThemedText
                 style={[styles.emptyStateText, { color: colors.secondaryText }]}
               >
-                No meet results found for 
-{' '}
-{name}
+                No meet results found for {name}
               </ThemedText>
             </View>
           </View>
@@ -409,9 +403,7 @@ export default function AthleteResultsScreen() {
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
-                    Date: 
-{' '}
-{new Date(result.date).toLocaleDateString()}
+                    Date: {new Date(result.date).toLocaleDateString()}
                   </ThemedText>
                   <ThemedText
                     style={[
@@ -468,11 +460,7 @@ export default function AthleteResultsScreen() {
 
                 <View style={styles.section}>
                   <ThemedText style={styles.total}>
-                    {result.snatch_best ?? "—"}
-/
-{result.cj_best ?? "—"}
-/
-{result.total ?? "—"}
+                    {result.snatch_best ?? "—"}/{result.cj_best ?? "—"}/{result.total ?? "—"}
                   </ThemedText>
                 </View>
               </View>

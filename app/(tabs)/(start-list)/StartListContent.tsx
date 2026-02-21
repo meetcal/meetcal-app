@@ -736,23 +736,22 @@ export default function StartListScreen() {
       // Add a small delay to ensure the view is fully rendered
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const whiteUri = await captureRef(shareScheduleRef.current, {
-        format: "png",
-        quality: 1.0,
-        result: "tmpfile",
-        width: 850,
-        height: undefined,
-      });
-      const transparentUri = await captureRef(
-        shareScheduleTransparentRef.current,
-        {
+      const [whiteUri, transparentUri] = await Promise.all([
+        captureRef(shareScheduleRef.current, {
           format: "png",
           quality: 1.0,
           result: "tmpfile",
           width: 850,
           height: undefined,
-        },
-      );
+        }),
+        captureRef(shareScheduleTransparentRef.current, {
+          format: "png",
+          quality: 1.0,
+          result: "tmpfile",
+          width: 850,
+          height: undefined,
+        }),
+      ]);
       setGeneratedImageWhiteUri(whiteUri);
       setGeneratedImageTransparentUri(transparentUri);
       setSelectedImageIndex(0);

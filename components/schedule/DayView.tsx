@@ -23,13 +23,18 @@ export function DayView({
     }
   }, [onRefreshComplete]);
 
+  const renderSession = useCallback(
+    ({ item }: { item: (typeof day.sessions)[number] }) => (
+      <SessionView session={item} timeZone={timeZone} meet={meet} />
+    ),
+    [timeZone, meet],
+  );
+
   return (
     <FlatList
       data={day.sessions}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <SessionView session={item} timeZone={timeZone} meet={meet} />
-      )}
+      renderItem={renderSession}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
       refreshControl={

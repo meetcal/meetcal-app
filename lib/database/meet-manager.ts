@@ -349,7 +349,10 @@ export async function prefetchMeetData(meet: MeetName) {
   if (athleteNames.length > 0) {
     try {
       const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
-      validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+      // Empty results are OK for upcoming meets that haven't competed yet
+      if (liftingResults.length > 0) {
+        validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+      }
       await saveMeetLiftingResults(meet, liftingResults);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -357,7 +360,9 @@ export async function prefetchMeetData(meet: MeetName) {
         try {
           await clearImplicitMeetData(meet);
           const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
-          validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+          if (liftingResults.length > 0) {
+            validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
+          }
           await saveMeetLiftingResults(meet, liftingResults);
         } catch (retryError) {
           console.error('Prefetch lifting results failed after cleanup retry:', { meet, error: retryError });

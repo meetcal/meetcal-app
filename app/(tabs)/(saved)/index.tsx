@@ -223,12 +223,13 @@ export default function SavedScreen() {
                   selectedMeet,
                 );
 
-                await AsyncStorage.setItem(
-                  getSavedSessionsKey(user.id),
-                  JSON.stringify(migratedSessions),
-                );
-
-                await Promise.all(migratedSessions.map((session) => saveSession(session)));
+                await Promise.all([
+                  AsyncStorage.setItem(
+                    getSavedSessionsKey(user.id),
+                    JSON.stringify(migratedSessions),
+                  ),
+                  ...migratedSessions.map((session) => saveSession(session)),
+                ]);
               }
             }
           } catch (e) {

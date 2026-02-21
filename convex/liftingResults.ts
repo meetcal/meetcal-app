@@ -21,6 +21,26 @@ export const getByNames = query({
   },
 });
 
+// Get historical results for a list of athletes since a cutoff date (for attempt estimator)
+// Uses by_name_and_date index to avoid returning unbounded history
+export const getByNamesSince = query({
+  args: { names: v.array(v.string()), cutoffDate: v.string() },
+  handler: async (ctx, { names, cutoffDate }) => {
+    if (names.length === 0) return [];
+    const batches = await Promise.all(
+      names.map((name) =>
+        ctx.db
+          .query("lifting_results")
+          .withIndex("by_name_and_date", (q) =>
+            q.eq("name", name).gte("date", cutoffDate)
+          )
+          .collect()
+      )
+    );
+    return batches.flat();
+  },
+});
+
 // Get lifting results for one athlete since a cutoff date (for last-year bests)
 export const getYearBestsByName = query({
   args: { name: v.string(), cutoffDate: v.string() },

@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
+  useWindowDimensions,
   Pressable,
   ScrollView,
   Share,
@@ -21,8 +21,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: screenWidth } = Dimensions.get("window");
-
 const YEARS = Array.from(
   { length: 10 },
   (_, i) => new Date().getFullYear() - i,
@@ -31,8 +29,9 @@ const YEARS = Array.from(
 export default function WeightliftingWrappedScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [loading, setLoading] = useState(false);
   const [, setResults] = useState<LiftingResult[]>([]);
   const [wrappedStats, setWrappedStats] = useState<WrappedStats | null>(null);

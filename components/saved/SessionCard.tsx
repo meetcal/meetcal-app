@@ -153,8 +153,8 @@ const SessionCard = React.memo<SessionCardProps>(
                 {item.athleteNames.length === 1 ? "Athlete:" : "Athletes:"}
               </ThemedText>
               <View style={styles.athleteNamesContainer}>
-                {item.athleteNames.slice(0, 3).map((name, index) => (
-                  <View key={index} style={styles.athleteRow}>
+                {item.athleteNames.slice(0, 3).map((name) => (
+                  <View key={name} style={styles.athleteRow}>
                     <ThemedText
                       style={[styles.athleteName, { color: colors.text }]}
                       numberOfLines={1}
@@ -213,7 +213,7 @@ more
               .split("\n\n")
               .filter((note) => note.trim().length > 0)
               .map((note, index, array) => (
-                <View key={index} style={styles.noteBlock}>
+                <View key={note} style={styles.noteBlock}>
                   <ThemedText
                     style={[styles.notesText, { color: colors.text }]}
                   >
