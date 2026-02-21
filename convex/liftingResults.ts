@@ -132,7 +132,7 @@ export const searchByNameAndYear = query({
     const rows = await ctx.db
       .query("lifting_results")
       .withSearchIndex("search_name", (s) => s.search("name", q))
-      .collect();
+      .take(256);
     let filtered = rows;
     if (startDate) filtered = filtered.filter((r) => r.date >= startDate!);
     if (endDate) filtered = filtered.filter((r) => r.date < endDate!);

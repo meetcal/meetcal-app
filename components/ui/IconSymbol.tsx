@@ -27,6 +27,7 @@ const iconMap: Record<string, string> = {
   close: "close",
   download: "download",
   "square.and.arrow.down": "download",
+  "square.and.arrow.up": "share-outline",
   "wifi.slash": "cloud-offline",
 };
 

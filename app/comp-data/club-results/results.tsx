@@ -14,12 +14,14 @@ import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,15 +37,37 @@ export default function MeetResultsByClubScreen() {
   const [clubStats, setClubStats] = useState<ClubMeetStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
-  const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(
-    null,
-  );
+  const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
   const shareableViewRef = useRef<View>(null);
 
-  // Track screen view on mount
+  // Animations
+  const headerFade = useRef(new Animated.Value(0)).current;
+  const statsSlide = useRef(new Animated.Value(24)).current;
+  const shareSlide = useRef(new Animated.Value(24)).current;
+
+  const runEntryAnimation = () => {
+    Animated.stagger(80, [
+      Animated.timing(headerFade, {
+        toValue: 1,
+        duration: 450,
+        useNativeDriver: true,
+      }),
+      Animated.timing(statsSlide, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shareSlide, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   useEffect(() => {
     posthog.capture("screen_viewed", {
       screen_name: "Meet Results By Club",
@@ -84,6 +108,7 @@ export default function MeetResultsByClubScreen() {
       }
       const stats = await fetchClubMeetStats(club, meet);
       setClubStats(stats);
+      runEntryAnimation();
     } catch (err) {
       console.error("Error loading stats:", err);
       setError("Failed to load meet statistics");
@@ -92,7 +117,6 @@ export default function MeetResultsByClubScreen() {
     }
   }, [club, meet]);
 
-  // Load stats on mount
   useEffect(() => {
     if (club && meet) {
       loadStats();
@@ -100,13 +124,7 @@ export default function MeetResultsByClubScreen() {
   }, [club, meet, loadStats]);
 
   const generateImage = async () => {
-    if (
-      !shareableViewRef.current ||
-      !clubStats ||
-      clubStats.totalAthletes === 0
-    ) {
-      return;
-    }
+    if (!shareableViewRef.current || !clubStats || clubStats.totalAthletes === 0) return;
 
     setIsGeneratingImage(true);
 
@@ -151,8 +169,8 @@ export default function MeetResultsByClubScreen() {
         club_name: club,
         meet_name: meet,
       });
-    } catch (error) {
-      console.error("Error sharing image:", error);
+    } catch (err) {
+      console.error("Error sharing image:", err);
       alert("Failed to share image");
     }
   };
@@ -163,7 +181,7 @@ export default function MeetResultsByClubScreen() {
         styles.topBar,
         {
           paddingTop: insets.top + 8,
-          paddingBottom: 12,
+          paddingBottom: 14,
           backgroundColor: colors.background,
           borderBottomColor: colors.border,
         },
@@ -173,7 +191,7 @@ export default function MeetResultsByClubScreen() {
         onPress={() => router.back()}
         style={({ pressed }) => [
           styles.backButton,
-          pressed && { opacity: 0.7 },
+          pressed && { opacity: 0.6 },
         ]}
         hitSlop={12}
       >
@@ -183,31 +201,23 @@ export default function MeetResultsByClubScreen() {
           color={colors.text}
         />
       </Pressable>
-      <ThemedText
-        style={[styles.topBarTitle, { color: colors.text }]}
-        numberOfLines={1}
-      >
-        Meet Recap
-      </ThemedText>
+      <View style={styles.topBarCenter}>
+        <ThemedText style={[styles.topBarLabel, { color: colors.secondaryText }]}>
+          MEET RECAP
+        </ThemedText>
+      </View>
       <View style={styles.topBarSpacer} />
     </View>
   );
 
   if (isLoading) {
     return (
-      <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.link} />
-          <ThemedText
-            style={[
-              styles.emptyText,
-              { color: colors.secondaryText, marginTop: 16 },
-            ]}
-          >
+          <ThemedText style={[styles.emptyText, { color: colors.secondaryText, marginTop: 16 }]}>
             Loading statistics...
           </ThemedText>
         </View>
@@ -217,18 +227,14 @@ export default function MeetResultsByClubScreen() {
 
   if (error || !clubStats) {
     return (
-      <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
             {isOffline ? "Offline" : "Error loading statistics"}
           </ThemedText>
-          <ThemedText
-            style={[styles.emptyText, { color: colors.secondaryText }]}
-          >
+          <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
             {isOffline
               ? "Meet results are not available without an internet connection"
               : error || "Unknown error"}
@@ -246,123 +252,152 @@ export default function MeetResultsByClubScreen() {
     );
   }
 
+  const totalMedals = clubStats.goldMedals + clubStats.silverMedals + clubStats.bronzeMedals;
+
   return (
-    <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
       {topBar}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={{
-          paddingTop: 16,
           paddingBottom: Math.max(80, insets.bottom + 60),
         }}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Club and Meet Header */}
-        <View style={styles.header}>
-          <ThemedText style={[styles.clubName, { color: colors.text }]}>
-            {club}
-          </ThemedText>
-          <ThemedText
-            style={[styles.meetName, { color: colors.secondaryText }]}
-          >
-            {meet}
-          </ThemedText>
-        </View>
+        {/* Hero Banner */}
+        <Animated.View style={{ opacity: headerFade }}>
+          <View style={[styles.heroBanner, { backgroundColor: colors.card }]}>
+            {/* Gold accent bar */}
+            <View style={styles.heroAccentBar} />
 
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <StatCard
-            title="Athletes"
-            value={clubStats.totalAthletes.toString()}
-            icon={Platform.OS === "ios" ? "person.3.fill" : "people"}
-            color={colors.link}
-          />
-          <StatCard
-            title="Total Weight"
-            value={`${Math.round(clubStats.totalWeightLifted)} kg`}
-            icon={Platform.OS === "ios" ? "scalemass.fill" : "barbell"}
-            color={colors.totalColor}
-          />
-          <StatCard
-            title="Competition PRs"
-            value={clubStats.totalPRs.toString()}
-            icon={Platform.OS === "ios" ? "star.fill" : "star"}
-            color={colors.prColor}
-          />
-          <StatCard
-            title="Perfect 6/6"
-            value={clubStats.perfect6for6.toString()}
-            icon={
-              Platform.OS === "ios"
-                ? "checkmark.circle.fill"
-                : "checkmark-circle"
-            }
-            color={colors.success}
-          />
-        </View>
+            <ThemedText style={[styles.heroClubName, { color: colors.text }]}>
+              {club}
+            </ThemedText>
+            <ThemedText style={[styles.heroMeetName, { color: colors.secondaryText }]}>
+              {meet}
+            </ThemedText>
 
-        {/* Medals Section */}
-        <View
-          style={[styles.medalsContainer, { backgroundColor: colors.card }]}
-        >
-          <ThemedText style={[styles.sectionTitle, { color: colors.text }]}>
-            Medals
-          </ThemedText>
-          <View style={styles.medalsRow}>
-            <MedalView
-              count={clubStats.goldMedals}
-              type="Gold"
-              color={colors.gold}
-            />
-            <MedalView
-              count={clubStats.silverMedals}
-              type="Silver"
-              color={colors.silver}
-            />
-            <MedalView
-              count={clubStats.bronzeMedals}
-              type="Bronze"
-              color={colors.bronze}
-            />
-          </View>
-        </View>
-
-        {/* Share Button */}
-        <View style={styles.shareButtonContainer}>
-          <Pressable
-            onPress={generateImage}
-            disabled={isGeneratingImage || clubStats.totalAthletes === 0}
-            style={({ pressed }) => [
-              styles.mainShareButton,
-              {
-                backgroundColor: colors.link,
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            {isGeneratingImage ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-              >
-                <IconSymbol
-                  name={Platform.OS === "ios" ? "square.and.arrow.up" : "share"}
-                  size={20}
-                  color="#FFFFFF"
-                />
-                <ThemedText style={styles.mainShareButtonText}>
-                  Share Meet Recap
-                </ThemedText>
+            {/* Medal chips */}
+            {totalMedals > 0 && (
+              <View style={styles.medalChipsRow}>
+                {clubStats.goldMedals > 0 && (
+                  <View style={[styles.medalChip, { backgroundColor: "rgba(255,215,0,0.15)" }]}>
+                    <Text style={styles.medalChipEmoji}>🥇</Text>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.gold }]}>
+                      {clubStats.goldMedals}
+                    </ThemedText>
+                    <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
+                      Gold
+                    </ThemedText>
+                  </View>
+                )}
+                {clubStats.silverMedals > 0 && (
+                  <View style={[styles.medalChip, { backgroundColor: "rgba(192,192,192,0.15)" }]}>
+                    <Text style={styles.medalChipEmoji}>🥈</Text>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.silver }]}>
+                      {clubStats.silverMedals}
+                    </ThemedText>
+                    <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
+                      Silver
+                    </ThemedText>
+                  </View>
+                )}
+                {clubStats.bronzeMedals > 0 && (
+                  <View style={[styles.medalChip, { backgroundColor: "rgba(205,127,50,0.15)" }]}>
+                    <Text style={styles.medalChipEmoji}>🥉</Text>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.bronze }]}>
+                      {clubStats.bronzeMedals}
+                    </ThemedText>
+                    <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
+                      Bronze
+                    </ThemedText>
+                  </View>
+                )}
               </View>
             )}
-          </Pressable>
-        </View>
+          </View>
+        </Animated.View>
+
+        {/* Stats Grid */}
+        <Animated.View
+          style={{
+            opacity: headerFade,
+            transform: [{ translateY: statsSlide }],
+          }}
+        >
+          <View style={styles.statsGrid}>
+            <PremiumStatCard
+              title="Athletes"
+              value={clubStats.totalAthletes.toString()}
+              icon={Platform.OS === "ios" ? "person.3.fill" : "people"}
+              accentColor={colors.link}
+              colors={colors}
+            />
+            <PremiumStatCard
+              title="Total Weight"
+              value={`${Math.round(clubStats.totalWeightLifted)} kg`}
+              icon={Platform.OS === "ios" ? "scalemass.fill" : "barbell"}
+              accentColor={colors.totalColor}
+              colors={colors}
+            />
+            <PremiumStatCard
+              title="Comp PRs"
+              value={clubStats.totalPRs.toString()}
+              icon={Platform.OS === "ios" ? "star.fill" : "star"}
+              accentColor={colors.prColor}
+              colors={colors}
+            />
+            <PremiumStatCard
+              title="Perfect 6/6"
+              value={clubStats.perfect6for6.toString()}
+              icon={Platform.OS === "ios" ? "checkmark.circle.fill" : "checkmark-circle"}
+              accentColor={colors.success}
+              colors={colors}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Share Button */}
+        <Animated.View
+          style={{
+            opacity: headerFade,
+            transform: [{ translateY: shareSlide }],
+          }}
+        >
+          <View style={styles.shareButtonContainer}>
+            <Pressable
+              onPress={generateImage}
+              disabled={isGeneratingImage || clubStats.totalAthletes === 0}
+              style={({ pressed }) => [
+                styles.mainShareButton,
+                {
+                  backgroundColor: colors.link,
+                  shadowColor: colors.link,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              {isGeneratingImage ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <IconSymbol
+                    name={Platform.OS === "ios" ? "square.and.arrow.up" : "share"}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <ThemedText style={styles.mainShareButtonText}>
+                    Share Meet Recap
+                  </ThemedText>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </Animated.View>
       </ScrollView>
 
-      {/* Hidden shareable view - rendered off-screen for image generation */}
+      {/* Hidden shareable view */}
       <View style={styles.offScreen}>
         <View ref={shareableViewRef} collapsable={false}>
           <ShareableRecapView
@@ -373,7 +408,6 @@ export default function MeetResultsByClubScreen() {
         </View>
       </View>
 
-      {/* Image Preview Modal */}
       <ImagePreviewModal
         visible={showPreview}
         imageUri={generatedImageUri}
@@ -384,165 +418,137 @@ export default function MeetResultsByClubScreen() {
   );
 }
 
-// Stat Card Component
-function StatCard({
+// Premium Stat Card
+function PremiumStatCard({
   title,
   value,
   icon,
-  color,
+  accentColor,
+  colors,
 }: {
   title: string;
   value: string;
   icon: string;
-  color: string;
+  accentColor: string;
+  colors: ReturnType<typeof useAppColors>;
 }) {
-  const colors = useAppColors();
-
   return (
-    <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-      <IconSymbol name={icon} size={30} color={color ?? colors.link} />
-      <ThemedText style={styles.statValue}>{value}</ThemedText>
-      <ThemedText style={styles.statTitle}>{title}</ThemedText>
+    <View
+      style={[
+        styles.statCard,
+        {
+          backgroundColor: colors.card,
+          borderTopColor: accentColor,
+        },
+      ]}
+    >
+      <IconSymbol name={icon} size={26} color={accentColor} />
+      <ThemedText style={[styles.statValue, { color: colors.text }]}>{value}</ThemedText>
+      <ThemedText style={[styles.statTitle, { color: colors.secondaryText }]}>{title}</ThemedText>
     </View>
   );
 }
 
-// Medal View Component
-function MedalView({
-  count,
-  type,
-  color,
-}: {
-  count: number;
-  type: string;
-  color: string;
-}) {
-  return (
-    <View style={styles.medalItem}>
-      <View style={[styles.medalCircle, { backgroundColor: color }]}>
-        <ThemedText style={styles.medalCount}>{count}</ThemedText>
-      </View>
-      <ThemedText style={styles.medalType}>{type}</ThemedText>
-    </View>
-  );
-}
-
-// Shareable Recap View (for image generation)
+// Shareable Recap View (800x1000, dark premium)
 const ShareableRecapView = React.forwardRef<
   View,
   { club: string; meet: string; stats: ClubMeetStats }
 >(({ club, meet, stats }, ref) => {
-  const colors = useAppColors();
-
   return (
     <View ref={ref} style={shareableStyles.container}>
-      <View style={shareableStyles.header}>
-        <ThemedText style={shareableStyles.clubName}>{club}</ThemedText>
-        <ThemedText style={shareableStyles.meetName}>{meet}</ThemedText>
-      </View>
 
-      <View style={shareableStyles.statsGrid}>
-        <ShareableStatCard
-          title="Athletes"
-          value={stats.totalAthletes.toString()}
-          emoji="👥"
-        />
-        <ShareableStatCard
-          title="Total Weight"
-          value={`${Math.round(stats.totalWeightLifted)} kg`}
-          emoji="⚖️"
-        />
-        <ShareableStatCard
-          title="Competition PRs"
-          value={stats.totalPRs.toString()}
-          emoji="⭐"
-        />
-        <ShareableStatCard
-          title="Perfect 6/6"
-          value={stats.perfect6for6.toString()}
-          emoji="✅"
-        />
-      </View>
-
-      <View style={shareableStyles.medalsContainer}>
-        <ThemedText style={shareableStyles.medalsTitle}>Medals</ThemedText>
-        <View style={shareableStyles.medalsRow}>
-          <ShareableMedalView
-            count={stats.goldMedals}
-            type="Gold"
-            color={colors.gold}
-          />
-          <ShareableMedalView
-            count={stats.silverMedals}
-            type="Silver"
-            color={colors.silver}
-          />
-          <ShareableMedalView
-            count={stats.bronzeMedals}
-            type="Bronze"
-            color={colors.bronze}
-          />
-        </View>
-      </View>
-
-      <View style={shareableStyles.footer}>
-        <ThemedText style={shareableStyles.footerText}>
-          Generated by MeetCal
-        </ThemedText>
+      {/* Branding row */}
+      <View style={shareableStyles.brandingRow}>
         <Image
           source={require("@/assets/images/MeetCal-no-bg.png")}
-          style={shareableStyles.logo}
+          style={shareableStyles.brandLogo}
           resizeMode="contain"
         />
+        <Text style={shareableStyles.brandName}>MeetCal</Text>
+        <View style={shareableStyles.brandDot} />
+        <Text style={shareableStyles.brandTag}>MEET RECAP</Text>
       </View>
+
+      {/* Gold separator */}
+      <View style={shareableStyles.goldSeparator} />
+
+      {/* Club + Meet name */}
+      <Text style={shareableStyles.clubName} numberOfLines={2}>
+        {club}
+      </Text>
+      <Text style={shareableStyles.meetName}>{meet}</Text>
+
+      {/* Medal Row */}
+      <View style={shareableStyles.medalRow}>
+        <ShareableMedalBlock count={stats.goldMedals} label="GOLD" emoji="🥇" borderColor="rgba(255,215,0,0.35)" />
+        <ShareableMedalBlock count={stats.silverMedals} label="SILVER" emoji="🥈" borderColor="rgba(192,192,192,0.2)" />
+        <ShareableMedalBlock count={stats.bronzeMedals} label="BRONZE" emoji="🥉" borderColor="rgba(205,127,50,0.2)" />
+      </View>
+
+      {/* Stats Grid */}
+      <View style={shareableStyles.statsGrid}>
+        <ShareableStatCard emoji="👥" value={stats.totalAthletes.toString()} label="ATHLETES" accentColor="#007AFF" />
+        <ShareableStatCard emoji="⚖️" value={`${Math.round(stats.totalWeightLifted)} kg`} label="TOTAL WEIGHT" accentColor="#AF52DE" />
+        <ShareableStatCard emoji="⭐" value={stats.totalPRs.toString()} label="COMP PRs" accentColor="#FF9500" />
+        <ShareableStatCard emoji="✅" value={stats.perfect6for6.toString()} label="PERFECT 6/6" accentColor="#34C759" />
+      </View>
+
     </View>
   );
 });
 
 ShareableRecapView.displayName = "ShareableRecapView";
 
-// Shareable Stat Card
-function ShareableStatCard({
-  title,
-  value,
-  emoji,
-}: {
-  title: string;
-  value: string;
-  emoji: string;
-}) {
-  return (
-    <View style={shareableStyles.statCard}>
-      <ThemedText style={shareableStyles.statEmoji}>
-        {emoji}
-      </ThemedText>
-      <ThemedText style={shareableStyles.statValue}>{value}</ThemedText>
-      <ThemedText style={shareableStyles.statTitle}>{title}</ThemedText>
-    </View>
-  );
-}
-
-// Shareable Medal View
-function ShareableMedalView({
+// Shareable Medal Block
+function ShareableMedalBlock({
   count,
-  type,
-  color,
+  label,
+  emoji,
+  borderColor,
 }: {
   count: number;
-  type: string;
-  color: string;
+  label: string;
+  emoji: string;
+  borderColor: string;
 }) {
+  const medalColors: Record<string, string> = {
+    GOLD: "#FFD700",
+    SILVER: "#C0C0C0",
+    BRONZE: "#CD7F32",
+  };
   return (
-    <View style={shareableStyles.medalItem}>
-      <View style={[shareableStyles.medalCircle, { backgroundColor: color }]}>
-        <ThemedText style={shareableStyles.medalCount}>{count}</ThemedText>
-      </View>
-      <ThemedText style={shareableStyles.medalType}>{type}</ThemedText>
+    <View style={[shareableStyles.medalBlock, { borderColor }]}>
+      <Text style={shareableStyles.medalBlockEmoji}>{emoji}</Text>
+      <Text style={[shareableStyles.medalBlockCount, { color: medalColors[label] ?? "#FFFFFF" }]}>
+        {count}
+      </Text>
+      <Text style={shareableStyles.medalBlockLabel}>{label}</Text>
     </View>
   );
 }
 
-// Image Preview Modal Component
+// Shareable Stat Card
+function ShareableStatCard({
+  emoji,
+  value,
+  label,
+  accentColor,
+}: {
+  emoji: string;
+  value: string;
+  label: string;
+  accentColor: string;
+}) {
+  return (
+    <View style={[shareableStyles.statCard, { borderTopColor: accentColor }]}>
+      <Text style={shareableStyles.statEmoji}>{emoji}</Text>
+      <Text style={shareableStyles.statValue}>{value}</Text>
+      <Text style={shareableStyles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// Image Preview Modal
 function ImagePreviewModal({
   visible,
   imageUri,
@@ -564,15 +570,14 @@ function ImagePreviewModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <ThemedView
-        style={[styles.modalContainer, { backgroundColor: colors.background }]}
-      >
+      <ThemedView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
         <View
           style={[
             styles.modalHeader,
             Platform.OS === "android" && {
               paddingTop: Math.max(insets.top, 12) + 12,
             },
+            { borderBottomColor: colors.border },
           ]}
         >
           <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
@@ -587,9 +592,7 @@ function ImagePreviewModal({
             ]}
             onPress={onClose}
           >
-            <ThemedText
-              style={{ color: colors.link, fontSize: 17, fontWeight: "600" }}
-            >
+            <ThemedText style={{ color: colors.link, fontSize: 17, fontWeight: "600" }}>
               Done
             </ThemedText>
           </Pressable>
@@ -603,15 +606,16 @@ function ImagePreviewModal({
                 style={styles.previewImage}
                 resizeMode="contain"
               />
-              <Pressable style={styles.shareButton} onPress={onShare}>
+              <Pressable
+                style={[styles.shareButton, { backgroundColor: colors.link, shadowColor: colors.link }]}
+                onPress={onShare}
+              >
                 <IconSymbol
                   name={Platform.OS === "ios" ? "square.and.arrow.up" : "share"}
                   size={20}
                   color="#FFFFFF"
                 />
-                <ThemedText style={styles.shareButtonText}>
-                  Share Recap
-                </ThemedText>
+                <ThemedText style={styles.shareButtonText}>Share Recap</ThemedText>
               </Pressable>
             </>
           )}
@@ -635,15 +639,19 @@ const styles = StyleSheet.create({
   backButton: {
     paddingVertical: 8,
     paddingRight: 12,
+    width: 44,
   },
-  topBarTitle: {
-    fontSize: 17,
-    fontWeight: "600",
+  topBarCenter: {
     flex: 1,
-    textAlign: "center",
+    alignItems: "center",
+  },
+  topBarLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 2,
   },
   topBarSpacer: {
-    width: 40,
+    width: 44,
   },
   scrollView: {
     flex: 1,
@@ -667,90 +675,103 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   retryButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },
-  header: {
-    paddingHorizontal: 20,
-    alignItems: "center",
+  // Hero banner
+  heroBanner: {
+    margin: 16,
+    marginBottom: 8,
+    padding: 24,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  heroAccentBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: "#FFD700",
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+  },
+  heroClubName: {
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    lineHeight: 34,
+  },
+  heroMeetName: {
+    fontSize: 15,
+    fontWeight: "500",
+    marginTop: 6,
+  },
+  medalChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
+    marginTop: 18,
   },
-  clubName: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-    paddingTop: 30,
+  medalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
   },
-  meetName: {
-    fontSize: 18,
-    fontWeight: "600",
-    textAlign: "center",
+  medalChipEmoji: {
+    fontSize: 16,
   },
+  medalChipCount: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  medalChipLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  // Stats grid
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    padding: 16,
-    gap: 16,
+    marginHorizontal: 16,
+    paddingTop: 8,
+    gap: 12,
   },
   statCard: {
-    width: "47%",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    gap: 8,
+    flex: 1,
+    minWidth: "45%",
+    padding: 18,
+    borderRadius: 16,
+    alignItems: "flex-start",
+    gap: 6,
+    borderTopWidth: 3,
   },
   statValue: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: -1,
+    lineHeight: 36,
     includeFontPadding: false,
-    fontWeight: "bold",
+    marginTop: 6,
   },
   statTitle: {
-    fontSize: 12,
-    color: "#8E8E93",
-  },
-  medalsContainer: {
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  sectionTitle: {
-    fontSize: 20,
+    fontSize: 11,
     fontWeight: "600",
-    marginBottom: 16,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
-  medalsRow: {
-    flexDirection: "row",
-    gap: 30,
-  },
-  medalItem: {
-    alignItems: "center",
-    gap: 8,
-  },
-  medalCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  medalCount: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-  },
-  medalType: {
-    fontSize: 12,
-    color: "#8E8E93",
-  },
+  // Share button
   shareButtonContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 8,
   },
   mainShareButton: {
     flexDirection: "row",
@@ -758,13 +779,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   mainShareButtonText: {
     color: "#FFFFFF",
@@ -776,6 +795,7 @@ const styles = StyleSheet.create({
     left: -10000,
     top: 0,
   },
+  // Modal
   modalContainer: {
     flex: 1,
   },
@@ -785,7 +805,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E1E1E1",
   },
   modalTitle: {
     fontSize: 17,
@@ -802,7 +821,7 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: "100%",
-    aspectRatio: 0.8,
+    aspectRatio: 800 / 720,
     borderRadius: 12,
   },
   shareButton: {
@@ -810,136 +829,147 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#007AFF",
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    borderRadius: 14,
     width: "100%",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   shareButtonText: {
     color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "600",
-    textAlign: "center",
   },
 });
 
-// Shareable view styles (for image generation)
+// Shareable image styles (dark premium, 800x1000)
 const shareableStyles = StyleSheet.create({
   container: {
     width: 800,
-    height: 1000,
-    backgroundColor: "#FFFFFF",
-    padding: 0,
+    height: 900,
+    backgroundColor: "#0A0A0F",
+    padding: 50,
+    overflow: "hidden",
   },
-  header: {
-    paddingVertical: 40,
+  brandingRow: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    marginBottom: 20,
+  },
+  brandLogo: {
+    width: 22,
+    height: 22,
+  },
+  brandName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  brandDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#FFD700",
+  },
+  brandTag: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#8E8E93",
+    letterSpacing: 2,
+  },
+  goldSeparator: {
+    height: 2,
+    backgroundColor: "#FFD700",
+    opacity: 0.6,
+    borderRadius: 1,
+    marginBottom: 24,
   },
   clubName: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "#000000",
-    textAlign: "center",
-    lineHeight: 42,
+    fontSize: 52,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -1.5,
+    lineHeight: 58,
+    marginBottom: 8,
   },
   meetName: {
-    fontSize: 24,
-    fontWeight: "600",
-    color: "#007AFF",
-    textAlign: "center",
-    lineHeight: 30,
+    fontSize: 20,
+    fontWeight: "500",
+    color: "#8E8E93",
+    letterSpacing: 0.2,
+    marginBottom: 24,
   },
+  // Medals
+  medalRow: {
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 24,
+  },
+  medalBlock: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+  },
+  medalBlockEmoji: {
+    fontSize: 36,
+    lineHeight: 40,
+  },
+  medalBlockCount: {
+    fontSize: 48,
+    fontWeight: "900",
+    lineHeight: 52,
+    includeFontPadding: false,
+    letterSpacing: -1,
+  },
+  medalBlockLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#8E8E93",
+    letterSpacing: 1.5,
+  },
+  // Stats grid
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: 30,
-    gap: 20,
     justifyContent: "space-between",
+    rowGap: 14,
+    marginBottom: 24,
   },
   statCard: {
-    width: "47%",
-    paddingVertical: 30,
-    backgroundColor: "#F2F2F7",
+    width: "49%",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 16,
-    alignItems: "center",
-    gap: 12,
-  },
-  statEmoji: {
-    fontSize: 48,
-    lineHeight: 54,
-  },
-  statValue: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "#000000",
-    lineHeight: 42,
-  },
-  statTitle: {
-    fontSize: 14,
-    color: "#8E8E93",
-    lineHeight: 18,
-  },
-  medalsContainer: {
-    marginTop: 30,
-    marginHorizontal: 30,
-    padding: 20,
-    backgroundColor: "#F2F2F7",
-    borderRadius: 20,
-    alignItems: "center",
-  },
-  medalsTitle: {
-    fontSize: 28,
-    fontWeight: "600",
-    color: "#000000",
-    marginBottom: 20,
-    lineHeight: 34,
-  },
-  medalsRow: {
-    flexDirection: "row",
-    gap: 50,
-    paddingBottom: 20,
-  },
-  medalItem: {
-    alignItems: "center",
-    gap: 12,
-  },
-  medalCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  medalCount: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-    lineHeight: 42,
-  },
-  medalType: {
-    fontSize: 16,
-    color: "#8E8E93",
-    lineHeight: 20,
-  },
-  footer: {
-    position: "absolute",
-    bottom: 30,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    borderTopWidth: 3,
     gap: 8,
   },
-  footerText: {
-    fontSize: 14,
-    color: "#8E8E93",
-    lineHeight: 18,
+  statEmoji: {
+    fontSize: 30,
+    lineHeight: 34,
   },
-  logo: {
-    width: 30,
-    height: 30,
+  statValue: {
+    fontSize: 40,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -1,
+    lineHeight: 44,
+    includeFontPadding: false,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#8E8E93",
+    letterSpacing: 1.2,
   },
 });
