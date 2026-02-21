@@ -1,0 +1,1 @@
+/Users/maddisenmohnsen/Desktop/meetcal/migration/run_lifting.sh: line 4: 16753 Terminated: 15          python3 migration/import_all.py --table lifting_results > /tmp/migration_lifting2.log 2>&1

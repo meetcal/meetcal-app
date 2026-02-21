@@ -29,8 +29,8 @@ jobs:
       
       - name: Run automated scraper (processes Men and Women PDFs)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          SCRAPER_SECRET: ${{ secrets.SCRAPER_SECRET }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WSO_WEBHOOK_URL }}
         run: |
           python auto_scrapers/scraper_mountainsouth_auto.py

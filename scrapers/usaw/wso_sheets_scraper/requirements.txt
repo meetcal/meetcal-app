@@ -1,5 +1,5 @@
 gspread==6.1.2
-supabase==2.7.4
+convex==0.7.0
 requests==2.32.3
 python-dotenv==1.0.1
 PyPDF2==3.0.1

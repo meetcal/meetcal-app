@@ -36,6 +36,6 @@ jobs:
       - name: Run scraper
         run: node csv_scraper.js
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          SCRAPER_SECRET: ${{ secrets.SCRAPER_SECRET }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_ENTRY_WEBHOOK_URL }} 

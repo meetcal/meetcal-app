@@ -48,8 +48,8 @@ class IWFWorldRecordsScraper:
         })
         
         # Environment variables
-        self.supabase_url = os.getenv('SUPABASE_URL')
-        self.supabase_key = os.getenv('SUPABASE_KEY')
+        self.convex_url = os.getenv('CONVEX_URL')
+        self.scraper_secret = os.getenv('SCRAPER_SECRET')
         self.slack_webhook = os.getenv('SLACK_IWF_RECORDS_WEBHOOK_URL')
         
         # Dry run mode
@@ -203,22 +203,8 @@ class IWFWorldRecordsScraper:
         return filepath
     
     def get_existing_records(self) -> List[Dict]:
-        """Fetch existing records from Supabase"""
-        if not self.supabase_url or not self.supabase_key:
-            return []
-        
-        try:
-            from supabase import create_client
-            
-            client = create_client(self.supabase_url, self.supabase_key)
-            table_name = 'records'
-            
-            result = client.table(table_name).select("*").execute()
-            return result.data if hasattr(result, 'data') else []
-            
-        except Exception as e:
-            print(f"Warning: Could not fetch existing records: {e}")
-            return []
+        """Stub: existing record comparison not needed with Convex upsert."""
+        return []
     
     def compare_records(self, new_records: List[Dict], existing_records: List[Dict]) -> Dict:
         """Compare new records with existing records"""
@@ -307,53 +293,56 @@ class IWFWorldRecordsScraper:
         
         print("\n" + "=" * 80)
     
-    def upsert_to_supabase(self, records: List[Dict]) -> Dict:
-        """Upsert records to Supabase table"""
-        if not self.supabase_url or not self.supabase_key:
-            return {"status": "skipped", "message": "Supabase credentials not configured"}
-        
+    def upsert_to_convex(self, records: List[Dict]) -> Dict:
+        """Replace all IWF records in Convex via scraperIngestion:replaceIWFRecords."""
+        if not self.convex_url or not self.scraper_secret:
+            return {"status": "skipped", "message": "CONVEX_URL or SCRAPER_SECRET not configured"}
+
+        existing_records = self.get_existing_records()
+        changes = self.compare_records(records, existing_records)
+
+        if self.dry_run:
+            self.print_dry_run_summary(records, changes)
+            return {
+                "status": "dry_run",
+                "records_upserted": 0,
+                "message": f"DRY RUN: Would replace {len(records)} IWF records",
+                "changes": changes
+            }
+
         try:
-            from supabase import create_client
-            
-            client = create_client(self.supabase_url, self.supabase_key)
-            table_name = 'records'
-            
-            # Get existing records for comparison (filter for IWF records only)
-            existing_records = self.get_existing_records()
-            # Filter to only IWF records for comparison
-            existing_iwf_records = [r for r in existing_records if r.get('record_type') == 'IWF']
-            changes = self.compare_records(records, existing_iwf_records)
-            
-            # If dry run, just show what would happen
-            if self.dry_run:
-                self.print_dry_run_summary(records, changes)
-                return {
-                    "status": "dry_run",
-                    "records_upserted": 0,
-                    "message": f"DRY RUN: Would upsert {len(records)} records "
-                              f"({len(changes['new'])} new, {len(changes['modified'])} modified)",
-                    "changes": changes
+            from convex import ConvexClient
+
+            client = ConvexClient(self.convex_url)
+
+            # Bulk replace: delete all IWF records then insert new ones atomically
+            convex_records = [
+                {
+                    "recordType": r['record_type'],
+                    "ageCategory": r['age_category'],
+                    "gender": r['gender'],
+                    "weightClass": r['weight_class'],
+                    "snatchRecord": float(r['snatch_record']) if r.get('snatch_record') else None,
+                    "cjRecord": float(r['cj_record']) if r.get('cj_record') else None,
+                    "totalRecord": float(r['total_record']) if r.get('total_record') else None,
                 }
-            
-            # Delete only IWF records (not all records)
-            print("Clearing existing IWF records...")
-            client.table(table_name).delete().eq('record_type', 'IWF').execute()
-            
-            # Insert new records
-            print(f"Inserting {len(records)} records...")
-            client.table(table_name).insert(records).execute()
-            
+                for r in records
+            ]
+            print(f"Replacing {len(convex_records)} IWF records in Convex...")
+            result = client.action("scraperIngestion:replaceIWFRecords", {
+                "scraperSecret": self.scraper_secret,
+                "records": convex_records,
+            })
+            print(f"✅ Replaced IWF records: {result}")
+
             return {
                 "status": "success",
                 "records_upserted": len(records),
-                "message": f"Successfully upserted {len(records)} records",
+                "message": f"Successfully replaced {len(records)} IWF records",
                 "changes": changes
             }
-            
-        except ImportError:
-            return {"status": "error", "message": "supabase-py library not installed"}
         except Exception as e:
-            return {"status": "error", "message": f"Supabase error: {str(e)}"}
+            return {"status": "error", "message": f"Convex error: {str(e)}"}
     
     def send_slack_notification(self, records_count: int, upsert_result: Dict) -> bool:
         """Send Slack notification with results"""
@@ -479,9 +468,9 @@ class IWFWorldRecordsScraper:
         
         # Step 2: Compare with Supabase (dry run) or Save CSV (normal mode)
         if self.dry_run:
-            print(f"\n[{step_num}/{total_steps}] Comparing with Supabase...")
-            upsert_result = self.upsert_to_supabase(records)
-            
+            print(f"\n[{step_num}/{total_steps}] Dry run (no DB writes)...")
+            upsert_result = self.upsert_to_convex(records)
+
             if upsert_result['status'] == 'dry_run':
                 print(f"✅ {upsert_result['message']}")
             elif upsert_result['status'] == 'skipped':
@@ -489,39 +478,39 @@ class IWFWorldRecordsScraper:
             else:
                 print(f"❌ {upsert_result['message']}")
         else:
-            # Normal mode: save CSV, upsert, and notify
+            # Normal mode: save CSV, upsert to Convex, notify
             print(f"\n[{step_num}/{total_steps}] Saving to CSV...")
             try:
                 self.save_to_csv(records)
             except Exception as e:
                 print(f"⚠️  Error saving CSV: {e}")
-            
+
             step_num += 1
-            
-            # Step 3: Upsert to Supabase
-            print(f"\n[{step_num}/{total_steps}] Upserting to Supabase...")
-            upsert_result = self.upsert_to_supabase(records)
-            
+
+            # Step 3: Replace IWF records in Convex
+            print(f"\n[{step_num}/{total_steps}] Replacing IWF records in Convex...")
+            upsert_result = self.upsert_to_convex(records)
+
             if upsert_result['status'] == 'success':
                 print(f"✅ {upsert_result['message']}")
             elif upsert_result['status'] == 'skipped':
                 print(f"⚠️  {upsert_result['message']}")
             else:
                 print(f"❌ {upsert_result['message']}")
-            
+
             step_num += 1
-            
+
             # Step 4: Send Slack notification
             print(f"\n[{step_num}/{total_steps}] Sending Slack notification...")
             self.send_slack_notification(len(records), upsert_result)
-        
+
         # Summary
         print("\n" + "=" * 60)
         print("Pipeline Complete!")
         print("=" * 60)
         print(f"Records scraped: {len(records)}")
         if not self.dry_run:
-            print(f"Supabase status: {upsert_result['status']}")
+            print(f"Convex status: {upsert_result['status']}")
         print("=" * 60)
         
         return 0

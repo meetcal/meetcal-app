@@ -26,8 +26,8 @@ jobs:
       
       - name: Run Sport80 sync script
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          SCRAPER_SECRET: ${{ secrets.SCRAPER_SECRET }}
           SLACK_BWL_RESULTS_WEBHOOK_URL: ${{ secrets.SLACK_BWL_RESULTS_WEBHOOK_URL }}
         run: |
           cd scrapers/bwl/sport80_api
