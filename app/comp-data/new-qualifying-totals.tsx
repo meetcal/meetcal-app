@@ -48,7 +48,7 @@ export default function QualifyingTotalsScreen() {
     if (!eventData) return [];
     const ageData = eventData[filters.ageGroup];
     if (!ageData) return [];
-    const genderData = ageData[filters.gender];
+    const genderData = ageData[filters.gender as 'Men' | 'Women'];
     if (!genderData) return [];
     // genderData is now { [weightClass]: number }
     return Object.entries(genderData).map(([weightClass, qt]) => ({

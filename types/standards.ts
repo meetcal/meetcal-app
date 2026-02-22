@@ -13,8 +13,9 @@ export type Gender = "men" | "women";
 export type AgeGroup = "senior" | "junior" | "youth" | "u15";
 
 export interface Filters {
-  gender: Gender;
-  ageGroup: AgeGroup;
+  [key: string]: string;
+  gender: string;
+  ageGroup: string;
 }
 
 export interface StandardsData {

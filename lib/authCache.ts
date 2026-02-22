@@ -125,7 +125,7 @@ export function useCachedAuth() {
         if (hasNetwork) {
           // Only update cache when we have network connectivity
           // This ensures we're caching verified online auth state
-          await cacheAuthState(isSignedIn, userId);
+          await cacheAuthState(isSignedIn, userId ?? undefined);
 
           // Update local state
           const updated = await getCachedAuthState();

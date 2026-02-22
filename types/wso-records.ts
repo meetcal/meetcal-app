@@ -1,7 +1,8 @@
 export type Gender = "Men" | "Women";
 
 export interface Filters {
+  [key: string]: string;
   wso: string;
-  gender: Gender;
+  gender: string;
   ageGroup: string;
 }

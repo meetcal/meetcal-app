@@ -7,7 +7,7 @@ type WSORecordsCache = Record<string, RecordsData>;
 type WSORecordRow = {
   ageCategory: string;
   gender: 'Men' | 'Women';
-  weight_class: string;
+  weightClass: string;
   snatchRecord: number | null;
   cjRecord: number | null;
   totalRecord: number | null;
@@ -61,7 +61,7 @@ export async function fetchWSORecords(
         wso,
         ageCategory: ageGroup,
         gender,
-      })) as WSORecordRow[];
+      })) as unknown as WSORecordRow[];
 
       const ageGroups = Array.from(new Set(rows.map((row) => row.ageCategory)));
 
@@ -77,7 +77,7 @@ export async function fetchWSORecords(
         if (genderKey !== 'Men' && genderKey !== 'Women') return;
 
         result[ageKey][genderKey].push({
-          weightClass: row.weight_class,
+          weightClass: row.weightClass,
           snatchRecord: row.snatchRecord ?? 0,
           cjRecord: row.cjRecord ?? 0,
           totalRecord: row.totalRecord ?? 0,
@@ -165,7 +165,7 @@ export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
 
   const request = (async () => {
     try {
-      const rows = (await convex.query(api.wsoRecords.getByWso, { wso })) as WSORecordRow[];
+      const rows = (await convex.query(api.wsoRecords.getByWso, { wso })) as unknown as WSORecordRow[];
       const ageGroups = Array.from(new Set(rows.map((r) => r.ageCategory))).filter(Boolean) as string[];
       wsoAgeGroupsMemoryCache.set(wso, ageGroups);
       return ageGroups;

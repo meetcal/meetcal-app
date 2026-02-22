@@ -73,7 +73,7 @@ export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> 
   const request = (async () => {
     try {
     // First get all athletes from this club
-    const allAthletes = await convex.query(api.athletes.getByClub, { club }) as AthleteClub[];
+    const allAthletes = await convex.query(api.athletes.getByClub, { club }) as unknown as AthleteClub[];
 
     // Get the unique meets from these athletes
     const uniqueMeets = Array.from(new Set(allAthletes.map(a => a.meet)));
@@ -126,7 +126,7 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
   const request = (async () => {
     try {
     // Step 1: Get all athletes from this club at this meet
-    const clubAthletes = await convex.query(api.athletes.getByClubAndMeet, { club, meet }) as AthleteInfo[];
+    const clubAthletes = await convex.query(api.athletes.getByClubAndMeet, { club, meet }) as unknown as AthleteInfo[];
     const athleteNames = clubAthletes.map(a => a.name);
 
     if (athleteNames.length === 0) {
@@ -149,8 +149,8 @@ export async function fetchClubMeetStats(club: string, meet: string): Promise<Cl
     ]);
 
     // Club athletes' results at this meet
-    const results = allMeetLiftingRaw.filter(r => athleteNames.includes(r.name)) as AthleteResult[];
-    const allMeetResults = allMeetLiftingRaw as AthleteResult[];
+    const results = allMeetLiftingRaw.filter(r => athleteNames.includes(r.name)) as unknown as AthleteResult[];
+    const allMeetResults = allMeetLiftingRaw as unknown as AthleteResult[];
 
     // Step 5: Get historical results for PR calculations
     const firstDate = results.length > 0 ? (results[0] as any).date : new Date().toISOString();
