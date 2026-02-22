@@ -3,7 +3,7 @@ name: Standards Scraper
 on:
   schedule:
     # Run daily at 7:00 AM UTC (2:00 AM EST)
-    - cron: '30 2 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
