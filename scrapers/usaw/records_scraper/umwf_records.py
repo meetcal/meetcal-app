@@ -29,11 +29,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from io import StringIO
 
-try:
-    from supabase import create_client, Client
-except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
-    sys.exit(1)
+from convex import ConvexClient
 
 # Load environment variables
 load_dotenv()
@@ -78,19 +74,16 @@ class UMWFRecordsScraper:
 
     def __init__(self):
         """Initialize the scraper."""
-        self.supabase: Optional[Client] = None
+        self.convex_client: Optional[ConvexClient] = None
         self.slack_webhook_url: Optional[str] = None
 
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
-
-        self.supabase = create_client(supabase_url, supabase_key)
-        print("* Supabase client initialized")
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        convex_url = os.getenv("CONVEX_URL")
+        if not convex_url:
+            raise ValueError("CONVEX_URL must be set in .env")
+        self.convex_client = ConvexClient(convex_url)
+        print("* Convex client initialized")
 
     def setup_slack(self):
         """Initialize Slack webhook."""
@@ -289,166 +282,54 @@ class UMWFRecordsScraper:
         print(f"* Exported {len(records)} records to {filename}")
 
     def dry_run(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Perform a dry run - show what would be inserted/updated without making changes.
-
-        Returns:
-            Dictionary with summary of changes
-        """
+        """Perform a dry run - show what would be upserted without making changes."""
         print("\n" + "="*60)
         print("DRY RUN - No database changes will be made")
         print("="*60 + "\n")
 
-        if not self.supabase:
-            self.setup_supabase_client()
-
-        to_insert = []
-        to_update = []
-        unchanged = []
-
-        for record in records:
-            # Check if record exists
-            existing = self.supabase.table('records').select('*').eq(
-                'record_type', record['record_type']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-
-            if existing.data:
-                # Record exists - check if update is needed
-                db_record = existing.data[0]
-
-                changed = False
-                changes = {}
-
-                if db_record.get('snatch_record') != record['snatch_record']:
-                    changed = True
-                    changes['snatch_record'] = {
-                        'old': db_record.get('snatch_record'),
-                        'new': record['snatch_record']
-                    }
-
-                if db_record.get('cj_record') != record['cj_record']:
-                    changed = True
-                    changes['cj_record'] = {
-                        'old': db_record.get('cj_record'),
-                        'new': record['cj_record']
-                    }
-
-                if db_record.get('total_record') != record['total_record']:
-                    changed = True
-                    changes['total_record'] = {
-                        'old': db_record.get('total_record'),
-                        'new': record['total_record']
-                    }
-
-                if changed:
-                    to_update.append({
-                        'record': record,
-                        'changes': changes
-                    })
-                else:
-                    unchanged.append(record)
-            else:
-                # New record
-                to_insert.append(record)
-
-        # Print summary
-        print(f"Summary:")
-        print(f"  New records to insert: {len(to_insert)}")
-        print(f"  Records to update: {len(to_update)}")
-        print(f"  Unchanged records: {len(unchanged)}")
-        print(f"  Total records processed: {len(records)}\n")
-
-        # Print details
-        if to_insert:
-            print("Records to INSERT:")
-            for record in to_insert[:10]:  # Show first 10
-                print(f"  + {record['age_category']} {record['gender']} {record['weight_class']}: "
-                      f"Snatch={record['snatch_record']}, CJ={record['cj_record']}, Total={record['total_record']}")
-            if len(to_insert) > 10:
-                print(f"  ... and {len(to_insert) - 10} more")
-            print()
-
-        if to_update:
-            print("Records to UPDATE:")
-            for item in to_update[:10]:  # Show first 10
-                record = item['record']
-                changes = item['changes']
-                change_str = ", ".join([
-                    f"{k}: {v['old']} -> {v['new']}"
-                    for k, v in changes.items()
-                ])
-                print(f"  ~ {record['age_category']} {record['gender']} {record['weight_class']}: {change_str}")
-            if len(to_update) > 10:
-                print(f"  ... and {len(to_update) - 10} more")
-            print()
+        print(f"Would upsert {len(records)} records to Convex:")
+        for record in records[:20]:
+            print(f"  {record['age_category']} {record['gender']} {record['weight_class']}: "
+                  f"Snatch={record['snatch_record']}, CJ={record['cj_record']}, Total={record['total_record']}")
+        if len(records) > 20:
+            print(f"  ... and {len(records) - 20} more")
 
         return {
-            'to_insert': to_insert,
-            'to_update': to_update,
-            'unchanged': unchanged,
+            'to_insert': records,
+            'to_update': [],
+            'unchanged': [],
             'total': len(records)
         }
 
-    def upsert_to_supabase(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Upsert records to Supabase.
+    def upsert_to_convex(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Upsert records to Convex via scraperIngestion:ingestRecord."""
+        if not self.convex_client:
+            self.setup_convex_client()
 
-        Returns:
-            Dictionary with 'inserted' and 'updated' lists
-        """
-        if not self.supabase:
-            self.setup_supabase_client()
+        scraper_secret = os.getenv("SCRAPER_SECRET")
+        if not scraper_secret:
+            raise ValueError("SCRAPER_SECRET must be set in .env")
 
         inserted = []
-        updated = []
 
         for record in records:
-            # Check if record exists
-            existing = self.supabase.table('records').select('*').eq(
-                'record_type', record['record_type']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-
-            if existing.data:
-                # Update existing record
-                db_record = existing.data[0]
-                record_id = db_record['id']
-
-                # Check if any values changed
-                changed = False
-                if db_record.get('snatch_record') != record['snatch_record']:
-                    changed = True
-                if db_record.get('cj_record') != record['cj_record']:
-                    changed = True
-                if db_record.get('total_record') != record['total_record']:
-                    changed = True
-
-                if changed:
-                    self.supabase.table('records').update({
-                        'snatch_record': record['snatch_record'],
-                        'cj_record': record['cj_record'],
-                        'total_record': record['total_record']
-                    }).eq('id', record_id).execute()
-                    updated.append(record)
-                    print(f"  * Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
-            else:
-                # Insert new record
-                self.supabase.table('records').insert(record).execute()
+            try:
+                self.convex_client.action("scraperIngestion:ingestRecord", {
+                    "scraperSecret": scraper_secret,
+                    "recordType": record['record_type'],
+                    "ageCategory": record['age_category'],
+                    "gender": record['gender'],
+                    "weightClass": record['weight_class'],
+                    "snatchRecord": record.get('snatch_record') or None,
+                    "cjRecord": record.get('cj_record') or None,
+                    "totalRecord": record.get('total_record') or None,
+                })
                 inserted.append(record)
-                print(f"  * Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+                print(f"  * Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+            except Exception as e:
+                print(f"  x Error: {record['age_category']} {record['gender']} {record['weight_class']}: {e}")
 
-        return {'inserted': inserted, 'updated': updated}
+        return {'inserted': inserted, 'updated': []}
 
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""
@@ -517,8 +398,8 @@ class UMWFRecordsScraper:
         # Export to CSV
         self.export_to_csv(records)
 
-        # Setup Supabase (needed for both dry-run to check existing records and full run)
-        self.setup_supabase_client()
+        # Setup Convex client
+        self.setup_convex_client()
 
         # Setup Slack for notifications (works in both modes)
         self.setup_slack()
@@ -526,18 +407,17 @@ class UMWFRecordsScraper:
         # Process records
         if dry_run:
             result = self.dry_run(records)
-            # Send Slack notification for dry-run
             self.send_slack_notification(
                 result['to_insert'],
-                [item['record'] for item in result['to_update']],
+                [],
                 is_dry_run=True
             )
         else:
             print("\n" + "="*60)
             print("UPDATING DATABASE")
             print("="*60 + "\n")
-            result = self.upsert_to_supabase(records)
-            print(f"\n* Complete: {len(result['inserted'])} inserted, {len(result['updated'])} updated")
+            result = self.upsert_to_convex(records)
+            print(f"\n* Complete: {len(result['inserted'])} upserted")
 
             # Send Slack notification
             self.send_slack_notification(result['inserted'], result['updated'])

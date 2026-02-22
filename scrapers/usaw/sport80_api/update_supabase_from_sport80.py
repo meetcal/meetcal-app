@@ -150,7 +150,7 @@ def main():
 
     client = ConvexClient(CONVEX_URL)
     sport80_api = SportEighty(subdomain=USAW_DOMAIN, return_dict=True, debug=logging.WARNING)
-    recent_sport80_events_data = fetch_recent_events_from_sport80(sport80_api, num_events=20)
+    recent_sport80_events_data = fetch_recent_events_from_sport80(sport80_api, num_events=30)
 
     if not recent_sport80_events_data:
         logging.info("No recent events fetched from Sport80. Exiting.")
