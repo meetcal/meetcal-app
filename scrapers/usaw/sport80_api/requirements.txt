@@ -1,3 +1,4 @@
 pylint
 requests
 beautifulsoup4
+convex>=0.7.0

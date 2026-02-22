@@ -3,7 +3,7 @@ name: Records Scraper
 on:
   schedule:
     # Run daily at 8:00 AM UTC (3:00 AM EST)
-    - cron: '35 2 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:

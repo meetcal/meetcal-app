@@ -2,7 +2,7 @@ name: Scrape USAMW Events
 
 on:
   schedule:
-    - cron: '0 5 * * *'  # Run daily at 05:00 UTC
+    - cron: '0 4 * * *'  # Run daily at 05:00 UTC
   workflow_dispatch:  # Allow manual triggering
 
 jobs:

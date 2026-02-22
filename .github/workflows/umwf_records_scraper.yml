@@ -2,7 +2,7 @@ name: UMWF Records Scraper
 
 on:
   schedule:
-    - cron: '50 4 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:

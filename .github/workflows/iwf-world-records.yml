@@ -3,7 +3,7 @@ name: Daily IWF World Records Scrape
 on:
   schedule:
     # Run daily at 8:00 AM UTC
-    - cron: '0 3 * * *'
+    - cron: '0 4  * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
