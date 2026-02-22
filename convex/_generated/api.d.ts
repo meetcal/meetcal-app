@@ -23,7 +23,6 @@ import type * as savedSessions from "../savedSessions.js";
 import type * as schedule from "../schedule.js";
 import type * as scraperIngestion from "../scraperIngestion.js";
 import type * as standards from "../standards.js";
-import type * as worldRecords from "../worldRecords.js";
 import type * as wsoRecords from "../wsoRecords.js";
 
 import type {
@@ -48,7 +47,6 @@ declare const fullApi: ApiFromModules<{
   schedule: typeof schedule;
   scraperIngestion: typeof scraperIngestion;
   standards: typeof standards;
-  worldRecords: typeof worldRecords;
   wsoRecords: typeof wsoRecords;
 }>;
 

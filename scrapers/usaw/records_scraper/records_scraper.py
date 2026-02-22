@@ -479,10 +479,11 @@ class RecordsScraper:
         if not self.convex:
             self.setup_convex_client()
 
-        upserted = []
+        inserted = []
+        updated = []
 
         for record in records:
-            self.convex.action("scraperIngestion:ingestRecord", {
+            result = self.convex.action("scraperIngestion:ingestRecord", {
                 "scraperSecret": self.scraper_secret,
                 "recordType": record['record_type'],
                 "ageCategory": record['age_category'],
@@ -492,10 +493,13 @@ class RecordsScraper:
                 "cjRecord": float(record['cj_record']) if record.get('cj_record') else None,
                 "totalRecord": float(record['total_record']) if record.get('total_record') else None,
             })
-            upserted.append(record)
+            if result.get('wasInsert'):
+                inserted.append(record)
+            else:
+                updated.append(record)
             print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
 
-        return {'inserted': upserted, 'updated': []}
+        return {'inserted': inserted, 'updated': updated}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""

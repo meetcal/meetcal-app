@@ -377,10 +377,11 @@ class StandardsScraper:
         if not self.convex:
             self.setup_convex_client()
         
-        upserted = []
-        
+        inserted = []
+        updated = []
+
         for standard in standards:
-            self.convex.action("scraperIngestion:ingestStandard", {
+            result = self.convex.action("scraperIngestion:ingestStandard", {
                 "scraperSecret": self.scraper_secret,
                 "ageCategory": standard['age_category'],
                 "gender": standard['gender'],
@@ -388,10 +389,13 @@ class StandardsScraper:
                 "standardA": standard['standard_a'],
                 "standardB": standard['standard_b'],
             })
-            upserted.append(standard)
+            if result.get('wasInsert'):
+                inserted.append(standard)
+            else:
+                updated.append(standard)
             print(f"  ✓ Upserted: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
-        
-        return {'upserted': upserted}
+
+        return {'inserted': inserted, 'updated': updated}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""
@@ -485,10 +489,10 @@ class StandardsScraper:
             print("="*60 + "\n")
             self.setup_convex_client()
             result = self.upsert_to_convex(standards)
-            print(f"\n✓ Complete: {len(result['upserted'])} upserted")
-            
+            print(f"\n✓ Complete: {len(result['inserted'])} inserted, {len(result['updated'])} updated")
+
             # Send Slack notification
-            self.send_slack_notification(result['upserted'], [])
+            self.send_slack_notification(result['inserted'], result['updated'])
 
 
 def main():

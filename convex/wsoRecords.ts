@@ -62,9 +62,10 @@ export const upsertWSORecord = internalMutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, args);
-      return existing._id;
+      return { id: existing._id, wasInsert: false };
     }
-    return ctx.db.insert("wso_records", args);
+    const id = await ctx.db.insert("wso_records", args);
+    return { id, wasInsert: true };
   },
 });
 
