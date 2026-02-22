@@ -3,7 +3,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import React, { useState } from "react";
 import {
-  Dimensions,
+  useWindowDimensions,
   Modal,
   Pressable,
   ScrollView,
@@ -66,7 +66,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const prevTempFiltersRef = React.useRef<Record<string, string>>({});
   const pendingDependencyResetRef = React.useRef<Record<string, boolean>>({});
 
-  const windowHeight = Dimensions.get("window").height;
+  const { height: windowHeight } = useWindowDimensions();
   const maxOptionsHeight = windowHeight * 0.4;
 
   // Initialize temp filters when modal opens (only on visibility change)

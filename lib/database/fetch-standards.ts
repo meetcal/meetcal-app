@@ -1,13 +1,14 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { StandardsData } from '@/types/standards';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type StandardsRow = {
-  age_category: keyof StandardsData;
+  ageCategory: keyof StandardsData;
   gender: 'men' | 'women';
-  weight_class: string;
-  standard_a: number | null;
-  standard_b: number | null;
+  weightClass: string;
+  standardA: number | null;
+  standardB: number | null;
 };
 
 const standardsMemoryCache: { data: StandardsData | null } = { data: null };
@@ -59,13 +60,13 @@ function mapRows(rows: StandardsRow[]): StandardsData {
   };
 
   rows.forEach((row) => {
-    const ageKey = row.age_category;
+    const ageKey = row.ageCategory;
     const genderKey = row.gender;
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
-      weightClass: row.weight_class,
-      a: row.standard_a ?? 0,
-      b: row.standard_b ?? 0,
+      weightClass: row.weightClass,
+      a: row.standardA ?? 0,
+      b: row.standardB ?? 0,
     });
   });
 
@@ -78,7 +79,7 @@ function mapRows(rows: StandardsRow[]): StandardsData {
 }
 
 /**
- * Fetches standards data from Supabase and organizes it into the StandardsData shape.
+ * Fetches standards data from Convex and organizes it into the StandardsData shape.
  * If ageGroup and gender are provided, fetches only that subset.
  */
 export async function fetchStandards(
@@ -96,16 +97,12 @@ export async function fetchStandards(
   const cacheKey = OFFLINE_CACHE_KEYS.standards;
   const request = (async () => {
     try {
-      let query = supabase
-        .from('standards')
-        .select('age_category, gender, weight_class, standard_a, standard_b');
-      if (ageGroup) query = query.eq('age_category', ageGroup);
-      if (gender) query = query.eq('gender', gender);
+      const rows = await convex.query(api.standards.getFiltered, {
+        ageCategory: ageGroup,
+        gender,
+      });
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const result = mapRows((data || []) as StandardsRow[]);
+      const result = mapRows(rows as StandardsRow[]);
       if (!ageGroup && !gender) {
         standardsMemoryCache.data = result;
         await setOfflineCache(cacheKey, result);

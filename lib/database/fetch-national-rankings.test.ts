@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase";
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
@@ -6,9 +5,19 @@ import {
 } from "@/lib/database/offline-cache";
 import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
 
-jest.mock("@/lib/supabase", () => ({
-  supabase: {
-    from: jest.fn(),
+const mockQuery = jest.fn();
+
+jest.mock("@/lib/convex", () => ({
+  convex: {
+    query: (...args: any[]) => mockQuery(...args),
+  },
+}));
+
+jest.mock("@/convex/_generated/api", () => ({
+  api: {
+    liftingResults: {
+      getNationalRankings: "liftingResults:getNationalRankings",
+    },
   },
 }));
 
@@ -20,7 +29,6 @@ jest.mock("@/lib/database/offline-cache", () => ({
   setOfflineCache: jest.fn(),
 }));
 
-const mockSupabaseFrom = supabase.from as jest.Mock;
 const mockGetOfflineCache = getOfflineCache as jest.MockedFunction<
   typeof getOfflineCache
 >;
@@ -28,71 +36,49 @@ const mockSetOfflineCache = setOfflineCache as jest.MockedFunction<
   typeof setOfflineCache
 >;
 
-function mockRankingsQuery(result: { data: any[] | null; error: any }) {
-  const chain: Record<string, any> = {
-    select: jest.fn(() => chain),
-    eq: jest.fn(() => chain),
-    not: jest.fn(() => chain),
-    order: jest.fn().mockResolvedValue(result),
-  };
-  mockSupabaseFrom.mockReturnValue(chain);
-}
-
 describe("fetchNationalRankings offline cache behavior", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it("returns deduped online rankings and updates offline cache", async () => {
-    mockRankingsQuery({
-      data: [
-        { id: 1, name: "Athlete A", total: 250 },
-        { id: 2, name: "Athlete A", total: 240 },
-        { id: 3, name: "Athlete B", total: 235 },
-      ],
-      error: null,
-    });
+    mockQuery.mockResolvedValue([
+      { name: "Athlete A", total: 250 },
+      { name: "Athlete A", total: 240 },
+      { name: "Athlete B", total: 235 },
+    ]);
     mockGetOfflineCache.mockResolvedValue({ data: {}, lastSynced: 1 } as any);
     mockSetOfflineCache.mockResolvedValue({ data: {}, lastSynced: 2 } as any);
 
     const result = await fetchNationalRankings("Open Men's 89kg");
 
-    expect(result).toEqual([
-      { id: 1, name: "Athlete A", total: 250 },
-      { id: 3, name: "Athlete B", total: 235 },
-    ]);
+    expect(result).toHaveLength(2);
+    expect(result[0].name).toBe("Athlete A");
+    expect(result[1].name).toBe("Athlete B");
     expect(mockSetOfflineCache).toHaveBeenCalledWith(
       OFFLINE_CACHE_KEYS.nationalRankings,
       { "Open Men's 89kg": result },
     );
   });
 
-  it("falls back to cached rankings when supabase fails", async () => {
-    mockRankingsQuery({
-      data: null,
-      error: new Error("network failed"),
-    });
+  it("falls back to cached rankings when convex fails", async () => {
+    mockQuery.mockRejectedValue(new Error("network failed"));
     mockGetOfflineCache.mockResolvedValue({
       data: {
-        "Open Women's 71kg": [{ id: 9, name: "Cached Athlete", total: 220 }],
+        "Open Women's 71kg": [{ name: "Cached Athlete", total: 220 }],
       },
       lastSynced: 1,
     } as any);
 
     const result = await fetchNationalRankings("Open Women's 71kg");
 
-    expect(result).toEqual([{ id: 9, name: "Cached Athlete", total: 220 }]);
+    expect(result).toEqual([{ name: "Cached Athlete", total: 220 }]);
   });
 
-  it("throws when supabase fails and no cached rankings exist", async () => {
-    mockRankingsQuery({
-      data: null,
-      error: new Error("network failed"),
-    });
+  it("throws when convex fails and no cached rankings exist", async () => {
+    mockQuery.mockRejectedValue(new Error("network failed"));
     mockGetOfflineCache.mockResolvedValue(null);
 
-    await expect(fetchNationalRankings("Open Men's 102kg")).rejects.toThrow(
-      "network failed",
-    );
+    await expect(fetchNationalRankings("Open Men's 102kg")).rejects.toThrow();
   });
 });

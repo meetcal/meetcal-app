@@ -8,7 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useEffect } from "react";
 import {
   Alert,
-  Dimensions,
+  useWindowDimensions,
   Image,
   Platform,
   StyleSheet,
@@ -56,6 +56,7 @@ export default function SignInScreen() {
   const isFromInfo = from === "info";
   const { onGooglePress, onApplePress } = useSignInHandlers();
   useWarmUpBrowser();
+  const { width: windowWidth } = useWindowDimensions();
 
   const getOAuthErrorMessage = (error: unknown) => {
     if (error && typeof error === "object" && "message" in error) {
@@ -114,7 +115,7 @@ export default function SignInScreen() {
         <View style={styles.titleContainer}>
           <Image
             source={require("@/assets/images/MeetCal-no-bg.png")}
-            style={styles.logo}
+            style={[styles.logo, { width: windowWidth * 0.5, height: windowWidth * 0.25 }]}
             resizeMode="contain"
           />
           <Text style={[styles.title, { color: colors.text }]}>
@@ -262,8 +263,6 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   logo: {
-    width: Dimensions.get("window").width * 0.5, // 50% of screen width
-    height: Dimensions.get("window").width * 0.5 * 0.5, // Maintain aspect ratio (2:1)
     marginBottom: 24,
   },
   title: {

@@ -1,7 +1,8 @@
 import { SupabaseLiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { getAthleteLiftingResults } from '@/lib/database/offline-store';
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
@@ -57,28 +58,20 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   try {
-    type LiftBestRow = { snatch_best: number | null; cj_best: number | null; total: number | null };
-    const { data: athleteResults, error } = await supabase
-      .from('lifting_results')
-      .select('snatch_best, cj_best, total')
-      .eq('name', athleteName)
-      .gte('date', oneYearAgo.toISOString())
-      .order('date', { ascending: false });
-    if (error) {
-      const fallback = await getOfflineFallback(athleteName);
-      cache.set(athleteName, fallback);
-      return fallback;
-    }
-    const results = (athleteResults ?? []) as LiftBestRow[];
+    const cutoffDate = oneYearAgo.toISOString().split('T')[0];
+    const results = await convex.query(api.liftingResults.getYearBestsByName, {
+      name: athleteName,
+      cutoffDate,
+    });
     if (results.length === 0) {
       const fallback = await getOfflineFallback(athleteName);
       cache.set(athleteName, fallback);
       return fallback;
     }
     const result: YearBests = {
-      bestSnatch: Math.max(...results.map(r => r.snatch_best || 0)),
-      bestCJ: Math.max(...results.map(r => r.cj_best || 0)),
-      bestTotal: Math.max(...results.map(r => r.total || 0))
+      bestSnatch: Math.max(...results.map(r => r.snatchBest || 0)),
+      bestCJ: Math.max(...results.map(r => r.cjBest || 0)),
+      bestTotal: Math.max(...results.map(r => r.total || 0)),
     };
     cache.set(athleteName, result);
     return result;

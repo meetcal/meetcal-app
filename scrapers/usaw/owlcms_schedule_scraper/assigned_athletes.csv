@@ -1,0 +1,1373 @@
+member_id,name,age,club,gender,weight_class,entry_total,session_number,session_platform,meet,adaptive
+3100,Aaron Williams,31,Unaffiliated,Male,+110,390,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3101,Dimitri Albury,35,Rising Tide Weightlifting,Male,+110,365,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3102,Xavier Borde,33,Alee Athletics,Male,110,360,24,Red,2026 VIRUS Weightlifting Series 1,false
+3103,Daniel Wiitanen,30,CALPIANS WLC,Male,94,360,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3104,Matthew Naugle,27,Glass City Weightlifting,Male,+110,350,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3105,Ryan Grimsland,24,HEAVY METAL BARBELL,Male,79,342,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3106,Joshua Magee,31,Fourteen Forty Collective,Male,110,340,24,Red,2026 VIRUS Weightlifting Series 1,false
+3107,Blaine Brooks,25,Spoon Barbell Club,Male,94,340,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3108,Luke MacLennan,31,Columbus Weightlifting,Male,94,340,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3109,Ryan McDonald,19,GARAGE STRENGTH,Male,88,334,18,White,2026 VIRUS Weightlifting Series 1,false
+3110,Charles Shervheim,31,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Male,94,330,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3111,Hutton Boles,22,Standard Strength,Male,88,330,18,White,2026 VIRUS Weightlifting Series 1,false
+3112,Andrew Montoya,30,Team Strength Works,Male,+110,330,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3113,David Jorge,32,Unaffiliated,Male,+110,320,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3114,Travis Cooper,38,Rising Tide Weightlifting,Male,79,320,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3115,Wyatt Coffey,24,Fourteen Forty Collective,Male,88,320,18,White,2026 VIRUS Weightlifting Series 1,false
+3116,Colin Castagna,31,Unaffiliated,Male,110,315,24,Red,2026 VIRUS Weightlifting Series 1,false
+3117,Dominic Puopolo,35,Centre City Weighlifting,Male,+110,315,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3118,Jacob Cluff,33,POWER AND GRACE PERFORMANCE.,Male,110,310,24,Red,2026 VIRUS Weightlifting Series 1,false
+3119,Matthew King,26,Methods Weightlifting,Male,94,310,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3120,Austin Davis,26,1Kilo,Male,88,310,18,White,2026 VIRUS Weightlifting Series 1,false
+3121,Jake Anderson,34,Unaffiliated,Male,+110,310,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3122,Brayan Ibanez,20,Nashville Weightlifting Club,Male,88,310,18,White,2026 VIRUS Weightlifting Series 1,false
+3123,Michael Banks,32,Team Strength Works,Male,110,310,24,Red,2026 VIRUS Weightlifting Series 1,false
+3124,Benjamin Brancaleon,31,Ithaca Weightlifting,Male,110,304,24,Red,2026 VIRUS Weightlifting Series 1,false
+3125,Mateo Villa,41,RUBBER CITY WEIGHTLIFTING,Male,+110,301,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3126,David McKellar,30,Unaffiliated,Male,110,300,24,Red,2026 VIRUS Weightlifting Series 1,false
+3127,Carter Sing,18,Lebanon Barbell Club,Male,79,300,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3128,Will Said,27,Unaffiliated,Male,94,300,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3129,Jabo Nguyen,29,Ironside Weightlifting,Male,110,300,24,Red,2026 VIRUS Weightlifting Series 1,false
+3130,Hampton Morris,22,Ritual Weightlifting,Male,71,300,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3131,Marcus Leydecker,29,Austin Barbell,Male,88,300,18,White,2026 VIRUS Weightlifting Series 1,false
+3132,Edward Quillin,20,Country Strong,Male,110,300,24,Red,2026 VIRUS Weightlifting Series 1,false
+3133,Cameron Fyffe,29,Optimus Barbell Club,Male,110,300,24,Red,2026 VIRUS Weightlifting Series 1,false
+3134,Karston Spradley,29,ALLSOUTH Barbell,Male,+110,300,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3135,Matthew McCullough,31,BlueWave Weightlifting,Male,79,300,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3136,Rucker Johnson,18,Speed Power Strength,Male,88,300,18,White,2026 VIRUS Weightlifting Series 1,false
+3137,Colt Armstrong,31,The Strength Tank Weightlifting Club,Male,94,300,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3138,Jeremy Tissenbaum,37,PITTSBURGH BBC,Male,88,298,18,White,2026 VIRUS Weightlifting Series 1,false
+3139,Alex Smith,36,Vardanian Weightlifting,Male,94,293,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3140,Jerod Peters,29,Unaffiliated,Male,88,290,18,White,2026 VIRUS Weightlifting Series 1,false
+3141,Madden Mones,18,Ritual Weightlifting,Male,+110,290,24,Blue,2026 VIRUS Weightlifting Series 1,false
+3142,Reed Wuttke,32,Unaffiliated,Male,110,290,23,Red,2026 VIRUS Weightlifting Series 1,false
+3143,CJ Fernandez,20,Unaffiliated,Male,88,290,18,White,2026 VIRUS Weightlifting Series 1,false
+3144,Connor Sloboda,26,Clintonville Barbell,Male,110,290,23,Red,2026 VIRUS Weightlifting Series 1,false
+3145,Dean Scicchitano,26,Unaffiliated,Male,110,287,23,Red,2026 VIRUS Weightlifting Series 1,false
+3146,Vinnie Hoffman,34,Unaffiliated,Male,88,285,18,White,2026 VIRUS Weightlifting Series 1,false
+3147,Michael Richards,33,Unaffiliated,Male,+110,285,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3148,Bradley Bingham,20,LINDENWOOD LIONS,Male,+110,285,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3149,Matt Wiitanen,27,CALPIANS WLC,Male,94,285,22,Stripes,2026 VIRUS Weightlifting Series 1,false
+3150,Morgan Rummel,29,Unaffiliated,Male,88,285,18,White,2026 VIRUS Weightlifting Series 1,false
+3151,Corey Frey,37,Aegis Barbell,Male,110,285,23,Red,2026 VIRUS Weightlifting Series 1,false
+3152,Blake Atwell,33,Unaffiliated,Male,110,285,23,Red,2026 VIRUS Weightlifting Series 1,false
+3153,Daniel Drach,24,EAST COAST GOLD W/L TEAM,Male,110,285,23,Red,2026 VIRUS Weightlifting Series 1,false
+3154,Arron Tate,30,Category 5 Athletics,Male,110,281,23,Red,2026 VIRUS Weightlifting Series 1,false
+3155,Trenton Moorehead,34,Iowa Elite,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3156,Tyler Steffensen,34,Unaffiliated,Male,88,280,17,White,2026 VIRUS Weightlifting Series 1,false
+3157,Alfred Grenon,26,Heartland Strength,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3158,Robert Whitlock,17,Speed Power Strength,Male,88,280,17,White,2026 VIRUS Weightlifting Series 1,false
+3159,Charley Chang,30,Unaffiliated,Male,94,280,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3160,Lucas Diehl,18,N. Highland WLC,Male,+110,280,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3161,Devin Cloud,31,EAST COAST GOLD W/L TEAM,Male,+110,280,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3162,Andrés Felipe Álvarez,31,Unaffiliated,Male,94,280,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3163,Chase White,19,Maxx Effort Training,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3164,Elias Talcott,27,Myriad Weightlifting,Male,88,280,17,White,2026 VIRUS Weightlifting Series 1,false
+3165,Will Edmond,30,Powerhouse Weightlifting,Male,94,280,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3166,Alexander Nordstrom,28,POWER AND GRACE PERFORMANCE.,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3167,Nicholas Bader,32,Tri State Barbell,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3168,kaixi zou,23,Kenmore Barbell & Fitness Weightlifting,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3169,Zachary Mayer,37,Ironside Weightlifting,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3170,Nick Sanchez,23,Unaffiliated,Male,94,280,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3171,Ryan Hansen,42,Warwick Weightlifting Club,Male,110,280,22,Red,2026 VIRUS Weightlifting Series 1,false
+3172,Matthew Tung,26,Unaffiliated,Male,94,278,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3173,joseph Moos,30,True Strength Performance Weightlifting,Male,94,275,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3174,Eric Fiacable,30,Moran Academy,Male,+110,275,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3175,Tyler Marsengill,33,The Strength Tank Weightlifting Club,Male,94,275,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3176,Danny Choi,35,Polaris Weightlifting,Male,110,275,22,Red,2026 VIRUS Weightlifting Series 1,false
+3177,Maurice McClain,21,LINDENWOOD LIONS,Male,110,275,22,Red,2026 VIRUS Weightlifting Series 1,false
+3178,Gavin Hough,45,Shoofly Barbell Club,Male,+110,275,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3179,Sydney Phillips,21,BASA Weightlifting,Male,110,275,22,Red,2026 VIRUS Weightlifting Series 1,false
+3180,Luc Spalding,29,Jacksonville Weightlifting,Male,79,272,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3181,Andrew Robinson,36,CALPIANS WLC,Male,110,271,22,Red,2026 VIRUS Weightlifting Series 1,false
+3182,Dominik Polverini,22,1Kilo,Male,71,270,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3183,Henry Ludbrook,19,Team Strength Works,Male,79,270,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3184,Luke Deal,19,Oly Concepts,Male,88,270,17,White,2026 VIRUS Weightlifting Series 1,false
+3185,Kenneth Lockhart,25,Unaffiliated,Male,94,270,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3186,Kaden Quick,19,Freedom Weightlifting,Male,88,270,17,White,2026 VIRUS Weightlifting Series 1,false
+3187,Jacob Echols,31,Unaffiliated,Male,79,270,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3188,Seth Baden,21,Glass City Weightlifting,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3189,Daniel Lee,30,Unaffiliated,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3190,Owen Putman,28,Aevitas Weightlifting,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3191,Kyle Wilp,39,1Kilo,Male,+110,270,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3192,Brayden Edman,24,Oly Concepts,Male,79,270,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3193,Christopher Keegan,27,Canterbury Weightlifting,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3194,John Metzinger,26,Fourteen Forty Collective,Male,94,270,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3195,Emory McFann,17,Rising Tide Weightlifting,Male,+94,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3196,Jazz Widney,23,EFD Holland Barbell,Male,88,270,17,White,2026 VIRUS Weightlifting Series 1,false
+3197,Dylan Jeffries,30,Unaffiliated,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3198,Ryan Newton,25,DSP Barbell Club,Male,+110,270,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3199,Maxwell Li,24,HASSLE FREE BBC,Male,94,270,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3200,Roy Maher,18,ALLSOUTH Barbell,Male,79,270,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3201,Anthony White,31,Vardanian Weightlifting,Male,110,270,20,Red,2026 VIRUS Weightlifting Series 1,false
+3202,Christopher Cruz,20,MYLES AHEAD WEIGHTLIFTING,Male,71,269,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3203,Christopher Celona,30,Rhode Island Performance,Male,94,265,21,Stripes,2026 VIRUS Weightlifting Series 1,false
+3204,Thomas Osborne,27,Bexar Barbell,Male,79,265,12,Stars,2026 VIRUS Weightlifting Series 1,false
+3205,Adrian Francis,43,Unaffiliated,Male,110,265,20,Red,2026 VIRUS Weightlifting Series 1,false
+3206,Julian Love,21,Unaffiliated,Male,88,265,17,White,2026 VIRUS Weightlifting Series 1,false
+3207,Patrick McDonnell,28,Rising Tide Weightlifting,Male,110,265,20,Red,2026 VIRUS Weightlifting Series 1,false
+3208,Jake Quinn,25,CLEAN SLATE WEIGHTLIFTING,Male,110,265,20,Red,2026 VIRUS Weightlifting Series 1,false
+3209,Vincent Spratte,40,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Male,110,262,20,Red,2026 VIRUS Weightlifting Series 1,false
+3210,Aidan Luther,24,True Strength Performance Weightlifting,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3211,Joseph Yassin,31,Unaffiliated,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3212,Ishban Aziz,31,Unaffiliated,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3213,Gary Evans,26,Heartland Strength,Male,88,260,17,White,2026 VIRUS Weightlifting Series 1,false
+3214,Samuel Winiarski,25,CHFP WEIGHTLIFTING CLUB,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3215,Peter Bound,27,MURDER OF CROWS,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3216,William Robbins,32,HEAVY METAL BARBELL,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3217,Yuval Jacobson,23,Olympic Weightlifting Club at The Ohio State University,Male,+110,260,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3218,Evan Gehret,21,GARAGE STRENGTH,Male,71,260,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3219,Paul Caldwell,33,TEAM BLASTOFF,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3220,Michael Smosny,29,Strength Solutions Weightlifting,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3221,Kamiakin Craig,24,Wolf Pack Weightlifting,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3222,Cooper Johnson,26,Barbender Academy,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3223,Evan Kniss,17,Maxx Effort Training,Male,88,260,17,White,2026 VIRUS Weightlifting Series 1,false
+3224,Cory O'Connor,34,Unaffiliated,Male,79,260,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3225,Jeffrey Gerlach,42,Vardanian Weightlifting,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3226,Desmond Rich,20,Freedom Weightlifting,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3227,Andrew Raudabaugh,31,Unaffiliated,Male,79,260,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3228,Justin Frimmel,40,1Kilo,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3229,Ian Graham,22,Beyond The Barbell,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3230,Aaron Torres,38,Unaffiliated,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3231,Asher Hayhoe,18,Unaffiliated,Male,79,260,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3232,Cory Ebert,36,Unaffiliated,Male,79,260,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3233,Shane Pruitt,21,LINDENWOOD LIONS,Male,94,260,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3234,Albert Chun,40,MURDER OF CROWS,Male,110,260,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3235,Philip Angelo,35,Optimus Barbell Club,Male,+110,260,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3236,Brodie Hollis,18,DSP Barbell Club,Male,+110,260,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3237,Dilan Gonzalez,20,MYLES AHEAD WEIGHTLIFTING,Male,79,260,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3238,Bryann Turner,42,Bexar Barbell,Male,88,260,17,White,2026 VIRUS Weightlifting Series 1,false
+3239,Irwin Battle,40,Unaffiliated,Male,+110,260,23,Blue,2026 VIRUS Weightlifting Series 1,false
+3240,Kyle Thebado,33,MASS Strength,Male,88,260,17,White,2026 VIRUS Weightlifting Series 1,false
+3241,Noah Ranno,27,1Kilo,Male,79,255,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3242,Alec Olson,34,Heroic Barbell,Male,110,255,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3243,Antonio Butler,28,PHILADELPHIA BARBELL,Male,110,255,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3244,Chris Weatherly,29,True Strength Performance Weightlifting,Male,110,255,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3245,Steven Evans,33,CHFP WEIGHTLIFTING CLUB,Male,110,252,19,Stripes,2026 VIRUS Weightlifting Series 1,false
+3246,Hunter Kocken,29,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3247,Lucas Moylan,24,CHFP WEIGHTLIFTING CLUB,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3248,Christopher Douglas,45,PARAMOUNT BARBELL CLUB,Male,79,250,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3249,Thomas Vinetti,31,Warwick Weightlifting Club,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3250,Ivan Escott,27,GARAGE STRENGTH,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3251,Michael Thomas,30,Sanctuary Barbell,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3252,Ryan Burke,46,Rogue River Barbell Club,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,true
+3253,Evan Fukuhara,23,Concordia University Weightlifting,Male,71,250,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3254,Christopher Boudreau,32,Category 5 Athletics,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3255,Alexis Ayala,26,Method Weightlifting,Male,+110,250,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3256,Brody Stephano,22,Freedom Weightlifting,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3257,Thomas Wellington,30,RAWW Barbell,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3258,Levi Atwell,16,Lebanon Barbell Club,Male,79,250,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3259,Andrew Pensko,37,4 Star Strength,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3260,John Henry Jamieson,19,Unaffiliated,Male,79,250,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3261,Gerald Pena,29,True Strength Performance Weightlifting,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3262,Kevin Sena,30,Myriad Weightlifting,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3263,Anthony Fontan,28,Unaffiliated,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3264,Kyle Lee,33,The Bunker Athletics,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3265,Joseph McNulty,27,EAST COAST GOLD W/L TEAM,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3266,Mary Theisen-Lappen,36,1Kilo,Female,+86,250,24,White,2026 VIRUS Weightlifting Series 1,false
+3267,Ryan Kelley,39,Myriad Weightlifting,Male,+110,250,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3268,Evan Melendez,38,PROJECT LIFT,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3269,Vincent Tavoletti,30,Aspire Athletic Performance,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3270,Spencer Johnson,31,Heartland Strength,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3271,David Zhu,26,PHILADELPHIA BARBELL,Male,79,250,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3272,Andrew Stegelmann,35,Stegelmann Performance,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3273,Olivia Reeves,23,Unaffiliated,Female,77,250,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3274,Tyler Lilly,32,Fourteen Forty Collective,Male,110,250,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3275,Martha Rogers,31,CATALYST ATHLETICS,Female,77,250,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3276,Eric Vercellone,28,Lorton Barbell Club,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3277,Matthew Benson,26,CHFP WEIGHTLIFTING CLUB,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3278,Wyatt Lupo,18,Butcher Barbell,Male,94,250,20,Stripes,2026 VIRUS Weightlifting Series 1,false
+3279,George Bakatsias,33,Weightlifting.Org,Male,88,250,16,White,2026 VIRUS Weightlifting Series 1,false
+3280,Jason Ryu,36,MURDER OF CROWS,Male,79,247,11,Stars,2026 VIRUS Weightlifting Series 1,false
+3281,Ross Twanmoh,35,Unaffiliated,Male,71,246,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3282,Samuel Melgoza,31,Vehement Elite Athletics,Male,94,245,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3283,Jeremy Koenig,40,EAST COAST GOLD W/L TEAM,Male,+110,245,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3284,Corbin King,21,Muncie Weightlifting Club,Male,110,245,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3285,Josh Otero,26,Team Strength Works,Male,79,245,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3286,Dan faby,37,Unaffiliated,Male,+110,245,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3287,Joseph Webster,29,CANNON FALLS WEIGHTLIFTING,Male,110,245,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3288,Dustin Craig,30,West Georgia Weightlifting,Male,94,245,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3289,Tobin O'Neal,20,LINDENWOOD LIONS,Male,79,245,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3290,Maurice Edwards,32,4 Star Strength,Male,88,245,16,White,2026 VIRUS Weightlifting Series 1,false
+3291,Justin Barber,36,Empire Weightlifting,Male,71,245,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3292,Tyler Hedlund,25,Unaffiliated,Male,79,245,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3293,Aaron Denney,38,ALLSOUTH Barbell,Male,79,245,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3294,Frank Jimenez,18,Freedom Weightlifting,Male,110,245,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3295,Justin Negrete,39,Unaffiliated,Male,79,245,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3296,Perceval Park,21,University of Michigan Weightlifting,Male,88,245,16,White,2026 VIRUS Weightlifting Series 1,false
+3297,Owen Davis,19,Mako Athletics,Male,110,245,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3298,Jacob Senate,25,Unaffiliated,Male,88,245,16,White,2026 VIRUS Weightlifting Series 1,false
+3299,Ella Nicholson,20,LINDENWOOD LIONS,Female,77,245,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3300,Michael Headings,22,Steadfast Barbell,Male,88,244,15,White,2026 VIRUS Weightlifting Series 1,false
+3301,Brandon Kha,30,Conqueror Weightlifting,Male,88,242,15,White,2026 VIRUS Weightlifting Series 1,false
+3302,Jonathan Small,34,Unaffiliated,Male,110,242,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3303,Alex Urtecho,19,Ablaze Barbell,Male,110,242,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3304,Taylor Baugh,39,Muncie Weightlifting Club,Male,110,242,18,Stripes,2026 VIRUS Weightlifting Series 1,false
+3305,Edward Kwok,36,JDI BARBELL,Male,+110,240,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3306,Samuel Ordonez,30,Tri State Barbell,Male,+110,240,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3307,Brian Stryffeler,31,Arc Weightlifting Club,Male,+110,240,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3308,Louis Greco,26,Warwick Weightlifting Club,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3309,Christopher Camenares,34,PHILADELPHIA BARBELL,Male,65,240,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3310,Isaac Piper,23,EAST COAST GOLD W/L TEAM,Male,110,240,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3311,Telesforo Dacanay,38,HASSLE FREE BBC,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3312,Greg Addai,28,Rhode Island Performance,Male,94,240,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3313,Cesar Gomez,32,Bexar Barbell,Male,94,240,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3314,Stav Caplan,33,True Strength Performance Weightlifting,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3315,Eric Chen,28,Archon Weightlifting,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3316,Bryan Opaskar,33,CLEAN SLATE WEIGHTLIFTING,Male,94,240,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3317,Ian Schwind,28,Unaffiliated,Male,110,240,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3318,Daniel Perry,27,Rhode Island Performance,Male,+110,240,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3319,Spencer Hiatt,22,UW - LA CROSSE WEIGHTLIFTING CLUB,Male,110,240,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3320,Nathan Jue,30,Ithaca Weightlifting,Male,110,240,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3321,Matthew Weber,34,BASA Weightlifting,Male,110,240,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3322,Colin Whiting,25,TCR Barbell,Male,+110,240,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3323,Andrew Veith,27,Moran Academy,Male,94,240,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3324,Ivon Levan,36,Greenlight Weightlifting,Male,88,240,15,White,2026 VIRUS Weightlifting Series 1,false
+3325,Danny Kim,23,Olympic Weightlifting Club at The Ohio State University,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3326,Desmond Myles,17,MYLES AHEAD WEIGHTLIFTING,Male,71,240,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3327,Rodney Register,23,Fourteen Forty Collective,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3328,Malik Hamblin,27,Moran Academy,Male,79,240,10,Stars,2026 VIRUS Weightlifting Series 1,false
+3329,Casey Vinings,33,PROJECT LIFT,Male,94,240,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3330,Blake Morman,27,PROJECT LIFT,Male,71,240,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3331,Joseph Chauvin,46,Icon Performance Center LLC,Male,+110,239,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3332,Will McFadden,22,Clintonville Barbell,Male,71,237,9,Blue,2026 VIRUS Weightlifting Series 1,false
+3333,Brian Le,30,HEAVY METAL BARBELL,Male,88,237,15,White,2026 VIRUS Weightlifting Series 1,false
+3334,Jonathan Jones,23,Bexar Barbell,Male,79,235,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3335,Dylan Confar,30,HEAVY METAL BARBELL,Male,79,235,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3336,Jacob Bockelmann,39,Mad Hammer Barbell,Male,88,235,15,White,2026 VIRUS Weightlifting Series 1,false
+3337,Kevin Davies,40,Unaffiliated,Male,94,235,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3338,Kevin Deitz,27,True Strength Performance Weightlifting,Male,110,235,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3339,Nicholas Lee,41,MURDER OF CROWS,Male,88,235,15,White,2026 VIRUS Weightlifting Series 1,false
+3340,Harrison Ogbewe,32,EAST COAST GOLD W/L TEAM,Male,79,235,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3341,Noah Zucker,34,Unaffiliated,Male,79,235,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3342,Alexander Schulien,39,Tri State Barbell,Male,79,235,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3343,Jackson White,19,The Weight Room,Male,88,235,15,White,2026 VIRUS Weightlifting Series 1,false
+3344,Spencer Davern,15,Steadfast Barbell,Male,88,235,15,White,2026 VIRUS Weightlifting Series 1,false
+3345,Sophia Shaft,21,Optimus Barbell Club,Female,63,233,12,White,2026 VIRUS Weightlifting Series 1,false
+3346,Kaiden Mima,21,Concordia University Weightlifting,Male,60,233,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3347,Noble Duke,27,Unaffiliated,Male,94,232,19,Stars,2026 VIRUS Weightlifting Series 1,false
+3348,Zachary Brown,30,Unaffiliated,Male,110,231,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3349,Luke Maginnis,33,Tri State Barbell,Male,110,231,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3350,Adam Webb,19,Vehement Elite Athletics,Male,110,231,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3351,Isaac Marron,31,Aegis Barbell,Male,79,230,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3352,Celia Gold,28,Bexar Barbell,Female,77,230,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3353,Anna McElderry,24,GARAGE STRENGTH,Female,86,230,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3354,Jon Vore,26,Moran Academy,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3355,Alex Pan,30,Clintonville Barbell,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3356,Blake Hubbard,28,Unaffiliated,Male,110,230,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3357,Christian Johnson,26,Unaffiliated,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3358,Alan Noble,44,Unaffiliated,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3359,Ryan Davis,36,Unaffiliated,Male,110,230,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3360,Gregory Malnassy,41,Aegis Barbell,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3361,Hyunseo Kim,25,Unaffiliated,Male,88,230,14,White,2026 VIRUS Weightlifting Series 1,false
+3362,Nathan Morehart,28,Austin Barbell,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3363,Kade Tippet,24,Iowa Elite,Male,+110,230,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3364,Alfred Westley,31,DC WEIGHTLIFTING CLUB,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3365,Geoffrey Martin,43,Method Weightlifting,Male,110,230,16,Stripes,2026 VIRUS Weightlifting Series 1,false
+3366,Grant Miller,28,CHFP WEIGHTLIFTING CLUB,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3367,Akindele Famoyegun,42,Unaffiliated,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3368,Jonathan Zinger,18,Alee Athletics,Male,79,230,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3369,Lorenzo Gutierrez,31,Vehement Elite Athletics,Male,94,230,18,Stars,2026 VIRUS Weightlifting Series 1,false
+3370,Braeden Moore,19,4 Star Strength,Male,88,230,14,White,2026 VIRUS Weightlifting Series 1,false
+3371,Sean Appelson,28,Performance Training Systems Weightlifting,Male,88,230,14,White,2026 VIRUS Weightlifting Series 1,false
+3372,Caitlin Thilges,26,1Kilo,Female,+86,229,24,White,2026 VIRUS Weightlifting Series 1,false
+3373,Kevin Hall,15,Marble Weightlifting,Male,79,229,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3374,Ryan McNerlin,32,True Strength Performance Weightlifting,Male,88,226,14,White,2026 VIRUS Weightlifting Series 1,false
+3375,Ava Biesterfeld,24,Team Strength Works,Female,77,226,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3376,Miranda Ulrey,22,Fourteen Forty Collective,Female,58,225,12,Red,2026 VIRUS Weightlifting Series 1,false
+3377,Victor Martin,24,Bulldog Weightlifting Club,Male,71,225,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3378,Luke Lauther,27,ATHLETIC LAB WLC,Male,88,225,14,White,2026 VIRUS Weightlifting Series 1,false
+3379,Estelle Rohr,31,Bexar Barbell,Female,69,225,19,Red,2026 VIRUS Weightlifting Series 1,false
+3380,Bradley Bates,16,Glass City Weightlifting,Male,71,225,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3381,Ryan Tyler Pumphrey,35,Myriad Weightlifting,Male,88,225,14,White,2026 VIRUS Weightlifting Series 1,false
+3382,Michael Shoup,31,Glass City Weightlifting,Male,94,225,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3383,Mike Isman,44,Unaffiliated,Male,110,225,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3384,Eric Zucaro,33,EAST COAST GOLD W/L TEAM,Male,88,225,14,White,2026 VIRUS Weightlifting Series 1,false
+3385,Felix Lien,28,Unaffiliated,Male,71,225,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3386,Benjamin Engelbracht,24,Floyd Farms Weightlifting,Male,71,225,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3387,Joaquin Perez,19,Freedom Weightlifting,Male,88,225,14,White,2026 VIRUS Weightlifting Series 1,false
+3388,Jacob Sterny,35,Butcher Barbell,Male,88,225,14,White,2026 VIRUS Weightlifting Series 1,false
+3389,Lee Sikon,47,Vardanian Weightlifting,Male,94,225,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3390,Tristan Segrest,20,LINDENWOOD LIONS,Male,94,225,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3391,Jacob Howard,38,Wolf Pack Weightlifting,Male,79,225,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3392,Kaden Darrow,30,Heartland Strength,Male,94,225,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3393,Parvin Zaki,43,Rhode Island Performance,Male,110,225,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3394,Dryden Yates,16,Bexar Barbell,Male,71,225,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3395,Andrew Duff,28,PFP Barbell Club,Male,94,225,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3396,Anthony Jay Tangonan,26,ALPHA BARBELL,Male,88,224,14,White,2026 VIRUS Weightlifting Series 1,false
+3397,Shawn Robertson,46,ALPHA BARBELL,Male,79,222,9,Stars,2026 VIRUS Weightlifting Series 1,false
+3398,Julian Pina,18,Iron Brotherhood,Male,71,221,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3399,Tyllin Walker,24,Rising Tide Weightlifting,Male,110,220,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3400,Nina Sterckx,24,1Kilo,Female,58,220,12,Red,2026 VIRUS Weightlifting Series 1,false
+3401,Jonathan Herrera,49,Unaffiliated,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3402,Spencer Checkoway,27,University of Michigan Weightlifting,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3403,Xhavier Suarez,38,PWRBLD Barbell Club,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3404,Alexander Preble,19,Freedom Weightlifting,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3405,Keshav Nair,21,Unaffiliated,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3406,Kyle Dorsten,34,Unaffiliated,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3407,Vincent Nguyen-Bui,37,THE SPORTS PALACE,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3408,Jordan Holland,38,Unaffiliated,Male,110,220,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3409,Preston Lee,19,Unaffiliated,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3410,Milo Janata,20,Warwick Weightlifting Club,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3411,Michael Sauer,27,Warwick Weightlifting Club,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3412,Devin Kelly,31,Unaffiliated,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3413,Evan Kimball,33,Unaffiliated,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3414,Jeremiah Gorman,24,Austin Barbell,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3415,Drury Borchers,36,Unaffiliated,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3416,Kurby Brown,51,McKenna Weightlifting,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3417,Tri Le,22,University of Michigan Weightlifting,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3418,TIMOTHY NEAL,18,ATHLETIC LAB WLC,Male,71,220,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3419,Tony Freeman,25,Powerhouse Weightlifting,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3420,Christopher Beattie,24,Warwick Weightlifting Club,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3421,Kory McKitrick,34,Glass City Weightlifting,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3422,Michael Rios,37,Optimus Barbell Club,Male,+110,220,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3423,Haryoon Jang,32,MURDER OF CROWS,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3424,Ethan Barosela,18,Iron Brotherhood,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3425,Michael Cheng,27,Bexar Barbell,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3426,STEVEN MARCUS,36,Unaffiliated,Male,79,220,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3427,Abigail Cooper,24,Fourteen Forty Collective,Female,69,220,19,Red,2026 VIRUS Weightlifting Series 1,false
+3428,morgan bernstein,19,Method Weightlifting,Male,+110,220,22,Blue,2026 VIRUS Weightlifting Series 1,false
+3429,Keven Dubreil,28,Unaffiliated,Male,71,220,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3430,Abraham Cha,31,ATLANTA PERFORMANCE,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3431,Isaiah Anderson,31,Performance Training Systems Weightlifting,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3432,William Wilkerson,25,Unaffiliated,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3433,Esteban Prada,30,RFS Barbell,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3434,Eric Markaryan,22,Unaffiliated,Male,88,220,13,White,2026 VIRUS Weightlifting Series 1,false
+3435,Clay Troyer,26,Myriad Weightlifting,Male,94,220,17,Stars,2026 VIRUS Weightlifting Series 1,false
+3436,Eduardo Travieso,18,Iron Brotherhood,Male,88,219,13,White,2026 VIRUS Weightlifting Series 1,false
+3437,Stephanie Gousse,28,Unaffiliated,Female,+86,219,24,White,2026 VIRUS Weightlifting Series 1,false
+3438,Daniel Younk,33,West Michigan Muscle,Male,79,218,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3439,Jacob St.,19,Iron Brotherhood,Male,71,218,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3440,Joseph Bossard,37,Unaffiliated,Male,94,217,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3441,Ciaran Nugent,35,MASS Strength,Male,88,217,13,White,2026 VIRUS Weightlifting Series 1,false
+3442,Brian Leung,43,CHFP WEIGHTLIFTING CLUB,Male,79,217,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3443,Zachary Raub,16,4 Star Strength,Male,94,216,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3444,Alexia Gonzalez,31,Category 5 Athletics,Female,69,216,19,Red,2026 VIRUS Weightlifting Series 1,false
+3445,Walker Stanley,15,TEAM HOUSTON,Male,+79,215,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3446,Liam Ramsay,30,Rhode Island Performance,Male,88,215,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3447,Kellen Crouse,40,Aevitas Weightlifting,Male,94,215,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3448,Timothy Luistro,35,Fourteen Forty Collective,Male,60,215,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3449,Matt Reeves,38,Lighthouse Lifting,Male,79,215,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3450,Christopher Grabill,41,KiloDelphia,Male,94,215,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3451,Paul Ralston,50,Unaffiliated,Male,94,215,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3452,Isamu Harrison,26,Unaffiliated,Male,71,215,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3453,Kateri Peters,30,1Kilo,Female,86,215,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3454,Anthony Craig,50,Wolf Pack Weightlifting,Male,110,215,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3455,Jon Dizon,34,Vehement Elite Athletics,Male,88,215,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3456,Anthony Paiva,30,MASS Strength,Male,79,215,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3457,Kailey Papas,21,Bexar Barbell,Female,69,215,19,Red,2026 VIRUS Weightlifting Series 1,false
+3458,Willie Smalls,40,JDI BARBELL,Male,110,215,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3459,Lucas Bastin,27,Unaffiliated,Male,88,215,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3460,Zach Ferrenburg,28,Unaffiliated,Male,94,214,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3461,Will Edmonds,31,Pinnacle Weightlifting,Male,94,214,15,Stars,2026 VIRUS Weightlifting Series 1,false
+3462,Dominic Fruchtenicht,17,Tevis Weightlifting Club,Male,71,213,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3463,Aidan Zimmerman,22,Olympic Weightlifting Club at The Ohio State University,Male,88,212,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3464,Kyle Stillwell,38,Unaffiliated,Male,94,212,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3465,Jared Bushaw,26,Unaffiliated,Male,65,212,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3466,Max Bolan,19,Bulletproof Barbell Club,Male,88,211,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3467,Micale Smith,20,Beyond The Barbell,Male,79,211,8,Stars,2026 VIRUS Weightlifting Series 1,false
+3468,Adam Weaver,38,Stegelmann Performance,Male,94,211,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3469,Jamie Hegg,27,HASSLE FREE BBC,Female,63,211,12,White,2026 VIRUS Weightlifting Series 1,false
+3470,Aldo Ayala,32,Houston Weightlifting Academy,Male,79,210,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3471,Christopher Lam,31,MASS Strength,Male,79,210,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3472,Alexa Snyder,33,1Kilo,Female,69,210,19,Red,2026 VIRUS Weightlifting Series 1,false
+3473,Emily Ibanez,16,Nashville Weightlifting Club,Female,69,210,19,Red,2026 VIRUS Weightlifting Series 1,false
+3474,Nadav David,30,Unaffiliated,Male,94,210,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3475,Elijah Alvarado,31,Bexar Barbell,Male,71,210,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3476,Dylan Lingenau,31,Unaffiliated,Male,94,210,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3477,Joshua Copeland,21,LINDENWOOD LIONS,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3478,Jesse Castillo,17,Bull Strength Barbell,Male,65,210,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3479,Alexis Villegas,26,Unaffiliated,Male,79,210,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3480,Angelo Kelly,32,Unaffiliated,Male,65,210,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3481,Declan Smithies,47,Columbus Weightlifting,Male,79,210,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3482,Nicole Caamano,21,Oly Concepts,Female,69,210,19,Red,2026 VIRUS Weightlifting Series 1,false
+3483,Christopher Gregg,55,Hive Weightlifting,Male,110,210,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3484,Kristen Erickson,32,1Kilo,Female,+86,210,24,White,2026 VIRUS Weightlifting Series 1,false
+3485,Jonathan Larcom,36,Rhode Island Performance,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3486,Taylor Tredinnick,31,PHILADELPHIA BARBELL,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3487,Jonathan Murray,37,CHFP WEIGHTLIFTING CLUB,Male,+110,210,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3488,Mark Harvey,38,Shadyside Barbell,Male,110,210,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3489,Lucas Mansier,18,Hive Weightlifting,Male,65,210,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3490,Paris Waranimman,34,MURDER OF CROWS,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3491,Gregory Vallee,53,Swamp Cabbage Barbell Club,Male,110,210,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3492,Nikhil Shah,29,Myriad Weightlifting,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3493,Kenn Hoe,25,MURDER OF CROWS,Male,71,210,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3494,Jason Gonzalez,18,Iron Brotherhood,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3495,Gregory Sweat,24,Floyd Farms Weightlifting,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3496,David Swails,35,RUBBER CITY WEIGHTLIFTING,Male,88,210,12,Stripes,2026 VIRUS Weightlifting Series 1,false
+3497,Travis Pak,26,Unaffiliated,Male,88,209,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3498,James Zoucha,30,Long Beach Weightlifting,Male,88,209,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3499,Jennifer Galemmo,32,EAST COAST GOLD W/L TEAM,Female,+86,208,24,White,2026 VIRUS Weightlifting Series 1,false
+3500,Wayne Ngo,27,Team Strength Works,Male,88,208,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3501,Jack Wilson,17,Lion Chaser Barbell,Male,94,208,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3502,Austin Wright,30,CHFP WEIGHTLIFTING CLUB,Male,88,207,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3503,Kimberlee Douglas,45,Catalyst Masters,Female,+86,206,24,White,2026 VIRUS Weightlifting Series 1,false
+3504,Casey Aguilar-Gervase,29,Unaffiliated,Female,69,206,19,Red,2026 VIRUS Weightlifting Series 1,false
+3505,Trisha Mank,31,POWER AND GRACE PERFORMANCE.,Female,+86,206,24,White,2026 VIRUS Weightlifting Series 1,false
+3506,Michael Signore,45,Unaffiliated,Male,+110,206,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3507,Firuz Dumlupinar,44,Unaffiliated,Male,94,206,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3508,Christian Rogacion,30,Unaffiliated,Male,79,206,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3509,Luke Berardinelli,27,PAWSitive Barbell Club,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3510,Taylor Williams,35,Hungry dog barbell,Male,110,205,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3511,Alex Moon,27,CFC Weightlifting Club,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3512,Tim Garland,22,University of Michigan Weightlifting,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3513,James Thomas,19,Beyond The Barbell,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3514,Kyle Sanchez,26,Ironside Weightlifting,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3515,Fabrizio Apodaca,36,Unaffiliated,Male,110,205,15,Stripes,2026 VIRUS Weightlifting Series 1,false
+3516,David Corradetti,25,Fourteen Forty Collective,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3517,Lane Stewart,19,Maxx Effort Training,Male,71,205,6,Stripes,2026 VIRUS Weightlifting Series 1,false
+3518,Deborah Doran,34,Rising Tide Weightlifting,Female,77,205,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3519,Brady Hoffman,22,UW - LA CROSSE WEIGHTLIFTING CLUB,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3520,Michael Sardo,28,Aevitas Weightlifting,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3521,Lanz le,24,Powerhouse Weightlifting,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3522,Alexandria Fillmore,33,Vardanian Weightlifting,Female,86,205,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3523,Eric Wolk,37,Fourteen Forty Collective,Male,94,205,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3524,Ian Jones,29,Fourteen Forty Collective,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3525,Sean ODay,39,Columbus Weightlifting,Male,94,205,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3526,Elijah Yoder,23,Steadfast Barbell,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3527,Wyatt Mechalke,21,Ithaca Weightlifting,Male,88,205,11,Stripes,2026 VIRUS Weightlifting Series 1,false
+3528,Erick Mishell Medina,34,LILY WEIGHTLIFTING,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3529,Franz Blanchard,41,EAST COAST GOLD W/L TEAM,Male,+110,205,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3530,Carson Castelli,26,HEAVY METAL BARBELL,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3531,Francesca Dooris,30,PROJECT LIFT,Female,77,205,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3532,Jackson Carrigan,19,N. Highland WLC,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3533,Madeline Staniszewski,26,Unaffiliated,Female,63,205,12,White,2026 VIRUS Weightlifting Series 1,false
+3534,William Hong,31,Southern California Weightlifting Club,Male,94,205,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3535,Vincent Pietracupa,35,Unaffiliated,Male,79,205,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3536,Jessica Tatman,32,CLEAN SLATE WEIGHTLIFTING,Female,63,204,12,White,2026 VIRUS Weightlifting Series 1,false
+3537,Michael Wu,32,Polaris Weightlifting,Male,71,204,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3538,Jeremy Herrington,28,Kenmore Barbell & Fitness Weightlifting,Male,88,203,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3539,Taylor Lucas,31,Superfly Barbell Club,Female,69,203,19,Red,2026 VIRUS Weightlifting Series 1,false
+3540,Richard Mcfadden,43,Unaffiliated,Male,94,202,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3541,Haley McDaniel,35,Fourteen Forty Collective,Female,86,202,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3542,Samuel Cler,19,Fortified Strength,Male,110,201,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3543,Jake Colburn,23,MASS Strength,Male,79,201,7,Stars,2026 VIRUS Weightlifting Series 1,false
+3544,Ruben Martinez,48,Bexar Barbell,Male,110,201,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3545,Jake Langer,18,Iron Brotherhood,Male,94,200,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3546,Bryn Odberg,26,Fourteen Forty Collective,Female,63,200,12,White,2026 VIRUS Weightlifting Series 1,false
+3547,Anthony Surre,51,4 Star Strength,Male,110,200,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3548,Marcos Pujol,17,Iron Brotherhood,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3549,Robert O'Day,62,Unaffiliated,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3550,Douglas Desatnik,51,Catalyst Masters,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3551,Greg Karas,52,4 Star Strength,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3552,Isauro Felix,28,Myriad Weightlifting,Male,65,200,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3553,Carly Lansley,35,Haworth Weightlifting,Female,+86,200,24,White,2026 VIRUS Weightlifting Series 1,false
+3554,Allison Ambler,20,Fourteen Forty Collective,Female,69,200,19,Red,2026 VIRUS Weightlifting Series 1,false
+3555,Erik Carroll,36,Unaffiliated,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3556,Colin Corr,19,Olympic Weightlifting Club at The Ohio State University,Male,79,200,6,Red,2026 VIRUS Weightlifting Series 1,false
+3557,Michael Kim,41,Unaffiliated,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3558,Kiara Earle,32,CHFP WEIGHTLIFTING CLUB,Female,+86,200,24,White,2026 VIRUS Weightlifting Series 1,false
+3559,James Roudebush,59,Vehement Elite Athletics,Male,94,200,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3560,Sydney Collins,34,Providence Barbell Club,Female,86,200,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3561,Emily Rodriguez,38,Aegis Barbell,Female,+86,200,24,White,2026 VIRUS Weightlifting Series 1,false
+3562,Timothy Johnson,44,Unaffiliated,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3563,Samuel Axten,37,Aevitas Weightlifting,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3564,Hafsteinn Gislason,47,Columbus Weightlifting,Male,94,200,14,Stars,2026 VIRUS Weightlifting Series 1,false
+3565,Ewan McCallum,26,ATHLETIC LAB WLC,Male,71,200,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3566,Austin Martin,31,Centre City Weighlifting,Male,65,200,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3567,Nathan Mark,23,Olympic Weightlifting Club at The Ohio State University,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3568,Justin Manipis,31,Unaffiliated,Male,79,200,6,Red,2026 VIRUS Weightlifting Series 1,false
+3569,Justin Tebedo,38,Motor City Barbell,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3570,Ali Dougish,21,Unaffiliated,Male,71,200,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3571,Anthony Kinsey,35,Team Strength Works,Male,+110,200,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3572,Maxwell Anderson,38,PHILADELPHIA BARBELL,Male,110,200,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3573,Moriah Young,35,BASA Weightlifting,Female,+86,200,24,White,2026 VIRUS Weightlifting Series 1,false
+3574,Kason Luu,19,Fortified Strength,Male,71,200,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3575,Isiquiel Lemos,33,Unaffiliated,Male,65,200,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3576,Makiyah Nickerson,21,Mars Hill University,Female,63,200,12,White,2026 VIRUS Weightlifting Series 1,false
+3577,Jared Adkins,17,Beyond The Barbell,Male,79,200,6,Red,2026 VIRUS Weightlifting Series 1,false
+3578,Brandon Bolden,31,Black Flag Barbell,Male,71,200,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3579,Andrew Weymer,16,Fourteen Forty Collective,Male,60,200,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3580,Matthew Cannon,36,South Georgia Barbell,Male,88,200,10,Stripes,2026 VIRUS Weightlifting Series 1,false
+3581,Devin Lin,32,MURDER OF CROWS,Male,79,200,6,Red,2026 VIRUS Weightlifting Series 1,false
+3582,Matt Greene,49,Tri State Barbell,Male,110,199,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3583,Jonah Rubin,17,Freedom Weightlifting,Male,+94,198,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3584,Diego Yoo,17,Unaffiliated,Male,56,198,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3585,Christine Yee,27,Vehement Elite Athletics,Female,77,197,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3586,Carly Brown,24,DSSC Weightlifting,Female,77,197,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3587,Anthony Paarporn,29,CHFP WEIGHTLIFTING CLUB,Male,79,196,6,Red,2026 VIRUS Weightlifting Series 1,false
+3588,Ankit Bhandary,30,Unaffiliated,Male,79,196,6,Red,2026 VIRUS Weightlifting Series 1,false
+3589,Rachael Skinner,25,Optimus Barbell Club,Female,69,195,18,Red,2026 VIRUS Weightlifting Series 1,false
+3590,Benjamin Busarow,28,HIGH DESERT ATHLETIC CLUB,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3591,Scott Gonzalez,44,White Rose Barbell Club,Male,79,195,6,Red,2026 VIRUS Weightlifting Series 1,false
+3592,Adam Hawrylchak,17,Aevitas Weightlifting,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3593,Devall Wilson,46,Unaffiliated,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3594,Ethan Nuqui,26,Unaffiliated,Male,60,195,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3595,Marissa DelGado,29,Vardanian Weightlifting,Female,+86,195,24,White,2026 VIRUS Weightlifting Series 1,false
+3596,Daniel Lema,35,Queens Barbell,Male,71,195,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3597,Paolo Fernando,29,PARAMOUNT BARBELL CLUB,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3598,Heston Mullis,18,Maxx Effort Training,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3599,Kevin Chemleski,37,Unaffiliated,Male,110,195,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3600,wai yu,42,Mach10 Weightlifting Club,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3601,Shannon Cook,34,Optimus Barbell Club,Female,69,195,18,Red,2026 VIRUS Weightlifting Series 1,false
+3602,Bradley Graves,42,Unaffiliated,Male,94,195,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3603,Joseph Mattera,35,Tri State Barbell,Male,94,195,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3604,Kaia Jacobs,17,Unaffiliated,Female,+77,195,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3605,Jeremy Givens,53,Bexar Barbell,Male,94,195,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3606,James McGrath,45,Independent City Barbell,Male,88,195,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3607,Jack Mann,18,The Weight Room,Male,65,195,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3608,Donisha Traver,32,Fourteen Forty Collective,Female,69,195,18,Red,2026 VIRUS Weightlifting Series 1,false
+3609,Jagarii Gardner,19,LINDENWOOD LIONS,Male,60,195,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3610,Yiran Guo,36,Unaffiliated,Male,79,195,6,Red,2026 VIRUS Weightlifting Series 1,false
+3611,Ivy Gunn,21,Mars Hill University,Female,77,195,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3612,Cedar Coleman,45,The Strength Tank Weightlifting Club,Male,+110,195,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3613,Kent Neuerburg,65,Unaffiliated,Male,88,194,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3614,Jayson Drouillard,17,Unaffiliated,Male,65,193,6,Stars,2026 VIRUS Weightlifting Series 1,false
+3615,Taylor Maginnis,35,Tri State Barbell,Female,77,191,24,Stars,2026 VIRUS Weightlifting Series 1,false
+3616,Lucie Gehringer,25,Fourteen Forty Collective,Female,69,190,18,Red,2026 VIRUS Weightlifting Series 1,false
+3617,Siera Schuster,30,HEAVY METAL BARBELL,Female,63,190,12,White,2026 VIRUS Weightlifting Series 1,false
+3618,Ethan Takacs,16,Lebanon Barbell Club,Male,79,190,6,Red,2026 VIRUS Weightlifting Series 1,false
+3619,Jason Goico,18,Iron Brotherhood,Male,60,190,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3620,Denis Zotaj,22,Strength Solutions Weightlifting,Male,79,190,6,Red,2026 VIRUS Weightlifting Series 1,false
+3621,Matt Medeiros,38,Icon Performance Center LLC,Male,79,190,6,Red,2026 VIRUS Weightlifting Series 1,false
+3622,Phillip Snyder,46,Fourteen Forty Collective,Male,+110,190,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3623,Kevin Jorge,44,Lorton Barbell Club,Male,71,190,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3624,William Holencsak,48,Tri State Barbell,Male,+110,190,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3625,Alexa Mina,33,Optimus Barbell Club,Female,63,190,12,White,2026 VIRUS Weightlifting Series 1,false
+3626,Danielle Sheppard,31,HEAVY METAL BARBELL,Female,63,190,12,White,2026 VIRUS Weightlifting Series 1,false
+3627,Kyle Watterson,52,Train Harder Barbell Club,Male,88,190,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3628,Ryan Hunter,43,Muncie Weightlifting Club,Male,94,190,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3629,Ansley Amore,19,HEAVY METAL BARBELL,Female,+86,190,23,White,2026 VIRUS Weightlifting Series 1,false
+3630,Nico Paulo Tolentino,36,Unaffiliated,Male,65,190,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3631,Diego Lopez,17,Unaffiliated,Male,65,190,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3632,Jadier Rivera,28,Bexar Barbell,Male,65,190,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3633,Molly Jacobs,25,Vardanian Weightlifting,Female,77,190,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3634,Shelbey Phelps,32,Myriad Weightlifting,Female,+86,190,23,White,2026 VIRUS Weightlifting Series 1,false
+3635,Aadam Husain,31,Unaffiliated,Male,71,190,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3636,Madison Johnston,32,Unaffiliated,Female,63,190,12,White,2026 VIRUS Weightlifting Series 1,false
+3637,Kinsley Rodden,17,Bulletproof Barbell Club,Female,+77,190,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3638,Allison Rebustillo,18,TEAM OMNIA,Female,69,190,18,Red,2026 VIRUS Weightlifting Series 1,false
+3639,DJ Williams,17,Bull Strength Barbell,Male,79,190,6,Red,2026 VIRUS Weightlifting Series 1,false
+3640,Travis Partington,54,Centre City Weighlifting,Male,+110,190,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3641,Kimberly Wiese,20,Fortified Strength,Female,69,190,18,Red,2026 VIRUS Weightlifting Series 1,false
+3642,Isaac Leong,21,UW - LA CROSSE WEIGHTLIFTING CLUB,Male,79,190,6,Red,2026 VIRUS Weightlifting Series 1,false
+3643,Keaton Poppe,31,True Strength Performance Weightlifting,Female,+86,190,23,White,2026 VIRUS Weightlifting Series 1,false
+3644,Adrienne Vogelsang,34,Denver Barbell Club,Female,69,190,18,Red,2026 VIRUS Weightlifting Series 1,false
+3645,Jennifer Gusler,39,Optimus Barbell Club,Female,86,190,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3646,Aleigh Moore,34,ATLANTA PERFORMANCE,Female,77,190,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3647,Gretchen Stolte,35,Bexar Barbell,Female,69,190,18,Red,2026 VIRUS Weightlifting Series 1,false
+3648,Caleb Sprenger,18,SANDUSKY WEIGHTLIFTING,Male,71,189,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3649,Michelle Ramsey,23,TEAM OMNIA,Female,86,188,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3650,maicee Bradley,23,Heroic Barbell,Female,86,188,24,Stripes,2026 VIRUS Weightlifting Series 1,false
+3651,Wyatt Kight,16,Beyond The Barbell,Male,+94,188,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3652,Adelyn Jones,17,FORZA WEIGHTLIFTING CLUB,Female,69,188,18,Red,2026 VIRUS Weightlifting Series 1,false
+3653,Tamara Seager,30,Jacksonville Weightlifting,Female,77,187,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3654,Kristen Braccio,29,Category 5 Athletics,Female,86,187,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3655,Guillermo Salcedo,40,CLEAN SLATE WEIGHTLIFTING,Male,79,187,5,Red,2026 VIRUS Weightlifting Series 1,false
+3656,Brandon Beaver,40,CLEAN SLATE WEIGHTLIFTING,Male,88,186,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3657,Paul Coover,41,Grey Castle Weightlifting,Male,88,186,9,Stripes,2026 VIRUS Weightlifting Series 1,false
+3658,Corbett McCallum,51,HARRISBURG WEIGHTLIFTING CLUB,Male,94,185,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3659,Eleanor Cler,17,Fortified Strength,Female,+77,185,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3660,Mathew Corr,54,Unaffiliated,Male,88,185,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3661,Matias Navarrete,16,TEAM OMNIA,Male,79,185,5,Red,2026 VIRUS Weightlifting Series 1,false
+3662,Lauryn Nutter,29,Rhode Island Performance,Female,86,185,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3663,Katelyn Nies,40,Catalyst Masters,Female,+86,185,23,White,2026 VIRUS Weightlifting Series 1,false
+3664,Alicia Fernandez,30,Mako Athletics,Female,69,185,18,Red,2026 VIRUS Weightlifting Series 1,false
+3665,Ryan Espiritu,48,Unaffiliated,Male,88,185,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3666,Jonathan Tworek,18,Rogue River Barbell Club,Male,71,185,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3667,Emily Zolotarevsky,21,Optimus Barbell Club,Female,77,185,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3668,Theodore Clayton,20,TEAM OMNIA,Male,65,185,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3669,McKenzie Hatcher,18,Florida Elite,Female,77,185,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3670,Erica Sheagley,26,Myriad Weightlifting,Female,63,185,12,White,2026 VIRUS Weightlifting Series 1,false
+3671,Chereese Creel,30,HEAVY METAL BARBELL,Female,69,185,18,Red,2026 VIRUS Weightlifting Series 1,false
+3672,Gianna Van,16,HASSLE FREE BBC,Female,69,184,18,Red,2026 VIRUS Weightlifting Series 1,false
+3673,madeline francescone,18,Steadfast Barbell,Female,58,183,12,Red,2026 VIRUS Weightlifting Series 1,false
+3674,Melissa Salazar,35,EAST COAST GOLD W/L TEAM,Female,69,183,17,Red,2026 VIRUS Weightlifting Series 1,false
+3675,Kathryn Rose,25,Unaffiliated,Female,58,182,12,Red,2026 VIRUS Weightlifting Series 1,false
+3676,Jesse Mork,18,Unaffiliated,Male,88,181,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3677,Arkadiy Makaron,41,Empire Weightlifting,Male,71,181,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3678,Holly Crane,37,MURDER OF CROWS,Female,77,181,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3679,Chioma Onyekwere-Lyons,32,Unaffiliated,Female,+86,181,23,White,2026 VIRUS Weightlifting Series 1,false
+3680,Jonathan Korn,46,Brightside Barbell,Male,110,180,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3681,Chassity Del,16,Conqueror Weightlifting,Female,63,180,11,White,2026 VIRUS Weightlifting Series 1,false
+3682,Henry Iraheta,31,Cherokee Barbell,Male,71,180,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3683,Catessa Guadagnoli,20,EAST COAST GOLD W/L TEAM,Female,77,180,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3684,Nicole Mercier,32,CHFP WEIGHTLIFTING CLUB,Female,58,180,12,Red,2026 VIRUS Weightlifting Series 1,false
+3685,Denise Tam,34,Unaffiliated,Female,86,180,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3686,Joseph Green,40,Sovereign Weightlifting,Male,71,180,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3687,Lilliana Astralaga,36,Unaffiliated,Female,+86,180,23,White,2026 VIRUS Weightlifting Series 1,false
+3688,Joshua Womack,36,Unaffiliated,Male,79,180,5,Red,2026 VIRUS Weightlifting Series 1,false
+3689,Michael Alchus,51,Built By Becker Weightlifting Club,Male,+110,180,21,Blue,2026 VIRUS Weightlifting Series 1,false
+3690,MATTIE FLICKINGER,36,EAST COAST GOLD W/L TEAM,Female,69,180,17,Red,2026 VIRUS Weightlifting Series 1,false
+3691,Liz Earley,41,KiloDelphia,Female,+86,180,23,White,2026 VIRUS Weightlifting Series 1,false
+3692,Lance Hardy,40,Buff City Barbell,Male,94,180,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3693,Hannah Curren,34,Providence Barbell Club,Female,+86,180,23,White,2026 VIRUS Weightlifting Series 1,false
+3694,Beth Whaley,37,Catalyst Masters,Female,+86,180,23,White,2026 VIRUS Weightlifting Series 1,false
+3695,Christopher Feenstra,56,Steadfast Barbell,Male,110,180,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3696,Ethan Wright,22,Unaffiliated,Male,71,180,5,Stripes,2026 VIRUS Weightlifting Series 1,false
+3697,Lisa Ho,35,Tri State Barbell,Female,63,180,11,White,2026 VIRUS Weightlifting Series 1,false
+3698,Brena Andrews,31,Unaffiliated,Female,69,180,17,Red,2026 VIRUS Weightlifting Series 1,false
+3699,Zach Wyatt,37,Unaffiliated,Male,88,180,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3700,Denise Hom,35,Unaffiliated,Female,86,180,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3701,Roberto Padron,18,Iron Brotherhood,Male,88,180,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3702,Christopher Bohonis,54,Unaffiliated,Male,88,180,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3703,Joy Vincent,34,Greenlight Weightlifting,Female,77,180,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3704,Morgan Beattie,29,Warwick Weightlifting Club,Female,63,180,11,White,2026 VIRUS Weightlifting Series 1,false
+3705,Mark Pratt,57,EAST COAST GOLD W/L TEAM,Male,94,180,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3706,Randy Troy,15,Iron Brotherhood,Male,+79,180,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3707,Rowland Young,17,Unaffiliated,Male,79,180,5,Red,2026 VIRUS Weightlifting Series 1,false
+3708,Traci Beaune,41,Optimus Barbell Club,Female,63,180,11,White,2026 VIRUS Weightlifting Series 1,false
+3709,Fernando Suarez-Solis,16,Iron Brotherhood,Male,94,180,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3710,Kaziah Jones,24,Columbus Weightlifting,Female,58,180,12,Red,2026 VIRUS Weightlifting Series 1,false
+3711,Lise Sterckx,17,Unaffiliated,Female,69,180,17,Red,2026 VIRUS Weightlifting Series 1,false
+3712,Andrew Fajardo,20,Unaffiliated,Male,110,180,14,Stripes,2026 VIRUS Weightlifting Series 1,false
+3713,William Nollenberger,38,Cherokee Barbell,Male,88,179,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3714,Autumn Sands,18,Lion Chaser Barbell,Female,69,179,17,Red,2026 VIRUS Weightlifting Series 1,false
+3715,Couger Jaramillo,31,DC WEIGHTLIFTING CLUB,Female,63,179,11,White,2026 VIRUS Weightlifting Series 1,false
+3716,Ashton McAllister,16,POWER AND GRACE PERFORMANCE.,Male,65,179,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3717,Irvin Mejia,17,Aztec Weightlifting,Male,+94,178,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3718,Brenna Flynn,27,Fourteen Forty Collective,Female,77,178,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3719,D. Irizarry,23,Kuma Weightlifting,Female,53,177,5,Stars,2026 VIRUS Weightlifting Series 1,false
+3720,anna maguire,33,Southern California Weightlifting Club,Female,63,177,11,White,2026 VIRUS Weightlifting Series 1,false
+3721,Mario Rupcic,40,Category 5 Athletics,Male,88,177,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3722,Ziyao Ngai,31,HEAVY METAL BARBELL,Male,65,176,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3723,Neeko Washington,19,Freedom Weightlifting,Male,79,176,5,Red,2026 VIRUS Weightlifting Series 1,false
+3724,Rey Ortiz,18,Ablaze Barbell,Male,60,176,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3725,Michael Ben-Hain,50,Bexar Barbell,Male,88,175,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3726,gretchen messner,24,DSP Barbell Club,Female,58,175,12,Red,2026 VIRUS Weightlifting Series 1,false
+3727,Joshua Medeiros,45,Icon Performance Center LLC,Male,71,175,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3728,Taylor Perry,31,Base Barbell,Female,63,175,11,White,2026 VIRUS Weightlifting Series 1,false
+3729,Adriana Ufferman,25,Optimus Barbell Club,Female,69,175,17,Red,2026 VIRUS Weightlifting Series 1,false
+3730,Aleah Baron,19,LINDENWOOD LIONS,Female,+86,175,23,White,2026 VIRUS Weightlifting Series 1,false
+3731,Kayli Kullos,32,Unaffiliated,Female,69,175,17,Red,2026 VIRUS Weightlifting Series 1,false
+3732,Joseph Graziano,29,TCR Barbell,Male,79,175,5,Red,2026 VIRUS Weightlifting Series 1,false
+3733,Stephen Powell,66,Unaffiliated,Male,94,175,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3734,Keilana Brewer,17,POWER AND GRACE PERFORMANCE.,Female,63,175,11,White,2026 VIRUS Weightlifting Series 1,false
+3735,Christian Kennedy,43,Bulldog Weightlifting Club,Female,86,175,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3736,Jaycee Mann,21,The Weight Room,Female,53,175,5,Stars,2026 VIRUS Weightlifting Series 1,false
+3737,Joseph POWELL,17,Optimus Barbell Club,Male,+94,174,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3738,Nicholas Morris,45,Maximum Effort Barbel Club,Male,88,174,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3739,Aarynn Crawley,31,Unaffiliated,Female,69,173,17,Red,2026 VIRUS Weightlifting Series 1,false
+3740,Janae Ivery,39,Freedom Weightlifting,Female,69,172,17,Red,2026 VIRUS Weightlifting Series 1,false
+3741,Angela Gallegos,31,Unaffiliated,Female,58,172,12,Red,2026 VIRUS Weightlifting Series 1,false
+3742,William Otto,43,Unaffiliated,Male,94,172,13,Stars,2026 VIRUS Weightlifting Series 1,false
+3743,Gabrielle Vanek,30,CATALYST ATHLETICS,Female,69,172,17,Red,2026 VIRUS Weightlifting Series 1,false
+3744,Noah Booth,16,Beyond The Barbell,Male,79,170,5,Red,2026 VIRUS Weightlifting Series 1,false
+3745,Nyah Namisnak,26,Sanctuary Barbell,Female,77,170,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3746,Douglas Seamans,46,Butcher Barbell,Male,110,170,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3747,Ferron Harris,40,Lorton Barbell Club,Male,71,170,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3748,Annie Gough,24,Bexar Barbell,Female,53,170,5,Stars,2026 VIRUS Weightlifting Series 1,false
+3749,Peter Cole,40,Ithaca Weightlifting,Male,79,170,5,Red,2026 VIRUS Weightlifting Series 1,false
+3750,Hanna Digenis,27,POWER AND GRACE PERFORMANCE.,Female,58,170,12,Red,2026 VIRUS Weightlifting Series 1,false
+3751,Kelsi Reynolds,31,POWER AND GRACE PERFORMANCE.,Female,86,170,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3752,Ireland Manor,16,Mako Athletics,Female,77,170,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3753,Amanda Harmon,35,Providence Barbell Club,Female,86,170,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3754,Stephanie Brownstein,39,Portland Strength Collective,Female,86,170,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3755,Olivia Piacentini,38,Aegis Barbell,Female,86,170,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3756,Meaghan Callahan,34,Queens Barbell,Female,77,170,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3757,Caleb Hunter,17,Muncie Weightlifting Club,Male,71,170,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3758,Daniel Garza,50,Vehement Elite Athletics,Male,110,170,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3759,Jessica Rodriguez,34,MURDER OF CROWS,Female,58,170,12,Red,2026 VIRUS Weightlifting Series 1,false
+3760,Gabriella Mowery,26,Fairbanks Barbell Club,Female,63,170,11,White,2026 VIRUS Weightlifting Series 1,false
+3761,Manuel Hodgman,17,Palm Beach Weightlifting,Male,56,170,4,Stars,2026 VIRUS Weightlifting Series 1,false
+3762,Grace Worobel,22,Unaffiliated,Female,+86,169,23,White,2026 VIRUS Weightlifting Series 1,false
+3763,Amy Pierce,42,Butcher Barbell,Female,69,168,16,Red,2026 VIRUS Weightlifting Series 1,false
+3764,Bethany Thompson,26,Olympic Weightlifting Club at The Ohio State University,Female,77,168,23,Stars,2026 VIRUS Weightlifting Series 1,false
+3765,Lauren Gremizzi,32,BLACK & RED BARBELL CLUB,Female,69,168,16,Red,2026 VIRUS Weightlifting Series 1,false
+3766,Jennifer Berry,22,Unaffiliated,Female,86,168,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3767,Paige Wiersema,30,Optimus Barbell Club,Female,77,167,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3768,Amelia Bont,26,EFD Holland Barbell,Female,77,167,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3769,Sydney Mack,20,Unaffiliated,Female,86,167,23,Stripes,2026 VIRUS Weightlifting Series 1,false
+3770,Tom Daurelio,47,Unaffiliated,Male,88,166,8,Stripes,2026 VIRUS Weightlifting Series 1,false
+3771,Sarah Wright,34,Greensboro Barbell,Female,53,166,5,Stars,2026 VIRUS Weightlifting Series 1,true
+3772,Chun-Kai Kao,37,HASSLE FREE BBC,Male,79,166,5,Red,2026 VIRUS Weightlifting Series 1,false
+3773,Julia Liebster,35,HEAVY METAL BARBELL,Female,77,166,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3774,MaryAnn Burdek,33,Optimus Barbell Club,Female,+86,166,23,White,2026 VIRUS Weightlifting Series 1,false
+3775,Anthony Pacheco,36,Vehement Elite Athletics,Male,79,166,5,Red,2026 VIRUS Weightlifting Series 1,false
+3776,Andrea Altieri,39,EAST COAST GOLD W/L TEAM,Female,77,165,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3777,Chloe Starr,35,MURDER OF CROWS,Female,69,165,16,Red,2026 VIRUS Weightlifting Series 1,false
+3778,Emily Green,19,Fourteen Forty Collective,Female,63,165,11,White,2026 VIRUS Weightlifting Series 1,false
+3779,Ava Myers,18,Fourteen Forty Collective,Female,58,165,11,Red,2026 VIRUS Weightlifting Series 1,false
+3780,Taylor Fetzer,30,Bexar Barbell,Female,77,165,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3781,Josh Wager,19,Unaffiliated,Male,79,165,5,Red,2026 VIRUS Weightlifting Series 1,false
+3782,Joe Dang,26,PITTSBURGH BBC,Male,60,165,2,Stars,2026 VIRUS Weightlifting Series 1,false
+3783,Emmalee Harding,32,Unaffiliated,Female,+86,165,22,White,2026 VIRUS Weightlifting Series 1,false
+3784,Robyn Teed,34,Optimus Barbell Club,Female,+86,165,22,White,2026 VIRUS Weightlifting Series 1,false
+3785,Pranav Pagadala,23,KC WEIGHTLIFTING,Male,60,165,2,Stars,2026 VIRUS Weightlifting Series 1,false
+3786,Coty Brennan,36,Aegis Barbell,Female,63,165,11,White,2026 VIRUS Weightlifting Series 1,false
+3787,Amy Hovan,49,RUBBER CITY WEIGHTLIFTING,Female,77,165,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3788,Lauren Thiel,35,1Kilo,Female,+86,165,22,White,2026 VIRUS Weightlifting Series 1,false
+3789,Brynn Catalano,17,DSP Barbell Club,Female,58,165,11,Red,2026 VIRUS Weightlifting Series 1,false
+3790,Anna Watkin,28,EFD Holland Barbell,Female,69,165,16,Red,2026 VIRUS Weightlifting Series 1,false
+3791,Artemis Zohali,27,PARAMOUNT BARBELL CLUB,Female,69,165,16,Red,2026 VIRUS Weightlifting Series 1,false
+3792,Vitaliy Kipran,15,Unaffiliated,Male,65,165,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3793,Katherine Lee,36,HARRISBURG WEIGHTLIFTING CLUB,Female,58,165,11,Red,2026 VIRUS Weightlifting Series 1,false
+3794,Travis Johnson,51,Marin Heavy Athletics,Male,110,165,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3795,Amanda Cann,45,Lupo Barbell Club,Female,86,164,21,Red,2026 VIRUS Weightlifting Series 1,false
+3796,Adina Anamuah-Mensah,23,Unaffiliated,Female,69,164,16,Red,2026 VIRUS Weightlifting Series 1,false
+3797,William Meredith,35,ATHLETIC LAB WLC,Male,65,163,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3798,Kareema Salah,21,Archon Weightlifting,Female,58,163,11,Red,2026 VIRUS Weightlifting Series 1,false
+3799,Reese Hayward,22,Hammer Strength WLC,Female,69,163,16,Red,2026 VIRUS Weightlifting Series 1,false
+3800,Bryan Contreras,32,BASA Weightlifting,Male,65,162,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3801,Nicole Johnson,30,Unaffiliated,Female,63,162,10,White,2026 VIRUS Weightlifting Series 1,false
+3802,Emily Faas,31,CLEAN SLATE WEIGHTLIFTING,Female,77,162,22,Stars,2026 VIRUS Weightlifting Series 1,false
+3803,Ryan Murphy,15,Columbus Weightlifting,Male,+79,160,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3804,Marina Gidcumb,45,Team Strength Works,Female,86,160,21,Red,2026 VIRUS Weightlifting Series 1,false
+3805,Alyssa Hines,16,HASSLE FREE BBC,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3806,Lucille Murphy,42,Gryphon Strength Barbell,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3807,Corynne Francis,35,Ritual Weightlifting,Female,63,160,10,White,2026 VIRUS Weightlifting Series 1,false
+3808,Bodie Stegelmann,61,Stegelmann Performance,Male,110,160,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3809,Sean Mork,20,Unaffiliated,Male,79,160,4,Red,2026 VIRUS Weightlifting Series 1,false
+3810,Kimberly Andrew,41,Eastside Barbell,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3811,Angie Cornejo,42,Wolf Pack Weightlifting,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3812,Madison Hoblit,18,3P Weightlifting,Female,86,160,21,Red,2026 VIRUS Weightlifting Series 1,false
+3813,Brittni Perry,37,Centre City Weighlifting,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3814,Alise Enriquez,41,Bexar Barbell,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3815,Michelle Wagner,39,Fourteen Forty Collective,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3816,Jordyn Cooley,31,Southern California Weightlifting Club,Female,58,160,11,Red,2026 VIRUS Weightlifting Series 1,false
+3817,Maya Nichols,26,Invincible Barbell,Female,+86,160,22,White,2026 VIRUS Weightlifting Series 1,false
+3818,Andrea Nguyen,32,Myriad Weightlifting,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3819,Catherine Ridella,30,Warwick Weightlifting Club,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3820,Courtney Beale,26,Rhode Island Performance,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3821,Kate Painter,42,Brave Barbells N Sprinkles WLC,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3822,Halie Thornton,22,Fourteen Forty Collective,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3823,McKenzie Borchers,26,Fairbanks Barbell Club,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3824,Katherine Brown,51,Haworth Weightlifting,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3825,Anthony Caceres,14,TEAM OMNIA,Male,+79,160,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3826,Elise Garza,25,4 Star Strength,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3827,Brock Bates,15,Glass City Weightlifting,Male,65,160,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3828,Stephanie Teare,44,Myriad Weightlifting,Female,+86,160,22,White,2026 VIRUS Weightlifting Series 1,false
+3829,Annika Van,32,Unaffiliated,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3830,Juliana Flynn,33,Marin Heavy Athletics,Female,58,160,11,Red,2026 VIRUS Weightlifting Series 1,false
+3831,Rachel Nederhoed,30,4 Star Strength,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3832,Patricia Van,34,Tri State Barbell,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3833,Faith Wyand,22,Unaffiliated,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3834,Leah Vertullo,35,Unaffiliated,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3835,Ashley Gregory,39,Iowa Elite,Female,+86,160,22,White,2026 VIRUS Weightlifting Series 1,false
+3836,Eric Bramwell,56,POWER AND GRACE PERFORMANCE.,Male,71,160,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3837,Allie Nichols,18,Austin Barbell,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3838,Stephanie Kuehne,38,Ritual Weightlifting,Female,63,160,10,White,2026 VIRUS Weightlifting Series 1,false
+3839,Arthi Nithi,30,MURDER OF CROWS,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3840,Victoria Carter,20,Iowa Elite,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3841,Tessandra Sage,33,Unaffiliated,Female,77,160,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3842,Megan Maccio,25,Category 5 Athletics,Female,69,160,16,Red,2026 VIRUS Weightlifting Series 1,false
+3843,Jack Mosher,58,LILY WEIGHTLIFTING,Male,88,160,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3844,Jackie Griswold,36,Unaffiliated,Female,86,160,21,Red,2026 VIRUS Weightlifting Series 1,false
+3845,Erin Huss,36,Bexar Barbell,Female,58,160,11,Red,2026 VIRUS Weightlifting Series 1,false
+3846,Molly Mooney,38,Aspire Athletic Performance,Female,86,159,21,Red,2026 VIRUS Weightlifting Series 1,false
+3847,Niko Labella-choo,17,TEAM OMNIA,Male,71,159,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3848,Madeleine Jones,28,House of Weightlifting,Female,+86,159,22,White,2026 VIRUS Weightlifting Series 1,false
+3849,Joshua Ortiz,40,EAST COAST GOLD W/L TEAM,Male,79,159,4,Red,2026 VIRUS Weightlifting Series 1,false
+3850,Sophie Desatnik,21,Olympic Weightlifting Club at The Ohio State University,Female,63,158,10,White,2026 VIRUS Weightlifting Series 1,false
+3851,Damien Persico,15,Unaffiliated,Male,52,158,3,White,2026 VIRUS Weightlifting Series 1,false
+3852,Mikaela O’Barr,29,Lebanon Barbell Club,Female,77,158,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3853,Wandasun Sihanath,31,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,77,158,21,Stars,2026 VIRUS Weightlifting Series 1,false
+3854,Stephen Kennedy,43,RVA Weightlifting,Male,79,157,4,Red,2026 VIRUS Weightlifting Series 1,false
+3855,Grayor Opfer,16,SANDUSKY WEIGHTLIFTING,Male,60,157,2,Stars,2026 VIRUS Weightlifting Series 1,false
+3856,Shelby Riney,43,Hungry dog barbell,Female,77,157,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3857,Samantha Sills,35,Motor City Barbell,Female,+86,155,22,White,2026 VIRUS Weightlifting Series 1,false
+3858,Malorie Kwiatkowski,37,Optimus Barbell Club,Female,58,155,11,Red,2026 VIRUS Weightlifting Series 1,false
+3859,Emi Smith,31,ALPHA BARBELL,Female,58,155,11,Red,2026 VIRUS Weightlifting Series 1,false
+3860,Martina Kampel,25,Unaffiliated,Female,86,155,21,Red,2026 VIRUS Weightlifting Series 1,false
+3861,Maryam Grafton,16,EAST COAST GOLD W/L TEAM,Female,58,155,11,Red,2026 VIRUS Weightlifting Series 1,false
+3862,Lindsey Yeom,32,Heroic Barbell,Female,63,155,10,White,2026 VIRUS Weightlifting Series 1,false
+3863,Karina Nigmatullina,42,Unaffiliated,Female,77,155,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3864,Samuel Ham,33,Unaffiliated,Male,65,155,2,Stripes,2026 VIRUS Weightlifting Series 1,false
+3865,Taylor Bjork,30,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,69,155,15,Red,2026 VIRUS Weightlifting Series 1,false
+3866,Ibis Loya,42,4 Star Strength,Female,69,155,15,Red,2026 VIRUS Weightlifting Series 1,false
+3867,Derick Puff,37,Unaffiliated,Male,60,155,2,Stars,2026 VIRUS Weightlifting Series 1,false
+3868,William Young,52,EAST COAST GOLD W/L TEAM,Male,88,155,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3869,Jessica Ferrari,31,Austin Barbell,Female,69,155,15,Red,2026 VIRUS Weightlifting Series 1,false
+3870,Madeline Valenzuela,28,Unaffiliated,Female,77,155,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3871,Shayla Breedlove,33,Unaffiliated,Female,+86,155,22,White,2026 VIRUS Weightlifting Series 1,false
+3872,Erin Sly,31,Unaffiliated,Female,77,154,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3873,Natalie Smith,40,Austin Barbell,Female,77,153,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3874,Lydia Graham,31,Freedom Weightlifting,Female,69,153,15,Red,2026 VIRUS Weightlifting Series 1,false
+3875,Rachel Kremer,44,Superfly Barbell Club,Female,77,152,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3876,Katherine Cirone,44,Valhalla Weightlifting,Female,77,152,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3877,Meredith Reyes,38,351 Barbell Club,Female,58,152,11,Red,2026 VIRUS Weightlifting Series 1,false
+3878,BRIEANNA HERNANDEZ,28,HEAVY METAL BARBELL,Female,77,152,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3879,Lesa Powell,31,HEAVY METAL BARBELL,Female,63,152,10,White,2026 VIRUS Weightlifting Series 1,false
+3880,Taylor Reimer,33,Unaffiliated,Female,63,152,10,White,2026 VIRUS Weightlifting Series 1,false
+3881,Amanda Fishbein,28,Unaffiliated,Female,77,152,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3882,Deja Beechum,30,Stonehenge Weightlifting,Female,69,151,15,Red,2026 VIRUS Weightlifting Series 1,false
+3883,Jane Miller,22,Summit Barbell,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3884,Adrian Pawar,17,Iron Brotherhood,Male,79,150,4,Red,2026 VIRUS Weightlifting Series 1,false
+3885,Adia Tomlinson,19,Train Harder Barbell Club,Female,53,150,5,Stars,2026 VIRUS Weightlifting Series 1,false
+3886,Sophia Calderon,20,Ablaze Barbell,Female,63,150,10,White,2026 VIRUS Weightlifting Series 1,false
+3887,Rickey Pecina,17,Aztec Weightlifting,Male,+94,150,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+3888,Shayla Ford,40,Eastside Barbell,Female,63,150,10,White,2026 VIRUS Weightlifting Series 1,false
+3889,Cassie Anglin,35,Unaffiliated,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3890,Renee Schroeder,23,Glass City Weightlifting,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3891,Gina Guillory,31,Bexar Barbell,Female,86,150,21,Red,2026 VIRUS Weightlifting Series 1,false
+3892,Shannon Chalich,30,Unaffiliated,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3893,Christina Boyd,25,Troutman Training Systems,Female,69,150,14,Red,2026 VIRUS Weightlifting Series 1,false
+3894,Melissa Boguslawski,40,Motor City Barbell,Female,86,150,21,Red,2026 VIRUS Weightlifting Series 1,false
+3895,Emily Khaykin,33,CHFP WEIGHTLIFTING CLUB,Female,63,150,10,White,2026 VIRUS Weightlifting Series 1,false
+3896,Alyssa Cox,28,Portland Strength Collective,Female,69,150,14,Red,2026 VIRUS Weightlifting Series 1,false
+3897,Savannah Adkins,16,Beyond The Barbell,Female,+77,150,21,Red,2026 VIRUS Weightlifting Series 1,false
+3898,Sadie Hayhoe,17,Unaffiliated,Female,58,150,10,Red,2026 VIRUS Weightlifting Series 1,false
+3899,Natalie Stanghill,31,HIGH DESERT ATHLETIC CLUB,Female,63,150,10,White,2026 VIRUS Weightlifting Series 1,false
+3900,Heather Zrebiec,45,Unaffiliated,Female,69,150,14,Red,2026 VIRUS Weightlifting Series 1,false
+3901,Kelly Cumberledge,33,Black Flag Barbell,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3902,Timothy Newman,58,PROJECT LIFT,Male,71,150,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3903,Reagan Herchold,15,Puget Sound Weightlifting,Female,58,150,10,Red,2026 VIRUS Weightlifting Series 1,false
+3904,Brooke McNicholas,33,Optimus Barbell Club,Female,58,150,10,Red,2026 VIRUS Weightlifting Series 1,false
+3905,Danielle Purtell,32,Optimus Barbell Club,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3906,Madelyn Bowlin,28,POWER AND GRACE PERFORMANCE.,Female,+86,150,22,White,2026 VIRUS Weightlifting Series 1,false
+3907,Samantha Goodman,18,KC WEIGHTLIFTING,Female,69,150,14,Red,2026 VIRUS Weightlifting Series 1,false
+3908,Danlin Bao,31,Unaffiliated,Female,58,150,10,Red,2026 VIRUS Weightlifting Series 1,false
+3909,Mia Colozza,23,Eastside Barbell,Female,86,150,21,Red,2026 VIRUS Weightlifting Series 1,false
+3910,Connie Yu,26,Rhode Island Performance,Female,58,150,10,Red,2026 VIRUS Weightlifting Series 1,false
+3911,Rachel Memenza,32,Unaffiliated,Female,86,150,21,Red,2026 VIRUS Weightlifting Series 1,false
+3912,Brenda Espinoza,48,Unaffiliated,Female,77,150,20,Stars,2026 VIRUS Weightlifting Series 1,false
+3913,Scott Stamey,51,Brave Barbells N Sprinkles WLC,Male,88,150,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3914,Stevie Majoros,17,Fortified Strength,Female,69,150,14,Red,2026 VIRUS Weightlifting Series 1,false
+3915,Chelsea Bijansky,36,Optimus Barbell Club,Female,69,148,14,Red,2026 VIRUS Weightlifting Series 1,false
+3916,Halona Stephenson,28,HEAVY METAL BARBELL,Female,77,148,19,Blue,2026 VIRUS Weightlifting Series 1,false
+3917,Marissa Stockham,36,Team Strength Works,Female,69,148,14,Red,2026 VIRUS Weightlifting Series 1,false
+3918,Chelsea Hopkins,50,Eastside Barbell,Female,+86,148,22,White,2026 VIRUS Weightlifting Series 1,false
+3919,Delores Hill,51,Unaffiliated,Female,+86,147,22,White,2026 VIRUS Weightlifting Series 1,false
+3920,Kelly Carr,31,Wolf Pack Weightlifting,Female,69,147,14,Red,2026 VIRUS Weightlifting Series 1,false
+3921,Kelly Joniak,28,FORZA WEIGHTLIFTING CLUB,Female,69,147,14,Red,2026 VIRUS Weightlifting Series 1,false
+3922,Joanie Ouellet,38,Unaffiliated,Female,58,147,10,Red,2026 VIRUS Weightlifting Series 1,false
+3923,Maya Litt,17,Sanctuary Barbell,Female,58,147,10,Red,2026 VIRUS Weightlifting Series 1,false
+3924,Brittley Ball,30,West Virginia Weightlifting,Female,+86,146,21,White,2026 VIRUS Weightlifting Series 1,false
+3925,Christa Degidio,33,EAST COAST GOLD W/L TEAM,Female,58,145,10,Red,2026 VIRUS Weightlifting Series 1,false
+3926,Julie Mizak,43,Unaffiliated,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3927,Brynn Cupp,19,Lion Chaser Barbell,Female,53,145,5,Stars,2026 VIRUS Weightlifting Series 1,false
+3928,Amy Farrell,52,MASS Strength,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3929,Elizabeth Eiting,22,Olympic Weightlifting Club at The Ohio State University,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3930,Katherine Young,37,Unaffiliated,Female,86,145,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3931,Kelsey Ogle,33,Unaffiliated,Female,+86,145,21,White,2026 VIRUS Weightlifting Series 1,false
+3932,Rachel Oakley,28,EAST COAST GOLD W/L TEAM,Female,+86,145,21,White,2026 VIRUS Weightlifting Series 1,false
+3933,Alyssa Garrison,29,Aevitas Weightlifting,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3934,stuart grimsley,63,Unaffiliated,Male,88,145,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3935,Ariel Hekier,24,ATHLETIC LAB WLC,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3936,Mary Larrivee,24,BlueWave Weightlifting,Female,86,145,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3937,Alexandria Bailey,32,351 Barbell Club,Female,69,145,14,Red,2026 VIRUS Weightlifting Series 1,false
+3938,Laura Griffin,16,Beyond The Barbell,Female,+77,145,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3939,Cara Phillips,51,1Kilo,Female,77,145,19,Blue,2026 VIRUS Weightlifting Series 1,false
+3940,Megan Schroeder,26,Denver Barbell Club,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3941,Bianca Macias,33,DC WEIGHTLIFTING CLUB,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3942,Morgan Kiser,26,Fourteen Forty Collective,Female,69,145,14,Red,2026 VIRUS Weightlifting Series 1,false
+3943,Haley Headrick,24,Grow or Die Barbell,Female,69,145,14,Red,2026 VIRUS Weightlifting Series 1,false
+3944,Brittlan Wall,35,CHFP WEIGHTLIFTING CLUB,Female,69,145,14,Red,2026 VIRUS Weightlifting Series 1,false
+3945,Holden Humphreys,17,HARRISBURG WEIGHTLIFTING CLUB,Male,71,145,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3946,Jaime Cordova,56,Lupo Barbell Club,Male,88,145,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3947,Taisiia Barrette,29,Team Strength Works,Female,86,145,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3948,Stacey Barrack,41,CHFP WEIGHTLIFTING CLUB,Female,77,145,19,Blue,2026 VIRUS Weightlifting Series 1,false
+3949,Anasia Clairvoyant,23,Freedom Weightlifting,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3950,Maria Castillo,30,Unaffiliated,Female,58,145,10,Red,2026 VIRUS Weightlifting Series 1,false
+3951,Kayla Bouckhuyt,25,Heartland Strength,Female,63,145,9,White,2026 VIRUS Weightlifting Series 1,false
+3952,Morgan Johnson,30,1Kilo,Female,77,145,19,Blue,2026 VIRUS Weightlifting Series 1,false
+3953,Rebecca Broeckel,38,Unaffiliated,Female,69,144,14,Red,2026 VIRUS Weightlifting Series 1,false
+3954,Maeve Willis,34,1Kilo,Female,58,144,10,Red,2026 VIRUS Weightlifting Series 1,true
+3955,Alicyn DeLoa,27,Heartland Strength,Female,69,144,14,Red,2026 VIRUS Weightlifting Series 1,false
+3956,Taylor Stone,33,RUBBER CITY WEIGHTLIFTING,Female,69,143,14,Red,2026 VIRUS Weightlifting Series 1,false
+3957,Alana Kuzmik,39,Unaffiliated,Female,58,143,10,Red,2026 VIRUS Weightlifting Series 1,false
+3958,James Saenz,18,Aztec Weightlifting,Male,65,142,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+3959,Britta Castillo,38,Glass City Weightlifting,Female,63,142,9,White,2026 VIRUS Weightlifting Series 1,false
+3960,Emiko Wilks,30,Polaris Weightlifting,Female,58,142,10,Red,2026 VIRUS Weightlifting Series 1,false
+3961,Sadie Bischoff,17,PFP Barbell Club,Female,63,142,9,White,2026 VIRUS Weightlifting Series 1,false
+3962,Reece Robinson,16,Beyond The Barbell,Female,58,142,10,Red,2026 VIRUS Weightlifting Series 1,false
+3963,Cameron Childers,16,Big Blue Weightlifting,Male,79,141,4,Red,2026 VIRUS Weightlifting Series 1,false
+3964,Kaitlin Ross,30,Unaffiliated,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3965,Deja Lee,20,University of Michigan Weightlifting,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3966,Jessie Debshaw,24,1Kilo,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3967,Lenore Namou,27,4 Star Strength,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3968,Joanne Whitmer,40,Pilchuck Barbell,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3969,Lara Boyer,41,EAST COAST GOLD W/L TEAM,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3970,Charleigh Smith,19,Maxx Effort Training,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3971,Todd Everett,61,PROJECT LIFT,Male,88,140,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+3972,Jaden Spondike,23,Unaffiliated,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3973,Jim Lambert,61,MASS Strength,Male,71,140,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3974,Makayla Cogan,23,DSP Barbell Club,Female,58,140,9,Red,2026 VIRUS Weightlifting Series 1,false
+3975,Teelilly Abrighach,18,Glass City Weightlifting,Female,58,140,9,Red,2026 VIRUS Weightlifting Series 1,false
+3976,jennifer morales,21,Ablaze Barbell,Female,63,140,8,White,2026 VIRUS Weightlifting Series 1,false
+3977,Lauren Baney,33,Unaffiliated,Female,+86,140,21,White,2026 VIRUS Weightlifting Series 1,false
+3978,Camille Lafferty,21,CLEAN SLATE WEIGHTLIFTING,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3979,Piper Jones,17,CATALYST ATHLETICS,Female,48,140,3,Stars,2026 VIRUS Weightlifting Series 1,false
+3980,Brenda Emery,45,Fourteen Forty Collective,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3981,Karla Ramon,21,University of Michigan Weightlifting,Female,63,140,8,White,2026 VIRUS Weightlifting Series 1,false
+3982,Maria Todd,27,Fourteen Forty Collective,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3983,Mila Skibinski,21,FORZA WEIGHTLIFTING CLUB,Female,58,140,9,Red,2026 VIRUS Weightlifting Series 1,false
+3984,Kathryn Flores,45,Unaffiliated,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3985,C. E. Brooks,38,Brightside Barbell,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3986,Oscar Benavides,39,Jacksonville Weightlifting,Male,71,140,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+3987,Brooklynn Hanna,24,Tacoma Strength Weightlifting,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3988,Shelby Weaver,30,DC WEIGHTLIFTING CLUB,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3989,Rachel Guiles,24,Motor City Barbell,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3990,Luke Gourno,16,Unaffiliated,Male,65,140,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+3991,Courtney Dimmig,34,Born Again Weightlifting,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3992,Alexandra Vespico,34,GARAGE STRENGTH,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3993,Brigitte Bieyro,42,Unaffiliated,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3994,Autumn Lester,29,Unaffiliated,Female,86,140,20,Blue,2026 VIRUS Weightlifting Series 1,false
+3995,Amy Slagel,27,House of Weightlifting,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3996,TIA VANCE,43,BASA Weightlifting,Female,77,140,18,Blue,2026 VIRUS Weightlifting Series 1,false
+3997,Alexandra Kashani,32,Arc Weightlifting Club,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3998,Glenna Asmus,47,Myriad Weightlifting,Female,69,140,13,Red,2026 VIRUS Weightlifting Series 1,false
+3999,Amiya Drury,16,SANDUSKY WEIGHTLIFTING,Female,63,139,8,White,2026 VIRUS Weightlifting Series 1,false
+4000,Jaedyn Orton,17,Unaffiliated,Female,48,139,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4001,Kaelyn Button,25,Kenmore Barbell & Fitness Weightlifting,Female,+86,139,21,White,2026 VIRUS Weightlifting Series 1,false
+4002,Piper Gasaway,30,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,69,139,13,Red,2026 VIRUS Weightlifting Series 1,false
+4003,Carly Lemmond,43,Unaffiliated,Female,69,138,13,Red,2026 VIRUS Weightlifting Series 1,false
+4004,Karina Falkstrom,28,Powerhouse Weightlifting,Female,86,138,19,White,2026 VIRUS Weightlifting Series 1,false
+4005,Kylie Rathbun,24,Unaffiliated,Female,69,138,13,Red,2026 VIRUS Weightlifting Series 1,false
+4006,Hollis O'Brien,37,Aspire Athletic Performance,Female,86,138,19,White,2026 VIRUS Weightlifting Series 1,false
+4007,Carolina Saavedra,29,Heartland Strength,Female,+86,138,21,White,2026 VIRUS Weightlifting Series 1,false
+4008,Jordyn Craig-Schwartz,23,Lupo Barbell Club,Female,69,138,13,Red,2026 VIRUS Weightlifting Series 1,false
+4009,Tess Kallmeyer,39,1Kilo,Female,63,137,8,White,2026 VIRUS Weightlifting Series 1,false
+4010,Amelia Phillips,17,POWER AND GRACE PERFORMANCE.,Female,53,137,5,Stars,2026 VIRUS Weightlifting Series 1,false
+4011,Kristin Frye,33,RVA Weightlifting,Female,69,137,13,Red,2026 VIRUS Weightlifting Series 1,false
+4012,Lyla Ott,22,True Strength Performance Weightlifting,Female,77,136,18,Blue,2026 VIRUS Weightlifting Series 1,false
+4013,Katelyn Reuther,39,POWER AND GRACE PERFORMANCE.,Female,63,136,8,White,2026 VIRUS Weightlifting Series 1,false
+4014,Darianne Craven,44,PARAMOUNT BARBELL CLUB,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4015,paige vallei,24,DSP Barbell Club,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4016,Tara Mackey,33,JDI BARBELL,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4017,Allison Bignall,28,Kilo Barbell Club,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4018,Linnea Schultz,27,SAYRE PARK WLC,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4019,Angela Grupe,33,Ithaca Weightlifting,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4020,maria sanchez,29,DC WEIGHTLIFTING CLUB,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4021,Jay Coleman,66,LILY WEIGHTLIFTING,Male,110,135,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+4022,Colleen Moon,46,PROJECT LIFT,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4023,Jacqueline Rojas,33,EAST COAST GOLD W/L TEAM,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4024,Crysta Parkin,49,ROCHESTER BARBELL CLUB,Female,63,135,8,White,2026 VIRUS Weightlifting Series 1,false
+4025,Annie Long,26,Columbus Weightlifting,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4026,Devin Craig-Schwartz,21,Lupo Barbell Club,Female,63,135,8,White,2026 VIRUS Weightlifting Series 1,false
+4027,Georgina Moss,36,EAST COAST GOLD W/L TEAM,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4028,Maxson Salveo,16,Salus Barbell Club,Male,65,135,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4029,Yassmina Youssif,24,CHFP WEIGHTLIFTING CLUB,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4030,Madeleine Maher,17,Unaffiliated,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4031,Mary Tilley,32,Brave Barbells N Sprinkles WLC,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4032,Jenny Ordon,45,Aevitas Weightlifting,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4033,Dnijah Sanders,32,Unaffiliated,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4034,Jenna Godfrey,26,Heartland Strength,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4035,Elizabeth Berg,25,Lion Chaser Barbell,Female,77,135,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4036,Tonya Hinks,17,GARAGE STRENGTH,Female,58,135,9,Red,2026 VIRUS Weightlifting Series 1,false
+4037,Brittany Steward,36,Unaffiliated,Female,63,135,8,White,2026 VIRUS Weightlifting Series 1,false
+4038,Sharibel Vazquez,20,LINDENWOOD LIONS,Female,69,135,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4039,Tammie Fitzpatrick,45,Unaffiliated,Female,86,135,19,White,2026 VIRUS Weightlifting Series 1,false
+4040,Jessica Dubin,34,MURDER OF CROWS,Female,63,135,8,White,2026 VIRUS Weightlifting Series 1,false
+4041,Andrew Kramer,62,Unaffiliated,Male,79,135,4,Red,2026 VIRUS Weightlifting Series 1,false
+4042,Holly Mahoney,40,Valley Strength Weightlifting,Female,58,134,9,Red,2026 VIRUS Weightlifting Series 1,false
+4043,Melissa Coughlin,46,Unaffiliated,Female,63,134,8,White,2026 VIRUS Weightlifting Series 1,false
+4044,Kristina Teel,55,The Strength Shack,Female,+86,134,21,White,2026 VIRUS Weightlifting Series 1,false
+4045,Yetunde Olayinka,36,MURDER OF CROWS,Female,+86,134,21,White,2026 VIRUS Weightlifting Series 1,false
+4046,Mariana Trevino,48,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,63,133,7,White,2026 VIRUS Weightlifting Series 1,false
+4047,Lyndi Grossman,33,Columbus Weightlifting,Female,69,133,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4048,Carly Attanasio,36,Ballard Barbell Club,Female,69,133,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4049,Madison Cook,31,Alee Athletics,Female,69,133,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4050,Shannon Totman,36,Greensboro Barbell,Female,+86,133,21,White,2026 VIRUS Weightlifting Series 1,false
+4051,Elaine Buchmeier,27,Myriad Weightlifting,Female,63,133,7,White,2026 VIRUS Weightlifting Series 1,false
+4052,Kelsey Randall,34,Heroic Barbell,Female,69,133,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4053,Julia VanBurger,26,Unaffiliated,Female,77,132,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4054,Payton Kramer,16,CLEAN SLATE WEIGHTLIFTING,Female,77,132,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4055,Ariana Canalez,35,Unaffiliated,Female,+86,132,21,White,2026 VIRUS Weightlifting Series 1,false
+4056,Chloe Bechdolt,31,Superfly Barbell Club,Female,58,132,9,Red,2026 VIRUS Weightlifting Series 1,false
+4057,Rosie Hankins,20,Unaffiliated,Female,63,132,7,White,2026 VIRUS Weightlifting Series 1,false
+4058,Elise Burkhardt,32,Tri State Barbell,Female,77,132,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4059,Carissa Holt,30,Heartland Strength,Female,77,132,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4060,Leah EdwArds,45,ALPHA BARBELL,Female,63,132,7,White,2026 VIRUS Weightlifting Series 1,false
+4061,Michelle Woogen,41,Unaffiliated,Female,63,132,7,White,2026 VIRUS Weightlifting Series 1,false
+4062,Paige Stewart,20,Unaffiliated,Female,77,132,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4063,Kylie Thomsen,28,Powerhouse Weightlifting,Female,86,132,19,White,2026 VIRUS Weightlifting Series 1,false
+4064,Raquel Barreto,40,Unaffiliated,Female,77,131,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4065,Caden Awishes,16,The Weight Room,Male,65,131,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4066,Dylan Martinez,19,TEAM OMNIA,Male,60,131,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4067,Chloe DePiano,30,Built By Becker Weightlifting Club,Female,77,131,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4068,Sarah MacMullan,17,TEAM OMNIA,Female,77,131,17,Blue,2026 VIRUS Weightlifting Series 1,false
+4069,Marisa Castrogiovanni,29,Resilient Weightlifting,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4070,Lilyana Saavedra,16,Unaffiliated,Female,+77,130,19,White,2026 VIRUS Weightlifting Series 1,false
+4071,Aerin Krebs,23,Olympic Weightlifting Club at The Ohio State University,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4072,Devin Coyne,31,Hungry dog barbell,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4073,Anaya Brown,18,TEAM OMNIA,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4074,Abigail Johansen,33,DC Barbell,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4075,Lauren Bolnius,31,Tacoma Strength Weightlifting,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4076,Sofia Ryan,29,BASA Weightlifting,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4077,Margaret Hogwood,55,3 Kings Weightlifting Club,Female,69,130,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4078,Abbey Early,29,Tacoma Strength Weightlifting,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4079,Brittany Disch,36,Group III Barbell,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4080,Amber Bailey,23,LINDENWOOD LIONS,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4081,Danielle Balmer,37,Motor City Barbell,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4082,Derien Pratt,38,Unaffiliated,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4083,Erin Pruitt,24,ATHLETIC LAB WLC,Female,69,130,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4084,Dori Logiodice,40,Rhode Island Performance,Female,86,130,19,White,2026 VIRUS Weightlifting Series 1,false
+4085,Brittany Mutton,41,Valhalla Weightlifting,Female,69,130,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4086,Meredith Frost,41,Tacoma Strength Weightlifting,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4087,tiffany leung,35,Unaffiliated,Female,48,130,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4088,Haylee Rawdin,26,Unaffiliated,Female,58,130,9,Red,2026 VIRUS Weightlifting Series 1,false
+4089,Ana Salas,46,Valhalla Weightlifting,Female,+86,130,21,White,2026 VIRUS Weightlifting Series 1,false
+4090,Vincent Betette,49,EAST COAST GOLD W/L TEAM,Male,79,130,4,Red,2026 VIRUS Weightlifting Series 1,false
+4091,Peter Romano,57,Tri State Barbell,Male,88,130,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+4092,Armando Gonzalez,14,Maxx Effort Training,Male,60,130,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4093,Shelley Labanowski,29,TEXAS BARBELL CLUB,Female,69,130,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4094,Sierra Anderson,17,HARRISBURG WEIGHTLIFTING CLUB,Female,58,130,9,Red,2026 VIRUS Weightlifting Series 1,false
+4095,Judy Zhou,31,PARAMOUNT BARBELL CLUB,Female,58,130,9,Red,2026 VIRUS Weightlifting Series 1,false
+4096,Nicole Reiner,29,Unaffiliated,Female,58,130,9,Red,2026 VIRUS Weightlifting Series 1,false
+4097,Emily Downing,44,Glass City Weightlifting,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4098,Sophia Simons,22,Olympic Weightlifting Club at The Ohio State University,Female,69,130,12,Blue,2026 VIRUS Weightlifting Series 1,false
+4099,Jillian Meisinger,32,Black Flag Barbell,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4100,Nastassja Cuellar-Wilson,36,LILY WEIGHTLIFTING,Female,86,130,19,White,2026 VIRUS Weightlifting Series 1,false
+4101,Anna McGee,34,Higher Ground Barbell Club,Female,63,130,7,White,2026 VIRUS Weightlifting Series 1,false
+4102,Margaret Sinclair,54,Unaffiliated,Female,77,130,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4103,Harrison Bradford,15,Maximum Effort Barbel Club,Male,79,130,4,Red,2026 VIRUS Weightlifting Series 1,false
+4104,Hailey Harford,20,RFS Barbell,Female,58,129,9,Red,2026 VIRUS Weightlifting Series 1,false
+4105,Wayne Gold,61,Greensboro Barbell,Male,79,129,4,Red,2026 VIRUS Weightlifting Series 1,false
+4106,Melissa Ozuna,43,Bexar Barbell,Female,77,128,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4107,Stephanie N. Ramos,31,Ritual Weightlifting,Female,77,128,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4108,Jalyn Altemus,33,Grand Rapids Barbell Club,Female,77,128,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4109,Crystal Poole,33,Grand Rapids Barbell Club,Female,77,128,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4110,Eleanor Burgess,27,JDI BARBELL,Female,58,128,8,Red,2026 VIRUS Weightlifting Series 1,false
+4111,Santina Schiaretta,29,Shadyside Barbell,Female,77,127,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4112,Alexis Bancroft,44,1Kilo,Female,69,126,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4113,Kellan Brown,16,CLEAN SLATE WEIGHTLIFTING,Male,60,126,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4114,Shelley Gast,52,Everyday Athletes Barbell,Female,77,125,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4115,Scarlet Ruiz,15,Tri State Barbell,Female,58,125,8,Red,2026 VIRUS Weightlifting Series 1,false
+4116,Kelly Baughman,27,Unaffiliated,Female,69,125,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4117,Anna Lor,29,HEAVY METAL BARBELL,Female,53,125,5,Stars,2026 VIRUS Weightlifting Series 1,false
+4118,Maria Bruno,50,EAST COAST GOLD W/L TEAM,Female,63,125,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4119,Heather Albro,50,Everyday Athletes Barbell,Female,58,125,8,Red,2026 VIRUS Weightlifting Series 1,false
+4120,Moana Kitamura,19,Olympic Weightlifting Club at The Ohio State University,Female,77,125,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4121,Griselda Velado,36,Ithaca Weightlifting,Female,86,125,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4122,Abby Winkler,28,DC Barbell,Female,58,125,8,Red,2026 VIRUS Weightlifting Series 1,false
+4123,Ksenia Potapov,28,Unaffiliated,Female,77,125,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4124,Gabriela Delgadillo,42,Unaffiliated,Female,53,125,5,Stars,2026 VIRUS Weightlifting Series 1,false
+4125,Nicole Long,40,PROJECT LIFT,Female,77,125,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4126,Mary Brancaleon,27,Method Weightlifting,Female,77,125,16,Blue,2026 VIRUS Weightlifting Series 1,false
+4127,Christina Belknap,40,Unaffiliated,Female,69,125,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4128,Afua Yeboah-Antwi,34,Rx Weightlifting Club,Female,58,125,8,Red,2026 VIRUS Weightlifting Series 1,false
+4129,Rebecca Fidler,37,Willpower Strength and Conditioning,Female,58,125,8,Red,2026 VIRUS Weightlifting Series 1,false
+4130,Benn McNeill,58,TeamLPW (Lion's Pride Weightlifting),Male,+110,125,21,Blue,2026 VIRUS Weightlifting Series 1,false
+4131,Amber Schiada,44,Bridge Performance,Female,86,125,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4132,Daniel Hunter,14,Muncie Weightlifting Club,Male,60,125,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4133,Esther Seeland,26,PWRBLD Barbell Club,Female,69,125,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4134,Kiyoka Yahaba,28,Moran Academy,Female,69,125,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4135,Adalynn Smith,19,EAST COAST GOLD W/L TEAM,Female,53,124,5,Stars,2026 VIRUS Weightlifting Series 1,false
+4136,Maha Salah,17,Unaffiliated,Female,69,123,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4137,Liv Bellanti,42,Unaffiliated,Female,77,123,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4138,Kelsey Abdallah,36,Moran Academy,Female,58,121,8,Red,2026 VIRUS Weightlifting Series 1,false
+4139,Arianna Meade,21,DSP Barbell Club,Female,63,121,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4140,Lauren Tackett,39,Motor City Barbell,Female,+86,120,20,White,2026 VIRUS Weightlifting Series 1,false
+4141,Tyler Evans,14,Lebanon Barbell Club,Male,65,120,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4142,Stephanie Langdon,38,Wolf Pack Weightlifting,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4143,Jane Jones,41,Fourteen Forty Collective,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4144,Heidi Venturine,34,Unaffiliated,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4145,Ryan Molina,16,Iron Brotherhood,Male,65,120,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4146,Marissa Reeves,37,Lighthouse Lifting,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4147,Emily Jones,42,Fourteen Forty Collective,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4148,Emma Smith,27,DSP Barbell Club,Female,69,120,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4149,Morgan Gosselin,30,Unaffiliated,Female,53,120,3,Red,2026 VIRUS Weightlifting Series 1,false
+4150,Lisa Talcott,56,Myriad Weightlifting,Female,77,120,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4151,Elizabeth Klinge,18,Hive Weightlifting,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4152,Sophia Rizzuto,28,MURDER OF CROWS,Female,63,120,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4153,Danielle Gallant,36,Brave Barbells N Sprinkles WLC,Female,77,120,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4154,Kaitlyn Gastineau,21,University of Michigan Weightlifting,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4155,Tyaira Hayden,35,Brave Barbells N Sprinkles WLC,Female,+86,120,20,White,2026 VIRUS Weightlifting Series 1,false
+4156,Emersyn Formanek,15,Lion Chaser Barbell,Female,53,120,3,Red,2026 VIRUS Weightlifting Series 1,false
+4157,Carla Changwailing,43,DC Barbell,Female,86,120,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4158,Diana Thorne,45,Catalyst Masters,Female,+86,120,20,White,2026 VIRUS Weightlifting Series 1,false
+4159,Jennifer Wilson,52,Moran Academy,Female,77,120,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4160,Adrien Gates,33,Greenlight Weightlifting,Female,69,120,11,Blue,2026 VIRUS Weightlifting Series 1,false
+4161,Jane Levy,18,Fortified Strength,Female,63,120,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4162,Akina Kizuka,20,Olympic Weightlifting Club at The Ohio State University,Female,63,120,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4163,Michel Pietracupa,67,Unaffiliated,Male,65,120,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4164,Alaina Prewitt,41,Butcher Barbell,Female,77,120,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4165,Kathryn North,41,Unaffiliated,Female,77,120,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4166,Aubrey Raymond,41,Powerhouse Weightlifting,Female,63,120,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4167,Ava Luis,15,TEAM OMNIA,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4168,Aubrey Heersema,29,Unaffiliated,Female,63,120,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4169,Amelia Cone,17,Rising Tide Weightlifting,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4170,Alexandra Sheldrup,28,Invincible Barbell,Female,58,120,8,Red,2026 VIRUS Weightlifting Series 1,false
+4171,Lynnette Hull,47,Brave Barbells N Sprinkles WLC,Female,58,119,7,Red,2026 VIRUS Weightlifting Series 1,false
+4172,Sarah Hillsburg,28,4 Star Strength,Female,58,119,7,Red,2026 VIRUS Weightlifting Series 1,false
+4173,Bree Solis,27,Lion Chaser Barbell,Female,63,119,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4174,Ericka Almeida,27,Icon Performance Center LLC,Female,53,118,3,Red,2026 VIRUS Weightlifting Series 1,false
+4175,Sarah Forsaith,29,DB Weightlifting Barbell Club,Female,63,118,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4176,Allison Hall,43,1Kilo,Female,77,118,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4177,Rachel Dacks,54,Fourteen Forty Collective,Female,63,118,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4178,Jessica Prashaw,35,CHFP WEIGHTLIFTING CLUB,Female,48,118,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4179,Anthony De-La-Cruz,14,TEAM OMNIA,Male,60,118,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4180,Dahlia Sokolow,15,CLEAN SLATE WEIGHTLIFTING,Female,69,118,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4181,LeslieAnne Pester,44,Oly Concepts,Female,77,117,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4182,Jessica Carrillo,34,Unaffiliated,Female,58,117,7,Red,2026 VIRUS Weightlifting Series 1,false
+4183,Rebecca Murdoch,39,PAWSitive Barbell Club,Female,77,117,15,Blue,2026 VIRUS Weightlifting Series 1,false
+4184,Karen Nunez,28,HARRISBURG WEIGHTLIFTING CLUB,Female,58,116,7,Red,2026 VIRUS Weightlifting Series 1,false
+4185,Lillian Sutherlin,34,EAST COAST GOLD W/L TEAM,Female,63,116,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4186,Chloe Farnham,27,Ritual Weightlifting,Female,63,116,6,Blue,2026 VIRUS Weightlifting Series 1,false
+4187,Isabella Martinez,17,TEAM OMNIA,Female,53,116,3,Red,2026 VIRUS Weightlifting Series 1,false
+4188,Aiden Aintrazi,13,HARRISBURG WEIGHTLIFTING CLUB,Male,+65,116,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+4189,Aliya Abdelhak,30,Tacoma Strength Weightlifting,Female,63,115,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4190,Amelia Hammer,25,Bellingham Weightlifting Club,Female,63,115,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4191,Emaan Qayyum,18,Fortified Strength,Female,53,115,3,Red,2026 VIRUS Weightlifting Series 1,false
+4192,Amy Haberstich,38,Unaffiliated,Female,86,115,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4193,Nicole Phaneuf,27,HARRISBURG WEIGHTLIFTING CLUB,Female,63,115,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4194,Mirko Persico,13,Unaffiliated,Male,52,115,3,White,2026 VIRUS Weightlifting Series 1,false
+4195,Dena Joyce,46,1Kilo,Female,77,115,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4196,Frankie Lanzaro,25,HARRISBURG WEIGHTLIFTING CLUB,Female,69,115,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4197,Lita Morris,46,Empire Weightlifting,Female,63,115,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4198,Karissa Lambert,35,Motor City Barbell,Female,86,115,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4199,Madison Schmitz,26,4 Star Strength,Female,58,115,7,Red,2026 VIRUS Weightlifting Series 1,false
+4200,Kira Figg,39,Everyday Athletes Barbell,Female,86,115,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4201,Meaghan Giansiracusa,46,Icon Performance Center LLC,Female,69,115,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4202,Isabella abebie,17,Valhalla Weightlifting,Female,69,115,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4203,Amber Carter,36,DC WEIGHTLIFTING CLUB,Female,+86,115,20,White,2026 VIRUS Weightlifting Series 1,false
+4204,Alexis Adkins,35,Unaffiliated,Female,+86,115,20,White,2026 VIRUS Weightlifting Series 1,false
+4205,Priscilla Del,28,JDI BARBELL,Female,63,114,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4206,Isadora Delatorre,28,Rx Weightlifting Club,Female,48,114,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4207,Jackson Rose,16,HARRISBURG WEIGHTLIFTING CLUB,Male,56,114,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4208,Samantha Schultz,23,UW - LA CROSSE WEIGHTLIFTING CLUB,Female,69,114,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4209,Liliana Ray,19,CLEAN SLATE WEIGHTLIFTING,Female,53,114,3,Red,2026 VIRUS Weightlifting Series 1,false
+4210,Heather Thrush,49,RUBBER CITY WEIGHTLIFTING,Female,48,114,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4211,J. Ashleigh Spees,45,Unaffiliated,Female,77,113,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4212,Chelsea Neeley,34,PROJECT LIFT,Female,63,113,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4213,Jessica Hendricks,38,HARRISBURG WEIGHTLIFTING CLUB,Female,+86,113,20,White,2026 VIRUS Weightlifting Series 1,false
+4214,Gideon Hayhoe,14,Unaffiliated,Male,60,113,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4215,Veronica Noone,50,PROJECT LIFT,Female,77,113,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4216,Leonel Nunez,14,4 Star Strength,Male,60,113,2,Stars,2026 VIRUS Weightlifting Series 1,false
+4217,L’Kia Wilson,18,Beyond The Barbell,Female,69,113,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4218,Isarna Pacher,42,Unaffiliated,Female,77,113,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4219,Tiffany MacElhaney,28,Willpower Strength and Conditioning,Female,63,112,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4220,Lana Heinrich,39,Butcher Barbell,Female,69,112,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4221,Misato Kasumi,17,CHFP WEIGHTLIFTING CLUB,Female,69,112,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4222,Kennidy Paulk,18,Coffee Weightlifting Team,Female,77,112,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4223,Alicia Garcia,18,Ablaze Barbell,Female,77,112,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4224,Ashley Kulka,39,HEAVY METAL BARBELL,Female,+86,112,20,White,2026 VIRUS Weightlifting Series 1,false
+4225,Nicole Kennedy-Raymes,53,Unaffiliated,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4226,Andrea Riojas,29,HEAVY METAL BARBELL,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4227,Neil Fuenmayor,15,LILY WEIGHTLIFTING,Male,+79,111,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+4228,Lindsey Sefried,32,ROCHESTER BARBELL CLUB,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4229,Krista Dornbush,57,1Kilo,Female,86,111,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4230,Marissa Burts,27,Unaffiliated,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4231,Eileen Hess,29,Big Sky Barbell Club,Female,58,111,7,Red,2026 VIRUS Weightlifting Series 1,false
+4232,Megan Wedeking,26,Powerhouse Weightlifting,Female,58,111,7,Red,2026 VIRUS Weightlifting Series 1,false
+4233,Natalie Stahl,23,University of Michigan Weightlifting,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4234,Angela Mar,34,Unaffiliated,Female,63,111,5,Blue,2026 VIRUS Weightlifting Series 1,false
+4235,Jennifer Rawe,30,CHFP WEIGHTLIFTING CLUB,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4236,Cyrielle Kolbecher,32,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4237,Justin Kleppen,14,TEAM OMNIA,Male,79,110,4,Red,2026 VIRUS Weightlifting Series 1,false
+4238,Payton Lessner,21,UW - LA CROSSE WEIGHTLIFTING CLUB,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4239,Liz Morrow,40,Tacoma Strength Weightlifting,Female,63,110,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4240,Mary Lewandowski,36,MILWAUKEE BARBELL WEIGHTLIFTING CLUB,Female,69,110,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4241,Paris Rodriguez,14,TEAM OMNIA,Female,+69,110,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4242,Nina Mergen,22,UW - LA CROSSE WEIGHTLIFTING CLUB,Female,53,110,3,Red,2026 VIRUS Weightlifting Series 1,false
+4243,David Grafton,13,EAST COAST GOLD W/L TEAM,Male,48,110,3,White,2026 VIRUS Weightlifting Series 1,false
+4244,Emma hennigan,22,Category 5 Athletics,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4245,Luca Nachtrab,16,LILY WEIGHTLIFTING,Male,65,110,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4246,Ashley Visconti,26,Weightlifting.Org,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4247,Ruby Martin,43,Method Weightlifting,Female,77,110,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4248,Whitney Evans,36,PARAMOUNT BARBELL CLUB,Female,63,110,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4249,Kiara Liang,16,Unaffiliated,Female,63,110,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4250,Laila Thomas,17,4 Star Strength,Female,69,110,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4251,Ciara Livingston,18,Maxx Effort Training,Female,53,110,3,Red,2026 VIRUS Weightlifting Series 1,false
+4252,Maddy Northman,21,Rhode Island Performance,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4253,Pratima Satish,34,Unaffiliated,Female,63,110,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4254,Karson Hood,16,Coffee Weightlifting Team,Male,60,110,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4255,Houry Gebeshian,37,Black Flag Barbell,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4256,Angela White,45,Unaffiliated,Female,58,110,6,White,2026 VIRUS Weightlifting Series 1,false
+4257,Tyra Hosfelt,35,EAST COAST GOLD W/L TEAM,Female,69,110,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4258,Rachel Romano,44,Heroic Barbell,Female,69,109,10,Blue,2026 VIRUS Weightlifting Series 1,false
+4259,shayla strickland,17,TEAM OMNIA,Female,58,109,6,White,2026 VIRUS Weightlifting Series 1,false
+4260,Addison Williams,16,Lion Chaser Barbell,Female,58,108,6,White,2026 VIRUS Weightlifting Series 1,false
+4261,Hema Patel,44,Powerhouse Weightlifting,Female,86,108,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4262,Hazyl Castillo,15,Glass City Weightlifting,Female,63,107,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4263,Russell Seay,65,HARRISBURG WEIGHTLIFTING CLUB,Male,65,107,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4264,Grant Worthington,15,Conqueror Weightlifting,Male,79,106,4,Red,2026 VIRUS Weightlifting Series 1,false
+4265,Ava Fitzpatrick,14,FORTIUS BARBELL CLUB,Female,+69,105,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4266,Elke Brock,16,Lion Chaser Barbell,Female,+77,105,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4267,ALAN CANIGLIA,70,Born Again Weightlifting,Male,88,105,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+4268,Jessi Luta,40,EAST COAST GOLD W/L TEAM,Female,58,105,6,White,2026 VIRUS Weightlifting Series 1,false
+4269,Jaxon Blankenship,15,Hive Weightlifting,Male,65,105,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4270,Leah Putlek,35,Unaffiliated,Female,63,105,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4271,Mori Betancourt,31,Unaffiliated,Female,58,105,6,White,2026 VIRUS Weightlifting Series 1,false
+4272,Sara Kleiman,44,Providence Barbell Club,Female,69,105,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4273,Lisa Lease,42,PARAMOUNT BARBELL CLUB,Female,86,105,17,Stripes,2026 VIRUS Weightlifting Series 1,false
+4274,Paige Steuber,25,Unaffiliated,Female,53,105,3,Red,2026 VIRUS Weightlifting Series 1,false
+4275,Allison Esposito,31,Unaffiliated,Female,58,104,6,White,2026 VIRUS Weightlifting Series 1,false
+4276,Chelsea Dillon,37,PROJECT LIFT,Female,53,104,3,Red,2026 VIRUS Weightlifting Series 1,false
+4277,Michelle Freyre,48,Willpower Strength and Conditioning,Female,69,104,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4278,Melissa Selk,49,Oro Strength,Female,77,104,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4279,Hailey Sprenger,13,SANDUSKY WEIGHTLIFTING,Female,48,103,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4280,Shannon Strzynski,51,Myriad Weightlifting,Female,58,103,5,White,2026 VIRUS Weightlifting Series 1,false
+4281,Jean Aquino,48,Unaffiliated,Female,77,103,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4282,Korinne Piper,35,Shadyside Barbell,Female,69,102,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4283,Cheryl Banks,46,Heartland Strength,Female,63,102,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4284,Chloe Catalfino,19,RFS Barbell,Female,58,102,5,White,2026 VIRUS Weightlifting Series 1,false
+4285,Emma Hutchison,16,Beyond The Barbell,Female,53,102,2,Red,2026 VIRUS Weightlifting Series 1,false
+4286,Emily Johnston,34,Vehement Elite Athletics,Female,58,102,5,White,2026 VIRUS Weightlifting Series 1,false
+4287,Christy Kinney,50,PARAMOUNT BARBELL CLUB,Female,69,101,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4288,Amy Schultheis,47,Eastside Barbell,Female,86,101,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4289,Estefania Flores,29,Alpha Uno Athletics,Female,53,101,2,Red,2026 VIRUS Weightlifting Series 1,false
+4290,Thomas Dirks,15,Columbus Weightlifting,Male,60,100,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4291,Imani Washington,13,Beyond The Barbell,Female,+63,100,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4292,Amelia Parsons,37,DC WEIGHTLIFTING CLUB,Female,63,100,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4293,Rylee DeBoer-Rowse,14,Motor City Barbell,Female,58,100,5,White,2026 VIRUS Weightlifting Series 1,false
+4294,Lori Fox,55,PARAMOUNT BARBELL CLUB,Female,77,100,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4295,Sarah Siebenaler,47,Unaffiliated,Female,58,100,5,White,2026 VIRUS Weightlifting Series 1,false
+4296,Hadley Chandler,14,Lion Chaser Barbell,Female,63,100,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4297,Rebecca Levis,35,Unaffiliated,Female,69,100,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4298,Kamerie Allen,35,RUBBER CITY WEIGHTLIFTING,Female,58,100,5,White,2026 VIRUS Weightlifting Series 1,false
+4299,Christine Baker,41,Willpower Strength and Conditioning,Female,69,100,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4300,Jennifer Eun,47,RAWW Barbell,Female,86,100,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4301,Stephanie Kelley,41,Myriad Weightlifting,Female,77,100,14,Blue,2026 VIRUS Weightlifting Series 1,false
+4302,Rachelle Marzola,46,JDI BARBELL,Female,69,100,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4303,Allison Hanna,24,Kenmore Barbell Club,Female,53,100,2,Red,2026 VIRUS Weightlifting Series 1,false
+4304,Laura Wonch,45,LILY WEIGHTLIFTING,Female,63,100,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4305,John Irvine,65,Centre City Weighlifting,Male,94,100,13,Stars,2026 VIRUS Weightlifting Series 1,false
+4306,Esther Kim,45,Unaffiliated,Female,58,100,5,White,2026 VIRUS Weightlifting Series 1,false
+4307,Kelly Garber,64,PARAMOUNT BARBELL CLUB,Female,63,100,4,Blue,2026 VIRUS Weightlifting Series 1,false
+4308,Lily Le,24,Unaffiliated,Female,53,100,2,Red,2026 VIRUS Weightlifting Series 1,false
+4309,Melissa Morgan,49,Fourteen Forty Collective,Female,+86,100,20,White,2026 VIRUS Weightlifting Series 1,false
+4310,Eesha Pallath,13,Fortified Strength,Female,58,99,5,White,2026 VIRUS Weightlifting Series 1,false
+4311,Sidney Kempf,17,Unaffiliated,Female,63,98,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4312,Hamido Hassan,27,Unaffiliated,Female,48,98,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4313,Megan Berringer,36,PFP Barbell Club,Female,69,98,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4314,Margaret binzer,65,Lorton Barbell Club,Female,86,98,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4315,Brandi Herring,63,Unaffiliated,Female,86,97,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4316,Johanna Gempeler,41,DC WEIGHTLIFTING CLUB,Female,77,97,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4317,Kim Saito,51,PROJECT LIFT,Female,58,96,5,White,2026 VIRUS Weightlifting Series 1,false
+4318,Mayumi Okamoto,44,Coven Club,Female,86,96,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4319,Catherine Cox,16,Unaffiliated,Female,69,96,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4320,Ava Flores,17,RFS Barbell,Female,63,95,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4321,Chuck Lynch,69,Unaffiliated,Male,71,95,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+4322,Andrea Abad,37,Brave Barbells N Sprinkles WLC,Female,63,95,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4323,Megan Warburg,34,South Georgia Barbell,Female,58,95,5,White,2026 VIRUS Weightlifting Series 1,false
+4324,Kortnee Angel,43,Coven Club,Female,77,95,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4325,Nyanza Wilson,17,Beyond The Barbell,Female,+77,95,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4326,Rachel Stahlke,51,Muncie Weightlifting Club,Female,77,95,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4327,Sally Dagher,30,4 Star Strength,Female,53,94,2,Red,2026 VIRUS Weightlifting Series 1,false
+4328,Rebekah Lopez,40,Unaffiliated,Female,77,94,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4329,Sonya Nunez,15,4 Star Strength,Female,58,93,5,White,2026 VIRUS Weightlifting Series 1,false
+4330,Juliana DaSilva,16,Grey Castle Weightlifting,Female,63,93,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4331,Thevini Withana,15,Fortified Strength,Female,53,92,2,Red,2026 VIRUS Weightlifting Series 1,false
+4332,Sheri Jean,33,TCR Barbell,Female,48,92,3,Stars,2026 VIRUS Weightlifting Series 1,false
+4333,Huyen-Lam Nguyen,49,Catalyst Masters,Female,48,91,1,White,2026 VIRUS Weightlifting Series 1,false
+4334,Abigail Negron,14,Unaffiliated,Female,53,91,2,Red,2026 VIRUS Weightlifting Series 1,false
+4335,Kayden Doherty,11,HASSLE FREE BBC,Male,52,90,3,White,2026 VIRUS Weightlifting Series 1,false
+4336,Emily Glenn,49,PROJECT LIFT,Female,69,90,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4337,bailey hoffman,16,Ablaze Barbell,Female,69,90,8,Blue,2026 VIRUS Weightlifting Series 1,false
+4338,Amy Herrera,53,Freedom Weightlifting,Female,58,90,5,White,2026 VIRUS Weightlifting Series 1,false
+4339,Bridger Soden,13,Unaffiliated,Male,65,90,1,Stripes,2026 VIRUS Weightlifting Series 1,false
+4340,Arthur Auwaerter,79,Unaffiliated,Male,94,90,13,Stars,2026 VIRUS Weightlifting Series 1,false
+4341,Riley Gramlich,17,Maxx Effort Training,Female,58,90,5,White,2026 VIRUS Weightlifting Series 1,false
+4342,Catherine Lemire,14,HARRISBURG WEIGHTLIFTING CLUB,Female,53,90,2,Red,2026 VIRUS Weightlifting Series 1,false
+4343,VANESSA KNOX,37,JDI BARBELL,Female,58,90,5,White,2026 VIRUS Weightlifting Series 1,false
+4344,AMARIAH HERNANDEZ,18,Bull Strength Barbell,Female,48,90,1,White,2026 VIRUS Weightlifting Series 1,false
+4345,J Williams,13,Bull Strength Barbell,Male,+65,88,4,Stripes,2026 VIRUS Weightlifting Series 1,false
+4346,Carmen Gurley,15,Beyond The Barbell,Female,44,88,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4347,Bobbie Catalano,45,Tri State Barbell,Female,69,87,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4348,angela beechum,55,BlueWave Weightlifting,Female,77,86,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4349,Gloria Vaughan,46,Lorton Barbell Club,Female,63,86,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4350,Jean Beattie,57,Warwick Weightlifting Club,Female,58,85,4,White,2026 VIRUS Weightlifting Series 1,false
+4351,Roman Costa,13,CALPIANS WLC,Male,52,85,3,White,2026 VIRUS Weightlifting Series 1,false
+4352,Lindsay Adkins,14,Beyond The Barbell,Female,53,85,2,Red,2026 VIRUS Weightlifting Series 1,false
+4353,Tracy Liu,36,Unaffiliated,Female,48,85,1,White,2026 VIRUS Weightlifting Series 1,false
+4354,Sheila Welker,53,Bridge Performance,Female,77,84,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4355,Kate Yetter,13,SANDUSKY WEIGHTLIFTING,Female,44,84,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4356,Louisa Lee,43,Team Strength Works,Female,58,83,4,White,2026 VIRUS Weightlifting Series 1,false
+4357,KARI WILLIAMS,49,GTX Weightlifting,Female,69,83,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4358,Harper Belsky,12,PBJ Barbell Club,Female,44,83,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4359,Sravya Chebrolu,15,HARRISBURG WEIGHTLIFTING CLUB,Female,69,82,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4360,Cally Coffee,12,Beyond The Barbell,Female,+63,82,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4361,Diya Vijayaraj,14,Fortified Strength,Female,58,81,4,White,2026 VIRUS Weightlifting Series 1,false
+4362,Rhodora Derpo,50,Brightside Barbell,Female,58,81,4,White,2026 VIRUS Weightlifting Series 1,false
+4363,Ella Barnard,14,SANDUSKY WEIGHTLIFTING,Female,+69,81,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4364,Charles Epperson,11,Unaffiliated,Male,52,80,3,White,2026 VIRUS Weightlifting Series 1,false
+4365,Layla Johnson,13,Fortified Strength,Female,44,80,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4366,Taylor Madlansacay,13,Fortified Strength,Female,63,80,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4367,Cathleen Mahoney,47,Catalyst Masters,Female,53,80,2,Red,2026 VIRUS Weightlifting Series 1,false
+4368,Eduardo Marquez,13,ALLSOUTH Barbell,Male,52,80,3,White,2026 VIRUS Weightlifting Series 1,false
+4369,Jennifer Dixon,47,True Strength Performance Weightlifting,Female,63,80,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4370,Sadie Cirbus,13,Warwick Weightlifting Club,Female,53,80,2,Red,2026 VIRUS Weightlifting Series 1,false
+4371,Adeline Hearn,11,Nashville Weightlifting Club,Female,+63,80,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4372,Raiden Liao,12,LILY WEIGHTLIFTING,Male,48,80,3,White,2026 VIRUS Weightlifting Series 1,false
+4373,WILLIE SKLAROFF,75,Exclusive Club Weightlifting,Male,79,78,4,Red,2026 VIRUS Weightlifting Series 1,false
+4374,Rebecca Pawlikiewicz-Peacock,58,Unaffiliated,Female,53,78,1,Red,2026 VIRUS Weightlifting Series 1,false
+4375,Gloria Chun,49,Marin Heavy Athletics,Female,58,77,4,White,2026 VIRUS Weightlifting Series 1,false
+4376,Sarah Glazer,52,Marin Heavy Athletics,Female,69,77,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4377,Kaylee Bass,14,Coffee Weightlifting Team,Female,53,76,1,Red,2026 VIRUS Weightlifting Series 1,false
+4378,Deanna Johnson,62,Eastside Barbell,Female,58,75,4,White,2026 VIRUS Weightlifting Series 1,false
+4379,"Al Costa,",14,CALPIANS WLC,Male,56,75,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4380,Gladys Spaulding,57,McKenna Weightlifting,Female,69,75,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4381,Julie Carmody,53,Tri State Barbell,Female,48,74,1,White,2026 VIRUS Weightlifting Series 1,false
+4382,Akiko Stojek,61,Marble Weightlifting,Female,48,73,1,White,2026 VIRUS Weightlifting Series 1,false
+4383,Kellie Moylan,66,1Kilo,Female,58,73,4,White,2026 VIRUS Weightlifting Series 1,false
+4384,Michelle Hart,57,Muncie Weightlifting Club,Female,63,73,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4385,Trae Dauch,13,SANDUSKY WEIGHTLIFTING,Male,36,71,3,White,2026 VIRUS Weightlifting Series 1,false
+4386,Harper Haeberle,12,Lion Chaser Barbell,Female,+63,71,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4387,Tae Davern,13,Steadfast Barbell,Male,60,70,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4388,Sejal Patel,12,Powerhouse Weightlifting,Female,48,70,1,White,2026 VIRUS Weightlifting Series 1,false
+4389,Antonela Jansta,15,LILY WEIGHTLIFTING,Female,53,70,1,Red,2026 VIRUS Weightlifting Series 1,false
+4390,Taylor Kunkel,12,Unaffiliated,Female,53,70,1,Red,2026 VIRUS Weightlifting Series 1,false
+4391,Julianna Snyder,14,DSP Barbell Club,Female,48,70,1,White,2026 VIRUS Weightlifting Series 1,false
+4392,Nancy Becker,67,Unaffiliated,Female,77,70,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4393,Ellasyn Pearce,14,Coffee Weightlifting Team,Female,58,69,4,White,2026 VIRUS Weightlifting Series 1,false
+4394,Ruthie Daniel,15,Grey Castle Weightlifting,Female,58,69,4,White,2026 VIRUS Weightlifting Series 1,false
+4395,Kim Washington,68,Optimus Barbell Club,Female,63,68,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4396,doron petersan,54,DC WEIGHTLIFTING CLUB,Female,77,68,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4397,Avery Shupe,12,3 Kings Weightlifting Club,Female,40,67,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4398,Richard Konyek,11,Conqueror Weightlifting,Male,36,67,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4399,Ezekiel Barboza,10,Unaffiliated,Male,60,67,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4400,Grayson Miller,14,RFS Barbell,Female,33,66,2,White,2026 VIRUS Weightlifting Series 1,false
+4401,William Wheeler,13,Unaffiliated,Male,48,65,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4402,Olivia Dumas,13,TEAM OMNIA,Female,+63,65,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4403,Michelle Pardee,61,LILY WEIGHTLIFTING,Female,77,65,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4404,Scott Smith,14,Beyond The Barbell,Male,48,65,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4405,M. Sharon Mau,72,RAWW Barbell,Female,77,65,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4406,Kolleen Simons,55,Unaffiliated,Female,63,62,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4407,Kelly Roberts,54,Lebanon Barbell Club,Female,53,62,1,Red,2026 VIRUS Weightlifting Series 1,false
+4408,Lucas Konyek,9,Conqueror Weightlifting,Male,40,60,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4409,Susan Gunther,77,Marble Weightlifting,Female,53,60,1,Red,2026 VIRUS Weightlifting Series 1,false
+4410,Madison Cundiff,11,Maximum Effort Barbel Club,Female,53,60,1,Red,2026 VIRUS Weightlifting Series 1,false
+4411,Grayson Ibrahim,12,The Weight Room,Male,36,60,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4412,Benjamin Weymer,12,Fourteen Forty Collective,Male,52,60,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4413,Nixon Catalano,11,DSP Barbell Club,Male,32,60,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4414,Juan Piedrahita,12,TEAM OMNIA,Male,56,60,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4415,Ava Yetter,11,SANDUSKY WEIGHTLIFTING,Female,40,60,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4416,Ashley Aguilar,13,TEAM OMNIA,Female,53,58,1,Red,2026 VIRUS Weightlifting Series 1,false
+4417,Quinn Drury,11,SANDUSKY WEIGHTLIFTING,Female,36,58,2,White,2026 VIRUS Weightlifting Series 1,false
+4418,Max Wheeler,11,Unaffiliated,Male,44,57,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4419,Julian Ortiz,12,Blackheart Barbell,Male,48,57,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4420,Wyatt Cundiff,9,Maximum Effort Barbel Club,Male,40,57,2,Blue,2026 VIRUS Weightlifting Series 1,false
+4421,Sean Aldrich,11,LILY WEIGHTLIFTING,Male,48,56,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4422,Zayne Gillum,13,Fortified Strength,Male,56,56,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4423,Alan De-La-Cruz,12,TEAM OMNIA,Male,56,56,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4424,Autumn Whitmer,11,Pilchuck Barbell,Female,48,55,1,White,2026 VIRUS Weightlifting Series 1,false
+4425,Ellis Ruiz,13,Tri State Barbell,Male,40,55,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4426,Nicodimas Costa,10,CALPIANS WLC,Male,36,55,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4427,issam al,12,HARRISBURG WEIGHTLIFTING CLUB,Male,48,53,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4428,Kamden Opfer,13,SANDUSKY WEIGHTLIFTING,Female,36,52,2,White,2026 VIRUS Weightlifting Series 1,false
+4429,Charles Moss,13,Fortified Strength,Male,48,52,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4430,Julia Eaton,13,PROJECT LIFT,Female,44,50,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4431,Taliya Bernard,13,Unaffiliated,Female,44,50,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4432,Marcy Seymour,77,Marble Weightlifting,Female,63,50,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4433,Barbara Rivers,73,Fortis Weightlifting Club,Female,58,50,4,White,2026 VIRUS Weightlifting Series 1,false
+4434,Chael Sanchez,10,TEAM OMNIA,Male,40,50,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4435,Maximus Black,12,Pinnacle Weightlifting,Male,40,48,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4436,Avayah Flores,11,LILY WEIGHTLIFTING,Female,48,48,1,White,2026 VIRUS Weightlifting Series 1,false
+4437,Jacob Kovach,11,Unaffiliated,Male,40,47,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4438,Daniel Matos,13,TEAM OMNIA,Male,44,46,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4439,Rose Behar,9,Unaffiliated,Female,36,45,2,White,2026 VIRUS Weightlifting Series 1,false
+4440,Alexa Costa,11,CALPIANS WLC,Female,44,45,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4441,Mia Kleppen,10,TEAM OMNIA,Female,40,45,3,Stripes,2026 VIRUS Weightlifting Series 1,false
+4442,Linda Foess,70,Optimus Barbell Club,Female,53,45,1,Red,2026 VIRUS Weightlifting Series 1,false
+4443,Charli Grueshaber,11,SANDUSKY WEIGHTLIFTING,Female,36,42,2,White,2026 VIRUS Weightlifting Series 1,false
+4444,Abigail Moeder,11,Lion Chaser Barbell,Female,36,42,2,White,2026 VIRUS Weightlifting Series 1,false
+4445,Jace Bernard,12,Unaffiliated,Male,32,41,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4446,Jack Hendricks,11,HARRISBURG WEIGHTLIFTING CLUB,Male,36,40,1,Blue,2026 VIRUS Weightlifting Series 1,false
+4447,Avery Gillum,10,Fortified Strength,Female,36,40,2,White,2026 VIRUS Weightlifting Series 1,false
+4448,Adalyn Enriquez,11,Iron Acres Barbell,Female,36,37,2,White,2026 VIRUS Weightlifting Series 1,false
+4449,Lyndon Smith,13,Unaffiliated,Male,60,35,1,Stars,2026 VIRUS Weightlifting Series 1,false
+4450,Vera Ibrahim,9,The Weight Room,Female,30,35,2,White,2026 VIRUS Weightlifting Series 1,false
+4451,Jayde Duncan,9,South Georgia Barbell,Female,30,35,2,White,2026 VIRUS Weightlifting Series 1,false
+4452,Anna Wheeler,9,Maximum Effort Barbel Club,Female,30,33,2,White,2026 VIRUS Weightlifting Series 1,false
+4453,Rylee Liao,9,LILY WEIGHTLIFTING,Female,30,30,2,White,2026 VIRUS Weightlifting Series 1,false
+4454,Emili Alexander,37,Built By Becker Weightlifting Club,Female,+86,0,20,White,2026 VIRUS Weightlifting Series 1,false
+4455,Cecilia Rivera,16,Powerhouse Weightlifting,Female,69,0,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4456,Bryn Famiglio,18,RFS Barbell,Female,63,0,3,Blue,2026 VIRUS Weightlifting Series 1,false
+4457,Kady Gusky,39,LILY WEIGHTLIFTING,Female,69,0,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4458,Rayya Howard,10,Nashville Weightlifting Club,Female,36,0,2,White,2026 VIRUS Weightlifting Series 1,false
+4459,Erinn Frazer,44,PROJECT LIFT,Female,69,0,7,Blue,2026 VIRUS Weightlifting Series 1,false
+4460,Amanda Shirley,38,ATLANTA PERFORMANCE,Female,77,0,13,Blue,2026 VIRUS Weightlifting Series 1,false
+4461,Virginie Beljour,27,GARAGE STRENGTH,Female,48,0,1,White,2026 VIRUS Weightlifting Series 1,false
+4462,Audrey Bachman,43,Big Blue Weightlifting,Female,86,0,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4463,Raegan Franklin,18,RFS Barbell,Female,+86,0,20,White,2026 VIRUS Weightlifting Series 1,false
+4464,Taylyn Slater,18,TEAM HOUSTON,Female,53,0,1,Red,2026 VIRUS Weightlifting Series 1,false
+4465,Preston Powell,23,EAST ALABAMA WEIGHTLIFTING,Male,88,0,7,Stripes,2026 VIRUS Weightlifting Series 1,false
+4466,Emma Harvang,27,Powerhouse Weightlifting,Female,86,0,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4467,Daniel Cases,36,Team Strength Works,Male,94,0,13,Stars,2026 VIRUS Weightlifting Series 1,false
+4468,Sarah Tompos,43,Unaffiliated,Female,86,0,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4469,Kolbi Ferguson,25,TEAM HOUSTON,Male,110,0,13,Stripes,2026 VIRUS Weightlifting Series 1,false
+4470,Martina Fiorentini,30,Method Weightlifting,Female,86,-3,16,Stars,2026 VIRUS Weightlifting Series 1,false
+4471,Adanze Asante,65,MURDER OF CROWS,Female,+86,-90,20,White,2026 VIRUS Weightlifting Series 1,false

@@ -9,6 +9,133 @@ import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 
 const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
 
+function OnboardingPage({ pageCounter }: { pageCounter: number }) {
+  const colors = useAppColors();
+  switch (pageCounter) {
+    case 1:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            👋 Welcome to MeetCal!
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            We have 6 main features that help you have as much data as
+            possible to compete and coach your best at meets.
+          </ThemedText>
+        </View>
+      );
+    case 2:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            📅 Schedule View
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            We have the Schedule and Start List for all USAW National meets,
+            WSO meets, and all USAMW competitions. On this page you can swipe
+            left to see each day of the meet.
+          </ThemedText>
+        </View>
+      );
+    case 3:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            📋 Schedule Details
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            After selecting a session you&apos;ll see all the athletes in the
+            session. Alongside that you&apos;ll see age, club, weight class,
+            entry total, and all their USAW meet results.
+          </ThemedText>
+        </View>
+      );
+    case 4:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            🥇 Start List
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            Click the search button in the bottom right to see the entire
+            Start List. In here you can filter through the start list to get
+            all the info you need.
+          </ThemedText>
+        </View>
+      );
+    case 5:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            📸 Share Start Lists
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            Pro members can also create and share Start Lists for their club
+            on this page. Easily share when and where your athletes will be
+            lifting.
+          </ThemedText>
+        </View>
+      );
+    case 6:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            🏋️‍♀️ Competition Data
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            Click the tab in the bottom right and you&apos;ll have all the
+            pertinent competition data you&apos;ll need such as: Qualifying
+            Totals, A/B Standards, American and WSO Records, and International
+            Rankings.
+          </ThemedText>
+        </View>
+      );
+    case 7:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            📲 Saved Sessions
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            Through the Start List and Session Details pages you can save
+            important sessions both in the app and right to your calendar.
+            From there you&apos;ll get push notifications 60 minutes before
+            the session begins.
+          </ThemedText>
+        </View>
+      );
+    case 8:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            ⬇️ Download
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            Need to view schedules offline? Download any meet schedule and
+            competition data to access session details, start lists, and
+            records even without an internet connection.
+          </ThemedText>
+        </View>
+      );
+    case 9:
+      return (
+        <View style={styles.pageContent}>
+          <ThemedText style={[styles.title, { color: colors.text }]}>
+            Calendar & Notification Access
+          </ThemedText>
+          <ThemedText style={[styles.description, { color: colors.text }]}>
+            We ask for access to write to your calendar and to send you
+            notifications. This allows us to put sessions on your calendar,
+            alert you ahead of your session, and send updates such as platform
+            changes.
+          </ThemedText>
+        </View>
+      );
+    default:
+      return null;
+  }
+}
+
 export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const colors = useAppColors();
   const [pageCounter, setPageCounter] = useState(1);
@@ -63,136 +190,9 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   };
 
   const requestPermissions = async () => {
-    await requestCalendarAccess();
-    await requestNotificationAccess();
+    await Promise.all([requestCalendarAccess(), requestNotificationAccess()]);
     await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
     onComplete();
-  };
-
-  const renderPage = () => {
-    switch (pageCounter) {
-      case 1:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              👋 Welcome to MeetCal!
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              We have 6 main features that help you have as much data as
-              possible to compete and coach your best at meets.
-            </ThemedText>
-          </View>
-        );
-      case 2:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              📅 Schedule View
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              We have the Schedule and Start List for all USAW National meets,
-              WSO meets, and all USAMW competitions. On this page you can swipe
-              left to see each day of the meet.
-            </ThemedText>
-          </View>
-        );
-      case 3:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              📋 Schedule Details
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              After selecting a session you&apos;ll see all the athletes in the
-              session. Alongside that you&apos;ll see age, club, weight class,
-              entry total, and all their USAW meet results.
-            </ThemedText>
-          </View>
-        );
-      case 4:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              🥇 Start List
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              Click the search button in the bottom right to see the entire
-              Start List. In here you can filter through the start list to get
-              all the info you need.
-            </ThemedText>
-          </View>
-        );
-      case 5:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              📸 Share Start Lists
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              Pro members can also create and share Start Lists for their club
-              on this page. Easily share when and where your athletes will be
-              lifting.
-            </ThemedText>
-          </View>
-        );
-      case 6:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              🏋️‍♀️ Competition Data
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              Click the tab in the bottom right and you&apos;ll have all the
-              pertinent competition data you&apos;ll need such as: Qualifying
-              Totals, A/B Standards, American and WSO Records, and International
-              Rankings.
-            </ThemedText>
-          </View>
-        );
-      case 7:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              📲 Saved Sessions
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              Through the Start List and Session Details pages you can save
-              important sessions both in the app and right to your calendar.
-              From there you&apos;ll get push notifications 60 minutes before
-              the session begins.
-            </ThemedText>
-          </View>
-        );
-      case 8:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              ⬇️ Download
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              Need to view schedules offline? Download any meet schedule and
-              competition data to access session details, start lists, and
-              records even without an internet connection.
-            </ThemedText>
-          </View>
-        );
-      case 9:
-        return (
-          <View style={styles.pageContent}>
-            <ThemedText style={[styles.title, { color: colors.text }]}>
-              Calendar & Notification Access
-            </ThemedText>
-            <ThemedText style={[styles.description, { color: colors.text }]}>
-              We ask for access to write to your calendar and to send you
-              notifications. This allows us to put sessions on your calendar,
-              alert you ahead of your session, and send updates such as platform
-              changes.
-            </ThemedText>
-          </View>
-        );
-      default:
-        return null;
-    }
   };
 
   return (
@@ -207,7 +207,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
           style={[styles.container, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}
         >
-          {renderPage()}
+          <OnboardingPage pageCounter={pageCounter} />
 
           <Pressable
             style={({ pressed }) => [
@@ -218,7 +218,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               if (pageCounter === 9) {
                 requestPermissions();
               } else {
-                setPageCounter(pageCounter + 1);
+                setPageCounter(prev => prev + 1);
               }
             }}
           >

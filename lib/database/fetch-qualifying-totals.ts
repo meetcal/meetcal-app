@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type QualifyingTotal = {
@@ -20,11 +21,11 @@ export type QualifyingTotalsData = {
 };
 
 type QualifyingTotalRow = {
-  event_name: string;
-  age_category: string;
+  eventName: string;
+  ageCategory: string;
   gender: 'Men' | 'Women';
-  weight_class: string;
-  qualifying_total: number;
+  weightClass: string;
+  qualifyingTotal: number;
 };
 
 const totalsMemoryCache: { data: QualifyingTotalsData | null } = { data: null };
@@ -92,27 +93,17 @@ export async function fetchQualifyingTotals(
   const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
   const request = (async () => {
     try {
-      let query = supabase
-        .from('qualifying_totals')
-        .select('event_name, age_category, gender, weight_class, qualifying_total');
-      if (eventName) query = query.eq('event_name', eventName.trim());
-      if (ageCategory) query = query.eq('age_category', ageCategory.trim());
-      if (gender) query = query.eq('gender', gender.trim());
-      if (weightClass) query = query.eq('weight_class', weightClass.trim());
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const rows = await convex.query(api.qualifyingTotals.getAll, {}) as QualifyingTotalRow[];
 
       const result: QualifyingTotalsData = {};
-      const rows = (data || []) as QualifyingTotalRow[];
       rows.forEach((row) => {
-        const e = row.event_name;
-        const a = row.age_category;
+        const e = row.eventName;
+        const a = row.ageCategory;
         const g = row.gender;
-        const w = row.weight_class;
+        const w = row.weightClass;
         if (!result[e]) result[e] = {};
         if (!result[e][a]) result[e][a] = { Men: {}, Women: {} };
-        result[e][a][g][w] = row.qualifying_total;
+        result[e][a][g][w] = row.qualifyingTotal;
       });
 
       if (!eventName && !ageCategory && !gender && !weightClass) {

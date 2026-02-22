@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '@/convex/_generated/api';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type NationalRanking = {
@@ -8,7 +9,6 @@ export type NationalRanking = {
 };
 
 type NationalRankingRow = {
-  id: number;
   name: string | null;
   total: number | null;
 };
@@ -28,26 +28,20 @@ export async function fetchNationalRankings(weightClassAge: string): Promise<Nat
   const cacheKey = OFFLINE_CACHE_KEYS.nationalRankings;
   const request = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('lifting_results')
-        .select('id, name, total')
-        .eq('federation', 'USAW')
-        .eq('age', weightClassAge)
-        .not('name', 'is', null)
-        .not('total', 'is', null)
-        .order('total', { ascending: false });
+      const rows = await convex.query(api.liftingResults.getNationalRankings, {
+        federation: 'USAW',
+        ageCategory: weightClassAge,
+      }) as NationalRankingRow[];
 
-      if (error) throw error;
-
-      const rows = (data || []) as NationalRankingRow[];
       const seenNames = new Set<string>();
       const rankings: NationalRanking[] = [];
+      let idx = 0;
 
       rows.forEach((row) => {
         if (!row.name || row.total == null || seenNames.has(row.name)) return;
         seenNames.add(row.name);
         rankings.push({
-          id: row.id,
+          id: idx++,
           name: row.name,
           total: row.total,
         });
