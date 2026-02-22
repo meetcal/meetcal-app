@@ -41,7 +41,7 @@ env:
 jobs:
   check-skip:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
     steps:
       - name: Skip CI check
         run: echo "Proceeding with workflow"
@@ -53,20 +53,19 @@ jobs:
       - name: 🏗 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🏗 Setup Node.js
-        uses: actions/setup-node@v4
+      - name: 🏗 Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: "20"
-          cache: "npm"
+          bun-version: latest
 
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: 🧪 Run TypeScript check
-        run: npx tsc
+        run: bunx tsc
 
       - name: 🧹 Run ESLint
-        run: npm run lint
+        run: bun run lint
 
       - name: 📢 Notify test results
         if: always()
@@ -77,32 +76,42 @@ jobs:
           title: Test Results
           message: Tests ${{ job.status == 'success' && 'passed ✅' || 'failed ❌' }}
 
-  build-and-deploy:
+  setup-matrix:
+    runs-on: ubuntu-latest
     needs: check-skip
-    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.buildType != 'publish-expo')
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.platform }}" = "android" ]; then
+            echo 'matrix={"include":[{"platform":"android","runs-on":"ubuntu-latest"}]}' >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.platform }}" = "ios" ]; then
+            echo 'matrix={"include":[{"platform":"ios","runs-on":"macos-latest"}]}' >> $GITHUB_OUTPUT
+          else
+            echo 'matrix={"include":[{"platform":"android","runs-on":"ubuntu-latest"},{"platform":"ios","runs-on":"macos-latest"}]}' >> $GITHUB_OUTPUT
+          fi
+
+  build-and-deploy:
+    needs: [check-skip, setup-matrix]
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.buildType != 'publish-expo')
     strategy:
-      matrix:
-        platform: [android, ios]
-        include:
-          - platform: android
-            runs-on: ubuntu-latest
-          - platform: ios
-            runs-on: macos-latest
+      matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: 🏗 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🏗 Setup Node.js
-        uses: actions/setup-node@v4
+      - name: 🏗 Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: "20"
-          cache: "npm"
+          bun-version: latest
 
       - name: 📦 Install dependencies
         run: |
-          npm ci
-          npm install -g eas-cli@latest
+          bun install --frozen-lockfile
+          bun install -g eas-cli@latest
 
       - name: 📱 Setup EAS build cache
         uses: actions/cache@v3
@@ -176,12 +185,11 @@ jobs:
           EXPO_TEAM_ID: ${{ secrets.EXPO_TEAM_ID }}
 
       - name: 📦 Upload build artifacts to GitHub
+        if: (matrix.platform == 'android' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-aab' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push')) || (matrix.platform == 'ios' && (github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'ios-prod' || github.event.inputs.buildType == 'publish-stores' || github.event_name == 'push'))
         uses: actions/upload-artifact@v4
         with:
           name: app-builds-${{ matrix.platform }}
-          path: |
-            ./app-prod.aab
-            ./app-ios-prod.ipa
+          path: ${{ matrix.platform == 'android' && './app-prod.aab' || './app-ios-prod.ipa' }}
           retention-days: 7
 
       - name: 📢 Notify build completion
@@ -192,3 +200,35 @@ jobs:
           title: Build Results
           colour: ${{ job.status == 'success' && 'good' || 'danger' }}
           message: Build for ${{ matrix.platform }} ${{ job.status == 'success' && 'completed successfully ✅' || 'failed ❌' }}
+
+  publish-expo-update:
+    needs: check-skip
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.buildType == 'publish-expo'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📦 Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          bun install -g eas-cli@latest
+
+      - name: 🚀 Publish EAS Update
+        run: eas update --auto --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📢 Notify publish completion
+        if: always()
+        uses: stegzilla/discord-notify@v2
+        with:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          title: EAS Update
+          colour: ${{ job.status == 'success' && 'good' || 'danger' }}
+          message: OTA update ${{ job.status == 'success' && 'published ✅' || 'failed ❌' }}
