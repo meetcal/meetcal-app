@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { api } from "@/convex/_generated/api";
 import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -9,6 +10,7 @@ import {
   calculateEstimates,
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
+import { convex } from "@/lib/convex";
 import {
   getMeetLiftingResults,
   getSessionAthletesFromMeetCache,
@@ -17,18 +19,43 @@ import {
 } from "@/lib/database/offline-store";
 import {
   fetchAthletesWithSession,
-  fetchLiftingResultsForMeet,
 } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
+
+function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
+  const opacity = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={[styles.athleteCard, { backgroundColor: colors.card, opacity }]}
+    >
+      <View style={styles.athleteHeader}>
+        <View style={[styles.skeletonLine, { width: "55%", backgroundColor: colors.border }]} />
+        <View style={[styles.skeletonChevron, { backgroundColor: colors.border }]} />
+      </View>
+    </Animated.View>
+  );
+}
 
 function normalizePlatformKey(value: string) {
   return value.trim().toLowerCase();
@@ -121,7 +148,31 @@ export default function AttemptEstimatorScreen() {
 
       let freshResults: SupabaseLiftResult[] = [];
       if (freshAllNames.length > 0) {
-        freshResults = await fetchLiftingResultsForMeet(meetId, freshAllNames);
+        const twoYearsAgo = new Date();
+        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+        const cutoffDate = twoYearsAgo.toISOString().split('T')[0];
+        const rows = await convex.query(api.liftingResults.getByNamesSince, {
+          names: freshAllNames,
+          cutoffDate,
+        });
+        freshResults = rows.map((r: any): SupabaseLiftResult => ({
+          id: r._id,
+          event_id: r.eventId,
+          meet: r.meet,
+          date: r.date,
+          name: r.name,
+          age: r.age,
+          body_weight: r.bodyWeight,
+          snatch1: r.snatch1,
+          snatch2: r.snatch2,
+          snatch3: r.snatch3,
+          snatch_best: r.snatchBest,
+          cj1: r.cj1,
+          cj2: r.cj2,
+          cj3: r.cj3,
+          cj_best: r.cjBest,
+          total: r.total,
+        }));
       }
       await saveMeetLiftingResults(meetId, freshResults);
 
@@ -172,11 +223,15 @@ export default function AttemptEstimatorScreen() {
             headerTitle: "Attempt Estimator",
             headerBackTitle: "Back",
             headerBackButtonDisplayMode: "minimal",
+            headerTransparent: true,
+            headerLargeTitle: false,
+            headerStyle: { backgroundColor: colors.background },
+            headerShadowVisible: false,
           }}
         />
-        <View style={styles.loadingContainer}>
+        <View style={styles.emptyContainer}>
           <ThemedText
-            style={[styles.loadingText, { color: colors.secondaryText }]}
+            style={{ fontSize: 15, color: colors.secondaryText }}
           >
             Missing session information.
           </ThemedText>
@@ -196,16 +251,15 @@ export default function AttemptEstimatorScreen() {
             headerTitle: "Attempt Estimator",
             headerBackTitle: "Back",
             headerBackButtonDisplayMode: "minimal",
+            headerStyle: { backgroundColor: colors.background },
+            headerShadowVisible: false,
           }}
         />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.secondaryText} />
-          <ThemedText
-            style={[styles.loadingText, { color: colors.secondaryText }]}
-          >
-            Loading estimates...
-          </ThemedText>
-        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <SkeletonCard key={i} colors={colors} />
+          ))}
+        </ScrollView>
       </ThemedView>
     );
   }
@@ -482,15 +536,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 16,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 15,
-  },
   disclaimerCard: {
     padding: 16,
     borderRadius: 10,
@@ -515,7 +560,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   athleteName: {
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: "600",
   },
   athleteDetails: {
@@ -563,5 +608,19 @@ const styles = StyleSheet.create({
   tableDivider: {
     height: 1,
     marginVertical: 4,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 7,
+  },
+  skeletonChevron: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
   },
 });

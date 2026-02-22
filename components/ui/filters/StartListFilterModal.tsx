@@ -10,7 +10,7 @@ import {
 } from "@/lib/start-list-utils";
 import React, { useMemo, useState } from "react";
 import {
-  Dimensions,
+  useWindowDimensions,
   Platform,
   Pressable,
   ScrollView,
@@ -58,7 +58,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
   const colors = useAppColors();
   const [clubSearchQuery, setClubSearchQuery] = useState("");
 
-  const windowHeight = Dimensions.get("window").height;
+  const { height: windowHeight } = useWindowDimensions();
   const maxOptionsHeight = windowHeight * 0.4;
 
   const ageGroupOptions = [

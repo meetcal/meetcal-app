@@ -18,7 +18,7 @@ import {
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 export default function NationalRankingsScreen() {
@@ -113,7 +113,7 @@ export default function NationalRankingsScreen() {
     };
   }, [filters.weightClass]);
 
-  const rows = useMemo(() => rankings, [rankings]);
+  const rows = rankings;
 
   const handleResetFilters = () => {
     const reset = {

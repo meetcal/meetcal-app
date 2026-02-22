@@ -415,7 +415,7 @@ export default function SessionAthletes({
           <View key={platformKey}>
             {platformAthletes.map((athlete, index) => (
               <View
-                key={`${athlete.name}-${index}`}
+                key={athlete.name}
                 style={[
                   styles.athleteSection,
                   index !== platformAthletes.length - 1 && {

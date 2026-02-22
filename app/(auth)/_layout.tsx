@@ -30,7 +30,7 @@ export default function AuthRoutesLayout() {
 
     // Listen for network status changes with NetInfo
     const unsubscribe = NetInfo.addEventListener(state => {
-      setIsOffline(!state.isConnected)
+      setIsOffline(state.isConnected === false)
     })
 
     return () => {

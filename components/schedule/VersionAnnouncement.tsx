@@ -125,8 +125,8 @@ export function VersionAnnouncement({
 
             {announcement.features && announcement.features.length > 0 && (
               <View style={styles.featuresContainer}>
-                {announcement.features.map((feature, index) => (
-                  <View key={index} style={styles.featureItem}>
+                {announcement.features.map((feature) => (
+                  <View key={feature} style={styles.featureItem}>
                     <IconSymbol
                       name="checkmark.circle.fill"
                       size={18}

@@ -1,0 +1,108 @@
+================================================================================
+MEET PERFORMANCE STATISTICS
+Year: 2025
+================================================================================
+
+Overall Summary:
+  Total Athletes:        43
+
+Attempt Make Rates:
+  Snatch Make Rate:      69.05% (174/252 attempts)
+  C&J Make Rate:         68.65% (173/252 attempts)
+  Overall Make Rate:     68.85% (347/504 attempts)
+
+Opener Make Rates:
+  Snatch Opener:         75.00% (63/84 openers)
+  C&J Opener:            83.33% (70/84 openers)
+
+Posted Total Rate:     100.00% (43/43 athletes)
+
+Medals Won:
+  Gold:                  121
+  Silver:                29
+  Bronze:                13
+  Total:                 163
+
+Medals by Meet:
+  RVA Open 2025:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Welcome to the Dungeon:
+    Total: 2, Snatch: 2, C&J: 2 (Total: 6)
+  2025 CHICAGO OPEN:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 January Online Qualifier (NUQ):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  The OC3 Foundation Level-Up Award Benefit Competition (NUQ):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Iron Born Open:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Virus Weightlifting Series 1 Powered by Rogue Fitness:
+    Total: 2, Snatch: 2, C&J: 2 (Total: 6)
+  The 2025 National University Championships Powered by Rogue Fitness:
+    Total: 1, Snatch: 1, C&J: 0 (Total: 2)
+  Heroic Spring Open:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 USAMW National Masters Championships:
+    Total: 5, Snatch: 5, C&J: 6 (Total: 16)
+  2025 April Online Qualifier (NUQ):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  The 2025 USA Weightlifting Masters National Championships Powered by Rogue Fitness:
+    Total: 3, Snatch: 2, C&J: 3 (Total: 8)
+  Wisconsin Spring Open:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Handle Barbell Invitational (NUQ):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Missouri State Championships (The Barbell Games):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  BARBELLS N SPRINKLES SPRING OPEN '25:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  11th Annual White Rose Barbell open:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Strength Works Open Weightlifting Competition:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Finest City Open:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Music City Fit Expo Weightlifting Meet:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Bham Slam:
+    Total: 3, Snatch: 3, C&J: 3 (Total: 9)
+  Shoofly Summer Slam:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Bad Mother:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  The Praelium (10th Anniversary):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Annual Big Blue Summer Slam:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Ohio WSO Championships:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 IMWA World Masters Championships:
+    Total: 2, Snatch: 2, C&J: 4 (Total: 8)
+  2025 Kansas State Meet:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  Natural State Showdown:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Pacific Northwest WSO Championships:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  RMP Fall Face Off 2025:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  3P Weightlifting Fall Classic:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  BARBARIAN BARBELL presents The 11th Annual OctoBar Fest!:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Monster Smash:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  The 2025 New Jersey WSO Championships:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Colorado State Championships (NUQ):
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Virus Weightlifting Finals, Powered by Rogue Fitness:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 UMWF World Championships:
+    Total: 4, Snatch: 4, C&J: 4 (Total: 12)
+  2025 Howard Cohen American Masters Championships:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+  2025 Merry Liftmas:
+    Total: 1, Snatch: 1, C&J: 1 (Total: 3)
+
+================================================================================

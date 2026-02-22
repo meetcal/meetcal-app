@@ -25,6 +25,46 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export type EditableField = "firstName" | "lastName" | "email";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
 
+function ProfileField({
+  label,
+  value,
+  field,
+  onEdit,
+}: {
+  label: string;
+  value: string;
+  field: EditableField;
+  onEdit: (field: EditableField) => void;
+}) {
+  const colors = useAppColors();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.section,
+        { backgroundColor: colors.card },
+        pressed && { backgroundColor: colors.pressed },
+      ]}
+      onPress={() => onEdit(field)}
+    >
+      <View style={styles.fieldRow}>
+        <View>
+          <ThemedText style={[styles.label, { color: colors.text }]}>
+            {label}
+          </ThemedText>
+          <ThemedText style={[styles.value, { color: colors.secondaryText }]}>
+            {value || "Not set"}
+          </ThemedText>
+        </View>
+        <IconSymbol
+          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+          size={20}
+          color={colors.link}
+        />
+      </View>
+    </Pressable>
+  );
+}
+
 export default function ProfileScreen() {
   const colors = useAppColors();
   const { signOut } = useClerk();
@@ -114,33 +154,6 @@ export default function ProfileScreen() {
     Linking.openURL(url).catch((err) => console.error("Error", err));
   };
 
-  const renderField = (label: string, value: string, field: EditableField) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.section,
-        { backgroundColor: colors.card },
-        pressed && { backgroundColor: colors.pressed },
-      ]}
-      onPress={() => handleEdit(field)}
-    >
-      <View style={styles.fieldRow}>
-        <View>
-          <ThemedText style={[styles.label, { color: colors.text }]}>
-            {label}
-          </ThemedText>
-          <ThemedText style={[styles.value, { color: colors.secondaryText }]}>
-            {value || "Not set"}
-          </ThemedText>
-        </View>
-        <IconSymbol
-          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
-          size={20}
-          color={colors.link}
-        />
-      </View>
-    </Pressable>
-  );
-
   const divider = (
     <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />
   );
@@ -176,15 +189,16 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          {renderField("First Name", user?.firstName || "", "firstName")}
+          <ProfileField label="First Name" value={user?.firstName || ""} field="firstName" onEdit={handleEdit} />
           {divider}
-          {renderField("Last Name", user?.lastName || "", "lastName")}
+          <ProfileField label="Last Name" value={user?.lastName || ""} field="lastName" onEdit={handleEdit} />
           {divider}
-          {renderField(
-            "Email",
-            user?.primaryEmailAddress?.emailAddress || "",
-            "email",
-          )}
+          <ProfileField
+            label="Email"
+            value={user?.primaryEmailAddress?.emailAddress || ""}
+            field="email"
+            onEdit={handleEdit}
+          />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -312,7 +326,7 @@ export default function ProfileScreen() {
         </Pressable>
 
         <TouchableOpacity
-          style={[styles.signOutButton]}
+          style={styles.signOutButton}
           onPress={handleSignOut}
         >
           <ThemedText style={styles.signOutButtonText}>Sign Out</ThemedText>
