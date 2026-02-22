@@ -296,10 +296,11 @@ class WSORecordsPAWVScraper:
         if not self.convex_client:
             raise ValueError("Convex client not initialized")
         
-        upserted = []
+        inserted = []
+        updated = []
 
         for record in records:
-            self.convex_client.action("scraperIngestion:ingestWSORecord", {
+            result = self.convex_client.action("scraperIngestion:ingestWSORecord", {
                 "scraperSecret": self.scraper_secret,
                 "wso": record["wso"],
                 "ageCategory": record["age_category"],
@@ -309,10 +310,13 @@ class WSORecordsPAWVScraper:
                 "cjRecord": record.get("cj_record"),
                 "totalRecord": record.get("total_record"),
             })
-            upserted.append(record)
+            if result.get('wasInsert'):
+                inserted.append(record)
+            else:
+                updated.append(record)
             print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
 
-        return {'inserted': upserted, 'updated': []}
+        return {'inserted': inserted, 'updated': updated}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]]):
         """Send Slack notification with upsert summary."""

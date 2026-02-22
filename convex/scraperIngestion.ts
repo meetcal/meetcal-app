@@ -44,7 +44,7 @@ export const ingestLiftingResult = action({
     adaptive: v.boolean(),
     federation: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.liftingResults.upsertLiftingResult, {
       legacyId: args.legacyId,
@@ -82,7 +82,7 @@ export const ingestRecord = action({
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.records.upsertRecord, {
       recordType: args.recordType,
@@ -135,7 +135,7 @@ export const ingestQualifyingTotal = action({
     weightClass: v.string(),
     qualifyingTotal: v.number(),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.qualifyingTotals.upsertQualifyingTotal, {
       eventName: args.eventName,
@@ -158,7 +158,7 @@ export const ingestStandard = action({
     standardA: v.number(),
     standardB: v.number(),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.standards.upsertStandard, {
       ageCategory: args.ageCategory,
@@ -187,7 +187,7 @@ export const ingestAthlete = action({
     meet: v.string(),
     adaptive: v.boolean(),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.athletes.upsertAthlete, {
       memberId: args.memberId,
@@ -218,7 +218,7 @@ export const ingestSessionSchedule = action({
     weightClass: v.string(),
     meet: v.string(),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.schedule.upsertSessionSchedule, {
       date: args.date,
@@ -245,7 +245,7 @@ export const ingestWSORecord = action({
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.wsoRecords.upsertWSORecord, {
       wso: args.wso,
@@ -282,7 +282,7 @@ export const ingestMeet = action({
     ),
     federation: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.meets.upsertMeet, {
       name: args.name,
@@ -296,31 +296,6 @@ export const ingestMeet = action({
       endDate: args.endDate,
       status: args.status,
       federation: args.federation,
-    });
-  },
-});
-
-// ── World Records ─────────────────────────────────────────────────────────────
-
-export const ingestWorldRecord = action({
-  args: {
-    scraperSecret: v.string(),
-    gender: v.string(),
-    ageCategory: v.string(),
-    weightClass: v.string(),
-    snatchRecord: v.optional(v.number()),
-    cjRecord: v.optional(v.number()),
-    totalRecord: v.optional(v.number()),
-  },
-  handler: async (ctx, args): Promise<string> => {
-    assertScraperSecret(args.scraperSecret);
-    return ctx.runMutation(internal.worldRecords.upsertWorldRecord, {
-      gender: args.gender,
-      ageCategory: args.ageCategory,
-      weightClass: args.weightClass,
-      snatchRecord: args.snatchRecord,
-      cjRecord: args.cjRecord,
-      totalRecord: args.totalRecord,
     });
   },
 });
@@ -340,7 +315,7 @@ export const ingestIntlRanking = action({
     gender: v.optional(v.string()),
     ageCategory: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.intlRankings.upsertIntlRanking, {
       legacyId: args.legacyId,

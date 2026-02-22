@@ -388,14 +388,15 @@ class USAMWQTScraper:
         if not self.convex:
             self.setup_convex_client()
 
-        upserted = []
+        inserted = []
+        updated = []
 
         print("\n" + "="*60)
         print("UPDATING DATABASE")
         print("="*60 + "\n")
 
         for record in records:
-            self.convex.action("scraperIngestion:ingestQualifyingTotal", {
+            result = self.convex.action("scraperIngestion:ingestQualifyingTotal", {
                 "scraperSecret": self.scraper_secret,
                 "eventName": record['event_name'],
                 "gender": record['gender'],
@@ -403,11 +404,14 @@ class USAMWQTScraper:
                 "weightClass": record['weight_class'],
                 "qualifyingTotal": int(record['qualifying_total']),
             })
-            upserted.append(record)
+            if result.get('wasInsert'):
+                inserted.append(record)
+            else:
+                updated.append(record)
             print(f"  ✓ Upserted: {record['event_name']} | {record['age_category']} "
                   f"{record['gender']} {record['weight_class']}: {record['qualifying_total']}")
 
-        return {'inserted': upserted, 'updated': []}
+        return {'inserted': inserted, 'updated': updated}
     
     def run(self, dry_run: bool = False, pdf_source: Optional[Union[str, BytesIO]] = None, output_path: str = 'output.csv'):
         """

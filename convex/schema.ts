@@ -192,15 +192,4 @@ export default defineSchema({
     .index("by_wso", ["wso"])
     .index("by_wso_age_gender", ["wso", "ageCategory", "gender"]),
 
-  // ── world_records ─────────────────────────────────────────────────────────
-  // Referenced in fetch-world-records.ts but absent from schema.sql
-  world_records: defineTable({
-    gender: v.string(),
-    ageCategory: v.string(),
-    weightClass: v.string(),
-    snatchRecord: v.optional(v.number()),
-    cjRecord: v.optional(v.number()),
-    totalRecord: v.optional(v.number()),
-  })
-    .index("by_gender_age", ["gender", "ageCategory"]),
 });

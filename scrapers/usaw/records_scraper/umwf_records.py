@@ -311,10 +311,11 @@ class UMWFRecordsScraper:
             raise ValueError("SCRAPER_SECRET must be set in .env")
 
         inserted = []
+        updated = []
 
         for record in records:
             try:
-                self.convex_client.action("scraperIngestion:ingestRecord", {
+                result = self.convex_client.action("scraperIngestion:ingestRecord", {
                     "scraperSecret": scraper_secret,
                     "recordType": record['record_type'],
                     "ageCategory": record['age_category'],
@@ -324,12 +325,15 @@ class UMWFRecordsScraper:
                     "cjRecord": record.get('cj_record') or None,
                     "totalRecord": record.get('total_record') or None,
                 })
-                inserted.append(record)
+                if result.get('wasInsert'):
+                    inserted.append(record)
+                else:
+                    updated.append(record)
                 print(f"  * Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
             except Exception as e:
                 print(f"  x Error: {record['age_category']} {record['gender']} {record['weight_class']}: {e}")
 
-        return {'inserted': inserted, 'updated': []}
+        return {'inserted': inserted, 'updated': updated}
 
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""

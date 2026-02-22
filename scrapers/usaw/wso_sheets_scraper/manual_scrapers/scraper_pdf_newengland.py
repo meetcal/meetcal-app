@@ -254,10 +254,11 @@ class WSORecordsNewEnglandScraper:
             raise ValueError("SCRAPER_SECRET must be set in .env")
 
         inserted = []
+        updated = []
 
         for record in records:
             try:
-                self.convex_client.action("scraperIngestion:ingestWSORecord", {
+                result = self.convex_client.action("scraperIngestion:ingestWSORecord", {
                     "scraperSecret": scraper_secret,
                     "wso": record['wso'],
                     "ageCategory": record['age_category'],
@@ -267,12 +268,15 @@ class WSORecordsNewEnglandScraper:
                     "cjRecord": record.get('cj_record') or None,
                     "totalRecord": record.get('total_record') or None,
                 })
-                inserted.append(record)
+                if result.get('wasInsert'):
+                    inserted.append(record)
+                else:
+                    updated.append(record)
                 print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
             except Exception as e:
                 print(f"  ✗ Error: {record['age_category']} {record['gender']} {record['weight_class']}: {e}")
 
-        return {'inserted': inserted, 'updated': []}
+        return {'inserted': inserted, 'updated': updated}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]]):
         """Send Slack notification with upsert summary."""
