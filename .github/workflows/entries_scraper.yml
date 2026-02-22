@@ -15,19 +15,19 @@ jobs:
           - url: 'https://usaweightlifting.sport80.com/public/events/14286/entries/21167?bl='
             name: DMV 2026 WSO Championships
           - url: 'https://usaweightlifting.sport80.com/public/events/14508/entries/21398?bl='
-            name: AO2
+            name: 2026 Virus Weightlifting Series 2, Powered by Rogue Fitness
           - url: 'https://usaweightlifting.sport80.com/public/events/14510/entries/21402?bl='
-            name: Finals
+            name: 2026 Virus Weightlifting Finals, Powered by Rogue Fitness
           - url: 'https://usaweightlifting.sport80.com/public/events/14336/entries/21213?bl='
             name: Masters National Championships
           - url: 'https://usaweightlifting.sport80.com/public/events/14333/entries/21209?bl='
-            name: National University Championships
+            name: The 2026 National University Championships
           - url: 'https://usaweightlifting.sport80.com/public/events/14471/entries/21357?bl='
             name: Illinois WSO Championships
           - url: 'https://usaweightlifting.sport80.com/public/events/14232/entries/21118?bl='
-            name: Mountain South 26 WSO Championships
+            name: 2026 Mountain South WSO Championships
           - url: 'https://usaweightlifting.sport80.com/public/events/14473/entries/21359?bl='
-            name: Mountain North 26 WSO Championships
+            name: 2026 Mountain North WSO Championships
     defaults:
       run:
         working-directory: ./scrapers/usaw/entry_scraper
