@@ -305,7 +305,7 @@ class NewYorkAutoScraper:
                     print(f"  To UPDATE: {len(comparison['to_update'])} records")
                     print(f"  Unchanged: {len(comparison['unchanged'])} records")
                 else:
-                    result = scraper.upsert_to_supabase(records)
+                    result = scraper.upsert_to_convex(records)
                     results.append({
                         'category': category,
                         'inserted': result['inserted'],

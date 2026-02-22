@@ -25,11 +25,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 
-try:
-    from supabase import create_client, Client
-except ImportError:
-    print("Error: supabase library not installed. Run: pip install supabase")
-    sys.exit(1)
+from convex import ConvexClient
 
 
 class WSORecordsNewYorkScraper:
@@ -45,20 +41,17 @@ class WSORecordsNewYorkScraper:
         """
         self.wso_name = wso_name
         self.pdf_url = pdf_url
-        self.supabase: Optional[Client] = None
+        self.convex_client: Optional[ConvexClient] = None
         self.slack_webhook_url: Optional[str] = None
         self.pdf_path = "temp_wso_records.pdf"
-    
-    def setup_supabase_client(self):
-        """Initialize Supabase client."""
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env")
-        
-        self.supabase = create_client(supabase_url, supabase_key)
-        print("✓ Supabase client initialized")
+
+    def setup_convex_client(self):
+        """Initialize Convex client."""
+        convex_url = os.getenv("CONVEX_URL")
+        if not convex_url:
+            raise ValueError("CONVEX_URL must be set in .env")
+        self.convex_client = ConvexClient(convex_url)
+        print("✓ Convex client initialized")
     
     def setup_slack(self):
         """Initialize Slack webhook."""
@@ -252,45 +245,35 @@ class WSORecordsNewYorkScraper:
         
         return records
     
-    def upsert_to_supabase(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Upsert records to Supabase."""
-        if not self.supabase:
-            raise ValueError("Supabase client not initialized")
-        
+    def upsert_to_convex(self, records: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Upsert records to Convex via scraperIngestion:ingestWSORecord."""
+        if not self.convex_client:
+            raise ValueError("Convex client not initialized")
+
+        scraper_secret = os.getenv("SCRAPER_SECRET")
+        if not scraper_secret:
+            raise ValueError("SCRAPER_SECRET must be set in .env")
+
         inserted = []
-        updated = []
-        
+
         for record in records:
-            existing = self.supabase.table('wso_records').select('*').eq(
-                'wso', record['wso']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                db_record = existing.data[0]
-                record_id = db_record['id']
-                
-                changed = False
-                for field in ['snatch_record', 'cj_record', 'total_record']:
-                    if db_record.get(field) != record.get(field):
-                        changed = True
-                        break
-                
-                if changed:
-                    self.supabase.table('wso_records').update(record).eq('id', record_id).execute()
-                    updated.append(record)
-                    print(f"  ✓ Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
-            else:
-                self.supabase.table('wso_records').insert(record).execute()
+            try:
+                self.convex_client.action("scraperIngestion:ingestWSORecord", {
+                    "scraperSecret": scraper_secret,
+                    "wso": record['wso'],
+                    "ageCategory": record['age_category'],
+                    "gender": record['gender'],
+                    "weightClass": record['weight_class'],
+                    "snatchRecord": record.get('snatch_record') or None,
+                    "cjRecord": record.get('cj_record') or None,
+                    "totalRecord": record.get('total_record') or None,
+                })
                 inserted.append(record)
-                print(f"  ✓ Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
-        
-        return {'inserted': inserted, 'updated': updated}
+                print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+            except Exception as e:
+                print(f"  ✗ Error: {record['age_category']} {record['gender']} {record['weight_class']}: {e}")
+
+        return {'inserted': inserted, 'updated': []}
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]]):
         """Send Slack notification with upsert summary."""
@@ -340,51 +323,12 @@ class WSORecordsNewYorkScraper:
             print(f"✓ Cleaned up {self.pdf_path}")
     
     def dry_run_compare(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Compare scraped records with database without making changes."""
-        if not self.supabase:
-            raise ValueError("Supabase client not initialized")
-        
-        to_insert = []
-        to_update = []
-        unchanged = []
-        
-        for record in records:
-            existing = self.supabase.table('wso_records').select('*').eq(
-                'wso', record['wso']
-            ).eq(
-                'age_category', record['age_category']
-            ).eq(
-                'gender', record['gender']
-            ).eq(
-                'weight_class', record['weight_class']
-            ).execute()
-            
-            if existing.data:
-                db_record = existing.data[0]
-                
-                changed = False
-                changes = []
-                for field in ['snatch_record', 'cj_record', 'total_record']:
-                    db_val = db_record.get(field)
-                    new_val = record.get(field)
-                    if db_val != new_val:
-                        changed = True
-                        changes.append((field, db_val, new_val))
-                
-                if changed:
-                    to_update.append({
-                        'record': record,
-                        'changes': changes
-                    })
-                else:
-                    unchanged.append(record)
-            else:
-                to_insert.append(record)
-        
+        """Show what would be upserted without making changes."""
+        print(f"Would upsert {len(records)} records to Convex")
         return {
-            'to_insert': to_insert,
-            'to_update': to_update,
-            'unchanged': unchanged
+            'to_insert': records,
+            'to_update': [],
+            'unchanged': []
         }
     
     def run(self, dry_run: bool = False):
@@ -395,7 +339,7 @@ class WSORecordsNewYorkScraper:
             print(f"{'='*80}")
             print(f"PDF URL: {self.pdf_url}\n")
             
-            self.setup_supabase_client()
+            self.setup_convex_client()
             if not dry_run:
                 self.setup_slack()
             
@@ -434,8 +378,8 @@ class WSORecordsNewYorkScraper:
                         for field, old_val, new_val in item['changes']:
                             print(f"    → {field}: {old_val} → {new_val}")
             else:
-                print("\nUpserting records to Supabase...")
-                result = self.upsert_to_supabase(records)
+                print("\nUpserting records to Convex...")
+                result = self.upsert_to_convex(records)
                 
                 print("\nSending Slack notification...")
                 self.send_slack_notification(result['inserted'], result['updated'])
