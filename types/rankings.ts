@@ -1,5 +1,6 @@
 export interface Filters {
-    meet: string;
-    age_category: string;
-    gender: string;
-  }
+  [key: string]: string;
+  meet: string;
+  age_category: string;
+  gender: string;
+}

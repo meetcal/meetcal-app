@@ -3,6 +3,15 @@ import type { Schedule as ScheduleType } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { Animated } from "react-native";
 
+export type ShareBackgroundPresetId =
+  | "white"
+  | "soft-gray"
+  | "high-contrast"
+  | "transparent"
+  | "sunset"
+  | "ocean"
+  | "neon-night";
+
 export interface ImagePreviewModalProps {
     visible: boolean;
     whiteImageUri: string | null;
@@ -18,6 +27,7 @@ export interface ShareScheduleViewProps {
     selectedMeet: string;
     selectedClub: string;
     transparentBackground?: boolean;
+    backgroundPreset?: ShareBackgroundPresetId;
     getSessionDetails: (sessionNumber: number) => {
         date: string;
         startTime: string;

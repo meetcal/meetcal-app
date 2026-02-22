@@ -3,7 +3,8 @@ type Event = string;
 type AgeGroup = string;
 
 export interface Filters {
-    event: Event;
-    gender: Gender;
-    ageGroup: AgeGroup;
-  }
+  [key: string]: string;
+  event: Event;
+  gender: string;
+  ageGroup: AgeGroup;
+}

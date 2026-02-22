@@ -62,7 +62,7 @@ export default function RecordsScreen() {
       const availableAgeCategories = Array.from(
         new Set(
           intlRankings.map((r) =>
-            typeof r.age_category === "string" ? r.age_category : "",
+            typeof r.ageCategory === "string" ? r.ageCategory : "",
           ),
         ),
       ).filter(Boolean);
@@ -119,7 +119,7 @@ export default function RecordsScreen() {
       Array.from(
         new Set(
           filteredData.map((r) =>
-            typeof r.age_category === "string" ? r.age_category : "",
+            typeof r.ageCategory === "string" ? r.ageCategory : "",
           ),
         ),
       ).filter(Boolean),
@@ -147,7 +147,7 @@ export default function RecordsScreen() {
       .filter(
         (r) =>
           (!filters.meet || r.meet === filters.meet) &&
-          (!filters.age_category || r.age_category === filters.age_category) &&
+          (!filters.age_category || r.ageCategory === filters.age_category) &&
           (!filters.gender || r.gender === filters.gender),
       )
       .sort((a, b) => {
@@ -263,8 +263,8 @@ export default function RecordsScreen() {
                 {ranking.total ?? ""}
               </ThemedText>
               <ThemedText style={[styles.cell, { width: "25%" }]}>
-                {typeof ranking.percent_a === "number"
-                  ? `${ranking.percent_a.toFixed(2)}%`
+                {typeof ranking.percentA === "number"
+                  ? `${ranking.percentA.toFixed(2)}%`
                   : ""}
               </ThemedText>
             </View>

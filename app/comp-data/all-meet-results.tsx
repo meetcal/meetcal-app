@@ -235,6 +235,9 @@ export default function AllMeetResultsScreen() {
         {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
+          marginHorizontal: 16,
+          borderRadius: 12,
+          marginBottom: 12,
         },
         pressed && { backgroundColor: colors.pressed },
       ]}

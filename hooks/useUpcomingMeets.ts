@@ -1,13 +1,6 @@
 import { useMemo } from "react";
 import { getDateInTimeZone } from "@/utils/dateTime";
-
-interface Meet {
-  name: string;
-  dates?: {
-    start: string;
-    end?: string;
-  };
-}
+import { Meet } from "@/data/types/meet";
 
 interface UseUpcomingMeetsParams {
   availableMeets: Meet[];

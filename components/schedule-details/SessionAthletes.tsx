@@ -213,42 +213,42 @@ export default function SessionAthletes({
     () => [
       {
         label: "Entry Total (High to Low)",
-        key: "entryTotal",
+        key: "entryTotal" as SortKey,
         direction: "desc" as SortDirection,
       },
       {
         label: "Entry Total (Low to High)",
-        key: "entryTotal",
+        key: "entryTotal" as SortKey,
         direction: "asc" as SortDirection,
       },
       {
         label: "Best Snatch (High to Low)",
-        key: "snatch",
+        key: "snatch" as SortKey,
         direction: "desc" as SortDirection,
       },
       {
         label: "Best Snatch (Low to High)",
-        key: "snatch",
+        key: "snatch" as SortKey,
         direction: "asc" as SortDirection,
       },
       {
         label: "Best CJ (High to Low)",
-        key: "cj",
+        key: "cj" as SortKey,
         direction: "desc" as SortDirection,
       },
       {
         label: "Best CJ (Low to High)",
-        key: "cj",
+        key: "cj" as SortKey,
         direction: "asc" as SortDirection,
       },
       {
         label: "Best Total (High to Low)",
-        key: "total",
+        key: "total" as SortKey,
         direction: "desc" as SortDirection,
       },
       {
         label: "Best Total (Low to High)",
-        key: "total",
+        key: "total" as SortKey,
         direction: "asc" as SortDirection,
       },
     ],

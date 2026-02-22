@@ -10,7 +10,7 @@ interface UsePaginatedScheduleParams {
 
 interface UsePaginatedScheduleReturn {
   currentPage: number;
-  flatListRef: RefObject<FlatList>;
+  flatListRef: RefObject<FlatList | null>;
   handlePageChange: (index: number) => void;
   onViewableItemsChanged: (info: {
     viewableItems: ViewToken[];

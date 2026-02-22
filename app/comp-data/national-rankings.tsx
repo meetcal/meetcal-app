@@ -67,7 +67,7 @@ export default function NationalRankingsScreen() {
   }, []);
 
   useEffect(() => {
-    const classes = getWeightClasses(filters.gender, filters.ageGroup);
+    const classes = getWeightClasses(filters.gender as Gender, filters.ageGroup);
     if (!classes.includes(filters.weightClass) && classes.length > 0) {
       setFilters((prev) => ({ ...prev, weightClass: classes[0] }));
     }

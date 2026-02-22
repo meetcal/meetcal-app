@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName } from '@/data/types/meet';
 import { clearMeetData } from './offline-store';
 import * as FileSystem from 'expo-file-system';
+import { documentDirectory } from 'expo-file-system/legacy';
 import { Buffer } from 'buffer';
 import pako from 'pako';
 
@@ -62,7 +63,7 @@ export async function calculateStorageUsage(): Promise<{
   used: number;
 }> {
   try {
-    const info = await FileSystem.getInfoAsync(FileSystem.documentDirectory!);
+    const info = await FileSystem.getInfoAsync(documentDirectory!);
     const storageInfo = await initStorageInfo();
     
     // Use a safe fallback for storage info

@@ -223,7 +223,7 @@ export default function RecordsScreen() {
   }, [filters.ageGroup, filters.federation, ageGroupsCache]);
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
-    return recordsData[displayAgeGroup]?.[filters.gender] ?? [];
+    return recordsData[displayAgeGroup]?.[filters.gender as 'Men' | 'Women'] ?? [];
   }, [recordsData, displayAgeGroup, filters.gender]);
 
   const getAgeGroupDisplayText = (ageGroup: AgeGroup | undefined) => {

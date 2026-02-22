@@ -223,9 +223,17 @@ export default function ImagePreviewModal({
   );
 }
 
+type ImageOption = {
+  id: string;
+  label: string;
+  uri: string;
+  category: "readability" | "social";
+  isTransparent: boolean;
+};
+
 type OptionRowProps = {
   title: string;
-  options: ImagePreviewModalProps["imageOptions"];
+  options: ImageOption[];
   activeId: string;
   onPress: (id: string) => void;
 };

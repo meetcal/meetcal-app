@@ -63,20 +63,20 @@ function calculateAverageIncrease(
   for (const result of results) {
     if (liftType === LiftType.Snatch) {
       // Only count increases from positive to positive (both successful)
-      if (result.snatch1 > 0 && result.snatch2 > 0) {
+      if (result.snatch1 != null && result.snatch2 != null && result.snatch1 > 0 && result.snatch2 > 0) {
         firstToSecondIncreases.push(Math.abs(result.snatch2 - result.snatch1));
       }
       // Only count 2nd to 3rd if 2nd was positive (successful)
-      if (result.snatch2 > 0 && result.snatch3 > 0) {
+      if (result.snatch2 != null && result.snatch3 != null && result.snatch2 > 0 && result.snatch3 > 0) {
         secondToThirdIncreases.push(Math.abs(result.snatch3 - result.snatch2));
       }
     } else {
       // Only count increases from positive to positive (both successful)
-      if (result.cj1 > 0 && result.cj2 > 0) {
+      if (result.cj1 != null && result.cj2 != null && result.cj1 > 0 && result.cj2 > 0) {
         firstToSecondIncreases.push(Math.abs(result.cj2 - result.cj1));
       }
       // Only count 2nd to 3rd if 2nd was positive (successful)
-      if (result.cj2 > 0 && result.cj3 > 0) {
+      if (result.cj2 != null && result.cj3 != null && result.cj2 > 0 && result.cj3 > 0) {
         secondToThirdIncreases.push(Math.abs(result.cj3 - result.cj2));
       }
     }
@@ -100,7 +100,7 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   let cjFirstMakes = 0;
 
   for (const result of results) {
-    if (result.snatch1 > 0) {
+    if (result.snatch1 != null && result.snatch1 > 0) {
       snatchFirstAttempts++;
       const snatchBest = getSnatchBest(result);
       if (snatchBest != null && snatchBest >= result.snatch1) {
@@ -108,7 +108,7 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
       }
     }
 
-    if (result.cj1 > 0) {
+    if (result.cj1 != null && result.cj1 > 0) {
       cjFirstAttempts++;
       const cjBest = getCJBest(result);
       if (cjBest != null && cjBest >= result.cj1) {
