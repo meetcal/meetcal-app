@@ -648,8 +648,19 @@ export async function needsSync(meet: MeetName): Promise<boolean> {
 async function getStore(): Promise<OfflineStore> {
   const store = await AsyncStorage.getItem(STORE_KEY);
   if (store) {
-    return JSON.parse(store);
-  } else {
-    throw new Error('Store not initialized');
+    try {
+      const parsed = JSON.parse(store) as OfflineStore;
+      if (parsed && typeof parsed === 'object' && parsed.meets && typeof parsed.meets === 'object') {
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('Store payload was invalid, reinitializing:', error);
+    }
   }
+
+  const initialStore: OfflineStore = {
+    meets: {},
+  };
+  await AsyncStorage.setItem(STORE_KEY, JSON.stringify(initialStore));
+  return initialStore;
 } 
