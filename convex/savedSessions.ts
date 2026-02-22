@@ -1,10 +1,17 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
-// Get all saved sessions for a user
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }): Promise<string> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated");
+  return identity.subject;
+}
+
 export const getByUser = query({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== userId) throw new Error("Unauthorized: can only read own saved sessions");
     return ctx.db
       .query("saved_sessions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -12,7 +19,6 @@ export const getByUser = query({
   },
 });
 
-// Upsert a saved session. Enforces the (sessionId, userId) uniqueness constraint.
 export const upsert = mutation({
   args: {
     sessionId: v.string(),
@@ -27,6 +33,8 @@ export const upsert = mutation({
     date: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== args.userId) throw new Error("Unauthorized: can only modify own saved sessions");
     const existing = await ctx.db
       .query("saved_sessions")
       .withIndex("by_sessionId_and_userId", (q) =>
@@ -47,6 +55,8 @@ export const upsert = mutation({
 export const remove = mutation({
   args: { sessionId: v.string(), userId: v.string() },
   handler: async (ctx, { sessionId, userId }) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== userId) throw new Error("Unauthorized: can only delete own saved sessions");
     const existing = await ctx.db
       .query("saved_sessions")
       .withIndex("by_sessionId_and_userId", (q) =>
@@ -68,6 +78,8 @@ export const removeAllForUser = mutation({
     meet: v.optional(v.string()),
   },
   handler: async (ctx, { userId, meet }) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== userId) throw new Error("Unauthorized: can only delete own saved sessions");
     let rows = await ctx.db
       .query("saved_sessions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))

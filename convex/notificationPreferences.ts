@@ -1,10 +1,17 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery } from "./_generated/server";
 
-// Get notification preferences for a user
+async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }): Promise<string> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated");
+  return identity.subject;
+}
+
 export const getByUser = query({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== userId) throw new Error("Unauthorized: can only read own notification preferences");
     return ctx.db
       .query("notification_preferences")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -26,7 +33,6 @@ export const getAllEnabledTokens = internalQuery({
   },
 });
 
-// Upsert notification preferences for a user
 export const upsert = mutation({
   args: {
     userId: v.string(),
@@ -34,6 +40,8 @@ export const upsert = mutation({
     notificationEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const callerId = await requireUserId(ctx);
+    if (callerId !== args.userId) throw new Error("Unauthorized: can only modify own notification preferences");
     const existing = await ctx.db
       .query("notification_preferences")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
