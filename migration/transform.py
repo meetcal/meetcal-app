@@ -88,14 +88,6 @@ def transform_meet(row: dict) -> dict:
     }
 
 
-def transform_notification_preference(row: dict) -> dict:
-    return {
-        "userId": row["user_id"],
-        "expoPushToken": row.get("expo_push_token"),
-        "notificationEnabled": bool(row.get("notification_enabled", True)),
-    }
-
-
 def transform_qualifying_total(row: dict) -> dict:
     return {
         "eventName": row["event_name"],
@@ -184,7 +176,6 @@ TRANSFORMERS = {
     "intl_rankings": transform_intl_ranking,
     "lifting_results": transform_lifting_result,
     "meets": transform_meet,
-    "notification_preferences": transform_notification_preference,
     "qualifying_totals": transform_qualifying_total,
     "records": transform_record,
     "saved_sessions": transform_saved_session,
@@ -211,5 +202,4 @@ def _required_fields(table: str) -> set:
         "lifting_results": {"adaptive"},
         "athletes": {"adaptive"},
         "meets": {"status"},
-        "notification_preferences": {"notificationEnabled"},
     }.get(table, set())

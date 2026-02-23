@@ -15,8 +15,6 @@ import type * as intlRankings from "../intlRankings.js";
 import type * as liftingResults from "../liftingResults.js";
 import type * as meetStatusJob from "../meetStatusJob.js";
 import type * as meets from "../meets.js";
-import type * as notificationPreferences from "../notificationPreferences.js";
-import type * as pushNotifications from "../pushNotifications.js";
 import type * as qualifyingTotals from "../qualifyingTotals.js";
 import type * as records from "../records.js";
 import type * as savedSessions from "../savedSessions.js";
@@ -39,8 +37,6 @@ declare const fullApi: ApiFromModules<{
   liftingResults: typeof liftingResults;
   meetStatusJob: typeof meetStatusJob;
   meets: typeof meets;
-  notificationPreferences: typeof notificationPreferences;
-  pushNotifications: typeof pushNotifications;
   qualifyingTotals: typeof qualifyingTotals;
   records: typeof records;
   savedSessions: typeof savedSessions;
