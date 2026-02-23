@@ -20,7 +20,7 @@ Before the offline investigation, the initial problem was that **best columns** 
 
 When `SIMULATE_OFFLINE: true` in `config/development.ts`, the app exhibits:
 
-1. **Buttons/taps do not work** — User can scroll and change tabs, but no button presses register
+1. **Buttons/taps do not work** — User can scroll and change tabs, but no button presses register — **FIXED**
 2. **Convex "received query results" log spam** — Messages like `received query results totaling 0MB which took more than 20s to arrive (1291550676ms)` flood the console
 3. **Potential blocking** — Convex may block the JS thread when offline
 
@@ -93,7 +93,7 @@ When `SIMULATE_OFFLINE: true` in `config/development.ts`, the app exhibits:
 - Auth guard: Proceeds when `requireAuth` returns `null` (loading)
 - OfflineIndicator: Wrapped in `View` with `pointerEvents="none"`
 
-**Buttons still do not respond when offline.**
+**Buttons/taps now respond when offline.** (Previously blocked; root cause addressed.)
 
 ## Observations
 
@@ -140,6 +140,22 @@ When `SIMULATE_OFFLINE: true` in `config/development.ts`, the app exhibits:
 - `lib/database/queries.ts` — offline skip handling
 - `lib/database/meet-manager.ts` — prefetch deduplication, error handling
 - `lib/debug.ts` — isOfflineSkipError, devLog, devTime, devBlocking
+
+## Attempt Estimator Offline Issue
+
+**What it does:** The attempt estimator predicts suggested attempt weights (openers, second attempts, etc.) using each athlete’s historical results — make rates, typical increases, averages across meets.
+
+**Online flow:** Uses `getByNamesSince` (Convex) to load the last 2 years of results for all athletes in the session. This gives enough history to compute meaningful estimates.
+
+**Offline flow:** Uses `getMeetLiftingResults(meetId)`, which is meet-scoped — it only returns results from that specific meet.
+
+**Problem:** For upcoming meets there are no meet results yet, so `getMeetLiftingResults` returns nothing. The estimator then has no history and shows no estimates. Even for past meets, offline data is limited to that meet’s results instead of the full 2-year history used online, so estimates can be worse or missing.
+
+**Edge case:** If the user opened the attempt estimator while online, `saveMeetLiftingResults` may have stored `getByNamesSince` data under the meet key. In that case, offline can work later, but it depends on user flow and is inconsistent.
+
+**Fix (implemented):** When offline, use `getAllCachedLiftingResultsForAthlete` per athlete and filter by date (last 2 years) instead of `getMeetLiftingResults`, so offline estimates use the same history scope as online.
+
+---
 
 ## Bisect Results (Post–PR #34 Merge)
 
@@ -230,9 +246,9 @@ When branching from 3987704, apply only these changes. Use `convex` not `convexH
 
 **After applying:** `bun install`, `cd ios && pod install`, `npx expo prebuild --clean` (or full rebuild). Set `ONESIGNAL_APP_ID` and `ONESIGNAL_REST_API_KEY` in Convex environment variables for push to work.
 
-## Debugging Suggestions
+## Debugging Suggestions (Historical — touch issue fixed)
 
-1. **Temporarily hide OfflineIndicator** when `SIMULATE_OFFLINE` — if buttons work, the indicator is still the cause
+1. ~~**Temporarily hide OfflineIndicator** when `SIMULATE_OFFLINE` — if buttons work, the indicator is still the cause~~
 2. **Add onPressIn/onPressOut logs** to a Pressable — confirm whether touches reach the component at all
 3. **Test with SIMULATE_OFFLINE: false** but actual airplane mode — rule out simulated vs real offline
 4. **Test on Android** — see if issue is iOS-specific

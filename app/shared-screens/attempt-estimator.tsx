@@ -12,6 +12,7 @@ import {
 } from "@/lib/attempt-estimator";
 import { convex } from "@/lib/convex";
 import {
+  getAllCachedLiftingResultsForAthlete,
   getMeetLiftingResults,
   getSessionAthletesFromMeetCache,
   saveMeetAthletes,
@@ -105,20 +106,39 @@ export default function AttemptEstimatorScreen() {
     try {
       const meetId = params.meet as MeetName;
 
+      const hasNetwork = await isNetworkAvailable();
       const cachedSessionAthletes = await getSessionAthletesFromMeetCache(
         meetId,
         sessionNumber,
         params.platform,
       );
-      const cachedMeetResults = await getMeetLiftingResults(meetId);
 
+      let cachedSessionResults: SupabaseLiftResult[] = [];
       if (cachedSessionAthletes.length > 0) {
         const athleteNameSet = new Set(
           cachedSessionAthletes.map((athlete) => normalizeAthleteName(athlete.name)),
         );
-        const cachedSessionResults = cachedMeetResults.filter((result) =>
-          athleteNameSet.has(normalizeAthleteName(result.name)),
-        );
+        if (hasNetwork) {
+          const cachedMeetResults = await getMeetLiftingResults(meetId);
+          cachedSessionResults = cachedMeetResults.filter((result) =>
+            athleteNameSet.has(normalizeAthleteName(result.name)),
+          );
+        } else {
+          const twoYearsAgo = new Date();
+          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+          const cutoffDate = twoYearsAgo.toISOString().split("T")[0];
+          const allResults: SupabaseLiftResult[] = [];
+          for (const athlete of cachedSessionAthletes) {
+            const athleteResults = await getAllCachedLiftingResultsForAthlete(
+              athlete.name ?? "",
+            );
+            const filtered = athleteResults.filter(
+              (r) => (r.date ?? "") >= cutoffDate,
+            );
+            allResults.push(...filtered);
+          }
+          cachedSessionResults = allResults;
+        }
         setEstimates(
           calculateEstimates(cachedSessionAthletes, cachedSessionResults),
         );
@@ -126,7 +146,6 @@ export default function AttemptEstimatorScreen() {
         setEstimates([]);
       }
 
-      const hasNetwork = await isNetworkAvailable();
       if (!hasNetwork) {
         return;
       }
