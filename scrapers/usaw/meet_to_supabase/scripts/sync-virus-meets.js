@@ -143,7 +143,7 @@ function transformMeetsData(meetsData) {
       status: 'upcoming',
       federation: 'USAW',
     };
-  }).filter(meet => meet.startDate && meet.endDate);
+  }).filter(meet => meet.startDate && meet.endDate && !meet.name.toUpperCase().includes('ADAPTIVE'));
 }
 
 async function ingestMeetToConvex(meet) {

@@ -318,7 +318,7 @@ function transformMeetsData(meetsData) {
       federation: 'USAW',
       external_id: meet.id // Store original ID for reference
     };
-  }).filter(meet => meet.start_date && meet.end_date); // Filter out meets with invalid dates
+  }).filter(meet => meet.start_date && meet.end_date && !meet.name.toUpperCase().includes('ADAPTIVE'));
 }
 
 /**
