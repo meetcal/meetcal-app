@@ -1,5 +1,5 @@
-import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { convex } from '@/lib/convex';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type QualifyingTotal = {
@@ -72,10 +72,6 @@ function filterTotals(
   return result;
 }
 
-/**
- * Fetches qualifying totals from Supabase. If eventName, ageCategory, gender, or weightClass are provided,
- * fetches only that subset. Otherwise, fetches all.
- */
 export async function fetchQualifyingTotals(
   eventName?: string,
   ageCategory?: string,
