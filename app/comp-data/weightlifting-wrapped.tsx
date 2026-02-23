@@ -1,6 +1,10 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { api } from "@/convex/_generated/api";
 import { convex } from "@/lib/convex";
+import {
+  isNetworkAvailable,
+  subscribeToNetworkChanges,
+} from "@/lib/networkUtils";
 import { LiftingResult, WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
@@ -169,9 +173,28 @@ export default function WeightliftingWrappedScreen() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const viewShotRef = useRef<any>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    isNetworkAvailable()
+      .then((hasNetwork) => {
+        if (mounted) setIsOffline(!hasNetwork);
+      })
+      .catch(() => {
+        if (mounted) setIsOffline(false);
+      });
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      setIsOffline(!isConnected);
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   const fetchSuggestions = useCallback(async (query: string) => {
     if (query.trim().length < 4) {
@@ -573,6 +596,14 @@ export default function WeightliftingWrappedScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        {isOffline && (
+          <View style={styles.offlineBanner}>
+            <IconSymbol name="wifi.slash" size={16} color="rgba(255,255,255,0.9)" />
+            <Text style={styles.offlineBannerText}>
+              This feature requires a connection. Connect to the internet to use Weightlifting Wrapped.
+            </Text>
+          </View>
+        )}
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
           <Text style={styles.searchPreTitle}>YOUR</Text>
           <Text style={styles.searchTitle}>YEAR IN{"\n"}LIFTING</Text>
@@ -638,7 +669,7 @@ export default function WeightliftingWrappedScreen() {
           <Pressable
             style={({ pressed }) => [styles.unwrapButton, pressed && { opacity: 0.85 }]}
             onPress={searchAthlete}
-            disabled={loading}
+            disabled={loading || isOffline}
           >
             <LinearGradient
               colors={["#1DB954", "#1ed760"]}
@@ -1167,6 +1198,23 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.35)",
     textAlign: "center",
     lineHeight: 22,
+  },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,165,0,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,165,0,0.4)",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 24,
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.95)",
+    lineHeight: 20,
   },
 
   // Title slide
