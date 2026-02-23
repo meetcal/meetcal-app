@@ -179,10 +179,21 @@ export async function fetchMeets(): Promise<Meet[]> {
 
   inFlightFetchMeets = (async () => {
     try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        return await getCachedMeets();
+      const cached = await getCachedMeets();
+      if (cached.length > 0) {
+        isNetworkAvailable().then((hasNetwork) => {
+          if (hasNetwork) {
+            withTimeout(convex.query(api.meets.listActive, {}), INITIAL_LOAD_TIMEOUT_MS, 'fetchMeets')
+              .then((meetsData) => meetsData.map(mapMeetRow))
+              .then((mapped) => setCachedMeets(mapped))
+              .catch(() => {});
+          }
+        });
+        return cached;
       }
+
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) return [];
 
       const meetsData = await withTimeout(
         convex.query(api.meets.listActive, {}),
@@ -217,11 +228,12 @@ export async function fetchMeets(): Promise<Meet[]> {
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
+    const cached = await getCachedMeets();
+    const cachedMeet = cached.find(meet => meet.name === name) ?? null;
+    if (cachedMeet) return cachedMeet;
+
     const hasNetwork = await isNetworkAvailable();
-    if (!hasNetwork) {
-      const cached = await getCachedMeets();
-      return cached.find(meet => meet.name === name) ?? null;
-    }
+    if (!hasNetwork) return null;
 
     const actualMeet = await withTimeout(
       convex.query(api.meets.getByName, { name }),

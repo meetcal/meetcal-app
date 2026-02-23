@@ -182,12 +182,8 @@ export default function StartListScreen() {
   );
 
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
-    const [hasNetwork, cachedMeetData] = await Promise.all([
-      isNetworkAvailable(),
-      getMeetData(meet).catch(() => null),
-    ]);
+    const cachedMeetData = await getMeetData(meet).catch(() => null);
     return {
-      hasNetwork,
       cachedAthletes: cachedMeetData?.athletes ?? [],
       cachedSchedule: cachedMeetData?.schedule ?? [],
     };
@@ -217,12 +213,11 @@ export default function StartListScreen() {
         if (!forceRefresh) {
           setAthletes(snapshot.cachedAthletes);
           setScheduleData(snapshot.cachedSchedule);
+          setLoading(false);
         }
 
-        if (!snapshot.hasNetwork) {
-          if (!forceRefresh) setLoading(false);
-          return;
-        }
+        const hasNetwork = await isNetworkAvailable();
+        if (!hasNetwork) return;
 
         const [athletesResult, scheduleResult] = await Promise.allSettled([
           fetchAthletes(validMeet),
