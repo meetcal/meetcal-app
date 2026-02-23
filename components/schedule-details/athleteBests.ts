@@ -1,9 +1,8 @@
 import { SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
-import { getAthleteLiftingResults } from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
+import { fetchAthleteHistoryForNames } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { convex } from "@/lib/convex";
-import { api } from "@/convex/_generated/api";
 
 function createEmptyBests(): SupabaseBests {
   return { snatch_best: null, cj_best: null, total: null };
@@ -70,7 +69,6 @@ function mergeIntoBests(
 
 async function loadCachedBestsForNames(
   names: string[],
-  meetId: MeetName,
 ): Promise<Record<string, SupabaseBests>> {
   const bestsByName: Record<string, SupabaseBests> = {};
 
@@ -78,7 +76,7 @@ async function loadCachedBestsForNames(
     names.map(async (name) => {
       let bests = createEmptyBests();
       try {
-        const cachedResults = await getAthleteLiftingResults(meetId, name);
+        const cachedResults = await getAllCachedLiftingResultsForAthlete(name);
         cachedResults.forEach((row) => {
           bests = mergeIntoBests(bests, deriveRowBests(row));
         });
@@ -107,29 +105,29 @@ export async function getAthleteBestsBatch(
 
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
-    const cachedOnly = await loadCachedBestsForNames(uniqueNames, meetId);
+    const cachedOnly = await loadCachedBestsForNames(uniqueNames);
     return cachedOnly;
   }
 
   try {
-    const rows = await convex.query(api.liftingResults.getByNames, { names: uniqueNames });
-
-    (rows || []).forEach((r: any) => {
-      if (!r.name) return;
-      const record = {
-        snatch_best: r.snatchBest ?? null,
-        cj_best: r.cjBest ?? null,
-        total: r.total ?? null,
-        snatch1: r.snatch1 ?? null,
-        snatch2: r.snatch2 ?? null,
-        snatch3: r.snatch3 ?? null,
-        cj1: r.cj1 ?? null,
-        cj2: r.cj2 ?? null,
-        cj3: r.cj3 ?? null,
-      };
-      const current = bestsByName[r.name] || createEmptyBests();
-      bestsByName[r.name] = mergeIntoBests(current, deriveRowBests(record));
-    });
+    const byName = await fetchAthleteHistoryForNames(uniqueNames);
+    for (const [name, rows] of Object.entries(byName)) {
+      for (const r of rows) {
+        const record = {
+          snatch_best: r.snatch_best ?? null,
+          cj_best: r.cj_best ?? null,
+          total: r.total ?? null,
+          snatch1: r.snatch1 ?? null,
+          snatch2: r.snatch2 ?? null,
+          snatch3: r.snatch3 ?? null,
+          cj1: r.cj1 ?? null,
+          cj2: r.cj2 ?? null,
+          cj3: r.cj3 ?? null,
+        };
+        const current = bestsByName[name] || createEmptyBests();
+        bestsByName[name] = mergeIntoBests(current, deriveRowBests(record));
+      }
+    }
 
     const missingNames = uniqueNames.filter((name) => {
       const bests = bestsByName[name];
@@ -138,13 +136,13 @@ export async function getAthleteBestsBatch(
       );
     });
     if (missingNames.length > 0) {
-      const cachedBests = await loadCachedBestsForNames(missingNames, meetId);
+      const cachedBests = await loadCachedBestsForNames(missingNames);
       missingNames.forEach((name) => {
         bestsByName[name] = cachedBests[name] ?? createEmptyBests();
       });
     }
     return bestsByName;
   } catch {
-    return await loadCachedBestsForNames(uniqueNames, meetId);
+    return await loadCachedBestsForNames(uniqueNames);
   }
 }

@@ -303,6 +303,54 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
   }
 }
 
+function mapConvexRowToSupabase(r: { _id: unknown; eventId?: string; meet?: string; date?: string; name?: string; age?: string; bodyWeight?: number; snatch1?: number | null; snatch2?: number | null; snatch3?: number | null; snatchBest?: number | null; cj1?: number | null; cj2?: number | null; cj3?: number | null; cjBest?: number | null; total?: number | null }): SupabaseLiftResult {
+  return {
+    id: typeof r._id === 'number' ? r._id : 0,
+    convexId: r._id != null ? String(r._id) : undefined,
+    event_id: r.eventId ?? '',
+    meet: r.meet ?? '',
+    date: r.date ?? '',
+    name: r.name ?? '',
+    age: r.age ?? '',
+    body_weight: r.bodyWeight ?? 0,
+    snatch1: r.snatch1 ?? null,
+    snatch2: r.snatch2 ?? null,
+    snatch3: r.snatch3 ?? null,
+    snatch_best: r.snatchBest ?? null,
+    cj1: r.cj1 ?? null,
+    cj2: r.cj2 ?? null,
+    cj3: r.cj3 ?? null,
+    cj_best: r.cjBest ?? null,
+    total: r.total ?? null,
+  } as unknown as SupabaseLiftResult;
+}
+
+export async function fetchAllResultsForName(name: string): Promise<SupabaseLiftResult[]> {
+  const rows = await convex.query(api.liftingResults.getByNames, { names: [name] });
+  return (rows || []).map((r: { _id: unknown; eventId?: string; meet?: string; date?: string; name?: string; age?: string; bodyWeight?: number; snatch1?: number | null; snatch2?: number | null; snatch3?: number | null; snatchBest?: number | null; cj1?: number | null; cj2?: number | null; cj3?: number | null; cjBest?: number | null; total?: number | null }) => mapConvexRowToSupabase(r));
+}
+
+export async function fetchAthleteHistoryForNames(names: string[]): Promise<Record<string, SupabaseLiftResult[]>> {
+  if (names.length === 0) return {};
+  const byName: Record<string, SupabaseLiftResult[]> = {};
+  for (const name of names) {
+    byName[name] = [];
+  }
+  try {
+    const rows = await convex.query(api.liftingResults.getByNames, { names });
+    const mapped = (rows || []).map((r: { _id: unknown; eventId?: string; meet?: string; date?: string; name?: string; age?: string; bodyWeight?: number; snatch1?: number | null; snatch2?: number | null; snatch3?: number | null; snatchBest?: number | null; cj1?: number | null; cj2?: number | null; cj3?: number | null; cjBest?: number | null; total?: number | null }) => mapConvexRowToSupabase(r));
+    for (const row of mapped) {
+      if (row.name && byName[row.name]) {
+        byName[row.name].push(row);
+      }
+    }
+    return byName;
+  } catch (error) {
+    console.error('Error in fetchAthleteHistoryForNames:', error);
+    throw error;
+  }
+}
+
 // Fetch lifting results for all athletes in a meet (scoped to the meet to stay within Convex 8192 row limit)
 export async function fetchLiftingResultsForMeet(meet: MeetName, athleteNames: string[]): Promise<SupabaseLiftResult[]> {
   try {

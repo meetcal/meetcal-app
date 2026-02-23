@@ -4,6 +4,7 @@ import {
   clearImplicitMeetData,
   clearMeetData,
   getMeetData,
+  saveAthleteHistory,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
@@ -11,7 +12,7 @@ import {
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchAthletesWithSession, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
+import { fetchAthletesWithSession, fetchAthleteHistoryForNames, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -361,7 +362,6 @@ export async function prefetchMeetData(meet: MeetName) {
   if (athleteNames.length > 0) {
     try {
       const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
-      // Empty results are OK for upcoming meets that haven't competed yet
       if (liftingResults.length > 0) {
         validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
       }
@@ -383,6 +383,19 @@ export async function prefetchMeetData(meet: MeetName) {
       } else {
         console.error('Prefetch lifting results failed:', { meet, error });
         errors.push('lifting_results');
+      }
+    }
+
+    const ATHLETE_HISTORY_BATCH_SIZE = 15;
+    for (let i = 0; i < athleteNames.length; i += ATHLETE_HISTORY_BATCH_SIZE) {
+      const batch = athleteNames.slice(i, i + ATHLETE_HISTORY_BATCH_SIZE);
+      try {
+        const byName = await fetchAthleteHistoryForNames(batch);
+        await Promise.all(
+          Object.entries(byName).map(([name, results]) => saveAthleteHistory(name, results)),
+        );
+      } catch (error) {
+        console.error('Prefetch athlete history failed:', { meet, batch: batch.length, error });
       }
     }
   }

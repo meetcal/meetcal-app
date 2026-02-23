@@ -16,6 +16,7 @@ import {
   OFFLINE_CACHE_KEYS,
 } from "@/lib/database/offline-cache";
 import {
+  clearAllAthleteHistory,
   clearMeetData,
   getLastSyncTime,
   isMeetExplicitlyDownloaded,
@@ -355,6 +356,7 @@ export const useOfflineData = () => {
           for (const meet of availableMeets) {
             await clearMeetData(meet.name);
           }
+          await clearAllAthleteHistory();
     
           setRefreshCounter((count) => count + 1);
           if (showSuccessAlert) {
