@@ -130,9 +130,6 @@ export default Sentry.wrap(function RootLayout() {
 
         OneSignal.initialize(ONESIGNAL_APP_ID);
         OneSignal.Notifications.requestPermission(false);
-
-        // Optional: Add a small delay for smoother transition
-        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (e) {
         console.warn("Initialization error:", e);
       } finally {
@@ -174,7 +171,7 @@ export default Sentry.wrap(function RootLayout() {
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
-  const [offlineBypass, setOfflineBypass] = useState(false);
+  const [offlineBypass, setOfflineBypass] = useState(true);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const {

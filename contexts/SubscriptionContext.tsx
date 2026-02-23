@@ -66,20 +66,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const isExpired = now - parsed.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
       if (isExpired) {
-        console.log('Subscription cache expired (older than 7 days)');
-        const hasNetwork = await isNetworkAvailable();
-
-        if (hasNetwork) {
-          // Network available, will fetch fresh data
-          await AsyncStorage.removeItem(SUBSCRIPTION_CACHE_KEY);
-          return null;
-        } else {
-          // Network unavailable, use stale cache
-          console.warn('Using stale subscription cache due to network unavailability');
-          setIsUsingStaleCache(true);
-          setLastSyncTimestamp(parsed.timestamp);
-          return parsed;
-        }
+        console.log('Subscription cache expired (older than 7 days), using stale');
+        setIsUsingStaleCache(true);
+        setLastSyncTimestamp(parsed.timestamp);
+        return parsed;
       }
 
       setLastSyncTimestamp(parsed.timestamp);
@@ -183,47 +173,35 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   };
 
-  // Initialize subscription status
+  // Initialize subscription status - cache-first, no blocking network check
   useEffect(() => {
     const initializeStatus = async () => {
       setIsLoading(true);
       try {
-        // First check if we have a simulated status
         const simulatedStatus = getSimulatedSubscriptionStatus();
         if (simulatedStatus !== null) {
           const type = simulatedStatus ? 'quarterly' : 'free';
-          console.log('Initializing with simulated status:', { simulatedStatus, type });
           setIsSubscribed(simulatedStatus);
           setSubscriptionType(type);
           setIsLoading(false);
           return;
         }
 
-        // Check network availability
-        const hasNetwork = await isNetworkAvailable();
-
-        // Load from cache first for instant UI
         const cached = await getSubscriptionCache();
         if (cached) {
-          console.log('Initializing with cached subscription:', cached);
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
-        }
-
-        if (hasNetwork) {
-          // Network available, fetch fresh data
-          console.log('Network available, checking live subscription status');
-          await checkSubscriptionStatus();
         } else {
-          // No network, use cache only
-          console.log('No network, using cached subscription only');
-          if (!cached) {
-            console.warn('No network and no cache, setting unknown state');
-            setIsSubscribed(null);
-            setSubscriptionType('unknown');
-          }
-          setIsLoading(false);
+          setIsSubscribed(null);
+          setSubscriptionType('unknown');
         }
+        setIsLoading(false);
+
+        isNetworkAvailable().then((hasNetwork) => {
+          if (hasNetwork) {
+            checkSubscriptionStatus();
+          }
+        });
       } catch (error) {
         console.error('Failed to initialize subscription status:', error);
         setIsLoading(false);
