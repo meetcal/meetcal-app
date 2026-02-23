@@ -100,16 +100,6 @@ export default defineSchema({
     .index("by_name", ["name"])
     .index("by_end_date", ["endDate"]),
 
-  // ── notification_preferences ───────────────────────────────────────────────
-  notification_preferences: defineTable({
-    userId: v.string(),
-    notificationEnabled: v.boolean(),
-    updatedAt: v.number(),
-  })
-    .index("by_userId", ["userId"])
-    // by_token removed: app never queries by token value; push sender fetches all enabled
-    .index("by_enabled", ["notificationEnabled"]),
-
   // ── qualifying_totals ──────────────────────────────────────────────────────
   qualifying_totals: defineTable({
     eventName: v.string(),
