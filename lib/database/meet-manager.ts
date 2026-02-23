@@ -182,14 +182,20 @@ export async function fetchMeets(): Promise<Meet[]> {
     try {
       const cached = await getCachedMeets();
       if (cached.length > 0) {
-        isNetworkAvailable().then((hasNetwork) => {
-          if (hasNetwork) {
-            withTimeout(convex.query(api.meets.listActive, {}), INITIAL_LOAD_TIMEOUT_MS, 'fetchMeets')
-              .then((meetsData) => meetsData.map(mapMeetRow))
-              .then((mapped) => setCachedMeets(mapped))
-              .catch(() => {});
-          }
-        });
+        isNetworkAvailable()
+          .then((hasNetwork) => {
+            if (hasNetwork) {
+              return withTimeout(convex.query(api.meets.listActive, {}), INITIAL_LOAD_TIMEOUT_MS, 'fetchMeets')
+                .then((meetsData) => meetsData.map(mapMeetRow))
+                .then((mapped) => setCachedMeets(mapped))
+                .catch((err) => {
+                  console.warn('Background refresh failed (api.meets.listActive, mapMeetRow, setCachedMeets):', err);
+                });
+            }
+          })
+          .catch((err) => {
+            console.warn('Background refresh: isNetworkAvailable failed', err);
+          });
         return cached;
       }
 

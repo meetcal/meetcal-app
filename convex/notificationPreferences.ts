@@ -19,14 +19,25 @@ export const getByUser = query({
   },
 });
 
+const PAGINATION_PAGE_SIZE = 100;
+
 export const getAllEnabledUserIds = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const prefs = await ctx.db
-      .query("notification_preferences")
-      .withIndex("by_enabled", (q) => q.eq("notificationEnabled", true))
-      .collect();
-    return prefs.map((p) => p.userId);
+    const userIds: string[] = [];
+    let cursor: string | null = null;
+    let isDone = false;
+    while (!isDone) {
+      const result = await ctx.db
+        .query("notification_preferences")
+        .withIndex("by_enabled", (q) => q.eq("notificationEnabled", true))
+        .order("asc")
+        .paginate({ numItems: PAGINATION_PAGE_SIZE, cursor });
+      userIds.push(...result.page.map((p) => p.userId));
+      isDone = result.isDone;
+      cursor = result.continueCursor;
+    }
+    return userIds;
   },
 });
 

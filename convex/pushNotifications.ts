@@ -7,9 +7,14 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const ONESIGNAL_APP_ID = "184c93ff-546a-4db8-945c-203091782fc9";
+const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
 const ONESIGNAL_API_URL = "https://api.onesignal.com/notifications";
 const BATCH_SIZE = 2000;
+const FETCH_TIMEOUT_MS = 15000;
+
+if (!ONESIGNAL_APP_ID) {
+  throw new Error("EXPO_PUBLIC_ONESIGNAL_APP_ID environment variable is required for push notifications.");
+}
 
 export const sendMarketingPush = internalAction({
   args: {
@@ -59,18 +64,23 @@ export const sendMarketingPush = internalAction({
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
+      const externalId = `marketing-${i}-${chunk[0]}`;
       const payload = {
         app_id: ONESIGNAL_APP_ID,
+        external_id: externalId,
         target_channel: "push",
         include_aliases: {
           external_id: chunk,
         },
         contents: { en: body },
         headings: { en: title },
-        ...(data && { data }),
+        ...(data !== undefined ? { data } : {}),
       };
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
         const res = await fetch(ONESIGNAL_API_URL, {
           method: "POST",
           headers: {
@@ -78,9 +88,36 @@ export const sendMarketingPush = internalAction({
             Authorization: `Key ${apiKey}`,
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
 
-        const onesignalResponse = await res.json();
+        clearTimeout(timeoutId);
+
+        const rawBody = await res.text();
+        let onesignalResponse: Record<string, unknown>;
+        try {
+          onesignalResponse = JSON.parse(rawBody) as Record<string, unknown>;
+        } catch {
+          onesignalResponse = { _raw: rawBody };
+        }
+
+        const normalizeError = (entry: unknown): string => {
+          if (typeof entry === "string") return entry;
+          if (entry && typeof entry === "object") {
+            const obj = entry as Record<string, unknown>;
+            const msg = (obj.title ?? obj.message ?? obj.detail) as string | undefined;
+            if (typeof msg === "string") return msg;
+          }
+          return JSON.stringify(entry);
+        };
+
+        const errorEntries = Array.isArray(onesignalResponse.errors)
+          ? onesignalResponse.errors
+          : [];
+        const errorStr =
+          errorEntries.length > 0
+            ? errorEntries.map(normalizeError).join("; ")
+            : `HTTP ${res.status}${rawBody ? `: ${rawBody.slice(0, 200)}` : ""}`;
 
         if (res.ok && onesignalResponse.id) {
           totalSent += chunk.length;
@@ -97,7 +134,7 @@ export const sendMarketingPush = internalAction({
             success: false,
             userIdsSent: 0,
             onesignalResponse,
-            error: onesignalResponse.errors?.[0] || `HTTP ${res.status}`,
+            error: errorStr,
           });
         }
       } catch (err) {

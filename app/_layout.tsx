@@ -100,7 +100,9 @@ function PostHogPageView() {
   return null;
 }
 
-const ONESIGNAL_APP_ID = "184c93ff-546a-4db8-945c-203091782fc9";
+const ONESIGNAL_APP_ID =
+  process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ??
+  "184c93ff-546a-4db8-945c-203091782fc9";
 
 export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
@@ -129,7 +131,7 @@ export default Sentry.wrap(function RootLayout() {
         }
 
         OneSignal.initialize(ONESIGNAL_APP_ID);
-        OneSignal.Notifications.requestPermission(false);
+        await OneSignal.Notifications.requestPermission(false);
       } catch (e) {
         console.warn("Initialization error:", e);
       } finally {
@@ -171,7 +173,7 @@ export default Sentry.wrap(function RootLayout() {
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
-  const [offlineBypass, setOfflineBypass] = useState(true);
+  const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const {

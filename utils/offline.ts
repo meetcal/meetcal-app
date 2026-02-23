@@ -310,7 +310,7 @@ export const useOfflineData = () => {
             (item) => downloadStatuses[item.id]?.isDownloaded,
           );
     
-          await deleteAllOfflineData(false, true);
+          await deleteAllOfflineData(false, true, true);
     
           for (const item of downloadedCompetitionItems) {
             await item.onDownload();
@@ -340,7 +340,7 @@ export const useOfflineData = () => {
         }
       };
     
-      const deleteAllOfflineData = async (showSuccessAlert: boolean, skipSettingIsDeletingAll = false) => {
+      const deleteAllOfflineData = async (showSuccessAlert: boolean, skipSettingIsDeletingAll = false, keepAthleteHistory = false) => {
         if (!skipSettingIsDeletingAll && isDeletingAll) return;
         if (!skipSettingIsDeletingAll) setIsDeletingAll(true);
         try {
@@ -356,7 +356,9 @@ export const useOfflineData = () => {
           for (const meet of availableMeets) {
             await clearMeetData(meet.name);
           }
-          await clearAllAthleteHistory();
+          if (!keepAthleteHistory) {
+            await clearAllAthleteHistory();
+          }
     
           setRefreshCounter((count) => count + 1);
           if (showSuccessAlert) {

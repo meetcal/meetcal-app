@@ -15,7 +15,7 @@ export const DEV_CONFIG = {
    * Simulate offline mode for testing
    * When true, network checks will always return false
    */
-  SIMULATE_OFFLINE: false as boolean,
+  SIMULATE_OFFLINE: true as boolean,
 
   /**
    * Additional development flags can be added here
@@ -23,6 +23,14 @@ export const DEV_CONFIG = {
   ENABLE_API_LOGS: true,
   BYPASS_SPLASH_DELAY: true,
 };
+
+/**
+ * Helper to check if splash delay should be bypassed in dev
+ * Returns true only when __DEV__ and BYPASS_SPLASH_DELAY is true
+ */
+export function isBypassSplashDelayEnabled(): boolean {
+  return __DEV__ && DEV_CONFIG.BYPASS_SPLASH_DELAY === true;
+}
 
 /**
  * Helper to get the simulated subscription status

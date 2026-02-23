@@ -195,13 +195,22 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           setIsSubscribed(null);
           setSubscriptionType('unknown');
         }
-        setIsLoading(false);
 
-        isNetworkAvailable().then((hasNetwork) => {
-          if (hasNetwork) {
-            checkSubscriptionStatus();
-          }
-        });
+        let hasNetwork = false;
+        try {
+          hasNetwork = await isNetworkAvailable();
+        } catch (e) {
+          console.error('Failed to check network availability:', e);
+          setIsLoading(false);
+          return;
+        }
+
+        if (!hasNetwork) {
+          setIsLoading(false);
+          return;
+        }
+
+        await checkSubscriptionStatus();
       } catch (error) {
         console.error('Failed to initialize subscription status:', error);
         setIsLoading(false);

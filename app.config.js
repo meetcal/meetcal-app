@@ -90,6 +90,7 @@ export default ({ config }) => ({
     },
     EXPO_PUBLIC_REVENUECAT_API_KEY_IOS: undefined,
     EXPO_PUBLIC_REVENUECAT_API_KEY_ANDROID: undefined,
+    EXPO_PUBLIC_ONESIGNAL_APP_ID: undefined,
   },
   scheme: 'meetcal',
   owner: 'memohnsen',

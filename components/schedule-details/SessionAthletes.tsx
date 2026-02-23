@@ -120,6 +120,15 @@ export default function SessionAthletes({
             {},
           );
           setLoadingBests(loadingState);
+        } else {
+          const newNamesSetToTrue = athleteNames.reduce<Record<string, boolean>>(
+            (acc, name) => {
+              acc[name] = true;
+              return acc;
+            },
+            {},
+          );
+          setLoadingBests((prev) => ({ ...prev, ...newNamesSetToTrue }));
         }
 
         if (athleteNames.length === 0) {

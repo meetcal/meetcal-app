@@ -430,13 +430,15 @@ export function useSavedSessions() {
 
             if (triggerDate > now) {
               console.log('Notification Scheduling - Condition met, attempting to schedule...');
-              await scheduleNotification(
+              const notificationId = await scheduleNotification(
                 `Session Reminder`,
                 `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
                 triggerDate,
                 updatedSession.id
               );
-              console.log('Notification Scheduling - scheduleNotification called successfully.');
+              if (notificationId) {
+                console.log('Notification Scheduling - scheduleNotification called successfully.', notificationId);
+              }
             } else {
               console.log('Notification Scheduling - Trigger date is in the past, not scheduling.');
             }

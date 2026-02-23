@@ -370,19 +370,24 @@ export async function getAllCachedLiftingResultsForAthlete(
 ): Promise<SupabaseLiftResult[]> {
   const normalizedName = normalizeAthleteName(athleteName);
   const historyKey = getAthleteHistoryKey(normalizedName);
-  const fromHistory = await readStoredLiftingResults(historyKey);
-  if (fromHistory.length > 0) {
-    return fromHistory;
-  }
   try {
+    const fromHistory = await readStoredLiftingResults(historyKey);
+    if (fromHistory.length > 0) {
+      return fromHistory;
+    }
     const store = await getStore();
     const meetIds = Object.keys(store.meets);
     const seen = new Set<string>();
     const aggregated: SupabaseLiftResult[] = [];
+    let rowIndex = 0;
     for (const meetId of meetIds) {
       const meetResults = await getAthleteLiftingResults(meetId as MeetName, athleteName);
       for (const r of meetResults) {
-        const dedupeKey = `${r.event_id ?? r.meet}-${r.date}-${r.name}`;
+        const baseKey = `${r.event_id ?? r.meet}-${r.date}-${r.name}`;
+        const dedupeKey =
+          baseKey === 'undefined-undefined-undefined'
+            ? `${baseKey}-${rowIndex++}`
+            : baseKey;
         if (!seen.has(dedupeKey)) {
           seen.add(dedupeKey);
           aggregated.push(r);
