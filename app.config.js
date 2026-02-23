@@ -20,8 +20,10 @@ export default ({ config }) => ({
     appleTeamId: 'HCK9FFW6UX',
     buildNumber: '1',
     entitlements: {
+      'aps-environment': 'production',
       'com.apple.security.application-groups': [
-        'group.com.memohnsen.meetcal'
+        'group.com.memohnsen.meetcal',
+        `group.${IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal'}.onesignal`
       ]
     },
     config: {
@@ -46,6 +48,10 @@ export default ({ config }) => ({
     favicon: './assets/favicon.png'
   },
   plugins: [
+    [
+      'onesignal-expo-plugin',
+      { mode: 'production' }
+    ],
     'expo-router',
     [
       'expo-build-properties',

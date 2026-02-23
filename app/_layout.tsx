@@ -2,12 +2,10 @@ import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
 } from "@/lib/networkUtils";
-import { registerForPushNotificationsAsync } from "@/utils/notifications";
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { convex } from "@/lib/convex";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import {
   DarkTheme,
@@ -15,13 +13,13 @@ import {
   ThemeProvider as NavigationThemeProvider,
 } from "@react-navigation/native";
 import { useFonts } from "expo-font";
-import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Linking, Platform } from "react-native";
+import { Linking, Platform } from "react-native";
+import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
 
@@ -102,29 +100,7 @@ function PostHogPageView() {
   return null;
 }
 
-async function requestNotificationPermissions() {
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-
-  if (existingStatus === "granted") return true;
-
-  if (existingStatus === "denied") {
-    Alert.alert(
-      "Notifications Required",
-      "To receive session reminders, please enable notifications in your device settings.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Open Settings",
-          onPress: () => Linking.openSettings(),
-        },
-      ],
-    );
-    return false;
-  }
-
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === "granted";
-}
+const ONESIGNAL_APP_ID = "184c93ff-546a-4db8-945c-203091782fc9";
 
 export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
@@ -152,24 +128,8 @@ export default Sentry.wrap(function RootLayout() {
           Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
         }
 
-        // Request notification permissions
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync("default", {
-            name: "default",
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: "#FF231F7C",
-          });
-        }
-
-        // Request notification permissions early
-        const hasCheckedNotifications = await AsyncStorage.getItem(
-          "hasCheckedNotifications",
-        );
-        if (!hasCheckedNotifications) {
-          await requestNotificationPermissions();
-          await AsyncStorage.setItem("hasCheckedNotifications", "true");
-        }
+        OneSignal.initialize(ONESIGNAL_APP_ID);
+        OneSignal.Notifications.requestPermission(false);
 
         // Optional: Add a small delay for smoother transition
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -280,21 +240,17 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     syncUserWithRevenueCat();
   }, [isUserLoaded, user]);
 
-  // Push Notification Registration useEffect
   useEffect(() => {
-    // Check if user is loaded and has an ID before registering
     if (isUserLoaded && user?.id) {
-      // Introduce a short delay (e.g., 1 second) before registering
-      const timer = setTimeout(() => {
-        registerForPushNotificationsAsync(user.id);
-      }, 1000); // 1000ms = 1 second delay
-
-      // Cleanup function to clear the timer if the component unmounts
-      // or if user state changes before the timer fires
-      return () => clearTimeout(timer);
+      OneSignal.login(user.id);
+      const email = user.primaryEmailAddress?.emailAddress;
+      if (email) {
+        OneSignal.User.addEmail(email);
+      }
+    } else if (isUserLoaded && !user?.id) {
+      OneSignal.logout();
     }
-    // Depend on user.id AND isUserLoaded to ensure it runs when user logs in
-  }, [isUserLoaded, user?.id]);
+  }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
 
   useEffect(() => {
     async function hideSplash() {

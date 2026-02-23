@@ -19,24 +19,20 @@ export const getByUser = query({
   },
 });
 
-// Internal version used by the push notification action
-export const getAllEnabledTokens = internalQuery({
+export const getAllEnabledUserIds = internalQuery({
   args: {},
   handler: async (ctx) => {
     const prefs = await ctx.db
       .query("notification_preferences")
       .withIndex("by_enabled", (q) => q.eq("notificationEnabled", true))
       .collect();
-    return prefs
-      .map((p) => p.expoPushToken)
-      .filter((t): t is string => Boolean(t));
+    return prefs.map((p) => p.userId);
   },
 });
 
 export const upsert = mutation({
   args: {
     userId: v.string(),
-    expoPushToken: v.optional(v.string()),
     notificationEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -49,12 +45,14 @@ export const upsert = mutation({
 
     const now = Date.now();
     if (existing) {
-      await ctx.db.patch(existing._id, { ...args, updatedAt: now });
+      await ctx.db.patch(existing._id, {
+        notificationEnabled: args.notificationEnabled ?? existing.notificationEnabled,
+        updatedAt: now,
+      });
       return existing._id;
     }
     return ctx.db.insert("notification_preferences", {
       userId: args.userId,
-      expoPushToken: args.expoPushToken,
       notificationEnabled: args.notificationEnabled ?? true,
       updatedAt: now,
     });

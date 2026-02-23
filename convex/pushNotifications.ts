@@ -1,17 +1,15 @@
 /**
- * Push notification support.
- * Ports the Supabase edge function `send-marketing-push.ts`.
- *
- * - getAllEnabledTokens: internal query used by the HTTP action
- * - sendMarketingPush: internal action that fetches tokens and batches to Expo
+ * Push notification support via OneSignal REST API.
+ * Targets users by external_id (Clerk userId).
  */
 
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const BATCH_SIZE = 100;
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const ONESIGNAL_APP_ID = "184c93ff-546a-4db8-945c-203091782fc9";
+const ONESIGNAL_API_URL = "https://api.onesignal.com/notifications";
+const BATCH_SIZE = 2000;
 
 export const sendMarketingPush = internalAction({
   args: {
@@ -20,27 +18,33 @@ export const sendMarketingPush = internalAction({
     data: v.optional(v.any()),
   },
   handler: async (ctx, { title, body, data }) => {
-    // Fetch all enabled tokens via the internal query on notificationPreferences
-    const tokens: string[] = await ctx.runQuery(
-      internal.notificationPreferences.getAllEnabledTokens,
+    const userIds: string[] = await ctx.runQuery(
+      internal.notificationPreferences.getAllEnabledUserIds,
       {}
     );
 
-    if (tokens.length === 0) {
+    if (userIds.length === 0) {
       return {
         success: true,
-        summary: { totalTokens: 0, totalSent: 0, totalErrors: 0, batchesProcessed: 0 },
+        summary: { totalUserIds: 0, totalSent: 0, totalErrors: 0, batchesProcessed: 0 },
         results: [],
         message: "No eligible users with push notifications enabled.",
       };
     }
 
-    const expoAccessToken = process.env.EXPO_ACCESS_TOKEN;
+    const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+    if (!apiKey) {
+      return {
+        success: false,
+        summary: { totalUserIds: userIds.length, totalSent: 0, totalErrors: userIds.length, batchesProcessed: 0 },
+        results: [],
+        message: "ONESIGNAL_REST_API_KEY not configured.",
+      };
+    }
 
-    // Split into batches of 100
     const chunks: string[][] = [];
-    for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
-      chunks.push(tokens.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+      chunks.push(userIds.slice(i, i + BATCH_SIZE));
     }
 
     let totalSent = 0;
@@ -48,54 +52,52 @@ export const sendMarketingPush = internalAction({
     const results: Array<{
       batch: number;
       success: boolean;
-      tokensSent: number;
-      expoResponse?: unknown;
+      userIdsSent: number;
+      onesignalResponse?: unknown;
       error?: string;
     }> = [];
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const messages = chunk.map((token) => ({
-        to: token,
-        sound: "default",
-        title,
-        body,
-        data,
-      }));
+      const payload = {
+        app_id: ONESIGNAL_APP_ID,
+        target_channel: "push",
+        include_aliases: {
+          external_id: chunk,
+        },
+        contents: { en: body },
+        headings: { en: title },
+        ...(data && { data }),
+      };
 
       try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        };
-        if (expoAccessToken) {
-          headers["Authorization"] = `Bearer ${expoAccessToken}`;
-        }
-
-        const res = await fetch(EXPO_PUSH_URL, {
+        const res = await fetch(ONESIGNAL_API_URL, {
           method: "POST",
-          headers,
-          body: JSON.stringify(messages),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Key ${apiKey}`,
+          },
+          body: JSON.stringify(payload),
         });
 
-        const expoResponse = await res.json();
+        const onesignalResponse = await res.json();
 
-        if (res.ok) {
+        if (res.ok && onesignalResponse.id) {
           totalSent += chunk.length;
           results.push({
             batch: i + 1,
             success: true,
-            tokensSent: chunk.length,
-            expoResponse,
+            userIdsSent: chunk.length,
+            onesignalResponse,
           });
         } else {
           totalErrors += chunk.length;
           results.push({
             batch: i + 1,
             success: false,
-            tokensSent: 0,
-            expoResponse,
-            error: `HTTP ${res.status}`,
+            userIdsSent: 0,
+            onesignalResponse,
+            error: onesignalResponse.errors?.[0] || `HTTP ${res.status}`,
           });
         }
       } catch (err) {
@@ -103,12 +105,11 @@ export const sendMarketingPush = internalAction({
         results.push({
           batch: i + 1,
           success: false,
-          tokensSent: 0,
+          userIdsSent: 0,
           error: err instanceof Error ? err.message : String(err),
         });
       }
 
-      // Small delay between batches to avoid Expo rate limits
       if (i < chunks.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
@@ -118,7 +119,7 @@ export const sendMarketingPush = internalAction({
     return {
       success: allSucceeded,
       summary: {
-        totalTokens: tokens.length,
+        totalUserIds: userIds.length,
         totalSent,
         totalErrors,
         batchesProcessed: chunks.length,
@@ -126,7 +127,7 @@ export const sendMarketingPush = internalAction({
       results,
       message: allSucceeded
         ? `Successfully sent ${totalSent} notifications.`
-        : `Sent ${totalSent}, failed ${totalErrors} out of ${tokens.length} notifications.`,
+        : `Sent ${totalSent}, failed ${totalErrors} out of ${userIds.length} notifications.`,
     };
   },
 });

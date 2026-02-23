@@ -76,3 +76,8 @@ Dir.glob(File.join(__dir__, '..', 'targets', '**', 'pods.rb')).each do |target_f
     eval(File.read(target_file), target_binding, target_file)
   end
 end
+
+target 'OneSignalNotificationServiceExtension' do
+  pod 'OneSignalXCFramework', '>= 5.0', '< 6.0'
+  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+end
