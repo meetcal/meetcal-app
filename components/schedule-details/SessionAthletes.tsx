@@ -1,13 +1,13 @@
+import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
 import {
-  getSessionAthletesFromMeetCache,
-  saveMeetAthletes,
+    getSessionAthletesFromMeetCache,
+    saveMeetAthletes,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
@@ -16,12 +16,11 @@ import { useAuthGuard } from "@/utils/authGuard";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  StyleSheet,
-  View,
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    StyleSheet,
+    View
 } from "react-native";
 
 function normalizePlatformKey(value: string) {
@@ -104,19 +103,24 @@ export default function SessionAthletes({
         return;
       }
 
-      const applySessionAthletes = async (nextAthletes: LiftResult[]) => {
+      const applySessionAthletes = async (
+        nextAthletes: LiftResult[],
+        isRefresh = false,
+      ) => {
         const mapped = toSessionAthletesByPlatform(platform, nextAthletes);
         setAthletes(mapped);
 
         const athleteNames = nextAthletes.map((athlete) => athlete.name);
-        const loadingState = athleteNames.reduce<Record<string, boolean>>(
-          (acc, name) => {
-            acc[name] = true;
-            return acc;
-          },
-          {},
-        );
-        setLoadingBests(loadingState);
+        if (!isRefresh) {
+          const loadingState = athleteNames.reduce<Record<string, boolean>>(
+            (acc, name) => {
+              acc[name] = true;
+              return acc;
+            },
+            {},
+          );
+          setLoadingBests(loadingState);
+        }
 
         if (athleteNames.length === 0) {
           setAthleteBests({});
@@ -162,7 +166,7 @@ export default function SessionAthletes({
         sessionNumber,
         platform,
       );
-      await applySessionAthletes(freshSessionAthletes);
+      await applySessionAthletes(freshSessionAthletes, true);
     } catch (error) {
       console.error("Error loading athletes:", error);
       if (!meetId) {
