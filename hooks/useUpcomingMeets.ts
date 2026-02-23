@@ -25,13 +25,19 @@ export function useUpcomingMeets({
     rangeEnd.setMonth(rangeEnd.getMonth() + monthsRange + 1);
     rangeEnd.setDate(0); // last day of the target month
 
-    return availableMeets.filter((meet) => {
-      const start = new Date(meet.dates?.start ?? "");
-      const end = new Date(meet.dates?.end ?? meet.dates?.start ?? "");
-      if (Number.isNaN(start.getTime())) return false;
-      const endDate = Number.isNaN(end.getTime()) ? start : end;
-      return endDate >= rangeStart && start <= rangeEnd;
-    });
+    return availableMeets
+      .filter((meet) => {
+        const start = new Date(meet.dates?.start ?? "");
+        const end = new Date(meet.dates?.end ?? meet.dates?.start ?? "");
+        if (Number.isNaN(start.getTime())) return false;
+        const endDate = Number.isNaN(end.getTime()) ? start : end;
+        return endDate >= rangeStart && start <= rangeEnd;
+      })
+      .sort((a, b) => {
+        const startA = new Date(a.dates?.start ?? "").getTime();
+        const startB = new Date(b.dates?.start ?? "").getTime();
+        return startA - startB;
+      });
   }, [availableMeets, monthsRange]);
 
   return { upcomingMeets };
