@@ -217,7 +217,18 @@ export default function StartListScreen() {
         }
 
         const hasNetwork = await isNetworkAvailable();
-        if (!hasNetwork) return;
+        if (!hasNetwork) {
+          setLoading(false);
+          if (forceRefresh) {
+            Alert.alert(
+              "Error",
+              "Failed to refresh start list data. Please try again.",
+            );
+            setAthletes(snapshot.cachedAthletes);
+            setScheduleData(snapshot.cachedSchedule);
+          }
+          return;
+        }
 
         const [athletesResult, scheduleResult] = await Promise.allSettled([
           fetchAthletes(validMeet),

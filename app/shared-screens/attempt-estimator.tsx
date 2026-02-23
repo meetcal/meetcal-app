@@ -129,8 +129,9 @@ export default function AttemptEstimatorScreen() {
           const cutoffDate = twoYearsAgo.toISOString().split("T")[0];
           const allResults: SupabaseLiftResult[] = [];
           for (const athlete of cachedSessionAthletes) {
+            if (!athlete.name?.trim()) continue;
             const athleteResults = await getAllCachedLiftingResultsForAthlete(
-              athlete.name ?? "",
+              athlete.name,
             );
             const filtered = athleteResults.filter(
               (r) => (r.date ?? "") >= cutoffDate,

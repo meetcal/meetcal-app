@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Text, StyleSheet, Animated } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSubscription } from '@/contexts/SubscriptionContext';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import React, { useEffect, useState } from 'react';
+import { Animated, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function OfflineIndicator() {
   const insets = useSafeAreaInsets();
@@ -86,7 +86,7 @@ export function OfflineIndicator() {
         {
           backgroundColor: colors.background,
           transform: [{ translateY: slideAnim }],
-          paddingTop: insets.top + 8,
+          paddingTop: insets.top - 10,
         },
       ]}
     >
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingBottom: 4,
+    paddingBottom: 2,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',

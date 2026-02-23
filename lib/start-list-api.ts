@@ -1,6 +1,6 @@
 import { SupabaseLiftResult } from '@/data/types/athletes';
 import { getAllCachedLiftingResultsForAthlete } from '@/lib/database/offline-store';
-import { convex } from '@/lib/convex';
+import { convexHttp } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
@@ -55,13 +55,15 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   try {
     const cutoffDate = oneYearAgo.toISOString().split('T')[0];
-    const results = await convex.query(api.liftingResults.getYearBestsByName, {
+    const results = await convexHttp.query(api.liftingResults.getYearBestsByName, {
       name: athleteName,
       cutoffDate,
     });
     if (results.length === 0) {
       const fallback = await getOfflineFallback(athleteName);
-      cache.set(athleteName, fallback);
+      if (fallback.bestSnatch > 0 || fallback.bestCJ > 0 || fallback.bestTotal > 0) {
+        cache.set(athleteName, fallback);
+      }
       return fallback;
     }
     const result: YearBests = {
@@ -73,7 +75,9 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
     return result;
   } catch {
     const fallback = await getOfflineFallback(athleteName);
-    cache.set(athleteName, fallback);
+    if (fallback.bestSnatch > 0 || fallback.bestCJ > 0 || fallback.bestTotal > 0) {
+      cache.set(athleteName, fallback);
+    }
     return fallback;
   }
 }
