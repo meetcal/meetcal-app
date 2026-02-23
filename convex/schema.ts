@@ -103,7 +103,6 @@ export default defineSchema({
   // ── notification_preferences ───────────────────────────────────────────────
   notification_preferences: defineTable({
     userId: v.string(),
-    expoPushToken: v.optional(v.string()),
     notificationEnabled: v.boolean(),
     updatedAt: v.number(),
   })
