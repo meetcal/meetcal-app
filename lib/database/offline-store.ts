@@ -11,6 +11,7 @@ const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
 const ATHLETES_KEY_PREFIX = 'meetcal_athletes_';
 const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
+const ATHLETE_HISTORY_KEY_PREFIX = 'meetcal_athlete_history_';
 const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 const LIFTING_RESULTS_FORMAT = 'deflate-base64-chunks-v1';
@@ -347,7 +348,55 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   }
 }
 
-// Get lifting results for an athlete from the cached meet data
+function getAthleteHistoryKey(normalizedName: string): string {
+  return `${ATHLETE_HISTORY_KEY_PREFIX}${normalizedName}`;
+}
+
+export async function saveAthleteHistory(
+  athleteName: string,
+  results: SupabaseLiftResult[],
+): Promise<void> {
+  try {
+    const key = getAthleteHistoryKey(normalizeAthleteName(athleteName));
+    await writeStoredLiftingResults(key, results);
+  } catch (error) {
+    console.error('Error saving athlete history:', error);
+    throw error;
+  }
+}
+
+export async function getAllCachedLiftingResultsForAthlete(
+  athleteName: string,
+): Promise<SupabaseLiftResult[]> {
+  const normalizedName = normalizeAthleteName(athleteName);
+  const historyKey = getAthleteHistoryKey(normalizedName);
+  const fromHistory = await readStoredLiftingResults(historyKey);
+  if (fromHistory.length > 0) {
+    return fromHistory;
+  }
+  try {
+    const store = await getStore();
+    const meetIds = Object.keys(store.meets);
+    const seen = new Set<string>();
+    const aggregated: SupabaseLiftResult[] = [];
+    for (const meetId of meetIds) {
+      const meetResults = await getAthleteLiftingResults(meetId as MeetName, athleteName);
+      for (const r of meetResults) {
+        const dedupeKey = `${r.event_id ?? r.meet}-${r.date}-${r.name}`;
+        if (!seen.has(dedupeKey)) {
+          seen.add(dedupeKey);
+          aggregated.push(r);
+        }
+      }
+    }
+    aggregated.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+    return aggregated;
+  } catch (error) {
+    console.error('Error getting cached lifting results for athlete:', error);
+    return [];
+  }
+}
+
 export async function getAthleteLiftingResults(meetId: MeetName, athleteName: string): Promise<SupabaseLiftResult[]> {
   try {
     const meetData = await getMeetData(meetId);
@@ -599,6 +648,20 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
     await markMeetExplicitlyDownloaded(meet, false);
   } catch (error) {
     console.error('Error clearing meet data:', error);
+  }
+}
+
+export async function clearAllAthleteHistory(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const athleteHistoryKeys = keys.filter(
+      (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) && !k.includes('__chunk_'),
+    );
+    for (const key of athleteHistoryKeys) {
+      await clearStoredLiftingResultsValue(key);
+    }
+  } catch (error) {
+    console.error('Error clearing athlete history:', error);
   }
 }
 

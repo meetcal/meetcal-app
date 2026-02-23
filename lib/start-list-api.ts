@@ -1,9 +1,7 @@
 import { SupabaseLiftResult } from '@/data/types/athletes';
-import { MeetName } from '@/data/types/meet';
-import { getAthleteLiftingResults } from '@/lib/database/offline-store';
+import { getAllCachedLiftingResultsForAthlete } from '@/lib/database/offline-store';
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
@@ -32,9 +30,7 @@ function deriveBestsFromResults(results: SupabaseLiftResult[]): YearBests {
 
 async function getOfflineFallback(athleteName: string): Promise<YearBests> {
   try {
-    const meetId = await AsyncStorage.getItem('@selected_meet');
-    if (!meetId) return ZERO_BESTS;
-    const results = await getAthleteLiftingResults(meetId as MeetName, athleteName);
+    const results = await getAllCachedLiftingResultsForAthlete(athleteName);
     if (results.length === 0) return ZERO_BESTS;
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);

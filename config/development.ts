@@ -15,7 +15,7 @@ export const DEV_CONFIG = {
    * Simulate offline mode for testing
    * When true, network checks will always return false
    */
-  SIMULATE_OFFLINE: false as boolean,
+  SIMULATE_OFFLINE: true as boolean,
 
   /**
    * Additional development flags can be added here

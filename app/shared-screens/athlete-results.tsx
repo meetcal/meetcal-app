@@ -1,11 +1,8 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { resolveAthleteResultsMeetScope } from "@/app/shared-screens/athlete-results-scope";
-import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import { getAthleteLiftingResults } from "@/lib/database/offline-store";
-import { convex } from "@/lib/convex";
-import { api } from "@/convex/_generated/api";
+import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
+import { fetchAllResultsForName } from "@/lib/database/queries";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -236,8 +233,7 @@ function AthleteStats({
 
 export default function AthleteResultsScreen() {
   const colors = useAppColors();
-  const { name, meet } = useLocalSearchParams<{ name?: string; meet?: string }>();
-  const { selectedMeet } = useSelectedMeet();
+  const { name } = useLocalSearchParams<{ name?: string; meet?: string }>();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(
@@ -246,14 +242,12 @@ export default function AthleteResultsScreen() {
   const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
   const requestIdRef = useRef(0);
 
-  // Add useEffect to fetch data from cache first, then Supabase
   useEffect(() => {
     const fetchAthleteResults = async () => {
       if (!name) return;
 
       const nameStr = Array.isArray(name) ? name[0] : name;
-      const meetScope = resolveAthleteResultsMeetScope(meet, selectedMeet);
-      const cacheKey = `${meetScope || "all"}::${nameStr}`;
+      const cacheKey = `all::${nameStr}`;
       const cachedResults = resultsCacheRef.current.get(cacheKey);
       if (cachedResults) {
         setAthleteResults(cachedResults);
@@ -266,44 +260,19 @@ export default function AthleteResultsScreen() {
       try {
         let results: SupabaseLiftResult[] = [];
 
-        // Try to get from cache first if we have a meet scope
-        if (meetScope) {
-          try {
-            const offlineResults = await getAthleteLiftingResults(
-              meetScope,
-              nameStr,
-            );
-            if (offlineResults && offlineResults.length > 0) {
-              results = offlineResults;
-            }
-          } catch (cacheError) {
-            console.log(
-              `Cache miss for athlete results, fetching from Supabase ${cacheError}`,
-            );
+        try {
+          const offlineResults = await getAllCachedLiftingResultsForAthlete(nameStr);
+          if (offlineResults && offlineResults.length > 0) {
+            results = offlineResults;
           }
+        } catch (cacheError) {
+          console.log(
+            `Cache miss for athlete results, fetching from Convex ${cacheError}`,
+          );
         }
 
-        // If no cached results, fetch from Convex
         if (results.length === 0) {
-          const rows = await convex.query(api.liftingResults.getByNames, { names: [nameStr] });
-          results = rows.map((r: any): SupabaseLiftResult => ({
-            id: r._id,
-            event_id: r.eventId,
-            meet: r.meet,
-            date: r.date,
-            name: r.name,
-            age: r.age,
-            body_weight: r.bodyWeight,
-            snatch1: r.snatch1,
-            snatch2: r.snatch2,
-            snatch3: r.snatch3,
-            snatch_best: r.snatchBest,
-            cj1: r.cj1,
-            cj2: r.cj2,
-            cj3: r.cj3,
-            cj_best: r.cjBest,
-            total: r.total,
-          }));
+          results = await fetchAllResultsForName(nameStr);
         }
 
         if (requestId !== requestIdRef.current) return;
@@ -319,7 +288,7 @@ export default function AthleteResultsScreen() {
     };
 
     fetchAthleteResults();
-  }, [name, meet, selectedMeet]);
+  }, [name]);
 
   if (!name) {
     return (
@@ -389,7 +358,7 @@ export default function AthleteResultsScreen() {
             <AthleteStats results={athleteResults} colors={colors} />
             {athleteResults.map((result, index) => (
               <View
-                key={result.id}
+                key={result.convexId ?? (result as { _id?: string })._id ?? `${result.event_id}-${result.meet}-${result.date}-${index}`}
                 style={[
                   styles.card,
                   { backgroundColor: colors.card },
