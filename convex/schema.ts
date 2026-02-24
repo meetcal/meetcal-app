@@ -97,6 +97,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_status_and_start_date", ["status", "startDate"])
     .index("by_name", ["name"])
     .index("by_end_date", ["endDate"]),
 

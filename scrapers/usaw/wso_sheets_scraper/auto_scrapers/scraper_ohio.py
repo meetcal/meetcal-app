@@ -19,6 +19,9 @@ from google.oauth2.service_account import Credentials
 import requests
 from convex import ConvexClient
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import wso_record_ingest_args
+
 
 class WSORecordsScraper:
     """Scraper for WSO weightlifting records."""
@@ -404,16 +407,7 @@ class WSORecordsScraper:
             records: List of records to upsert
         """
         for record in records:
-            self.convex_client.action("scraperIngestion:ingestWSORecord", {
-                "scraperSecret": self.scraper_secret,
-                "wso": record["wso"],
-                "ageCategory": record["age_category"],
-                "gender": record["gender"],
-                "weightClass": record["weight_class"],
-                "snatchRecord": record.get("snatch_record"),
-                "cjRecord": record.get("cj_record"),
-                "totalRecord": record.get("total_record"),
-            })
+            self.convex_client.action("scraperIngestion:ingestWSORecord", wso_record_ingest_args(record, self.scraper_secret))
             print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
     
     def send_slack_notification(self) -> None:

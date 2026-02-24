@@ -432,7 +432,7 @@ class USAMWEventsScraper:
         
         for event in events:
             try:
-                self.convex.action("scraperIngestion:ingestMeet", {
+                result = self.convex.action("scraperIngestion:ingestMeet", {
                     "scraperSecret": self.scraper_secret,
                     "name": event['name'],
                     "venueName": event['venue_name'],
@@ -446,8 +446,11 @@ class USAMWEventsScraper:
                     "status": event['status'],
                     "federation": event['federation'],
                 })
-                print(f"  Ingested: {event['name']}")
-                inserted.append(event)
+                if result.get("wasInsert"):
+                    print(f"  Ingested: {event['name']}")
+                    inserted.append(event)
+                else:
+                    skipped.append(event)
             except Exception as e:
                 print(f"  Error ingesting {event['name']}: {e}")
         

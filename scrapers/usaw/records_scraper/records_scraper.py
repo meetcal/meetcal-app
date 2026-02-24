@@ -483,16 +483,20 @@ class RecordsScraper:
         updated = []
 
         for record in records:
-            result = self.convex.action("scraperIngestion:ingestRecord", {
+            args = {
                 "scraperSecret": self.scraper_secret,
                 "recordType": record['record_type'],
                 "ageCategory": record['age_category'],
                 "gender": record['gender'],
                 "weightClass": record['weight_class'],
-                "snatchRecord": float(record['snatch_record']) if record.get('snatch_record') else None,
-                "cjRecord": float(record['cj_record']) if record.get('cj_record') else None,
-                "totalRecord": float(record['total_record']) if record.get('total_record') else None,
-            })
+            }
+            if record.get('snatch_record') is not None:
+                args["snatchRecord"] = float(record['snatch_record'])
+            if record.get('cj_record') is not None:
+                args["cjRecord"] = float(record['cj_record'])
+            if record.get('total_record') is not None:
+                args["totalRecord"] = float(record['total_record'])
+            result = self.convex.action("scraperIngestion:ingestRecord", args)
             if result.get('wasInsert'):
                 inserted.append(record)
             else:
