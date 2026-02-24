@@ -93,7 +93,6 @@ export const upsertMeet = internalMutation({
 
     const now = Date.now();
     if (existing) {
-      await ctx.db.patch(existing._id, { ...args, updatedAt: now });
       return { id: existing._id, wasInsert: false };
     }
     const id = await ctx.db.insert("meets", {

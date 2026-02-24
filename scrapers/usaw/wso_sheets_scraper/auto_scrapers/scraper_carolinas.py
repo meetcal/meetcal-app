@@ -22,6 +22,9 @@ import requests
 from convex import ConvexClient
 from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import wso_record_ingest_args
+
 # Load environment variables
 load_dotenv()
 
@@ -332,16 +335,7 @@ class WSORecordsCarolinasScraper:
     def upsert_records(self, records: List[Dict[str, Any]]) -> None:
         """Upsert records to Convex."""
         for record in records:
-            self.convex_client.action("scraperIngestion:ingestWSORecord", {
-                "scraperSecret": self.scraper_secret,
-                "wso": record["wso"],
-                "ageCategory": record["age_category"],
-                "gender": record["gender"],
-                "weightClass": record["weight_class"],
-                "snatchRecord": record.get("snatch_record"),
-                "cjRecord": record.get("cj_record"),
-                "totalRecord": record.get("total_record"),
-            })
+            self.convex_client.action("scraperIngestion:ingestWSORecord", wso_record_ingest_args(record, self.scraper_secret))
             print(f"  ✓ Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
     
     def send_slack_notification(self) -> None:

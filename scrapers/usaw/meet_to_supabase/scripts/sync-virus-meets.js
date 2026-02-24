@@ -169,6 +169,8 @@ async function ingestMeetToConvex(meet) {
     }),
   });
   if (!res.ok) throw new Error(await res.text());
+  const result = await res.json();
+  return result.wasInsert;
 }
 
 async function retry(fn, maxRetries = 3) {
@@ -209,10 +211,12 @@ async function syncMeets() {
     const addedMeetNames = [];
     for (const meet of transformedMeets) {
       try {
-        await ingestMeetToConvex(meet);
-        insertCount++;
-        addedMeetNames.push(meet.name);
-        console.log(`Ingested: ${meet.name}`);
+        const wasInsert = await ingestMeetToConvex(meet);
+        if (wasInsert) {
+          insertCount++;
+          addedMeetNames.push(meet.name);
+          console.log(`Ingested: ${meet.name}`);
+        }
       } catch (error) {
         console.error(`Error ingesting "${meet.name}":`, error.message);
       }

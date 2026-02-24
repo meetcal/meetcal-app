@@ -29,6 +29,9 @@ from dotenv import load_dotenv
 
 from convex import ConvexClient
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import wso_record_ingest_args
+
 
 class WSORecordsPAWVScraper:
     """Scraper for Pennsylvania-West Virginia WSO records."""
@@ -300,16 +303,7 @@ class WSORecordsPAWVScraper:
         updated = []
 
         for record in records:
-            result = self.convex_client.action("scraperIngestion:ingestWSORecord", {
-                "scraperSecret": self.scraper_secret,
-                "wso": record["wso"],
-                "ageCategory": record["age_category"],
-                "gender": record["gender"],
-                "weightClass": record["weight_class"],
-                "snatchRecord": record.get("snatch_record"),
-                "cjRecord": record.get("cj_record"),
-                "totalRecord": record.get("total_record"),
-            })
+            result = self.convex_client.action("scraperIngestion:ingestWSORecord", wso_record_ingest_args(record, self.scraper_secret))
             if result.get('wasInsert'):
                 inserted.append(record)
             else:
