@@ -20,9 +20,9 @@ import pdfplumber
 import csv
 
 # Default configuration
-DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/bltaf13d0f8e4d7f2ff/690f8f3a424c334535bc914e/2025_-_VWF_UMWF_-_Start_List.pdf"
-DEFAULT_MEET_NAME = "2025 Virus Weightlifting Finals, Powered by Rogue Fitness"
-DEFAULT_OUTPUT_FILE = "vwf_umwf_start_list.csv"
+DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt9bb5856a1e3d2f65/699f5747513403f7a8d1bd72/2026_-_VWS1_-_START_LIST_v2.pdf"
+DEFAULT_MEET_NAME = "2026 VIRUS Weightlifting Series 1"
+DEFAULT_OUTPUT_FILE = "arnold_start_list.csv"
 
 
 class VWFStartListScraper:

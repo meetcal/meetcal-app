@@ -33,7 +33,7 @@ load_dotenv()
 # ============================================================================
 # CONFIGURATION - Set your meet details here
 # ============================================================================
-DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt79f72e0801fb072f/6987896bb7bf25825f6df479/2026_-_VWS1_-_Preliminary_Schedule.pdf"
+DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt13dbc5d1fae8c890/699f572f3b580eb65224ab05/2026_-_VWS1_-_FINAL_SCHEDULE_v2.pdf"
 DEFAULT_MEET_NAME = "2026 VIRUS Weightlifting Series 1"
 DEFAULT_CSV_START_ID = 123
 DEFAULT_CSV_ID_INCREMENT = 1

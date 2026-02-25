@@ -21,6 +21,60 @@ export function sortAthletes(a: LiftResult, b: LiftResult): number {
   return a.name.localeCompare(b.name);
 }
 
+const TIME_24H_REGEX = /^(\d{1,2}):(\d{2})$/;
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i;
+
+export function parseStartTimeToMinutes(startTime: string): number | null {
+  const trimmed = startTime.trim();
+  const match12 = trimmed.match(TIME_12H_REGEX);
+  if (match12) {
+    const hours = Number(match12[1]);
+    const minutes = Number(match12[2]);
+    const period = match12[3].toUpperCase();
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 1 ||
+      hours > 12 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+    let hour24 = hours % 12;
+    if (period === "PM") hour24 += 12;
+    return hour24 * 60 + minutes;
+  }
+
+  const match24 = trimmed.match(TIME_24H_REGEX);
+  if (match24) {
+    const hours = Number(match24[1]);
+    const minutes = Number(match24[2]);
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+    return hours * 60 + minutes;
+  }
+
+  return null;
+}
+
+export function compareStartTimes(a: string, b: string): number {
+  const aMinutes = parseStartTimeToMinutes(a);
+  const bMinutes = parseStartTimeToMinutes(b);
+  if (aMinutes != null && bMinutes != null) return aMinutes - bMinutes;
+  if (aMinutes != null) return -1;
+  if (bMinutes != null) return 1;
+  return a.localeCompare(b);
+}
+
 // Re-export from utils/calendar for backwards compatibility
 export { requestCalendarPermissions } from '@/utils/calendar';
 

@@ -5,12 +5,7 @@ import { Animated } from "react-native";
 
 export type ShareBackgroundPresetId =
   | "white"
-  | "soft-gray"
-  | "high-contrast"
-  | "transparent"
-  | "sunset"
-  | "ocean"
-  | "neon-night";
+  | "transparent";
 
 export interface ImagePreviewModalProps {
     visible: boolean;
@@ -26,7 +21,6 @@ export interface ShareScheduleViewProps {
     schedule: ScheduleType;
     selectedMeet: string;
     selectedClub: string;
-    transparentBackground?: boolean;
     backgroundPreset?: ShareBackgroundPresetId;
     getSessionDetails: (sessionNumber: number) => {
         date: string;

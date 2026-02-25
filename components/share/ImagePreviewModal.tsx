@@ -27,15 +27,15 @@ export default function ImagePreviewModal({
 }: ImagePreviewModalProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
-  const imageOptions = React.useMemo(
+  const [imageAspectRatio, setImageAspectRatio] = React.useState(850 / 1200);
+  const imageOptions = React.useMemo<ImageOption[]>(
     () =>
       [
         whiteImageUri
           ? {
-              id: "readable",
-              label: "Readable",
+              id: "white",
+              label: "White",
               uri: whiteImageUri,
-              category: "readability" as const,
               isTransparent: false,
             }
           : null,
@@ -44,7 +44,6 @@ export default function ImagePreviewModal({
               id: "transparent",
               label: "Transparent",
               uri: transparentImageUri,
-              category: "social" as const,
               isTransparent: true,
             }
           : null,
@@ -54,12 +53,20 @@ export default function ImagePreviewModal({
   const safeIndex = Math.min(selectedIndex, Math.max(imageOptions.length - 1, 0));
   const selectedOption = imageOptions[safeIndex] || null;
 
-  const readableOptions = imageOptions.filter(
-    (option) => option.category === "readability",
-  );
-  const socialOptions = imageOptions.filter(
-    (option) => option.category === "social",
-  );
+  React.useEffect(() => {
+    if (!selectedOption?.uri) return;
+    Image.getSize(
+      selectedOption.uri,
+      (width, height) => {
+        if (width > 0 && height > 0) {
+          setImageAspectRatio(width / height);
+        }
+      },
+      () => {
+        setImageAspectRatio(850 / 1200);
+      },
+    );
+  }, [selectedOption?.uri]);
 
   const handleShare = async () => {
     if (!selectedOption?.uri) return;
@@ -131,24 +138,41 @@ export default function ImagePreviewModal({
           {selectedOption ? (
             <View style={styles.imageContainer}>
               <View style={styles.optionSections}>
-                <OptionRow
-                  title="Readable"
-                  options={readableOptions}
-                  activeId={selectedOption?.id ?? ""}
-                  onPress={(id) => {
-                    const nextIndex = imageOptions.findIndex((o) => o.id === id);
-                    if (nextIndex >= 0) onChangeIndex(nextIndex);
-                  }}
-                />
-                <OptionRow
-                  title="Social"
-                  options={socialOptions}
-                  activeId={selectedOption?.id ?? ""}
-                  onPress={(id) => {
-                    const nextIndex = imageOptions.findIndex((o) => o.id === id);
-                    if (nextIndex >= 0) onChangeIndex(nextIndex);
-                  }}
-                />
+                <View
+                  style={[
+                    styles.segmentedControl,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  {imageOptions.map((option, index) => {
+                    const isActive = option.id === selectedOption.id;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        style={({ pressed }) => [
+                          styles.segment,
+                          isActive && { backgroundColor: colors.link },
+                          pressed && { opacity: 0.85 },
+                        ]}
+                        onPress={() => onChangeIndex(index)}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.segmentText,
+                            {
+                              color: isActive ? "#FFFFFF" : colors.secondaryText,
+                            },
+                          ]}
+                        >
+                          {option.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
 
               <View
@@ -181,7 +205,7 @@ export default function ImagePreviewModal({
                 ) : null}
                 <Image
                   source={{ uri: selectedOption.uri }}
-                  style={styles.image}
+                  style={[styles.image, { aspectRatio: imageAspectRatio }]}
                   resizeMode="contain"
                 />
               </View>
@@ -204,7 +228,7 @@ export default function ImagePreviewModal({
                   color="#FFFFFF"
                 />
                 <ThemedText style={styles.shareButtonText}>
-                  Share {selectedOption.label}
+                  {`Share ${selectedOption.label}`}
                 </ThemedText>
               </Pressable>
             </View>
@@ -227,51 +251,8 @@ type ImageOption = {
   id: string;
   label: string;
   uri: string;
-  category: "readability" | "social";
   isTransparent: boolean;
 };
-
-type OptionRowProps = {
-  title: string;
-  options: ImageOption[];
-  activeId: string;
-  onPress: (id: string) => void;
-};
-
-function OptionRow({ title, options, activeId, onPress }: OptionRowProps) {
-  if (options.length === 0) return null;
-
-  return (
-    <View style={styles.optionRowWrap}>
-      <ThemedText style={styles.optionRowTitle}>{title}</ThemedText>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.segmentedControl}
-      >
-        {options.map((option) => {
-          const isActive = option.id === activeId;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.segment, isActive && styles.segmentActive]}
-              onPress={() => onPress(option.id)}
-            >
-              <ThemedText
-                style={[
-                  styles.segmentText,
-                  isActive && styles.segmentTextActive,
-                ]}
-              >
-                {option.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: {
@@ -313,31 +294,12 @@ const styles = StyleSheet.create({
   },
   optionSections: {
     width: "100%",
-    gap: 12,
-  },
-  optionRowWrap: {
-    gap: 6,
-  },
-  optionRowTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#8E8E93",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    paddingBottom: 2,
   },
   imageCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 20,
+    backgroundColor: "transparent",
+    borderRadius: 0,
     width: "100%",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
   },
   imageCardTransparent: {
     backgroundColor: "transparent",
@@ -346,31 +308,23 @@ const styles = StyleSheet.create({
   },
   image: {
     width: "100%",
-    aspectRatio: 850 / 1200,
     borderRadius: 0,
   },
   segmentedControl: {
     flexDirection: "row",
-    gap: 8,
-    paddingRight: 8,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
   },
   segment: {
+    flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
     alignItems: "center",
-    backgroundColor: "#ECEFF3",
-  },
-  segmentActive: {
-    backgroundColor: "#111827",
+    justifyContent: "center",
   },
   segmentText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
-    color: "#4B5563",
-  },
-  segmentTextActive: {
-    color: "#FFFFFF",
   },
   checkerboard: {
     ...StyleSheet.absoluteFillObject,
