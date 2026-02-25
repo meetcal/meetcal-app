@@ -1,5 +1,6 @@
 import { MeetConfig, MeetName } from '../types/meet';
 import { fetchMeetByName } from '@/lib/database/meet-manager';
+import { convertZonedLocalToUTC } from '@/utils/timezone';
 
 // Cache for meet configs to avoid repeated fetches
 const meetConfigCache: { [key: string]: MeetConfig } = {};
@@ -33,30 +34,9 @@ export async function getMeetConfig(meetName: MeetName): Promise<MeetConfig> {
 export function convertToUTC(
   timeStr: string,
   dateStr: string,
-  meet: MeetName
+  timeZoneIdentifier: string,
 ): Date {
-  const config = meetConfigCache[meet];
-  if (!config) {
-    throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
-  }
-  
-  // Parse time string (format: "8:00 AM")
-  const [time, period] = timeStr.split(' ');
-  const [hours, minutes] = time.split(':').map(Number);
-  
-  // Convert to 24-hour format
-  let adjustedHours = hours;
-  if (period === 'PM' && hours !== 12) {
-    adjustedHours += 12;
-  } else if (period === 'AM' && hours === 12) {
-    adjustedHours = 0;
-  }
-
-  // Parse date string (format: "YYYY-MM-DD")
-  const [year, month, day] = dateStr.split('-').map(Number);
-  
-  // Create Date object in UTC, adding the correct offset for the meet's time zone
-  return new Date(Date.UTC(year, month - 1, day, adjustedHours + config.time.utcOffset, minutes));
+  return convertZonedLocalToUTC(dateStr, timeStr, timeZoneIdentifier);
 }
 
 // Convert 24-hour time to 12-hour time without seconds

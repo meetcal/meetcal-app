@@ -91,7 +91,7 @@ export async function createCalendarEvents(
       const startDate = convertToUTC(
         session.startTime,
         session.date,
-        session.meet,
+        meetConfig.time.timeZoneIdentifier,
       );
       const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
