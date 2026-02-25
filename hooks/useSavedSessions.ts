@@ -12,6 +12,8 @@ import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
+import type { Schedule as ScheduleType } from '@/types/schedule';
+import { getMeetData } from '@/lib/database/offline-store';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -192,12 +194,26 @@ export function useSavedSessions() {
     }
   };
 
-  const saveSessionsFromAthletes = async (athletes: LiftResult[], meet: MeetName) => {
+  const saveSessionsFromAthletes = async (
+    athletes: LiftResult[],
+    meet: MeetName,
+    scheduleOverride?: ScheduleType,
+  ) => {
     if (!user?.id) return false;
     
     try {
       const sessionMap = new Map<string, { session: SavedSession, athletes: string[] }>();
-      const schedule = await fetchSchedule(meet);
+      let schedule = scheduleOverride ?? [];
+
+      if (schedule.length === 0) {
+        try {
+          schedule = await fetchSchedule(meet);
+        } catch (fetchError) {
+          console.warn('saveSessionsFromAthletes: fetchSchedule failed, falling back to cached schedule', fetchError);
+          const meetData = await getMeetData(meet).catch(() => null);
+          schedule = meetData?.schedule ?? [];
+        }
+      }
       
       athletes
         .filter(athlete => athlete.session)
@@ -219,10 +235,8 @@ export function useSavedSessions() {
             );
             
             if (sessionDay && scheduleSession && platform) {
-              // Use platform-specific time if available
               const startTime = platform.platformStartTime || scheduleSession.startTime;
               const weighInTime = calculateWeighInTime(startTime);
-              
               sessionMap.set(sessionId, {
                 session: {
                   id: sessionId,
@@ -233,6 +247,22 @@ export function useSavedSessions() {
                   startTime,
                   weighInTime,
                   date: sessionDay.fullDate,
+                  athleteNames: []
+                },
+                athletes: []
+              });
+            } else {
+              const fallbackStartTime = athlete.session?.startTime ?? '';
+              sessionMap.set(sessionId, {
+                session: {
+                  id: sessionId,
+                  meet,
+                  sessionNumber: athlete.session!.number,
+                  platform: athlete.session!.platform,
+                  weightClass: athlete.weightClass ?? '',
+                  startTime: fallbackStartTime,
+                  weighInTime: fallbackStartTime ? calculateWeighInTime(fallbackStartTime) : '',
+                  date: athlete.session?.date ?? '',
                   athleteNames: []
                 },
                 athletes: []
@@ -336,8 +366,7 @@ export function useSavedSessions() {
         });
       } catch (convexError) {
         console.error('Error saving session to Convex:', convexError);
-        // Local save already succeeded, so user has their data
-        return false;
+        // Local save already succeeded, so keep success semantics for device caching.
       }
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled

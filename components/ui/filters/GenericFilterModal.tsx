@@ -144,13 +144,19 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   };
 
   const handleReset = () => {
-    const resetFilters: Record<string, string> = {};
-    currentSections.forEach((section) => {
-      resetFilters[section.id] = section.options[0]?.value || "";
-    });
+    const resetFilters = Object.keys(filters).reduce<Record<string, string>>(
+      (acc, key) => {
+        acc[key] = "";
+        return acc;
+      },
+      {},
+    );
     setTempFilters(resetFilters);
     prevTempFiltersRef.current = { ...resetFilters };
+    pendingDependencyResetRef.current = {};
+    setExpandedSection(null);
     onResetFilters();
+    onClose();
   };
 
   const handleClose = () => {
@@ -258,7 +264,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
                       { color: colors.secondaryText },
                     ]}
                   >
-                    {resolvedResultCount} {resultLabel}
+                    {`${resolvedResultCount} ${resultLabel}`}
                   </ThemedText>
                 )}
                 <Pressable

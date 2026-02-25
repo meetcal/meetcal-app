@@ -493,6 +493,7 @@ export default function StartListScreen() {
               const success = await saveSessionsFromAthletes(
                 filteredAthletes,
                 validMeet,
+                scheduleData,
               );
               if (success) {
                 Alert.alert(
@@ -1046,9 +1047,17 @@ export default function StartListScreen() {
       <ExpandedIdProvider>
         <FlashList
           data={filteredAthletes}
+          extraData={{
+            weightClassFilter,
+            clubFilter,
+            ageGroupFilter,
+            adaptiveAthleteFilter,
+            genderFilter,
+            searchQuery,
+          }}
           keyExtractor={keyExtractor}
           renderItem={renderListItem}
-          removeClippedSubviews={true}
+          removeClippedSubviews={false}
           drawDistance={350}
           contentContainerStyle={[
             styles.listContent,
