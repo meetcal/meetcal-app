@@ -1,0 +1,30 @@
+name: PostHog Weekly AI Report
+
+on:
+  schedule:
+    # GitHub cron is UTC. This runs Sundays at 09:00 UTC.
+    - cron: '0 9 * * 0'
+  workflow_dispatch:
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Run weekly report
+        run: bun ./scrapers/posthog_weekly_report/weekly_report.mjs
+        env:
+          POSTHOG_BASE_URL: ${{ secrets.POSTHOG_BASE_URL }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_DASHBOARD_IDS: ${{ secrets.POSTHOG_DASHBOARD_IDS }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          SLACK_POSTHOG_WEBHOOK_URL: ${{ secrets.SLACK_POSTHOG_WEBHOOK_URL }}
