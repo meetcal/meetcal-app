@@ -18,6 +18,7 @@ import type * as meets from "../meets.js";
 import type * as qualifyingTotals from "../qualifyingTotals.js";
 import type * as records from "../records.js";
 import type * as savedSessions from "../savedSessions.js";
+import type * as savedSessionsSync from "../savedSessionsSync.js";
 import type * as schedule from "../schedule.js";
 import type * as scraperIngestion from "../scraperIngestion.js";
 import type * as standards from "../standards.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   qualifyingTotals: typeof qualifyingTotals;
   records: typeof records;
   savedSessions: typeof savedSessions;
+  savedSessionsSync: typeof savedSessionsSync;
   schedule: typeof schedule;
   scraperIngestion: typeof scraperIngestion;
   standards: typeof standards;

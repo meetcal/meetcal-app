@@ -58,13 +58,11 @@ export default function NewStandardsScreen() {
       id: "gender",
       title: "Gender",
       options: genderOptions.map((g) => ({ value: g.id, label: g.label })),
-      allOptionLabel: "All Genders",
     },
     {
       id: "ageGroup",
       title: "Age Group",
       options: ageGroupOptions.map((a) => ({ value: a.id, label: a.label })),
-      allOptionLabel: "All Ages",
     },
   ];
 

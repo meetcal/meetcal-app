@@ -82,7 +82,6 @@ export default function QualifyingTotalsScreen() {
         id: "event",
         title: "Event",
         options: eventOptions.map((event) => ({ value: event, label: event })),
-        allOptionLabel: "All Events",
       },
       {
         id: "gender",
@@ -99,7 +98,6 @@ export default function QualifyingTotalsScreen() {
           value: age,
           label: age.charAt(0).toUpperCase() + age.slice(1),
         })),
-        allOptionLabel: "All Ages",
         dependsOn: ["event"],
       },
     ];

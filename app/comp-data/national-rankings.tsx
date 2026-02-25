@@ -145,7 +145,6 @@ export default function NationalRankingsScreen() {
         id: "ageGroup",
         title: "Age Group",
         options: AGE_GROUPS.map((ag) => ({ value: ag, label: ag })),
-        allOptionLabel: "All Age Groups",
       },
       {
         id: "weightClass",

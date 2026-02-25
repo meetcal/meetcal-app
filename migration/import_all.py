@@ -67,6 +67,7 @@ TABLE_ORDER = [
     "lifting_results",
     "intl_rankings",
     "saved_sessions",
+    "user_saved_sessions",
 ]
 
 INGEST_ACTIONS = {
@@ -76,7 +77,8 @@ INGEST_ACTIONS = {
     "meets": "scraperIngestion:ingestMeet",
     "qualifying_totals": "scraperIngestion:ingestQualifyingTotal",
     "records": "scraperIngestion:ingestRecord",
-    "saved_sessions": "savedSessions:upsert",
+    "saved_sessions": "savedSessions:upsertFromIngestion",
+    "user_saved_sessions": "savedSessions:upsertFromIngestion",
     "session_schedule": "scraperIngestion:ingestSessionSchedule",
     "standards": "scraperIngestion:ingestStandard",
     "wso_records": "scraperIngestion:ingestWSORecord",
@@ -85,9 +87,9 @@ INGEST_ACTIONS = {
 
 # These tables call public mutations (not scraperIngestion actions), so use client.mutation()
 # All other tables call scraperIngestion:* actions, so use client.action()
-MUTATION_TABLES = {"saved_sessions"}
+MUTATION_TABLES = {"saved_sessions", "user_saved_sessions"}
 
-NO_SECRET_TABLES = {"saved_sessions"}
+NO_SECRET_TABLES = set()
 
 
 def stream_supabase_rows(table: str, after_id: int = 0) -> Generator[dict, None, None]:
