@@ -7,6 +7,7 @@ Usage:
 """
 
 from typing import Any
+import re
 
 
 def _to_float(val):
@@ -111,18 +112,32 @@ def transform_record(row: dict) -> dict:
 
 
 def transform_saved_session(row: dict) -> dict:
+    user_id = row.get("user_id") or row.get("userId") or row.get("clerk_user_id")
+    meet = row.get("meet") or row.get("meet_name") or row.get("meetName")
+    session_number = row.get("session_number") or row.get("session_num") or row.get("sessionNumber") or row.get("session_id")
+    platform = row.get("platform") or row.get("session_platform") or row.get("sessionPlatform")
+
+    if user_id is None or meet is None or session_number is None or platform is None:
+        raise ValueError("Saved session row missing required user/meet/session/platform fields")
+
+    session_id = make_session_id(meet, int(session_number), platform)
+
     return {
-        "sessionId": row["id"],
-        "userId": row["user_id"],
-        "meet": row["meet"],
-        "sessionNumber": int(row["session_number"]),
-        "platform": row["platform"],
-        "weightClass": row.get("weight_class"),
-        "startTime": row.get("start_time"),
+        "sessionId": session_id,
+        "userId": str(user_id),
+        "meet": str(meet),
+        "sessionNumber": int(session_number),
+        "platform": str(platform),
+        "weightClass": row.get("weight_class") or row.get("weightClass"),
+        "startTime": row.get("start_time") or row.get("startTime"),
         "notes": row.get("notes"),
-        "athleteNames": row.get("athlete_names"),  # Already a list in Supabase
+        "athleteNames": row.get("athlete_names") or row.get("athleteNames"),  # Already a list in Supabase
         "date": str(row["date"]) if row.get("date") else None,
     }
+
+
+def transform_user_saved_session(row: dict) -> dict:
+    return transform_saved_session(row)
 
 
 def transform_session_schedule(row: dict) -> dict:
@@ -179,11 +194,19 @@ TRANSFORMERS = {
     "qualifying_totals": transform_qualifying_total,
     "records": transform_record,
     "saved_sessions": transform_saved_session,
+    "user_saved_sessions": transform_user_saved_session,
     "session_schedule": transform_session_schedule,
     "standards": transform_standard,
     "world_records": transform_world_record,
     "wso_records": transform_wso_record,
 }
+
+
+def make_session_id(meet: Any, session_number: Any, platform: Any) -> str:
+    def normalize(value: Any) -> str:
+        return re.sub(r"\s+", "-", str(value).strip())
+
+    return f"{normalize(meet)}-{normalize(session_number)}-{normalize(platform)}"
 
 
 def transform_row(table: str, row: dict) -> dict:

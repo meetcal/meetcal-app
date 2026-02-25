@@ -159,7 +159,6 @@ export default function RecordsScreen() {
       id: "wso",
       title: "WSO",
       options: availableWSOs.map((wso: string) => ({ value: wso, label: wso })),
-      allOptionLabel: "Select WSO",
     },
     {
       id: "gender",
@@ -173,7 +172,6 @@ export default function RecordsScreen() {
         value: ag,
         label: getAgeGroupDisplayText(ag),
       })),
-      allOptionLabel: "All Age Groups",
     },
   ];
 

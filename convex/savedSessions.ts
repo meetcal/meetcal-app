@@ -1,10 +1,17 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 
 async function requireUserId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Unauthenticated");
   return identity.subject;
+}
+
+function assertScraperSecret(scraperSecret: string): void {
+  const expected = process.env.SCRAPER_SECRET;
+  if (!expected || scraperSecret !== expected) {
+    throw new Error("Unauthorized: invalid scraper secret");
+  }
 }
 
 export const getByUser = query({
@@ -48,6 +55,81 @@ export const upsert = mutation({
       return existing._id;
     }
     return ctx.db.insert("saved_sessions", { ...args, updatedAt: now });
+  },
+});
+
+export const upsertSystem = internalMutation({
+  args: {
+    sessionId: v.string(),
+    userId: v.string(),
+    meet: v.string(),
+    sessionNumber: v.number(),
+    platform: v.string(),
+    weightClass: v.optional(v.string()),
+    startTime: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    athleteNames: v.optional(v.array(v.string())),
+    date: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("saved_sessions")
+      .withIndex("by_sessionId_and_userId", (q) =>
+        q.eq("sessionId", args.sessionId).eq("userId", args.userId)
+      )
+      .unique();
+
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...args, updatedAt: now });
+      return existing._id;
+    }
+    return ctx.db.insert("saved_sessions", { ...args, updatedAt: now });
+  },
+});
+
+export const upsertFromIngestion = mutation({
+  args: {
+    scraperSecret: v.string(),
+    sessionId: v.string(),
+    userId: v.string(),
+    meet: v.string(),
+    sessionNumber: v.number(),
+    platform: v.string(),
+    weightClass: v.optional(v.string()),
+    startTime: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    athleteNames: v.optional(v.array(v.string())),
+    date: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertScraperSecret(args.scraperSecret);
+    const upsertArgs = {
+      sessionId: args.sessionId,
+      userId: args.userId,
+      meet: args.meet,
+      sessionNumber: args.sessionNumber,
+      platform: args.platform,
+      weightClass: args.weightClass,
+      startTime: args.startTime,
+      notes: args.notes,
+      athleteNames: args.athleteNames,
+      date: args.date,
+    };
+
+    const existing = await ctx.db
+      .query("saved_sessions")
+      .withIndex("by_sessionId_and_userId", (q) =>
+        q.eq("sessionId", upsertArgs.sessionId).eq("userId", upsertArgs.userId)
+      )
+      .unique();
+
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...upsertArgs, updatedAt: now });
+      return existing._id;
+    }
+    return ctx.db.insert("saved_sessions", { ...upsertArgs, updatedAt: now });
   },
 });
 
