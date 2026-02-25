@@ -235,7 +235,7 @@ async function analyzeWithOpenRouter({ openrouterApiKey, openrouterModel, payloa
           {
             role: 'system',
             content:
-              'You are a product analytics expert. Create concise weekly reports for executives and engineers. Use only the provided data. If data is missing, say so clearly. Output markdown with sections: Executive Summary, Dashboard Highlights, App Performance, Risks, Recommended Actions.',
+              'You are a product analytics expert. Create concise weekly reports for executives and engineers. Use only the provided data. If data is missing, say so clearly. Output text with sections: Executive Summary, Dashboard Highlights, App Performance, Risks, Recommended Actions. The data is from an app MeetCal. MeetCal is an all-in-one platform for Olympic Weightlifting that brings the schedule, start list, and all data revolving around a meet into one app. As such, the app is cyclical, following the seasonal structure of meets.',
           },
           {
             role: 'user',
