@@ -14,6 +14,7 @@ import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
+import { getCachedAuthState } from '@/lib/authCache';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -62,19 +63,49 @@ export function useSavedSessions() {
   const { selectedMeet } = useSelectedMeet();
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [storageUserId, setStorageUserId] = useState<string | null>(null);
+  const [hasResolvedUser, setHasResolvedUser] = useState(false);
   const sessionsRawRef = useRef<string | null>(null);
   const sessionsRef = useRef<SavedSession[]>([]);
+  const activeUserId = user?.id ?? storageUserId;
 
-  // Clear sessions when user logs out
   useEffect(() => {
-    if (!user?.id) {
-      setSavedSessions([]);
-      setIsLoading(false);
-      clearSavedWidget();
-      sessionsRawRef.current = null;
-      sessionsRef.current = [];
-    }
+    let cancelled = false;
+
+    const resolveUser = async () => {
+      if (user?.id) {
+        if (!cancelled) {
+          setStorageUserId(user.id);
+          setHasResolvedUser(true);
+        }
+        return;
+      }
+
+      const cachedAuthState = await getCachedAuthState().catch(() => null);
+      if (cancelled) return;
+
+      if (cachedAuthState?.isSignedIn && cachedAuthState.userId) {
+        setStorageUserId(cachedAuthState.userId);
+      } else {
+        setStorageUserId(null);
+      }
+      setHasResolvedUser(true);
+    };
+
+    resolveUser();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasResolvedUser || activeUserId) return;
+    setSavedSessions([]);
+    setIsLoading(false);
+    clearSavedWidget();
+    sessionsRawRef.current = null;
+    sessionsRef.current = [];
+  }, [hasResolvedUser, activeUserId]);
 
   useEffect(() => {
     if (!selectedMeet) {
@@ -88,30 +119,32 @@ export function useSavedSessions() {
       .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'));
   }, [selectedMeet, savedSessions]);
 
-  // Load sessions when user logs in
   useEffect(() => {
-    if (user?.id) {
+    if (activeUserId) {
       loadSavedSessions();
+    } else if (hasResolvedUser) {
+      setSavedSessions([]);
+      setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [activeUserId, hasResolvedUser]);
 
   const commitSessions = useCallback(async (nextSessions: SavedSession[]) => {
-    if (!user?.id) return;
+    if (!activeUserId) return;
     const serialized = JSON.stringify(nextSessions);
     if (sessionsRawRef.current !== serialized) {
-      await AsyncStorage.setItem(getSavedSessionsKey(user.id), serialized);
+      await AsyncStorage.setItem(getSavedSessionsKey(activeUserId), serialized);
       sessionsRawRef.current = serialized;
     }
     sessionsRef.current = nextSessions;
     setSavedSessions(nextSessions);
-  }, [user?.id]);
+  }, [activeUserId]);
 
   const readStoredSessions = useCallback(async (forceStorageRead = false): Promise<SavedSession[]> => {
-    if (!user?.id) return [];
+    if (!activeUserId) return [];
     if (!forceStorageRead && sessionsRawRef.current !== null) {
       return sessionsRef.current;
     }
-    const raw = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+    const raw = await AsyncStorage.getItem(getSavedSessionsKey(activeUserId));
     if (raw && raw === sessionsRawRef.current) {
       return sessionsRef.current;
     }
@@ -120,10 +153,10 @@ export function useSavedSessions() {
     sessionsRawRef.current = raw;
     sessionsRef.current = parsedSessions;
     return parsedSessions;
-  }, [user?.id]);
+  }, [activeUserId]);
 
   const loadSavedSessions = async () => {
-    if (!user?.id) {
+    if (!activeUserId) {
       setSavedSessions([]);
       setIsLoading(false);
       return;
@@ -132,14 +165,14 @@ export function useSavedSessions() {
     setIsLoading(true); // Set loading true at the start
     try {
       // Hydrate from local storage first so navigation to Saved shows data immediately.
-      const localRaw = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+      const localRaw = await AsyncStorage.getItem(getSavedSessionsKey(activeUserId));
       const localSessions = parseStoredSessions(localRaw).filter((session) => session.meet);
       sessionsRawRef.current = localRaw;
       sessionsRef.current = localSessions;
       setSavedSessions(localSessions);
 
       // Fetch from Convex
-      try {
+      if (user?.id) {
         const convexSessions = await convex.query(api.savedSessions.getByUser, { userId: user.id });
 
         if (convexSessions && convexSessions.length > 0) {
@@ -158,7 +191,7 @@ export function useSavedSessions() {
           await commitSessions(formattedSessions);
         } else {
           if (localSessions.length === 0) {
-            await AsyncStorage.removeItem(getSavedSessionsKey(user.id));
+            await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
             sessionsRawRef.current = null;
             sessionsRef.current = [];
             setSavedSessions([]);
@@ -166,8 +199,7 @@ export function useSavedSessions() {
             setSavedSessions(localSessions);
           }
         }
-      } catch (convexError) {
-        console.error('Error fetching saved sessions from Convex:', convexError);
+      } else {
         setSavedSessions(localSessions);
       }
     } catch (error) {
@@ -180,7 +212,7 @@ export function useSavedSessions() {
       
       // Attempt to load from local storage as a final fallback
       try {
-        const saved = await AsyncStorage.getItem(getSavedSessionsKey(user.id));
+        const saved = await AsyncStorage.getItem(getSavedSessionsKey(activeUserId));
         const validSessions = parseStoredSessions(saved).filter((session) => session.meet);
         sessionsRawRef.current = saved;
         sessionsRef.current = validSessions;
@@ -199,7 +231,7 @@ export function useSavedSessions() {
     meet: MeetName,
     scheduleOverride?: ScheduleType,
   ) => {
-    if (!user?.id) return false;
+    if (!activeUserId) return false;
     
     try {
       const sessionMap = new Map<string, { session: SavedSession, athletes: string[] }>();
@@ -325,7 +357,7 @@ export function useSavedSessions() {
   };
 
   const saveSession = async (session: SavedSession) => {
-    if (!user?.id) return false;
+    if (!activeUserId) return false;
     
     try {
       if (!session.meet) {
@@ -351,22 +383,24 @@ export function useSavedSessions() {
       await commitSessions(nextSessions);
 
       // 2. Upsert to Convex
-      try {
-        await convex.mutation(api.savedSessions.upsert, {
-          sessionId: updatedSession.id,
-          userId: user.id,
-          meet: updatedSession.meet,
-          sessionNumber: updatedSession.sessionNumber,
-          platform: updatedSession.platform,
-          weightClass: updatedSession.weightClass,
-          startTime: updatedSession.startTime,
-          date: updatedSession.date,
-          notes: updatedSession.notes,
-          athleteNames: updatedSession.athleteNames,
-        });
-      } catch (convexError) {
-        console.error('Error saving session to Convex:', convexError);
-        // Local save already succeeded, so keep success semantics for device caching.
+      if (user?.id) {
+        try {
+          await convex.mutation(api.savedSessions.upsert, {
+            sessionId: updatedSession.id,
+            userId: user.id,
+            meet: updatedSession.meet,
+            sessionNumber: updatedSession.sessionNumber,
+            platform: updatedSession.platform,
+            weightClass: updatedSession.weightClass,
+            startTime: updatedSession.startTime,
+            date: updatedSession.date,
+            notes: updatedSession.notes,
+            athleteNames: updatedSession.athleteNames,
+          });
+        } catch (convexError) {
+          console.error('Error saving session to Convex:', convexError);
+          // Local save already succeeded, so keep success semantics for device caching.
+        }
       }
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
@@ -493,12 +527,12 @@ export function useSavedSessions() {
   };
 
   const isSessionSaved = (sessionId: string) => {
-    if (!user?.id) return false;
+    if (!activeUserId) return false;
     return savedSessions.some(session => session.id === sessionId);
   };
 
   const removeSession = async (sessionId: string) => {
-    if (!user?.id) return false;
+    if (!activeUserId) return false;
     
     try {
       // *** Find the session before filtering ***
@@ -510,11 +544,12 @@ export function useSavedSessions() {
       await commitSessions(updatedSessions);
 
       // 2. Delete from Convex
-      try {
-        await convex.mutation(api.savedSessions.remove, { sessionId, userId: user.id });
-      } catch (convexError) {
-        console.error('Error removing session from Convex:', convexError);
-        return false;
+      if (user?.id) {
+        try {
+          await convex.mutation(api.savedSessions.remove, { sessionId, userId: user.id });
+        } catch (convexError) {
+          console.error('Error removing session from Convex:', convexError);
+        }
       }
 
       // *** Cancel notification ***
@@ -544,7 +579,7 @@ export function useSavedSessions() {
   };
 
   const resetAllSessions = async (meet?: MeetName) => {
-    if (!user?.id) return false;
+    if (!activeUserId) return false;
     try {
       if (meet) {
         // Filter out sessions for the selected meet locally
@@ -552,19 +587,23 @@ export function useSavedSessions() {
         const filteredSessions = currentSessions.filter(s => s.meet !== meet);
         await commitSessions(filteredSessions);
         // Delete only sessions for this meet from Convex
-        try {
-          await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id, meet });
-        } catch (e) {
-          console.error('Error deleting sessions for meet from Convex:', e);
+        if (user?.id) {
+          try {
+            await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id, meet });
+          } catch (e) {
+            console.error('Error deleting sessions for meet from Convex:', e);
+          }
         }
       } else {
         // 1. Clear all local storage and state
         await commitSessions([]);
         // 2. Delete all sessions for this user from Convex
-        try {
-          await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id });
-        } catch (e) {
-          console.error('Error deleting sessions from Convex:', e);
+        if (user?.id) {
+          try {
+            await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id });
+          } catch (e) {
+            console.error('Error deleting sessions from Convex:', e);
+          }
         }
       }
       return true;
