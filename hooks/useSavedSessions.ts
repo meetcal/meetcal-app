@@ -378,7 +378,11 @@ export function useSavedSessions() {
             const meetConfig = await getMeetConfig(meetName);
             
             // Convert times to UTC using the meet's time zone (same as calendar events)
-            const sessionDate = convertToUTC(startTime, sessionDayDate, meetName);
+            const sessionDate = convertToUTC(
+              startTime,
+              sessionDayDate,
+              meetConfig.time.timeZoneIdentifier,
+            );
             
             // Format times for clearer logging
             const sessionDateEastern = sessionDate.toLocaleString('en-US', {
