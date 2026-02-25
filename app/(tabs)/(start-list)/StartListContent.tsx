@@ -27,6 +27,7 @@ import { preloadYearBests } from "@/lib/start-list-api";
 import {
   getAgeCategory,
   getChevronIcon,
+  compareStartTimes,
   getSaveIcon,
   isMeetName,
   parseWeightClasses,
@@ -861,9 +862,11 @@ export default function StartListScreen() {
     const orderedRows = Object.entries(groupedByDate)
       .map(([date, athletes]) => ({
         date,
-        athletes: athletes.sort((a, b) =>
-          a.startTime.localeCompare(b.startTime),
-        ),
+        athletes: athletes.sort((a, b) => {
+          const timeOrder = compareStartTimes(a.startTime, b.startTime);
+          if (timeOrder !== 0) return timeOrder;
+          return a.athlete.name.localeCompare(b.athlete.name);
+        }),
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -1097,7 +1100,7 @@ export default function StartListScreen() {
               selectedMeet={selectedMeet || ""}
               selectedClub={clubFilter || ""}
               getSessionDetails={getSessionDetails}
-              transparentBackground={false}
+              backgroundPreset="white"
             />
           </View>
           <View ref={shareScheduleTransparentRef} collapsable={false}>
@@ -1107,7 +1110,7 @@ export default function StartListScreen() {
               selectedMeet={selectedMeet || ""}
               selectedClub={clubFilter || ""}
               getSessionDetails={getSessionDetails}
-              transparentBackground={true}
+              backgroundPreset="transparent"
             />
           </View>
         </View>

@@ -205,6 +205,20 @@ export const ingestAthlete = action({
   },
 });
 
+export const deleteAthletesByMeet = action({
+  args: {
+    scraperSecret: v.string(),
+    meet: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number }> => {
+    assertScraperSecret(args.scraperSecret);
+    const deleted = await ctx.runMutation(internal.athletes.deleteByMeet, {
+      meet: args.meet,
+    });
+    return { deleted };
+  },
+});
+
 // ── Session Schedule ───────────────────────────────────────────────────────────
 
 export const ingestSessionSchedule = action({

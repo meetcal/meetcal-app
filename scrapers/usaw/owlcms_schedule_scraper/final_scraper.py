@@ -1,438 +1,559 @@
 """
-USAGE:
-  python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
-  
-  # Run dry-run to preview changes
-  source venv/bin/activate && python final_scraper.py "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/bltd2a8b2b6f421eeab/69275c41c5f9207dc07ca596/2025_-_VWF_-_START_LIST_AFTER_VFE.pdf" "2025 Virus Weightlifting Finals, Powered by Rogue Fitness" --dry-run
-  
-  # Export to CSV
-  source venv/bin/activate && python final_scraper.py "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt15de1b02b6a6b656/6855e02a84e9fc2bb2dbdfc2/schedule_(2).pdf" "2025 USAW National Championships" --csv final_schedule.csv
+Scrape OWLCMS final schedule PDFs and either export CSV (dry-run) or ingest to Convex.
+
+Usage:
+  python final_scraper.py dry-run
+  python final_scraper.py dry-run --output final_schedule_preview.csv
+  python final_scraper.py convex
+  python final_scraper.py convex --url "https://...pdf" --meet "2026 VIRUS Weightlifting Series 1"
 """
 
+from __future__ import annotations
+
+import argparse
+import csv
 import os
 import re
-import requests
+from dataclasses import dataclass
+from datetime import date as date_cls
+from datetime import datetime, time, timedelta
 from io import BytesIO
-from datetime import datetime, time as datetime_time
-from typing import List, Dict, Optional
-import pdfplumber
-from dotenv import load_dotenv
-from supabase import create_client, Client
-import pandas as pd
-from tabulate import tabulate
+from typing import List, Optional, Sequence, Tuple
 
-# Load environment variables
+import pdfplumber
+import requests
+from dotenv import load_dotenv
+
 load_dotenv()
 
+# ---------------------------
+# Top-level scraper config
+# ---------------------------
+PDF_URL = (
+    "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/"
+    "blt13dbc5d1fae8c890/699f572f3b580eb65224ab05/2026_-_VWS1_-_FINAL_SCHEDULE_v2.pdf"
+)
+MEET_NAME = "2026 VIRUS Weightlifting Series 1"
+START_ID = 123
+DEFAULT_YEAR = 2026
+WEIGH_IN_OFFSET_HOURS = 2
+DEFAULT_OUTPUT_CSV = "final_schedule_preview.csv"
+REQUEST_TIMEOUT_SECONDS = 45
 
-class FinalScheduleScraper:
-    """Scraper for extracting FINAL schedule data from OWLCMS PDFs"""
-    
-    def __init__(self, supabase_url: Optional[str] = None, supabase_key: Optional[str] = None):
-        """Initialize the scraper with Supabase credentials"""
-        self.supabase_url = supabase_url or os.getenv('SUPABASE_URL')
-        self.supabase_key = supabase_key or os.getenv('SUPABASE_KEY')
-        
-        if not self.supabase_url or not self.supabase_key:
-            raise ValueError("Supabase credentials not found. Set SUPABASE_URL and SUPABASE_KEY in .env")
-        
-        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-        self.current_date = None
-    
-    def download_pdf(self, url: str) -> BytesIO:
-        """Download PDF from URL"""
-        print(f"Downloading PDF from {url}...")
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        return BytesIO(response.content)
-    
-    def extract_schedule_data(self, pdf_file: BytesIO, meet_name: str) -> List[Dict]:
-        """Extract schedule data from PDF"""
-        print("Extracting data from PDF...")
-        schedule_entries = []
-        
-        with pdfplumber.open(pdf_file) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                print(f"Processing page {page_num}/{len(pdf.pages)}...")
-                
-                tables = page.extract_tables()
-                
-                if not tables:
-                    continue
-                
-                for table in tables:
-                    if not table or len(table) < 2:
-                        continue
-                    
-                    entries = self._parse_table(table, meet_name)
-                    schedule_entries.extend(entries)
-        
-        print(f"Extracted {len(schedule_entries)} schedule entries")
-        return schedule_entries
-    
-    def _parse_table(self, table: List[List], meet_name: str) -> List[Dict]:
-        """Parse a table from the PDF"""
-        entries = []
-        current_session = None
-        current_date = self.current_date  # Use instance-level date that persists across pages
-        last_start_time = None  # Track last start time to detect new sessions
-        
-        for row in table:
-            if not row or len(row) < 7:
-                continue
-            
-            # Extract values
-            date_str = str(row[0] or '').strip()
-            session_str = str(row[1] or '').strip()
-            platform = str(row[2] or '').strip()
-            weigh_time_str = str(row[3] or '').strip()
-            start_time_str = str(row[4] or '').strip()
-            weight_category = str(row[6] or '').strip()
-            
-            # Update current date if present
-            if date_str and any(month in date_str for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                                                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
-                parsed_date = self._parse_date_from_short(date_str)
-                if parsed_date:
-                    current_date = parsed_date
-                    self.current_date = parsed_date  # Update instance-level date
-            
-            # Check if this is a new session based on time change (before updating session number)
-            is_new_session = False
-            if (not session_str and platform == 'RED' and start_time_str and 
-                last_start_time and start_time_str != last_start_time and current_session):
-                # Detect session boundary: RED platform with different start time means new session
-                is_new_session = True
-            
-            # Update current session if present
-            if session_str and session_str.isdigit():
-                current_session = int(session_str)
-                last_start_time = None  # Reset time tracking on explicit session number
-            
-            # Skip if we don't have the essential data
-            if not platform or platform not in ['RED', 'WHITE', 'BLUE']:
-                continue
-            
-            if not start_time_str or not weigh_time_str:
-                continue
-            
-            # Use local current_date which persists across rows
-            if not current_date or not current_session:
-                continue
-            
-            # Parse times
-            start_time = self._parse_time(start_time_str)
-            weigh_time = self._parse_time(weigh_time_str)
-            
-            if not start_time or not weigh_time:
-                continue
-            
-            # Track start time for session boundary detection
-            if platform == 'RED':
-                last_start_time = start_time_str
-            
-            # Clean weight category (remove group letter like A, B, C, etc)
-            weight_class = re.sub(r'\s+[A-E]$', '', weight_category).strip()
-            
-            # Capitalize platform for consistency
-            platform = platform.capitalize()
-            
-            entry = {
-                'date': current_date,
-                'session_id': current_session,
-                'start_time': start_time.strftime('%H:%M:%S'),
-                'weigh_in_time': weigh_time.strftime('%H:%M:%S'),
-                'platform': platform,
-                'weight_class': weight_class,
-                'meet': meet_name
-            }
-            
-            entries.append(entry)
-            
-            # Increment session number AFTER processing this row if it was a new session
-            if is_new_session:
-                current_session += 1
-        
-        return entries
-    
-    def _parse_time(self, time_str: str) -> Optional[datetime_time]:
-        """Parse time string into time object"""
-        if not time_str:
-            return None
-        
-        time_str = str(time_str).strip()
-        
-        # Try common time formats
-        formats = ['%H:%M:%S', '%H:%M', '%I:%M %p', '%I:%M%p']
-        
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(time_str, fmt)
-                return dt.time()
-            except ValueError:
-                continue
-        
-        # Try to extract time using regex
-        match = re.search(r'(\d{1,2}):(\d{2})\s*(am|pm)?', time_str.lower())
-        if match:
-            hour = int(match.group(1))
-            minute = int(match.group(2))
-            am_pm = match.group(3)
-            
-            if am_pm == 'pm' and hour < 12:
-                hour += 12
-            elif am_pm == 'am' and hour == 12:
-                hour = 0
-            
-            return datetime_time(hour, minute)
-        
-        return None
-    
-    def _parse_date_from_short(self, date_str: str) -> Optional[str]:
-        """Parse date from short format like 'Sat\\nJun 21'"""
-        if not date_str:
-            return None
-        
-        date_str = str(date_str).strip().replace('\n', ' ')
-        
-        # Extract month and day
-        match = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})', date_str)
-        if match:
-            month_str = match.group(1)
-            day = match.group(2)
-            
-            # Assume current year or next year based on context
-            year = 2025  # Hardcode for now, could be made dynamic
-            
-            month_map = {
-                'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-                'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
-            }
-            
-            month = month_map.get(month_str)
-            if month:
-                try:
-                    dt = datetime(year, month, int(day))
-                    return dt.strftime('%Y-%m-%d')
-                except ValueError:
-                    pass
-        
-        return None
-    
-    def format_for_database(self, entries: List[Dict]) -> List[Dict]:
-        """Format extracted entries to match database schema"""
-        formatted = []
-        
-        for entry in entries:
-            formatted_entry = {
-                'date': entry.get('date'),
-                'session_id': entry.get('session_id'),
-                'start_time': entry.get('start_time'),
-                'weigh_in_time': entry.get('weigh_in_time'),
-                'platform': entry.get('platform'),
-                'weight_class': entry.get('weight_class'),
-                'meet': entry.get('meet')
-            }
-            
-            # Only add if all required fields are present
-            if all(formatted_entry.values()):
-                formatted.append(formatted_entry)
-        
-        return formatted
-    
-    def dry_run(self, meet_name: str, new_entries: List[Dict]) -> Dict:
-        """Perform a dry run to see what would be changed"""
-        print(f"\n{'='*60}")
-        print(f"DRY RUN: {meet_name}")
-        print(f"{'='*60}\n")
-        
-        existing_response = self.supabase.table('session_schedule').select('*').eq('meet', meet_name).execute()
-        existing_records = existing_response.data if existing_response.data else []
-        
-        print(f"Found {len(existing_records)} existing records for '{meet_name}'")
-        print(f"Processing {len(new_entries)} new entries\n")
-        
-        # Create comparison based on unique constraint
-        existing_by_key = {}
-        for record in existing_records:
-            key = (
-                record.get('meet'),
-                record.get('session_id'),
-                record.get('platform'),
-                record.get('weight_class')
-            )
-            existing_by_key[key] = record
-        
-        new_by_key = {}
-        for entry in new_entries:
-            key = (
-                entry.get('meet'),
-                entry.get('session_id'),
-                entry.get('platform'),
-                entry.get('weight_class')
-            )
-            new_by_key[key] = entry
-        
-        to_add = []
-        to_update = []
-        unchanged = []
-        
-        for key, new_entry in new_by_key.items():
-            if key not in existing_by_key:
-                to_add.append(new_entry)
-            else:
-                existing = existing_by_key[key]
-                if (str(existing.get('date')) != new_entry.get('date') or
-                    existing.get('start_time') != new_entry.get('start_time') or
-                    existing.get('weigh_in_time') != new_entry.get('weigh_in_time')):
-                    to_update.append({'existing': existing, 'new': new_entry})
-                else:
-                    unchanged.append(new_entry)
-        
-        print(f"SUMMARY:")
-        print(f"  New entries to add: {len(to_add)}")
-        print(f"  Existing entries to update: {len(to_update)}")
-        print(f"  Unchanged entries: {len(unchanged)}")
-        
-        if to_add:
-            print(f"\n{'='*60}")
-            print(f"NEW ENTRIES TO ADD ({len(to_add)}):")
-            print(f"{'='*60}")
-            df = pd.DataFrame(to_add)
-            print(tabulate(df, headers='keys', tablefmt='grid', showindex=False))
-        
-        if to_update:
-            print(f"\n{'='*60}")
-            print(f"ENTRIES TO UPDATE ({len(to_update)}):")
-            print(f"{'='*60}")
-            for item in to_update[:10]:  # Show first 10
-                print(f"\nExisting: {item['existing']}")
-                print(f"New:      {item['new']}")
-        
+PLATFORM_VALUES = {"RED", "WHITE", "BLUE", "STARS", "STRIPES", "ROGUE"}
+CONVEX_INGEST_PATH = "scraperIngestion:ingestSessionSchedule"
+PLATFORM_SORT_ORDER = {
+    "Red": 0,
+    "White": 1,
+    "Blue": 2,
+    "Stars": 3,
+    "Stripes": 4,
+    "Rogue": 5,
+}
+
+
+@dataclass
+class ScheduleRow:
+    id: int
+    date: str
+    session_id: float
+    start_time: str
+    weigh_in_time: str
+    platform: str
+    weight_class: str
+    meet: str
+
+    def to_csv_row(self) -> dict:
+        session_value = int(self.session_id) if float(self.session_id).is_integer() else self.session_id
         return {
-            'total_new': len(new_entries),
-            'total_existing': len(existing_records),
-            'to_add': len(to_add),
-            'to_update': len(to_update),
-            'unchanged': len(unchanged)
+            "id": self.id,
+            "date": self.date,
+            "session_id": session_value,
+            "start_time": self.start_time,
+            "weigh_in_time": self.weigh_in_time,
+            "platform": self.platform,
+            "weight_class": self.weight_class,
+            "meet": self.meet,
         }
-    
-    def upsert_to_database(self, entries: List[Dict]) -> Dict:
-        """Upsert entries to the database"""
-        if not entries:
-            print("No entries to upsert")
-            return {'data': [], 'count': 0}
-        
-        # Deduplicate entries
-        seen = {}
-        for entry in entries:
-            key = (entry['meet'], entry['session_id'], entry['platform'], entry['weight_class'])
-            seen[key] = entry
-        
-        deduplicated = list(seen.values())
-        
-        if len(deduplicated) < len(entries):
-            print(f"Warning: Removed {len(entries) - len(deduplicated)} duplicate entries from batch")
-        
-        print(f"Upserting {len(deduplicated)} entries to database...")
-        
-        response = self.supabase.table('session_schedule').upsert(
-            deduplicated,
-            on_conflict='meet,session_id,platform,weight_class'
-        ).execute()
-        
-        print(f"Successfully upserted {len(deduplicated)} entries")
-        return response
-    
-    def export_to_csv(self, entries: List[Dict], output_file: str):
-        """Export entries to CSV file"""
-        import csv
-        
-        if not entries:
-            print("No entries to export")
-            return
-        
-        print(f"Exporting {len(entries)} entries to {output_file}...")
-        
-        with open(output_file, 'w', newline='') as csvfile:
-            fieldnames = ['id', 'date', 'session_id', 'start_time', 'weigh_in_time', 'platform', 'weight_class', 'meet']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            
-            writer.writeheader()
-            for i, entry in enumerate(entries, 1):
-                # Add id field for CSV (not used in database)
-                row = {'id': i, **entry}
-                writer.writerow(row)
-        
-        print(f"✓ Successfully exported to {output_file}")
-    
-    def scrape_and_upsert(self, pdf_url: str, meet_name: str, dry_run: bool = False) -> Dict:
-        """Main method to scrape PDF and upsert to database"""
+
+    def to_convex_args(self, scraper_secret: str) -> dict:
+        return {
+            "scraperSecret": scraper_secret,
+            "date": self.date,
+            "sessionId": self.session_id,
+            "startTime": self.start_time,
+            "weighInTime": self.weigh_in_time,
+            "platform": self.platform,
+            "weightClass": self.weight_class,
+            "meet": self.meet,
+        }
+
+
+def download_pdf(url: str) -> BytesIO:
+    print(f"Downloading PDF: {url}")
+    response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    return BytesIO(response.content)
+
+
+def normalize_cell(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def parse_time_value(raw: str) -> Optional[time]:
+    value = raw.strip()
+    if not value:
+        return None
+
+    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
         try:
-            pdf_file = self.download_pdf(pdf_url)
-            raw_entries = self.extract_schedule_data(pdf_file, meet_name)
-            
-            if not raw_entries:
-                print("WARNING: No schedule entries were extracted from the PDF")
-                return {'success': False, 'error': 'No data extracted'}
-            
-            formatted_entries = self.format_for_database(raw_entries)
-            
-            if not formatted_entries:
-                print("WARNING: No valid entries after formatting")
-                return {'success': False, 'error': 'No valid entries after formatting'}
-            
-            if dry_run:
-                result = self.dry_run(meet_name, formatted_entries)
-                return {'success': True, 'dry_run': True, 'stats': result}
+            return datetime.strptime(value.upper(), fmt).time()
+        except ValueError:
+            pass
+
+    m = re.search(r"(\d{1,2}):(\d{2})\s*(AM|PM)?", value, re.IGNORECASE)
+    if not m:
+        return None
+
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    suffix = (m.group(3) or "").upper()
+
+    if suffix == "PM" and hour < 12:
+        hour += 12
+    if suffix == "AM" and hour == 12:
+        hour = 0
+
+    if hour > 23 or minute > 59:
+        return None
+
+    return time(hour=hour, minute=minute)
+
+
+def parse_date_value(raw: str, default_year: int) -> Optional[str]:
+    value = raw.replace("\n", " ").strip()
+    if not value:
+        return None
+
+    # Already ISO date
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+        return parsed.isoformat()
+    except ValueError:
+        pass
+
+    # M/D[/YYYY]
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b", value)
+    if m:
+        month = int(m.group(1))
+        day = int(m.group(2))
+        year_text = m.group(3)
+        year = default_year
+        if year_text:
+            year = int(year_text)
+            if year < 100:
+                year += 2000
+        try:
+            return date_cls(year, month, day).isoformat()
+        except ValueError:
+            return None
+
+    # D-Mon or Mon-D or Mon D
+    month_map = {
+        "JAN": 1,
+        "FEB": 2,
+        "MAR": 3,
+        "APR": 4,
+        "MAY": 5,
+        "JUN": 6,
+        "JUL": 7,
+        "AUG": 8,
+        "SEP": 9,
+        "OCT": 10,
+        "NOV": 11,
+        "DEC": 12,
+    }
+
+    m = re.search(r"\b(\d{1,2})[-\s]([A-Za-z]{3})\b", value)
+    if m:
+        day = int(m.group(1))
+        month = month_map.get(m.group(2).upper())
+        if month:
+            try:
+                return date_cls(default_year, month, day).isoformat()
+            except ValueError:
+                return None
+
+    m = re.search(r"\b([A-Za-z]{3})[-\s](\d{1,2})\b", value)
+    if m:
+        month = month_map.get(m.group(1).upper())
+        day = int(m.group(2))
+        if month:
+            try:
+                return date_cls(default_year, month, day).isoformat()
+            except ValueError:
+                return None
+
+    return None
+
+
+def extract_platform(cells: Sequence[str]) -> Optional[str]:
+    for cell in cells:
+        up = cell.upper()
+        if up in PLATFORM_VALUES:
+            return up.title()
+        for platform in PLATFORM_VALUES:
+            if re.search(rf"\b{re.escape(platform)}\b", up):
+                return platform.title()
+    return None
+
+
+def parse_session_value(value: str) -> Optional[float]:
+    raw = value.strip()
+    if re.fullmatch(r"\d+", raw):
+        return float(int(raw))
+    if re.fullmatch(r"\d+\.\d+", raw):
+        return float(raw)
+    return None
+
+
+def extract_session_id(cells: Sequence[str], current_session: Optional[float]) -> Optional[float]:
+    for cell in cells:
+        parsed = parse_session_value(cell)
+        if parsed is not None:
+            return parsed
+
+    # Also support cells like "S24"
+    for cell in cells:
+        m = re.search(r"\bS?(\d{1,3})\b", cell, re.IGNORECASE)
+        if m and m.group(1).isdigit():
+            return float(int(m.group(1)))
+
+    return current_session
+
+
+def extract_weight_class(cells: Sequence[str]) -> Optional[str]:
+    candidates: List[str] = []
+
+    for cell in cells:
+        clean = cell.strip()
+        if not clean:
+            continue
+        if re.search(r"\bkg\b", clean, re.IGNORECASE):
+            return clean
+
+    for cell in reversed(cells):
+        clean = cell.strip()
+        if not clean:
+            continue
+        if parse_time_value(clean):
+            continue
+        if parse_date_value(clean, DEFAULT_YEAR):
+            continue
+        if clean.upper() in PLATFORM_VALUES:
+            continue
+        if re.fullmatch(r"\d+", clean):
+            continue
+        if clean in {"#", "COMP TIME", "DAY", "SESSION", "PLATFORM"}:
+            continue
+        if any(marker in clean.upper() for marker in ("SESSION", "PLATFORM", "DAY", "TIME")):
+            continue
+        candidates.append(clean)
+
+    if candidates:
+        return candidates[0]
+
+    return None
+
+
+def extract_times(cells: Sequence[str]) -> Tuple[Optional[time], Optional[time]]:
+    parsed = [parse_time_value(c) for c in cells]
+    times = [t for t in parsed if t is not None]
+
+    if len(times) >= 2:
+        # In most tables this is [weigh-in, start] or [start, weigh-in],
+        # use earliest as weigh-in and latest as start.
+        ordered = sorted(times)
+        return ordered[0], ordered[-1]
+
+    if len(times) == 1:
+        start = times[0]
+        dt = datetime.combine(date_cls(2000, 1, 1), start) - timedelta(hours=WEIGH_IN_OFFSET_HOURS)
+        return dt.time(), start
+
+    return None, None
+
+
+def is_header_row(cells: Sequence[str]) -> bool:
+    joined = " ".join(c.upper() for c in cells)
+    header_tokens = ("SESSION", "PLATFORM", "DAY", "COMP", "WEIGH", "START", "CATEGORY")
+    return all(token in joined for token in ("SESSION", "PLATFORM")) or any(
+        token in joined for token in header_tokens
+    ) and "KG" not in joined
+
+
+def parse_rows_from_table(
+    table: Sequence[Sequence[object]],
+    meet_name: str,
+    current_date: Optional[str],
+    current_session: Optional[float],
+    current_platform: Optional[str],
+) -> Tuple[List[dict], Optional[str], Optional[float], Optional[str]]:
+    rows: List[dict] = []
+
+    for raw_row in table:
+        cells = [normalize_cell(c) for c in raw_row]
+        cells = [c for c in cells if c]
+
+        if not cells or is_header_row(cells):
+            continue
+
+        # Primary parser for this PDF layout:
+        # Session | Platform | Day | Comp Time | #
+        if len(cells) >= 5:
+            session_value = parse_session_value(cells[0])
+            platform_value = extract_platform([cells[1]])
+            date_value = parse_date_value(cells[2], DEFAULT_YEAR) or current_date
+            start_value = parse_time_value(cells[3])
+            count_value = cells[4]
+
+            if session_value is not None and platform_value and date_value and start_value:
+                current_session = session_value
+                current_platform = platform_value
+                current_date = date_value
+                weigh_value = (
+                    datetime.combine(date_cls(2000, 1, 1), start_value)
+                    - timedelta(hours=WEIGH_IN_OFFSET_HOURS)
+                ).time()
+
+                rows.append(
+                    {
+                        "date": current_date,
+                        "session_id": current_session,
+                        "start_time": start_value.strftime("%H:%M:%S"),
+                        "weigh_in_time": weigh_value.strftime("%H:%M:%S"),
+                        "platform": current_platform,
+                        # No weight class exists in this source table yet.
+                        "weight_class": "",
+                        "meet": meet_name,
+                    }
+                )
+                continue
+
+        for cell in cells:
+            parsed_date = parse_date_value(cell, DEFAULT_YEAR)
+            if parsed_date:
+                current_date = parsed_date
+                break
+
+        session_id = extract_session_id(cells, current_session)
+        if session_id is not None:
+            current_session = session_id
+
+        platform = extract_platform(cells) or current_platform
+        if platform is not None:
+            current_platform = platform
+        platform = current_platform
+        weight_class = extract_weight_class(cells)
+        weigh_in_time, start_time = extract_times(cells)
+
+        if not (current_date and session_id and platform and weight_class and start_time and weigh_in_time):
+            continue
+
+        rows.append(
+            {
+                "date": current_date,
+                "session_id": session_id,
+                "start_time": start_time.strftime("%H:%M:%S"),
+                "weigh_in_time": weigh_in_time.strftime("%H:%M:%S"),
+                "platform": platform,
+                "weight_class": weight_class,
+                "meet": meet_name,
+            }
+        )
+
+    return rows, current_date, current_session, current_platform
+
+
+def dedupe_rows(rows: Sequence[dict]) -> List[dict]:
+    unique = {}
+    for row in rows:
+        key = (row["meet"], row["date"], row["session_id"], row["platform"], row["weight_class"])
+        unique[key] = row
+    return list(unique.values())
+
+
+def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
+    print("Extracting rows from PDF...")
+    all_rows: List[dict] = []
+    current_date: Optional[str] = None
+    current_session: Optional[float] = None
+    current_platform: Optional[str] = None
+
+    with pdfplumber.open(pdf_file) as pdf:
+        total_pages = len(pdf.pages)
+        for idx, page in enumerate(pdf.pages, 1):
+            print(f"Processing page {idx}/{total_pages}")
+            tables = page.extract_tables() or []
+            for table in tables:
+                if not table or len(table) < 2:
+                    continue
+                parsed, current_date, current_session, current_platform = parse_rows_from_table(
+                    table=table,
+                    meet_name=meet_name,
+                    current_date=current_date,
+                    current_session=current_session,
+                    current_platform=current_platform,
+                )
+                all_rows.extend(parsed)
+
+    deduped = dedupe_rows(all_rows)
+    print(f"Extracted {len(deduped)} unique rows ({len(all_rows)} raw rows)")
+    return deduped
+
+
+def add_ids(rows: Sequence[dict], start_id: int) -> List[ScheduleRow]:
+    sorted_rows = sorted(
+        rows,
+        key=lambda r: (
+            r["date"],
+            r["session_id"],
+            PLATFORM_SORT_ORDER.get(r["platform"], 99),
+            r["platform"],
+        ),
+    )
+    result: List[ScheduleRow] = []
+    next_id = start_id
+
+    for row in sorted_rows:
+        result.append(
+            ScheduleRow(
+                id=next_id,
+                date=row["date"],
+                session_id=row["session_id"],
+                start_time=row["start_time"],
+                weigh_in_time=row["weigh_in_time"],
+                platform=row["platform"],
+                weight_class=row["weight_class"],
+                meet=row["meet"],
+            )
+        )
+        next_id += 1
+
+    return result
+
+
+def export_csv(rows: Sequence[ScheduleRow], output_path: str) -> None:
+    if not rows:
+        raise ValueError("No rows parsed; CSV was not written")
+
+    print(f"Writing CSV: {output_path}")
+    with open(output_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "id",
+                "date",
+                "session_id",
+                "start_time",
+                "weigh_in_time",
+                "platform",
+                "weight_class",
+                "meet",
+            ],
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row.to_csv_row())
+
+
+def ingest_to_convex(rows: Sequence[ScheduleRow]) -> dict:
+    convex_url = os.getenv("CONVEX_URL")
+    scraper_secret = os.getenv("SCRAPER_SECRET")
+
+    if not convex_url or not scraper_secret:
+        raise ValueError("CONVEX_URL and SCRAPER_SECRET are required for convex mode")
+
+    endpoint = f"{convex_url.rstrip('/')}/api/action"
+    inserted = 0
+    updated = 0
+    failed = 0
+
+    for row in rows:
+        payload = {
+            "path": CONVEX_INGEST_PATH,
+            "args": row.to_convex_args(scraper_secret=scraper_secret),
+        }
+        try:
+            response = requests.post(endpoint, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
+            if not response.ok:
+                failed += 1
+                print(f"HTTP {response.status_code} for session {row.session_id} {row.platform}: {response.text}")
+                continue
+
+            data = response.json()
+            value = data.get("value", {}) if isinstance(data, dict) else {}
+            if value.get("wasInsert") is True:
+                inserted += 1
             else:
-                response = self.upsert_to_database(formatted_entries)
-                return {'success': True, 'dry_run': False, 'response': response}
-        
-        except Exception as e:
-            print(f"ERROR: {e}")
-            import traceback
-            traceback.print_exc()
-            return {'success': False, 'error': str(e)}
+                updated += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            print(f"Convex error for session {row.session_id} {row.platform}: {exc}")
+
+    return {
+        "total": len(rows),
+        "inserted": inserted,
+        "updated": updated,
+        "failed": failed,
+    }
 
 
-def main():
-    """Main entry point for CLI usage"""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Scrape OWLCMS FINAL schedule from PDF and upsert to Supabase')
-    parser.add_argument('url', help='URL to the PDF file')
-    parser.add_argument('meet_name', help='Name of the meet/competition')
-    parser.add_argument('--dry-run', action='store_true', help='Preview changes without actually upserting')
-    parser.add_argument('--csv', help='Export to CSV file instead of database (provide filename)')
-    
-    args = parser.parse_args()
-    
-    scraper = FinalScheduleScraper()
-    
-    if args.csv:
-        # CSV export mode
-        pdf_file = scraper.download_pdf(args.url)
-        raw_entries = scraper.extract_schedule_data(pdf_file, args.meet_name)
-        formatted_entries = scraper.format_for_database(raw_entries)
-        
-        if formatted_entries:
-            scraper.export_to_csv(formatted_entries, args.csv)
-            print("\n✓ CSV export completed successfully")
-        else:
-            print("\n✗ No data to export")
-            exit(1)
-    else:
-        # Database upsert mode
-        result = scraper.scrape_and_upsert(args.url, args.meet_name, dry_run=args.dry_run)
-        
-        if result['success']:
-            print("\n✓ Operation completed successfully")
-        else:
-            print(f"\n✗ Operation failed: {result.get('error', 'Unknown error')}")
-            exit(1)
+def run(mode: str, url: str, meet_name: str, output_path: str, start_id: int) -> None:
+    pdf_file = download_pdf(url)
+    parsed_rows = extract_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+    rows_with_ids = add_ids(parsed_rows, start_id=start_id)
+
+    if mode == "dry-run":
+        export_csv(rows_with_ids, output_path)
+        print(f"Dry run complete. Parsed {len(rows_with_ids)} rows.")
+        print(f"Preview file: {output_path}")
+        return
+
+    stats = ingest_to_convex(rows_with_ids)
+    print("Convex ingest complete:")
+    print(stats)
 
 
-if __name__ == '__main__':
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Scrape OWLCMS final schedule PDF")
+    parser.add_argument("mode", choices=["dry-run", "convex"], help="dry-run writes CSV, convex uploads")
+    parser.add_argument("--url", default=PDF_URL, help="PDF URL (defaults to top-level PDF_URL)")
+    parser.add_argument("--meet", default=MEET_NAME, help="Meet name (defaults to top-level MEET_NAME)")
+    parser.add_argument(
+        "--start-id",
+        type=int,
+        default=START_ID,
+        help="Starting ID for CSV rows (defaults to top-level START_ID)",
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_CSV,
+        help="CSV output path for dry-run mode",
+    )
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    run(
+        mode=args.mode,
+        url=args.url,
+        meet_name=args.meet,
+        output_path=args.output,
+        start_id=args.start_id,
+    )
+
+
+if __name__ == "__main__":
     main()
-
