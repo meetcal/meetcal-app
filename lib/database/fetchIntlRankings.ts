@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type IntlRanking = {
@@ -28,6 +29,11 @@ export async function fetchIntlRankings(): Promise<IntlRanking[]> {
   const cacheKey = OFFLINE_CACHE_KEYS.intlRankings;
   inFlightRankings = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rankings = await convex.query(api.intlRankings.getAll, {}) as IntlRanking[];
       rankingsMemoryCache.data = rankings;
       await setOfflineCache(cacheKey, rankings);

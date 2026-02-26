@@ -1,6 +1,7 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type WSORecordsCache = Record<string, RecordsData>;
@@ -57,6 +58,11 @@ export async function fetchWSORecords(
   const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rows = (await convex.query(api.wsoRecords.getByWso, {
         wso,
         ageCategory: ageGroup,
@@ -133,6 +139,11 @@ export async function fetchWSOList(): Promise<string[]> {
   const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
   inFlightWSOList = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const wsos = await convex.query(api.wsoRecords.listWsos, {}) as string[];
       wsoListMemoryCache.data = wsos;
       return wsos;
@@ -165,6 +176,11 @@ export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
 
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rows = (await convex.query(api.wsoRecords.getByWso, { wso })) as unknown as WSORecordRow[];
       const ageGroups = Array.from(new Set(rows.map((r) => r.ageCategory))).filter(Boolean) as string[];
       wsoAgeGroupsMemoryCache.set(wso, ageGroups);
