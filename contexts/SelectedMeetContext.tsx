@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { clearExpiredDownloadedMeets, needsSync } from '@/lib/database/offline-store';
-import { prefetchMeetData, updateMeetAccess, fetchMeets, fetchMeetByName } from '@/lib/database/meet-manager';
+import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
+import { prefetchMeetData, fetchMeets } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SelectedMeetContextType = {
@@ -83,29 +83,28 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Initialize meet data
   const initializeMeetData = useCallback(async (meet: MeetName, meetData: Meet) => {
-    try {
-      setIsSyncing(true);
-      setSyncStatus('syncing');
+    // Set meet state immediately so first paint is not blocked by background prefetch.
+    setSelectedMeetState(meet);
+    setMeetDetails(meetData);
 
-      // Set meet state
-      setSelectedMeetState(meet);
-      setMeetDetails(meetData);
+    const manager = new SyncManager(meet);
+    setSyncManager(manager);
 
-      // Create and set sync manager
-      const manager = new SyncManager(meet);
-      setSyncManager(manager);
+    setIsSyncing(true);
+    setSyncStatus('syncing');
 
-      // Prefetch data
-      await prefetchMeetData(meet);
-      setLastSynced(Date.now());
-      setSyncStatus('idle');
-    } catch (error) {
-      console.error('Error initializing meet data:', error);
-      setSyncStatus('error');
-      // Don't clear meet state on initial load error
-    } finally {
-      setIsSyncing(false);
-    }
+    prefetchMeetData(meet)
+      .then(() => {
+        setLastSynced(Date.now());
+        setSyncStatus('idle');
+      })
+      .catch((error) => {
+        console.error('Error initializing meet data:', error);
+        setSyncStatus('error');
+      })
+      .finally(() => {
+        setIsSyncing(false);
+      });
   }, []);
 
   // Load available meets

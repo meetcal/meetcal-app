@@ -1,7 +1,3 @@
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { convex } from "@/lib/convex";
@@ -29,7 +25,6 @@ import { SavedSessionsProvider } from "@/contexts/SavedSessionsContext";
 import { SelectedMeetProvider } from "@/contexts/SelectedMeetContext";
 import {
   SubscriptionProvider,
-  useSubscription,
 } from "@/contexts/SubscriptionContext";
 import {
   ThemeProvider as CustomThemeProvider,
@@ -171,14 +166,11 @@ export default Sentry.wrap(function RootLayout() {
   );
 });
 function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const { isLoading: isSubscriptionLoading } = useSubscription();
   const [isInitialized, setIsInitialized] = useState(false);
-  const [offlineBypass, setOfflineBypass] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
   const router = useRouter();
   const {
     isLoaded: isUserLoaded,
-    isSignedIn: isUserSignedIn,
     user,
   } = useUser();
 
@@ -193,31 +185,6 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     initialize();
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkOffline = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork && isMounted) {
-        setOfflineBypass(true);
-      } else if (hasNetwork && isMounted) {
-        setOfflineBypass(false);
-      }
-    };
-    checkOffline();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setOfflineBypass(!isConnected);
-    });
-    return () => {
-      unsubscribe();
-    };
   }, []);
 
   // Effect to sync Clerk user with RevenueCat
@@ -256,8 +223,7 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       if (
         !hasAttemptedSplashHide.current &&
         isInitialized &&
-        fontsLoaded &&
-        (offlineBypass || (!isSubscriptionLoading && isUserLoaded))
+        fontsLoaded
       ) {
         hasAttemptedSplashHide.current = true;
         await SplashScreen.hideAsync();
@@ -280,18 +246,11 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     hideSplash();
   }, [
     isInitialized,
-    isSubscriptionLoading,
     fontsLoaded,
-    isUserLoaded,
-    isUserSignedIn,
     router,
-    offlineBypass,
   ]);
 
-  if (
-    !isInitialized ||
-    (!offlineBypass && (isSubscriptionLoading || !isUserLoaded))
-  ) {
+  if (!isInitialized) {
     return null;
   }
 
@@ -308,7 +267,6 @@ function RootLayoutNav() {
       <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
-        <Stack.Screen name="(screens)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="schedule-toolbar/offline-data" />
         <Stack.Screen name="schedule-toolbar/profile" />

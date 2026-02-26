@@ -23,6 +23,34 @@ export type CalendarSession = {
   meet: MeetName;
 };
 
+const MAX_ANDROID_INT = 2_147_483_647;
+
+function isAndroidSafeCalendarId(calendarId: string): boolean {
+  if (!/^\d+$/.test(calendarId)) {
+    return true;
+  }
+
+  return Number(calendarId) <= MAX_ANDROID_INT;
+}
+
+function selectAndroidCalendarId(calendars: Calendar.Calendar[]): string {
+  const modifiableCalendars = calendars.filter((cal) => cal.allowsModifications);
+  const ownerCalendars = modifiableCalendars.filter(
+    (cal) => cal.accessLevel === Calendar.CalendarAccessLevel.OWNER,
+  );
+  const candidates = [...ownerCalendars, ...modifiableCalendars];
+
+  const supportedCalendar = candidates.find((cal) =>
+    isAndroidSafeCalendarId(cal.id),
+  );
+
+  if (!supportedCalendar) {
+    throw new Error("no_supported_calendar");
+  }
+
+  return supportedCalendar.id;
+}
+
 export async function createCalendarEvents(
   sessions: CalendarSession[],
 ): Promise<void> {
@@ -65,17 +93,7 @@ export async function createCalendarEvents(
       const calendars = await Calendar.getCalendarsAsync(
         Calendar.EntityTypes.EVENT,
       );
-      const primaryCalendar = calendars.find(
-        (cal) =>
-          cal.accessLevel === Calendar.CalendarAccessLevel.OWNER &&
-          cal.allowsModifications,
-      );
-
-      if (!primaryCalendar) {
-        throw new Error("no_calendar");
-      }
-
-      calendarId = primaryCalendar.id;
+      calendarId = selectAndroidCalendarId(calendars);
     }
 
     for (const session of sessions) {
@@ -119,6 +137,11 @@ export async function createCalendarEvents(
     if (error instanceof Error && error.message === "no_calendar") {
       throw new Error(
         "No suitable calendar found. Please make sure you have at least one calendar set up on your device.",
+      );
+    }
+    if (error instanceof Error && error.message === "no_supported_calendar") {
+      throw new Error(
+        "Your device calendar IDs are not supported on this Android version. Please use a different calendar account and try again.",
       );
     }
 
