@@ -1,6 +1,7 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { RecordsData, WeightClassRecord } from '@/types/records';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type Gender = 'Men' | 'Women';
@@ -83,6 +84,11 @@ export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): 
 
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const result: RecordsData = {
         [ageGroupKey]: { Men: [], Women: [] },
       };

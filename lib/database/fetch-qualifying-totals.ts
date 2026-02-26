@@ -1,5 +1,6 @@
 import { api } from '@/convex/_generated/api';
 import { convex } from '@/lib/convex';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 export type QualifyingTotal = {
@@ -89,6 +90,11 @@ export async function fetchQualifyingTotals(
   const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rows = await convex.query(api.qualifyingTotals.getAll, {}) as QualifyingTotalRow[];
 
       const result: QualifyingTotalsData = {};

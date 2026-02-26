@@ -1,6 +1,7 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { RecordsData } from '@/types/records';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
 type RecordsCache = Record<string, RecordsData>;
@@ -103,6 +104,11 @@ export async function fetchRecords(
   const cacheKey = OFFLINE_CACHE_KEYS.records;
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rows = await convex.query(api.records.getByFederation, {
         recordType: federation,
         ageCategory: ageGroup,
@@ -152,10 +158,23 @@ export async function fetchFederations(): Promise<string[]> {
 
   inFlightFederations = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const federations = await convex.query(api.records.listFederations, {});
       federationsMemoryCache = federations;
       return federations;
     } catch (error) {
+      const cached = await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
+      const federations = Object.keys(cached?.data || {}).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' }),
+      );
+      if (federations.length > 0) {
+        federationsMemoryCache = federations;
+        return federations;
+      }
       console.error('Error fetching federations:', error);
       throw error;
     } finally {
@@ -216,6 +235,11 @@ export async function fetchAgeGroups(federation: string): Promise<string[]> {
 
   const request = (async () => {
     try {
+      const hasNetwork = await isNetworkAvailable();
+      if (!hasNetwork) {
+        throw new Error('Offline');
+      }
+
       const rows = await convex.query(api.records.getByFederation, { recordType: federation });
 
       const ageGroups = Array.from(new Set((rows as RecordsRow[]).map((r) => r.ageCategory)))
@@ -225,6 +249,13 @@ export async function fetchAgeGroups(federation: string): Promise<string[]> {
       ageGroupsMemoryCache.set(federation, ageGroups);
       return ageGroups;
     } catch (error) {
+      const cached = await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
+      const cachedFederation = cached?.data?.[federation];
+      if (cachedFederation) {
+        const ageGroups = Object.keys(cachedFederation).sort(ageGroupSort);
+        ageGroupsMemoryCache.set(federation, ageGroups);
+        return ageGroups;
+      }
       console.error(`Error fetching age groups for ${federation}:`, error);
       throw error;
     } finally {
