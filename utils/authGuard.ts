@@ -20,6 +20,8 @@ export interface AuthGuardOptions {
  */
 export function useAuthGuard() {
   const { user, isLoaded } = useUser();
+  const userId = user?.id ?? null;
+  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
   const router = useRouter();
   const [cachedIsSignedIn, setCachedIsSignedIn] = useState<boolean | null>(null);
   const [hasNetwork, setHasNetwork] = useState<boolean | null>(null);
@@ -44,7 +46,7 @@ export function useAuthGuard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, isLoaded]);
+  }, [userId, isLoaded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +62,8 @@ export function useAuthGuard() {
         return;
       }
 
-      if (user) {
-        const email = user?.primaryEmailAddress?.emailAddress;
-        await cacheAuthState(true, user.id, email);
+      if (userId) {
+        await cacheAuthState(true, userId, userEmail ?? undefined);
         if (!cancelled) {
           setCachedIsSignedIn(true);
           setHasNetwork(true);
@@ -82,7 +83,7 @@ export function useAuthGuard() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, user]);
+  }, [isLoaded, userId, userEmail]);
 
   /**
    * Check if user is authenticated. If not, show login prompt.
@@ -94,7 +95,7 @@ export function useAuthGuard() {
     }
 
     const authenticatedByCache = cachedIsSignedIn === true;
-    const authenticatedByClerk = !!user;
+    const authenticatedByClerk = !!userId;
 
     if (authenticatedByClerk || authenticatedByCache) {
       return true;
@@ -130,11 +131,11 @@ export function useAuthGuard() {
     );
 
     return false;
-  }, [user, isLoaded, router, cachedIsSignedIn, hasNetwork, isCacheResolved]);
+  }, [userId, isLoaded, router, cachedIsSignedIn, hasNetwork, isCacheResolved]);
 
   return {
     requireAuth,
-    isAuthenticated: !!user || cachedIsSignedIn === true,
+    isAuthenticated: !!userId || cachedIsSignedIn === true,
     isLoaded,
   };
 }
