@@ -192,7 +192,7 @@ export default function CreateAccountScreen() {
               style={[
                 styles.button,
                 {
-                  backgroundColor: canVerify ? colors.tint : colors.border,
+                  backgroundColor: canVerify ? colors.link : colors.border,
                 },
               ]}
             >
