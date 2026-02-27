@@ -40,19 +40,13 @@ export default function CreateAccountScreen() {
   }>();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerification, setPendingVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const canCreate = useMemo(
-    () =>
-      email.trim().length > 3 &&
-      password.length >= 8 &&
-      confirmPassword.length > 0 &&
-      !submitting,
-    [confirmPassword.length, email, password.length, submitting],
+    () => email.trim().length > 3 && !submitting,
+    [email, submitting],
   );
 
   const canVerify = useMemo(
@@ -80,16 +74,11 @@ export default function CreateAccountScreen() {
 
   const onCreateAccount = async () => {
     if (!isLoaded || submitting) return;
-    if (password !== confirmPassword) {
-      Alert.alert("Passwords do not match", "Please enter matching passwords.");
-      return;
-    }
 
     setSubmitting(true);
     try {
       await signUp.create({
         emailAddress: email.trim(),
-        password,
       });
 
       await signUp.prepareEmailAddressVerification({
@@ -160,44 +149,6 @@ export default function CreateAccountScreen() {
               ]}
             />
 
-            <Text style={[styles.label, { color: colors.secondaryText }]}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              textContentType="newPassword"
-              placeholder="At least 8 characters"
-              placeholderTextColor={colors.secondaryText}
-              style={[
-                styles.input,
-                {
-                  color: colors.text,
-                  borderColor: colors.border,
-                  backgroundColor: colors.card,
-                },
-              ]}
-            />
-
-            <Text style={[styles.label, { color: colors.secondaryText }]}>
-              Confirm Password
-            </Text>
-            <TextInput
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              textContentType="newPassword"
-              placeholder="Re-enter password"
-              placeholderTextColor={colors.secondaryText}
-              style={[
-                styles.input,
-                {
-                  color: colors.text,
-                  borderColor: colors.border,
-                  backgroundColor: colors.card,
-                },
-              ]}
-            />
-
             <TouchableOpacity
               onPress={onCreateAccount}
               disabled={!canCreate}
@@ -209,7 +160,7 @@ export default function CreateAccountScreen() {
               ]}
             >
               <Text style={[styles.buttonText, { color: colors.background }]}>
-                {submitting ? "Creating..." : "Create Account"}
+                {submitting ? "Sending..." : "Create Account"}
               </Text>
             </TouchableOpacity>
           </>

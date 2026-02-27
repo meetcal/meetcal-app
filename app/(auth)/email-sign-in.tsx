@@ -32,12 +32,18 @@ export default function EmailSignInScreen() {
     feature?: string;
   }>();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingVerification, setPendingVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = useMemo(
-    () => email.trim().length > 3 && password.length > 0 && !submitting,
-    [email, password, submitting],
+  const canRequestCode = useMemo(
+    () => email.trim().length > 3 && !submitting,
+    [email, submitting],
+  );
+
+  const canVerify = useMemo(
+    () => verificationCode.trim().length >= 6 && !submitting,
+    [verificationCode, submitting],
   );
 
   const handlePostSignIn = () => {
@@ -58,25 +64,61 @@ export default function EmailSignInScreen() {
     router.replace("/(tabs)/(index)" as any);
   };
 
-  const onSubmit = async () => {
+  const onRequestCode = async () => {
     if (!isLoaded || submitting) return;
     setSubmitting(true);
     try {
-      const result = await signIn.create({
-        strategy: "password",
+      await signIn.create({
         identifier: email.trim(),
-        password,
+      });
+
+      const emailCodeFactor = signIn.supportedFirstFactors?.find(
+        (factor) =>
+          factor.strategy === "email_code" && "emailAddressId" in factor,
+      );
+
+      if (
+        !emailCodeFactor ||
+        !("emailAddressId" in emailCodeFactor) ||
+        !emailCodeFactor.emailAddressId
+      ) {
+        throw new Error("Email verification is unavailable for this account.");
+      }
+
+      await signIn.prepareFirstFactor({
+        strategy: "email_code",
+        emailAddressId: emailCodeFactor.emailAddressId,
+      });
+
+      setPendingVerification(true);
+    } catch (error) {
+      Alert.alert("Email sign in failed", getErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onVerifyCode = async () => {
+    if (!isLoaded || submitting) return;
+    setSubmitting(true);
+    try {
+      const result = await signIn.attemptFirstFactor({
+        strategy: "email_code",
+        code: verificationCode.trim(),
       });
 
       if (!result.createdSessionId || typeof setActive !== "function") {
-        throw new Error("Could not create session. Please verify your credentials.");
+        throw new Error("Verification failed. Enter a valid code and try again.");
       }
 
       await setActive({ session: result.createdSessionId });
       await cacheAuthState(true);
       handlePostSignIn();
-    } catch (error) {
-      Alert.alert("Email sign in failed", getErrorMessage(error));
+    } catch {
+      Alert.alert(
+        "Verification failed",
+        "Verification failed. Enter a valid code and try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -96,57 +138,80 @@ export default function EmailSignInScreen() {
         }}
       />
       <View style={styles.content}>
-        <Text style={[styles.label, { color: colors.secondaryText }]}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          placeholder="you@example.com"
-          placeholderTextColor={colors.secondaryText}
-          style={[
-            styles.input,
-            {
-              color: colors.text,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            },
-          ]}
-        />
+        {!pendingVerification ? (
+          <>
+            <Text style={[styles.label, { color: colors.secondaryText }]}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              placeholder="you@example.com"
+              placeholderTextColor={colors.secondaryText}
+              style={[
+                styles.input,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                },
+              ]}
+            />
 
-        <Text style={[styles.label, { color: colors.secondaryText }]}>Password</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          textContentType="password"
-          placeholder="Password"
-          placeholderTextColor={colors.secondaryText}
-          style={[
-            styles.input,
-            {
-              color: colors.text,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            },
-          ]}
-        />
+            <TouchableOpacity
+              onPress={onRequestCode}
+              disabled={!canRequestCode}
+              style={[
+                styles.button,
+                {
+                  backgroundColor: canRequestCode ? colors.link : colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.buttonText, { color: colors.background }]}>
+                {submitting ? "Sending..." : "Send Verification Code"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.label, { color: colors.secondaryText }]}>
+              Verification Code
+            </Text>
+            <TextInput
+              value={verificationCode}
+              onChangeText={setVerificationCode}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              placeholder="Enter code from email"
+              placeholderTextColor={colors.secondaryText}
+              style={[
+                styles.input,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                },
+              ]}
+            />
 
-        <TouchableOpacity
-          onPress={onSubmit}
-          disabled={!canSubmit}
-          style={[
-            styles.button,
-            {
-              backgroundColor: canSubmit ? colors.link : colors.border,
-            },
-          ]}
-        >
-          <Text style={[styles.buttonText, { color: colors.background }]}>
-            {submitting ? "Signing in..." : "Sign In"}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onVerifyCode}
+              disabled={!canVerify}
+              style={[
+                styles.button,
+                {
+                  backgroundColor: canVerify ? colors.link : colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.buttonText, { color: colors.background }]}>
+                {submitting ? "Verifying..." : "Verify and Sign In"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
