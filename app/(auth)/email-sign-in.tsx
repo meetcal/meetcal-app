@@ -2,6 +2,7 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { cacheAuthState } from "@/lib/authCache";
 import { useSignIn } from "@clerk/clerk-expo";
+import * as Sentry from "@sentry/react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
@@ -15,12 +16,38 @@ import {
   View,
 } from "react-native";
 
-function getErrorMessage(error: unknown): string {
+type EmailAuthPhase = "request_code" | "verify_code";
+
+function getErrorMessage(error: unknown, phase: EmailAuthPhase): string {
   const message = String((error as { message?: unknown })?.message ?? "").toLowerCase();
   if (message.includes("too many requests")) {
     return "Too many attempts. Please wait a moment and try again.";
   }
-  return "Sign in failed. Check your credentials and try again.";
+  if (phase === "verify_code") {
+    return "Invalid or expired code. Try again.";
+  }
+  return "Couldn't send a sign-in code. Check your email and try again.";
+}
+
+function getClerkErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const errors = (error as { errors?: Array<{ code?: string }> }).errors;
+  const code = errors?.[0]?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function captureEmailAuthError(error: unknown, phase: EmailAuthPhase) {
+  Sentry.withScope((scope) => {
+    scope.setTag("auth.provider", "email");
+    scope.setTag("auth.strategy", "email_code");
+    scope.setTag("auth.context", "sign-in");
+    scope.setTag("auth.phase", phase);
+    const clerkCode = getClerkErrorCode(error);
+    if (clerkCode) {
+      scope.setTag("auth.clerk_code", clerkCode);
+    }
+    Sentry.captureException(error);
+  });
 }
 
 export default function EmailSignInScreen() {
@@ -92,7 +119,8 @@ export default function EmailSignInScreen() {
 
       setPendingVerification(true);
     } catch (error) {
-      Alert.alert("Email sign in failed", getErrorMessage(error));
+      captureEmailAuthError(error, "request_code");
+      Alert.alert("Email sign in failed", getErrorMessage(error, "request_code"));
     } finally {
       setSubmitting(false);
     }
@@ -114,10 +142,11 @@ export default function EmailSignInScreen() {
       await setActive({ session: result.createdSessionId });
       await cacheAuthState(true);
       handlePostSignIn();
-    } catch {
+    } catch (error) {
+      captureEmailAuthError(error, "verify_code");
       Alert.alert(
         "Verification failed",
-        "Verification failed. Enter a valid code and try again.",
+        getErrorMessage(error, "verify_code"),
       );
     } finally {
       setSubmitting(false);
