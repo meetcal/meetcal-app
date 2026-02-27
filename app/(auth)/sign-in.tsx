@@ -8,12 +8,12 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useEffect } from "react";
 import {
   Alert,
-  useWindowDimensions,
   Image,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -49,7 +49,7 @@ export default function SignInScreen() {
   const { startSSOFlow } = useSSO();
   const router = useRouter();
   const colors = useAppColors();
-  const { from } = useLocalSearchParams<{
+  const { from, feature } = useLocalSearchParams<{
     from?: string;
     feature?: string;
   }>();
@@ -83,6 +83,11 @@ export default function SignInScreen() {
     } catch (error) {
       Alert.alert("Apple sign in failed", getOAuthErrorMessage(error));
     }
+  };
+
+  const authParams = {
+    ...(from ? { from } : {}),
+    ...(feature ? { feature } : {}),
   };
 
   return (
@@ -189,6 +194,48 @@ export default function SignInScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
+        <View style={styles.emailActionsContainer}>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              styles.emailButton,
+              {
+                backgroundColor: colors.link,
+              },
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: "/(auth)/email-sign-in",
+                params: authParams,
+              } as any)
+            }
+          >
+            <Text
+              style={[
+                styles.buttonText,
+                styles.emailButtonText,
+                { color: colors.card },
+              ]}
+            >
+              Continue with Email
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.createAccountButton}
+            onPress={() =>
+              router.push({
+                pathname: "/(auth)/create-account",
+                params: authParams,
+              } as any)
+            }
+          >
+            <Text style={[styles.createAccountText, { color: colors.link }]}>
+              Create an account
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -203,7 +250,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   backButton: {
-    padding: 8,
+    paddingLeft: 12,
     marginLeft: Platform.OS === "ios" ? -8 : 0,
   },
   button: {
@@ -274,5 +321,24 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     textAlign: "center",
+  },
+  emailActionsContainer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  emailButton: {
+    height: 50,
+    justifyContent: "center",
+  },
+  emailButtonText: {
+    fontWeight: "600",
+  },
+  createAccountButton: {
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  createAccountText: {
+    fontSize: 15,
+    fontWeight: "500",
   },
 });

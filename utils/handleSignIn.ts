@@ -65,61 +65,22 @@ export function useSignInHandlers() {
     }
   }, [from, feature, isSubscribed]);
 
-  // Helper functions
-  const safeStringify = (value: unknown) => {
-    try {
-      const seen = new WeakSet<object>();
-      return JSON.stringify(value, (_key, val) => {
-        if (typeof val === "object" && val !== null) {
-          if (seen.has(val as object)) return "[Circular]";
-          seen.add(val as object);
-        }
-        return val;
-      });
-    } catch (stringifyError) {
-      return `<<unstringifiable: ${String(stringifyError)}>>`;
-    }
-  };
-
-  const dumpErrorDetails = (value: unknown) => {
-    try {
-      if (value && typeof value === "object") {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj);
-        const allKeys = Object.getOwnPropertyNames(obj);
-        console.error("OAuth error keys:", keys);
-        console.error("OAuth error all keys:", allKeys);
-        allKeys.forEach((key) => {
-          try {
-            console.error(`OAuth error prop ${key}:`, obj[key]);
-          } catch (propErr) {
-            console.error(`OAuth error prop ${key} (read error):`, propErr);
-          }
-        });
-      }
-    } catch (dumpErr) {
-      console.error("OAuth error dump failed:", dumpErr);
-    }
-  };
-
   const handleOAuthError = (
     err: unknown,
     options: { provider: OAuthProvider; strategy: OAuthStrategy; context: "sign-in" },
   ) => {
-    console.error("OAuth provider:", options.provider);
-    console.error("OAuth strategy:", options.strategy);
-    console.error("OAuth context:", options.context);
-    console.error("OAuth error (raw):", err);
-    console.error("OAuth error (name):", (err as Error)?.name);
-    console.error("OAuth error (message):", (err as Error)?.message);
-    console.error("OAuth error (stack):", (err as Error)?.stack);
-    try {
-      console.error("OAuth error (string):", String(err));
-    } catch (toStringError) {
-      console.error("OAuth error (string error):", toStringError);
-    }
-    console.error("OAuth error (safe json):", safeStringify(err));
-    dumpErrorDetails(err);
+    const errorName = (err as Error)?.name ?? "Error";
+    const errorMessage = (err as Error)?.message ?? "OAuth flow failed";
+    console.error(
+      "OAuth flow failed:",
+      JSON.stringify({
+        provider: options.provider,
+        strategy: options.strategy,
+        context: options.context,
+        errorName,
+        errorMessage,
+      }),
+    );
 
     const errorMeta =
       typeof err === "object" && err !== null && "oauthMeta" in err
@@ -315,10 +276,7 @@ export function useSignInHandlers() {
         }
       }
 
-      console.log("SSO Flow Result:", safeStringify(result));
-
       if (result.createdSessionId) {
-        console.log("Session created directly:", result.createdSessionId);
         await setActiveSession(result, result.createdSessionId, provider);
         handlePostSignIn();
         return;
@@ -343,7 +301,7 @@ export function useSignInHandlers() {
       }
       throw noSessionError;
     },
-    [handlePostSignIn, performManualOAuthFallback, safeStringify, setActiveSession],
+    [handlePostSignIn, performManualOAuthFallback, setActiveSession],
   );
 
   const onGooglePress = useCallback(
