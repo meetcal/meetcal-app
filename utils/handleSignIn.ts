@@ -1,10 +1,12 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { cacheAuthState } from "@/lib/authCache";
 import * as AuthSession from "expo-auth-session";
 import * as Updates from "expo-updates";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback } from "react";
 import * as Sentry from "@sentry/react-native";
+import * as WebBrowser from "expo-web-browser";
 
 type OAuthProvider = "google" | "apple";
 type OAuthStrategy = "oauth_google" | "oauth_apple";
@@ -19,6 +21,7 @@ type OAuthFlowMeta = {
   primaryRedirectUrl: string;
   fallbackRedirectUrl: string;
   usedFallback: boolean;
+  manualFallbackUsed: boolean;
 };
 type OAuthErrorWithMeta = Error & {
   oauthMeta?: OAuthFlowMeta;
@@ -32,6 +35,12 @@ const CLERK_MISSING_REDIRECT_ERROR =
 // Export a hook that components can use
 export function useSignInHandlers() {
   const { isSubscribed } = useSubscription();
+  const {
+    signIn,
+    setActive: clerkSetActive,
+    isLoaded: isSignInLoaded,
+  } = useSignIn();
+  const { signUp, isLoaded: isSignUpLoaded } = useSignUp();
   const { from, feature } = useLocalSearchParams<{
     from?: string;
     feature?: string;
@@ -127,6 +136,7 @@ export function useSignInHandlers() {
         primaryRedirectUrl: errorMeta?.primaryRedirectUrl ?? "unknown",
         fallbackRedirectUrl: errorMeta?.fallbackRedirectUrl ?? "unknown",
         usedFallback: errorMeta?.usedFallback ?? false,
+        manualFallbackUsed: errorMeta?.manualFallbackUsed ?? false,
       });
       Sentry.captureException(err);
     });
@@ -150,6 +160,67 @@ export function useSignInHandlers() {
     [],
   );
 
+  const performManualOAuthFallback = useCallback(
+    async (strategy: OAuthStrategy, redirectUrl: string, provider: OAuthProvider) => {
+      if (!isSignInLoaded || !isSignUpLoaded) {
+        throw new Error(
+          `Manual ${provider} OAuth fallback unavailable because Clerk is not loaded`,
+        );
+      }
+
+      await signIn.create({
+        strategy,
+        redirectUrl,
+      });
+
+      if (signIn.createdSessionId) {
+        return {
+          createdSessionId: signIn.createdSessionId,
+          setActive: clerkSetActive ?? null,
+          authSessionResult: { type: "success" as const },
+        } satisfies SSOFlowResult;
+      }
+
+      const { externalVerificationRedirectURL } = signIn.firstFactorVerification;
+      if (!externalVerificationRedirectURL) {
+        throw new Error(
+          `Manual ${provider} OAuth fallback missing external verification redirect URL`,
+        );
+      }
+
+      const authSessionResult = await WebBrowser.openAuthSessionAsync(
+        externalVerificationRedirectURL.toString(),
+        redirectUrl,
+      );
+      if (authSessionResult.type !== "success" || !authSessionResult.url) {
+        return {
+          createdSessionId: null,
+          setActive: clerkSetActive ?? null,
+          authSessionResult,
+        } satisfies SSOFlowResult;
+      }
+
+      const params = new URL(authSessionResult.url).searchParams;
+      const rotatingTokenNonce = params.get("rotating_token_nonce") ?? "";
+      await signIn.reload({ rotatingTokenNonce });
+
+      const userNeedsToBeCreated =
+        signIn.firstFactorVerification.status === "transferable";
+      if (userNeedsToBeCreated) {
+        await signUp.create({
+          transfer: true,
+        });
+      }
+
+      return {
+        createdSessionId: signUp.createdSessionId ?? signIn.createdSessionId ?? null,
+        setActive: clerkSetActive ?? null,
+        authSessionResult,
+      } satisfies SSOFlowResult;
+    },
+    [clerkSetActive, isSignInLoaded, isSignUpLoaded, signIn, signUp],
+  );
+
   const performSSOFlow = useCallback(
     async (
       startSSOFlow: any,
@@ -167,6 +238,7 @@ export function useSignInHandlers() {
       });
       let redirectUrl = primaryRedirectUrl;
       let usedFallback = false;
+      let manualFallbackUsed = false;
 
       console.log("Redirect URL:", primaryRedirectUrl);
       console.log("Calling startSSOFlow...");
@@ -186,6 +258,7 @@ export function useSignInHandlers() {
               primaryRedirectUrl,
               fallbackRedirectUrl,
               usedFallback,
+              manualFallbackUsed,
             };
           }
           throw initialErr;
@@ -210,9 +283,35 @@ export function useSignInHandlers() {
               primaryRedirectUrl,
               fallbackRedirectUrl,
               usedFallback,
+              manualFallbackUsed,
             };
           }
-          throw retryErr;
+          const retryMessage = (retryErr as Error)?.message ?? "";
+          if (!retryMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
+            throw retryErr;
+          }
+
+          manualFallbackUsed = true;
+          console.warn("Retrying with manual Clerk OAuth fallback");
+          try {
+            result = await performManualOAuthFallback(
+              strategy,
+              fallbackRedirectUrl,
+              provider,
+            );
+          } catch (manualErr) {
+            if (typeof manualErr === "object" && manualErr !== null) {
+              (manualErr as OAuthErrorWithMeta).oauthMeta = {
+                provider,
+                strategy,
+                primaryRedirectUrl,
+                fallbackRedirectUrl,
+                usedFallback,
+                manualFallbackUsed,
+              };
+            }
+            throw manualErr;
+          }
         }
       }
 
@@ -237,13 +336,14 @@ export function useSignInHandlers() {
         primaryRedirectUrl,
         fallbackRedirectUrl,
         usedFallback,
+        manualFallbackUsed,
       };
       if (authSessionResultType === "cancel") {
         throw noSessionError;
       }
       throw noSessionError;
     },
-    [handlePostSignIn, safeStringify, setActiveSession],
+    [handlePostSignIn, performManualOAuthFallback, safeStringify, setActiveSession],
   );
 
   const onGooglePress = useCallback(
