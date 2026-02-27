@@ -14,7 +14,6 @@ interface AuthCacheData {
   isSignedIn: boolean;
   timestamp: number;
   userId?: string;
-  email?: string;
 }
 
 // Runtime validator for cached auth data
@@ -24,29 +23,25 @@ function isAuthCacheData(obj: any): obj is AuthCacheData {
     typeof obj === 'object' &&
     typeof obj.isSignedIn === 'boolean' &&
     typeof obj.timestamp === 'number' &&
-    (obj.userId === undefined || typeof obj.userId === 'string') &&
-    (obj.email === undefined || typeof obj.email === 'string')
+    (obj.userId === undefined || typeof obj.userId === 'string')
   );
 }
 
 function getAuthSignature(
   isSignedIn: boolean,
-  userId?: string,
-  email?: string
+  userId?: string
 ): string {
   return JSON.stringify({
     isSignedIn,
     userId: userId ?? null,
-    email: email ?? null,
   });
 }
 
 export async function cacheAuthState(
   isSignedIn: boolean,
-  userId?: string,
-  email?: string
+  userId?: string
 ) {
-  const signature = getAuthSignature(isSignedIn, userId, email);
+  const signature = getAuthSignature(isSignedIn, userId);
   if (signature === lastPersistedSignature) {
     return;
   }
@@ -61,7 +56,6 @@ export async function cacheAuthState(
       isSignedIn,
       timestamp: Date.now(),
       userId,
-      email,
     };
     inFlightWriteSignature = signature;
     inFlightWrite = SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(cacheData))
@@ -118,8 +112,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
         console.warn('Using stale auth cache due to network unavailability');
         lastPersistedSignature = getAuthSignature(
           parsed.isSignedIn,
-          parsed.userId,
-          parsed.email
+          parsed.userId
         );
         return parsed;
       }
@@ -127,8 +120,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
     lastPersistedSignature = getAuthSignature(
       parsed.isSignedIn,
-      parsed.userId,
-      parsed.email
+      parsed.userId
     );
     return parsed;
   } catch (error) {

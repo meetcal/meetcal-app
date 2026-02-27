@@ -21,7 +21,6 @@ export interface AuthGuardOptions {
 export function useAuthGuard() {
   const { user, isLoaded } = useUser();
   const userId = user?.id ?? null;
-  const userEmail = user?.primaryEmailAddress?.emailAddress ?? null;
   const router = useRouter();
   const [cachedIsSignedIn, setCachedIsSignedIn] = useState<boolean | null>(null);
   const [hasNetwork, setHasNetwork] = useState<boolean | null>(null);
@@ -63,7 +62,7 @@ export function useAuthGuard() {
       }
 
       if (userId) {
-        await cacheAuthState(true, userId, userEmail ?? undefined);
+        await cacheAuthState(true, userId);
         if (!cancelled) {
           setCachedIsSignedIn(true);
           setHasNetwork(true);
@@ -83,7 +82,7 @@ export function useAuthGuard() {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, userId, userEmail]);
+  }, [isLoaded, userId]);
 
   /**
    * Check if user is authenticated. If not, show login prompt.
