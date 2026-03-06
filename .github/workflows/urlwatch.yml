@@ -1,0 +1,50 @@
+name: URL Watch
+
+on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  urlwatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install urlwatch
+        run: pip install urlwatch
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/urlwatch
+          key: urlwatch-cache-${{ github.run_id }}
+          restore-keys: |
+            urlwatch-cache-
+
+      - name: Create config directory
+        run: mkdir -p ~/.config/urlwatch ~/.cache/urlwatch
+
+      - name: Setup urlwatch config
+        run: |
+          # Copy config with Slack webhook URL substituted
+          sed "s|\${SLACK_URLWATCH_WEBHOOK_URL}|${{ secrets.SLACK_URLWATCH_WEBHOOK_URL }}|g" urlwatch.yaml > ~/.config/urlwatch/urlwatch.yaml
+          cp urls.yaml ~/.config/urlwatch/urls.yaml
+
+      - name: Run urlwatch
+        run: urlwatch
+
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/urlwatch
+          key: urlwatch-cache-${{ github.run_id }}
