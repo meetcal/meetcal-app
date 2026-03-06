@@ -1,0 +1,41 @@
+name: "USA Weightlifting American Records"
+url: "https://www.usaweightlifting.org/american-records"
+filter:
+  - css: "ul.chakra-list__root"
+  - html2text
+---
+name: "USA Masters Weightlifting Results"
+url: "https://usamastersweightlifting.com/results-and-rankings"
+filter:
+  - css: ".kv-ee-content"
+  - html2text
+---
+name: "USA Masters Weightlifting Qualifying Totals"
+url: "https://usamastersweightlifting.com/qualifying-totals"
+filter:
+  - css: ".kv-ee-row.kv-ee-position"
+  - html2text
+---
+name: "USA Masters Weightlifting Events"
+url: "https://usamastersweightlifting.com/events"
+filter:
+  - css: ".kv-ee-content"
+  - html2text
+---
+name: "USA Masters Weightlifting Records"
+url: "https://usamastersweightlifting.com/masters-records-grand-slam"
+filter:
+  - css: ".kv-ee-row.kv-ee-position"
+  - html2text
+---
+name: "USAW International Rankings"
+url: "https://www.usaweightlifting.org/resources/athlete-information-and-programs/international-squad-standings"
+filter:
+  - css: ".css-11jy1p4"
+  - html2text
+---
+name: "USAW Standards"
+url: "https://www.usaweightlifting.org/resources/athlete-information-and-programs/selection-procedures"
+filter:
+  - css: ".css-0"
+  - html2text
