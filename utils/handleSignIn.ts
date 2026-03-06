@@ -4,7 +4,7 @@ import { cacheAuthState } from "@/lib/authCache";
 import * as AuthSession from "expo-auth-session";
 import * as Updates from "expo-updates";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import * as Sentry from "@sentry/react-native";
 import * as WebBrowser from "expo-web-browser";
 
@@ -26,6 +26,7 @@ type OAuthFlowMeta = {
 type OAuthErrorWithMeta = Error & {
   oauthMeta?: OAuthFlowMeta;
 };
+type SSOFlowStatus = "success" | "cancelled" | "ignored";
 
 const OAUTH_PRIMARY_CALLBACK_PATH = "oauth-native-callback";
 const OAUTH_FALLBACK_CALLBACK_PATH = "sso-callback";
@@ -45,6 +46,7 @@ export function useSignInHandlers() {
     from?: string;
     feature?: string;
   }>();
+  const ssoInFlightRef = useRef(false);
 
   const handlePostSignIn = useCallback(() => {
     if (!isSubscribed) {
@@ -187,7 +189,15 @@ export function useSignInHandlers() {
       startSSOFlow: any,
       strategy: OAuthStrategy,
       provider: OAuthProvider,
-    ) => {
+    ): Promise<SSOFlowStatus> => {
+      if (ssoInFlightRef.current) {
+        console.warn(
+          `Ignoring ${provider} OAuth request because another auth session is already in progress`,
+        );
+        return "ignored";
+      }
+
+      ssoInFlightRef.current = true;
       console.log(`Starting ${provider} OAuth flow...`);
       const primaryRedirectUrl = AuthSession.makeRedirectUri({
         scheme: "meetcal",
@@ -197,72 +207,26 @@ export function useSignInHandlers() {
         scheme: "meetcal",
         path: OAUTH_FALLBACK_CALLBACK_PATH,
       });
-      let redirectUrl = primaryRedirectUrl;
       let usedFallback = false;
       let manualFallbackUsed = false;
 
-      console.log("Redirect URL:", primaryRedirectUrl);
-      console.log("Calling startSSOFlow...");
-      let result: SSOFlowResult;
       try {
-        result = await startSSOFlow({
-          strategy,
-          redirectUrl: primaryRedirectUrl,
-        });
-      } catch (initialErr) {
-        const initialMessage = (initialErr as Error)?.message ?? "";
-        if (!initialMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
-          if (typeof initialErr === "object" && initialErr !== null) {
-            (initialErr as OAuthErrorWithMeta).oauthMeta = {
-              provider,
-              strategy,
-              primaryRedirectUrl,
-              fallbackRedirectUrl,
-              usedFallback,
-              manualFallbackUsed,
-            };
-          }
-          throw initialErr;
-        }
-
-        usedFallback = true;
-        redirectUrl = fallbackRedirectUrl;
-        console.warn(
-          "Retrying SSO flow with fallback redirect URL:",
-          fallbackRedirectUrl,
-        );
+        console.log("Redirect URL:", primaryRedirectUrl);
+        console.log("Calling startSSOFlow...");
+        let result: SSOFlowResult;
         try {
           result = await startSSOFlow({
             strategy,
-            redirectUrl: fallbackRedirectUrl,
+            redirectUrl: primaryRedirectUrl,
           });
-        } catch (retryErr) {
-          if (typeof retryErr === "object" && retryErr !== null) {
-            (retryErr as OAuthErrorWithMeta).oauthMeta = {
-              provider,
-              strategy,
-              primaryRedirectUrl,
-              fallbackRedirectUrl,
-              usedFallback,
-              manualFallbackUsed,
-            };
+        } catch (initialErr) {
+          const initialMessage = (initialErr as Error)?.message ?? "";
+          if (initialMessage.includes("Another web browser is already open")) {
+            return "ignored";
           }
-          const retryMessage = (retryErr as Error)?.message ?? "";
-          if (!retryMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
-            throw retryErr;
-          }
-
-          manualFallbackUsed = true;
-          console.warn("Retrying with manual Clerk OAuth fallback");
-          try {
-            result = await performManualOAuthFallback(
-              strategy,
-              fallbackRedirectUrl,
-              provider,
-            );
-          } catch (manualErr) {
-            if (typeof manualErr === "object" && manualErr !== null) {
-              (manualErr as OAuthErrorWithMeta).oauthMeta = {
+          if (!initialMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
+            if (typeof initialErr === "object" && initialErr !== null) {
+              (initialErr as OAuthErrorWithMeta).oauthMeta = {
                 provider,
                 strategy,
                 primaryRedirectUrl,
@@ -271,35 +235,94 @@ export function useSignInHandlers() {
                 manualFallbackUsed,
               };
             }
-            throw manualErr;
+            throw initialErr;
+          }
+
+          usedFallback = true;
+          console.warn(
+            "Retrying SSO flow with fallback redirect URL:",
+            fallbackRedirectUrl,
+          );
+          try {
+            result = await startSSOFlow({
+              strategy,
+              redirectUrl: fallbackRedirectUrl,
+            });
+          } catch (retryErr) {
+            if (typeof retryErr === "object" && retryErr !== null) {
+              (retryErr as OAuthErrorWithMeta).oauthMeta = {
+                provider,
+                strategy,
+                primaryRedirectUrl,
+                fallbackRedirectUrl,
+                usedFallback,
+                manualFallbackUsed,
+              };
+            }
+            const retryMessage = (retryErr as Error)?.message ?? "";
+            if (retryMessage.includes("Another web browser is already open")) {
+              return "ignored";
+            }
+            if (!retryMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
+              throw retryErr;
+            }
+
+            manualFallbackUsed = true;
+            console.warn("Retrying with manual Clerk OAuth fallback");
+            try {
+              result = await performManualOAuthFallback(
+                strategy,
+                fallbackRedirectUrl,
+                provider,
+              );
+            } catch (manualErr) {
+              const manualMessage = (manualErr as Error)?.message ?? "";
+              if (manualMessage.includes("Another web browser is already open")) {
+                return "ignored";
+              }
+              if (typeof manualErr === "object" && manualErr !== null) {
+                (manualErr as OAuthErrorWithMeta).oauthMeta = {
+                  provider,
+                  strategy,
+                  primaryRedirectUrl,
+                  fallbackRedirectUrl,
+                  usedFallback,
+                  manualFallbackUsed,
+                };
+              }
+              throw manualErr;
+            }
           }
         }
-      }
 
-      if (result.createdSessionId) {
-        await setActiveSession(result, result.createdSessionId, provider);
-        handlePostSignIn();
-        return;
-      }
+        if (result.createdSessionId) {
+          await setActiveSession(result, result.createdSessionId, provider);
+          handlePostSignIn();
+          return "success";
+        }
 
-      const authSessionResultType = result.authSessionResult?.type;
-      const noSessionError = new Error(
-        authSessionResultType
-          ? `No session created for ${provider} SSO (authSessionResult: ${authSessionResultType})`
-          : `No session created for ${provider} SSO`,
-      ) as OAuthErrorWithMeta;
-      noSessionError.oauthMeta = {
-        provider,
-        strategy,
-        primaryRedirectUrl,
-        fallbackRedirectUrl,
-        usedFallback,
-        manualFallbackUsed,
-      };
-      if (authSessionResultType === "cancel") {
+        const authSessionResultType = result.authSessionResult?.type;
+        if (authSessionResultType === "cancel" || authSessionResultType === "dismiss") {
+          return "cancelled";
+        }
+
+        const noSessionError = new Error(
+          authSessionResultType
+            ? `No session created for ${provider} SSO (authSessionResult: ${authSessionResultType})`
+            : `No session created for ${provider} SSO`,
+        ) as OAuthErrorWithMeta;
+        noSessionError.oauthMeta = {
+          provider,
+          strategy,
+          primaryRedirectUrl,
+          fallbackRedirectUrl,
+          usedFallback,
+          manualFallbackUsed,
+        };
         throw noSessionError;
+      } finally {
+        ssoInFlightRef.current = false;
       }
-      throw noSessionError;
     },
     [handlePostSignIn, performManualOAuthFallback, setActiveSession],
   );
