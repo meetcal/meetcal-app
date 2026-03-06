@@ -1,0 +1,7 @@
+pyyaml
+minidb >= 2.0.8
+requests
+keyring
+platformdirs
+lxml
+cssselect
