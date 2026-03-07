@@ -74,3 +74,24 @@ export const deleteAll = internalMutation({
     return rows.length;
   },
 });
+
+// Delete rankings for a specific meet + gender + age category group
+export const deleteByMeetGenderAge = internalMutation({
+  args: {
+    meet: v.string(),
+    gender: v.string(),
+    ageCategory: v.string(),
+  },
+  handler: async (ctx, { meet, gender, ageCategory }) => {
+    const rows = await ctx.db
+      .query("intl_rankings")
+      .withIndex("by_gender_age", (q) =>
+        q.eq("gender", gender).eq("ageCategory", ageCategory)
+      )
+      .collect();
+
+    const toDelete = rows.filter((r) => r.meet === meet);
+    await Promise.all(toDelete.map((r) => ctx.db.delete(r._id)));
+    return toDelete.length;
+  },
+});
