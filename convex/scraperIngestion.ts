@@ -374,3 +374,42 @@ export const replaceAllIntlRankings = action({
     return { inserted };
   },
 });
+
+// Replace rankings for a specific meet + gender + age category only
+export const replaceIntlRankingsForGroup = action({
+  args: {
+    scraperSecret: v.string(),
+    meet: v.string(),
+    gender: v.string(),
+    ageCategory: v.string(),
+    rankings: v.array(
+      v.object({
+        legacyId: v.optional(v.number()),
+        meet: v.optional(v.string()),
+        ranking: v.optional(v.number()),
+        name: v.optional(v.string()),
+        weightClass: v.optional(v.string()),
+        total: v.optional(v.number()),
+        percentA: v.optional(v.number()),
+        gender: v.optional(v.string()),
+        ageCategory: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number; inserted: number }> => {
+    assertScraperSecret(args.scraperSecret);
+    const deleted = await ctx.runMutation(internal.intlRankings.deleteByMeetGenderAge, {
+      meet: args.meet,
+      gender: args.gender,
+      ageCategory: args.ageCategory,
+    });
+
+    let inserted = 0;
+    for (const ranking of args.rankings) {
+      await ctx.runMutation(internal.intlRankings.upsertIntlRanking, ranking);
+      inserted++;
+    }
+
+    return { deleted, inserted };
+  },
+});
