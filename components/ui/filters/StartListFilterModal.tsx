@@ -281,23 +281,19 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         {
           id: "sort",
           title: "Sort",
+          displayMode: "chips",
           options: [
-            { value: "alphabetical", label: "Alphabetical (A-Z)" },
-            { value: "entryTotal", label: "Entry Total (High-Low)" },
-            { value: "bestTotal", label: "Best Total (High-Low)" },
-            { value: "bestSnatch", label: "Best Snatch (High-Low)" },
-            { value: "bestCJ", label: "Best CJ (High-Low)" },
+            { value: "alphabetical", label: "A-Z" },
+            { value: "entryTotal", label: "Entry Total" },
+            { value: "bestTotal", label: "Best Total" },
+            { value: "bestSnatch", label: "Best Sn" },
+            { value: "bestCJ", label: "Best CJ" },
           ],
-        },
-        {
-          id: "ageGroup",
-          title: "Age Group",
-          options: AGE_GROUP_OPTIONS.map((ag) => ({ value: ag, label: ag })),
-          allOptionLabel: "All Age Groups",
         },
         {
           id: "gender",
           title: "Gender",
+          displayMode: "chips",
           options: [
             { value: "Male", label: "Male" },
             { value: "Female", label: "Female" },
@@ -307,20 +303,32 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         {
           id: "adaptiveAthlete",
           title: "Adaptive Athlete",
+          displayMode: "chips",
           options: [
-            { value: "Adaptive Athletes", label: "Adaptive Athletes" },
-            { value: "Non-Adaptive Athletes", label: "Non-Adaptive Athletes" },
+            { value: "Adaptive Athletes", label: "Adaptive" },
+            { value: "Non-Adaptive Athletes", label: "Non-Adaptive" },
           ],
           allOptionLabel: "All Athletes",
         },
         {
+          id: "ageGroup",
+          title: "Age Group",
+          displayMode: "chips",
+          options: AGE_GROUP_OPTIONS.map((ag) => ({
+            value: ag,
+            label: ag.replace("Masters ", "M"),
+          })),
+          allOptionLabel: "All Ages",
+        },
+        {
           id: "weightClass",
           title: "Weight Class",
+          displayMode: "chips",
           options: getWeightClassOptions(modalTempFilters).map((wc) => ({
             value: wc,
-            label: `${wc.replace("kg", "")}kg`,
+            label: wc.replace("kg", ""),
           })),
-          allOptionLabel: "All Classes",
+          allOptionLabel: "All",
         },
         {
           id: "club",
