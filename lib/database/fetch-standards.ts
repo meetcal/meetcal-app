@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
@@ -11,9 +12,6 @@ type StandardsRow = {
   standardA: number | null;
   standardB: number | null;
 };
-
-const standardsMemoryCache: { data: StandardsData | null } = { data: null };
-const inFlightStandards = new Map<string, Promise<StandardsData>>();
 
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
@@ -87,45 +85,52 @@ export async function fetchStandards(
   ageGroup?: string,
   gender?: 'men' | 'women'
 ): Promise<StandardsData> {
-  const requestKey = `${ageGroup || '*'}::${gender || '*'}`;
-  if (standardsMemoryCache.data) {
-    return filterStandards(standardsMemoryCache.data, ageGroup, gender);
-  }
-  if (inFlightStandards.has(requestKey)) {
-    return inFlightStandards.get(requestKey)!;
-  }
-
-  const cacheKey = OFFLINE_CACHE_KEYS.standards;
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rows = await convex.query(api.standards.getFiltered, {
-        ageCategory: ageGroup,
-        gender,
-      });
-
-      const result = mapRows(rows as StandardsRow[]);
-      if (!ageGroup && !gender) {
-        standardsMemoryCache.data = result;
-        await setOfflineCache(cacheKey, result);
-      }
-      return result;
-    } catch (error) {
-      const cached = await getOfflineCache<StandardsData>(cacheKey);
-      if (cached?.data) {
-        standardsMemoryCache.data = cached.data;
-        return filterStandards(cached.data, ageGroup, gender);
-      }
-      throw error;
-    } finally {
-      inFlightStandards.delete(requestKey);
+  try {
+    const result = await fetchStandardsFresh(ageGroup, gender);
+    if (!ageGroup && !gender) {
+      await persistStandards(result);
     }
-  })();
-
-  inFlightStandards.set(requestKey, request);
-  return request;
+    return result;
+  } catch (error) {
+    const cached = await readStandardsCache();
+    if (cached?.data) {
+      return filterStandards(cached.data, ageGroup, gender);
+    }
+    throw error;
+  }
 }
+
+async function readStandardsCache() {
+  const cacheKey = OFFLINE_CACHE_KEYS.standards;
+  const cached = await getOfflineCache<StandardsData>(cacheKey);
+  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
+}
+
+async function fetchStandardsFresh(
+  ageGroup?: string,
+  gender?: 'men' | 'women'
+): Promise<StandardsData> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  const rows = await convex.query(api.standards.getFiltered, {
+    ageCategory: ageGroup,
+    gender,
+  });
+
+  return mapRows(rows as StandardsRow[]);
+}
+
+async function persistStandards(data: StandardsData) {
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
+  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+export const standardsResource = createMutableResource<StandardsData, []>({
+  getKey: () => OFFLINE_CACHE_KEYS.standards,
+  loadCached: () => readStandardsCache(),
+  fetchFresh: () => fetchStandardsFresh(),
+  persistFresh: (data) => persistStandards(data),
+});

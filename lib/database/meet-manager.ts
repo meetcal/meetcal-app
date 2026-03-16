@@ -13,6 +13,7 @@ import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { fetchAthletesWithSession, fetchAthleteHistoryForNames, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -58,7 +59,7 @@ export function validatePrefetchedLiftingResults(
   }
 }
 
-async function getCachedMeets(): Promise<Meet[]> {
+export async function getCachedMeets(): Promise<Meet[]> {
   try {
     const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
     if (!cached) return [];
@@ -173,34 +174,15 @@ function mapMeetRow(meet: any): Meet {
 }
 
 // Fetch all active meets from Convex
-export async function fetchMeets(): Promise<Meet[]> {
+export async function fetchMeetsFresh(): Promise<Meet[]> {
   if (inFlightFetchMeets) {
     return inFlightFetchMeets;
   }
 
   inFlightFetchMeets = (async () => {
     try {
-      const cached = await getCachedMeets();
-      if (cached.length > 0) {
-        isNetworkAvailable()
-          .then((hasNetwork) => {
-            if (hasNetwork) {
-              return withTimeout(convex.query(api.meets.listActive, {}), INITIAL_LOAD_TIMEOUT_MS, 'fetchMeets')
-                .then((meetsData) => meetsData.map(mapMeetRow))
-                .then((mapped) => setCachedMeets(mapped))
-                .catch((err) => {
-                  console.warn('Background refresh failed (api.meets.listActive, mapMeetRow, setCachedMeets):', err);
-                });
-            }
-          })
-          .catch((err) => {
-            console.warn('Background refresh: isNetworkAvailable failed', err);
-          });
-        return cached;
-      }
-
       const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) return [];
+      if (!hasNetwork) throw new Error('Offline');
 
       const meetsData = await withTimeout(
         convex.query(api.meets.listActive, {}),
@@ -223,13 +205,40 @@ export async function fetchMeets(): Promise<Meet[]> {
           console.error('Error in fetchMeets:', error);
         }
       }
-      return await getCachedMeets();
+      throw error;
     } finally {
       inFlightFetchMeets = null;
     }
   })();
 
   return inFlightFetchMeets;
+}
+
+export const meetsResource = createMutableResource<Meet[], []>({
+  getKey: () => MEETS_LIST_CACHE_KEY,
+  loadCached: async () => {
+    const data = await getCachedMeets();
+    return data.length > 0 ? { data, lastUpdatedAt: null } : null;
+  },
+  fetchFresh: () => fetchMeetsFresh(),
+  persistFresh: async (data) => {
+    await setCachedMeets(data);
+    return { data, lastUpdatedAt: Date.now() };
+  },
+});
+
+export async function fetchMeets(): Promise<Meet[]> {
+  try {
+    const meets = await fetchMeetsFresh();
+    await setCachedMeets(meets);
+    return meets;
+  } catch (error) {
+    const cached = await getCachedMeets();
+    if (cached.length > 0) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 // Fetch a single meet by name

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
-import { prefetchMeetData, fetchMeets } from '@/lib/database/meet-manager';
+import { prefetchMeetData, fetchMeetsFresh, getCachedMeets } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SelectedMeetContextType = {
@@ -107,11 +107,34 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       });
   }, []);
 
+  const syncAvailableMeets = useCallback(async (options?: { forceFresh?: boolean }) => {
+    await clearExpiredDownloadedMeets();
+
+    const cached = options?.forceFresh ? [] : await getCachedMeets();
+    if (cached.length > 0) {
+      setAvailableMeets(cached);
+    }
+
+    try {
+      const fresh = await fetchMeetsFresh();
+      setAvailableMeets((current) => {
+        const currentSerialized = JSON.stringify(current);
+        const nextSerialized = JSON.stringify(fresh);
+        return currentSerialized === nextSerialized ? current : fresh;
+      });
+      return fresh;
+    } catch (error) {
+      if (cached.length > 0) {
+        return cached;
+      }
+      throw error;
+    }
+  }, []);
+
   // Load available meets
   const loadMeets = useCallback(async () => {
       try {
-        await clearExpiredDownloadedMeets();
-        const meets = await fetchMeets();
+        const meets = await syncAvailableMeets();
         setAvailableMeets(meets);
 
         if (meets.length === 0) {
@@ -156,7 +179,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       } finally {
         setIsLoading(false);
       }
-  }, [selectedMeet, initializeMeetData]);
+  }, [selectedMeet, initializeMeetData, syncAvailableMeets]);
 
     // Initial load
   useEffect(() => {
@@ -205,8 +228,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     try {
       setIsSyncing(true);
       setSyncStatus('syncing');
-      await clearExpiredDownloadedMeets();
-      const meets = await fetchMeets();
+      const meets = await syncAvailableMeets({ forceFresh: true });
       setAvailableMeets(meets);
       setSyncStatus('idle');
     } catch (error) {

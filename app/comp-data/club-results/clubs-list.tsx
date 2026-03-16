@@ -2,7 +2,8 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
-import { fetchAllClubs } from "@/lib/database/fetch-club-stats";
+import { useMutableResource } from "@/hooks/useMutableResource";
+import { clubsResource } from "@/lib/database/fetch-club-stats";
 import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
@@ -27,21 +28,23 @@ export default function ShareResultsByClubScreen() {
   const insets = useSafeAreaInsets();
 
   const [searchText, setSearchText] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [allClubs, setAllClubs] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const {
+    data: allClubs,
+    isInitialLoading: isLoading,
+    error,
+    refresh,
+  } = useMutableResource({
+    resource: clubsResource,
+    params: [] as const,
+    initialData: [] as string[],
+  });
 
   // Track screen view on mount
   useEffect(() => {
     posthog.capture("screen_viewed", {
       screen_name: "Share Results By Club",
     });
-  }, []);
-
-  // Load all clubs on mount
-  useEffect(() => {
-    loadClubs();
   }, []);
 
   useEffect(() => {
@@ -68,26 +71,9 @@ export default function ShareResultsByClubScreen() {
     };
   }, []);
 
-  const loadClubs = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const clubs = await fetchAllClubs();
-      setAllClubs(clubs);
-    } catch (err) {
-      console.error("Error loading clubs:", err);
-      const hasNetwork = await isNetworkAvailable().catch(() => true);
-      setIsOffline(!hasNetwork);
-      setError(
-        hasNetwork
-          ? "Failed to load clubs. Please try again."
-          : "You're offline. Connect to the internet to load club results.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const loadClubs = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
 
   // Filter clubs based on search text
   const filteredClubs =

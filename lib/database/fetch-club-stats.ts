@@ -1,250 +1,275 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
-import type {
+import { createMutableResource } from '@/lib/data/mutable-resource';
+import {
   AthleteClub,
   ClubMeetStats,
   AthleteResult,
   AthleteInfo,
-  AthleteWeightClass,
-  MeetStatus
+  MeetStatus,
 } from '@/types/club';
+import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { isNetworkAvailable } from '@/lib/networkUtils';
 
-const clubsMemoryCache: { data: string[] | null } = { data: null };
-let inFlightClubs: Promise<string[]> | null = null;
-const athletesByClubCache = new Map<string, AthleteClub[]>();
-const athletesByClubInFlight = new Map<string, Promise<AthleteClub[]>>();
-const clubMeetStatsCache = new Map<string, ClubMeetStats>();
-const clubMeetStatsInFlight = new Map<string, Promise<ClubMeetStats>>();
+type ClubAthletesCache = Record<string, AthleteClub[]>;
+type ClubMeetStatsCache = Record<string, ClubMeetStats>;
 
 function getClubMeetStatsKey(club: string, meet: string): string {
   return `${club}::${meet}`;
 }
 
-async function fetchAndStoreClubs(): Promise<string[]> {
-  const clubs = await convex.query(api.athletes.listClubs, {});
-  clubsMemoryCache.data = clubs;
-  return clubs;
+async function readClubsCache() {
+  const cached = await getOfflineCache<string[]>(OFFLINE_CACHE_KEYS.clubs);
+  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-/**
- * Fetch all unique clubs from the database
- */
-export async function fetchAllClubs(): Promise<string[]> {
-  if (clubsMemoryCache.data) {
-    if (!inFlightClubs) {
-      inFlightClubs = fetchAndStoreClubs().finally(() => {
-        inFlightClubs = null;
-      });
-    }
-    return clubsMemoryCache.data;
-  }
-  if (inFlightClubs) {
-    return inFlightClubs;
-  }
-
-  inFlightClubs = (async () => {
-    try {
-      return await fetchAndStoreClubs();
-    } catch (error) {
-      console.error('Error in fetchAllClubs:', error);
-      throw error;
-    } finally {
-      inFlightClubs = null;
-    }
-  })();
-
-  return inFlightClubs;
+async function readClubAthletesCache(club: string) {
+  const cached = await getOfflineCache<ClubAthletesCache>(OFFLINE_CACHE_KEYS.clubAthletes);
+  const data = cached?.data?.[club];
+  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-/**
- * Fetch all athletes from a specific club, filtered to only completed meets
- */
-export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> {
-  const cached = athletesByClubCache.get(club);
-  if (cached) {
-    return cached;
-  }
-
-  const inFlight = athletesByClubInFlight.get(club);
-  if (inFlight) {
-    return inFlight;
-  }
-
-  const request = (async () => {
-    try {
-    // First get all athletes from this club
-    const allAthletes = await convex.query(api.athletes.getByClub, { club }) as unknown as AthleteClub[];
-
-    // Get the unique meets from these athletes
-    const uniqueMeets = Array.from(new Set(allAthletes.map(a => a.meet)));
-
-    if (uniqueMeets.length === 0) {
-      return [];
-    }
-
-    // Fetch the status of these meets
-    const meetsData = await Promise.all(uniqueMeets.map(name => convex.query(api.meets.getByName, { name })));
-    const meetsWithStatus = meetsData.filter(Boolean) as MeetStatus[];
-
-    // Filter to only keep completed meets
-    const completedMeetNames = new Set(
-      meetsWithStatus.filter(m => m.status === 'completed').map(m => m.name)
-    );
-
-    // Filter athletes to only those in completed meets
-    const filteredAthletes = allAthletes.filter(a => completedMeetNames.has(a.meet));
-
-    athletesByClubCache.set(club, filteredAthletes);
-    return filteredAthletes;
-  } catch (error) {
-    console.error('Error in fetchAthletesByClub:', error);
-    throw error;
-  } finally {
-    athletesByClubInFlight.delete(club);
-  }
-  })();
-
-  athletesByClubInFlight.set(club, request);
-  return request;
+async function readClubMeetStatsCache(club: string, meet: string) {
+  const cached = await getOfflineCache<ClubMeetStatsCache>(OFFLINE_CACHE_KEYS.clubMeetStats);
+  const data = cached?.data?.[getClubMeetStatsKey(club, meet)];
+  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-/**
- * Fetch and calculate stats for a specific club at a specific meet
- */
-export async function fetchClubMeetStats(club: string, meet: string): Promise<ClubMeetStats> {
-  const cacheKey = getClubMeetStatsKey(club, meet);
-  const cached = clubMeetStatsCache.get(cacheKey);
-  if (cached) {
-    return cached;
+async function fetchAllClubsFresh(): Promise<string[]> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+  return await convex.query(api.athletes.listClubs, {});
+}
+
+async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
   }
 
-  const inFlight = clubMeetStatsInFlight.get(cacheKey);
-  if (inFlight) {
-    return inFlight;
+  const allAthletes = await convex.query(api.athletes.getByClub, { club }) as unknown as AthleteClub[];
+  const uniqueMeets = Array.from(new Set(allAthletes.map((athlete) => athlete.meet)));
+  if (uniqueMeets.length === 0) {
+    return [];
   }
 
-  const request = (async () => {
-    try {
-    // Step 1: Get all athletes from this club at this meet
-    const clubAthletes = await convex.query(api.athletes.getByClubAndMeet, { club, meet }) as unknown as AthleteInfo[];
-    const athleteNames = clubAthletes.map(a => a.name);
+  const meetsData = await Promise.all(
+    uniqueMeets.map((name) => convex.query(api.meets.getByName, { name })),
+  );
+  const meetsWithStatus = meetsData.filter(Boolean) as MeetStatus[];
+  const completedMeetNames = new Set(
+    meetsWithStatus.filter((meet) => meet.status === 'completed').map((meet) => meet.name),
+  );
+  return allAthletes.filter((athlete) => completedMeetNames.has(athlete.meet));
+}
 
-    if (athleteNames.length === 0) {
-      return {
-        totalAthletes: 0,
-        goldMedals: 0,
-        silverMedals: 0,
-        bronzeMedals: 0,
-        totalPRs: 0,
-        perfect6for6: 0,
-        totalWeightLifted: 0,
-        athleteResults: []
-      };
-    }
+async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<ClubMeetStats> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
 
-    // Steps 2+3+4: Fetch all meet data in parallel
-    const [allMeetLiftingRaw, allMeetAthletes] = await Promise.all([
-      convex.query(api.liftingResults.getByMeet, { meet }),
-      convex.query(api.athletes.getByMeet, { meet }),
-    ]);
+  const clubAthletes = await convex.query(api.athletes.getByClubAndMeet, { club, meet }) as unknown as AthleteInfo[];
+  const athleteNames = clubAthletes.map((athlete) => athlete.name);
 
-    // Club athletes' results at this meet
-    const results = allMeetLiftingRaw.filter(r => athleteNames.includes(r.name)) as unknown as AthleteResult[];
-    const allMeetResults = allMeetLiftingRaw as unknown as AthleteResult[];
-
-    // Step 5: Get historical results for PR calculations
-    const firstDate = results.length > 0 ? (results[0] as any).date : new Date().toISOString();
-    const historicalRaw = await convex.query(api.liftingResults.getByNames, { names: athleteNames });
-    const historicalFiltered = historicalRaw.filter(r => r.federation !== 'BWL' && r.date < firstDate);
-
-    const historicalByAthlete = new Map<string, number>();
-    historicalFiltered.forEach((row) => {
-      if (!row.name || row.total == null) return;
-      const currentBest = historicalByAthlete.get(row.name) ?? 0;
-      if ((row.total ?? 0) > currentBest) {
-        historicalByAthlete.set(row.name, row.total ?? 0);
-      }
-    });
-
-    // Calculate stats
-    const stats: ClubMeetStats = {
-      totalAthletes: results.length,
+  if (athleteNames.length === 0) {
+    return {
+      totalAthletes: 0,
       goldMedals: 0,
       silverMedals: 0,
       bronzeMedals: 0,
       totalPRs: 0,
       perfect6for6: 0,
       totalWeightLifted: 0,
-      athleteResults: results
+      athleteResults: [],
     };
+  }
 
-    // Calculate total weight lifted
-    stats.totalWeightLifted = results.reduce((sum, r) => sum + r.total, 0);
+  const [allMeetLiftingRaw, allMeetAthletes] = await Promise.all([
+    convex.query(api.liftingResults.getByMeet, { meet }),
+    convex.query(api.athletes.getByMeet, { meet }),
+  ]);
 
-    // Calculate 6/6 days
-    for (const result of results) {
-      const lifts = [result.snatch1, result.snatch2, result.snatch3, result.cj1, result.cj2, result.cj3];
-      const allGood = lifts.every(lift => lift > 0);
-      if (allGood) {
-        stats.perfect6for6++;
-      }
+  const results = allMeetLiftingRaw.filter((row) => athleteNames.includes(row.name)) as unknown as AthleteResult[];
+  const allMeetResults = allMeetLiftingRaw as unknown as AthleteResult[];
+  const firstDate = results.length > 0 ? (results[0] as { date?: string }).date ?? new Date().toISOString() : new Date().toISOString();
+  const historicalRaw = await convex.query(api.liftingResults.getByNames, { names: athleteNames });
+  const historicalFiltered = historicalRaw.filter(
+    (row) => row.federation !== 'BWL' && row.date < firstDate,
+  );
+
+  const historicalByAthlete = new Map<string, number>();
+  historicalFiltered.forEach((row) => {
+    if (!row.name || row.total == null) return;
+    const currentBest = historicalByAthlete.get(row.name) ?? 0;
+    if ((row.total ?? 0) > currentBest) {
+      historicalByAthlete.set(row.name, row.total ?? 0);
+    }
+  });
+
+  const stats: ClubMeetStats = {
+    totalAthletes: results.length,
+    goldMedals: 0,
+    silverMedals: 0,
+    bronzeMedals: 0,
+    totalPRs: 0,
+    perfect6for6: 0,
+    totalWeightLifted: results.reduce((sum, row) => sum + row.total, 0),
+    athleteResults: results,
+  };
+
+  for (const result of results) {
+    const lifts = [result.snatch1, result.snatch2, result.snatch3, result.cj1, result.cj2, result.cj3];
+    if (lifts.every((lift) => lift > 0)) {
+      stats.perfect6for6 += 1;
     }
 
-    // Calculate PRs by comparing to historical bests
-    for (const result of results) {
-      const bestHistorical = historicalByAthlete.get(result.name) ?? 0;
-
-      if (result.total > bestHistorical) {
-        stats.totalPRs++;
-      }
+    const bestHistorical = historicalByAthlete.get(result.name) ?? 0;
+    if (result.total > bestHistorical) {
+      stats.totalPRs += 1;
     }
+  }
 
-    // Calculate medals - check snatch, c&j, and total separately by weight class
-    for (const clubAthlete of clubAthletes) {
-      const athleteResult = results.find(r => r.name === clubAthlete.name);
-      if (!athleteResult) continue;
+  for (const clubAthlete of clubAthletes) {
+    const athleteResult = results.find((result) => result.name === clubAthlete.name);
+    if (!athleteResult) continue;
 
-      // Get all results in this athlete's weight class
-      const athletesInWeightClass = (allMeetAthletes as any[]).filter(
-        a => (a.weightClass ?? a.weight_class) === (clubAthlete as any).weightClass
-      );
-      const namesInWeightClass = athletesInWeightClass.map((a: any) => a.name);
-      const resultsInWeightClass = allMeetResults.filter(
-        r => namesInWeightClass.includes(r.name) && r.total > 0
-      );
+    const athletesInWeightClass = (allMeetAthletes as Array<{ weightClass?: string; weight_class?: string; name: string }>).filter(
+      (athlete) => (athlete.weightClass ?? athlete.weight_class) === (clubAthlete as { weightClass?: string }).weightClass,
+    );
+    const namesInWeightClass = athletesInWeightClass.map((athlete) => athlete.name);
+    const resultsInWeightClass = allMeetResults.filter(
+      (result) => namesInWeightClass.includes(result.name) && result.total > 0,
+    );
 
-      // Medal for SNATCH
-      const sortedBySnatch = [...resultsInWeightClass].sort((a, b) => ((b as any).snatchBest ?? (b as any).snatch_best ?? 0) - ((a as any).snatchBest ?? (a as any).snatch_best ?? 0));
-      const snatchRank = sortedBySnatch.findIndex(r => r.name === clubAthlete.name);
-      if (snatchRank === 0) stats.goldMedals++;
-      else if (snatchRank === 1) stats.silverMedals++;
-      else if (snatchRank === 2) stats.bronzeMedals++;
+    const sortedBySnatch = [...resultsInWeightClass].sort(
+      (left, right) =>
+        ((right as AthleteResult & { snatchBest?: number; snatch_best?: number }).snatchBest ??
+          (right as AthleteResult & { snatchBest?: number; snatch_best?: number }).snatch_best ??
+          0) -
+        ((left as AthleteResult & { snatchBest?: number; snatch_best?: number }).snatchBest ??
+          (left as AthleteResult & { snatchBest?: number; snatch_best?: number }).snatch_best ??
+          0),
+    );
+    const snatchRank = sortedBySnatch.findIndex((result) => result.name === clubAthlete.name);
+    if (snatchRank === 0) stats.goldMedals += 1;
+    else if (snatchRank === 1) stats.silverMedals += 1;
+    else if (snatchRank === 2) stats.bronzeMedals += 1;
 
-      // Medal for CLEAN & JERK
-      const sortedByCJ = [...resultsInWeightClass].sort((a, b) => ((b as any).cjBest ?? (b as any).cj_best ?? 0) - ((a as any).cjBest ?? (a as any).cj_best ?? 0));
-      const cjRank = sortedByCJ.findIndex(r => r.name === clubAthlete.name);
-      if (cjRank === 0) stats.goldMedals++;
-      else if (cjRank === 1) stats.silverMedals++;
-      else if (cjRank === 2) stats.bronzeMedals++;
+    const sortedByCJ = [...resultsInWeightClass].sort(
+      (left, right) =>
+        ((right as AthleteResult & { cjBest?: number; cj_best?: number }).cjBest ??
+          (right as AthleteResult & { cjBest?: number; cj_best?: number }).cj_best ??
+          0) -
+        ((left as AthleteResult & { cjBest?: number; cj_best?: number }).cjBest ??
+          (left as AthleteResult & { cjBest?: number; cj_best?: number }).cj_best ??
+          0),
+    );
+    const cjRank = sortedByCJ.findIndex((result) => result.name === clubAthlete.name);
+    if (cjRank === 0) stats.goldMedals += 1;
+    else if (cjRank === 1) stats.silverMedals += 1;
+    else if (cjRank === 2) stats.bronzeMedals += 1;
 
-      // Medal for TOTAL
-      const sortedByTotal = [...resultsInWeightClass].sort((a, b) => b.total - a.total);
-      const totalRank = sortedByTotal.findIndex(r => r.name === clubAthlete.name);
-      if (totalRank === 0) stats.goldMedals++;
-      else if (totalRank === 1) stats.silverMedals++;
-      else if (totalRank === 2) stats.bronzeMedals++;
+    const sortedByTotal = [...resultsInWeightClass].sort((left, right) => right.total - left.total);
+    const totalRank = sortedByTotal.findIndex((result) => result.name === clubAthlete.name);
+    if (totalRank === 0) stats.goldMedals += 1;
+    else if (totalRank === 1) stats.silverMedals += 1;
+    else if (totalRank === 2) stats.bronzeMedals += 1;
+  }
+
+  return stats;
+}
+
+async function persistClubs(clubs: string[]) {
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubs, clubs);
+  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+async function persistClubAthletes(club: string, athletes: AthleteClub[]) {
+  const cached = await getOfflineCache<ClubAthletesCache>(OFFLINE_CACHE_KEYS.clubAthletes);
+  const nextCache: ClubAthletesCache = {
+    ...(cached?.data || {}),
+    [club]: athletes,
+  };
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubAthletes, nextCache);
+  return { data: athletes, lastUpdatedAt: entry.lastSynced };
+}
+
+async function persistClubMeetStats(club: string, meet: string, stats: ClubMeetStats) {
+  const cacheKey = getClubMeetStatsKey(club, meet);
+  const cached = await getOfflineCache<ClubMeetStatsCache>(OFFLINE_CACHE_KEYS.clubMeetStats);
+  const nextCache: ClubMeetStatsCache = {
+    ...(cached?.data || {}),
+    [cacheKey]: stats,
+  };
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubMeetStats, nextCache);
+  return { data: stats, lastUpdatedAt: entry.lastSynced };
+}
+
+export const clubsResource = createMutableResource<string[], []>({
+  getKey: () => OFFLINE_CACHE_KEYS.clubs,
+  loadCached: () => readClubsCache(),
+  fetchFresh: () => fetchAllClubsFresh(),
+  persistFresh: (data) => persistClubs(data),
+});
+
+export const clubAthletesResource = createMutableResource<AthleteClub[], [string]>({
+  getKey: (club) => `${OFFLINE_CACHE_KEYS.clubAthletes}:${club}`,
+  loadCached: (club) => readClubAthletesCache(club),
+  fetchFresh: (club) => fetchAthletesByClubFresh(club),
+  persistFresh: (data, club) => persistClubAthletes(club, data),
+});
+
+export const clubMeetStatsResource = createMutableResource<ClubMeetStats, [string, string]>({
+  getKey: (club, meet) => `${OFFLINE_CACHE_KEYS.clubMeetStats}:${club}:${meet}`,
+  loadCached: (club, meet) => readClubMeetStatsCache(club, meet),
+  fetchFresh: (club, meet) => fetchClubMeetStatsFresh(club, meet),
+  persistFresh: (data, club, meet) => persistClubMeetStats(club, meet, data),
+});
+
+export async function fetchAllClubs(): Promise<string[]> {
+  try {
+    const clubs = await fetchAllClubsFresh();
+    await persistClubs(clubs);
+    return clubs;
+  } catch (error) {
+    const cached = await readClubsCache();
+    if (cached?.data) {
+      return cached.data;
     }
+    console.error('Error in fetchAllClubs:', error);
+    throw error;
+  }
+}
 
-    clubMeetStatsCache.set(cacheKey, stats);
+export async function fetchAthletesByClub(club: string): Promise<AthleteClub[]> {
+  try {
+    const athletes = await fetchAthletesByClubFresh(club);
+    await persistClubAthletes(club, athletes);
+    return athletes;
+  } catch (error) {
+    const cached = await readClubAthletesCache(club);
+    if (cached?.data) {
+      return cached.data;
+    }
+    console.error('Error in fetchAthletesByClub:', error);
+    throw error;
+  }
+}
+
+export async function fetchClubMeetStats(club: string, meet: string): Promise<ClubMeetStats> {
+  try {
+    const stats = await fetchClubMeetStatsFresh(club, meet);
+    await persistClubMeetStats(club, meet, stats);
     return stats;
   } catch (error) {
+    const cached = await readClubMeetStatsCache(club, meet);
+    if (cached?.data) {
+      return cached.data;
+    }
     console.error('Error in fetchClubMeetStats:', error);
     throw error;
-  } finally {
-    clubMeetStatsInFlight.delete(cacheKey);
   }
-  })();
-
-  clubMeetStatsInFlight.set(cacheKey, request);
-  return request;
 }

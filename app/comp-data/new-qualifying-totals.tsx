@@ -5,32 +5,33 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useFetchData } from "@/hooks/useFetchData";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchQualifyingTotals,
   QualifyingTotalsData,
+  qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
 import { Stack } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
 export default function QualifyingTotalsScreen() {
   const colors = useAppColors();
-  const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
+  const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
+    useFilterState<Filters>({
     defaultFilters: { event: "Nationals", gender: "Men", ageGroup: "Senior" },
   });
   const {
     data: totalsData,
-    loading,
+    isInitialLoading,
     error: fetchError,
-  } = useFetchData<QualifyingTotalsData>(
-    fetchQualifyingTotals,
-    {} as QualifyingTotalsData,
-    [],
-  );
+  } = useMutableResource({
+    resource: qualifyingTotalsResource,
+    params: [] as const,
+    initialData: {} as QualifyingTotalsData,
+  });
 
   const getFilterDisplayText = () => {
     const parts = [];
@@ -63,11 +64,55 @@ export default function QualifyingTotalsScreen() {
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [totalsData]);
 
+  useEffect(() => {
+    if (eventOptions.length === 0) {
+      return;
+    }
+
+    const nextEvent = eventOptions.includes(filters.event)
+      ? filters.event
+      : eventOptions[0];
+    const nextAgeGroups =
+      nextEvent && totalsData[nextEvent]
+        ? sortAgeGroups(
+            Object.keys(totalsData[nextEvent]).filter(
+              (ageGroup) => typeof ageGroup === "string",
+            ),
+            { includeExtended: true },
+          )
+        : [];
+    const nextAgeGroup = nextAgeGroups.includes(filters.ageGroup)
+      ? filters.ageGroup
+      : (nextAgeGroups[0] ?? "");
+
+    if (nextEvent === filters.event && nextAgeGroup === filters.ageGroup) {
+      return;
+    }
+
+    setFilters((prev) => ({
+      ...prev,
+      event: nextEvent,
+      ageGroup: nextAgeGroup,
+    }));
+    setTempFilters((prev) => ({
+      ...prev,
+      event: nextEvent,
+      ageGroup: nextAgeGroup,
+    }));
+  }, [
+    eventOptions,
+    filters.ageGroup,
+    filters.event,
+    setFilters,
+    setTempFilters,
+    totalsData,
+  ]);
+
   const buildFilterSections = (
     modalTempFilters: Record<string, string>,
   ): FilterSection[] => {
     const selectedEvent = modalTempFilters.event || filters.event;
-    const ageGroupOptions =
+    const modalAgeGroupOptions =
       selectedEvent && totalsData[selectedEvent]
         ? sortAgeGroups(
             Object.keys(totalsData[selectedEvent]).filter(
@@ -94,7 +139,7 @@ export default function QualifyingTotalsScreen() {
       {
         id: "ageGroup",
         title: "Age Group",
-        options: ageGroupOptions.map((age) => ({
+        options: modalAgeGroupOptions.map((age) => ({
           value: age,
           label: age.charAt(0).toUpperCase() + age.slice(1),
         })),
@@ -136,7 +181,7 @@ export default function QualifyingTotalsScreen() {
         ]}
         data={totals}
         keyExtractor={(record) => record.bodyweightDivision}
-        loading={loading}
+        loading={isInitialLoading}
         error={fetchError}
         renderRow={(record, index) => (
           <View
