@@ -51,6 +51,7 @@ interface StartListFilterModalProps {
   ageGroupFilter: string;
   adaptiveAthleteFilter: string;
   genderFilter: string;
+  wsoFilter: string;
   sortOption: string;
   onApplyFilters: (filters: {
     weightClass: string;
@@ -58,6 +59,7 @@ interface StartListFilterModalProps {
     ageGroup: string;
     adaptiveAthlete: string;
     gender: string;
+    wso: string;
     sort: string;
   }) => void;
   onResetFilters: () => void;
@@ -74,6 +76,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
   ageGroupFilter,
   adaptiveAthleteFilter,
   genderFilter,
+  wsoFilter,
   sortOption,
   onApplyFilters,
   onResetFilters,
@@ -86,6 +89,18 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
 
   const clubOptions = useMemo(
     () => Array.from(new Set(athletes.map((a) => a.club))).sort(),
+    [athletes],
+  );
+
+  const wsoOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          athletes
+            .map((athlete) => athlete.wso?.trim())
+            .filter((wso): wso is string => Boolean(wso)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
     [athletes],
   );
 
@@ -246,13 +261,17 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
       const matchesGender = tempFilters.gender
         ? genderLower === tempFilters.gender.toLowerCase()
         : true;
+      const matchesWSO = tempFilters.wso
+        ? athlete.wso?.trim() === tempFilters.wso
+        : true;
 
       return (
         matchesWeightClass &&
         matchesClub &&
         matchesAgeGroup &&
         matchesAdaptiveAthlete &&
-        matchesGender
+        matchesGender &&
+        matchesWSO
       );
     }).length;
 
@@ -495,6 +514,16 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
             </ScrollView>
           ),
         },
+        ...(wsoOptions.length > 0
+          ? [
+              {
+                id: "wso",
+                title: "WSO",
+                options: wsoOptions.map((wso) => ({ value: wso, label: wso })),
+                allOptionLabel: "All Regions",
+              } satisfies FilterSection,
+            ]
+          : []),
       ],
     [
       clubSearchQuery,
@@ -509,6 +538,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
       onToggleStarredClub,
       sortedClubOptions,
       starredClubs,
+      wsoOptions,
     ],
   );
 
@@ -523,6 +553,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         adaptiveAthlete: adaptiveAthleteFilter,
         weightClass: weightClassFilter,
         club: clubFilter,
+        wso: wsoFilter,
         sort: sortOption,
       }}
       onApplyFilters={(filters) => {
@@ -532,6 +563,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
           ageGroup: filters.ageGroup,
           adaptiveAthlete: filters.adaptiveAthlete,
           gender: filters.gender,
+          wso: filters.wso,
           sort: filters.sort,
         });
       }}

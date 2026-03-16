@@ -5,6 +5,7 @@ export interface LiftResult {
   name: string;
   age: number;
   club: string;
+  wso?: string;
   gender: string;
   weightClass: string;
   entryTotal: number;
