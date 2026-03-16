@@ -58,6 +58,8 @@ export function useSignInHandlers() {
           feature: feature,
         },
       } as any);
+    } else if (router.canGoBack()) {
+      router.back();
     } else if (from && from !== "feature") {
       // Return to origin
       router.replace(from as any);

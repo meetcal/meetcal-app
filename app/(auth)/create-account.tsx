@@ -65,10 +65,17 @@ export default function CreateAccountScreen() {
       } as any);
       return;
     }
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
     if (from && from !== "feature") {
       router.replace(from as any);
       return;
     }
+
     router.replace("/(tabs)/(index)" as any);
   };
 
