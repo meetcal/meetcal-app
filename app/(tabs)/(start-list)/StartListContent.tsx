@@ -81,6 +81,7 @@ export default function StartListScreen() {
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
   const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
+  const [wsoFilter, setWsoFilter] = useState("");
   const [sortOption, setSortOption] = useState<AthleteSortOption>("alphabetical");
   const [searchQuery, setSearchQuery] = useState("");
   const colors = useAppColors();
@@ -363,6 +364,13 @@ export default function StartListScreen() {
     [],
   );
 
+  const selectedShareGroup = useMemo(() => {
+    if (clubFilter && clubFilter !== STARRED_CLUBS_FILTER) {
+      return clubFilter;
+    }
+    return wsoFilter;
+  }, [clubFilter, wsoFilter]);
+
   // Update getFilterDisplayText to handle age group
   const getFilterDisplayText = () => {
     const filters = [];
@@ -374,6 +382,7 @@ export default function StartListScreen() {
     if (ageGroupFilter) filters.push(ageGroupFilter);
     if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
     if (genderFilter) filters.push(genderFilter);
+    if (wsoFilter) filters.push(wsoFilter);
 
     return filters.length > 0 ? filters.join(" • ") : "Filter";
   };
@@ -385,6 +394,7 @@ export default function StartListScreen() {
       weightClasses: parseWeightClasses(athlete.weightClass),
       ageCategory: getAgeCategory(athlete.age),
       genderLower: athlete.gender.toLowerCase(),
+      wso: athlete.wso?.trim() || "",
     }));
   }, [athletes]);
 
@@ -474,7 +484,7 @@ export default function StartListScreen() {
 
     return normalizedAthletes
       .filter(
-        ({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
+        ({ athlete, nameLower, weightClasses, ageCategory, genderLower, wso }) => {
           const matchesWeightClass = weightClassFilter
             ? weightClasses.includes(weightClassFilter)
             : true;
@@ -495,6 +505,7 @@ export default function StartListScreen() {
                 : true
             : true;
           const matchesGender = gender ? genderLower === gender : true;
+          const matchesWSO = wsoFilter ? wso === wsoFilter : true;
 
           return (
             matchesWeightClass &&
@@ -502,7 +513,8 @@ export default function StartListScreen() {
             matchesSearch &&
             matchesAgeGroup &&
             matchesAdaptiveAthlete &&
-            matchesGender
+            matchesGender &&
+            matchesWSO
           );
         },
       )
@@ -516,6 +528,7 @@ export default function StartListScreen() {
     ageGroupFilter,
     adaptiveAthleteFilter,
     genderFilter,
+    wsoFilter,
     starredClubs,
     sortFilteredAthletes,
   ]);
@@ -700,6 +713,7 @@ export default function StartListScreen() {
     ageGroup: string;
     adaptiveAthlete: string;
     gender: string;
+    wso: string;
     sort: AthleteSortOption;
   }) => {
     setWeightClassFilter(filters.weightClass);
@@ -707,6 +721,7 @@ export default function StartListScreen() {
     setAgeGroupFilter(filters.ageGroup);
     setAdaptiveAthleteFilter(filters.adaptiveAthlete);
     setGenderFilter(filters.gender);
+    setWsoFilter(filters.wso);
     setSortOption(filters.sort);
 
     const nextCount = filterApplyCount + 1;
@@ -724,6 +739,7 @@ export default function StartListScreen() {
     setAgeGroupFilter("");
     setAdaptiveAthleteFilter("");
     setGenderFilter("");
+    setWsoFilter("");
     setSortOption("alphabetical");
     setSearchQuery("");
   };
@@ -795,15 +811,10 @@ export default function StartListScreen() {
 
   // Capture schedule image for sharing
   const captureScheduleImage = async () => {
-    // Validate that a specific club is selected
-    if (
-      !clubFilter ||
-      clubFilter === "" ||
-      clubFilter === STARRED_CLUBS_FILTER
-    ) {
+    if (!selectedShareGroup) {
       Alert.alert(
-        "Select a Club",
-        "Please select a specific club from the filters to create a shareable schedule.",
+        "Select a Club or WSO",
+        "Please select a specific club or WSO from the filters to create a shareable schedule.",
       );
       return;
     }
@@ -868,14 +879,10 @@ export default function StartListScreen() {
   };
 
   const generateShareableScheduleCsv = async () => {
-    if (
-      !clubFilter ||
-      clubFilter === "" ||
-      clubFilter === STARRED_CLUBS_FILTER
-    ) {
+    if (!selectedShareGroup) {
       Alert.alert(
-        "Select a Club",
-        "Please select a specific club from the filters to create a shareable schedule.",
+        "Select a Club or WSO",
+        "Please select a specific club or WSO from the filters to create a shareable schedule.",
       );
       return;
     }
@@ -965,7 +972,7 @@ export default function StartListScreen() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const header = [
-      "Club",
+      "Group",
       "Meet",
       "Name",
       "Weight Class",
@@ -982,7 +989,7 @@ export default function StartListScreen() {
         const dateStr = details?.date ?? "";
 
         rows.push([
-          clubFilter,
+          selectedShareGroup,
           selectedMeet || "",
           athlete.name || "",
           athlete.weightClass || "",
@@ -1008,7 +1015,7 @@ export default function StartListScreen() {
         return;
       }
 
-      const fileName = `meetcal-schedule-${sanitizeFileName(clubFilter)}-${Date.now()}.csv`;
+      const fileName = `meetcal-schedule-${sanitizeFileName(selectedShareGroup)}-${Date.now()}.csv`;
       const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
       file.write(csvContent, { encoding: "utf8" });
 
@@ -1146,6 +1153,7 @@ export default function StartListScreen() {
             ageGroupFilter,
             adaptiveAthleteFilter,
             genderFilter,
+            wsoFilter,
             searchQuery,
           }}
           keyExtractor={keyExtractor}
@@ -1178,6 +1186,7 @@ export default function StartListScreen() {
         ageGroupFilter={ageGroupFilter}
         adaptiveAthleteFilter={adaptiveAthleteFilter}
         genderFilter={genderFilter}
+        wsoFilter={wsoFilter}
         sortOption={sortOption}
         onApplyFilters={handleApplyFilters}
         onResetFilters={resetFilters}
@@ -1201,7 +1210,7 @@ export default function StartListScreen() {
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
               selectedMeet={selectedMeet || ""}
-              selectedClub={clubFilter || ""}
+              selectedGroup={selectedShareGroup || ""}
               getSessionDetails={getSessionDetails}
               backgroundPreset="white"
             />
@@ -1211,7 +1220,7 @@ export default function StartListScreen() {
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
               selectedMeet={selectedMeet || ""}
-              selectedClub={clubFilter || ""}
+              selectedGroup={selectedShareGroup || ""}
               getSessionDetails={getSessionDetails}
               backgroundPreset="transparent"
             />

@@ -14,6 +14,7 @@ export default defineSchema({
     name: v.string(),
     age: v.number(),
     club: v.string(),
+    wso: v.optional(v.string()),
     gender: v.string(),
     weightClass: v.string(),
     entryTotal: v.number(),

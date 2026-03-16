@@ -20,7 +20,7 @@ export interface ShareScheduleViewProps {
     filteredAthletes: LiftResult[];
     schedule: ScheduleType;
     selectedMeet: string;
-    selectedClub: string;
+    selectedGroup: string;
     backgroundPreset?: ShareBackgroundPresetId;
     getSessionDetails: (sessionNumber: number) => {
         date: string;
