@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import { getMeetData, saveMeetSchedule } from "@/lib/database/offline-store";
+import {
+  clearMeetSchedule,
+  getMeetData,
+  saveMeetSchedule,
+} from "@/lib/database/offline-store";
 import { MeetName } from "@/data/types/meet";
 import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
@@ -29,8 +33,16 @@ const scheduleResource = createMutableResource<Schedule, [MeetName]>({
   },
   fetchFresh: async (meet) => fetchSchedule(meet),
   persistFresh: async (data, meet) => {
+    if (data.length === 0) {
+      await clearMeetSchedule(meet);
+      return { data, lastUpdatedAt: Date.now() };
+    }
+
     await saveMeetSchedule(meet, data);
     return { data, lastUpdatedAt: Date.now() };
+  },
+  clearCached: async (meet) => {
+    await clearMeetSchedule(meet);
   },
   isEqual: defaultIsEqual,
 });
