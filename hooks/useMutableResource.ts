@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MutableResource,
   ResourceSource,
-  stableSerialize,
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
 
@@ -37,11 +36,14 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     revalidateOnReconnect = true,
   } = options;
 
-  const serializedParams = useMemo(() => stableSerialize(params), [params]);
-  const key = useMemo(() => resource.getKey(...params), [resource, serializedParams]);
+  const key = useMemo(
+    () => resource.getKey(...params),
+    [params, resource],
+  );
   const paramsRef = useRef(params);
   const sourceRef = useRef<ResourceSource | null>(null);
   const lastReconnectStateRef = useRef<boolean | null>(null);
+  const previousKeyRef = useRef<string | null>(null);
   paramsRef.current = params;
 
   const [data, setData] = useState<T>(initialData);
@@ -103,9 +105,18 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         return;
       }
 
+      const keyChanged = previousKeyRef.current !== key;
+      previousKeyRef.current = key;
+
       setError(null);
       setIsRefreshing(false);
-      if (sourceRef.current === null) {
+      if (keyChanged) {
+        setData(initialData);
+        setLastUpdatedAt(null);
+        setSource(null);
+      }
+
+      if (keyChanged || sourceRef.current === null) {
         setIsInitialLoading(true);
       }
 
@@ -136,7 +147,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     return () => {
       cancelled = true;
     };
-  }, [enabled, key, refresh, resource]);
+  }, [enabled, initialData, key, refresh, resource]);
 
   useEffect(() => {
     if (!enabled || !revalidateOnReconnect) return;
