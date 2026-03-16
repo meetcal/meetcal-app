@@ -1,6 +1,7 @@
 import ImagePreviewModal from "@/components/share/ImagePreviewModal";
 import ShareScheduleView from "@/components/share/ShareScheduleView";
 import ActionModal from "@/components/start-list/ActionModal";
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import {
   AthleteItem,
 } from "@/components/start-list/AthleteItem";
@@ -38,7 +39,15 @@ import {
 import type { Schedule as ScheduleType } from "@/types/schedule";
 import { SessionDetails } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
-import { createCalendarEvents } from "@/utils/calendar";
+import {
+  type CalendarDestination,
+  type CalendarSession,
+  createCalendarEvents,
+  createCalendarEventsToCalendar,
+  getWritableCalendars,
+  resolvePreferredAndroidCalendar,
+  setPreferredAndroidCalendarId,
+} from "@/utils/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
@@ -90,6 +99,7 @@ export default function StartListScreen() {
   const { saveSessionsFromAthletes } = useSavedSessions();
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { selectedMeet } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
@@ -114,6 +124,13 @@ export default function StartListScreen() {
     [],
   );
   const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
+  const [calendarDestinations, setCalendarDestinations] = useState<
+    CalendarDestination[]
+  >([]);
+  const [pendingCalendarSessions, setPendingCalendarSessions] = useState<
+    CalendarSession[] | null
+  >(null);
+  const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
 
   const loadStoreReview = useCallback(async () => {
@@ -686,11 +703,38 @@ export default function StartListScreen() {
                 );
                 return;
               }
+
+              if (Platform.OS === "android") {
+                const preferredCalendar = await resolvePreferredAndroidCalendar();
+                if (preferredCalendar) {
+                  await createCalendarEventsToCalendar(
+                    sessionsToAdd,
+                    preferredCalendar.id,
+                  );
+                  Alert.alert(
+                    "Success",
+                    `Sessions have been added to ${preferredCalendar.title}.`,
+                  );
+                  return;
+                }
+
+                const writableCalendars = await getWritableCalendars();
+                if (writableCalendars.length === 0) {
+                  Alert.alert(
+                    "No Calendars Found",
+                    "Add a calendar account on this device before saving sessions.",
+                  );
+                  return;
+                }
+
+                setCalendarDestinations(writableCalendars);
+                setPendingCalendarSessions(sessionsToAdd);
+                setShowCalendarPicker(true);
+                return;
+              }
+
               await createCalendarEvents(sessionsToAdd);
-              Alert.alert(
-                "Success",
-                "Sessions have been added to your calendar.",
-              );
+              Alert.alert("Success", "Sessions have been added to your calendar.");
             } catch (error) {
               Alert.alert(
                 "Error",
@@ -705,6 +749,42 @@ export default function StartListScreen() {
       ],
     );
   };
+
+  const handleAndroidCalendarSelection = useCallback(
+    async (destination: CalendarDestination) => {
+      if (!pendingCalendarSessions?.length) {
+        setShowCalendarPicker(false);
+        return;
+      }
+
+      setIsCalendarPickerLoading(true);
+
+      try {
+        await setPreferredAndroidCalendarId(destination.id);
+        await createCalendarEventsToCalendar(
+          pendingCalendarSessions,
+          destination.id,
+        );
+        setShowCalendarPicker(false);
+        setPendingCalendarSessions(null);
+        Alert.alert(
+          "Success",
+          `Sessions have been added to ${destination.title}.`,
+        );
+      } catch (error) {
+        console.error("StartList: failed to write calendar events", error);
+        Alert.alert(
+          "Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to add sessions to calendar.",
+        );
+      } finally {
+        setIsCalendarPickerLoading(false);
+      }
+    },
+    [pendingCalendarSessions],
+  );
 
   // Update apply handler
   const handleApplyFilters = (filters: {
@@ -1201,6 +1281,20 @@ export default function StartListScreen() {
         onSaveToCalendar={handleSaveToCalendar}
         onCreateShareableSchedule={handleCreateShareableSchedule}
         onDownloadShareableSchedule={handleDownloadShareableSchedule}
+      />
+
+      <CalendarDestinationPickerModal
+        visible={showCalendarPicker}
+        title="Choose Calendar"
+        destinations={calendarDestinations}
+        onClose={() => {
+          setShowCalendarPicker(false);
+          setPendingCalendarSessions(null);
+        }}
+        onSelect={(destination) => {
+          void handleAndroidCalendarSelection(destination);
+        }}
+        isLoading={isCalendarPickerLoading}
       />
 
       {showShareViews && (

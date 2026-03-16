@@ -10,15 +10,17 @@ import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
-  createCalendarEvents,
+  createCalendarEventWithSystemUI,
+  createCalendarEventsToCalendar,
   requestCalendarPermissions,
+  resolvePreferredAndroidCalendar,
 } from "@/utils/calendar";
 import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
@@ -35,7 +37,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   platformWeighInTime,
   athleteName,
 }) => {
-  const [hasCalendarPermission, setHasCalendarPermission] = useState(false);
   const router = useRouter();
   const colors = useAppColors();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
@@ -59,13 +60,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
-
-  useEffect(() => {
-    (async () => {
-      const hasPermission = await requestCalendarPermissions();
-      setHasCalendarPermission(hasPermission);
-    })();
-  }, []);
 
   const showSaveAlert = (action: "save" | "remove") => {
     const title = action === "save" ? "Session Saved" : "Session Unsaved";
@@ -160,7 +154,17 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     }
   };
 
-  const showSuccessAlert = () => {
+  const showSuccessAlert = (openedSystemCalendar = false) => {
+    if (Platform.OS === "android" && openedSystemCalendar) {
+      Alert.alert(
+        "Calendar Opened",
+        "Review the event in your calendar app and save it there.",
+        [{ text: "OK" }],
+        { userInterfaceStyle: "light" },
+      );
+      return;
+    }
+
     Alert.alert(
       "Added to Calendar",
       `Session ${sessionNumber} - ${platform} - ${sessionWeightClass} has been added to your calendar`,
@@ -170,19 +174,15 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   };
 
   const addToCalendar = async () => {
-    // Check permissions first
-    if (!hasCalendarPermission) {
-      const hasPermission = await requestCalendarPermissions();
-      if (!hasPermission) {
-        Alert.alert(
-          "Calendar Permission Required",
-          "Please enable calendar access in your device settings to add events.",
-          [{ text: "OK" }],
-          { userInterfaceStyle: "light" },
-        );
-        return;
-      }
-      setHasCalendarPermission(true);
+    const hasPermission = await requestCalendarPermissions();
+    if (!hasPermission) {
+      Alert.alert(
+        "Calendar Permission Required",
+        "Please enable calendar access in your device settings to add events.",
+        [{ text: "OK" }],
+        { userInterfaceStyle: "light" },
+      );
+      return;
     }
 
     // Find the session and get platform-specific time
@@ -221,20 +221,42 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       const startTimeToUse = platformData?.platformStartTime || startTime;
       const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
 
-      // Use the shared createCalendarEvents utility
-      await createCalendarEvents([
-        {
-          date: sessionDay.fullDate,
-          startTime: startTimeToUse,
-          weighInTime: weighInTime,
-          sessionNumber: sessionNumber,
-          platform: platform,
-          weightClass: sessionWeightClass,
-          meet: meet,
-        },
-      ]);
+      const calendarSession = {
+        date: sessionDay.fullDate,
+        startTime: startTimeToUse,
+        weighInTime: weighInTime,
+        sessionNumber: sessionNumber,
+        platform: platform,
+        weightClass: sessionWeightClass,
+        meet: meet,
+      };
 
-      showSuccessAlert();
+      let openedSystemCalendar = false;
+      if (Platform.OS === "android") {
+        try {
+          await createCalendarEventWithSystemUI(calendarSession);
+          openedSystemCalendar = true;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "";
+          if (!errorMessage.includes("Could not open the Android calendar app")) {
+            throw error;
+          }
+
+          const preferredCalendar = await resolvePreferredAndroidCalendar();
+          if (!preferredCalendar) {
+            throw error;
+          }
+
+          await createCalendarEventsToCalendar(
+            [calendarSession],
+            preferredCalendar.id,
+          );
+        }
+      } else {
+        await createCalendarEventWithSystemUI(calendarSession);
+      }
+
+      showSuccessAlert(openedSystemCalendar);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error("Error creating calendar event:", error);
@@ -259,7 +281,15 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     <View style={[styles.card, { backgroundColor: colors.card }]}>
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
         <ThemedText style={[styles.sessionSummary, { color: colors.text }]}>
-          Session {sessionNumber} • {platformStartTime} {timeZoneAbbr}
+          Session
+          {" "}
+          {sessionNumber}
+          {" "}
+          •
+          {" "}
+          {platformStartTime}
+          {" "}
+          {timeZoneAbbr}
         </ThemedText>
       </View>
 

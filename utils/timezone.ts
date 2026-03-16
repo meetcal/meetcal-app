@@ -79,7 +79,8 @@ export function parseClockTime(time: string): { hour: number; minute: number } {
     return { hour, minute };
   }
 
-  const twentyFourHourMatch = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(input);
+  const twentyFourHourMatch =
+    /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(input);
   if (twentyFourHourMatch) {
     return {
       hour: Number(twentyFourHourMatch[1]),
