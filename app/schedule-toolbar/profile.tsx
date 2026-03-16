@@ -1,4 +1,5 @@
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
+import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { IconSymbol } from "@/components/ui/IconSymbol";
@@ -225,6 +226,9 @@ export default function ProfileScreen() {
             requireAuth={requireAuth}
             router={router}
           />
+          {Platform.OS === "android" && (
+            <AndroidCalendarSetting colors={colors} />
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
