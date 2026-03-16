@@ -23,7 +23,7 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletes, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { preloadYearBests } from "@/lib/start-list-api";
+import { getLastYearBests, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   getAgeCategory,
   getChevronIcon,
@@ -67,6 +67,13 @@ const REVIEW_COUNT_KEY = "startListFilterApplyCount";
 const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
 const REVIEW_COUNTS = [5, 50, 100] as const;
 
+type AthleteSortOption =
+  | "alphabetical"
+  | "entryTotal"
+  | "bestTotal"
+  | "bestSnatch"
+  | "bestCJ";
+
 export default function StartListScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState("");
@@ -74,6 +81,7 @@ export default function StartListScreen() {
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
   const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
+  const [sortOption, setSortOption] = useState<AthleteSortOption>("alphabetical");
   const [searchQuery, setSearchQuery] = useState("");
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
@@ -104,6 +112,7 @@ export default function StartListScreen() {
   const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
     [],
   );
+  const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
 
   const loadStoreReview = useCallback(async () => {
@@ -379,6 +388,86 @@ export default function StartListScreen() {
     }));
   }, [athletes]);
 
+  useEffect(() => {
+    if (
+      sortOption !== "bestTotal" &&
+      sortOption !== "bestSnatch" &&
+      sortOption !== "bestCJ"
+    ) {
+      return;
+    }
+
+    if (athletes.length === 0) {
+      setAthleteBests({});
+      return;
+    }
+
+    let isCancelled = false;
+    const loadAthleteBests = async () => {
+      try {
+        const uniqueNames = Array.from(
+          new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
+        );
+        const bests = await Promise.all(
+          uniqueNames.map(async (name) => [name, await getLastYearBests(name)] as const),
+        );
+        if (!isCancelled) {
+          setAthleteBests(Object.fromEntries(bests));
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.warn("StartList: Failed to load athlete bests", error);
+          setAthleteBests({});
+        }
+      }
+    };
+
+    loadAthleteBests();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [athletes, sortOption]);
+
+  const sortFilteredAthletes = useCallback(
+    (left: LiftResult, right: LiftResult) => {
+      if (sortOption === "alphabetical") {
+        return sortAthletes(left, right);
+      }
+
+      const compareDescending = (leftValue: number, rightValue: number) => {
+        if (rightValue !== leftValue) {
+          return rightValue - leftValue;
+        }
+        return sortAthletes(left, right);
+      };
+
+      if (sortOption === "entryTotal") {
+        return compareDescending(left.entryTotal || 0, right.entryTotal || 0);
+      }
+
+      const leftBests = athleteBests[left.name];
+      const rightBests = athleteBests[right.name];
+
+      if (sortOption === "bestTotal") {
+        return compareDescending(
+          leftBests?.bestTotal || 0,
+          rightBests?.bestTotal || 0,
+        );
+      }
+
+      if (sortOption === "bestSnatch") {
+        return compareDescending(
+          leftBests?.bestSnatch || 0,
+          rightBests?.bestSnatch || 0,
+        );
+      }
+
+      return compareDescending(leftBests?.bestCJ || 0, rightBests?.bestCJ || 0);
+    },
+    [athleteBests, sortOption],
+  );
+
   const filteredAthletes = useMemo(() => {
     const search = searchQuery.toLowerCase();
     const gender = genderFilter.toLowerCase();
@@ -418,7 +507,7 @@ export default function StartListScreen() {
         },
       )
       .map(({ athlete }) => athlete)
-      .sort(sortAthletes);
+      .sort(sortFilteredAthletes);
   }, [
     normalizedAthletes,
     weightClassFilter,
@@ -428,6 +517,7 @@ export default function StartListScreen() {
     adaptiveAthleteFilter,
     genderFilter,
     starredClubs,
+    sortFilteredAthletes,
   ]);
 
   useEffect(() => {
@@ -610,12 +700,14 @@ export default function StartListScreen() {
     ageGroup: string;
     adaptiveAthlete: string;
     gender: string;
+    sort: AthleteSortOption;
   }) => {
     setWeightClassFilter(filters.weightClass);
     setClubFilter(filters.club);
     setAgeGroupFilter(filters.ageGroup);
     setAdaptiveAthleteFilter(filters.adaptiveAthlete);
     setGenderFilter(filters.gender);
+    setSortOption(filters.sort);
 
     const nextCount = filterApplyCount + 1;
     setFilterApplyCount(nextCount);
@@ -632,6 +724,7 @@ export default function StartListScreen() {
     setAgeGroupFilter("");
     setAdaptiveAthleteFilter("");
     setGenderFilter("");
+    setSortOption("alphabetical");
     setSearchQuery("");
   };
 
@@ -1085,6 +1178,7 @@ export default function StartListScreen() {
         ageGroupFilter={ageGroupFilter}
         adaptiveAthleteFilter={adaptiveAthleteFilter}
         genderFilter={genderFilter}
+        sortOption={sortOption}
         onApplyFilters={handleApplyFilters}
         onResetFilters={resetFilters}
       />
