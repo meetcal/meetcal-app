@@ -143,7 +143,8 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     // by_userId_and_meet removed: meet filtering happens client-side after getByUser
-    .index("by_sessionId_and_userId", ["sessionId", "userId"]),
+    .index("by_sessionId_and_userId", ["sessionId", "userId"])
+    .index("by_date", ["date"]),
 
   // ── session_schedule ───────────────────────────────────────────────────────
   session_schedule: defineTable({
@@ -181,5 +182,14 @@ export default defineSchema({
   })
     .index("by_wso", ["wso"])
     .index("by_wso_age_gender", ["wso", "ageCategory", "gender"]),
+
+  // ── user_preferences ───────────────────────────────────────────────────────
+  user_preferences: defineTable({
+    userId: v.string(),
+    autoUnsaveStartedSessions: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_autoUnsaveStartedSessions", ["autoUnsaveStartedSessions"]),
 
 });

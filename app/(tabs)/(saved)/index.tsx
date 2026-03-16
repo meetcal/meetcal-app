@@ -23,7 +23,7 @@ import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -83,6 +83,12 @@ export default function SavedScreen() {
   useEffect(() => {
     loadSavedSessionsRef.current = loadSavedSessions;
   }, [loadSavedSessions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadSavedSessionsRef.current();
+    }, []),
+  );
 
   const handleResetSessions = useCallback(() => {
     // Check authentication first

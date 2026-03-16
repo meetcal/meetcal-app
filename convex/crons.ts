@@ -10,4 +10,10 @@ crons.daily(
   internal.meetStatusJob.run
 );
 
+crons.interval(
+  "auto-unsave-started-sessions",
+  { minutes: 15 },
+  internal.autoUnsaveSavedSessionsJob.run,
+);
+
 export default crons;

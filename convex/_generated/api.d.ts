@@ -9,6 +9,7 @@
  */
 
 import type * as athletes from "../athletes.js";
+import type * as autoUnsaveSavedSessionsJob from "../autoUnsaveSavedSessionsJob.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as intlRankings from "../intlRankings.js";
@@ -22,6 +23,7 @@ import type * as savedSessionsSync from "../savedSessionsSync.js";
 import type * as schedule from "../schedule.js";
 import type * as scraperIngestion from "../scraperIngestion.js";
 import type * as standards from "../standards.js";
+import type * as userPreferences from "../userPreferences.js";
 import type * as wsoRecords from "../wsoRecords.js";
 
 import type {
@@ -32,6 +34,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   athletes: typeof athletes;
+  autoUnsaveSavedSessionsJob: typeof autoUnsaveSavedSessionsJob;
   crons: typeof crons;
   http: typeof http;
   intlRankings: typeof intlRankings;
@@ -45,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   schedule: typeof schedule;
   scraperIngestion: typeof scraperIngestion;
   standards: typeof standards;
+  userPreferences: typeof userPreferences;
   wsoRecords: typeof wsoRecords;
 }>;
 
