@@ -2,7 +2,8 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
-import { fetchClubMeetStats } from "@/lib/database/fetch-club-stats";
+import { useMutableResource } from "@/hooks/useMutableResource";
+import { clubMeetStatsResource } from "@/lib/database/fetch-club-stats";
 import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
@@ -11,7 +12,7 @@ import { posthog } from "@/lib/posthog";
 import type { ClubMeetStats } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -33,13 +34,25 @@ export default function MeetResultsByClubScreen() {
   const router = useRouter();
   const { club, meet } = useLocalSearchParams<{ club: string; meet: string }>();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [clubStats, setClubStats] = useState<ClubMeetStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const params = useMemo(
+    () => (club && meet ? ([club, meet] as const) : null),
+    [club, meet],
+  );
+  const {
+    data: clubStats,
+    isInitialLoading: isLoading,
+    error,
+    refresh,
+  } = useMutableResource({
+    resource: clubMeetStatsResource,
+    params: (params ?? (["", ""] as const)) as [string, string],
+    initialData: null as ClubMeetStats | null,
+    enabled: Boolean(params),
+  });
 
   const shareableViewRef = useRef<View>(null);
 
@@ -48,7 +61,7 @@ export default function MeetResultsByClubScreen() {
   const statsSlide = useRef(new Animated.Value(24)).current;
   const shareSlide = useRef(new Animated.Value(24)).current;
 
-  const runEntryAnimation = () => {
+  const runEntryAnimation = useCallback(() => {
     Animated.stagger(80, [
       Animated.timing(headerFade, {
         toValue: 1,
@@ -66,7 +79,7 @@ export default function MeetResultsByClubScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [headerFade, shareSlide, statsSlide]);
 
   useEffect(() => {
     posthog.capture("screen_viewed", {
@@ -93,35 +106,14 @@ export default function MeetResultsByClubScreen() {
   }, []);
 
   const loadStats = useCallback(async () => {
-    if (!club || !meet) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        setIsOffline(true);
-        setClubStats(null);
-        setError("Offline - meet results are not available");
-        return;
-      }
-      const stats = await fetchClubMeetStats(club, meet);
-      setClubStats(stats);
-      runEntryAnimation();
-    } catch (err) {
-      console.error("Error loading stats:", err);
-      setError("Failed to load meet statistics");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [club, meet]);
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
-    if (club && meet) {
-      loadStats();
+    if (clubStats) {
+      runEntryAnimation();
     }
-  }, [club, meet, loadStats]);
+  }, [clubStats]);
 
   const generateImage = async () => {
     if (!shareableViewRef.current || !clubStats || clubStats.totalAthletes === 0) return;
@@ -480,17 +472,52 @@ const ShareableRecapView = React.forwardRef<
 
       {/* Medal Row */}
       <View style={shareableStyles.medalRow}>
-        <ShareableMedalBlock count={stats.goldMedals} label="GOLD" emoji="🥇" borderColor="rgba(255,215,0,0.35)" />
-        <ShareableMedalBlock count={stats.silverMedals} label="SILVER" emoji="🥈" borderColor="rgba(192,192,192,0.2)" />
-        <ShareableMedalBlock count={stats.bronzeMedals} label="BRONZE" emoji="🥉" borderColor="rgba(205,127,50,0.2)" />
+        <ShareableMedalBlock
+          count={stats.goldMedals}
+          label="GOLD"
+          emoji="🥇"
+          borderColor="rgba(255,215,0,0.35)"
+        />
+        <ShareableMedalBlock
+          count={stats.silverMedals}
+          label="SILVER"
+          emoji="🥈"
+          borderColor="rgba(192,192,192,0.2)"
+        />
+        <ShareableMedalBlock
+          count={stats.bronzeMedals}
+          label="BRONZE"
+          emoji="🥉"
+          borderColor="rgba(205,127,50,0.2)"
+        />
       </View>
 
       {/* Stats Grid */}
       <View style={shareableStyles.statsGrid}>
-        <ShareableStatCard emoji="👥" value={stats.totalAthletes.toString()} label="ATHLETES" accentColor="#007AFF" />
-        <ShareableStatCard emoji="⚖️" value={`${Math.round(stats.totalWeightLifted)} kg`} label="TOTAL WEIGHT" accentColor="#AF52DE" />
-        <ShareableStatCard emoji="⭐" value={stats.totalPRs.toString()} label="COMP PRs" accentColor="#FF9500" />
-        <ShareableStatCard emoji="✅" value={stats.perfect6for6.toString()} label="PERFECT 6/6" accentColor="#34C759" />
+        <ShareableStatCard
+          emoji="👥"
+          value={stats.totalAthletes.toString()}
+          label="ATHLETES"
+          accentColor="#007AFF"
+        />
+        <ShareableStatCard
+          emoji="⚖️"
+          value={`${Math.round(stats.totalWeightLifted)} kg`}
+          label="TOTAL WEIGHT"
+          accentColor="#AF52DE"
+        />
+        <ShareableStatCard
+          emoji="⭐"
+          value={stats.totalPRs.toString()}
+          label="COMP PRs"
+          accentColor="#FF9500"
+        />
+        <ShareableStatCard
+          emoji="✅"
+          value={stats.perfect6for6.toString()}
+          label="PERFECT 6/6"
+          accentColor="#34C759"
+        />
       </View>
 
     </View>

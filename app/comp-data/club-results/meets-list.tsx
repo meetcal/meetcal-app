@@ -2,7 +2,8 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
-import { fetchAthletesByClub } from "@/lib/database/fetch-club-stats";
+import { useMutableResource } from "@/hooks/useMutableResource";
+import { clubAthletesResource } from "@/lib/database/fetch-club-stats";
 import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
@@ -10,7 +11,7 @@ import {
 import { posthog } from "@/lib/posthog";
 import type { AthleteClub } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -28,11 +29,20 @@ export default function ClubMeetsListScreen() {
   const insets = useSafeAreaInsets();
   const { club } = useLocalSearchParams<{ club: string }>();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [athletesInClub, setAthletesInClub] = useState<AthleteClub[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isOffline, setIsOffline] = useState(false);
+  const params = useMemo(() => (club ? ([club] as const) : null), [club]);
+  const {
+    data: athletesInClub,
+    isInitialLoading: isLoading,
+    error,
+    refresh,
+  } = useMutableResource({
+    resource: clubAthletesResource,
+    params: (params ?? ([""] as const)) as [string],
+    initialData: [] as AthleteClub[],
+    enabled: Boolean(params),
+  });
 
   // Track screen view on mount
   useEffect(() => {
@@ -59,35 +69,8 @@ export default function ClubMeetsListScreen() {
   }, []);
 
   const loadAthletes = useCallback(async () => {
-    if (!club) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        setIsOffline(true);
-        setAthletesInClub([]);
-        setError("Offline - meet results are not available");
-        return;
-      }
-      const athletes = await fetchAthletesByClub(club);
-      setAthletesInClub(athletes);
-    } catch (err) {
-      console.error("Error loading athletes:", err);
-      setError("Failed to load meets");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [club]);
-
-  // Load athletes and meets on mount
-  useEffect(() => {
-    if (club) {
-      loadAthletes();
-    }
-  }, [club, loadAthletes]);
+    await refresh();
+  }, [refresh]);
 
   // Get unique meets from athletes
   const allMeets = Array.from(

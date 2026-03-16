@@ -6,9 +6,11 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchWSOList,
-  fetchWSORecords,
+  fetchWSOAgeGroups,
+  wsoListResource,
+  wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
@@ -18,13 +20,15 @@ import {
 } from "@/types/records";
 import { Filters, Gender } from "@/types/wso-records";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
 export default function RecordsScreen() {
   const colors = useAppColors();
-  const [availableWSOs, setAvailableWSOs] = useState<string[]>([]);
-  const [availableAgeGroups, setAvailableAgeGroups] = useState<string[]>([]);
+  const [ageGroupsCache, setAgeGroupsCache] = React.useState<
+    Record<string, string[]>
+  >({});
+  const modalDraftWSORef = React.useRef("");
 
   const {
     filters,
@@ -36,90 +40,73 @@ export default function RecordsScreen() {
     defaultFilters: { wso: "", gender: "Men", ageGroup: "Senior" },
   });
 
-  const [records, setRecords] = useState<RecordsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const {
+    data: availableWSOs,
+    isInitialLoading: isWSOLoading,
+    error: wsoListError,
+  } = useMutableResource({
+    resource: wsoListResource,
+    params: [] as const,
+    initialData: [] as string[],
+  });
+
+  const wsoParams = useMemo(
+    () => (filters.wso ? ([filters.wso] as const) : null),
+    [filters.wso],
+  );
+  const {
+    data: records,
+    isInitialLoading: isRecordsLoading,
+    error: recordsError,
+  } = useMutableResource({
+    resource: wsoRecordsResource,
+    params: (wsoParams ?? ([""] as const)) as [string],
+    initialData: {} as RecordsData,
+    enabled: Boolean(wsoParams),
+  });
 
   useEffect(() => {
-    async function fetchWSOs() {
-      try {
-        const wsos = await fetchWSOList();
-        setAvailableWSOs(wsos);
-        if (wsos.length > 0) {
-          setFilters((f) => ({ ...f, wso: wsos[0] }));
-          setTempFilters((f) => ({ ...f, wso: wsos[0] }));
-        }
-      } catch {
-        setFetchError("Failed to load WSOs");
-      } finally {
-        setLoading(false);
+    if (filters.wso || !availableWSOs.length) return;
+    const nextWSO = availableWSOs[0];
+    setFilters((prev) => ({ ...prev, wso: nextWSO }));
+    setTempFilters((prev) => ({ ...prev, wso: nextWSO }));
+  }, [availableWSOs, filters.wso, setFilters, setTempFilters]);
+
+  const availableAgeGroups = useMemo(
+    () => sortAgeGroups(Object.keys(records)),
+    [records],
+  );
+
+  useEffect(() => {
+    if (!filters.wso || availableAgeGroups.length === 0) return;
+
+    setAgeGroupsCache((prev) => {
+      const current = prev[filters.wso] ?? [];
+      if (JSON.stringify(current) === JSON.stringify(availableAgeGroups)) {
+        return prev;
       }
-    }
-    fetchWSOs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return {
+        ...prev,
+        [filters.wso]: availableAgeGroups,
+      };
+    });
+  }, [availableAgeGroups, filters.wso]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!filters.wso) {
-      setLoading(false);
-      setRecords(null);
-      setAvailableAgeGroups([]);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setLoading(true);
-    setRecords(null);
-    setFetchError(null);
-
-    fetchWSORecords(filters.wso)
-      .then((data) => {
-        if (!cancelled) {
-          const ageGroups = sortAgeGroups(Object.keys(data));
-          setAvailableAgeGroups(ageGroups);
-
-          const fallbackAgeGroup = ageGroups[0] ?? "";
-          setFilters((prev) => {
-            if (!fallbackAgeGroup || ageGroups.includes(prev.ageGroup))
-              return prev;
-            return { ...prev, ageGroup: fallbackAgeGroup };
-          });
-          setTempFilters((prev) => {
-            if (!fallbackAgeGroup || ageGroups.includes(prev.ageGroup))
-              return prev;
-            return { ...prev, ageGroup: fallbackAgeGroup };
-          });
-          setRecords(data);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFetchError(err.message || "Failed to fetch records");
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.wso]);
-
-  const recordsData = useMemo<RecordsData | null>(() => {
-    return records || null;
-  }, [records]);
+    if (!availableAgeGroups.length) return;
+    if (availableAgeGroups.includes(filters.ageGroup)) return;
+    const nextAgeGroup = availableAgeGroups[0];
+    setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
+    setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
+  }, [availableAgeGroups, filters.ageGroup, setFilters, setTempFilters]);
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
-    if (!recordsData) return [];
     return (
-      recordsData[filters.ageGroup as keyof RecordsData]?.[
+      records[filters.ageGroup as keyof RecordsData]?.[
         filters.gender as keyof AgeGroupRecords
       ] ?? []
     );
-  }, [recordsData, filters.ageGroup, filters.gender]);
+  }, [records, filters.ageGroup, filters.gender]);
 
   const getAgeGroupDisplayText = (ageGroup: string) => {
     if (!ageGroup) return "";
@@ -148,109 +135,154 @@ export default function RecordsScreen() {
     setTempFilters(reset);
   };
 
+  const fetchAgeGroupsForWSO = React.useCallback(
+    (wso: string) => {
+      if (!wso || ageGroupsCache[wso]) return;
+
+      fetchWSOAgeGroups(wso)
+        .then((nextAgeGroups) => {
+          setAgeGroupsCache((prev) => ({
+            ...prev,
+            [wso]: sortAgeGroups(nextAgeGroups),
+          }));
+        })
+        .catch((error) => {
+          console.error(`Failed to fetch age groups for ${wso}`, error);
+        });
+    },
+    [ageGroupsCache],
+  );
+
   const genderOptions = (["Men", "Women"] as Gender[]).sort((a, b) =>
     a.localeCompare(b),
   );
 
-  // Build filter sections for GenericFilterModal
-  const sortedAgeGroups = sortAgeGroups(availableAgeGroups);
-  const filterSections: FilterSection[] = [
-    {
-      id: "wso",
-      title: "WSO",
-      options: availableWSOs.map((wso: string) => ({ value: wso, label: wso })),
+  const filterSections = React.useCallback(
+    (modalTempFilters: Record<string, string>): FilterSection[] => {
+      const selectedWSO = modalTempFilters.wso || filters.wso || "";
+
+      if (
+        selectedWSO &&
+        selectedWSO !== filters.wso &&
+        selectedWSO !== modalDraftWSORef.current
+      ) {
+        modalDraftWSORef.current = selectedWSO;
+        fetchAgeGroupsForWSO(selectedWSO);
+      }
+
+      const modalAgeGroups =
+        selectedWSO === filters.wso
+          ? availableAgeGroups
+          : ageGroupsCache[selectedWSO] ?? [];
+
+      return [
+        {
+          id: "wso",
+          title: "WSO",
+          options: availableWSOs.map((wso: string) => ({ value: wso, label: wso })),
+        },
+        {
+          id: "gender",
+          title: "Gender",
+          options: genderOptions.map((gender) => ({ value: gender, label: gender })),
+        },
+        {
+          id: "ageGroup",
+          title: "Age Group",
+          options: modalAgeGroups.map((ageGroup: string) => ({
+            value: ageGroup,
+            label: getAgeGroupDisplayText(ageGroup),
+          })),
+          dependsOn: ["wso"],
+        },
+      ];
     },
-    {
-      id: "gender",
-      title: "Gender",
-      options: genderOptions.map((g) => ({ value: g, label: g })),
-    },
-    {
-      id: "ageGroup",
-      title: "Age Group",
-      options: sortedAgeGroups.map((ag: string) => ({
-        value: ag,
-        label: getAgeGroupDisplayText(ag),
-      })),
-    },
-  ];
+    [
+      ageGroupsCache,
+      availableAgeGroups,
+      availableWSOs,
+      fetchAgeGroupsForWSO,
+      filters.wso,
+      genderOptions,
+    ],
+  );
 
   return (
     <SubscriptionGate>
-    <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      <Stack.Screen
-        options={{
-          title: `WSO Records`,
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-        }}
-      />
+      <ThemedView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <Stack.Screen
+          options={{
+            title: `WSO Records`,
+            headerBackTitle: "Back",
+            headerShown: true,
+            gestureEnabled: true,
+            gestureDirection: "horizontal",
+            animation: "slide_from_right",
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerShadowVisible: false,
+            headerBackButtonDisplayMode: "minimal",
+          }}
+        />
 
-      <FilterBar
-        displayText={getFilterDisplayText()}
-        onPress={openFilters}
-      />
+        <FilterBar
+          displayText={getFilterDisplayText()}
+          onPress={openFilters}
+        />
 
-      <DataTable
-        columns={[
-          { label: "Weight Class", flex: 2 },
-          { label: "Snatch" },
-          { label: "C&J" },
-          { label: "Total" },
-        ]}
-        data={currentRecords}
-        keyExtractor={(record) =>
-          `${filters.wso}-${filters.ageGroup}-${filters.gender}-${record.weightClass}`
-        }
-        loading={loading}
-        error={fetchError}
-        emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${getAgeGroupDisplayText(filters.ageGroup)} age group.`}
-        renderRow={(record, index) => (
-          <View
-            style={[
-              dataTableStyles.row,
-              index < currentRecords.length - 1 && {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-            ]}
-          >
-            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
-              {record.weightClass}
-              kg
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
-            </ThemedText>
-          </View>
-        )}
-      />
+        <DataTable
+          columns={[
+            { label: "Weight Class", flex: 2 },
+            { label: "Snatch" },
+            { label: "C&J" },
+            { label: "Total" },
+          ]}
+          data={currentRecords}
+          keyExtractor={(record) =>
+            `${filters.wso}-${filters.ageGroup}-${filters.gender}-${record.weightClass}`
+          }
+          loading={isWSOLoading || (Boolean(filters.wso) && isRecordsLoading)}
+          error={wsoListError || recordsError}
+          emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${getAgeGroupDisplayText(filters.ageGroup)} age group.`}
+          renderRow={(record, index) => (
+            <View
+              style={[
+                dataTableStyles.row,
+                index < currentRecords.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                },
+              ]}
+            >
+              <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
+                {record.weightClass}
+                kg
+              </ThemedText>
+              <ThemedText style={dataTableStyles.cell}>
+                {record.snatchRecord}
+                kg
+              </ThemedText>
+              <ThemedText style={dataTableStyles.cell}>
+                {record.cjRecord}
+                kg
+              </ThemedText>
+              <ThemedText style={dataTableStyles.cell}>
+                {record.totalRecord}
+                kg
+              </ThemedText>
+            </View>
+          )}
+        />
 
-      <GenericFilterModal
-        {...filterModalProps}
-        sections={filterSections}
-        onResetFilters={handleResetFilters}
-      />
-    </ThemedView>
+        <GenericFilterModal
+          {...filterModalProps}
+          sections={filterSections}
+          onResetFilters={handleResetFilters}
+        />
+      </ThemedView>
     </SubscriptionGate>
   );
 }

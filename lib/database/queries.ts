@@ -41,9 +41,7 @@ type DbSchedule = {
   meet: string;
 };
 
-const scheduleCache = new Map<MeetName, DbSchedule[]>();
 const scheduleInFlight = new Map<MeetName, Promise<DbSchedule[]>>();
-const transformedScheduleCache = new Map<MeetName, Schedule>();
 const transformedScheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 
 // Validate and convert platform string to Platform type
@@ -82,11 +80,6 @@ function formatTo12Hour(time: string): string {
 }
 
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
-  const cachedSchedule = scheduleCache.get(meet);
-  if (cachedSchedule) {
-    return cachedSchedule;
-  }
-
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) {
     return inFlight;
@@ -112,8 +105,6 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       if (s !== 0) return s;
       return a.platform.localeCompare(b.platform);
     }) as DbSchedule[];
-
-    scheduleCache.set(meet, sorted);
     return sorted;
   } catch (error) {
     if (isScheduleTimeoutError(error)) {
@@ -132,11 +123,6 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 }
 
 async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
-  const cached = transformedScheduleCache.get(meet);
-  if (cached) {
-    return cached;
-  }
-
   const inFlight = transformedScheduleInFlight.get(meet);
   if (inFlight) {
     return inFlight;
@@ -144,9 +130,7 @@ async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
 
   const request = (async () => {
     const dbSchedule = await fetchScheduleFromDb(meet);
-    const transformed = await transformScheduleData(dbSchedule);
-    transformedScheduleCache.set(meet, transformed);
-    return transformed;
+    return transformScheduleData(dbSchedule);
   })().finally(() => {
     transformedScheduleInFlight.delete(meet);
   });

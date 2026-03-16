@@ -4,11 +4,11 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { AGE_GROUP_KEY, EMPTY_RECORDS_DATA, MENS_WEIGHT_CLASSES, WOMENS_WEIGHT_CLASSES } from "@/constants/adapative";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useFetchData } from "@/hooks/useFetchData";
-import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
+import { useMutableResource } from "@/hooks/useMutableResource";
+import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 import { RecordsData } from "@/types/records";
 import { Stack } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,15 +22,15 @@ export default function AdaptiveRecordsScreen() {
   const colors = useAppColors();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
 
-  const fetchFn = useCallback(
-    () => fetchAdaptiveRecords(appliedGender),
-    [appliedGender],
-  );
   const {
     data: recordsData,
-    loading,
+    isInitialLoading,
     error: fetchError,
-  } = useFetchData<RecordsData>(fetchFn, EMPTY_RECORDS_DATA, [fetchFn]);
+  } = useMutableResource({
+    resource: adaptiveRecordsResource,
+    params: [] as const,
+    initialData: EMPTY_RECORDS_DATA as RecordsData,
+  });
 
   const weightClasses =
     appliedGender === "Men" ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
@@ -111,7 +111,7 @@ export default function AdaptiveRecordsScreen() {
         keyExtractor={(record, index) =>
           `${appliedGender}-${record.weightClass}-${index}`
         }
-        loading={loading}
+        loading={isInitialLoading}
         error={fetchError}
         emptyMessage={`No adaptive records available for ${appliedGender === "Men" ? "men" : "women"}.`}
         loadingContent={

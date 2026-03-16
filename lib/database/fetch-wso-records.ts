@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
@@ -15,14 +16,6 @@ type WSORecordRow = {
   wso: string;
 };
 
-const wsoRecordsMemoryCache = new Map<string, RecordsData>();
-const wsoListMemoryCache: { data: string[] | null } = { data: null };
-const wsoAgeGroupsMemoryCache = new Map<string, string[]>();
-const inFlightRequests = new Map<string, Promise<RecordsData>>();
-let inFlightWSOList: Promise<string[]> | null = null;
-const inFlightWSOAgeGroups = new Map<string, Promise<string[]>>();
-
-// Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
     if (w.startsWith('+')) return Infinity;
@@ -37,168 +30,148 @@ function weightClassSort(a: string, b: string): number {
   return aVal - bVal;
 }
 
-/**
- * Fetches records data from Convex for a given WSO and organizes it into the RecordsData shape.
- * If ageGroup and gender are provided, fetches only that subset.
- */
+async function readWSOCache() {
+  return await getOfflineCache<WSORecordsCache>(OFFLINE_CACHE_KEYS.wsoRecords);
+}
+
+async function readWSORecordsCache(wso: string) {
+  const cached = await readWSOCache();
+  const data = cached?.data?.[wso];
+  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+}
+
+async function fetchWSORecordsFresh(
+  wso: string,
+  ageGroup?: string,
+  gender?: 'Men' | 'Women'
+): Promise<RecordsData> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  const rows = (await convex.query(api.wsoRecords.getByWso, {
+    wso,
+    ageCategory: ageGroup,
+    gender,
+  })) as unknown as WSORecordRow[];
+
+  const ageGroups = Array.from(new Set(rows.map((row) => row.ageCategory)));
+
+  const result: RecordsData = {};
+  ageGroups.forEach((g) => {
+    result[g] = { Men: [], Women: [] };
+  });
+
+  rows.forEach((row) => {
+    const ageKey = row.ageCategory;
+    const genderKey = row.gender as 'Men' | 'Women';
+    if (!result[ageKey]) return;
+    if (genderKey !== 'Men' && genderKey !== 'Women') return;
+
+    result[ageKey][genderKey].push({
+      weightClass: row.weightClass,
+      snatchRecord: row.snatchRecord ?? 0,
+      cjRecord: row.cjRecord ?? 0,
+      totalRecord: row.totalRecord ?? 0,
+    });
+  });
+
+  Object.values(result).forEach((group: AgeGroupRecords) => {
+    group.Men.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
+    group.Women.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
+  });
+
+  return result;
+}
+
+async function fetchWSOListFresh(): Promise<string[]> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  return await convex.query(api.wsoRecords.listWsos, {}) as string[];
+}
+
+async function persistWSORecords(wso: string, result: RecordsData) {
+  const cached = await readWSOCache();
+  const nextCache: WSORecordsCache = {
+    ...(cached?.data || {}),
+    [wso]: result,
+  };
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords, nextCache);
+  return { data: result, lastUpdatedAt: entry.lastSynced };
+}
+
+export const wsoRecordsResource = createMutableResource<RecordsData, [string]>({
+  getKey: (wso) => `${OFFLINE_CACHE_KEYS.wsoRecords}:${wso}`,
+  loadCached: (wso) => readWSORecordsCache(wso),
+  fetchFresh: (wso) => fetchWSORecordsFresh(wso),
+  persistFresh: (data, wso) => persistWSORecords(wso, data),
+});
+
+export const wsoListResource = createMutableResource<string[], []>({
+  getKey: () => `${OFFLINE_CACHE_KEYS.wsoRecords}:list`,
+  loadCached: async () => {
+    const cached = await readWSOCache();
+    const wsos = Object.keys(cached?.data || {}).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    return wsos.length > 0
+      ? { data: wsos, lastUpdatedAt: cached?.lastSynced ?? null }
+      : null;
+  },
+  fetchFresh: () => fetchWSOListFresh(),
+  persistFresh: async () => null,
+});
+
 export async function fetchWSORecords(
   wso: string,
   ageGroup?: string,
   gender?: 'Men' | 'Women'
 ): Promise<RecordsData> {
-  const requestKey = `${wso}::${ageGroup || '*'}::${gender || '*'}`;
-  const memoryKey = ageGroup || gender ? null : wso;
-  if (memoryKey && wsoRecordsMemoryCache.has(memoryKey)) {
-    return wsoRecordsMemoryCache.get(memoryKey)!;
-  }
-  if (inFlightRequests.has(requestKey)) {
-    return inFlightRequests.get(requestKey)!;
-  }
-
-  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rows = (await convex.query(api.wsoRecords.getByWso, {
-        wso,
-        ageCategory: ageGroup,
-        gender,
-      })) as unknown as WSORecordRow[];
-
-      const ageGroups = Array.from(new Set(rows.map((row) => row.ageCategory)));
-
-      const result: RecordsData = {};
-      ageGroups.forEach((g) => {
-        result[g] = { Men: [], Women: [] };
-      });
-
-      rows.forEach((row) => {
-        const ageKey = row.ageCategory;
-        const genderKey = row.gender as 'Men' | 'Women';
-        if (!result[ageKey]) return;
-        if (genderKey !== 'Men' && genderKey !== 'Women') return;
-
-        result[ageKey][genderKey].push({
-          weightClass: row.weightClass,
-          snatchRecord: row.snatchRecord ?? 0,
-          cjRecord: row.cjRecord ?? 0,
-          totalRecord: row.totalRecord ?? 0,
-        });
-      });
-
-      Object.values(result).forEach((group: AgeGroupRecords) => {
-        group.Men.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
-        group.Women.sort((a: WeightClassRecord, b: WeightClassRecord) => weightClassSort(a.weightClass, b.weightClass));
-      });
-
-      if (!ageGroup && !gender) {
-        wsoRecordsMemoryCache.set(wso, result);
-        wsoAgeGroupsMemoryCache.set(wso, Object.keys(result));
-
-        const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-        const nextCache: WSORecordsCache = {
-          ...(cached?.data || {}),
-          [wso]: result
-        };
-        await setOfflineCache(cacheKey, nextCache);
-      }
-
-      return result;
-    } catch (error) {
-      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-      const cachedWso = cached?.data?.[wso];
-      if (cachedWso) {
-        if (!ageGroup && !gender) {
-          wsoRecordsMemoryCache.set(wso, cachedWso);
-          wsoAgeGroupsMemoryCache.set(wso, Object.keys(cachedWso));
-        }
-        return cachedWso;
-      }
-      throw error;
-    } finally {
-      inFlightRequests.delete(requestKey);
+  try {
+    const result = await fetchWSORecordsFresh(wso, ageGroup, gender);
+    if (!ageGroup && !gender) {
+      await persistWSORecords(wso, result);
     }
-  })();
-
-  inFlightRequests.set(requestKey, request);
-  return request;
+    return result;
+  } catch (error) {
+    const cached = await readWSORecordsCache(wso);
+    if (cached?.data) {
+      return cached.data;
+    }
+    throw error;
+  }
 }
 
 export async function fetchWSOList(): Promise<string[]> {
-  if (wsoListMemoryCache.data) {
-    return wsoListMemoryCache.data;
-  }
-  if (inFlightWSOList) {
-    return inFlightWSOList;
-  }
-
-  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
-  inFlightWSOList = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const wsos = await convex.query(api.wsoRecords.listWsos, {}) as string[];
-      wsoListMemoryCache.data = wsos;
+  try {
+    return await fetchWSOListFresh();
+  } catch (error) {
+    const cached = await readWSOCache();
+    const wsos = Object.keys(cached?.data || {}).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    if (wsos.length > 0) {
       return wsos;
-    } catch (error) {
-      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-      const wsos = Object.keys(cached?.data || {});
-      if (wsos.length > 0) {
-        const sorted = wsos.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-        wsoListMemoryCache.data = sorted;
-        return sorted;
-      }
-      throw error;
-    } finally {
-      inFlightWSOList = null;
     }
-  })();
-
-  return inFlightWSOList;
+    throw error;
+  }
 }
 
 export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
-  if (wsoAgeGroupsMemoryCache.has(wso)) {
-    return wsoAgeGroupsMemoryCache.get(wso)!;
-  }
-  if (inFlightWSOAgeGroups.has(wso)) {
-    return inFlightWSOAgeGroups.get(wso)!;
-  }
+  if (!wso) return [];
 
-  const cacheKey = OFFLINE_CACHE_KEYS.wsoRecords;
-
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rows = (await convex.query(api.wsoRecords.getByWso, { wso })) as unknown as WSORecordRow[];
-      const ageGroups = Array.from(new Set(rows.map((r) => r.ageCategory))).filter(Boolean) as string[];
-      wsoAgeGroupsMemoryCache.set(wso, ageGroups);
-      return ageGroups;
-    } catch (error) {
-      const cached = await getOfflineCache<WSORecordsCache>(cacheKey);
-      const cachedWso = cached?.data?.[wso];
-      if (cachedWso) {
-        const ageGroups = Object.keys(cachedWso);
-        wsoAgeGroupsMemoryCache.set(wso, ageGroups);
-        return ageGroups;
-      }
-      throw error;
-    } finally {
-      inFlightWSOAgeGroups.delete(wso);
+  try {
+    const rows = await fetchWSORecordsFresh(wso);
+    return Object.keys(rows);
+  } catch (error) {
+    const cached = await readWSORecordsCache(wso);
+    if (cached?.data) {
+      return Object.keys(cached.data);
     }
-  })();
-
-  inFlightWSOAgeGroups.set(wso, request);
-  return request;
+    throw error;
+  }
 }

@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
@@ -15,14 +16,6 @@ type RecordsRow = {
   recordType: string;
 };
 
-const recordsMemoryCache = new Map<string, RecordsData>();
-const ageGroupsMemoryCache = new Map<string, string[]>();
-const inFlightRecords = new Map<string, Promise<RecordsData>>();
-let federationsMemoryCache: string[] | null = null;
-let inFlightFederations: Promise<string[]> | null = null;
-const inFlightAgeGroups = new Map<string, Promise<string[]>>();
-
-// Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
     if (w.startsWith('+')) return Infinity;
@@ -81,111 +74,6 @@ function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
   return result;
 }
 
-/**
- * Fetches records data from Convex for a given federation and organizes it into the RecordsData shape.
- * If ageGroup and gender are provided, fetches only that subset.
- */
-export async function fetchRecords(
-  federation: string = 'USAW',
-  ageGroup?: string,
-  gender?: 'Men' | 'Women'
-): Promise<RecordsData> {
-  const requestKey = `${federation}::${ageGroup || '*'}::${gender || '*'}`;
-
-  const cachedFull = recordsMemoryCache.get(federation);
-  if (cachedFull) {
-    return filterRecordsData(cachedFull, ageGroup, gender);
-  }
-
-  if (inFlightRecords.has(requestKey)) {
-    return inFlightRecords.get(requestKey)!;
-  }
-
-  const cacheKey = OFFLINE_CACHE_KEYS.records;
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rows = await convex.query(api.records.getByFederation, {
-        recordType: federation,
-        ageCategory: ageGroup,
-        gender: gender?.toLowerCase(),
-      });
-
-      const result = mapRowsToRecordsData(rows as RecordsRow[]);
-
-      if (!ageGroup && !gender) {
-        recordsMemoryCache.set(federation, result);
-        ageGroupsMemoryCache.set(federation, Object.keys(result).sort(ageGroupSort));
-
-        const cached = await getOfflineCache<RecordsCache>(cacheKey);
-        const nextCache: RecordsCache = {
-          ...(cached?.data || {}),
-          [federation]: result,
-        };
-        await setOfflineCache(cacheKey, nextCache);
-      }
-
-      return result;
-    } catch (error) {
-      const cached = await getOfflineCache<RecordsCache>(cacheKey);
-      const cachedFederation = cached?.data?.[federation];
-      if (cachedFederation) {
-        recordsMemoryCache.set(federation, cachedFederation);
-        ageGroupsMemoryCache.set(federation, Object.keys(cachedFederation).sort(ageGroupSort));
-        return filterRecordsData(cachedFederation, ageGroup, gender);
-      }
-      throw error;
-    } finally {
-      inFlightRecords.delete(requestKey);
-    }
-  })();
-
-  inFlightRecords.set(requestKey, request);
-  return request;
-}
-
-export async function fetchFederations(): Promise<string[]> {
-  if (federationsMemoryCache) {
-    return federationsMemoryCache;
-  }
-  if (inFlightFederations) {
-    return inFlightFederations;
-  }
-
-  inFlightFederations = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const federations = await convex.query(api.records.listFederations, {});
-      federationsMemoryCache = federations;
-      return federations;
-    } catch (error) {
-      const cached = await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
-      const federations = Object.keys(cached?.data || {}).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: 'base' }),
-      );
-      if (federations.length > 0) {
-        federationsMemoryCache = federations;
-        return federations;
-      }
-      console.error('Error fetching federations:', error);
-      throw error;
-    } finally {
-      inFlightFederations = null;
-    }
-  })();
-
-  return inFlightFederations;
-}
-
-// Helper for sorting age groups
 function ageGroupSort(a: string, b: string): number {
   const order = ['u11', 'u13', 'u15', 'u17', 'youth', 'collegiate', 'junior', 'senior'];
   const aLower = a.toLowerCase();
@@ -198,7 +86,6 @@ function ageGroupSort(a: string, b: string): number {
   if (aIdx !== -1) return -1;
   if (bIdx !== -1) return 1;
 
-  // Masters sort (e.g., "Masters 35-39", "Masters 90+", "Masters +90")
   const mastersRegex = /^masters (?:\+)?(\d{2})(?:-(\d{2})|\+)?$/i;
 
   const matchA = aLower.match(mastersRegex);
@@ -215,54 +102,127 @@ function ageGroupSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base' });
 }
 
+async function readRecordsCache() {
+  return await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
+}
+
+async function readFederationRecordsCache(federation: string) {
+  const cached = await readRecordsCache();
+  const data = cached?.data?.[federation];
+  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+}
+
+async function fetchRecordsFresh(
+  federation: string,
+  ageGroup?: string,
+  gender?: 'Men' | 'Women',
+): Promise<RecordsData> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  const rows = await convex.query(api.records.getByFederation, {
+    recordType: federation,
+    ageCategory: ageGroup,
+    gender: gender?.toLowerCase(),
+  });
+
+  return mapRowsToRecordsData(rows as RecordsRow[]);
+}
+
+async function fetchFederationsFresh(): Promise<string[]> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  return await convex.query(api.records.listFederations, {});
+}
+
+async function persistFederationRecords(federation: string, result: RecordsData) {
+  const cached = await readRecordsCache();
+  const nextCache: RecordsCache = {
+    ...(cached?.data || {}),
+    [federation]: result,
+  };
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.records, nextCache);
+  return { data: result, lastUpdatedAt: entry.lastSynced };
+}
+
+export const federationRecordsResource = createMutableResource<
+  RecordsData,
+  [string]
+>({
+  getKey: (federation) => `${OFFLINE_CACHE_KEYS.records}:${federation}`,
+  loadCached: (federation) => readFederationRecordsCache(federation),
+  fetchFresh: (federation) => fetchRecordsFresh(federation),
+  persistFresh: (data, federation) => persistFederationRecords(federation, data),
+});
+
+export const federationsResource = createMutableResource<string[], []>({
+  getKey: () => `${OFFLINE_CACHE_KEYS.records}:federations`,
+  loadCached: async () => {
+    const cached = await readRecordsCache();
+    const data = Object.keys(cached?.data || {}).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    return data.length > 0
+      ? { data, lastUpdatedAt: cached?.lastSynced ?? null }
+      : null;
+  },
+  fetchFresh: () => fetchFederationsFresh(),
+  persistFresh: async () => null,
+});
+
+export async function fetchRecords(
+  federation: string = 'USAW',
+  ageGroup?: string,
+  gender?: 'Men' | 'Women'
+): Promise<RecordsData> {
+  try {
+    const result = await fetchRecordsFresh(federation, ageGroup, gender);
+    if (!ageGroup && !gender) {
+      await persistFederationRecords(federation, result);
+    }
+    return result;
+  } catch (error) {
+    const cached = await readFederationRecordsCache(federation);
+    if (cached?.data) {
+      return filterRecordsData(cached.data, ageGroup, gender);
+    }
+    throw error;
+  }
+}
+
+export async function fetchFederations(): Promise<string[]> {
+  try {
+    return await fetchFederationsFresh();
+  } catch (error) {
+    const cached = await readRecordsCache();
+    const federations = Object.keys(cached?.data || {}).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    if (federations.length > 0) {
+      return federations;
+    }
+    console.error('Error fetching federations:', error);
+    throw error;
+  }
+}
+
 export async function fetchAgeGroups(federation: string): Promise<string[]> {
   if (!federation) return [];
 
-  if (ageGroupsMemoryCache.has(federation)) {
-    return ageGroupsMemoryCache.get(federation)!;
-  }
-
-  const cachedRecords = recordsMemoryCache.get(federation);
-  if (cachedRecords) {
-    const groups = Object.keys(cachedRecords).sort(ageGroupSort);
-    ageGroupsMemoryCache.set(federation, groups);
-    return groups;
-  }
-
-  if (inFlightAgeGroups.has(federation)) {
-    return inFlightAgeGroups.get(federation)!;
-  }
-
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rows = await convex.query(api.records.getByFederation, { recordType: federation });
-
-      const ageGroups = Array.from(new Set((rows as RecordsRow[]).map((r) => r.ageCategory)))
-        .filter(Boolean)
-        .sort(ageGroupSort) as string[];
-
-      ageGroupsMemoryCache.set(federation, ageGroups);
-      return ageGroups;
-    } catch (error) {
-      const cached = await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
-      const cachedFederation = cached?.data?.[federation];
-      if (cachedFederation) {
-        const ageGroups = Object.keys(cachedFederation).sort(ageGroupSort);
-        ageGroupsMemoryCache.set(federation, ageGroups);
-        return ageGroups;
-      }
-      console.error(`Error fetching age groups for ${federation}:`, error);
-      throw error;
-    } finally {
-      inFlightAgeGroups.delete(federation);
+  try {
+    const data = await fetchRecordsFresh(federation);
+    return Object.keys(data).sort(ageGroupSort);
+  } catch (error) {
+    const cached = await readFederationRecordsCache(federation);
+    if (cached?.data) {
+      return Object.keys(cached.data).sort(ageGroupSort);
     }
-  })();
-
-  inFlightAgeGroups.set(federation, request);
-  return request;
+    console.error(`Error fetching age groups for ${federation}:`, error);
+    throw error;
+  }
 }
