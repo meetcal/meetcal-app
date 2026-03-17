@@ -1,14 +1,13 @@
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import ImagePreviewModal from "@/components/share/ImagePreviewModal";
 import ShareScheduleView from "@/components/share/ShareScheduleView";
 import ActionModal from "@/components/start-list/ActionModal";
-import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import {
   AthleteItem,
 } from "@/components/start-list/AthleteItem";
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
 import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
@@ -26,9 +25,8 @@ import { fetchAthletes, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { getLastYearBests, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
-  getAgeCategory,
-  getChevronIcon,
   compareStartTimes,
+  getAgeCategory,
   getSaveIcon,
   isMeetName,
   parseWeightClasses,
@@ -51,11 +49,12 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -96,6 +95,7 @@ export default function StartListScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const { saveSessionsFromAthletes } = useSavedSessions();
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -388,21 +388,66 @@ export default function StartListScreen() {
     return wsoFilter;
   }, [clubFilter, wsoFilter]);
 
-  // Update getFilterDisplayText to handle age group
-  const getFilterDisplayText = () => {
-    const filters = [];
-    if (weightClassFilter) filters.push(weightClassFilter);
-    if (clubFilter)
-      filters.push(
-        clubFilter === STARRED_CLUBS_FILTER ? "Starred Clubs" : clubFilter,
-      );
-    if (ageGroupFilter) filters.push(ageGroupFilter);
-    if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
-    if (genderFilter) filters.push(genderFilter);
-    if (wsoFilter) filters.push(wsoFilter);
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        weightClassFilter ||
+          clubFilter ||
+          ageGroupFilter ||
+          adaptiveAthleteFilter ||
+          genderFilter ||
+          wsoFilter ||
+          sortOption !== "alphabetical",
+      ),
+    [
+      adaptiveAthleteFilter,
+      ageGroupFilter,
+      clubFilter,
+      genderFilter,
+      sortOption,
+      weightClassFilter,
+      wsoFilter,
+    ],
+  );
 
-    return filters.length > 0 ? filters.join(" • ") : "Filter";
-  };
+  useLayoutEffect(() => {
+    const filterIcon =
+      Platform.select({
+        ios: "line.3.horizontal.decrease",
+        android: "filter",
+      }) || "line.3.horizontal.decrease";
+
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => setShowFilterModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open filters"
+          >
+            <IconSymbol
+              name={filterIcon}
+              size={24}
+              color={hasActiveFilters ? colors.link : colors.text}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => setShowSaveModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open download options"
+          >
+            <IconSymbol
+              name={getSaveIcon()}
+              size={24}
+              color={colors.text}
+            />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [colors.link, colors.text, hasActiveFilters, navigation]);
 
   const normalizedAthletes = useMemo(() => {
     return athletes.map((athlete) => ({
@@ -1128,10 +1173,10 @@ export default function StartListScreen() {
             borderBottomWidth: 1,
           },
         ]}
-      >
-        <View style={styles.searchContainer}>
-          <View
-            style={[
+        >
+          <View style={styles.searchContainer}>
+            <View
+              style={[
               styles.searchBar,
               {
                 backgroundColor: colors.card,
@@ -1177,50 +1222,6 @@ export default function StartListScreen() {
               </Pressable>
             )}
           </View>
-        </View>
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <ThemedText
-              style={[styles.buttonText, { color: colors.secondaryText }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {getFilterDisplayText()}
-            </ThemedText>
-            <IconSymbol
-              name={getChevronIcon("down")}
-              size={12}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveButton,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => setShowSaveModal(true)}
-          >
-            <IconSymbol
-              name={getSaveIcon()}
-              size={16}
-              color={colors.secondaryText}
-            />
-          </Pressable>
         </View>
       </View>
 
@@ -1352,55 +1353,19 @@ const styles = StyleSheet.create({
   filterContainer: {
     padding: 16,
   },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 16,
-    marginTop: 6,
-  },
-  button: {
-    flex: 1,
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
+    gap: 4,
   },
-  saveButton: {
-    flexDirection: "row",
+  headerIconButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-    minWidth: 44, // Minimum touch target size
-  },
-  buttonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    flexShrink: 1,
   },
   searchContainer: {
-    marginBottom: 6,
+    marginBottom: 2,
   },
   searchBar: {
     flexDirection: "row",

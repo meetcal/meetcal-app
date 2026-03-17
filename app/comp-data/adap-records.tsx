@@ -3,6 +3,7 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { AGE_GROUP_KEY, EMPTY_RECORDS_DATA, MENS_WEIGHT_CLASSES, WOMENS_WEIGHT_CLASSES } from "@/constants/adapative";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
@@ -20,6 +21,7 @@ type Gender = "Men" | "Women";
 
 export default function AdaptiveRecordsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
 
   const {
@@ -54,7 +56,12 @@ export default function AdaptiveRecordsScreen() {
           gestureEnabled: true,
           gestureDirection: "horizontal",
           animation: "slide_from_right",
-          headerStyle: { backgroundColor: colors.background },
+          headerTitleStyle: {
+            color: currentTheme === "dark" ? "#fff" : "#000",
+          },
+          headerStyle: {
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+          },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
         }}

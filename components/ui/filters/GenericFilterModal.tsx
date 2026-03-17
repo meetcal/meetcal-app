@@ -3,12 +3,12 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import React, { useCallback, useRef, useState } from "react";
 import {
-  useWindowDimensions,
   LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,6 +52,7 @@ interface GenericFilterModalProps {
   onResetFilters: () => void;
   resultCount?: number | ((tempFilters: Record<string, string>) => number);
   resultLabel?: string;
+  footerBottomInset?: number;
 }
 
 const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
@@ -63,6 +64,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   onResetFilters,
   resultCount,
   resultLabel = "results",
+  footerBottomInset,
 }) => {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
@@ -194,6 +196,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
   const resolvedResultCount =
     typeof resultCount === "function" ? resultCount(tempFilters) : resultCount;
+  const resolvedFooterBottomInset = footerBottomInset ?? insets.bottom;
 
   const getDisplayValue = (section: FilterSection) => {
     const value = tempFilters[section.id] || "";
@@ -218,7 +221,6 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             styles.sheetContent,
             {
               backgroundColor: colors.card,
-              paddingBottom: insets.bottom,
               top: sheetTopOffset,
               height: windowHeight - sheetTopOffset,
             },
@@ -234,7 +236,6 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             ref={scrollViewRef}
             bounces={false}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
           >
             {currentSections.map((section) => (
               <View
@@ -301,7 +302,15 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             ))}
           </ScrollView>
 
-          <View style={[styles.footer, { borderTopColor: colors.border }]}>
+          <View
+            style={[
+              styles.footer,
+              {
+                borderTopColor: colors.border,
+                paddingBottom: 16 + resolvedFooterBottomInset,
+              },
+            ]}
+          >
             <View style={styles.footerContent}>
               {resolvedResultCount !== undefined && (
                 <ThemedText
@@ -365,9 +374,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-  },
-  scrollContent: {
-    flexGrow: 1,
   },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,

@@ -4,6 +4,7 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -25,6 +26,7 @@ import { StyleSheet, View } from "react-native";
 
 export default function RecordsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = React.useState<
     Record<string, string[]>
   >({});
@@ -220,8 +222,11 @@ export default function RecordsScreen() {
             gestureEnabled: true,
             gestureDirection: "horizontal",
             animation: "slide_from_right",
+            headerTitleStyle: {
+              color: currentTheme === "dark" ? "#fff" : "#000",
+            },
             headerStyle: {
-              backgroundColor: colors.background,
+              backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
             },
             headerShadowVisible: false,
             headerBackButtonDisplayMode: "minimal",

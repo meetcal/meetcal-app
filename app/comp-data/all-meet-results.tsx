@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { searchAthletesByName } from "@/lib/database/queries";
 import {
@@ -23,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AllMeetResultsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -267,10 +269,10 @@ export default function AllMeetResultsScreen() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: colors.text,
+            color: currentTheme === "dark" ? "#fff" : "#000",
           },
           headerStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
