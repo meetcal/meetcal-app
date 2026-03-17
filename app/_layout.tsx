@@ -1,15 +1,10 @@
-import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { convex } from "@/lib/convex";
+import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import NetInfo from "@react-native-community/netinfo";
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider as NavigationThemeProvider,
-} from "@react-navigation/native";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useFonts } from "expo-font";
-import { Stack, usePathname, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
@@ -92,21 +87,6 @@ NetInfo.configure({
   useNativeReachability: true,
 });
 
-// PostHog page view tracking component
-function PostHogPageView() {
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (pathname) {
-      posthog?.capture("$pageview", {
-        $current_url: pathname,
-      });
-    }
-  }, [pathname]);
-
-  return null;
-}
-
 const ONESIGNAL_APP_ID =
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ??
   "184c93ff-546a-4db8-945c-203091782fc9";
@@ -155,32 +135,33 @@ export default Sentry.wrap(function RootLayout() {
 
   return (
     <CustomThemeProvider>
-      <NavigationThemeProvider value={DefaultTheme}>
-        <ClerkProvider
-          publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
-          tokenCache={tokenCache}
-        >
-          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-            <PostHogProvider client={posthog}>
-              <SubscriptionProvider>
-                <SelectedMeetProvider>
-                  <SavedSessionsProvider>
-                    <PostHogPageView />
-                    <AppContent fontsLoaded={fontsLoaded} />
-                  </SavedSessionsProvider>
-                </SelectedMeetProvider>
-              </SubscriptionProvider>
-            </PostHogProvider>
-          </ConvexProviderWithClerk>
-        </ClerkProvider>
-      </NavigationThemeProvider>
+      <ClerkProvider
+        publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
+        tokenCache={tokenCache}
+      >
+        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+          <PostHogProvider
+            client={posthog}
+            autocapture={{ captureScreens: true }}
+          >
+            <SubscriptionProvider>
+              <SelectedMeetProvider>
+                <SavedSessionsProvider>
+                  <RootLayoutContent fontsLoaded={fontsLoaded} />
+                </SavedSessionsProvider>
+              </SelectedMeetProvider>
+            </SubscriptionProvider>
+          </PostHogProvider>
+        </ConvexProviderWithClerk>
+      </ClerkProvider>
     </CustomThemeProvider>
   );
 });
-function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
+
+function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const hasAttemptedSplashHide = useRef(false);
-  const router = useRouter();
+  const { currentTheme } = useTheme();
   const {
     isLoaded: isUserLoaded,
     user,
@@ -247,34 +228,19 @@ function AppContent({ fontsLoaded }: { fontsLoaded: boolean }) {
             "[RootLayout] App launched with initial URL, letting router handle:",
             initialUrl,
           );
-          // Let router handle deep links - auth will be guarded per-feature
-        } else {
-          // Always navigate to tabs - authentication handled just-in-time
-          router.replace("/(tabs)" as any);
         }
       }
     }
 
     hideSplash();
-  }, [
-    isInitialized,
-    fontsLoaded,
-    router,
-  ]);
+  }, [isInitialized, fontsLoaded]);
 
   if (!isInitialized) {
     return null;
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const { currentTheme } = useTheme();
-  const theme = currentTheme === "dark" ? DarkTheme : DefaultTheme;
-
   return (
-    <NavigationThemeProvider value={theme}>
+    <>
       <UpdateNotification />
       <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
@@ -284,6 +250,6 @@ function RootLayoutNav() {
         <Stack.Screen name="schedule-toolbar/profile" />
       </Stack>
       <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
-    </NavigationThemeProvider>
+    </>
   );
 }

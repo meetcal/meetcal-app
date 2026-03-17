@@ -22,3 +22,9 @@ allprojects {
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
+
+subprojects {
+    project.configurations.all {
+        resolutionStrategy.force 'com.squareup.okhttp3:okhttp:4.12.0'
+    }
+}

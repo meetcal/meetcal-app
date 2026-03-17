@@ -10,6 +10,9 @@ export default function InfoLayout() {
         headerStyle: {
           backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
         },
+        headerTitleStyle: {
+          color: currentTheme === 'dark' ? '#fff' : '#000' ,
+        }
       }}
     />
   );

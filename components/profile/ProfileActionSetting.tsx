@@ -48,15 +48,21 @@ export function ProfileActionSetting({
       </View>
       <View style={styles.valueContainer}>
         {!!value && (
-          <ThemedText style={[styles.value, { color: colors.secondaryText }]}>
+          <ThemedText
+            style={[styles.value, { color: colors.secondaryText }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {value}
           </ThemedText>
         )}
-        <IconSymbol
-          name="chevron-forward"
-          size={20}
-          color={colors.link}
-        />
+        <View style={styles.chevronContainer}>
+          <IconSymbol
+            name="chevron-forward"
+            size={20}
+            color={colors.link}
+          />
+        </View>
       </View>
     </Pressable>
   );
@@ -73,6 +79,7 @@ const styles = StyleSheet.create({
   textContainer: {
     flex: 1,
     marginRight: 12,
+    minWidth: 0,
   },
   label: {
     fontSize: 17,
@@ -83,13 +90,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   valueContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    maxWidth: "45%",
+    justifyContent: "flex-end",
+    minWidth: 0,
   },
   value: {
+    flexShrink: 1,
     fontSize: 14,
     textAlign: "right",
+  },
+  chevronContainer: {
+    width: 20,
+    alignItems: "flex-end",
+    flexShrink: 0,
   },
 });

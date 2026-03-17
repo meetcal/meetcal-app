@@ -40,29 +40,10 @@
     </array>
     <key>CFBundleVersion</key>
     <string>1</string>
-    <key>INAlternativeAppNames</key>
-    <array>
-      <dict>
-        <key>INAlternativeAppName</key>
-        <string>Lifting</string>
-        <key>INAlternativeAppNamePronunciationHint</key>
-        <string>Lifting</string>
-      </dict>
-      <dict>
-        <key>INAlternativeAppName</key>
-        <string>Weightlifting</string>
-        <key>INAlternativeAppNamePronunciationHint</key>
-        <string>Weightlifting</string>
-      </dict>
-      <dict>
-        <key>INAlternativeAppName</key>
-        <string>Calendar</string>
-        <key>INAlternativeAppNamePronunciationHint</key>
-        <string>Calendar</string>
-      </dict>
-    </array>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSAppTransportSecurity</key>
@@ -72,10 +53,20 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSBonjourServices</key>
+    <array>
+      <string>_expo._tcp</string>
+    </array>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your calendars</string>
     <key>NSCalendarsUsageDescription</key>
     <string>MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>MeetCal does not use your location, but frameworks we use have location-related things so I have to include this.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your reminders</string>
     <key>NSRemindersUsageDescription</key>
