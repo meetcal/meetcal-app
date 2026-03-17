@@ -6,7 +6,6 @@ module.exports = function (api) {
       [
         'babel-plugin-module-resolver',
         {
-          root: ['.'],
           alias: {
             '@': '.',
           },

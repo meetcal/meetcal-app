@@ -31,6 +31,7 @@ export default ({ config }) => ({
     },
     infoPlist: {
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
+      NSLocationWhenInUseUsageDescription: "MeetCal does not use your location, but frameworks we use have location-related things so I have to include this.",
       UIBackgroundModes: ["remote-notification"],
     },
     icon: './assets/images/liquid-glass.icon',
@@ -52,7 +53,12 @@ export default ({ config }) => ({
       'onesignal-expo-plugin',
       { mode: 'production' }
     ],
+    'expo-font',
+    'expo-localization',
     'expo-router',
+    'expo-secure-store',
+    'expo-sharing',
+    'expo-web-browser',
     [
       'expo-build-properties',
       {
@@ -73,7 +79,7 @@ export default ({ config }) => ({
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
     [
-      '@sentry/react-native/expo',
+      '@sentry/react-native',
       {
         url: "https://sentry.io/",
         project: "react-native",
