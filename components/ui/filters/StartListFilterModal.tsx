@@ -10,12 +10,12 @@ import {
 } from "@/lib/start-list-utils";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  useWindowDimensions,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import GenericFilterModal, { FilterSection } from "./GenericFilterModal";
@@ -554,6 +554,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     <GenericFilterModal
       visible={visible}
       onClose={onClose}
+      footerBottomInset={20}
       sections={sections}
       filters={{
         ageGroup: ageGroupFilter,
