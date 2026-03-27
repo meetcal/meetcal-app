@@ -47,7 +47,7 @@ import {
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
 import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
@@ -132,6 +132,13 @@ export default function StartListScreen() {
   >(null);
   const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
+  const listRef = useRef<FlashListRef<LiftResult>>(null);
+
+  const handleItemExpand = useCallback((index: number) => {
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
+    }, 100);
+  }, []);
 
   const loadStoreReview = useCallback(async () => {
     try {
@@ -366,14 +373,16 @@ export default function StartListScreen() {
   }, []);
 
   const renderListItem = useCallback(
-    ({ item }: { item: LiftResult }) => (
+    ({ item, index }: { item: LiftResult; index: number }) => (
       <AthleteItem
         athlete={item}
         router={router}
         getSessionDetails={getSessionDetails}
+        onExpand={handleItemExpand}
+        index={index}
       />
     ),
-    [router, getSessionDetails],
+    [router, getSessionDetails, handleItemExpand],
   );
 
   const keyExtractor = useCallback(
@@ -1227,6 +1236,7 @@ export default function StartListScreen() {
 
       <ExpandedIdProvider>
         <FlashList
+          ref={listRef}
           data={filteredAthletes}
           extraData={{
             weightClassFilter,
