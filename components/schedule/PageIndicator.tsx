@@ -24,7 +24,7 @@ export function PageIndicator({
         styles.container,
         {
           bottom:
-            Platform.OS === "ios" ? insets.bottom + 50 : insets.bottom + 70,
+            Platform.OS === "ios" ? insets.bottom + 5 : insets.bottom + 70,
         },
       ]}
     >

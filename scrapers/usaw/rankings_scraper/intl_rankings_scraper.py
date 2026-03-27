@@ -19,7 +19,7 @@ from convex import ConvexClient
 # ============================================================================
 # CONFIGURATION - Enter your PDF URL here
 # ============================================================================
-PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt6441e3f4c67a7c62/69bc4ae2ea47c37d4efde9f1/2026_World_Championships_Men_031926.pdf"
+PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/bltc99d2cbf924a3722/69c6aa4d81a8e37c6120bdd3/2026_FISU_Rankings_Women_032726.pdf"
 
 # Load environment variables
 SCRIPT_DIR = Path(__file__).resolve().parent
