@@ -1,3 +1,4 @@
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import SessionCard from "@/components/saved/SessionCard";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -13,9 +14,14 @@ import { LegacySavedSession, SessionScheduleLookup } from "@/types/saved";
 import { Schedule as ScheduleType } from "@/types/schedule";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
+  type CalendarDestination,
   CalendarSession,
   createCalendarEvents,
+  createCalendarEventsToCalendar,
+  getWritableCalendars,
   requestCalendarPermissions,
+  resolvePreferredAndroidCalendar,
+  setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
 import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { migrateSessionsToMeetSpecific } from "@/utils/migration";
@@ -23,7 +29,7 @@ import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/clerk-expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -35,6 +41,7 @@ import React, {
 import {
   Alert,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -65,6 +72,7 @@ export default function SavedScreen() {
   const [letterFilter, setLetterFilter] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const colors = useAppColors();
@@ -73,6 +81,13 @@ export default function SavedScreen() {
     new Map(),
   );
   const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
+  const [calendarDestinations, setCalendarDestinations] = useState<
+    CalendarDestination[]
+  >([]);
+  const [pendingCalendarSessions, setPendingCalendarSessions] = useState<
+    CalendarSession[] | null
+  >(null);
+  const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
   const schedulesMapRef = React.useRef<Map<MeetName, ScheduleType>>(new Map());
   const loadSavedSessionsRef = React.useRef(loadSavedSessions);
 
@@ -83,6 +98,12 @@ export default function SavedScreen() {
   useEffect(() => {
     loadSavedSessionsRef.current = loadSavedSessions;
   }, [loadSavedSessions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadSavedSessionsRef.current();
+    }, []),
+  );
 
   const handleResetSessions = useCallback(() => {
     // Check authentication first
@@ -398,6 +419,35 @@ export default function SavedScreen() {
                 return;
               }
 
+              if (Platform.OS === "android") {
+                const preferredCalendar = await resolvePreferredAndroidCalendar();
+                if (preferredCalendar) {
+                  await createCalendarEventsToCalendar(
+                    sessionsToAdd,
+                    preferredCalendar.id,
+                  );
+                  Alert.alert(
+                    "Success",
+                    `Sessions have been added to ${preferredCalendar.title}.`,
+                  );
+                  return;
+                }
+
+                const writableCalendars = await getWritableCalendars();
+                if (writableCalendars.length === 0) {
+                  Alert.alert(
+                    "No Calendars Found",
+                    "Add a calendar account on this device before saving sessions.",
+                  );
+                  return;
+                }
+
+                setCalendarDestinations(writableCalendars);
+                setPendingCalendarSessions(sessionsToAdd);
+                setShowCalendarPicker(true);
+                return;
+              }
+
               await createCalendarEvents(sessionsToAdd);
               Alert.alert(
                 "Success",
@@ -417,6 +467,42 @@ export default function SavedScreen() {
       ],
     );
   }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames]);
+
+  const handleAndroidCalendarSelection = useCallback(
+    async (destination: CalendarDestination) => {
+      if (!pendingCalendarSessions?.length) {
+        setShowCalendarPicker(false);
+        return;
+      }
+
+      setIsCalendarPickerLoading(true);
+
+      try {
+        await setPreferredAndroidCalendarId(destination.id);
+        await createCalendarEventsToCalendar(
+          pendingCalendarSessions,
+          destination.id,
+        );
+        setShowCalendarPicker(false);
+        setPendingCalendarSessions(null);
+        Alert.alert(
+          "Success",
+          `Sessions have been added to ${destination.title}.`,
+        );
+      } catch (error) {
+        console.error("Saved: failed to write calendar events", error);
+        Alert.alert(
+          "Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to add sessions to calendar.",
+        );
+      } finally {
+        setIsCalendarPickerLoading(false);
+      }
+    },
+    [pendingCalendarSessions],
+  );
 
   // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
@@ -626,6 +712,19 @@ export default function SavedScreen() {
             tintColor={colors.text}
           />
         }
+      />
+      <CalendarDestinationPickerModal
+        visible={showCalendarPicker}
+        title="Choose Calendar"
+        destinations={calendarDestinations}
+        onClose={() => {
+          setShowCalendarPicker(false);
+          setPendingCalendarSessions(null);
+        }}
+        onSelect={(destination) => {
+          void handleAndroidCalendarSelection(destination);
+        }}
+        isLoading={isCalendarPickerLoading}
       />
     </ThemedView>
   );

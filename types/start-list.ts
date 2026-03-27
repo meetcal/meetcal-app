@@ -20,7 +20,7 @@ export interface ShareScheduleViewProps {
     filteredAthletes: LiftResult[];
     schedule: ScheduleType;
     selectedMeet: string;
-    selectedClub: string;
+    selectedGroup: string;
     backgroundPreset?: ShareBackgroundPresetId;
     getSessionDetails: (sessionNumber: number) => {
         date: string;
@@ -54,6 +54,8 @@ export interface AthleteItemProps {
     athlete: LiftResult;
     router: ReturnType<typeof useRouter>;
     getSessionDetails: (sessionNumber: number) => SessionDetails | null;
+    onExpand?: (index: number) => void;
+    index?: number;
 }
 
 export interface StartListSkeletonProps {

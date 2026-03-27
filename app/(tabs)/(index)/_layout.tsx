@@ -7,9 +7,12 @@ export default function IndexLayout() {
     <Stack 
       screenOptions={{ 
         headerStyle: { 
-          backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5' 
+          backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5' ,
         }, 
-        headerShadowVisible: false
+        headerShadowVisible: false,
+        headerTitleStyle: {
+          color: currentTheme === 'dark' ? '#fff' : '#000' ,
+        }
       }}
     />);
 }

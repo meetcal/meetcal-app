@@ -1,9 +1,8 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { Schedule, Session } from '@/types/schedule';
-import type { Platform, SupabaseLiftResult } from '@/data/types/athletes';
+import type { Platform, SupabaseLiftResult, LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
-import type { LiftResult } from '@/data/types/athletes';
 import { getMeetConfig } from '@/data/meets/config';
 
 const INITIAL_LOAD_TIMEOUT_MS = 4000;
@@ -25,6 +24,13 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label:
   }
 }
 
+function isScheduleTimeoutError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes('fetchScheduleFromDb:schedule timed out')
+  );
+}
+
 type DbSchedule = {
   date: string;
   sessionId: number;
@@ -35,9 +41,7 @@ type DbSchedule = {
   meet: string;
 };
 
-const scheduleCache = new Map<MeetName, DbSchedule[]>();
 const scheduleInFlight = new Map<MeetName, Promise<DbSchedule[]>>();
-const transformedScheduleCache = new Map<MeetName, Schedule>();
 const transformedScheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 
 // Validate and convert platform string to Platform type
@@ -76,11 +80,6 @@ function formatTo12Hour(time: string): string {
 }
 
 export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]> {
-  const cachedSchedule = scheduleCache.get(meet);
-  if (cachedSchedule) {
-    return cachedSchedule;
-  }
-
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) {
     return inFlight;
@@ -106,10 +105,12 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
       if (s !== 0) return s;
       return a.platform.localeCompare(b.platform);
     }) as DbSchedule[];
-
-    scheduleCache.set(meet, sorted);
     return sorted;
   } catch (error) {
+    if (isScheduleTimeoutError(error)) {
+      console.warn('fetchScheduleFromDb timed out; returning empty schedule', { meet });
+      return [];
+    }
     console.error('Error in fetchScheduleFromDb:', error);
     throw error;
   } finally {
@@ -122,11 +123,6 @@ export async function fetchScheduleFromDb(meet: MeetName): Promise<DbSchedule[]>
 }
 
 async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
-  const cached = transformedScheduleCache.get(meet);
-  if (cached) {
-    return cached;
-  }
-
   const inFlight = transformedScheduleInFlight.get(meet);
   if (inFlight) {
     return inFlight;
@@ -134,9 +130,7 @@ async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
 
   const request = (async () => {
     const dbSchedule = await fetchScheduleFromDb(meet);
-    const transformed = await transformScheduleData(dbSchedule);
-    transformedScheduleCache.set(meet, transformed);
-    return transformed;
+    return transformScheduleData(dbSchedule);
   })().finally(() => {
     transformedScheduleInFlight.delete(meet);
   });
@@ -147,9 +141,6 @@ async function fetchAndTransformSchedule(meet: MeetName): Promise<Schedule> {
 
 // Transform DB data to match our Schedule type
 export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<Schedule> {
-  
-  const platformOrder: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  
   const scheduleMap = new Map<string, {
     date: string;
     fullDate: string;
@@ -199,7 +190,7 @@ export async function transformScheduleData(dbSchedule: DbSchedule[]): Promise<S
 
   // Convert map to array and sort sessions
   const schedule: Schedule = [];
-  for (const [_, dayData] of scheduleMap) {
+  for (const dayData of scheduleMap.values()) {
     const sessions = Array.from(dayData.sessions.values()).sort((a, b) => a.number - b.number);
     schedule.push({
       date: dayData.date,
@@ -215,6 +206,10 @@ export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   try {
     return await fetchAndTransformSchedule(meet);
   } catch (error) {
+    if (isScheduleTimeoutError(error)) {
+      console.warn('fetchSchedule timed out; returning empty schedule', { meet });
+      return [];
+    }
     console.error('Error in fetchSchedule:', error);
     throw error;
   }
@@ -259,6 +254,7 @@ export async function fetchAthletesWithSession(meet: MeetName): Promise<LiftResu
         name: row.name,
         age: row.age,
         club: row.club,
+        wso: row.wso || undefined,
         gender: row.gender || '',
         weightClass: row.weightClass || '',
         entryTotal: row.entryTotal,
@@ -282,6 +278,7 @@ export async function fetchAthletes(meet: MeetName): Promise<LiftResult[]> {
     name: athlete.name,
     age: athlete.age,
     club: athlete.club,
+    wso: athlete.wso || undefined,
     gender: athlete.gender || '',
     weightClass: athlete.weightClass || '',
     entryTotal: athlete.entryTotal,

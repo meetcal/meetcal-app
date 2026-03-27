@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
-import { useUser } from '@clerk/clerk-expo';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SubscriptionContextType = {
@@ -33,7 +32,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
-  const { user } = useUser();
 
   // Helper function to save subscription to cache with timestamp
   const saveSubscriptionCache = async (
@@ -298,16 +296,18 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <SubscriptionContext.Provider value={{
-      isSubscribed,
-      subscriptionType,
-      setSubscribed,
-      isLoading,
-      restorePurchases,
-      checkSubscriptionStatus,
-      isUsingStaleCache,
-      lastSyncTimestamp,
-    }}>
+    <SubscriptionContext.Provider
+      value={{
+        isSubscribed,
+        subscriptionType,
+        setSubscribed,
+        isLoading,
+        restorePurchases,
+        checkSubscriptionStatus,
+        isUsingStaleCache,
+        lastSyncTimestamp,
+      }}
+    >
       {children}
     </SubscriptionContext.Provider>
   );

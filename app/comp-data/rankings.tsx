@@ -4,11 +4,13 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchIntlRankings,
   IntlRanking,
+  intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
@@ -18,10 +20,10 @@ import { StyleSheet, View } from "react-native";
 
 export default function RecordsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
   const {
     filters,
     setFilters,
-    tempFilters,
     setTempFilters,
     openFilters,
     filterModalProps,
@@ -30,30 +32,18 @@ export default function RecordsScreen() {
   });
 
   const [intlRankings, setIntlRankings] = useState<IntlRanking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const {
+    data,
+    isInitialLoading: loading,
+    error: fetchError,
+  } = useMutableResource({
+    resource: intlRankingsResource,
+    params: [] as const,
+    initialData: [] as IntlRanking[],
+  });
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setFetchError(null);
-
-    fetchIntlRankings()
-      .then((data) => {
-        if (cancelled) return;
-        setIntlRankings(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setFetchError(err.message || "Failed to fetch rankings");
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setIntlRankings(data);
+  }, [data]);
 
   // Only set default filters the first time rankings are loaded
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(false);
@@ -109,10 +99,10 @@ export default function RecordsScreen() {
     [intlRankings],
   );
 
-  // Filter age category options based on the selected meet in tempFilters
+  // Filter age category options based on the applied meet
   const ageCategoryOptions = useMemo(() => {
-    const filteredData = tempFilters.meet
-      ? intlRankings.filter((r) => r.meet === tempFilters.meet)
+    const filteredData = filters.meet
+      ? intlRankings.filter((r) => r.meet === filters.meet)
       : intlRankings;
 
     return sortAgeGroups(
@@ -125,7 +115,7 @@ export default function RecordsScreen() {
       ).filter(Boolean),
       { includeExtended: true },
     );
-  }, [intlRankings, tempFilters.meet]);
+  }, [filters.meet, intlRankings]);
 
   const genderOptions = useMemo(
     () =>
@@ -185,32 +175,54 @@ export default function RecordsScreen() {
     setTempFilters(resetFilters);
   };
 
-  const filterSections: FilterSection[] = [
-    {
-      id: "meet",
-      title: "Meet",
-      options: meetOptions.map((meet) => ({
-        value: meet,
-        label: meet,
-      })),
-    },
-    {
-      id: "age_category",
-      title: "Age Category",
-      options: ageCategoryOptions.map((age) => ({
-        value: age,
-        label: age,
-      })),
-    },
-    {
-      id: "gender",
-      title: "Gender",
-      options: genderOptions.map((gender) => ({
-        value: gender,
-        label: gender,
-      })),
-    },
-  ];
+  const buildFilterSections = (
+    modalTempFilters: Record<string, string>,
+  ): FilterSection[] => {
+    const selectedMeet = modalTempFilters.meet || filters.meet;
+    const modalAgeCategoryOptions = sortAgeGroups(
+      Array.from(
+        new Set(
+          (selectedMeet
+            ? intlRankings.filter((ranking) => ranking.meet === selectedMeet)
+            : intlRankings
+          ).map((ranking) =>
+            typeof ranking.ageCategory === "string"
+              ? ranking.ageCategory
+              : "",
+          ),
+        ),
+      ).filter(Boolean),
+      { includeExtended: true },
+    );
+
+    return [
+      {
+        id: "meet",
+        title: "Meet",
+        options: meetOptions.map((meet) => ({
+          value: meet,
+          label: meet,
+        })),
+      },
+      {
+        id: "age_category",
+        title: "Age Category",
+        options: modalAgeCategoryOptions.map((age) => ({
+          value: age,
+          label: age,
+        })),
+        dependsOn: ["meet"],
+      },
+      {
+        id: "gender",
+        title: "Gender",
+        options: genderOptions.map((gender) => ({
+          value: gender,
+          label: gender,
+        })),
+      },
+    ];
+  };
 
   return (
     <SubscriptionGate>
@@ -225,8 +237,11 @@ export default function RecordsScreen() {
             gestureEnabled: true,
             gestureDirection: "horizontal",
             animation: "slide_from_right",
+            headerTitleStyle: {
+              color: currentTheme === "dark" ? "#fff" : "#000",
+            },
             headerStyle: {
-              backgroundColor: colors.background,
+              backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
             },
             headerShadowVisible: false,
             headerBackButtonDisplayMode: "minimal",
@@ -273,7 +288,7 @@ export default function RecordsScreen() {
 
         <GenericFilterModal
           {...filterModalProps}
-          sections={filterSections}
+          sections={buildFilterSections}
           onResetFilters={handleResetFilters}
           resultCount={filteredRankings.length}
           resultLabel="rankings"

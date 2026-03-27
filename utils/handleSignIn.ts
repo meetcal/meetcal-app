@@ -1,19 +1,52 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { cacheAuthState } from "@/lib/authCache";
 import * as AuthSession from "expo-auth-session";
+import * as Updates from "expo-updates";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import * as Sentry from "@sentry/react-native";
+import * as WebBrowser from "expo-web-browser";
 
 type OAuthProvider = "google" | "apple";
 type OAuthStrategy = "oauth_google" | "oauth_apple";
+type SSOFlowResult = {
+  createdSessionId: string | null;
+  setActive?: ((value: { session: string }) => Promise<void>) | null;
+  authSessionResult?: { type?: string } | null;
+};
+type OAuthFlowMeta = {
+  provider: OAuthProvider;
+  strategy: OAuthStrategy;
+  primaryRedirectUrl: string;
+  fallbackRedirectUrl: string;
+  usedFallback: boolean;
+  manualFallbackUsed: boolean;
+};
+type OAuthErrorWithMeta = Error & {
+  oauthMeta?: OAuthFlowMeta;
+};
+type SSOFlowStatus = "success" | "cancelled" | "ignored";
+
+const OAUTH_PRIMARY_CALLBACK_PATH = "oauth-native-callback";
+const OAUTH_FALLBACK_CALLBACK_PATH = "sso-callback";
+const CLERK_MISSING_REDIRECT_ERROR =
+  "Missing external verification redirect URL for SSO flow";
 
 // Export a hook that components can use
 export function useSignInHandlers() {
   const { isSubscribed } = useSubscription();
+  const {
+    signIn,
+    setActive: clerkSetActive,
+    isLoaded: isSignInLoaded,
+  } = useSignIn();
+  const { signUp, isLoaded: isSignUpLoaded } = useSignUp();
   const { from, feature } = useLocalSearchParams<{
     from?: string;
     feature?: string;
   }>();
+  const ssoInFlightRef = useRef(false);
 
   const handlePostSignIn = useCallback(() => {
     if (!isSubscribed) {
@@ -25,6 +58,8 @@ export function useSignInHandlers() {
           feature: feature,
         },
       } as any);
+    } else if (router.canGoBack()) {
+      router.back();
     } else if (from && from !== "feature") {
       // Return to origin
       router.replace(from as any);
@@ -34,60 +69,42 @@ export function useSignInHandlers() {
     }
   }, [from, feature, isSubscribed]);
 
-  // Helper functions
-  const safeStringify = (value: unknown) => {
-    try {
-      const seen = new WeakSet<object>();
-      return JSON.stringify(value, (_key, val) => {
-        if (typeof val === "object" && val !== null) {
-          if (seen.has(val as object)) return "[Circular]";
-          seen.add(val as object);
-        }
-        return val;
-      });
-    } catch (stringifyError) {
-      return `<<unstringifiable: ${String(stringifyError)}>>`;
-    }
-  };
-
-  const dumpErrorDetails = (value: unknown) => {
-    try {
-      if (value && typeof value === "object") {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj);
-        const allKeys = Object.getOwnPropertyNames(obj);
-        console.error("OAuth error keys:", keys);
-        console.error("OAuth error all keys:", allKeys);
-        allKeys.forEach((key) => {
-          try {
-            console.error(`OAuth error prop ${key}:`, obj[key]);
-          } catch (propErr) {
-            console.error(`OAuth error prop ${key} (read error):`, propErr);
-          }
-        });
-      }
-    } catch (dumpErr) {
-      console.error("OAuth error dump failed:", dumpErr);
-    }
-  };
-
   const handleOAuthError = (
     err: unknown,
-    options: { provider: OAuthProvider; context: "sign-in" },
+    options: { provider: OAuthProvider; strategy: OAuthStrategy; context: "sign-in" },
   ) => {
-    console.error("OAuth provider:", options.provider);
-    console.error("OAuth context:", options.context);
-    console.error("OAuth error (raw):", err);
-    console.error("OAuth error (name):", (err as Error)?.name);
-    console.error("OAuth error (message):", (err as Error)?.message);
-    console.error("OAuth error (stack):", (err as Error)?.stack);
-    try {
-      console.error("OAuth error (string):", String(err));
-    } catch (toStringError) {
-      console.error("OAuth error (string error):", toStringError);
-    }
-    console.error("OAuth error (safe json):", safeStringify(err));
-    dumpErrorDetails(err);
+    const errorName = (err as Error)?.name ?? "Error";
+    const errorMessage = (err as Error)?.message ?? "OAuth flow failed";
+    console.error(
+      "OAuth flow failed:",
+      JSON.stringify({
+        provider: options.provider,
+        strategy: options.strategy,
+        context: options.context,
+        errorName,
+        errorMessage,
+      }),
+    );
+
+    const errorMeta =
+      typeof err === "object" && err !== null && "oauthMeta" in err
+        ? (err as OAuthErrorWithMeta).oauthMeta
+        : undefined;
+
+    Sentry.withScope((scope) => {
+      scope.setTag("auth.provider", options.provider);
+      scope.setTag("auth.strategy", options.strategy);
+      scope.setTag("auth.context", options.context);
+      scope.setContext("oauth_sso", {
+        release: Updates.runtimeVersion ?? "unknown",
+        updateId: Updates.updateId ?? "embedded",
+        primaryRedirectUrl: errorMeta?.primaryRedirectUrl ?? "unknown",
+        fallbackRedirectUrl: errorMeta?.fallbackRedirectUrl ?? "unknown",
+        usedFallback: errorMeta?.usedFallback ?? false,
+        manualFallbackUsed: errorMeta?.manualFallbackUsed ?? false,
+      });
+      Sentry.captureException(err);
+    });
   };
 
   const setActiveSession = useCallback(
@@ -108,105 +125,208 @@ export function useSignInHandlers() {
     [],
   );
 
+  const performManualOAuthFallback = useCallback(
+    async (strategy: OAuthStrategy, redirectUrl: string, provider: OAuthProvider) => {
+      if (!isSignInLoaded || !isSignUpLoaded) {
+        throw new Error(
+          `Manual ${provider} OAuth fallback unavailable because Clerk is not loaded`,
+        );
+      }
+
+      await signIn.create({
+        strategy,
+        redirectUrl,
+      });
+
+      if (signIn.createdSessionId) {
+        return {
+          createdSessionId: signIn.createdSessionId,
+          setActive: clerkSetActive ?? null,
+          authSessionResult: { type: "success" as const },
+        } satisfies SSOFlowResult;
+      }
+
+      const { externalVerificationRedirectURL } = signIn.firstFactorVerification;
+      if (!externalVerificationRedirectURL) {
+        throw new Error(
+          `Manual ${provider} OAuth fallback missing external verification redirect URL`,
+        );
+      }
+
+      const authSessionResult = await WebBrowser.openAuthSessionAsync(
+        externalVerificationRedirectURL.toString(),
+        redirectUrl,
+      );
+      if (authSessionResult.type !== "success" || !authSessionResult.url) {
+        return {
+          createdSessionId: null,
+          setActive: clerkSetActive ?? null,
+          authSessionResult,
+        } satisfies SSOFlowResult;
+      }
+
+      const params = new URL(authSessionResult.url).searchParams;
+      const rotatingTokenNonce = params.get("rotating_token_nonce") ?? "";
+      await signIn.reload({ rotatingTokenNonce });
+
+      const userNeedsToBeCreated =
+        signIn.firstFactorVerification.status === "transferable";
+      if (userNeedsToBeCreated) {
+        await signUp.create({
+          transfer: true,
+        });
+      }
+
+      return {
+        createdSessionId: signUp.createdSessionId ?? signIn.createdSessionId ?? null,
+        setActive: clerkSetActive ?? null,
+        authSessionResult,
+      } satisfies SSOFlowResult;
+    },
+    [clerkSetActive, isSignInLoaded, isSignUpLoaded, signIn, signUp],
+  );
+
   const performSSOFlow = useCallback(
     async (
       startSSOFlow: any,
       strategy: OAuthStrategy,
       provider: OAuthProvider,
-    ) => {
-      console.log(`Starting ${provider} OAuth flow...`);
-      const redirectUrl = AuthSession.makeRedirectUri({
-        scheme: "meetcal",
-        path: "oauth-native-callback",
-      });
-      console.log("Redirect URL:", redirectUrl);
-
-      console.log("Calling startSSOFlow...");
-      const result = await startSSOFlow({
-        strategy,
-        redirectUrl,
-      });
-      console.log("SSO Flow Result:", safeStringify(result));
-
-      if (result.createdSessionId) {
-        console.log("Session created directly:", result.createdSessionId);
-        await setActiveSession(result, result.createdSessionId, provider);
-        handlePostSignIn();
-        return;
+    ): Promise<SSOFlowStatus> => {
+      if (ssoInFlightRef.current) {
+        console.warn(
+          `Ignoring ${provider} OAuth request because another auth session is already in progress`,
+        );
+        return "ignored";
       }
 
-      if (result.signUp) {
-        console.log("Sign up flow initiated:", result.signUp.status);
-        const signUp = result.signUp;
+      ssoInFlightRef.current = true;
+      console.log(`Starting ${provider} OAuth flow...`);
+      const primaryRedirectUrl = AuthSession.makeRedirectUri({
+        scheme: "meetcal",
+        path: OAUTH_PRIMARY_CALLBACK_PATH,
+      });
+      const fallbackRedirectUrl = AuthSession.makeRedirectUri({
+        scheme: "meetcal",
+        path: OAUTH_FALLBACK_CALLBACK_PATH,
+      });
+      let usedFallback = false;
+      let manualFallbackUsed = false;
 
+      try {
+        console.log("Redirect URL:", primaryRedirectUrl);
+        console.log("Calling startSSOFlow...");
+        let result: SSOFlowResult;
         try {
-          console.log("Attempting to complete sign up...");
-          await signUp.update({
-            emailAddress: signUp.emailAddress || "",
-            firstName: signUp.firstName || "",
-            lastName: signUp.lastName || "",
-            legalAccepted: true,
-          });
-
-          const completeSignUp = await signUp.create({
+          result = await startSSOFlow({
             strategy,
-            redirectUrl,
-            transfer: true,
+            redirectUrl: primaryRedirectUrl,
           });
-
-          console.log("Sign up completion result:", safeStringify(completeSignUp));
-
-          if (completeSignUp.createdSessionId) {
-            console.log(
-              "Session created after sign up:",
-              completeSignUp.createdSessionId,
-            );
-            await setActiveSession(result, completeSignUp.createdSessionId, provider);
-            handlePostSignIn();
-            return;
+        } catch (initialErr) {
+          const initialMessage = (initialErr as Error)?.message ?? "";
+          if (initialMessage.includes("Another web browser is already open")) {
+            return "ignored";
+          }
+          if (!initialMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
+            if (typeof initialErr === "object" && initialErr !== null) {
+              (initialErr as OAuthErrorWithMeta).oauthMeta = {
+                provider,
+                strategy,
+                primaryRedirectUrl,
+                fallbackRedirectUrl,
+                usedFallback,
+                manualFallbackUsed,
+              };
+            }
+            throw initialErr;
           }
 
-          console.log("No session created after sign up completion");
-          if (result.signIn && signUp.emailAddress) {
-            const signInAttempt = await result.signIn.create({
-              identifier: signUp.emailAddress,
+          usedFallback = true;
+          console.warn(
+            "Retrying SSO flow with fallback redirect URL:",
+            fallbackRedirectUrl,
+          );
+          try {
+            result = await startSSOFlow({
               strategy,
-              redirectUrl,
+              redirectUrl: fallbackRedirectUrl,
             });
+          } catch (retryErr) {
+            if (typeof retryErr === "object" && retryErr !== null) {
+              (retryErr as OAuthErrorWithMeta).oauthMeta = {
+                provider,
+                strategy,
+                primaryRedirectUrl,
+                fallbackRedirectUrl,
+                usedFallback,
+                manualFallbackUsed,
+              };
+            }
+            const retryMessage = (retryErr as Error)?.message ?? "";
+            if (retryMessage.includes("Another web browser is already open")) {
+              return "ignored";
+            }
+            if (!retryMessage.includes(CLERK_MISSING_REDIRECT_ERROR)) {
+              throw retryErr;
+            }
 
-            if (signInAttempt.createdSessionId) {
-              await setActiveSession(result, signInAttempt.createdSessionId, provider);
-              handlePostSignIn();
-              return;
+            manualFallbackUsed = true;
+            console.warn("Retrying with manual Clerk OAuth fallback");
+            try {
+              result = await performManualOAuthFallback(
+                strategy,
+                fallbackRedirectUrl,
+                provider,
+              );
+            } catch (manualErr) {
+              const manualMessage = (manualErr as Error)?.message ?? "";
+              if (manualMessage.includes("Another web browser is already open")) {
+                return "ignored";
+              }
+              if (typeof manualErr === "object" && manualErr !== null) {
+                (manualErr as OAuthErrorWithMeta).oauthMeta = {
+                  provider,
+                  strategy,
+                  primaryRedirectUrl,
+                  fallbackRedirectUrl,
+                  usedFallback,
+                  manualFallbackUsed,
+                };
+              }
+              throw manualErr;
             }
           }
-
-          throw new Error("No session created after sign-up completion");
-        } catch (signUpErr) {
-          throw signUpErr;
         }
-      }
 
-      if (result.signIn) {
-        console.log("Sign in flow initiated:", result.signIn.status);
-        const signInAttempt = await result.signIn.create({
-          strategy,
-          redirectUrl,
-        });
-
-        if (signInAttempt.createdSessionId) {
-          console.log("Session created from sign in:", signInAttempt.createdSessionId);
-          await setActiveSession(result, signInAttempt.createdSessionId, provider);
+        if (result.createdSessionId) {
+          await setActiveSession(result, result.createdSessionId, provider);
           handlePostSignIn();
-          return;
+          return "success";
         }
 
-        throw new Error("No session created from sign in");
-      }
+        const authSessionResultType = result.authSessionResult?.type;
+        if (authSessionResultType === "cancel" || authSessionResultType === "dismiss") {
+          return "cancelled";
+        }
 
-      throw new Error("Unexpected OAuth flow state");
+        const noSessionError = new Error(
+          authSessionResultType
+            ? `No session created for ${provider} SSO (authSessionResult: ${authSessionResultType})`
+            : `No session created for ${provider} SSO`,
+        ) as OAuthErrorWithMeta;
+        noSessionError.oauthMeta = {
+          provider,
+          strategy,
+          primaryRedirectUrl,
+          fallbackRedirectUrl,
+          usedFallback,
+          manualFallbackUsed,
+        };
+        throw noSessionError;
+      } finally {
+        ssoInFlightRef.current = false;
+      }
     },
-    [handlePostSignIn, safeStringify, setActiveSession],
+    [handlePostSignIn, performManualOAuthFallback, setActiveSession],
   );
 
   const onGooglePress = useCallback(
@@ -214,7 +334,11 @@ export function useSignInHandlers() {
       try {
         await performSSOFlow(startSSOFlow, "oauth_google", "google");
       } catch (err) {
-        handleOAuthError(err, { provider: "google", context: "sign-in" });
+        handleOAuthError(err, {
+          provider: "google",
+          strategy: "oauth_google",
+          context: "sign-in",
+        });
         throw err;
       }
     },
@@ -226,7 +350,11 @@ export function useSignInHandlers() {
       try {
         await performSSOFlow(startSSOFlow, "oauth_apple", "apple");
       } catch (err) {
-        handleOAuthError(err, { provider: "apple", context: "sign-in" });
+        handleOAuthError(err, {
+          provider: "apple",
+          strategy: "oauth_apple",
+          context: "sign-in",
+        });
         throw err;
       }
     },

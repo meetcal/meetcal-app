@@ -103,7 +103,7 @@ export default function ShareScheduleView({
   filteredAthletes,
   schedule,
   selectedMeet,
-  selectedClub,
+  selectedGroup,
   backgroundPreset = "white",
   getSessionDetails,
 }: ShareScheduleViewProps) {
@@ -157,7 +157,7 @@ export default function ShareScheduleView({
     <View style={[styles.canvas, { backgroundColor: presetVisual.canvas }]}>
       <View style={styles.header}>
         <Text style={[styles.clubName, { color: presetVisual.text }]}>
-          {selectedClub}
+          {selectedGroup}
         </Text>
         <Text style={[styles.meetName, { color: presetVisual.accent }]}>
           {selectedMeet}

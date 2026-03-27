@@ -1,3 +1,5 @@
+import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
+import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { IconSymbol } from "@/components/ui/IconSymbol";
@@ -76,7 +78,7 @@ export default function ProfileScreen() {
   const [editValue, setEditValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const insets = useSafeAreaInsets();
-  const { subscriptionType } = useSubscription();
+  const { isSubscribed, subscriptionType } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
   useEffect(() => {
@@ -189,9 +191,19 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <ProfileField label="First Name" value={user?.firstName || ""} field="firstName" onEdit={handleEdit} />
+          <ProfileField
+            label="First Name"
+            value={user?.firstName || ""}
+            field="firstName"
+            onEdit={handleEdit}
+          />
           {divider}
-          <ProfileField label="Last Name" value={user?.lastName || ""} field="lastName" onEdit={handleEdit} />
+          <ProfileField
+            label="Last Name"
+            value={user?.lastName || ""}
+            field="lastName"
+            onEdit={handleEdit}
+          />
           {divider}
           <ProfileField
             label="Email"
@@ -208,6 +220,15 @@ export default function ProfileScreen() {
             requireAuth={requireAuth}
             router={router}
           />
+          <AutoUnsaveSetting
+            colors={colors}
+            isSubscribed={Boolean(isSubscribed)}
+            requireAuth={requireAuth}
+            router={router}
+          />
+          {Platform.OS === "android" && (
+            <AndroidCalendarSetting colors={colors} />
+          )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
@@ -356,13 +377,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "700",
-    marginBottom: 24,
-    textAlign: "left",
-    lineHeight: 40,
   },
   card: {
     borderRadius: 12,

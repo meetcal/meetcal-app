@@ -8,17 +8,37 @@ import {
   sortWeightClasses,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-  useWindowDimensions,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import GenericFilterModal, { FilterSection } from "./GenericFilterModal";
+
+const AGE_GROUP_OPTIONS = [
+  "U13",
+  "U15",
+  "U17",
+  "Junior",
+  "Senior",
+  "Masters 35",
+  "Masters 40",
+  "Masters 45",
+  "Masters 50",
+  "Masters 55",
+  "Masters 60",
+  "Masters 65",
+  "Masters 70",
+  "Masters 75",
+  "Masters 80",
+  "Masters 85",
+  "Masters 90+",
+];
 
 interface StartListFilterModalProps {
   visible: boolean;
@@ -31,12 +51,16 @@ interface StartListFilterModalProps {
   ageGroupFilter: string;
   adaptiveAthleteFilter: string;
   genderFilter: string;
+  wsoFilter: string;
+  sortOption: string;
   onApplyFilters: (filters: {
     weightClass: string;
     club: string;
     ageGroup: string;
     adaptiveAthlete: string;
     gender: string;
+    wso: string;
+    sort: string;
   }) => void;
   onResetFilters: () => void;
 }
@@ -52,6 +76,8 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
   ageGroupFilter,
   adaptiveAthleteFilter,
   genderFilter,
+  wsoFilter,
+  sortOption,
   onApplyFilters,
   onResetFilters,
 }) => {
@@ -61,28 +87,20 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
   const { height: windowHeight } = useWindowDimensions();
   const maxOptionsHeight = windowHeight * 0.4;
 
-  const ageGroupOptions = [
-    "U13",
-    "U15",
-    "U17",
-    "Junior",
-    "Senior",
-    "Masters 35",
-    "Masters 40",
-    "Masters 45",
-    "Masters 50",
-    "Masters 55",
-    "Masters 60",
-    "Masters 65",
-    "Masters 70",
-    "Masters 75",
-    "Masters 80",
-    "Masters 85",
-    "Masters 90+",
-  ];
-
   const clubOptions = useMemo(
     () => Array.from(new Set(athletes.map((a) => a.club))).sort(),
+    [athletes],
+  );
+
+  const wsoOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          athletes
+            .map((athlete) => athlete.wso?.trim())
+            .filter((wso): wso is string => Boolean(wso)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
     [athletes],
   );
 
@@ -98,122 +116,123 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     });
   }, [clubOptions, starredClubs]);
 
-  const getWeightClassOptions = (tempFilters: Record<string, string>) => {
-    if (!visible) return [];
-    const weightClasses = new Set<string>();
+  const getWeightClassOptions = useCallback(
+    (tempFilters: Record<string, string>) => {
+      const weightClasses = new Set<string>();
 
-    const maleWeightClasses = new Set<string>();
-    const femaleWeightClasses = new Set<string>();
+      const maleWeightClasses = new Set<string>();
+      const femaleWeightClasses = new Set<string>();
 
-    athletes.forEach((athlete) => {
-      if (
-        tempFilters.ageGroup &&
-        getAgeCategory(athlete.age) !== tempFilters.ageGroup
-      ) {
-        return;
-      }
-
-      if (tempFilters.adaptiveAthlete) {
+      athletes.forEach((athlete) => {
         if (
-          tempFilters.adaptiveAthlete === "Adaptive Athletes" &&
-          athlete.adaptive !== true
+          tempFilters.ageGroup &&
+          getAgeCategory(athlete.age) !== tempFilters.ageGroup
         ) {
           return;
         }
-        if (
-          tempFilters.adaptiveAthlete === "Non-Adaptive Athletes" &&
-          athlete.adaptive !== false
-        ) {
-          return;
-        }
-      }
 
-      if (athlete.weightClass) {
-        const parsed = parseWeightClasses(athlete.weightClass);
-        parsed.forEach((wc) => {
-          if (athlete.gender.toLowerCase() === "male") {
-            maleWeightClasses.add(wc);
-          } else if (athlete.gender.toLowerCase() === "female") {
-            femaleWeightClasses.add(wc);
+        if (tempFilters.adaptiveAthlete) {
+          if (
+            tempFilters.adaptiveAthlete === "Adaptive Athletes" &&
+            athlete.adaptive !== true
+          ) {
+            return;
           }
-        });
-      }
-    });
-
-    const getHeaviestWeightClass = (weightClassSet: Set<string>) => {
-      const sorted = Array.from(weightClassSet).sort(sortWeightClasses);
-      return sorted[sorted.length - 1];
-    };
-
-    const heaviestMale = getHeaviestWeightClass(maleWeightClasses);
-    const heaviestFemale = getHeaviestWeightClass(femaleWeightClasses);
-
-    const plusClasses = new Set<string>();
-    if (heaviestMale) {
-      const num = heaviestMale.replace(/\+?kg$/, "");
-      plusClasses.add(`${num}+kg`);
-    }
-    if (heaviestFemale && heaviestFemale !== heaviestMale) {
-      const num = heaviestFemale.replace(/\+?kg$/, "");
-      plusClasses.add(`${num}+kg`);
-    }
-
-    if (tempFilters.gender) {
-      const relevantHeaviest =
-        tempFilters.gender.toLowerCase() === "male"
-          ? heaviestMale
-          : heaviestFemale;
-      if (relevantHeaviest) {
-        const num = relevantHeaviest.replace(/\+?kg$/, "");
-        weightClasses.add(`${num}+kg`);
-      }
-    } else {
-      plusClasses.forEach((wc) => weightClasses.add(wc));
-    }
-
-    athletes.forEach((athlete) => {
-      if (
-        tempFilters.gender &&
-        athlete.gender.toLowerCase() !== tempFilters.gender.toLowerCase()
-      ) {
-        return;
-      }
-
-      if (
-        tempFilters.ageGroup &&
-        getAgeCategory(athlete.age) !== tempFilters.ageGroup
-      ) {
-        return;
-      }
-
-      if (tempFilters.adaptiveAthlete) {
-        if (
-          tempFilters.adaptiveAthlete === "Adaptive Athletes" &&
-          athlete.adaptive !== true
-        ) {
-          return;
-        }
-        if (
-          tempFilters.adaptiveAthlete === "Non-Adaptive Athletes" &&
-          athlete.adaptive !== false
-        ) {
-          return;
-        }
-      }
-
-      if (athlete.weightClass) {
-        const parsed = parseWeightClasses(athlete.weightClass);
-        parsed.forEach((wc) => {
-          if (wc !== heaviestMale && wc !== heaviestFemale) {
-            weightClasses.add(wc);
+          if (
+            tempFilters.adaptiveAthlete === "Non-Adaptive Athletes" &&
+            athlete.adaptive !== false
+          ) {
+            return;
           }
-        });
-      }
-    });
+        }
 
-    const options = Array.from(weightClasses).sort(sortWeightClasses);
-    return options;
-  };
+        if (athlete.weightClass) {
+          const parsed = parseWeightClasses(athlete.weightClass);
+          parsed.forEach((wc) => {
+            if (athlete.gender.toLowerCase() === "male") {
+              maleWeightClasses.add(wc);
+            } else if (athlete.gender.toLowerCase() === "female") {
+              femaleWeightClasses.add(wc);
+            }
+          });
+        }
+      });
+
+      const getHeaviestWeightClass = (weightClassSet: Set<string>) => {
+        const sorted = Array.from(weightClassSet).sort(sortWeightClasses);
+        return sorted[sorted.length - 1];
+      };
+
+      const heaviestMale = getHeaviestWeightClass(maleWeightClasses);
+      const heaviestFemale = getHeaviestWeightClass(femaleWeightClasses);
+
+      const plusClasses = new Set<string>();
+      if (heaviestMale) {
+        const num = heaviestMale.replace(/\+?kg$/, "");
+        plusClasses.add(`${num}+kg`);
+      }
+      if (heaviestFemale && heaviestFemale !== heaviestMale) {
+        const num = heaviestFemale.replace(/\+?kg$/, "");
+        plusClasses.add(`${num}+kg`);
+      }
+
+      if (tempFilters.gender) {
+        const relevantHeaviest =
+          tempFilters.gender.toLowerCase() === "male"
+            ? heaviestMale
+            : heaviestFemale;
+        if (relevantHeaviest) {
+          const num = relevantHeaviest.replace(/\+?kg$/, "");
+          weightClasses.add(`${num}+kg`);
+        }
+      } else {
+        plusClasses.forEach((wc) => weightClasses.add(wc));
+      }
+
+      athletes.forEach((athlete) => {
+        if (
+          tempFilters.gender &&
+          athlete.gender.toLowerCase() !== tempFilters.gender.toLowerCase()
+        ) {
+          return;
+        }
+
+        if (
+          tempFilters.ageGroup &&
+          getAgeCategory(athlete.age) !== tempFilters.ageGroup
+        ) {
+          return;
+        }
+
+        if (tempFilters.adaptiveAthlete) {
+          if (
+            tempFilters.adaptiveAthlete === "Adaptive Athletes" &&
+            athlete.adaptive !== true
+          ) {
+            return;
+          }
+          if (
+            tempFilters.adaptiveAthlete === "Non-Adaptive Athletes" &&
+            athlete.adaptive !== false
+          ) {
+            return;
+          }
+        }
+
+        if (athlete.weightClass) {
+          const parsed = parseWeightClasses(athlete.weightClass);
+          parsed.forEach((wc) => {
+            if (wc !== heaviestMale && wc !== heaviestFemale) {
+              weightClasses.add(wc);
+            }
+          });
+        }
+      });
+
+      return Array.from(weightClasses).sort(sortWeightClasses);
+    },
+    [athletes],
+  );
 
   const getFilteredAthleteCount = (tempFilters: Record<string, string>) =>
     athletes.filter((athlete) => {
@@ -242,13 +261,17 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
       const matchesGender = tempFilters.gender
         ? genderLower === tempFilters.gender.toLowerCase()
         : true;
+      const matchesWSO = tempFilters.wso
+        ? athlete.wso?.trim() === tempFilters.wso
+        : true;
 
       return (
         matchesWeightClass &&
         matchesClub &&
         matchesAgeGroup &&
         matchesAdaptiveAthlete &&
-        matchesGender
+        matchesGender &&
+        matchesWSO
       );
     }).length;
 
@@ -256,14 +279,21 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     () =>
       (modalTempFilters: Record<string, string>): FilterSection[] => [
         {
-          id: "ageGroup",
-          title: "Age Group",
-          options: ageGroupOptions.map((ag) => ({ value: ag, label: ag })),
-          allOptionLabel: "All Age Groups",
+          id: "sort",
+          title: "Sort",
+          displayMode: "chips",
+          options: [
+            { value: "alphabetical", label: "A-Z" },
+            { value: "entryTotal", label: "Entry Total" },
+            { value: "bestTotal", label: "Best Total" },
+            { value: "bestSnatch", label: "Best Sn" },
+            { value: "bestCJ", label: "Best CJ" },
+          ],
         },
         {
           id: "gender",
           title: "Gender",
+          displayMode: "chips",
           options: [
             { value: "Male", label: "Male" },
             { value: "Female", label: "Female" },
@@ -273,20 +303,32 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         {
           id: "adaptiveAthlete",
           title: "Adaptive Athlete",
+          displayMode: "chips",
           options: [
-            { value: "Adaptive Athletes", label: "Adaptive Athletes" },
-            { value: "Non-Adaptive Athletes", label: "Non-Adaptive Athletes" },
+            { value: "Adaptive Athletes", label: "Adaptive" },
+            { value: "Non-Adaptive Athletes", label: "Non-Adaptive" },
           ],
           allOptionLabel: "All Athletes",
         },
         {
+          id: "ageGroup",
+          title: "Age Group",
+          displayMode: "chips",
+          options: AGE_GROUP_OPTIONS.map((ag) => ({
+            value: ag,
+            label: ag.replace("Masters ", "M"),
+          })),
+          allOptionLabel: "All Ages",
+        },
+        {
           id: "weightClass",
           title: "Weight Class",
+          displayMode: "chips",
           options: getWeightClassOptions(modalTempFilters).map((wc) => ({
             value: wc,
-            label: `${wc.replace("kg", "")}kg`,
+            label: wc.replace("kg", ""),
           })),
-          allOptionLabel: "All Classes",
+          allOptionLabel: "All",
         },
         {
           id: "club",
@@ -480,9 +522,18 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
             </ScrollView>
           ),
         },
+        ...(wsoOptions.length > 0
+          ? [
+              {
+                id: "wso",
+                title: "WSO",
+                options: wsoOptions.map((wso) => ({ value: wso, label: wso })),
+                allOptionLabel: "All Regions",
+              } satisfies FilterSection,
+            ]
+          : []),
       ],
     [
-      ageGroupOptions,
       clubSearchQuery,
       colors.border,
       colors.borderBottom,
@@ -490,11 +541,12 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
       colors.pressed,
       colors.secondaryText,
       colors.text,
+      getWeightClassOptions,
       maxOptionsHeight,
       onToggleStarredClub,
       sortedClubOptions,
       starredClubs,
-      visible,
+      wsoOptions,
     ],
   );
 
@@ -502,6 +554,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
     <GenericFilterModal
       visible={visible}
       onClose={onClose}
+      footerBottomInset={20}
       sections={sections}
       filters={{
         ageGroup: ageGroupFilter,
@@ -509,6 +562,8 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
         adaptiveAthlete: adaptiveAthleteFilter,
         weightClass: weightClassFilter,
         club: clubFilter,
+        wso: wsoFilter,
+        sort: sortOption,
       }}
       onApplyFilters={(filters) => {
         onApplyFilters({
@@ -517,6 +572,8 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
           ageGroup: filters.ageGroup,
           adaptiveAthlete: filters.adaptiveAthlete,
           gender: filters.gender,
+          wso: filters.wso,
+          sort: filters.sort,
         });
       }}
       onResetFilters={onResetFilters}

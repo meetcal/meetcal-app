@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { clearExpiredDownloadedMeets, needsSync } from '@/lib/database/offline-store';
-import { prefetchMeetData, updateMeetAccess, fetchMeets, fetchMeetByName } from '@/lib/database/meet-manager';
+import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
+import { prefetchMeetData, fetchMeetsFresh, getCachedMeets } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SelectedMeetContextType = {
@@ -83,36 +83,58 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Initialize meet data
   const initializeMeetData = useCallback(async (meet: MeetName, meetData: Meet) => {
+    // Set meet state immediately so first paint is not blocked by background prefetch.
+    setSelectedMeetState(meet);
+    setMeetDetails(meetData);
+
+    const manager = new SyncManager(meet);
+    setSyncManager(manager);
+
+    setIsSyncing(true);
+    setSyncStatus('syncing');
+
+    prefetchMeetData(meet)
+      .then(() => {
+        setLastSynced(Date.now());
+        setSyncStatus('idle');
+      })
+      .catch((error) => {
+        console.error('Error initializing meet data:', error);
+        setSyncStatus('error');
+      })
+      .finally(() => {
+        setIsSyncing(false);
+      });
+  }, []);
+
+  const syncAvailableMeets = useCallback(async (options?: { forceFresh?: boolean }) => {
+    await clearExpiredDownloadedMeets();
+
+    const cached = options?.forceFresh ? [] : await getCachedMeets();
+    if (cached.length > 0) {
+      setAvailableMeets(cached);
+    }
+
     try {
-      setIsSyncing(true);
-      setSyncStatus('syncing');
-
-      // Set meet state
-      setSelectedMeetState(meet);
-      setMeetDetails(meetData);
-
-      // Create and set sync manager
-      const manager = new SyncManager(meet);
-      setSyncManager(manager);
-
-      // Prefetch data
-      await prefetchMeetData(meet);
-      setLastSynced(Date.now());
-      setSyncStatus('idle');
+      const fresh = await fetchMeetsFresh();
+      setAvailableMeets((current) => {
+        const currentSerialized = JSON.stringify(current);
+        const nextSerialized = JSON.stringify(fresh);
+        return currentSerialized === nextSerialized ? current : fresh;
+      });
+      return fresh;
     } catch (error) {
-      console.error('Error initializing meet data:', error);
-      setSyncStatus('error');
-      // Don't clear meet state on initial load error
-    } finally {
-      setIsSyncing(false);
+      if (cached.length > 0) {
+        return cached;
+      }
+      throw error;
     }
   }, []);
 
   // Load available meets
   const loadMeets = useCallback(async () => {
       try {
-        await clearExpiredDownloadedMeets();
-        const meets = await fetchMeets();
+        const meets = await syncAvailableMeets();
         setAvailableMeets(meets);
 
         if (meets.length === 0) {
@@ -157,7 +179,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       } finally {
         setIsLoading(false);
       }
-  }, [selectedMeet, initializeMeetData]);
+  }, [selectedMeet, initializeMeetData, syncAvailableMeets]);
 
     // Initial load
   useEffect(() => {
@@ -206,8 +228,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     try {
       setIsSyncing(true);
       setSyncStatus('syncing');
-      await clearExpiredDownloadedMeets();
-      const meets = await fetchMeets();
+      const meets = await syncAvailableMeets({ forceFresh: true });
       setAvailableMeets(meets);
       setSyncStatus('idle');
     } catch (error) {

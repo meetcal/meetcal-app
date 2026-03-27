@@ -1,103 +1,82 @@
-import { useState, useCallback, useEffect } from "react";
-import { getMeetData } from "@/lib/database/offline-store";
+import { useMemo, useState } from "react";
+import {
+  clearMeetSchedule,
+  getMeetData,
+  saveMeetSchedule,
+} from "@/lib/database/offline-store";
 import { MeetName } from "@/data/types/meet";
 import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
-
-interface UseScheduleDataOptions {
-  showLoading?: boolean;
-}
+import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
+import { fetchSchedule } from "@/lib/database/queries";
+import { useMutableResource } from "@/hooks/useMutableResource";
 
 interface UseScheduleDataReturn {
   schedule: Schedule;
   isLoading: boolean;
   isRefreshing: boolean;
   initialScrollIndex: number;
-  loadSchedule: (
-    meet: MeetName,
-    options?: UseScheduleDataOptions,
-  ) => Promise<void>;
   refreshSchedule: () => Promise<void>;
-  setSchedule: (schedule: Schedule) => void;
 }
+
+const scheduleResource = createMutableResource<Schedule, [MeetName]>({
+  getKey: (meet) => `schedule:${meet}`,
+  loadCached: async (meet) => {
+    const meetData = await getMeetData(meet);
+    if (!meetData.schedule) {
+      return null;
+    }
+    return {
+      data: meetData.schedule,
+      lastUpdatedAt: meetData.lastSyncTime || null,
+    };
+  },
+  fetchFresh: async (meet) => fetchSchedule(meet),
+  persistFresh: async (data, meet) => {
+    if (data.length === 0) {
+      await clearMeetSchedule(meet);
+      return { data, lastUpdatedAt: Date.now() };
+    }
+
+    await saveMeetSchedule(meet, data);
+    return { data, lastUpdatedAt: Date.now() };
+  },
+  clearCached: async (meet) => {
+    await clearMeetSchedule(meet);
+  },
+  isEqual: defaultIsEqual,
+});
 
 export function useScheduleData(
   selectedMeet: MeetName | null,
 ): UseScheduleDataReturn {
-  const [schedule, setSchedule] = useState<Schedule>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [initialScrollIndex, setInitialScrollIndex] = useState(0);
-
-  // Load schedule from cache (context handles syncing)
-  const loadSchedule = useCallback(
-    async (meet: MeetName, options?: UseScheduleDataOptions) => {
-      const showLoading = options?.showLoading ?? true;
-      if (showLoading) setIsLoading(true);
-      let scheduleData: Schedule = [];
-
-      try {
-        // Get cached data - context's SyncManager handles fetching/syncing
-        const cachedMeetData = await getMeetData(meet);
-        if (cachedMeetData?.schedule) {
-          scheduleData = cachedMeetData.schedule;
-        } else {
-          console.log(`useScheduleData: No schedule found in cache for ${meet}`);
-        }
-      } catch (cacheError) {
-        console.error(
-          `useScheduleData: Failed to load schedule from cache for ${meet}:`,
-          cacheError,
-        );
-      }
-
-      setSchedule(scheduleData);
-
-      // Calculate and set the initial page based on current UTC date
-      if (scheduleData && scheduleData.length > 0) {
-        const initialPage = calculateInitialPage(scheduleData);
-        setInitialScrollIndex(initialPage);
-      }
-
-      if (showLoading) setIsLoading(false);
-    },
-    [],
+  const params = useMemo(
+    () => (selectedMeet ? ([selectedMeet] as const) : null),
+    [selectedMeet],
   );
+  const [emptySchedule] = useState<Schedule>([]);
+  const {
+    data: schedule,
+    isInitialLoading,
+    isRefreshing,
+    refresh,
+  } = useMutableResource({
+    resource: scheduleResource,
+    params: params ?? ([] as unknown as [MeetName]),
+    initialData: emptySchedule,
+    enabled: Boolean(params),
+  });
 
-  // Refresh handler
-  const refreshSchedule = useCallback(async () => {
-    if (selectedMeet && typeof selectedMeet === "string") {
-      setIsRefreshing(true);
-      try {
-        await loadSchedule(selectedMeet as MeetName, { showLoading: false });
-      } finally {
-        setIsRefreshing(false);
-      }
-    } else {
-      console.log("Refresh skipped: No meet selected");
-    }
-  }, [selectedMeet, loadSchedule]);
-
-  // Load data when selectedMeet changes
-  useEffect(() => {
-    if (selectedMeet && typeof selectedMeet === "string") {
-      // Ensure selectedMeet is treated as MeetName type
-      loadSchedule(selectedMeet as MeetName);
-    } else {
-      // Clear schedule if no meet is selected
-      setSchedule([]);
-      setInitialScrollIndex(0);
-      setIsLoading(false);
-    }
-  }, [selectedMeet, loadSchedule]);
+  const initialScrollIndex = useMemo(() => {
+    if (!schedule.length) return 0;
+    return calculateInitialPage(schedule);
+  }, [schedule]);
 
   return {
     schedule,
-    isLoading,
+    isLoading: isInitialLoading,
     isRefreshing,
     initialScrollIndex,
-    loadSchedule,
-    refreshSchedule,
-    setSchedule,
+    refreshSchedule: refresh,
   };
 }

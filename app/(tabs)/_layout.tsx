@@ -1,15 +1,12 @@
 import { HapticTab } from "@/components/ui/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useNavigation } from "@react-navigation/native";
 import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
-import React from "react";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { Platform, StyleSheet } from "react-native";
 
 export default function TabLayout() {
   const colors = useAppColors();
-  const navigation = useNavigation();
 
   // Check if iOS 26+ for NativeTabs
   const iosVersion =
@@ -18,13 +15,6 @@ export default function TabLayout() {
       : 0;
   const isIOS26OrHigher = iosVersion >= 26;
 
-  // Update navigation theme when theme changes
-  React.useEffect(() => {
-    navigation.setOptions({
-      ...colors,
-    });
-  }, [colors, navigation]);
-
   if (Platform.OS === "ios" && isIOS26OrHigher) {
     return (
       <NativeTabs
@@ -32,20 +22,20 @@ export default function TabLayout() {
         tintColor={colors.text}
       >
         <NativeTabs.Trigger name="(index)">
-          <Icon sf="calendar" />
-          <Label hidden />
+          <NativeTabs.Trigger.Icon sf="calendar" />
+          <NativeTabs.Trigger.Label hidden />
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="(saved)">
-          <Icon sf="bookmark.fill" />
-          <Label hidden />
+          <NativeTabs.Trigger.Icon sf="bookmark.fill" />
+          <NativeTabs.Trigger.Label hidden />
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="(start-list)">
-          <Icon sf="list.bullet" />
-          <Label hidden />
+          <NativeTabs.Trigger.Icon sf="list.bullet" />
+          <NativeTabs.Trigger.Label hidden />
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="(info)">
-          <Icon sf="info.circle.fill" />
-          <Label hidden />
+          <NativeTabs.Trigger.Icon sf="info.circle.fill" />
+          <NativeTabs.Trigger.Label hidden />
         </NativeTabs.Trigger>
       </NativeTabs>
     );

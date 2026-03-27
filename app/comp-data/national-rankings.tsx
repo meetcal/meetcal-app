@@ -5,11 +5,13 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { AGE_GROUPS } from "@/constants/nat-rankings";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchNationalRankings,
   NationalRanking,
+  nationalRankingsResource,
 } from "@/lib/database/fetch-national-rankings";
 import {
   isNetworkAvailable,
@@ -18,11 +20,12 @@ import {
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 export default function NationalRankingsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
 
   const {
     filters,
@@ -73,45 +76,44 @@ export default function NationalRankingsScreen() {
     }
   }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 
+  const resourceParams = useMemo(
+    () => (filters.weightClass ? ([filters.weightClass] as const) : null),
+    [filters.weightClass],
+  );
+  const {
+    data,
+    isInitialLoading,
+    error,
+  } = useMutableResource({
+    resource: nationalRankingsResource,
+    params: resourceParams ?? ([] as unknown as [string]),
+    initialData: [] as NationalRanking[],
+    enabled: Boolean(resourceParams),
+  });
   useEffect(() => {
-    let cancelled = false;
-    if (!filters.weightClass) return;
-
-    setLoading(true);
-    setFetchError(null);
-
-    fetchNationalRankings(filters.weightClass)
-      .then((data) => {
-        if (!cancelled) {
-          setRankings(data);
-        }
+    setRankings(data);
+  }, [data]);
+  useEffect(() => {
+    setLoading(isInitialLoading);
+  }, [isInitialLoading]);
+  useEffect(() => {
+    if (!error) {
+      setFetchError(null);
+      return;
+    }
+    isNetworkAvailable()
+      .then((hasNetwork) => {
+        setIsOffline(!hasNetwork);
+        setFetchError(
+          hasNetwork
+            ? error
+            : "You're offline. Connect to refresh rankings.",
+        );
       })
-      .catch((err) => {
-        if (!cancelled) {
-          isNetworkAvailable()
-            .then((hasNetwork) => {
-              if (cancelled) return;
-              setIsOffline(!hasNetwork);
-              setFetchError(
-                hasNetwork
-                  ? err?.message || "Failed to fetch national rankings"
-                  : "You're offline. Connect to refresh rankings.",
-              );
-            })
-            .catch(() => {
-              if (cancelled) return;
-              setFetchError(err?.message || "Failed to fetch national rankings");
-            });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        setFetchError(error);
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.weightClass]);
+  }, [error]);
 
   const rows = rankings;
 
@@ -168,7 +170,12 @@ export default function NationalRankingsScreen() {
           gestureEnabled: true,
           gestureDirection: "horizontal",
           animation: "slide_from_right",
-          headerStyle: { backgroundColor: colors.background },
+          headerTitleStyle: {
+            color: currentTheme === "dark" ? "#fff" : "#000",
+          },
+          headerStyle: {
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+          },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
         }}

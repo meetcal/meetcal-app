@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 
@@ -14,41 +15,42 @@ export type IntlRanking = {
   ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
 };
 
-const rankingsMemoryCache: { data: IntlRanking[] | null } = { data: null };
-let inFlightRankings: Promise<IntlRanking[]> | null = null;
+async function readIntlRankingsCache() {
+  const cached = await getOfflineCache<IntlRanking[]>(OFFLINE_CACHE_KEYS.intlRankings);
+  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
+}
 
-// Basic fetch function (add filters later)
+async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  return await convex.query(api.intlRankings.getAll, {}) as IntlRanking[];
+}
+
+async function persistIntlRankings(rankings: IntlRanking[]) {
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings);
+  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+export const intlRankingsResource = createMutableResource<IntlRanking[], []>({
+  getKey: () => OFFLINE_CACHE_KEYS.intlRankings,
+  loadCached: () => readIntlRankingsCache(),
+  fetchFresh: () => fetchIntlRankingsFresh(),
+  persistFresh: (data) => persistIntlRankings(data),
+});
+
 export async function fetchIntlRankings(): Promise<IntlRanking[]> {
-  if (rankingsMemoryCache.data) {
-    return rankingsMemoryCache.data;
-  }
-  if (inFlightRankings) {
-    return inFlightRankings;
-  }
-
-  const cacheKey = OFFLINE_CACHE_KEYS.intlRankings;
-  inFlightRankings = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const rankings = await convex.query(api.intlRankings.getAll, {}) as IntlRanking[];
-      rankingsMemoryCache.data = rankings;
-      await setOfflineCache(cacheKey, rankings);
-      return rankings;
-    } catch (error) {
-      const cached = await getOfflineCache<IntlRanking[]>(cacheKey);
-      if (cached?.data) {
-        rankingsMemoryCache.data = cached.data;
-        return cached.data;
-      }
-      throw error;
-    } finally {
-      inFlightRankings = null;
+  try {
+    const rankings = await fetchIntlRankingsFresh();
+    await persistIntlRankings(rankings);
+    return rankings;
+  } catch (error) {
+    const cached = await readIntlRankingsCache();
+    if (cached?.data) {
+      return cached.data;
     }
-  })();
-
-  return inFlightRankings;
+    throw error;
+  }
 }

@@ -1,5 +1,6 @@
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
+import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
@@ -15,8 +16,6 @@ type AdaptiveRecordRow = {
 };
 
 const AGE_GROUP_KEY = 'Adaptive';
-const adaptiveMemoryCache = new Map<string, RecordsData>();
-const adaptiveInFlight = new Map<string, Promise<RecordsData>>();
 
 // Custom sort: lowest to highest, '+' always last
 function weightClassSort(a: string, b: string): number {
@@ -68,65 +67,66 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
 }
 
 export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
-  const cacheKey = OFFLINE_CACHE_KEYS.adaptiveRecords;
-  const ageGroupKey = ageGroup || AGE_GROUP_KEY;
-  const requestKey = `${gender || 'all'}::${ageGroupKey}`;
-
-  const cached = adaptiveMemoryCache.get(requestKey);
-  if (cached) {
-    return cached;
-  }
-
-  const inFlight = adaptiveInFlight.get(requestKey);
-  if (inFlight) {
-    return inFlight;
-  }
-
-  const request = (async () => {
-    try {
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        throw new Error('Offline');
-      }
-
-      const result: RecordsData = {
-        [ageGroupKey]: { Men: [], Women: [] },
-      };
-
-      if (gender) {
-        result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
-      } else {
-        const [menRecords, womenRecords] = await Promise.all([
-          fetchAdaptiveRecordsForGender('Men'),
-          fetchAdaptiveRecordsForGender('Women'),
-        ]);
-        result[ageGroupKey].Men = menRecords;
-        result[ageGroupKey].Women = womenRecords;
-      }
-
-      if (!gender && !ageGroup) {
-        await setOfflineCache(cacheKey, result);
-      }
-
-      adaptiveMemoryCache.set(requestKey, result);
-      return result;
-    } catch (error) {
-      const cachedOffline = await getOfflineCache<RecordsData>(cacheKey);
-      if (cachedOffline?.data) {
-        if (ageGroup && !cachedOffline.data[ageGroup]) {
-          const fallback = { [ageGroup]: cachedOffline.data[AGE_GROUP_KEY] || { Men: [], Women: [] } };
-          adaptiveMemoryCache.set(requestKey, fallback);
-          return fallback;
-        }
-        adaptiveMemoryCache.set(requestKey, cachedOffline.data);
-        return cachedOffline.data;
-      }
-      throw error;
-    } finally {
-      adaptiveInFlight.delete(requestKey);
+  try {
+    const result = await fetchAdaptiveRecordsFresh(gender, ageGroup);
+    if (!gender && !ageGroup) {
+      await persistAdaptiveRecords(result);
     }
-  })();
-
-  adaptiveInFlight.set(requestKey, request);
-  return request;
+    return result;
+  } catch (error) {
+    const cached = await readAdaptiveRecordsCache(ageGroup);
+    if (cached?.data) {
+      return cached.data;
+    }
+    throw error;
+  }
 }
+
+async function readAdaptiveRecordsCache(ageGroup?: string) {
+  const cached = await getOfflineCache<RecordsData>(OFFLINE_CACHE_KEYS.adaptiveRecords);
+  if (!cached?.data) return null;
+  if (ageGroup && !cached.data[ageGroup]) {
+    return {
+      data: { [ageGroup]: cached.data[AGE_GROUP_KEY] || { Men: [], Women: [] } },
+      lastUpdatedAt: cached.lastSynced,
+    };
+  }
+  return { data: cached.data, lastUpdatedAt: cached.lastSynced };
+}
+
+async function fetchAdaptiveRecordsFresh(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  const ageGroupKey = ageGroup || AGE_GROUP_KEY;
+  const result: RecordsData = {
+    [ageGroupKey]: { Men: [], Women: [] },
+  };
+
+  if (gender) {
+    result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
+    return result;
+  }
+
+  const [menRecords, womenRecords] = await Promise.all([
+    fetchAdaptiveRecordsForGender('Men'),
+    fetchAdaptiveRecordsForGender('Women'),
+  ]);
+  result[ageGroupKey].Men = menRecords;
+  result[ageGroupKey].Women = womenRecords;
+  return result;
+}
+
+async function persistAdaptiveRecords(data: RecordsData) {
+  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
+  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+export const adaptiveRecordsResource = createMutableResource<RecordsData, []>({
+  getKey: () => OFFLINE_CACHE_KEYS.adaptiveRecords,
+  loadCached: () => readAdaptiveRecordsCache(),
+  fetchFresh: () => fetchAdaptiveRecordsFresh(),
+  persistFresh: (data) => persistAdaptiveRecords(data),
+});

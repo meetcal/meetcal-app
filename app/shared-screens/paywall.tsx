@@ -43,21 +43,18 @@ export default function PaywallScreen() {
     getOffering();
   }, []);
 
-  const handleDismiss = () => {
-    // Return to origin or default to tabs
-    if (from && typeof from === 'string') {
-      router.replace(from as any);
-    } else {
-      router.replace('/(tabs)' as any);
+  const returnToOrigin = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
     }
-  };
 
-  const handleCompletion = () => {
     if (from && typeof from === 'string') {
       router.replace(from as any);
-    } else {
-      router.replace('/(tabs)' as any);
+      return;
     }
+
+    router.replace('/(tabs)' as any);
   };
 
   if (!offering) {
@@ -82,9 +79,9 @@ export default function PaywallScreen() {
         options={{
           offering
         }}
-        onRestoreCompleted={handleCompletion}
-        onPurchaseCompleted={handleCompletion}
-        onDismiss={handleDismiss}
+        onRestoreCompleted={returnToOrigin}
+        onPurchaseCompleted={returnToOrigin}
+        onDismiss={returnToOrigin}
       />
     </View>
   );

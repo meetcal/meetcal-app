@@ -1,15 +1,18 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
-import React, { useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
-  useWindowDimensions,
+  LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import FilterChipGroup from "./FilterChipGroup";
 import FilterModalOptions from "./FilterModalOptions";
 import FilterModalTitle from "./FilterModalTitle";
 
@@ -34,7 +37,8 @@ export interface FilterSection {
         >;
         collapseSection: () => void;
       }) => React.ReactNode);
-  dependsOn?: string[]; // IDs of filters that, when changed, should reset this filter to first option
+  displayMode?: "chips" | "accordion";
+  dependsOn?: string[];
 }
 
 interface GenericFilterModalProps {
@@ -48,6 +52,7 @@ interface GenericFilterModalProps {
   onResetFilters: () => void;
   resultCount?: number | ((tempFilters: Record<string, string>) => number);
   resultLabel?: string;
+  footerBottomInset?: number;
 }
 
 const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
@@ -59,17 +64,21 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   onResetFilters,
   resultCount,
   resultLabel = "results",
+  footerBottomInset,
 }) => {
   const colors = useAppColors();
+  const insets = useSafeAreaInsets();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [tempFilters, setTempFilters] = useState<Record<string, string>>({});
-  const prevTempFiltersRef = React.useRef<Record<string, string>>({});
-  const pendingDependencyResetRef = React.useRef<Record<string, boolean>>({});
+  const prevTempFiltersRef = useRef<Record<string, string>>({});
+  const pendingDependencyResetRef = useRef<Record<string, boolean>>({});
+  const scrollViewRef = useRef<ScrollView>(null);
+  const sectionLayoutsRef = useRef<Record<string, number>>({});
 
   const { height: windowHeight } = useWindowDimensions();
-  const maxOptionsHeight = windowHeight * 0.4;
+  const sheetTopOffset = insets.top + 10;
+  const maxOptionsHeight = windowHeight * 0.3;
 
-  // Initialize temp filters when modal opens (only on visibility change)
   React.useEffect(() => {
     if (visible) {
       setTempFilters(filters);
@@ -79,11 +88,9 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Get current sections (either static or dynamically generated)
   const currentSections =
     typeof sections === "function" ? sections(tempFilters) : sections;
 
-  // Auto-update dependent filters when their options change OR when dependencies change
   React.useEffect(() => {
     if (!visible) return;
 
@@ -133,9 +140,32 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
       setTempFilters((prev) => ({ ...prev, ...updates }));
     }
 
-    // Update ref with current values
     prevTempFiltersRef.current = { ...tempFilters };
   }, [currentSections, tempFilters, visible]);
+
+  const handleSectionLayout = useCallback(
+    (sectionId: string, event: LayoutChangeEvent) => {
+      sectionLayoutsRef.current[sectionId] = event.nativeEvent.layout.y;
+    },
+    [],
+  );
+
+  const handleExpandSection = useCallback(
+    (sectionId: string) => {
+      const isCollapsing = expandedSection === sectionId;
+      setExpandedSection(isCollapsing ? null : sectionId);
+
+      if (!isCollapsing) {
+        requestAnimationFrame(() => {
+          const y = sectionLayoutsRef.current[sectionId];
+          if (y !== undefined) {
+            scrollViewRef.current?.scrollTo({ y, animated: true });
+          }
+        });
+      }
+    },
+    [expandedSection],
+  );
 
   const handleApply = () => {
     onApplyFilters(tempFilters);
@@ -166,6 +196,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 
   const resolvedResultCount =
     typeof resultCount === "function" ? resultCount(tempFilters) : resultCount;
+  const resolvedFooterBottomInset = footerBottomInset ?? insets.bottom;
 
   const getDisplayValue = (section: FilterSection) => {
     const value = tempFilters[section.id] || "";
@@ -180,117 +211,137 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     <Modal
       visible={visible}
       transparent={true}
-      animationType="fade"
+      animationType="slide"
       onRequestClose={handleClose}
     >
-      <Pressable
-        style={[
-          styles.modalOverlay,
-          { backgroundColor: colors.modalBackground },
-        ]}
-        onPress={handleClose}
-      >
-        <Pressable
+      <View style={styles.sheetWrapper}>
+        <Pressable style={styles.sheetBackdrop} onPress={handleClose} />
+        <View
           style={[
-            styles.modalContent,
+            styles.sheetContent,
             {
               backgroundColor: colors.card,
-              maxHeight: windowHeight * 0.8,
+              top: sheetTopOffset,
+              height: windowHeight - sheetTopOffset,
             },
           ]}
-          onPress={() => {}}
         >
-          <View style={styles.modalScrollContent}>
-            <ScrollView bounces={false}>
-              {currentSections.map((section) => (
-                <View
-                  key={section.id}
-                  style={[
-                    styles.filterSection,
-                    { borderBottomColor: colors.border },
-                  ]}
-                >
-                  <FilterModalTitle
-                    title={section.title}
-                    value={getDisplayValue(section)}
-                    onPress={() =>
-                      setExpandedSection(
-                        expandedSection === section.id ? null : section.id,
-                      )
-                    }
-                    icon={getChevronIcon(
-                      expandedSection === section.id ? "down" : "right",
-                    )}
-                  />
-
-                  {expandedSection === section.id &&
-                    (section.customContent ? (
-                      typeof section.customContent === "function" ? (
-                        section.customContent({
-                          tempFilters,
-                          setTempFilters,
-                          collapseSection: () => setExpandedSection(null),
-                        })
-                      ) : (
-                        section.customContent
-                      )
-                    ) : (
-                      <FilterModalOptions
-                        options={section.options}
-                        selectedValue={tempFilters[section.id] || ""}
-                        onSelect={(value) => {
-                          setTempFilters((prev) => ({
-                            ...prev,
-                            [section.id]: value,
-                          }));
-                          setExpandedSection(null);
-                        }}
-                        maxHeight={maxOptionsHeight}
-                        allOptionLabel={section.allOptionLabel}
-                      />
-                    ))}
-                </View>
-              ))}
-            </ScrollView>
+          <View style={styles.handleContainer}>
+            <View
+              style={[styles.handle, { backgroundColor: colors.borderBottom }]}
+            />
           </View>
 
-          <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
-            <View style={styles.modalFooterContent}>
-              <View style={styles.modalFooterRight}>
-                {resolvedResultCount !== undefined && (
-                  <ThemedText
-                    style={[
-                      styles.resultCount,
-                      { color: colors.secondaryText },
-                    ]}
-                  >
-                    {`${resolvedResultCount} ${resultLabel}`}
-                  </ThemedText>
+          <ScrollView
+            ref={scrollViewRef}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            {currentSections.map((section) => (
+              <View
+                key={section.id}
+                onLayout={(e) => handleSectionLayout(section.id, e)}
+                style={[
+                  styles.filterSection,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
+                {section.displayMode === "chips" ? (
+                  <FilterChipGroup
+                    title={section.title}
+                    options={section.options}
+                    selectedValue={tempFilters[section.id] || ""}
+                    onSelect={(value) => {
+                      setTempFilters((prev) => ({
+                        ...prev,
+                        [section.id]: value,
+                      }));
+                    }}
+                    allOptionLabel={section.allOptionLabel}
+                  />
+                ) : (
+                  <>
+                    <FilterModalTitle
+                      title={section.title}
+                      value={getDisplayValue(section)}
+                      onPress={() => handleExpandSection(section.id)}
+                      icon={getChevronIcon(
+                        expandedSection === section.id ? "down" : "right",
+                      )}
+                    />
+
+                    {expandedSection === section.id &&
+                      (section.customContent ? (
+                        typeof section.customContent === "function" ? (
+                          section.customContent({
+                            tempFilters,
+                            setTempFilters,
+                            collapseSection: () => setExpandedSection(null),
+                          })
+                        ) : (
+                          section.customContent
+                        )
+                      ) : (
+                        <FilterModalOptions
+                          options={section.options}
+                          selectedValue={tempFilters[section.id] || ""}
+                          onSelect={(value) => {
+                            setTempFilters((prev) => ({
+                              ...prev,
+                              [section.id]: value,
+                            }));
+                            setExpandedSection(null);
+                          }}
+                          maxHeight={maxOptionsHeight}
+                          allOptionLabel={section.allOptionLabel}
+                        />
+                      ))}
+                  </>
                 )}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.resetButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={handleReset}
-                >
-                  <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.applyButton,
-                    { backgroundColor: colors.link },
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={handleApply}
-                >
-                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
-                </Pressable>
               </View>
+            ))}
+          </ScrollView>
+
+          <View
+            style={[
+              styles.footer,
+              {
+                borderTopColor: colors.border,
+                paddingBottom: 16 + resolvedFooterBottomInset,
+              },
+            ]}
+          >
+            <View style={styles.footerContent}>
+              {resolvedResultCount !== undefined && (
+                <ThemedText
+                  style={[styles.resultCount, { color: colors.secondaryText }]}
+                >
+                  {`${resolvedResultCount} ${resultLabel}`}
+                </ThemedText>
+              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.resetButton,
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={handleReset}
+              >
+                <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.applyButton,
+                  { backgroundColor: colors.link },
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={handleApply}
+              >
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+              </Pressable>
             </View>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 };
@@ -298,36 +349,43 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
 export default GenericFilterModal;
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  sheetWrapper: {
     flex: 1,
-    justifyContent: "center",
   },
-  modalContent: {
-    borderRadius: 12,
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  sheetContent: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     overflow: "hidden",
-    marginHorizontal: 16,
-    maxHeight: "80%",
   },
-  modalScrollContent: {
-    flexGrow: 1,
+  handleContainer: {
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
   },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  modalFooter: {
+  footer: {
     padding: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
   },
-  modalFooterContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  modalFooterRight: {
+  footerContent: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",

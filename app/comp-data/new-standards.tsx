@@ -4,10 +4,11 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useFetchData } from "@/hooks/useFetchData";
 import { useFilterState } from "@/hooks/useFilterState";
-import { fetchStandards } from "@/lib/database/fetch-standards";
+import { useMutableResource } from "@/hooks/useMutableResource";
+import { standardsResource } from "@/lib/database/fetch-standards";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
 import { Stack } from "expo-router";
 import React, { useMemo } from "react";
@@ -16,15 +17,20 @@ import { StyleSheet, View } from "react-native";
 
 export default function NewStandardsScreen() {
   const colors = useAppColors();
+  const { currentTheme } = useTheme();
   const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
     defaultFilters: { gender: "men", ageGroup: "senior" },
   });
 
   const {
     data: allStandards,
-    loading,
+    isInitialLoading,
     error: fetchError,
-  } = useFetchData<StandardsData>(fetchStandards, {} as StandardsData, []);
+  } = useMutableResource({
+    resource: standardsResource,
+    params: [] as const,
+    initialData: {} as StandardsData,
+  });
 
   const standardsData = useMemo(() => {
     if (!allStandards[filters.ageGroup]) return [];
@@ -79,8 +85,11 @@ export default function NewStandardsScreen() {
           gestureEnabled: true,
           gestureDirection: "horizontal",
           animation: "slide_from_right",
+          headerTitleStyle: {
+            color: currentTheme === "dark" ? "#fff" : "#000",
+          },
           headerStyle: {
-            backgroundColor: colors.background,
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -100,7 +109,7 @@ export default function NewStandardsScreen() {
         ]}
         data={standardsData}
         keyExtractor={(record) => record.weightClass}
-        loading={loading}
+        loading={isInitialLoading}
         error={fetchError}
         emptyMessage="No standards found for the selected filters."
         renderRow={(record, index) => (

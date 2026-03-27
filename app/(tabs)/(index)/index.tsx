@@ -298,7 +298,7 @@ export default function ScheduleScreen() {
     );
   }
 
-  if (isLoading || isChangingMeet) {
+  if ((isLoading && schedule.length === 0) || isChangingMeet) {
     return <ScheduleSkeleton label="Loading schedule..." />;
   }
 

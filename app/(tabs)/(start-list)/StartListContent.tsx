@@ -1,3 +1,4 @@
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import ImagePreviewModal from "@/components/share/ImagePreviewModal";
 import ShareScheduleView from "@/components/share/ShareScheduleView";
 import ActionModal from "@/components/start-list/ActionModal";
@@ -7,7 +8,6 @@ import {
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
 import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
@@ -23,11 +23,10 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletes, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { preloadYearBests } from "@/lib/start-list-api";
+import { getLastYearBests, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
-  getAgeCategory,
-  getChevronIcon,
   compareStartTimes,
+  getAgeCategory,
   getSaveIcon,
   isMeetName,
   parseWeightClasses,
@@ -38,15 +37,24 @@ import {
 import type { Schedule as ScheduleType } from "@/types/schedule";
 import { SessionDetails } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
-import { createCalendarEvents } from "@/utils/calendar";
+import {
+  type CalendarDestination,
+  type CalendarSession,
+  createCalendarEvents,
+  createCalendarEventsToCalendar,
+  getWritableCalendars,
+  resolvePreferredAndroidCalendar,
+  setPreferredAndroidCalendarId,
+} from "@/utils/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,6 +75,13 @@ const REVIEW_COUNT_KEY = "startListFilterApplyCount";
 const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
 const REVIEW_COUNTS = [5, 50, 100] as const;
 
+type AthleteSortOption =
+  | "alphabetical"
+  | "entryTotal"
+  | "bestTotal"
+  | "bestSnatch"
+  | "bestCJ";
+
 export default function StartListScreen() {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState("");
@@ -74,13 +89,17 @@ export default function StartListScreen() {
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
   const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
+  const [wsoFilter, setWsoFilter] = useState("");
+  const [sortOption, setSortOption] = useState<AthleteSortOption>("alphabetical");
   const [searchQuery, setSearchQuery] = useState("");
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const { saveSessionsFromAthletes } = useSavedSessions();
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { selectedMeet } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
@@ -104,7 +123,22 @@ export default function StartListScreen() {
   const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
     [],
   );
+  const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
+  const [calendarDestinations, setCalendarDestinations] = useState<
+    CalendarDestination[]
+  >([]);
+  const [pendingCalendarSessions, setPendingCalendarSessions] = useState<
+    CalendarSession[] | null
+  >(null);
+  const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
+  const listRef = useRef<FlashListRef<LiftResult>>(null);
+
+  const handleItemExpand = useCallback((index: number) => {
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
+    }, 100);
+  }, []);
 
   const loadStoreReview = useCallback(async () => {
     try {
@@ -339,14 +373,16 @@ export default function StartListScreen() {
   }, []);
 
   const renderListItem = useCallback(
-    ({ item }: { item: LiftResult }) => (
+    ({ item, index }: { item: LiftResult; index: number }) => (
       <AthleteItem
         athlete={item}
         router={router}
         getSessionDetails={getSessionDetails}
+        onExpand={handleItemExpand}
+        index={index}
       />
     ),
-    [router, getSessionDetails],
+    [router, getSessionDetails, handleItemExpand],
   );
 
   const keyExtractor = useCallback(
@@ -354,20 +390,73 @@ export default function StartListScreen() {
     [],
   );
 
-  // Update getFilterDisplayText to handle age group
-  const getFilterDisplayText = () => {
-    const filters = [];
-    if (weightClassFilter) filters.push(weightClassFilter);
-    if (clubFilter)
-      filters.push(
-        clubFilter === STARRED_CLUBS_FILTER ? "Starred Clubs" : clubFilter,
-      );
-    if (ageGroupFilter) filters.push(ageGroupFilter);
-    if (adaptiveAthleteFilter) filters.push(adaptiveAthleteFilter);
-    if (genderFilter) filters.push(genderFilter);
+  const selectedShareGroup = useMemo(() => {
+    if (clubFilter && clubFilter !== STARRED_CLUBS_FILTER) {
+      return clubFilter;
+    }
+    return wsoFilter;
+  }, [clubFilter, wsoFilter]);
 
-    return filters.length > 0 ? filters.join(" • ") : "Filter";
-  };
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        weightClassFilter ||
+          clubFilter ||
+          ageGroupFilter ||
+          adaptiveAthleteFilter ||
+          genderFilter ||
+          wsoFilter ||
+          sortOption !== "alphabetical",
+      ),
+    [
+      adaptiveAthleteFilter,
+      ageGroupFilter,
+      clubFilter,
+      genderFilter,
+      sortOption,
+      weightClassFilter,
+      wsoFilter,
+    ],
+  );
+
+  useLayoutEffect(() => {
+    const filterIcon =
+      Platform.select({
+        ios: "line.3.horizontal.decrease",
+        android: "filter",
+      }) || "line.3.horizontal.decrease";
+
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => setShowFilterModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open filters"
+          >
+            <IconSymbol
+              name={filterIcon}
+              size={24}
+              color={hasActiveFilters ? colors.link : colors.text}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => setShowSaveModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open download options"
+          >
+            <IconSymbol
+              name={getSaveIcon()}
+              size={24}
+              color={colors.text}
+            />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [colors.link, colors.text, hasActiveFilters, navigation]);
 
   const normalizedAthletes = useMemo(() => {
     return athletes.map((athlete) => ({
@@ -376,8 +465,89 @@ export default function StartListScreen() {
       weightClasses: parseWeightClasses(athlete.weightClass),
       ageCategory: getAgeCategory(athlete.age),
       genderLower: athlete.gender.toLowerCase(),
+      wso: athlete.wso?.trim() || "",
     }));
   }, [athletes]);
+
+  useEffect(() => {
+    if (
+      sortOption !== "bestTotal" &&
+      sortOption !== "bestSnatch" &&
+      sortOption !== "bestCJ"
+    ) {
+      return;
+    }
+
+    if (athletes.length === 0) {
+      setAthleteBests({});
+      return;
+    }
+
+    let isCancelled = false;
+    const loadAthleteBests = async () => {
+      try {
+        const uniqueNames = Array.from(
+          new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
+        );
+        const bests = await Promise.all(
+          uniqueNames.map(async (name) => [name, await getLastYearBests(name)] as const),
+        );
+        if (!isCancelled) {
+          setAthleteBests(Object.fromEntries(bests));
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.warn("StartList: Failed to load athlete bests", error);
+          setAthleteBests({});
+        }
+      }
+    };
+
+    loadAthleteBests();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [athletes, sortOption]);
+
+  const sortFilteredAthletes = useCallback(
+    (left: LiftResult, right: LiftResult) => {
+      if (sortOption === "alphabetical") {
+        return sortAthletes(left, right);
+      }
+
+      const compareDescending = (leftValue: number, rightValue: number) => {
+        if (rightValue !== leftValue) {
+          return rightValue - leftValue;
+        }
+        return sortAthletes(left, right);
+      };
+
+      if (sortOption === "entryTotal") {
+        return compareDescending(left.entryTotal || 0, right.entryTotal || 0);
+      }
+
+      const leftBests = athleteBests[left.name];
+      const rightBests = athleteBests[right.name];
+
+      if (sortOption === "bestTotal") {
+        return compareDescending(
+          leftBests?.bestTotal || 0,
+          rightBests?.bestTotal || 0,
+        );
+      }
+
+      if (sortOption === "bestSnatch") {
+        return compareDescending(
+          leftBests?.bestSnatch || 0,
+          rightBests?.bestSnatch || 0,
+        );
+      }
+
+      return compareDescending(leftBests?.bestCJ || 0, rightBests?.bestCJ || 0);
+    },
+    [athleteBests, sortOption],
+  );
 
   const filteredAthletes = useMemo(() => {
     const search = searchQuery.toLowerCase();
@@ -385,7 +555,7 @@ export default function StartListScreen() {
 
     return normalizedAthletes
       .filter(
-        ({ athlete, nameLower, weightClasses, ageCategory, genderLower }) => {
+        ({ athlete, nameLower, weightClasses, ageCategory, genderLower, wso }) => {
           const matchesWeightClass = weightClassFilter
             ? weightClasses.includes(weightClassFilter)
             : true;
@@ -406,6 +576,7 @@ export default function StartListScreen() {
                 : true
             : true;
           const matchesGender = gender ? genderLower === gender : true;
+          const matchesWSO = wsoFilter ? wso === wsoFilter : true;
 
           return (
             matchesWeightClass &&
@@ -413,12 +584,13 @@ export default function StartListScreen() {
             matchesSearch &&
             matchesAgeGroup &&
             matchesAdaptiveAthlete &&
-            matchesGender
+            matchesGender &&
+            matchesWSO
           );
         },
       )
       .map(({ athlete }) => athlete)
-      .sort(sortAthletes);
+      .sort(sortFilteredAthletes);
   }, [
     normalizedAthletes,
     weightClassFilter,
@@ -427,7 +599,9 @@ export default function StartListScreen() {
     ageGroupFilter,
     adaptiveAthleteFilter,
     genderFilter,
+    wsoFilter,
     starredClubs,
+    sortFilteredAthletes,
   ]);
 
   useEffect(() => {
@@ -583,11 +757,38 @@ export default function StartListScreen() {
                 );
                 return;
               }
+
+              if (Platform.OS === "android") {
+                const preferredCalendar = await resolvePreferredAndroidCalendar();
+                if (preferredCalendar) {
+                  await createCalendarEventsToCalendar(
+                    sessionsToAdd,
+                    preferredCalendar.id,
+                  );
+                  Alert.alert(
+                    "Success",
+                    `Sessions have been added to ${preferredCalendar.title}.`,
+                  );
+                  return;
+                }
+
+                const writableCalendars = await getWritableCalendars();
+                if (writableCalendars.length === 0) {
+                  Alert.alert(
+                    "No Calendars Found",
+                    "Add a calendar account on this device before saving sessions.",
+                  );
+                  return;
+                }
+
+                setCalendarDestinations(writableCalendars);
+                setPendingCalendarSessions(sessionsToAdd);
+                setShowCalendarPicker(true);
+                return;
+              }
+
               await createCalendarEvents(sessionsToAdd);
-              Alert.alert(
-                "Success",
-                "Sessions have been added to your calendar.",
-              );
+              Alert.alert("Success", "Sessions have been added to your calendar.");
             } catch (error) {
               Alert.alert(
                 "Error",
@@ -603,6 +804,42 @@ export default function StartListScreen() {
     );
   };
 
+  const handleAndroidCalendarSelection = useCallback(
+    async (destination: CalendarDestination) => {
+      if (!pendingCalendarSessions?.length) {
+        setShowCalendarPicker(false);
+        return;
+      }
+
+      setIsCalendarPickerLoading(true);
+
+      try {
+        await setPreferredAndroidCalendarId(destination.id);
+        await createCalendarEventsToCalendar(
+          pendingCalendarSessions,
+          destination.id,
+        );
+        setShowCalendarPicker(false);
+        setPendingCalendarSessions(null);
+        Alert.alert(
+          "Success",
+          `Sessions have been added to ${destination.title}.`,
+        );
+      } catch (error) {
+        console.error("StartList: failed to write calendar events", error);
+        Alert.alert(
+          "Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to add sessions to calendar.",
+        );
+      } finally {
+        setIsCalendarPickerLoading(false);
+      }
+    },
+    [pendingCalendarSessions],
+  );
+
   // Update apply handler
   const handleApplyFilters = (filters: {
     weightClass: string;
@@ -610,12 +847,16 @@ export default function StartListScreen() {
     ageGroup: string;
     adaptiveAthlete: string;
     gender: string;
+    wso: string;
+    sort: AthleteSortOption;
   }) => {
     setWeightClassFilter(filters.weightClass);
     setClubFilter(filters.club);
     setAgeGroupFilter(filters.ageGroup);
     setAdaptiveAthleteFilter(filters.adaptiveAthlete);
     setGenderFilter(filters.gender);
+    setWsoFilter(filters.wso);
+    setSortOption(filters.sort);
 
     const nextCount = filterApplyCount + 1;
     setFilterApplyCount(nextCount);
@@ -632,6 +873,8 @@ export default function StartListScreen() {
     setAgeGroupFilter("");
     setAdaptiveAthleteFilter("");
     setGenderFilter("");
+    setWsoFilter("");
+    setSortOption("alphabetical");
     setSearchQuery("");
   };
 
@@ -702,15 +945,10 @@ export default function StartListScreen() {
 
   // Capture schedule image for sharing
   const captureScheduleImage = async () => {
-    // Validate that a specific club is selected
-    if (
-      !clubFilter ||
-      clubFilter === "" ||
-      clubFilter === STARRED_CLUBS_FILTER
-    ) {
+    if (!selectedShareGroup) {
       Alert.alert(
-        "Select a Club",
-        "Please select a specific club from the filters to create a shareable schedule.",
+        "Select a Club or WSO",
+        "Please select a specific club or WSO from the filters to create a shareable schedule.",
       );
       return;
     }
@@ -775,14 +1013,10 @@ export default function StartListScreen() {
   };
 
   const generateShareableScheduleCsv = async () => {
-    if (
-      !clubFilter ||
-      clubFilter === "" ||
-      clubFilter === STARRED_CLUBS_FILTER
-    ) {
+    if (!selectedShareGroup) {
       Alert.alert(
-        "Select a Club",
-        "Please select a specific club from the filters to create a shareable schedule.",
+        "Select a Club or WSO",
+        "Please select a specific club or WSO from the filters to create a shareable schedule.",
       );
       return;
     }
@@ -872,7 +1106,7 @@ export default function StartListScreen() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const header = [
-      "Club",
+      "Group",
       "Meet",
       "Name",
       "Weight Class",
@@ -889,7 +1123,7 @@ export default function StartListScreen() {
         const dateStr = details?.date ?? "";
 
         rows.push([
-          clubFilter,
+          selectedShareGroup,
           selectedMeet || "",
           athlete.name || "",
           athlete.weightClass || "",
@@ -915,7 +1149,7 @@ export default function StartListScreen() {
         return;
       }
 
-      const fileName = `meetcal-schedule-${sanitizeFileName(clubFilter)}-${Date.now()}.csv`;
+      const fileName = `meetcal-schedule-${sanitizeFileName(selectedShareGroup)}-${Date.now()}.csv`;
       const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
       file.write(csvContent, { encoding: "utf8" });
 
@@ -948,10 +1182,10 @@ export default function StartListScreen() {
             borderBottomWidth: 1,
           },
         ]}
-      >
-        <View style={styles.searchContainer}>
-          <View
-            style={[
+        >
+          <View style={styles.searchContainer}>
+            <View
+              style={[
               styles.searchBar,
               {
                 backgroundColor: colors.card,
@@ -998,54 +1232,11 @@ export default function StartListScreen() {
             )}
           </View>
         </View>
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <ThemedText
-              style={[styles.buttonText, { color: colors.secondaryText }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {getFilterDisplayText()}
-            </ThemedText>
-            <IconSymbol
-              name={getChevronIcon("down")}
-              size={12}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveButton,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { backgroundColor: colors.pressed },
-            ]}
-            onPress={() => setShowSaveModal(true)}
-          >
-            <IconSymbol
-              name={getSaveIcon()}
-              size={16}
-              color={colors.secondaryText}
-            />
-          </Pressable>
-        </View>
       </View>
 
       <ExpandedIdProvider>
         <FlashList
+          ref={listRef}
           data={filteredAthletes}
           extraData={{
             weightClassFilter,
@@ -1053,6 +1244,7 @@ export default function StartListScreen() {
             ageGroupFilter,
             adaptiveAthleteFilter,
             genderFilter,
+            wsoFilter,
             searchQuery,
           }}
           keyExtractor={keyExtractor}
@@ -1085,6 +1277,8 @@ export default function StartListScreen() {
         ageGroupFilter={ageGroupFilter}
         adaptiveAthleteFilter={adaptiveAthleteFilter}
         genderFilter={genderFilter}
+        wsoFilter={wsoFilter}
+        sortOption={sortOption}
         onApplyFilters={handleApplyFilters}
         onResetFilters={resetFilters}
       />
@@ -1100,6 +1294,20 @@ export default function StartListScreen() {
         onDownloadShareableSchedule={handleDownloadShareableSchedule}
       />
 
+      <CalendarDestinationPickerModal
+        visible={showCalendarPicker}
+        title="Choose Calendar"
+        destinations={calendarDestinations}
+        onClose={() => {
+          setShowCalendarPicker(false);
+          setPendingCalendarSessions(null);
+        }}
+        onSelect={(destination) => {
+          void handleAndroidCalendarSelection(destination);
+        }}
+        isLoading={isCalendarPickerLoading}
+      />
+
       {showShareViews && (
         <View style={{ position: "absolute", left: -10000, top: 0 }}>
           <View ref={shareScheduleRef} collapsable={false}>
@@ -1107,7 +1315,7 @@ export default function StartListScreen() {
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
               selectedMeet={selectedMeet || ""}
-              selectedClub={clubFilter || ""}
+              selectedGroup={selectedShareGroup || ""}
               getSessionDetails={getSessionDetails}
               backgroundPreset="white"
             />
@@ -1117,7 +1325,7 @@ export default function StartListScreen() {
               filteredAthletes={filteredAthletes}
               schedule={scheduleData}
               selectedMeet={selectedMeet || ""}
-              selectedClub={clubFilter || ""}
+              selectedGroup={selectedShareGroup || ""}
               getSessionDetails={getSessionDetails}
               backgroundPreset="transparent"
             />
@@ -1155,55 +1363,19 @@ const styles = StyleSheet.create({
   filterContainer: {
     padding: 16,
   },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 16,
-    marginTop: 6,
-  },
-  button: {
-    flex: 1,
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
+    gap: 4,
   },
-  saveButton: {
-    flexDirection: "row",
+  headerIconButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-    minWidth: 44, // Minimum touch target size
-  },
-  buttonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    flexShrink: 1,
   },
   searchContainer: {
-    marginBottom: 6,
+    marginBottom: 2,
   },
   searchBar: {
     flexDirection: "row",

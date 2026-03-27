@@ -35,10 +35,12 @@ export const AthleteItem = React.memo(function AthleteItem({
   athlete,
   router,
   getSessionDetails,
+  onExpand,
+  index,
 }: AthleteItemProps) {
   const { currentTheme } = useTheme();
   const { expandedId, setExpandedId } = useExpandedId();
-  const expandKey = athlete.memberId;
+  const expandKey = `${athlete.memberId}_${athlete.name}`;
   const isExpanded = expandedId === expandKey;
   const tapTimeRef = useRef(0);
   const expandRenderLogged = useRef(false);
@@ -46,14 +48,18 @@ export const AthleteItem = React.memo(function AthleteItem({
   const onPress = useCallback(() => {
     tapTimeRef.current = performance.now();
     if (__DEV__) recordExpandTapTime();
-    setExpandedId((prev) => (prev === expandKey ? null : expandKey));
+    const willExpand = expandedId !== expandKey;
+    setExpandedId(willExpand ? expandKey : null);
+    if (willExpand && onExpand && index != null) {
+      setTimeout(() => onExpand(index), 50);
+    }
     if (__DEV__)
       console.log(
         "[StartList] 0. setExpandedId called",
         Math.round(performance.now() - tapTimeRef.current),
         "ms since tap",
       );
-  }, [expandKey, setExpandedId]);
+  }, [expandKey, expandedId, setExpandedId, onExpand, index]);
   if (__DEV__ && isExpanded && !expandRenderLogged.current) {
     expandRenderLogged.current = true;
     console.log(

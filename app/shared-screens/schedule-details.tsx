@@ -160,11 +160,9 @@ export default function SessionDetailsScreen() {
           gestureEnabled: true,
           gestureDirection: "horizontal",
           animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerLargeTitleEnabled: false,
+          headerTransparent: true
         }}
       />
 

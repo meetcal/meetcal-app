@@ -13,6 +13,9 @@ export const OFFLINE_CACHE_KEYS = {
   wsoRecords: '@offline_cache/wso_records',
   adaptiveRecords: '@offline_cache/adaptive_records',
   nationalRankings: '@offline_cache/national_rankings',
+  clubs: '@offline_cache/clubs',
+  clubAthletes: '@offline_cache/club_athletes',
+  clubMeetStats: '@offline_cache/club_meet_stats',
 } as const;
 
 export async function getOfflineCache<T>(key: string): Promise<OfflineCacheEntry<T> | null> {
