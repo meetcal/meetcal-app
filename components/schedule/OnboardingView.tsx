@@ -107,9 +107,14 @@ function OnboardingPage({ pageCounter }: { pageCounter: number }) {
     case 8:
       return (
         <View style={styles.pageContent}>
-          <ThemedText style={[styles.title, { color: colors.text }]}>
-            ⬇️ Download
-          </ThemedText>
+          <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
+            <ThemedText style={[{fontSize: 20, fontWeight: "bold", marginBottom: 16,}, { color: colors.text }]}>
+              ⬇️
+            </ThemedText>
+            <ThemedText style={[styles.title, { color: colors.text, paddingLeft: 4 }]}>
+              Download
+            </ThemedText>
+          </View>
           <ThemedText style={[styles.description, { color: colors.text }]}>
             Need to view schedules offline? Download any meet schedule and
             competition data to access session details, start lists, and
@@ -258,7 +263,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 16,
   },

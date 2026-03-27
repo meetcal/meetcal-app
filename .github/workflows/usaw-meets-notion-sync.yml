@@ -1,38 +1,38 @@
-name: USAW Meets to Notion Sync
+# name: USAW Meets to Notion Sync
 
-on:
-  schedule:
-    - cron: '0 5 * * 3'  # Runs every Wednesday at 05:00 UTC
-  workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
+# on:
+#   schedule:
+#     - cron: '0 5 * * 3'  # Runs every Wednesday at 05:00 UTC
+#   workflow_dispatch:  # Allows manual triggering from GitHub Actions UI
 
-jobs:
-  sync-usaw-meets:
-    runs-on: ubuntu-latest
+# jobs:
+#   sync-usaw-meets:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          cd scrapers/usaw/scrape-meets
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+#       - name: Install dependencies
+#         run: |
+#           cd scrapers/usaw/scrape-meets
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: |
-          cd scrapers/usaw/scrape-meets
-          playwright install chromium
+#       - name: Install Playwright browsers
+#         run: |
+#           cd scrapers/usaw/scrape-meets
+#           playwright install chromium
 
-      - name: Run USAW meets scraper
-        env:
-          NOTION_SECRET: ${{ secrets.NOTION_SECRET }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-        run: |
-          cd scrapers/usaw/scrape-meets
-          python scraper.py
+#       - name: Run USAW meets scraper
+#         env:
+#           NOTION_SECRET: ${{ secrets.NOTION_SECRET }}
+#           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+#         run: |
+#           cd scrapers/usaw/scrape-meets
+#           python scraper.py

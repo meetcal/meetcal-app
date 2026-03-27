@@ -54,6 +54,8 @@ export interface AthleteItemProps {
     athlete: LiftResult;
     router: ReturnType<typeof useRouter>;
     getSessionDetails: (sessionNumber: number) => SessionDetails | null;
+    onExpand?: (index: number) => void;
+    index?: number;
 }
 
 export interface StartListSkeletonProps {

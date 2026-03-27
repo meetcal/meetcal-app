@@ -281,15 +281,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     <View style={[styles.card, { backgroundColor: colors.card }]}>
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
         <ThemedText style={[styles.sessionSummary, { color: colors.text }]}>
-          Session
-          {" "}
-          {sessionNumber}
-          {" "}
-          •
-          {" "}
-          {platformStartTime}
-          {" "}
-          {timeZoneAbbr}
+          Session {sessionNumber} • {platformStartTime} {timeZoneAbbr}
         </ThemedText>
       </View>
 
