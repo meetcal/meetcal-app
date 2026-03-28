@@ -36,8 +36,8 @@ jobs:
       - name: Setup urlwatch config
         run: |
           # Copy config with Slack webhook URL substituted
-          sed "s|\${SLACK_URLWATCH_WEBHOOK_URL}|${{ secrets.SLACK_URLWATCH_WEBHOOK_URL }}|g" urlwatch.yaml > ~/.config/urlwatch/urlwatch.yaml
-          cp urls.yaml ~/.config/urlwatch/urls.yaml
+          sed "s|\${SLACK_URLWATCH_WEBHOOK_URL}|${{ secrets.SLACK_URLWATCH_WEBHOOK_URL }}|g" scrapers/urlwatch/urlwatch.yaml > ~/.config/urlwatch/urlwatch.yaml
+          cp scrapers/urlwatch/urls.yaml ~/.config/urlwatch/urls.yaml
 
       - name: Run urlwatch
         run: urlwatch
