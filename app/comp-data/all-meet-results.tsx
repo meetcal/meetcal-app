@@ -276,6 +276,7 @@ export default function AllMeetResultsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text
         }}
       />
 

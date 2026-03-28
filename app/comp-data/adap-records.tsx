@@ -64,6 +64,7 @@ export default function AdaptiveRecordsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text
         }}
       />
 

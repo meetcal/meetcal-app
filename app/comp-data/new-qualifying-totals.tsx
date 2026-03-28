@@ -171,6 +171,7 @@ export default function QualifyingTotalsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text
         }}
       />
 

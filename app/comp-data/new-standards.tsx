@@ -93,6 +93,7 @@ export default function NewStandardsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text
         }}
       />
 

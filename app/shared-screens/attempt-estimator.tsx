@@ -247,6 +247,10 @@ export default function AttemptEstimatorScreen() {
             headerLargeTitle: false,
             headerStyle: { backgroundColor: colors.background },
             headerShadowVisible: false,
+            headerTitleStyle: {
+              color: colors.text,
+            },
+            headerTintColor: colors.text
           }}
         />
         <View style={styles.emptyContainer}>
@@ -273,6 +277,10 @@ export default function AttemptEstimatorScreen() {
             headerBackButtonDisplayMode: "minimal",
             headerStyle: { backgroundColor: colors.background },
             headerShadowVisible: false,
+            headerTitleStyle: {
+              color: colors.text,
+            },
+            headerTintColor: colors.text
           }}
         />
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -294,6 +302,10 @@ export default function AttemptEstimatorScreen() {
           headerTitle: "Attempt Estimator",
           headerBackTitle: "Back",
           headerBackButtonDisplayMode: "minimal",
+          headerTitleStyle: {
+            color: colors.text,
+          },
+          headerTintColor: colors.text
         }}
       />
 

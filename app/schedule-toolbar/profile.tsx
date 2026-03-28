@@ -1,13 +1,19 @@
-import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
+import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
+import { clearCachedMeetsList } from "@/lib/database/meet-manager";
+import {
+  clearAllAthleteHistory,
+  clearAllMeetData,
+} from "@/lib/database/offline-store";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import { Stack, usePathname, useRouter } from "expo-router";
@@ -77,9 +83,11 @@ export default function ProfileScreen() {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
   const { requireAuth } = useAuthGuard();
+  const { forceSync, refreshAvailableMeets } = useSelectedMeet();
 
   useEffect(() => {
     if (__DEV__) {
@@ -154,6 +162,28 @@ export default function ProfileScreen() {
     const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
     Linking.openURL(url).catch((err) => console.error("Error", err));
+  };
+
+  const handleClearCache = async () => {
+    if (isClearingCache) return;
+
+    setIsClearingCache(true);
+    try {
+      await clearAllMeetData();
+      await clearAllAthleteHistory();
+      await clearCachedMeetsList();
+      await refreshAvailableMeets();
+      await forceSync();
+      Alert.alert(
+        "Cache Cleared",
+        "Cached meet data has been cleared and refreshed.",
+      );
+    } catch (error) {
+      console.error("Error clearing cache:", error);
+      Alert.alert("Error", "Failed to clear cache. Please try again.");
+    } finally {
+      setIsClearingCache(false);
+    }
   };
 
   const divider = (
@@ -282,6 +312,41 @@ export default function ProfileScreen() {
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Submit Feedback
+              </ThemedText>
+              <IconSymbol
+                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.section,
+              pressed && { backgroundColor: colors.pressed },
+            ]}
+            onPress={() => {
+              if (isClearingCache) return;
+              Alert.alert(
+                "Clear Cache",
+                "This will clear cached meet data on this device and immediately re-sync it.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Clear Cache",
+                    style: "destructive",
+                    onPress: () => {
+                      void handleClearCache();
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            <View style={styles.fieldRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Clear Cache
               </ThemedText>
               <IconSymbol
                 name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}

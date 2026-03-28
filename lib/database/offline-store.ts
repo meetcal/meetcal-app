@@ -684,6 +684,19 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
   }
 }
 
+export async function clearAllMeetData(): Promise<void> {
+  try {
+    const store = await getStore();
+    const meetIds = Object.keys(store.meets) as MeetName[];
+
+    for (const meetId of meetIds) {
+      await clearMeetData(meetId);
+    }
+  } catch (error) {
+    console.error('Error clearing all meet data:', error);
+  }
+}
+
 export async function clearAllAthleteHistory(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();

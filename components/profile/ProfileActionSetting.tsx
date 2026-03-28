@@ -12,7 +12,7 @@ interface ProfileActionSettingProps {
     link: string;
   };
   label: string;
-  description: string;
+  description?: string;
   value?: string;
   onPress: () => void;
   disabled?: boolean;

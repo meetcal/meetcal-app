@@ -79,6 +79,14 @@ async function setCachedMeets(meets: Meet[]): Promise<void> {
   }
 }
 
+export async function clearCachedMeetsList(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]);
+  } catch (error) {
+    console.error('Error clearing cached meets list:', error);
+  }
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<T>((_, reject) => {

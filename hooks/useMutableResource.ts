@@ -95,6 +95,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     setIsRefreshing(false);
   }, [enabled, initialData, resource]);
 
+  const refreshResource = useCallback(
+    () => refresh(sourceRef.current !== null),
+    [refresh],
+  );
+
+  const invalidateResource = useCallback(() => invalidate(), [invalidate]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -175,7 +182,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     isRefreshing,
     lastUpdatedAt,
     source,
-    refresh: () => refresh(sourceRef.current !== null),
-    invalidate,
+    refresh: refreshResource,
+    invalidate: invalidateResource,
   };
 }

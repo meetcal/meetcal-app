@@ -1,5 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useNavigation, usePathname, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   useCallback,
   useEffect,
@@ -168,6 +169,13 @@ export default function ScheduleScreen() {
   useEffect(() => {
     initStore();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedMeet) return;
+      void refreshSchedule();
+    }, [refreshSchedule, selectedMeet]),
+  );
 
   // Check onboarding status on mount
   useEffect(() => {

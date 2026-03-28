@@ -230,6 +230,7 @@ export default function RecordsScreen() {
             },
             headerShadowVisible: false,
             headerBackButtonDisplayMode: "minimal",
+            headerTintColor: colors.text
           }}
         />
 

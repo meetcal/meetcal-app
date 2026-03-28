@@ -117,7 +117,6 @@ export function AndroidCalendarSetting({
       <ProfileActionSetting
         colors={colors}
         label="Default Calendar"
-        description="Choose where calendar exports are saved."
         value={isLoading ? "Loading..." : selectedCalendar?.title || "Not set"}
         onPress={() => {
           void loadDestinations();

@@ -74,6 +74,10 @@ export default function OfflineDataScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTitleStyle: {
+            color: colors.text,
+          },
+          headerTintColor: colors.text,
           headerRight: () => (
             <View style={styles.headerActions}>
               <Pressable

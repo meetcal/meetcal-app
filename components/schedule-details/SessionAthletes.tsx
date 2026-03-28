@@ -5,16 +5,11 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import {
-    getSessionAthletesFromMeetCache,
-    saveMeetAthletes,
-} from "@/lib/database/offline-store";
-import { fetchAthletesWithSession } from "@/lib/database/queries";
-import { isNetworkAvailable } from "@/lib/networkUtils";
+import { useMeetAthletes } from "@/hooks/useMeetAthletes";
 import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Modal,
@@ -63,13 +58,11 @@ function filterSessionAthletes(
 export default function SessionAthletes({
   sessionNumber,
   platform,
-  sessionWeightClass,
   meetId,
   refreshKey,
 }: {
   sessionNumber: number;
   platform: string;
-  sessionWeightClass: string;
   meetId: MeetName;
   refreshKey: number;
 }) {
@@ -78,115 +71,81 @@ export default function SessionAthletes({
 
   const router = useRouter();
   const colors = useAppColors();
+  const { athletes: meetAthletes, isLoading, isRefreshing, refreshAthletes } =
+    useMeetAthletes(meetId);
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
-  const [loading, setLoading] = useState(true);
-  const [athletes, setAthletes] = useState<Record<string, SessionAthlete[]>>(
-    {},
-  );
   const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
+  const refreshKeyRef = useRef(refreshKey);
 
-  const loadAthletes = useCallback(async () => {
-    setLoading(true);
-    
-    try {
-      if (!meetId) {
-        setAthletes({});
+  const sessionAthletes = useMemo(
+    () => filterSessionAthletes(meetAthletes, sessionNumber, platform),
+    [meetAthletes, sessionNumber, platform],
+  );
+
+  const athletes = useMemo(
+    () => toSessionAthletesByPlatform(platform, sessionAthletes),
+    [platform, sessionAthletes],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBests() {
+      const athleteNames = sessionAthletes.map((athlete) => athlete.name);
+
+      if (athleteNames.length === 0) {
         setAthleteBests({});
         setLoadingBests({});
         return;
       }
 
-      const applySessionAthletes = async (
-        nextAthletes: LiftResult[],
-        isRefresh = false,
-      ) => {
-        const mapped = toSessionAthletesByPlatform(platform, nextAthletes);
-        setAthletes(mapped);
+      setLoadingBests(
+        athleteNames.reduce<Record<string, boolean>>((acc, name) => {
+          acc[name] = true;
+          return acc;
+        }, {}),
+      );
 
-        const athleteNames = nextAthletes.map((athlete) => athlete.name);
-        if (!isRefresh) {
-          const loadingState = athleteNames.reduce<Record<string, boolean>>(
-            (acc, name) => {
-              acc[name] = true;
-              return acc;
-            },
-            {},
-          );
-          setLoadingBests(loadingState);
-        } else {
-          const newNamesSetToTrue = athleteNames.reduce<Record<string, boolean>>(
-            (acc, name) => {
-              acc[name] = true;
-              return acc;
-            },
-            {},
-          );
-          setLoadingBests((prev) => ({ ...prev, ...newNamesSetToTrue }));
-        }
-
-        if (athleteNames.length === 0) {
-          setAthleteBests({});
-          setLoadingBests({});
-          return;
-        }
-
+      try {
         const bestsMap = await getAthleteBestsBatch(athleteNames, meetId);
+        if (cancelled) return;
         setAthleteBests(bestsMap);
-        setLoadingBests((prev) => {
-          const next = { ...prev };
-          athleteNames.forEach((name) => {
-            next[name] = false;
-          });
-          return next;
-        });
-      };
-
-      const cachedAthletes = await getSessionAthletesFromMeetCache(
-        meetId,
-        sessionNumber,
-        platform,
-      );
-      
-
-      if (cachedAthletes.length > 0) {
-        await applySessionAthletes(cachedAthletes);
-      } else {
-        setAthletes({});
+        setLoadingBests(
+          athleteNames.reduce<Record<string, boolean>>((acc, name) => {
+            acc[name] = false;
+            return acc;
+          }, {}),
+        );
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Error loading athlete bests:", error);
         setAthleteBests({});
         setLoadingBests({});
       }
-
-      const hasNetwork = await isNetworkAvailable();
-      if (!hasNetwork) {
-        return;
-      }
-
-      const freshMeetAthletes = await fetchAthletesWithSession(meetId);
-      await saveMeetAthletes(meetId, freshMeetAthletes);
-      const freshSessionAthletes = filterSessionAthletes(
-        freshMeetAthletes,
-        sessionNumber,
-        platform,
-      );
-      await applySessionAthletes(freshSessionAthletes, true);
-    } catch (error) {
-      console.error("Error loading athletes:", error);
-      if (!meetId) {
-        setAthletes({});
-        setAthleteBests({});
-        setLoadingBests({});
-      }
-    } finally {
-      setLoading(false);
     }
-  }, [sessionNumber, platform, meetId]);
+
+    void loadBests();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [meetId, sessionAthletes]);
+
+  useEffect(() => {
+    if (refreshKeyRef.current === refreshKey) {
+      return;
+    }
+
+    refreshKeyRef.current = refreshKey;
+    void refreshAthletes();
+  }, [refreshAthletes, refreshKey]);
 
   // Compute the numeric sort value for an athlete based on the active sort key
   const getSortValue = useCallback(
@@ -289,9 +248,7 @@ export default function SessionAthletes({
   );
 
    
-  useEffect(() => {
-    loadAthletes();
-  }, [loadAthletes, refreshKey]);
+  const loading = isLoading || (sessionAthletes.length === 0 && isRefreshing);
 
   if (!athletes[platform]?.length) {
     if (loading) {

@@ -178,6 +178,7 @@ export default function NationalRankingsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text
         }}
       />
 

@@ -9,9 +9,9 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchAgeGroups,
   federationRecordsResource,
   federationsResource,
+  fetchAgeGroups,
 } from "@/lib/database/fetch-records";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { AgeGroup, Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
@@ -263,6 +263,7 @@ export default function RecordsScreen() {
             },
             headerShadowVisible: false,
             headerBackButtonDisplayMode: "minimal",
+            headerTintColor: colors.text
           }}
         />
 

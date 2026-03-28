@@ -4,24 +4,23 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { getMeetData } from "@/lib/database/offline-store";
+import { useScheduleData } from "@/hooks/useScheduleData";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   DaySchedule,
   Platform as PlatformDetails,
-  Schedule,
 } from "@/types/schedule";
 import { Session } from "@/types/schedule-details";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 export default function SessionDetailsScreen() {
   const colors = useAppColors();
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
-  const [currentSchedule, setCurrentSchedule] = useState<Schedule>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const rawParams = useLocalSearchParams<{
@@ -53,25 +52,29 @@ export default function SessionDetailsScreen() {
     ? parseInt(params.sessionNumber, 10)
     : NaN;
   const hasValidSessionNumber = !isNaN(parsedSessionNumber);
+  const {
+    schedule: currentSchedule,
+    refreshSchedule,
+  } = useScheduleData((params.meet || null) as MeetName | null);
 
-  // Load session data from cache
-  const loadSessionData = useCallback(async () => {
-    if (!hasValidSessionNumber) return;
-    try {
-      // Get cached data (context's SyncManager handles syncing)
-      const meetData = await getMeetData(params.meet as MeetName);
-      if (meetData.schedule) {
-        setCurrentSchedule(meetData.schedule);
-      }
-    } catch (error) {
-      console.error("Error loading session data:", error);
-    }
-  }, [params.meet, hasValidSessionNumber]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!params.meet || !hasValidSessionNumber) return;
 
-  // Initial load
-  useEffect(() => {
-    loadSessionData();
-  }, [loadSessionData]);
+      let cancelled = false;
+
+      void (async () => {
+        await refreshSchedule();
+        if (!cancelled) {
+          setRefreshKey((prev) => prev + 1);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [hasValidSessionNumber, params.meet, refreshSchedule]),
+  );
 
   // Get the correct weight class from current schedule
   const sessionWeightClass = useMemo(() => {
@@ -138,15 +141,14 @@ export default function SessionDetailsScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadSessionData();
-      // Trigger athlete data refresh
+      await refreshSchedule();
       setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error("Refresh failed:", error);
     } finally {
       setRefreshing(false);
     }
-  }, [loadSessionData]);
+  }, [refreshSchedule]);
 
   return (
     <ThemedView
@@ -156,13 +158,18 @@ export default function SessionDetailsScreen() {
         options={{
           headerShown: true,
           headerTitle: sessionDate,
-          headerBackTitle: "Back",
           gestureEnabled: true,
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerBackButtonDisplayMode: "minimal",
-          headerLargeTitleEnabled: false,
-          headerTransparent: true
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerShadowVisible: false,
+          headerTitleStyle: {
+            color: colors.text,
+          },
+          headerTintColor: colors.text
         }}
       />
 
@@ -199,7 +206,6 @@ export default function SessionDetailsScreen() {
           <SessionAthletes
             sessionNumber={parsedSessionNumber}
             platform={params.platform}
-            sessionWeightClass={sessionWeightClass || params.weightClass}
             meetId={params.meet as MeetName}
             refreshKey={refreshKey}
           />
