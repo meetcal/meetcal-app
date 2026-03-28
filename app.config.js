@@ -67,7 +67,7 @@ export default ({ config }) => ({
           useFrameworks: 'static',
         },
         android: {
-          compileSdkVersion: 35,
+          compileSdkVersion: 36,
           targetSdkVersion: 35,
           buildToolsVersion: '36.1.0',
           minSdkVersion: 24,

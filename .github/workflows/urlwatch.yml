@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -23,7 +23,7 @@ jobs:
         run: pip install urlwatch
 
       - name: Restore cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.cache/urlwatch
           key: urlwatch-cache-${{ github.run_id }}
@@ -43,7 +43,7 @@ jobs:
         run: urlwatch
 
       - name: Save cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         if: always()
         with:
           path: ~/.cache/urlwatch
