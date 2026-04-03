@@ -4,10 +4,6 @@ USAGE:
   # Setup virtual environment and install dependencies
   python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
   
-  # Dry-run (preview changes without updating database)
-  python usamw_results_scraper.py --dry-run
-  
-  # Full run (update database)
   python usamw_results_scraper.py
 """
 
@@ -15,13 +11,11 @@ import os
 import sys
 import argparse
 import re
-import io
-import tempfile
+import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import requests
 from dotenv import load_dotenv
-import base64
 from pathlib import Path
 
 try:
@@ -34,41 +28,25 @@ except ImportError:
 # CONFIGURATION - Edit these values before running
 # ============================================================================
 
-MEET_NAME = "2025 Howard Cohen American Masters Championships"
-MEET_DATE = "2025-12-11"  
-EVENT_ID = "12"  
+MEET_NAME = "2026 USA Masters Nationals"
+MEET_DATE = "2026-03-29"
+EVENT_ID = "13"  
 ADAPTIVE = False 
+OUTPUT_TS = "usamw_results.ts"
 
 # List of PDF URLs to process
 PDF_URLS = [
-    "https://drive.google.com/file/d/1YfDvbAbt0Q2tjt6SwlK4jDzDcb8Z7BQC/view?usp=sharing",
-    "https://drive.google.com/file/d/1Q--nD3M8LzCWtV46b9Kj3cLXwWTHV9Yg/view?usp=sharing",
-    "https://drive.google.com/file/d/16jwBzQW6cgWICXSh3wrOKJ3TL4MkRyn3/view?usp=sharing",
-    "https://drive.google.com/file/d/1s2s2sQ-JsL6Nk_8Plu9POHzimngXwtU2/view?usp=sharing",
-    "https://drive.google.com/file/d/1BwvrPPfZbOOnT62L85WDJslClhUPUhPz/view?usp=sharing"
-
+    "https://drive.google.com/file/d/1VQpQMpve5NmzXzpSqUNKKfPbVGyomlur/view?usp=sharing",
+    "https://drive.google.com/file/d/17fNx0QQOn4vu9tK6zP4-lpFJbN9b9ZQg/view?usp=sharing",
 ]
 
 # ============================================================================
 
-# PDF and image processing
+# PDF processing
 try:
     import fitz  # PyMuPDF
 except ImportError:
     print("Error: PyMuPDF not installed. Run: pip install PyMuPDF")
-    sys.exit(1)
-
-try:
-    from PIL import Image
-except ImportError:
-    print("Error: Pillow not installed. Run: pip install Pillow")
-    sys.exit(1)
-
-# OpenAI
-try:
-    from openai import OpenAI
-except ImportError:
-    print("Error: openai library not installed. Run: pip install openai")
     sys.exit(1)
 
 # Supabase
@@ -78,15 +56,6 @@ except ImportError:
     print("Error: supabase library not installed. Run: pip install supabase")
     sys.exit(1)
 
-# Google Drive API
-try:
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseDownload
-except ImportError:
-    print("Error: Google API libraries not installed. Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib")
-    sys.exit(1)
-
 # Load environment variables
 load_dotenv()
 
@@ -94,7 +63,15 @@ load_dotenv()
 class USAMWResultsScraper:
     """Scraper for USAMW competition results from Google Drive PDFs."""
     
-    def __init__(self, pdf_urls: List[str], meet_name: str, meet_date: str, event_id: str, adaptive: bool = False):
+    def __init__(
+        self,
+        pdf_urls: List[str],
+        meet_name: str,
+        meet_date: str,
+        event_id: str,
+        adaptive: bool = False,
+        output_path: Optional[str] = None,
+    ):
         """Initialize the scraper.
         
         Args:
@@ -103,15 +80,93 @@ class USAMWResultsScraper:
             meet_date: Date of the competition in YYYY-MM-DD format (e.g., "2025-03-15")
             event_id: Event ID for this competition (e.g., "7115")
             adaptive: Whether this is an adaptive meet (default: False)
+            output_path: TypeScript output filename or absolute path
         """
         self.pdf_urls = pdf_urls
         self.meet_name = meet_name
         self.meet_date = meet_date
         self.event_id = event_id
         self.adaptive = adaptive
-        self.openai_client: Optional[OpenAI] = None
+        self.output_path = self._resolve_output_path(output_path)
         self.supabase: Optional[Client] = None
         self.slack_webhook_url: Optional[str] = None
+    
+    def _resolve_output_path(self, output_path: Optional[str]) -> Path:
+        """Resolve output path relative to this script unless absolute."""
+        if not output_path:
+            return Path(__file__).resolve().with_name(OUTPUT_TS)
+        path = Path(output_path).expanduser()
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parent / path
+    
+    def _format_typescript_value(self, value: Any) -> str:
+        """Format Python values as TypeScript literals."""
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return repr(value)
+        return json.dumps(value, ensure_ascii=True)
+    
+    def write_typescript_results(self, results: List[Dict[str, Any]]) -> None:
+        """Write results as a TypeScript array export."""
+        field_order = [
+            ("eventId", "event_id"),
+            ("meet", "meet"),
+            ("date", "date"),
+            ("name", "name"),
+            ("age", "age"),
+            ("bodyWeight", "body_weight"),
+            ("snatch1", "snatch1"),
+            ("snatch2", "snatch2"),
+            ("snatch3", "snatch3"),
+            ("snatchBest", "snatch_best"),
+            ("cj1", "cj1"),
+            ("cj2", "cj2"),
+            ("cj3", "cj3"),
+            ("cjBest", "cj_best"),
+            ("total", "total"),
+            ("adaptive", "adaptive"),
+            ("federation", "federation"),
+        ]
+        field_types = {
+            "eventId": "string",
+            "meet": "string",
+            "date": "string",
+            "name": "string",
+            "age": "string",
+            "bodyWeight": "number | null",
+            "snatch1": "number | null",
+            "snatch2": "number | null",
+            "snatch3": "number | null",
+            "snatchBest": "number | null",
+            "cj1": "number | null",
+            "cj2": "number | null",
+            "cj3": "number | null",
+            "cjBest": "number | null",
+            "total": "number | null",
+            "adaptive": "boolean",
+            "federation": "string",
+        }
+        
+        with open(self.output_path, "w", encoding="utf-8") as handle:
+            handle.write("export type LiftingResult = {\n")
+            for output_field, _ in field_order:
+                handle.write(f"  {output_field}: {field_types[output_field]};\n")
+            handle.write("};\n\n")
+            handle.write("export const liftingResults: LiftingResult[] = [\n")
+            
+            for result in results:
+                handle.write("  {\n")
+                for output_field, source_field in field_order:
+                    handle.write(
+                        f"    {output_field}: {self._format_typescript_value(result.get(source_field))},\n"
+                    )
+                handle.write("  },\n")
+            
+            handle.write("];\n")
         
     def _extract_file_id_from_url(self, url: str) -> Optional[str]:
         """Extract file ID from Google Drive URL."""
@@ -125,14 +180,6 @@ class USAMWResultsScraper:
         if match:
             return match.group(1)
         return None
-    
-    def setup_openai_client(self):
-        """Initialize OpenAI client."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY must be set in .env")
-        
-        self.openai_client = OpenAI(api_key=api_key)    
     
     def setup_supabase_client(self):
         """Initialize Supabase client."""
@@ -242,266 +289,6 @@ class USAMWResultsScraper:
         except Exception as e:
             print(f"✗ Error extracting text with color from PDF: {e}")
             return {}
-    
-    def extract_text_from_pdf(self, pdf_bytes: bytes) -> str:
-        """
-        Extract raw text from PDF.
-        
-        Args:
-            pdf_bytes: PDF file content
-            
-        Returns:
-            Extracted text as string
-        """
-        try:
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            text = ""
-            
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                text += page.get_text()
-            
-            doc.close()
-            return text
-            
-        except Exception as e:
-            print(f"✗ Error extracting text from PDF: {e}")
-            return ""
-    
-    def pdf_to_images(self, pdf_bytes: bytes, max_pages: int = 50) -> List[Image.Image]:
-        """
-        Convert PDF pages to images.
-        
-        Args:
-            pdf_bytes: PDF file content
-            max_pages: Maximum number of pages to process
-            
-        Returns:
-            List of PIL Images
-        """
-        images = []
-        
-        try:
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            num_pages = min(len(doc), max_pages)
-            
-            print(f"Converting {num_pages} pages to images...")
-            
-            for page_num in range(num_pages):
-                page = doc[page_num]
-                
-                # Render page at high resolution (300 DPI)
-                mat = fitz.Matrix(300/72, 300/72)
-                pix = page.get_pixmap(matrix=mat)
-                
-                # Convert to PIL Image
-                img_data = pix.tobytes("png")
-                img = Image.open(io.BytesIO(img_data))
-                images.append(img)
-            
-            doc.close()
-            print(f"✓ Converted {len(images)} pages")
-            
-        except Exception as e:
-            print(f"✗ Error converting PDF to images: {e}")
-        
-        return images
-    
-    def image_to_base64(self, image: Image.Image) -> str:
-        """Convert PIL Image to base64 string."""
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode('utf-8')
-    
-    def split_image_into_rows(self, image: Image.Image, min_row_height: int = 40) -> List[Image.Image]:
-        """
-        Split image into horizontal rows based on whitespace.
-        
-        Args:
-            image: PIL Image to split
-            min_row_height: Minimum height for a row
-            
-        Returns:
-            List of cropped row images
-        """
-        # Convert to grayscale for easier analysis
-        import numpy as np
-        
-        gray = image.convert('L')
-        img_array = np.array(gray)
-        
-        # Find rows with content (non-white regions)
-        row_has_content = []
-        for y in range(img_array.shape[0]):
-            # Check if row has any non-white pixels
-            has_content = np.any(img_array[y, :] < 250)
-            row_has_content.append(has_content)
-        
-        # Find boundaries of content blocks
-        rows = []
-        in_content = False
-        start_y = 0
-        
-        for y, has_content in enumerate(row_has_content):
-            if has_content and not in_content:
-                # Start of content block
-                start_y = y
-                in_content = True
-            elif not has_content and in_content:
-                # End of content block
-                if y - start_y >= min_row_height:
-                    rows.append((start_y, y))
-                in_content = False
-        
-        # Handle case where content goes to end of image
-        if in_content and len(row_has_content) - start_y >= min_row_height:
-            rows.append((start_y, len(row_has_content)))
-        
-        # Crop image into rows
-        row_images = []
-        for start_y, end_y in rows:
-            row_img = image.crop((0, start_y, image.width, end_y))
-            row_images.append(row_img)
-        
-        return row_images
-    
-    def extract_results_from_image(self, image: Image.Image, page_num: int) -> Optional[str]:
-        """
-        Use OpenAI Vision API to extract results from image.
-        
-        Returns:
-            Extracted text in structured format
-        """
-        
-        if not self.openai_client:
-            self.setup_openai_client()
-        
-        # Convert image to base64
-        base64_image = self.image_to_base64(image)
-        
-        # Create prompt for OpenAI
-        prompt = """Extract weightlifting competition results from this image.
-
-CRITICAL INSTRUCTIONS FOR IDENTIFYING MISSED LIFTS:
-1. Look VERY CAREFULLY at the text color of each lift attempt number
-2. Missed lifts will appear in RED color (not black)
-3. Missed lifts may also have a SLASH or STRIKETHROUGH through the number
-4. If a number is in RED or has ANY visual indication of being crossed out, it is a MISSED LIFT
-5. Output missed lifts as NEGATIVE numbers (e.g., if you see red "93", output "-93")
-6. Successful lifts are in BLACK text - output these as positive numbers
-
-CRITICAL - TABLE LAYOUT UNDERSTANDING:
-The table has the following columns FROM LEFT TO RIGHT:
-1. Total Rank (ignore this)
-2. Snatch Rank (ignore this)
-3. C&J Rank (ignore this)
-4. Lot Number (ignore this)
-5. Last Name First Name (extract and convert to "First Last")
-6. Team (ignore this)
-7. Body Weight (THIS IS THE BODY WEIGHT - usually like 86.7, 79.45, 62.3)
-8. Age (ignore - we get this from the header)
-9. Snatch 1 (FIRST snatch attempt)
-10. Snatch 2 (SECOND snatch attempt)
-11. Snatch 3 (THIRD snatch attempt)
-12. C&J 1 (FIRST clean & jerk attempt)
-13. C&J 2 (SECOND clean & jerk attempt)
-14. C&J 3 (THIRD clean & jerk attempt)
-15. Total (THIS IS THE TOTAL)
-16. SHMF Total (ignore this)
-
-CRITICAL - HOW TO READ EACH ROW:
-- Skip the first 4 columns (ranks and lot number)
-- Column 5 is the NAME (convert "LAST First" to "First Last")
-- Skip column 6 (team)
-- Column 7 is BODY WEIGHT
-- Skip column 8 (age - get from header instead)
-- Columns 9,10,11 are SNATCH 1, SNATCH 2, SNATCH 3
-- Columns 12,13,14 are C&J 1, C&J 2, C&J 3
-- Column 15 is TOTAL
-- BOLD NUMBERS indicate the BEST LIFT or TOTAL:
-  * The best snatch will appear in BOLD in one of columns 9,10,11
-  * The best C&J will appear in BOLD in one of columns 12,13,14
-  * The total will appear in BOLD in column 15
-  * Look for BOLD text to identify which lifts were the best
-- BEST SNATCH = the BOLD number from Snatch attempts (or highest positive if no bold)
-- BEST C&J = the BOLD number from C&J attempts (or highest positive if no bold)
-
-IMPORTANT - NAME FORMAT:
-- Output names in "First Last" format (e.g., "John Smith", "Mary Johnson")
-- If the name appears as "SMITH John" or "SMITH, John", convert it to "John Smith"
-
-IMPORTANT - AGE CATEGORY FORMAT:
-- The age category must be formatted as: "Gender Masters (age-range) weightkg"
-- Examples: "Women's Masters (45-49) 77kg", "Men's Masters (40-44) 89kg"
-- If you see "Women's W65 87kg", convert to "Women's Masters (65-69) 87kg"
-- If you see "Women's W55 81kg", convert to "Women's Masters (55-59) 81kg"  
-- If you see "Women's W45 87+kg", convert to "Women's Masters (45-49) 87+kg"
-- If you see "Women's W35 64kg", convert to "Women's Masters (35-39) 64kg"
-- The format MUST be: Gender's Masters (age-age) weightkg
-
-For each athlete, provide the following information in CSV format:
-- Name (in "First Last" format)
-- Age category with weight class (formatted as "Gender's Masters (age-age) weightkg")
-- Body weight in kg
-- Snatch attempt 1 (positive if black text, negative if red/crossed)
-- Snatch attempt 2 (positive if black text, negative if red/crossed)
-- Snatch attempt 3 (positive if black text, negative if red/crossed)
-- Best snatch (always positive - highest successful snatch)
-- Clean & Jerk attempt 1 (positive if black text, negative if red/crossed)
-- Clean & Jerk attempt 2 (positive if black text, negative if red/crossed)
-- Clean & Jerk attempt 3 (positive if black text, negative if red/crossed)
-- Best Clean & Jerk (always positive - highest successful C&J)
-- Total (always positive - sum of best snatch + best C&J)
-
-Output format (CSV):
-Name,Age Category,Body Weight,Snatch1,Snatch2,Snatch3,Snatch Best,CJ1,CJ2,CJ3,CJ Best,Total
-
-Examples showing CORRECT column alignment:
-John Smith,Men's Masters (40-44) 89kg,88.5,89,93,-96,93,115,-120,-120,115,208
-Mary Johnson,Women's Masters (55-59) 81kg,79.5,25,27,28,28,33,35,37,37,65
-Jane Doe,Women's Masters (65-69) 87kg,86.7,30,32,-34,32,42,44,46,46,78
-
-CRITICAL CHECKLIST BEFORE OUTPUTTING:
-✓ Name is "First Last" format (converted from "LAST First")
-✓ Age category is "Gender's Masters (age-age) weightkg"
-✓ Body weight is from column 7 of the table
-✓ Snatch 1,2,3 are from columns 9,10,11 of the table
-✓ Best snatch is the BOLD number from snatch attempts (always positive)
-✓ C&J 1,2,3 are from columns 12,13,14 of the table
-✓ Best C&J is the BOLD number from C&J attempts (always positive)
-✓ Total is from column 15 of the table (always positive)
-✓ Red/crossed lifts are negative numbers
-✓ Black lifts are positive numbers
-✓ BOLD numbers indicate best lifts
-
-Only output the CSV data, no explanations. DOUBLE-CHECK COLUMN ALIGNMENT FOR EVERY ROW."""
-
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o", 
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{base64_image}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=2000
-            )
-            
-            extracted_text = response.choices[0].message.content.strip()
-            return extracted_text
-            
-        except Exception as e:
-            print(f"✗ Error calling OpenAI API: {e}")
-            return None
     
     def parse_results_from_text_blocks(self, page_data: Dict[int, List[Dict]], meet_name: str, meet_date: str) -> List[Dict[str, Any]]:
         """
@@ -682,66 +469,6 @@ Only output the CSV data, no explanations. DOUBLE-CHECK COLUMN ALIGNMENT FOR EVE
                 i += 1
         
         print(f"  Total results parsed from text: {len(results)}")
-        return results
-    
-    def parse_csv_results(self, csv_text: str, meet_name: str, meet_date: str) -> List[Dict[str, Any]]:
-        """
-        Parse CSV text from OpenAI into structured records.
-        
-        Args:
-            csv_text: CSV formatted text from OpenAI
-            meet_name: Name of the meet
-            meet_date: Date of the meet (YYYY-MM-DD)
-            
-        Returns:
-            List of result dictionaries
-        """
-        results = []
-        lines = csv_text.strip().split('\n')
-        
-        for line in lines:
-            # Skip header line
-            if line.startswith('Name,') or line.startswith('name,'):
-                continue
-            
-            # Skip empty lines
-            if not line.strip():
-                continue
-            
-            # Parse CSV line
-            parts = [p.strip() for p in line.split(',')]
-            
-            if len(parts) < 11:
-                continue
-            
-            try:
-                result = {
-                    'event_id': self.event_id,
-                    'meet': meet_name,
-                    'date': meet_date,
-                    'name': parts[0],
-                    'age': parts[1],
-                    'body_weight': float(parts[2]) if parts[2] else None,
-                    'snatch1': float(parts[3]) if parts[3] else None,
-                    'snatch2': float(parts[4]) if parts[4] else None,
-                    'snatch3': float(parts[5]) if parts[5] else None,
-                    'snatch_best': float(parts[6]) if parts[6] else None,
-                    'cj1': float(parts[7]) if parts[7] else None,
-                    'cj2': float(parts[8]) if parts[8] else None,
-                    'cj3': float(parts[9]) if parts[9] else None,
-                    'cj_best': float(parts[10]) if parts[10] else None,
-                    'total': float(parts[11]) if len(parts) > 11 and parts[11] else None,
-                    'adaptive': self.adaptive,
-                    'federation': 'USAMW'
-                }
-                
-                results.append(result)
-                
-            except (ValueError, IndexError) as e:
-                print(f"⚠ Error parsing line: {line}")
-                print(f"  Error: {e}")
-                continue
-        
         return results
     
     def process_pdf_url(self, url: str, index: int) -> List[Dict[str, Any]]:
@@ -1000,7 +727,6 @@ Only output the CSV data, no explanations. DOUBLE-CHECK COLUMN ALIGNMENT FOR EVE
         print("="*60 + "\n")
         
         # Setup services
-        self.setup_openai_client()
         self.setup_supabase_client()
         self.setup_slack()
         
@@ -1036,6 +762,9 @@ Only output the CSV data, no explanations. DOUBLE-CHECK COLUMN ALIGNMENT FOR EVE
         print(f"Total results extracted: {len(all_results)}")
         print(f"{'='*60}\n")
         
+        self.write_typescript_results(all_results)
+        print(f"✓ Wrote TypeScript results to {self.output_path}")
+        
         # Process results
         if dry_run:
             result = self.dry_run(all_results)
@@ -1067,6 +796,11 @@ def main():
         default=None,
         help='Limit number of PDF files to process (for testing)'
     )
+    parser.add_argument(
+        '--output',
+        default=OUTPUT_TS,
+        help='Output TypeScript filename or absolute path'
+    )
     
     args = parser.parse_args()
     
@@ -1087,9 +821,17 @@ def main():
     print(f"  Date: {MEET_DATE}")
     print(f"  Event ID: {EVENT_ID}")
     print(f"  Adaptive: {ADAPTIVE}")
+    print(f"  Output TS: {args.output}")
     print(f"  PDF URLs: {len(PDF_URLS)}\n")
     
-    scraper = USAMWResultsScraper(PDF_URLS, MEET_NAME, MEET_DATE, EVENT_ID, ADAPTIVE)
+    scraper = USAMWResultsScraper(
+        PDF_URLS,
+        MEET_NAME,
+        MEET_DATE,
+        EVENT_ID,
+        ADAPTIVE,
+        output_path=args.output,
+    )
     scraper.run(dry_run=args.dry_run, limit_files=args.limit)
 
 
