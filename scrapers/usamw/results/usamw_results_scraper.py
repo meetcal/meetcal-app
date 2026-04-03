@@ -89,7 +89,6 @@ class USAMWResultsScraper:
         self.adaptive = adaptive
         self.output_path = self._resolve_output_path(output_path)
         self.supabase: Optional[Client] = None
-        self.slack_webhook_url: Optional[str] = None
     
     def _resolve_output_path(self, output_path: Optional[str]) -> Path:
         """Resolve output path relative to this script unless absolute."""
@@ -191,13 +190,6 @@ class USAMWResultsScraper:
         
         self.supabase = create_client(supabase_url, supabase_key)
         print("✓ Supabase client initialized")
-    
-    def setup_slack(self):
-        """Initialize Slack webhook."""
-        self.slack_webhook_url = os.getenv("SLACK_RESULTS_WEBHOOK_URL")
-        if self.slack_webhook_url:
-            print("✓ Slack webhook configured")
-    
     
     def download_pdf_from_url(self, url: str) -> Optional[bytes]:
         """Download PDF from URL (Google Drive or direct link)."""
@@ -669,57 +661,6 @@ class USAMWResultsScraper:
         
         return {'inserted': inserted, 'skipped': skipped}
     
-    def send_slack_notification(self, inserted: List[Dict[str, Any]], skipped: List[Dict[str, Any]]):
-        """Send Slack notification with insert summary."""
-        if not self.slack_webhook_url:
-            print("⚠ Slack webhook not configured, skipping notification")
-            return
-        
-        # Build message
-        title = "🇺🇸 USAMW Results Update"
-        
-        # Summary
-        if len(inserted) == 0:
-            message = f"{title}\nNo new results added"
-        else:
-            message = f"{title}\n*{len(inserted)}* new results added"
-        
-        if len(skipped) > 0:
-            message += f", *{len(skipped)}* duplicates skipped"
-        
-        # Inserted results
-        if inserted:
-            message += f"\n\n*New Results ({len(inserted)}):*\n"
-            inserted_text = "\n".join([
-                f"• {r['name']} - {r['age']} - Total: {r['total']}kg"
-                for r in inserted[:10]  # Limit to first 10
-            ])
-            message += inserted_text
-            if len(inserted) > 10:
-                message += f"\n... and {len(inserted) - 10} more"
-        
-        # Skipped results
-        if skipped:
-            message += f"\n\n*Skipped Duplicates ({len(skipped)}):*\n"
-            skipped_text = "\n".join([
-                f"• {r['name']} - {r['meet']}"
-                for r in skipped[:10]  # Limit to first 10
-            ])
-            message += skipped_text
-            if len(skipped) > 10:
-                message += f"\n... and {len(skipped) - 10} more"
-        
-        payload = {
-            "text": message
-        }
-        
-        try:
-            response = requests.post(self.slack_webhook_url, json=payload, timeout=30)
-            response.raise_for_status()
-            print("✓ Slack notification sent")
-        except requests.exceptions.RequestException as e:
-            print(f"⚠ Failed to send Slack notification: {e}")
-    
     def run(self, dry_run: bool = False, limit_files: Optional[int] = None):
         """Main execution method."""
         print("="*60)
@@ -728,7 +669,6 @@ class USAMWResultsScraper:
         
         # Setup services
         self.setup_supabase_client()
-        self.setup_slack()
         
         # Check PDF URLs
         if not self.pdf_urls or not any(self.pdf_urls):
@@ -767,17 +707,13 @@ class USAMWResultsScraper:
         
         # Process results
         if dry_run:
-            result = self.dry_run(all_results)
-            # Don't send Slack notification for dry-run
+            self.dry_run(all_results)
         else:
             print("\n" + "="*60)
             print("INSERTING TO DATABASE")
             print("="*60 + "\n")
             result = self.insert_to_supabase(all_results)
             print(f"\n✓ Complete: {len(result['inserted'])} inserted, {len(result['skipped'])} skipped (duplicates)")
-            
-            # Send Slack notification
-            self.send_slack_notification(result['inserted'], result['skipped'])
 
 
 def main():

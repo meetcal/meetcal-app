@@ -327,9 +327,12 @@ class UMWFRecordsScraper:
                 })
                 if result.get('wasInsert'):
                     inserted.append(record)
-                else:
+                    print(f"  ✓ Inserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+                elif result.get('wasChanged'):
                     updated.append(record)
-                print(f"  * Upserted: {record['age_category']} {record['gender']} {record['weight_class']}")
+                    print(f"  ✓ Updated: {record['age_category']} {record['gender']} {record['weight_class']}")
+                else:
+                    print(f"  - Unchanged: {record['age_category']} {record['gender']} {record['weight_class']}")
             except Exception as e:
                 print(f"  x Error: {record['age_category']} {record['gender']} {record['weight_class']}: {e}")
 

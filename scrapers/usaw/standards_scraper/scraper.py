@@ -372,7 +372,7 @@ class StandardsScraper:
         Upsert standards to Convex via the scraperIngestion:ingestStandard action.
         
         Returns:
-            Dictionary with 'upserted' list
+            Dictionary with 'inserted' and 'updated' lists
         """
         if not self.convex:
             self.setup_convex_client()
@@ -391,9 +391,12 @@ class StandardsScraper:
             })
             if result.get('wasInsert'):
                 inserted.append(standard)
-            else:
+                print(f"  ✓ Inserted: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
+            elif result.get('wasChanged'):
                 updated.append(standard)
-            print(f"  ✓ Upserted: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
+                print(f"  ✓ Updated: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
+            else:
+                print(f"  - Unchanged: {standard['age_category']} {standard['gender']} {standard['weight_class']}")
 
         return {'inserted': inserted, 'updated': updated}
     

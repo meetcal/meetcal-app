@@ -52,10 +52,18 @@ export const upsertStandard = internalMutation({
       .unique();
 
     if (existing) {
+      const hasChanged =
+        existing.standardA !== args.standardA ||
+        existing.standardB !== args.standardB;
+
+      if (!hasChanged) {
+        return { id: existing._id, wasInsert: false, wasChanged: false };
+      }
+
       await ctx.db.patch(existing._id, args);
-      return { id: existing._id, wasInsert: false };
+      return { id: existing._id, wasInsert: false, wasChanged: true };
     }
     const id = await ctx.db.insert("standards", args);
-    return { id, wasInsert: true };
+    return { id, wasInsert: true, wasChanged: true };
   },
 });

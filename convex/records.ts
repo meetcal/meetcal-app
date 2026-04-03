@@ -56,11 +56,20 @@ export const upsertRecord = internalMutation({
       .unique();
 
     if (existing) {
+      const hasChanged =
+        existing.snatchRecord !== args.snatchRecord ||
+        existing.cjRecord !== args.cjRecord ||
+        existing.totalRecord !== args.totalRecord;
+
+      if (!hasChanged) {
+        return { id: existing._id, wasInsert: false, wasChanged: false };
+      }
+
       await ctx.db.patch(existing._id, args);
-      return { id: existing._id, wasInsert: false };
+      return { id: existing._id, wasInsert: false, wasChanged: true };
     }
     const id = await ctx.db.insert("records", args);
-    return { id, wasInsert: true };
+    return { id, wasInsert: true, wasChanged: true };
   },
 });
 

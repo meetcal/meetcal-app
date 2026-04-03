@@ -82,7 +82,7 @@ export const ingestRecord = action({
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean; wasChanged: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.records.upsertRecord, {
       recordType: args.recordType,
@@ -158,7 +158,7 @@ export const ingestStandard = action({
     standardA: v.number(),
     standardB: v.number(),
   },
-  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean; wasChanged: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.standards.upsertStandard, {
       ageCategory: args.ageCategory,
@@ -261,7 +261,7 @@ export const ingestWSORecord = action({
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean; wasChanged: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.wsoRecords.upsertWSORecord, {
       wso: args.wso,
