@@ -174,11 +174,33 @@ export const upsertLiftingResult = internalMutation({
       .unique();
 
     if (existing) {
+      const hasChanged =
+        existing.legacyId !== args.legacyId ||
+        existing.meet !== args.meet ||
+        existing.date !== args.date ||
+        existing.age !== args.age ||
+        existing.bodyWeight !== args.bodyWeight ||
+        existing.snatch1 !== args.snatch1 ||
+        existing.snatch2 !== args.snatch2 ||
+        existing.snatch3 !== args.snatch3 ||
+        existing.snatchBest !== args.snatchBest ||
+        existing.cj1 !== args.cj1 ||
+        existing.cj2 !== args.cj2 ||
+        existing.cj3 !== args.cj3 ||
+        existing.cjBest !== args.cjBest ||
+        existing.total !== args.total ||
+        existing.adaptive !== args.adaptive ||
+        existing.federation !== args.federation;
+
+      if (!hasChanged) {
+        return { id: existing._id, wasInsert: false, wasChanged: false };
+      }
+
       await ctx.db.patch(existing._id, args);
-      return { id: existing._id, wasInsert: false };
+      return { id: existing._id, wasInsert: false, wasChanged: true };
     }
     const id = await ctx.db.insert("lifting_results", args);
-    return { id, wasInsert: true };
+    return { id, wasInsert: true, wasChanged: true };
   },
 });
 

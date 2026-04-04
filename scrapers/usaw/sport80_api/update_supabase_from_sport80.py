@@ -54,17 +54,35 @@ def parse_event_date(event_data_dict):
 def add_meet_results_to_convex(client: ConvexClient, results_to_insert: list):
     if not results_to_insert:
         logging.info("No results to insert.")
-        return
+        return {"inserted": 0, "updated": 0, "unchanged": 0}
 
-    success_count = 0
+    inserted_count = 0
+    updated_count = 0
+    unchanged_count = 0
     for result in results_to_insert:
         try:
-            client.action("scraperIngestion:ingestLiftingResult", result)
-            success_count += 1
+            ingest_result = client.action("scraperIngestion:ingestLiftingResult", result)
+            if ingest_result.get("wasInsert"):
+                inserted_count += 1
+            elif ingest_result.get("wasChanged"):
+                updated_count += 1
+            else:
+                unchanged_count += 1
         except Exception as e:
             logging.error(f"Error upserting result for '{result.get('name')}' in Convex: {e}")
 
-    logging.info(f"Successfully upserted {success_count}/{len(results_to_insert)} results via Convex.")
+    logging.info(
+        "Processed %s results via Convex: %s inserted, %s updated, %s unchanged.",
+        len(results_to_insert),
+        inserted_count,
+        updated_count,
+        unchanged_count,
+    )
+    return {
+        "inserted": inserted_count,
+        "updated": updated_count,
+        "unchanged": unchanged_count,
+    }
 
 
 def fetch_recent_events_from_sport80(api_client: SportEighty, num_events: int = 30) -> list:
@@ -117,18 +135,27 @@ def fetch_meet_results_from_sport80(api_client: SportEighty, event_data_dict: di
         return []
 
 
-def send_slack_notification(added_meet_names: list[str]):
+def send_slack_notification(inserted_meet_names: list[str], updated_meet_names: list[str]):
     if not SLACK_WEBHOOK_URL:
         logging.info("Slack webhook URL not configured. Skipping notification.")
         return
 
-    if not added_meet_names:
-        message = "No new USAW meet results added to Convex"
-    elif len(added_meet_names) == 1:
-        message = f"1 USAW Meet Result Added to Convex:\n• {added_meet_names[0]}"
+    total_changes = len(inserted_meet_names) + len(updated_meet_names)
+
+    if total_changes == 0:
+        message = "No USAW meet result changes detected"
     else:
-        meet_list = "\n".join([f"• {name}" for name in added_meet_names])
-        message = f"{len(added_meet_names)} USAW Meet Results Added to Convex:\n{meet_list}"
+        message = (
+            f"USAW Meet Results Update\n"
+            f"{len(inserted_meet_names)} new meet result set(s) added, "
+            f"{len(updated_meet_names)} meet result set(s) updated"
+        )
+        if inserted_meet_names:
+            inserted_meet_list = "\n".join([f"• {name}" for name in inserted_meet_names])
+            message += f"\n\nNew Meets\n{inserted_meet_list}"
+        if updated_meet_names:
+            updated_meet_list = "\n".join([f"• {name}" for name in updated_meet_names])
+            message += f"\n\nUpdated Meets\n{updated_meet_list}"
 
     payload = {"text": message}
     try:
@@ -181,7 +208,8 @@ def main():
         return
 
     processed_event_ids_this_run = set()
-    added_meet_names = []
+    inserted_meet_names = []
+    updated_meet_names = []
 
     for event_details in candidate_event_details:
         current_event_id = event_details["id"]
@@ -245,16 +273,31 @@ def main():
             })
 
         if formatted_results_for_convex:
-            add_meet_results_to_convex(client, formatted_results_for_convex)
-            added_meet_names.append(current_meet_name)
-            logging.info(f"Successfully upserted {len(formatted_results_for_convex)} results for '{current_meet_name}' (ID: {current_event_id}).")
+            upsert_summary = add_meet_results_to_convex(client, formatted_results_for_convex)
+            if upsert_summary["inserted"] > 0:
+                inserted_meet_names.append(current_meet_name)
+            elif upsert_summary["updated"] > 0:
+                updated_meet_names.append(current_meet_name)
+            logging.info(
+                "Processed %s results for '%s' (ID: %s): %s inserted, %s updated, %s unchanged.",
+                len(formatted_results_for_convex),
+                current_meet_name,
+                current_event_id,
+                upsert_summary["inserted"],
+                upsert_summary["updated"],
+                upsert_summary["unchanged"],
+            )
         else:
             logging.warning(f"No results formatted for meet: '{current_meet_name}' (ID: {current_event_id}).")
 
         processed_event_ids_this_run.add(current_event_id)
 
-    logging.info(f"Finished Sport80 to Convex sync. Upserted results for {len(added_meet_names)} meet(s).")
-    send_slack_notification(added_meet_names)
+    logging.info(
+        "Finished Sport80 to Convex sync. %s meet(s) inserted, %s meet(s) updated.",
+        len(inserted_meet_names),
+        len(updated_meet_names),
+    )
+    send_slack_notification(inserted_meet_names, updated_meet_names)
 
 
 if __name__ == "__main__":

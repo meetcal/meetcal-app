@@ -44,7 +44,7 @@ export const ingestLiftingResult = action({
     adaptive: v.boolean(),
     federation: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean }> => {
+  handler: async (ctx, args): Promise<{ id: string; wasInsert: boolean; wasChanged: boolean }> => {
     assertScraperSecret(args.scraperSecret);
     return ctx.runMutation(internal.liftingResults.upsertLiftingResult, {
       legacyId: args.legacyId,
