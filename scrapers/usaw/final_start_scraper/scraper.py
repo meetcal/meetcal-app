@@ -8,6 +8,7 @@ import json
 import math
 import re
 from io import BytesIO
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.request import urlopen
 
@@ -18,14 +19,14 @@ except ImportError:
 
 PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt743172239cf12117/69cdcb8d048bd1762a166ec0/2026_-_Master_&_Uni_-_Start_Listc.pdf"
 MEET_NAME = "2026 Masters National Championships & National University Championships"
-OUTPUT_TS = "mnats_26.ts"
+OUTPUT_TS = Path(__file__).with_name("mnats_26.ts")
 START_MEMBER_ID = 3100
 REQUEST_TIMEOUT_SECONDS = 45
 
 PLATFORMS = ["RED", "WHITE", "BLUE", "STARS", "STRIPES", "ROGUE"]
 PLATFORM_PATTERN = "|".join(PLATFORMS)
 TAIL_PATTERN = re.compile(
-    rf"\s(?P<entry_total>\d{{1,3}})\s*(?P<group>[A-Z])\s+(?P<session>\d+(?:\.\d+)?)\s*(?P<platform>{PLATFORM_PATTERN})\s+\d{{1,2}}-[A-Za-z]{{3}}\s+\d{{1,2}}:\d{{2}}\s+[AP]M$",
+    rf"\s(?P<entry_total>\d{{1,3}})(?:\s*(?P<group>[A-Z]))?\s+(?P<session>\d+(?:\.\d+)?)\s*(?P<platform>{PLATFORM_PATTERN})\s+\d{{1,2}}-[A-Za-z]{{3}}\s+\d{{1,2}}:\d{{2}}\s+[AP]M$",
     re.IGNORECASE,
 )
 ROGUE_TAIL_PATTERN = re.compile(
@@ -45,6 +46,10 @@ COMP_MARKERS = {
     "14-15YO",
     "16-17YO",
 }
+
+
+def has_tail_pattern(line: str) -> bool:
+    return bool(TAIL_PATTERN.search(line) or ROGUE_TAIL_PATTERN.search(line))
 
 
 def download_pdf(url: str) -> BytesIO:
@@ -79,6 +84,29 @@ def normalize_club(raw_club: str) -> str:
     return club
 
 
+def extract_weight_token(tokens: List[str], index: int) -> str:
+    if index >= len(tokens):
+        return ""
+    token = tokens[index]
+    if token.endswith("+") and re.fullmatch(r"\d{2,3}\+", token):
+        return token
+    if not token.isdigit():
+        return ""
+
+    number = token
+    next_index = index + 1
+    while next_index < len(tokens) and tokens[next_index].isdigit() and len(number) < 3:
+        number += tokens[next_index]
+        next_index += 1
+
+    if len(number) not in {2, 3}:
+        return ""
+
+    if next_index < len(tokens) and tokens[next_index] == "+":
+        return f"{number}+"
+    return number
+
+
 def parse_weight_class_and_gender(competitions: str) -> Tuple[str, str]:
     tokens = competitions.replace("/", " / ").split()
     gender = ""
@@ -88,17 +116,17 @@ def parse_weight_class_and_gender(competitions: str) -> Tuple[str, str]:
         upper = token.upper()
         next_token = tokens[idx + 1] if idx + 1 < len(tokens) else ""
 
-        if upper in {"W", "M"} and re.fullmatch(r"\d{2,3}\+?", next_token):
+        if upper in {"W", "M"} and extract_weight_token(tokens, idx + 1):
             gender = "Male" if upper == "M" else "Female"
-            weight_class = next_token
+            weight_class = extract_weight_token(tokens, idx + 1)
             continue
 
         compact = re.sub(r"\s+", "", upper)
         fused_match = re.fullmatch(r"[WM]([WM])(\d{2,3}\+?)", compact)
         if fused_match:
             gender = "Male" if fused_match.group(1) == "M" else "Female"
-            if re.fullmatch(r"\d{2,3}\+?", next_token):
-                weight_class = next_token
+            if extract_weight_token(tokens, idx + 1):
+                weight_class = extract_weight_token(tokens, idx + 1)
             else:
                 weight_class = fused_match.group(2)
             continue
@@ -108,8 +136,8 @@ def parse_weight_class_and_gender(competitions: str) -> Tuple[str, str]:
             continue
 
         gender = "Male" if match.group(1) == "M" else "Female"
-        if re.fullmatch(r"\d{2,3}\+?", next_token):
-            weight_class = next_token
+        if extract_weight_token(tokens, idx + 1):
+            weight_class = extract_weight_token(tokens, idx + 1)
         else:
             weight_class = match.group(2)
 
@@ -253,7 +281,7 @@ def extract_entries(pdf_file: BytesIO) -> List[Dict[str, object]]:
                     pending_line = ""
                     continue
 
-                pending_line = combined_line if not TAIL_PATTERN.search(combined_line) else ""
+                pending_line = combined_line if not has_tail_pattern(combined_line) else ""
                 continue
 
             parsed = parse_entry_line(line)
@@ -261,7 +289,7 @@ def extract_entries(pdf_file: BytesIO) -> List[Dict[str, object]]:
                 entries.append(parsed)
                 continue
 
-            pending_line = line if not TAIL_PATTERN.search(line) else ""
+            pending_line = line if not has_tail_pattern(line) else ""
 
     member_id = START_MEMBER_ID
     for entry in entries:
