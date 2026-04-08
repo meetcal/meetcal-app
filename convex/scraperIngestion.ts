@@ -275,6 +275,33 @@ export const ingestWSORecord = action({
   },
 });
 
+export const replaceWSORecordSet = action({
+  args: {
+    scraperSecret: v.string(),
+    wso: v.string(),
+    records: v.array(
+      v.object({
+        ageCategory: v.string(),
+        gender: v.string(),
+        weightClass: v.string(),
+        snatchRecord: v.optional(v.number()),
+        cjRecord: v.optional(v.number()),
+        totalRecord: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ inserted: number; updated: number; unchanged: number; deleted: number }> => {
+    assertScraperSecret(args.scraperSecret);
+    return ctx.runMutation(internal.wsoRecords.replaceByWso, {
+      wso: args.wso,
+      records: args.records,
+    });
+  },
+});
+
 // ── Meets ─────────────────────────────────────────────────────────────────────
 
 export const ingestMeet = action({

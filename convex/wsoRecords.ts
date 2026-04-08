@@ -90,3 +90,103 @@ export const deleteByWso = internalMutation({
     return rows.length;
   },
 });
+
+export const replaceByWso = internalMutation({
+  args: {
+    wso: v.string(),
+    records: v.array(
+      v.object({
+        ageCategory: v.string(),
+        gender: v.string(),
+        weightClass: v.string(),
+        snatchRecord: v.optional(v.number()),
+        cjRecord: v.optional(v.number()),
+        totalRecord: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, { wso, records }) => {
+    const existing = await ctx.db
+      .query("wso_records")
+      .withIndex("by_wso", (q) => q.eq("wso", wso))
+      .collect();
+
+    const keyFor = (record: {
+      ageCategory: string;
+      gender: string;
+      weightClass: string;
+    }) => `${record.ageCategory}::${record.gender}::${record.weightClass}`;
+
+    const existingByKey = new Map(existing.map((record) => [keyFor(record), record]));
+    const incomingByKey = new Map<
+      string,
+      {
+        ageCategory: string;
+        gender: string;
+        weightClass: string;
+        snatchRecord?: number;
+        cjRecord?: number;
+        totalRecord?: number;
+      }
+    >();
+
+    for (const record of records) {
+      const key = keyFor(record);
+      if (incomingByKey.has(key)) {
+        throw new Error(`Duplicate WSO record in payload: ${key}`);
+      }
+      incomingByKey.set(key, record);
+    }
+
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
+    let deleted = 0;
+
+    for (const record of existing) {
+      if (incomingByKey.has(keyFor(record))) continue;
+      await ctx.db.delete(record._id);
+      deleted++;
+    }
+
+    for (const record of records) {
+      const existingRecord = existingByKey.get(keyFor(record));
+      if (!existingRecord) {
+        await ctx.db.insert("wso_records", {
+          wso,
+          ageCategory: record.ageCategory,
+          gender: record.gender,
+          weightClass: record.weightClass,
+          snatchRecord: record.snatchRecord,
+          cjRecord: record.cjRecord,
+          totalRecord: record.totalRecord,
+        });
+        inserted++;
+        continue;
+      }
+
+      const hasChanged =
+        existingRecord.snatchRecord !== record.snatchRecord ||
+        existingRecord.cjRecord !== record.cjRecord ||
+        existingRecord.totalRecord !== record.totalRecord;
+
+      if (!hasChanged) {
+        unchanged++;
+        continue;
+      }
+
+      await ctx.db.patch(existingRecord._id, {
+        wso,
+        ageCategory: record.ageCategory,
+        gender: record.gender,
+        weightClass: record.weightClass,
+        snatchRecord: record.snatchRecord,
+        cjRecord: record.cjRecord,
+        totalRecord: record.totalRecord,
+      });
+      updated++;
+    }
+
+    return { inserted, updated, unchanged, deleted };
+  },
+});

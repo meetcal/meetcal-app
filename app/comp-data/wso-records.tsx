@@ -9,7 +9,6 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  fetchWSOAgeGroups,
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
@@ -24,13 +23,15 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
+const EMPTY_WSO_LIST: string[] = [];
+const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
+
 export default function RecordsScreen() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = React.useState<
     Record<string, string[]>
   >({});
-  const modalDraftWSORef = React.useRef("");
 
   const {
     filters,
@@ -49,7 +50,7 @@ export default function RecordsScreen() {
   } = useMutableResource({
     resource: wsoListResource,
     params: [] as const,
-    initialData: [] as string[],
+    initialData: EMPTY_WSO_LIST,
   });
 
   const wsoParams = useMemo(
@@ -63,7 +64,7 @@ export default function RecordsScreen() {
   } = useMutableResource({
     resource: wsoRecordsResource,
     params: (wsoParams ?? ([""] as const)) as [string],
-    initialData: {} as RecordsData,
+    initialData: EMPTY_RECORDS_DATA,
     enabled: Boolean(wsoParams),
   });
 
@@ -137,40 +138,15 @@ export default function RecordsScreen() {
     setTempFilters(reset);
   };
 
-  const fetchAgeGroupsForWSO = React.useCallback(
-    (wso: string) => {
-      if (!wso || ageGroupsCache[wso]) return;
-
-      fetchWSOAgeGroups(wso)
-        .then((nextAgeGroups) => {
-          setAgeGroupsCache((prev) => ({
-            ...prev,
-            [wso]: sortAgeGroups(nextAgeGroups),
-          }));
-        })
-        .catch((error) => {
-          console.error(`Failed to fetch age groups for ${wso}`, error);
-        });
-    },
-    [ageGroupsCache],
-  );
-
-  const genderOptions = (["Men", "Women"] as Gender[]).sort((a, b) =>
-    a.localeCompare(b),
+  const genderOptions = useMemo(
+    () =>
+      (["Men", "Women"] as Gender[]).sort((a, b) => a.localeCompare(b)),
+    [],
   );
 
   const filterSections = React.useCallback(
     (modalTempFilters: Record<string, string>): FilterSection[] => {
       const selectedWSO = modalTempFilters.wso || filters.wso || "";
-
-      if (
-        selectedWSO &&
-        selectedWSO !== filters.wso &&
-        selectedWSO !== modalDraftWSORef.current
-      ) {
-        modalDraftWSORef.current = selectedWSO;
-        fetchAgeGroupsForWSO(selectedWSO);
-      }
 
       const modalAgeGroups =
         selectedWSO === filters.wso
@@ -203,7 +179,6 @@ export default function RecordsScreen() {
       ageGroupsCache,
       availableAgeGroups,
       availableWSOs,
-      fetchAgeGroupsForWSO,
       filters.wso,
       genderOptions,
     ],

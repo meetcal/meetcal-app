@@ -159,7 +159,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
         requestAnimationFrame(() => {
           const y = sectionLayoutsRef.current[sectionId];
           if (y !== undefined) {
-            scrollViewRef.current?.scrollTo({ y, animated: true });
+            scrollViewRef.current?.scrollTo({ y, animated: false });
           }
         });
       }
@@ -236,6 +236,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
             ref={scrollViewRef}
             bounces={false}
             showsVerticalScrollIndicator={false}
+            scrollEnabled={expandedSection === null}
           >
             {currentSections.map((section) => (
               <View

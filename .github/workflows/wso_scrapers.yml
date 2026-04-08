@@ -51,6 +51,9 @@ jobs:
           - name: New York (auto)
             script: auto_scrapers/scraper_newyork_auto.py
             args: ''
+          - name: Illinois (auto)
+            script: auto_scrapers/scraper_illinois_auto.py
+            args: ''
     defaults:
       run:
         working-directory: ./scrapers/usaw/wso_sheets_scraper
