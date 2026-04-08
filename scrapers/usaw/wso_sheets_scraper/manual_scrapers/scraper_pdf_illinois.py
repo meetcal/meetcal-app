@@ -204,20 +204,25 @@ class WSORecordsIllinoisScraper:
         if not scraper_secret:
             raise ValueError("SCRAPER_SECRET must be set")
 
+        payload_records = []
+        for record in records:
+            payload_record = {
+                "ageCategory": record["age_category"],
+                "gender": record["gender"],
+                "weightClass": record["weight_class"],
+            }
+            if record.get("snatch_record") is not None:
+                payload_record["snatchRecord"] = record["snatch_record"]
+            if record.get("cj_record") is not None:
+                payload_record["cjRecord"] = record["cj_record"]
+            if record.get("total_record") is not None:
+                payload_record["totalRecord"] = record["total_record"]
+            payload_records.append(payload_record)
+
         payload = {
             "scraperSecret": scraper_secret,
             "wso": self.wso_name,
-            "records": [
-                {
-                    "ageCategory": record["age_category"],
-                    "gender": record["gender"],
-                    "weightClass": record["weight_class"],
-                    "snatchRecord": record.get("snatch_record"),
-                    "cjRecord": record.get("cj_record"),
-                    "totalRecord": record.get("total_record"),
-                }
-                for record in records
-            ],
+            "records": payload_records,
         }
         return self.convex_client.action("scraperIngestion:replaceWSORecordSet", payload)
 
