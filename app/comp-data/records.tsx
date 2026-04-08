@@ -22,6 +22,14 @@ import { StyleSheet, View } from "react-native";
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
 export default function RecordsScreen() {
+  return (
+    <SubscriptionGate>
+      <RecordsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function RecordsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [availableFederations, setAvailableFederations] = useState<string[]>([]);
@@ -243,85 +251,83 @@ export default function RecordsScreen() {
   );
 
   return (
-    <SubscriptionGate>
-      <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
-        <Stack.Screen
-          options={{
-            title: `Records`,
-            headerBackTitle: "Back",
-            headerShown: true,
-            gestureEnabled: true,
-            gestureDirection: "horizontal",
-            animation: "slide_from_right",
-            headerTitleStyle: {
-              color: currentTheme === "dark" ? "#fff" : "#000",
-            },
-            headerStyle: {
-              backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
-            },
-            headerShadowVisible: false,
-            headerBackButtonDisplayMode: "minimal",
-            headerTintColor: colors.text
-          }}
-        />
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
+          title: `Records`,
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
+          headerTitleStyle: {
+            color: currentTheme === "dark" ? "#fff" : "#000",
+          },
+          headerStyle: {
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+          },
+          headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text,
+        }}
+      />
 
-        <FilterBar
-          displayText={getFilterDisplayText()}
-          onPress={openFilters}
-        />
+      <FilterBar
+        displayText={getFilterDisplayText()}
+        onPress={openFilters}
+      />
 
-        <DataTable
-          columns={[
-            { label: "Weight Class", flex: 2 },
-            { label: "Snatch" },
-            { label: "C&J" },
-            { label: "Total" },
-          ]}
-          data={currentRecords}
-          keyExtractor={(record, index) =>
-            `${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}-${index}`
-          }
-          loading={loading}
-          error={fetchError}
-          emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${getAgeGroupDisplayText(displayAgeGroup) || "selected"} age group.`}
-          renderRow={(record, index) => (
-            <View
-              style={[
-                dataTableStyles.row,
-                index < currentRecords.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
-                {record.weightClass}
-              </ThemedText>
-              <ThemedText style={dataTableStyles.cell}>
-                {record.snatchRecord}
-                kg
-              </ThemedText>
-              <ThemedText style={dataTableStyles.cell}>
-                {record.cjRecord}
-                kg
-              </ThemedText>
-              <ThemedText style={dataTableStyles.cell}>
-                {record.totalRecord}
-                kg
-              </ThemedText>
-            </View>
-          )}
-        />
+      <DataTable
+        columns={[
+          { label: "Weight Class", flex: 2 },
+          { label: "Snatch" },
+          { label: "C&J" },
+          { label: "Total" },
+        ]}
+        data={currentRecords}
+        keyExtractor={(record, index) =>
+          `${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}-${index}`
+        }
+        loading={loading}
+        error={fetchError}
+        emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${getAgeGroupDisplayText(displayAgeGroup) || "selected"} age group.`}
+        renderRow={(record, index) => (
+          <View
+            style={[
+              dataTableStyles.row,
+              index < currentRecords.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
+              {record.weightClass}
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.snatchRecord}
+              kg
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.cjRecord}
+              kg
+            </ThemedText>
+            <ThemedText style={dataTableStyles.cell}>
+              {record.totalRecord}
+              kg
+            </ThemedText>
+          </View>
+        )}
+      />
 
-        <GenericFilterModal
-          {...filterModalProps}
-          sections={buildFilterSections}
-          onResetFilters={handleResetFilters}
-        />
-      </ThemedView>
-    </SubscriptionGate>
+      <GenericFilterModal
+        {...filterModalProps}
+        sections={buildFilterSections}
+        onResetFilters={handleResetFilters}
+      />
+    </ThemedView>
   );
 }
 

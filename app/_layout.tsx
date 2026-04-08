@@ -28,26 +28,24 @@ import {
 import { posthog } from "@/lib/posthog";
 import * as Sentry from '@sentry/react-native';
 
+const SENTRY_ENVIRONMENT =
+  process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
+  (__DEV__ ? "development" : "production");
+const SENTRY_TRACES_SAMPLE_RATE = __DEV__ ? 1.0 : 0.2;
+const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0.1;
+const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0.05;
+const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0.5;
+
 Sentry.init({
   dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
-
-  // Adds more context data to events (IP address, cookies, user, etc.)
-  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
-  sendDefaultPii: true,
-
-  // Disable Sentry log ingestion in development.
-  enableLogs: !__DEV__,
-
-  // Set tracesSampleRate to 1.0 to capture 100% of transactions for tracing.
-  // We recommend adjusting this value in production.
-  tracesSampleRate: 1.0,
-  // profilesSampleRate is relative to tracesSampleRate.
-  // Here, we'll capture profiles for 100% of transactions.
-  profilesSampleRate: 1.0,
-
-  // Configure Session Replay
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1,
+  environment: SENTRY_ENVIRONMENT,
+  sendDefaultPii: false,
+  enableLogs: false,
+  tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,
+  profilesSampleRate: SENTRY_PROFILES_SAMPLE_RATE,
+  replaysSessionSampleRate: SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
+  replaysOnErrorSampleRate: SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
+  replaysSessionQuality: __DEV__ ? "medium" : "low",
   integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
   beforeBreadcrumb(breadcrumb) {
     if (__DEV__ && breadcrumb.category === 'console') {

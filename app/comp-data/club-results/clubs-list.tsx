@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -23,6 +24,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ShareResultsByClubScreen() {
+  return (
+    <SubscriptionGate>
+      <ShareResultsByClubScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function ShareResultsByClubScreenContent() {
   const colors = useAppColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();

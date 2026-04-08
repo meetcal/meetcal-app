@@ -332,6 +332,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           <Pressable
             style={({ pressed }) => [
               styles.premiumButton,
+              !isSubscribed && styles.premiumButtonDisabled,
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
@@ -364,11 +365,18 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             }}
           >
             <ThemedText
-              style={[styles.premiumButtonText, { color: colors.text }]}
+              style={[
+                styles.premiumButtonText,
+                { color: isSubscribed ? colors.text : colors.secondaryText },
+              ]}
             >
               Qualifying Totals
             </ThemedText>
-            <IconSymbol name="chevron.right" size={13} color={colors.link} />
+            <IconSymbol
+              name="chevron.right"
+              size={13}
+              color={isSubscribed ? colors.link : colors.secondaryText}
+            />
           </Pressable>
 
           <View
@@ -378,6 +386,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           <Pressable
             style={({ pressed }) => [
               styles.premiumButton,
+              !isSubscribed && styles.premiumButtonDisabled,
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
@@ -410,11 +419,18 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             }}
           >
             <ThemedText
-              style={[styles.premiumButtonText, { color: colors.text }]}
+              style={[
+                styles.premiumButtonText,
+                { color: isSubscribed ? colors.text : colors.secondaryText },
+              ]}
             >
               Attempt Estimator
             </ThemedText>
-            <IconSymbol name="chevron.right" size={13} color={colors.link} />
+            <IconSymbol
+              name="chevron.right"
+              size={13}
+              color={isSubscribed ? colors.link : colors.secondaryText}
+            />
           </Pressable>
         </View>
       </View>
@@ -499,6 +515,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 8,
+  },
+  premiumButtonDisabled: {
+    opacity: 0.55,
   },
   premiumButtonText: {
     fontSize: 15,

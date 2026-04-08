@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -23,6 +24,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AllMeetResultsScreen() {
+  return (
+    <SubscriptionGate>
+      <AllMeetResultsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function AllMeetResultsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const router = useRouter();

@@ -24,6 +24,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 export default function NationalRankingsScreen() {
+  return (
+    <SubscriptionGate>
+      <NationalRankingsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function NationalRankingsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
 
@@ -158,7 +166,6 @@ export default function NationalRankingsScreen() {
   };
 
   return (
-    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -178,7 +185,7 @@ export default function NationalRankingsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text
+          headerTintColor: colors.text,
         }}
       />
 
@@ -226,8 +233,8 @@ export default function NationalRankingsScreen() {
             </ThemedText>
             <ThemedText style={styles.totalText}>
               {athlete.total}
-kg
-</ThemedText>
+              kg
+            </ThemedText>
           </View>
         )}
       />
@@ -240,7 +247,6 @@ kg
         resultLabel="rankings"
       />
     </ThemedView>
-    </SubscriptionGate>
   );
 }
 

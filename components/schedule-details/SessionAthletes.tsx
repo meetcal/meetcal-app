@@ -560,45 +560,37 @@ export default function SessionAthletes({
                   )}
                 </View>
 
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.meetResultsButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                  onPress={() => {
-                    const authResult = requireAuth({
-                      feature: "athlete-results",
-                      message: "Sign in to access premium features.",
-                      returnPath: "/shared-screens/schedule-details",
-                    });
-                    if (authResult === null || authResult === false) {
-                      return;
-                    }
-                    if (isSubscribed === true) {
+                {isSubscribed ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.meetResultsButton,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={() => {
+                      const authResult = requireAuth({
+                        feature: "athlete-results",
+                        message: "Sign in to access premium features.",
+                        returnPath: "/shared-screens/schedule-details",
+                      });
+                      if (authResult === null || authResult === false) {
+                        return;
+                      }
                       router.push({
                         pathname: "/shared-screens/athlete-results",
                         params: { name: athlete.name, meet: meetId },
                       });
-                    } else if (isSubscribed === false) {
-                      router.push({
-                        pathname: "/shared-screens/paywall",
-                        params: {
-                          from: "/shared-screens/schedule-details",
-                          feature: "athlete-results",
-                        },
-                      } as any);
-                    }
-                  }}
-                >
-                  <ThemedText style={styles.meetResultsText}>
-                    See All Meet Results
-                  </ThemedText>
-                  <IconSymbol
-                    name="chevron.right"
-                    size={13}
-                    color={colors.link}
-                  />
-                </Pressable>
+                    }}
+                  >
+                    <ThemedText style={styles.meetResultsText}>
+                      See All Meet Results
+                    </ThemedText>
+                    <IconSymbol
+                      name="chevron.right"
+                      size={13}
+                      color={colors.link}
+                    />
+                  </Pressable>
+                ) : null}
               </View>
             ))}
           </View>

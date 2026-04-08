@@ -20,6 +20,14 @@ import {
 type Gender = "Men" | "Women";
 
 export default function AdaptiveRecordsScreen() {
+  return (
+    <SubscriptionGate>
+      <AdaptiveRecordsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function AdaptiveRecordsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
@@ -44,7 +52,6 @@ export default function AdaptiveRecordsScreen() {
   }, [recordsData, appliedGender, weightClasses]);
 
   return (
-    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -64,7 +71,7 @@ export default function AdaptiveRecordsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text
+          headerTintColor: colors.text,
         }}
       />
 
@@ -159,7 +166,6 @@ export default function AdaptiveRecordsScreen() {
         )}
       />
     </ThemedView>
-    </SubscriptionGate>
   );
 }
 

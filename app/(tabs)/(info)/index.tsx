@@ -11,9 +11,10 @@ import {
 } from "@/components/schedule/VersionAnnouncement";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useAuthGuard } from "@/utils/authGuard";
 import * as Sentry from '@sentry/react-native';
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,8 +22,24 @@ export default function InfoScreen() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { requireAuth } = useAuthGuard();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
+
+  const openCompDataScreen = useCallback(
+    (pathname: string, feature: string) => {
+      const authResult = requireAuth({
+        feature,
+        message: "Sign in to access premium features.",
+        returnPath: "/(tabs)/(info)",
+      });
+      if (authResult === null || authResult === false) {
+        return;
+      }
+      router.push(pathname as any);
+    },
+    [requireAuth, router],
+  );
 
   return (
     <ThemedView
@@ -57,27 +74,31 @@ export default function InfoScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ListButton
             title="Adaptive American Records"
-            onPress={() => router.push("/comp-data/adap-records")}
+            onPress={() => openCompDataScreen("/comp-data/adap-records", "adaptive-records")}
           />
 
           <ListButton
             title="All Meet Results"
-            onPress={() => router.push("/comp-data/all-meet-results")}
+            onPress={() => openCompDataScreen("/comp-data/all-meet-results", "all-meet-results")}
           />
 
           <ListButton
             title="Club Meet Results"
-            onPress={() => router.push("/comp-data/club-results/clubs-list")}
+            onPress={() =>
+              openCompDataScreen("/comp-data/club-results/clubs-list", "club-meet-results")
+            }
           />
 
           <ListButton
             title="National Rankings"
-            onPress={() => router.push("/comp-data/national-rankings")}
+            onPress={() =>
+              openCompDataScreen("/comp-data/national-rankings", "national-rankings")
+            }
           />
 
           <ListButton
             title="National & World Records"
-            onPress={() => router.push("/comp-data/records")}
+            onPress={() => openCompDataScreen("/comp-data/records", "records")}
           />
 
           <ListButton
@@ -87,13 +108,15 @@ export default function InfoScreen() {
 
           <ListButton
             title="WSO Records"
-            onPress={() => router.push("/comp-data/wso-records")}
+            onPress={() => openCompDataScreen("/comp-data/wso-records", "wso-records")}
           />
 
           <ListButton
             title="Qualifying Totals"
             lastSection={true}
-            onPress={() => router.push("/comp-data/new-qualifying-totals")}
+            onPress={() =>
+              openCompDataScreen("/comp-data/new-qualifying-totals", "qualifying-totals")
+            }
           />
         </View>
 
@@ -101,13 +124,13 @@ export default function InfoScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ListButton
             title="A/B Standards"
-            onPress={() => router.push("/comp-data/new-standards")}
+            onPress={() => openCompDataScreen("/comp-data/new-standards", "standards")}
           />
 
           <ListButton
             title="International Rankings"
             lastSection={true}
-            onPress={() => router.push("/comp-data/rankings")}
+            onPress={() => openCompDataScreen("/comp-data/rankings", "international-rankings")}
           />
         </View>
 

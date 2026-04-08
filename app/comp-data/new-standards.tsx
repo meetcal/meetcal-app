@@ -16,6 +16,14 @@ import { StyleSheet, View } from "react-native";
 
 
 export default function NewStandardsScreen() {
+  return (
+    <SubscriptionGate>
+      <NewStandardsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function NewStandardsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
@@ -73,7 +81,6 @@ export default function NewStandardsScreen() {
   ];
 
   return (
-    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -93,7 +100,7 @@ export default function NewStandardsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text
+          headerTintColor: colors.text,
         }}
       />
 
@@ -145,7 +152,6 @@ export default function NewStandardsScreen() {
         resultLabel="standards"
       />
     </ThemedView>
-    </SubscriptionGate>
   );
 }
 

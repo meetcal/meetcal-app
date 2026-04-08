@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -28,20 +28,30 @@ export default function PaywallScreen() {
   }, [isLoaded, user, router, from, feature]);
 
   useEffect(() => {
+    if (!isLoaded || !user) {
+      return;
+    }
+
+    let cancelled = false;
+
     const getOffering = async () => {
       try {
         const offerings = await Purchases.default.getOfferings();
-        // Get the offering based on platform
         const offeringId = "new image test";
         const platformOffering = offerings.all[offeringId];
-        setOffering(platformOffering || offerings.current);
+        if (!cancelled) {
+          setOffering(platformOffering || offerings.current);
+        }
       } catch (e) {
         console.error('Error fetching offerings:', e);
       }
     };
 
     getOffering();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, user]);
 
   const returnToOrigin = () => {
     if (router.canGoBack()) {
@@ -57,8 +67,36 @@ export default function PaywallScreen() {
     router.replace('/(tabs)' as any);
   };
 
-  if (!offering) {
-    return null; // Or show a loading state
+  if (!isLoaded || !user || !offering) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+          },
+        ]}
+      >
+        <Stack.Screen
+          options={{
+            headerTitle: 'Premium Features',
+            headerTitleStyle: {
+              color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+            },
+            headerStyle: {
+              backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+            },
+            headerShadowVisible: false,
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator
+            size="large"
+            color={currentTheme === 'dark' ? '#FFFFFF' : '#000000'}
+          />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -90,5 +128,10 @@ export default function PaywallScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

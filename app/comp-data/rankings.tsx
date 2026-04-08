@@ -19,6 +19,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 export default function RecordsScreen() {
+  return (
+    <SubscriptionGate>
+      <RecordsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function RecordsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const {
@@ -225,77 +233,75 @@ export default function RecordsScreen() {
   };
 
   return (
-    <SubscriptionGate>
-      <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
-        <Stack.Screen
-          options={{
-            title: `International Rankings`,
-            headerBackTitle: "Back",
-            headerShown: true,
-            gestureEnabled: true,
-            gestureDirection: "horizontal",
-            animation: "slide_from_right",
-            headerTitleStyle: {
-              color: currentTheme === "dark" ? "#fff" : "#000",
-            },
-            headerStyle: {
-              backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
-            },
-            headerShadowVisible: false,
-            headerBackButtonDisplayMode: "minimal",
-            headerTintColor: colors.text
-          }}
-        />
+    <ThemedView
+      style={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <Stack.Screen
+        options={{
+          title: `International Rankings`,
+          headerBackTitle: "Back",
+          headerShown: true,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
+          animation: "slide_from_right",
+          headerTitleStyle: {
+            color: currentTheme === "dark" ? "#fff" : "#000",
+          },
+          headerStyle: {
+            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+          },
+          headerShadowVisible: false,
+          headerBackButtonDisplayMode: "minimal",
+          headerTintColor: colors.text,
+        }}
+      />
 
-        <FilterBar displayText={getFilterDisplayText()} onPress={openFilters} />
+      <FilterBar displayText={getFilterDisplayText()} onPress={openFilters} />
 
-        <DataTable
-          columns={[
-            { label: "Name", width: "50%", headerStyle: styles.headerCell },
-            { label: "Total", width: "25%", headerStyle: styles.headerCell },
-            { label: "% of A", width: "25%", headerStyle: styles.headerCell },
-          ]}
-          data={filteredRankings}
-          keyExtractor={(_ranking, index) => String(index)}
-          loading={loading}
-          error={fetchError}
-          emptyMessage="No rankings available."
-          renderRow={(ranking, index) => (
-            <View
-              style={[
-                styles.row,
-                index < filteredRankings.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              <ThemedText style={[styles.cell, { width: "50%" }]}>
-                {ranking.name ?? ""}
-              </ThemedText>
-              <ThemedText style={[styles.cell, { width: "25%" }]}>
-                {ranking.total ?? ""}
-              </ThemedText>
-              <ThemedText style={[styles.cell, { width: "25%" }]}>
-                {typeof ranking.percentA === "number"
-                  ? `${ranking.percentA.toFixed(2)}%`
-                  : ""}
-              </ThemedText>
-            </View>
-          )}
-        />
+      <DataTable
+        columns={[
+          { label: "Name", width: "50%", headerStyle: styles.headerCell },
+          { label: "Total", width: "25%", headerStyle: styles.headerCell },
+          { label: "% of A", width: "25%", headerStyle: styles.headerCell },
+        ]}
+        data={filteredRankings}
+        keyExtractor={(_ranking, index) => String(index)}
+        loading={loading}
+        error={fetchError}
+        emptyMessage="No rankings available."
+        renderRow={(ranking, index) => (
+          <View
+            style={[
+              styles.row,
+              index < filteredRankings.length - 1 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <ThemedText style={[styles.cell, { width: "50%" }]}>
+              {ranking.name ?? ""}
+            </ThemedText>
+            <ThemedText style={[styles.cell, { width: "25%" }]}>
+              {ranking.total ?? ""}
+            </ThemedText>
+            <ThemedText style={[styles.cell, { width: "25%" }]}>
+              {typeof ranking.percentA === "number"
+                ? `${ranking.percentA.toFixed(2)}%`
+                : ""}
+            </ThemedText>
+          </View>
+        )}
+      />
 
-        <GenericFilterModal
-          {...filterModalProps}
-          sections={buildFilterSections}
-          onResetFilters={handleResetFilters}
-          resultCount={filteredRankings.length}
-          resultLabel="rankings"
-        />
-      </ThemedView>
-    </SubscriptionGate>
+      <GenericFilterModal
+        {...filterModalProps}
+        sections={buildFilterSections}
+        onResetFilters={handleResetFilters}
+        resultCount={filteredRankings.length}
+        resultLabel="rankings"
+      />
+    </ThemedView>
   );
 }
 

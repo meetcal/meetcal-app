@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -29,6 +30,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { captureRef } from "react-native-view-shot";
 
 export default function MeetResultsByClubScreen() {
+  return (
+    <SubscriptionGate>
+      <MeetResultsByClubScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function MeetResultsByClubScreenContent() {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();

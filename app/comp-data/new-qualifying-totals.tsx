@@ -19,6 +19,14 @@ import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
 export default function QualifyingTotalsScreen() {
+  return (
+    <SubscriptionGate>
+      <QualifyingTotalsScreenContent />
+    </SubscriptionGate>
+  );
+}
+
+function QualifyingTotalsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
@@ -151,7 +159,6 @@ export default function QualifyingTotalsScreen() {
   };
 
   return (
-    <SubscriptionGate>
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
@@ -171,7 +178,7 @@ export default function QualifyingTotalsScreen() {
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text
+          headerTintColor: colors.text,
         }}
       />
 
@@ -217,7 +224,6 @@ export default function QualifyingTotalsScreen() {
         resultLabel="weight classes"
       />
     </ThemedView>
-    </SubscriptionGate>
   );
 }
 
