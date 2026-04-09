@@ -12,7 +12,7 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',
     features: [
-      'Fixed a few bugs
+      'Fixed a few bugs'
     ],
   },
 };
