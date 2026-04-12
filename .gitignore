@@ -5,6 +5,7 @@ __pycache__/
 
 # dependencies
 node_modules/
+bun.lock
 REFACTORING_PLAN.md
 # Expo
 .expo/
