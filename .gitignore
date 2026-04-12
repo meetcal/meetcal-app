@@ -14,7 +14,8 @@ expo-env.d.ts
 
 # Native
 *.orig.*
-!ios/MeetCal/Info.plist
+ios/
+android/
 *.jks
 *.p8
 *.p12
@@ -51,10 +52,6 @@ app-example
 
 .env
 steps.md
-
-# Keystore files
-android/keystores/release.jks
-*.jks
 
 # Credentials
 credentials.json
