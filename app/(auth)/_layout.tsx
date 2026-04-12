@@ -1,5 +1,5 @@
 import { Redirect, Stack } from 'expo-router'
-import { useAuth } from '@clerk/clerk-expo'
+import { useAuth } from '@clerk/expo'
 import { useEffect, useState } from 'react'
 import { getCachedAuthState } from '@/lib/authCache'
 import { isNetworkAvailable } from '@/lib/networkUtils'

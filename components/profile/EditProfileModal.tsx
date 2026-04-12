@@ -1,6 +1,6 @@
 import { EditableField } from "@/app/schedule-toolbar/profile";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/expo";
 import React from "react";
 import {
   Alert,

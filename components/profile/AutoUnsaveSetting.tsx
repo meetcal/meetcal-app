@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { convex } from "@/lib/convex";
 import { AuthGuardOptions } from "@/utils/authGuard";
-import { useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/expo";
 import type { Router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Alert } from "react-native";

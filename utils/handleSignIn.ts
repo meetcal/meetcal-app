@@ -1,5 +1,5 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { useSignIn, useSignUp } from "@clerk/clerk-expo";
+import { useSignIn, useSignUp } from "@clerk/expo";
 import { cacheAuthState } from "@/lib/authCache";
 import * as AuthSession from "expo-auth-session";
 import * as Updates from "expo-updates";

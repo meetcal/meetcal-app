@@ -2,12 +2,12 @@ import React from "react";
 import { Alert } from "react-native";
 import { act, create } from "react-test-renderer";
 import { useAuthGuard } from "@/utils/authGuard";
-import { useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { cacheAuthState, getCachedAuthState } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 
-jest.mock("@clerk/clerk-expo", () => ({
+jest.mock("@clerk/expo", () => ({
   useUser: jest.fn(),
 }));
 
@@ -103,7 +103,7 @@ describe("useAuthGuard offline behavior", () => {
 
     expect(result).toBe(true);
     expect(alertSpy).not.toHaveBeenCalled();
-    expect(mockCacheAuthState).toHaveBeenCalledWith(true, "123", undefined);
+    expect(mockCacheAuthState).toHaveBeenCalledWith(true, "123");
   });
 
   it("prompts sign in when unauthenticated and no cache", async () => {

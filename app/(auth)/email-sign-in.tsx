@@ -1,7 +1,7 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { cacheAuthState } from "@/lib/authCache";
-import { useSignIn } from "@clerk/clerk-expo";
+import { useSignIn } from "@clerk/expo";
 import * as Sentry from "@sentry/react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";

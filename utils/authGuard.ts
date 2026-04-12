@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useUser } from '@clerk/clerk-expo';
+import { useUser } from '@clerk/expo';
 import { Alert } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { cacheAuthState, getCachedAuthState } from '@/lib/authCache';

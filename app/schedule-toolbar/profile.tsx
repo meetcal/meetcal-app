@@ -15,7 +15,7 @@ import {
   clearAllMeetData,
 } from "@/lib/database/offline-store";
 import { useAuthGuard } from "@/utils/authGuard";
-import { useClerk, useUser } from "@clerk/clerk-expo";
+import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {

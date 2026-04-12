@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime } from '@/utils/time';
-import { useUser } from '@clerk/clerk-expo';
+import { useUser } from '@clerk/expo';
 import { convex } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { scheduleNotification, cancelNotification } from '@/utils/notifications';

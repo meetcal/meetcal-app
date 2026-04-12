@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router'
-import { useAuth } from '@clerk/clerk-expo'
+import { useAuth } from '@clerk/expo'
 import { ActivityIndicator, View } from 'react-native'
 import { useEffect } from 'react'
 import * as WebBrowser from 'expo-web-browser'

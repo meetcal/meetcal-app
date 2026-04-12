@@ -1,6 +1,6 @@
 import React from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { isNetworkAvailable } from './networkUtils';
 
 const AUTH_CACHE_KEY = 'auth_state_cache';
