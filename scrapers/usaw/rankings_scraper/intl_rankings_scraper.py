@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# To run with venv: source venv/bin/activate && pip install -r requirements.txt && python intl_rankings_scraper.py
+# To run with venv: 
+# source venv/bin/activate && pip install -r requirements.txt && python intl_rankings_scraper.py
 
 import argparse
 import logging
@@ -19,7 +20,7 @@ from convex import ConvexClient
 # ============================================================================
 # CONFIGURATION - Enter your PDF URL here
 # ============================================================================
-PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/bltc99d2cbf924a3722/69c6aa4d81a8e37c6120bdd3/2026_FISU_Rankings_Women_032726.pdf"
+PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt105c2edeec292ebe/69e14ed31584da49ae4a6aea/2026_Junior_World_Rankings_Men_041626.pdf"
 
 # Load environment variables
 SCRIPT_DIR = Path(__file__).resolve().parent
