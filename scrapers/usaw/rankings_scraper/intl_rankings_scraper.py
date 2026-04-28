@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# To run with venv: 
+# To run with venv:
 # source venv/bin/activate && pip install -r requirements.txt && python intl_rankings_scraper.py
 
 import argparse
