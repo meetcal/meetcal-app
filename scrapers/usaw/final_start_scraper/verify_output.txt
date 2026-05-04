@@ -1,0 +1,54 @@
+Source format: registration
+Output rows: 253
+Parser rows: 253
+Raw source rows: 253
+Output matches parser: True
+Parser matches raw source rows: True
+Missing sessions from schedule: skipped
+Missing session/platform combos from schedule: skipped
+
+sessionCoverage:
+- session 1 | platform Red | athletes 12
+- session 2 | platform Red | athletes 11
+- session 3 | platform Red | athletes 15
+- session 4 | platform Red | athletes 13
+- session 5 | platform Red | athletes 13
+- session 6 | platform Red | athletes 10
+- session 7 | platform Red | athletes 13
+- session 8 | platform Red | athletes 13
+- session 9 | platform Red | athletes 14
+- session 10 | platform Red | athletes 19
+- session 11 | platform Red | athletes 13
+- session 12 | platform Red | athletes 10
+- session 13 | platform Red | athletes 15
+- session 14 | platform Red | athletes 12
+- session 15 | platform Red | athletes 13
+- session 16 | platform Red | athletes 12
+- session 17 | platform Red | athletes 9
+- session 18 | platform Red | athletes 15
+- session 19 | platform Red | athletes 12
+- session 20 | platform Red | athletes 9
+
+missingSessionCoverage:
+- schedule-based coverage skipped for this format
+
+names: 0
+
+clubs: 0
+
+wsos: 0
+
+weightClasses: 0
+
+genders: 0
+
+sessions: 0
+
+memberIds: 0
+
+meets: 0
+
+prefixes: 0
+
+checksToDo:
+Registration note: session, platform, and WSO checks skipped because the source does not expose them.

@@ -30,16 +30,18 @@ try:
 except ImportError:
     from pypdf import PdfReader
 
-DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt743172239cf12117/69cdcb8d048bd1762a166ec0/2026_-_Master_&_Uni_-_Start_Listc.pdf"
-DEFAULT_MEET_NAME = "2026 Masters National Championships & National University Championships"
+DEFAULT_PDF_URL = "https://storage.googleapis.com/production-ipower-v1-0-4/354/1018354/vixoE8Rk/566c75eba862479aa64f4a14e7c0f85f?fileName=2026%20Pan%20Am%20Masters%20-%20Final%20Start%20List,%20May%203,%202026.pdf"
+DEFAULT_MEET_NAME = "2026 Pan American Masters"
 DEFAULT_OUTPUT_TS = Path(__file__).with_name("convex_output.ts")
 START_MEMBER_ID = 3100
 REQUEST_TIMEOUT_SECONDS = 45
 
 PLATFORMS = ["RED", "WHITE", "BLUE", "STARS", "STRIPES", "ROGUE"]
 PLATFORM_PATTERN = "|".join(PLATFORMS)
-SUPPORTED_SOURCE_FORMATS = {"auto", "masters", "owlcms"}
-PLATFORM_SORT_ORDER = {platform.title(): index for index, platform in enumerate(PLATFORMS)}
+SUPPORTED_SOURCE_FORMATS = {"auto", "masters", "owlcms", "registration"}
+PLATFORM_SORT_ORDER = {
+    platform.title(): index for index, platform in enumerate(PLATFORMS)
+}
 TAIL_PATTERN = re.compile(
     rf"\s(?P<entry_total>\d{{1,3}})(?:\s*(?P<group>[A-Z]))?\s+(?P<session>\d+(?:\.\d+)?)\s*(?P<platform>{PLATFORM_PATTERN})\s+\d{{1,2}}-[A-Za-z]{{3}}\s+\d{{1,2}}:\d{{2}}\s+[AP]M$",
     re.IGNORECASE,
@@ -48,7 +50,9 @@ ROGUE_TAIL_PATTERN = re.compile(
     r"\s(?P<entry_total>\d{1,3})\s*ROGUE\s+(?P<session>\d+(?:\.\d+)?)\s*ROGUE\s+\d{1,2}-[A-Za-z]{3}\s+\d{1,2}:\d{2}\s+[AP]M$",
     re.IGNORECASE,
 )
-YEAR_AGE_PATTERN = re.compile(r"(?:\b[A-Z]{2,3}\b\s+)?(19\d{2}|20\d{2})\s+(\d{1,2})(?=\s|[A-Za-z]|$)")
+YEAR_AGE_PATTERN = re.compile(
+    r"(?:\b[A-Z]{2,3}\b\s+)?(19\d{2}|20\d{2})\s+(\d{1,2})(?=\s|[A-Za-z]|$)"
+)
 COMP_MARKERS = {
     "UNI",
     "WSO",
@@ -65,14 +69,30 @@ OWLCMS_HEADER_MARKERS = {
     "Session Date Gndr Group Cat Lot Age Name Total Team Comps",
     "Start list provided by",
 }
-OWLCMS_SESSION_PATTERN = re.compile(r"(?P<session>\d+)\s+(?P<platform>RED|WHITE|BLUE|STARS|STRIPES|ROGUE)$", re.IGNORECASE)
+OWLCMS_SESSION_PATTERN = re.compile(
+    r"(?P<session>\d+)\s+(?P<platform>RED|WHITE|BLUE|STARS|STRIPES|ROGUE)$",
+    re.IGNORECASE,
+)
 OWLCMS_SESSION_PREFIX_PATTERN = re.compile(
     r"^(?P<session>\d+)\s+(?P<platform>RED|WHITE|BLUE|STARS|STRIPES|ROGUE)\b",
     re.IGNORECASE,
 )
 OWLCMS_NAME_PATTERN = re.compile(r"[^,]+,\s+.+")
-OWLCMS_CATEGORY_PATTERN = re.compile(r"^(U\d{1,2}|JR|U23|U25|OPEN|ADAP)$", re.IGNORECASE)
+OWLCMS_CATEGORY_PATTERN = re.compile(
+    r"^(U\d{1,2}|JR|U23|U25|OPEN|ADAP)$", re.IGNORECASE
+)
 WEIGHT_CLASS_PATTERN = re.compile(r"^\d{2,3}\+?$")
+REGISTRATION_HEADER = [
+    "First Name",
+    "Last Names",
+    "Gender",
+    "Country",
+    "Master Age",
+    "Weight Class",
+    "Announced Total",
+    "Adaptive Athlete",
+]
+REGISTRATION_AGE_PATTERN = re.compile(r"^(?P<age>\d{2})(?:-\d{2}|\+)?$")
 
 
 @dataclass
@@ -209,7 +229,9 @@ def is_owlcms_metadata_line(value: str) -> bool:
     upper = normalize_fragment(value).upper()
     if not upper:
         return True
-    if upper.startswith(("START LIST PROVIDED BY", "OWLCMS", "SESSION DATE GNDR GROUP CAT")):
+    if upper.startswith(
+        ("START LIST PROVIDED BY", "OWLCMS", "SESSION DATE GNDR GROUP CAT")
+    ):
         return True
     if upper.startswith(("WEIGH IN", "START ")):
         return True
@@ -235,13 +257,17 @@ def slugify_filename(value: str) -> str:
 
 
 def infer_meet_name(pdf_bytes: bytes, source_format: str) -> str:
-    if source_format == "masters":
+    if source_format in {"masters", "registration"}:
         return DEFAULT_MEET_NAME
 
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         text = pdf.pages[0].extract_text() or ""
 
-    lines = [normalize_fragment(line) for line in text.splitlines() if normalize_fragment(line)]
+    lines = [
+        normalize_fragment(line)
+        for line in text.splitlines()
+        if normalize_fragment(line)
+    ]
     for line in lines:
         lower = line.lower()
         if lower.startswith("start list provided by"):
@@ -252,7 +278,14 @@ def infer_meet_name(pdf_bytes: bytes, source_format: str) -> str:
             continue
         if re.search(r"\b20\d{2}\b", line) and any(
             keyword in lower
-            for keyword in ("championship", "championships", "national", "nationals", "american open", "classic")
+            for keyword in (
+                "championship",
+                "championships",
+                "national",
+                "nationals",
+                "american open",
+                "classic",
+            )
         ):
             return line
 
@@ -260,7 +293,11 @@ def infer_meet_name(pdf_bytes: bytes, source_format: str) -> str:
 
 
 def infer_output_path(pdf_url: str, meet_name: str, source_format: str) -> Path:
-    if pdf_url == DEFAULT_PDF_URL and meet_name == DEFAULT_MEET_NAME and source_format == "masters":
+    if (
+        pdf_url == DEFAULT_PDF_URL
+        and meet_name == DEFAULT_MEET_NAME
+        and source_format in {"masters", "registration"}
+    ):
         return DEFAULT_OUTPUT_TS
 
     parsed_url = urlparse(pdf_url)
@@ -275,7 +312,9 @@ def build_run_settings(argv: Optional[Sequence[str]] = None) -> RunSettings:
     parser.add_argument("--meet-name")
     parser.add_argument("--output-path")
     parser.add_argument("--start-member-id", type=int, default=START_MEMBER_ID)
-    parser.add_argument("--source-format", choices=sorted(SUPPORTED_SOURCE_FORMATS), default="auto")
+    parser.add_argument(
+        "--source-format", choices=sorted(SUPPORTED_SOURCE_FORMATS), default="auto"
+    )
     parser.add_argument("--skip-verify", action="store_true")
     args = parser.parse_args(argv)
     return RunSettings(
@@ -470,7 +509,9 @@ def iter_master_lines(pdf_bytes: bytes) -> Iterable[str]:
             yield line
 
 
-def extract_masters_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, object]]:
+def extract_masters_entries(
+    pdf_bytes: bytes, meet_name: str
+) -> List[Dict[str, object]]:
     entries: List[Dict[str, object]] = []
     pending_line = ""
 
@@ -516,13 +557,20 @@ def get_owlcms_session_key(row: Sequence[str]) -> Optional[Tuple[int, str]]:
 
 def extract_owlcms_page_contexts(page_text: str) -> List[OwlcmsPageContext]:
     contexts: Dict[Tuple[int, str], OwlcmsPageContext] = {}
-    lines = [normalize_fragment(line) for line in page_text.splitlines() if normalize_fragment(line)]
+    lines = [
+        normalize_fragment(line)
+        for line in page_text.splitlines()
+        if normalize_fragment(line)
+    ]
     for index, line in enumerate(lines):
         session_match = OWLCMS_SESSION_PREFIX_PATTERN.match(line)
         if not session_match:
             continue
 
-        key = (int(session_match.group("session")), session_match.group("platform").title())
+        key = (
+            int(session_match.group("session")),
+            session_match.group("platform").title(),
+        )
         context = contexts.setdefault(
             key,
             OwlcmsPageContext(
@@ -531,7 +579,9 @@ def extract_owlcms_page_contexts(page_text: str) -> List[OwlcmsPageContext]:
             ),
         )
 
-        inline_gender, inline_category, inline_weight = parse_owlcms_descriptor(line[session_match.end() :])
+        inline_gender, inline_category, inline_weight = parse_owlcms_descriptor(
+            line[session_match.end() :]
+        )
         if inline_gender:
             context.gender = inline_gender
         if inline_category and inline_weight:
@@ -548,7 +598,10 @@ def extract_owlcms_page_contexts(page_text: str) -> List[OwlcmsPageContext]:
 
     return sorted(
         contexts.values(),
-        key=lambda value: (value.session_number, PLATFORM_SORT_ORDER.get(value.session_platform, 999)),
+        key=lambda value: (
+            value.session_number,
+            PLATFORM_SORT_ORDER.get(value.session_platform, 999),
+        ),
     )
 
 
@@ -571,7 +624,9 @@ def build_owlcms_row_groups(rows: Sequence[List[str]]) -> List[OwlcmsRowGroup]:
     return groups
 
 
-def apply_owlcms_page_context(context: OwlcmsSessionContext, page_context: OwlcmsPageContext) -> None:
+def apply_owlcms_page_context(
+    context: OwlcmsSessionContext, page_context: OwlcmsPageContext
+) -> None:
     context.session_number = page_context.session_number
     context.session_platform = page_context.session_platform
     context.reset_for_session()
@@ -610,7 +665,9 @@ def split_trailing_missing_group(
 
     trailing_rows = group.rows[split_index:]
     group.rows = group.rows[:split_index]
-    return OwlcmsRowGroup(explicit_key=None, rows=trailing_rows, override_context=next_context)
+    return OwlcmsRowGroup(
+        explicit_key=None, rows=trailing_rows, override_context=next_context
+    )
 
 
 def detect_source_format(pdf_bytes: bytes, requested_format: str = "auto") -> str:
@@ -620,6 +677,11 @@ def detect_source_format(pdf_bytes: bytes, requested_format: str = "auto") -> st
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         first_page = pdf.pages[0]
         text = first_page.extract_text() or ""
+        for table in first_page.extract_tables() or []:
+            for raw_row in table[:10]:
+                row = normalize_table_row(raw_row)
+                if is_registration_header(row):
+                    return "registration"
         if "owlcms" in text.lower():
             return "owlcms"
         for table in first_page.extract_tables() or []:
@@ -627,7 +689,12 @@ def detect_source_format(pdf_bytes: bytes, requested_format: str = "auto") -> st
                 row = normalize_table_row(raw_row)
                 if len(row) < 6:
                     continue
-                lot_text, age_text, name, entry_total_text = row[-6], row[-5], row[-4], row[-3]
+                lot_text, age_text, name, entry_total_text = (
+                    row[-6],
+                    row[-5],
+                    row[-4],
+                    row[-3],
+                )
                 if (
                     lot_text.isdigit()
                     and age_text.isdigit()
@@ -658,7 +725,82 @@ def parse_owlcms_gender(value: str) -> str:
     return ""
 
 
-def parse_owlcms_context(prefix: Sequence[str], context: OwlcmsSessionContext) -> Tuple[str, str]:
+def is_registration_header(row: Sequence[str]) -> bool:
+    return list(row[: len(REGISTRATION_HEADER)]) == REGISTRATION_HEADER
+
+
+def parse_registration_age(value: str) -> Optional[int]:
+    match = REGISTRATION_AGE_PATTERN.fullmatch(normalize_fragment(value))
+    if not match:
+        return None
+    return int(match.group("age"))
+
+
+def parse_registration_gender(value: str) -> str:
+    normalized = normalize_fragment(value).title()
+    if normalized in {"Female", "Male"}:
+        return normalized
+    return ""
+
+
+def parse_registration_row(
+    row: Sequence[str], meet_name: str
+) -> Optional[Dict[str, object]]:
+    if len(row) < len(REGISTRATION_HEADER):
+        return None
+
+    (
+        first_name,
+        last_name,
+        raw_gender,
+        country,
+        raw_age,
+        raw_weight,
+        raw_total,
+        adaptive,
+    ) = row[:8]
+    gender = parse_registration_gender(raw_gender)
+    age = parse_registration_age(raw_age)
+    weight_class = normalize_weight_class(raw_weight)
+    if not first_name or not last_name or not gender or age is None:
+        return None
+    if not weight_class or not raw_total.isdigit():
+        return None
+
+    return {
+        "adaptive": normalize_fragment(adaptive).upper().startswith("YES"),
+        "age": age,
+        "club": normalize_club(country),
+        "entryTotal": int(raw_total),
+        "gender": gender,
+        "meet": meet_name,
+        "name": normalize_name(f"{first_name} {last_name}"),
+        "weightClass": weight_class,
+    }
+
+
+def extract_registration_entries(
+    pdf_bytes: bytes, meet_name: str
+) -> List[Dict[str, object]]:
+    entries: List[Dict[str, object]] = []
+
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            for table in page.extract_tables() or []:
+                for raw_row in table:
+                    row = normalize_table_row(raw_row)
+                    if not any(row) or is_registration_header(row):
+                        continue
+                    parsed = parse_registration_row(row, meet_name)
+                    if parsed:
+                        entries.append(parsed)
+
+    return entries
+
+
+def parse_owlcms_context(
+    prefix: Sequence[str], context: OwlcmsSessionContext
+) -> Tuple[str, str]:
     session_cell = prefix[0] if len(prefix) > 0 else ""
     gender_cell = prefix[2] if len(prefix) > 2 else ""
     category_cell = prefix[3] if len(prefix) > 3 else ""
@@ -709,7 +851,11 @@ def derive_owlcms_weight(
         return context.category_weights[row_category]
 
     category_tokens = extract_owlcms_categories(comps)
-    matched_weights = [context.category_weights[token] for token in category_tokens if token in context.category_weights]
+    matched_weights = [
+        context.category_weights[token]
+        for token in category_tokens
+        if token in context.category_weights
+    ]
     if len(set(matched_weights)) == 1 and matched_weights:
         return matched_weights[0]
 
@@ -722,7 +868,9 @@ def derive_owlcms_weight(
     return ""
 
 
-def parse_owlcms_row(row: Sequence[str], context: OwlcmsSessionContext, meet_name: str) -> Optional[Dict[str, object]]:
+def parse_owlcms_row(
+    row: Sequence[str], context: OwlcmsSessionContext, meet_name: str
+) -> Optional[Dict[str, object]]:
     if len(row) < 6:
         return None
 
@@ -770,7 +918,10 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
     context = OwlcmsSessionContext()
 
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-        page_contexts = [extract_owlcms_page_contexts(page.extract_text() or "") for page in pdf.pages]
+        page_contexts = [
+            extract_owlcms_page_contexts(page.extract_text() or "")
+            for page in pdf.pages
+        ]
 
         for page_index, page in enumerate(pdf.pages):
             rows: List[List[str]] = []
@@ -779,7 +930,12 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
                     row = normalize_table_row(raw_row)
                     if not any(row):
                         continue
-                    if any(marker in value for marker in OWLCMS_HEADER_MARKERS for value in row if value):
+                    if any(
+                        marker in value
+                        for marker in OWLCMS_HEADER_MARKERS
+                        for value in row
+                        if value
+                    ):
                         continue
                     rows.append(row)
 
@@ -788,7 +944,9 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
 
             groups = build_owlcms_row_groups(rows)
             contexts_for_page = page_contexts[page_index]
-            explicit_keys = [group.explicit_key for group in groups if group.explicit_key]
+            explicit_keys = [
+                group.explicit_key for group in groups if group.explicit_key
+            ]
 
             if groups and groups[0].explicit_key is None and contexts_for_page:
                 first_explicit_key = next((key for key in explicit_keys if key), None)
@@ -797,21 +955,30 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
                         (
                             index
                             for index, page_context in enumerate(contexts_for_page)
-                            if (page_context.session_number, page_context.session_platform) == first_explicit_key
+                            if (
+                                page_context.session_number,
+                                page_context.session_platform,
+                            )
+                            == first_explicit_key
                         ),
                         -1,
                     )
                     leading_candidates = [
                         page_context
                         for page_context in contexts_for_page[:first_explicit_index]
-                        if (page_context.session_number, page_context.session_platform) not in explicit_keys
+                        if (page_context.session_number, page_context.session_platform)
+                        not in explicit_keys
                     ]
                     if len(leading_candidates) == 1:
                         groups[0].override_context = leading_candidates[0]
                 elif len(contexts_for_page) == 1:
                     groups[0].override_context = contexts_for_page[0]
 
-            if groups and all(group.explicit_key is None for group in groups) and len(contexts_for_page) == 1:
+            if (
+                groups
+                and all(group.explicit_key is None for group in groups)
+                and len(contexts_for_page) == 1
+            ):
                 groups[0].override_context = contexts_for_page[0]
 
             if page_index + 1 < len(page_contexts) and groups:
@@ -825,7 +992,8 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
                             if any(row):
                                 next_page_rows.append(row)
                     next_page_has_only_implicit_rows = bool(next_page_rows) and all(
-                        get_owlcms_session_key(row[:-6]) is None for row in next_page_rows
+                        get_owlcms_session_key(row[:-6]) is None
+                        for row in next_page_rows
                     )
 
                 if next_page_has_only_implicit_rows and len(next_page_contexts) == 1:
@@ -836,12 +1004,15 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
                             (
                                 value
                                 for value in contexts_for_page
-                                if (value.session_number, value.session_platform) == trailing_group.explicit_key
+                                if (value.session_number, value.session_platform)
+                                == trailing_group.explicit_key
                             ),
                             None,
                         )
                         if current_page_context and trailing_group.rows:
-                            repaired_group = split_trailing_missing_group(trailing_group, current_page_context, next_context)
+                            repaired_group = split_trailing_missing_group(
+                                trailing_group, current_page_context, next_context
+                            )
                             if repaired_group:
                                 groups.append(repaired_group)
 
@@ -856,7 +1027,9 @@ def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, o
     return entries
 
 
-def assign_member_ids(entries: List[Dict[str, object]], start_member_id: int) -> List[Dict[str, object]]:
+def assign_member_ids(
+    entries: List[Dict[str, object]], start_member_id: int
+) -> List[Dict[str, object]]:
     member_id = start_member_id
     for entry in entries:
         entry["memberId"] = str(member_id)
@@ -874,6 +1047,8 @@ def extract_entries(
     detected_format = detect_source_format(pdf_bytes, source_format)
     if detected_format == "owlcms":
         entries = extract_owlcms_entries(pdf_bytes, meet_name)
+    elif detected_format == "registration":
+        entries = extract_registration_entries(pdf_bytes, meet_name)
     else:
         entries = extract_masters_entries(pdf_bytes, meet_name)
     return assign_member_ids(entries, start_member_id)
@@ -898,8 +1073,8 @@ def write_typescript(entries: List[Dict[str, object]], output_path: Path) -> Non
         handle.write("  meet: string;\n")
         handle.write("  memberId: string;\n")
         handle.write("  name: string;\n")
-        handle.write("  sessionNumber: number;\n")
-        handle.write("  sessionPlatform: string;\n")
+        handle.write("  sessionNumber?: number;\n")
+        handle.write("  sessionPlatform?: string;\n")
         handle.write("  weightClass: string;\n")
         handle.write("  wso?: string;\n")
         handle.write("};\n\n")
@@ -924,7 +1099,12 @@ def write_typescript(entries: List[Dict[str, object]], output_path: Path) -> Non
             handle.write("  {\n")
             for field in field_order:
                 value = entry.get(field)
-                if field == "wso" and not value:
+                if (
+                    field in {"sessionNumber", "sessionPlatform", "wso"}
+                    and value is None
+                ):
+                    continue
+                if field in {"sessionPlatform", "wso"} and not value:
                     continue
                 handle.write(f"    {field}: {format_ts_value(value)},\n")
             handle.write("  },\n")
@@ -943,7 +1123,9 @@ def audit_entries(entries: List[Dict[str, object]]) -> List[str]:
             issues.append(f"suspicious club: {name} -> {club}")
         if not entry.get("weightClass"):
             issues.append(f"missing weight class: {name}")
-        if not entry.get("sessionPlatform") or not entry.get("sessionNumber"):
+        if ("sessionPlatform" in entry and not entry.get("sessionPlatform")) or (
+            "sessionNumber" in entry and not entry.get("sessionNumber")
+        ):
             issues.append(f"missing session: {name}")
     return issues
 
@@ -954,7 +1136,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     pdf_bytes = pdf_file.getvalue()
     actual_format = detect_source_format(pdf_bytes, settings.source_format)
     meet_name = settings.meet_name or infer_meet_name(pdf_bytes, actual_format)
-    output_path = settings.output_path or infer_output_path(settings.pdf_url, meet_name, actual_format)
+    output_path = settings.output_path or infer_output_path(
+        settings.pdf_url, meet_name, actual_format
+    )
     entries = extract_entries(
         BytesIO(pdf_bytes),
         meet_name=meet_name,

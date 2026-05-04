@@ -36,7 +36,9 @@ from scraper import (
     has_tail_pattern,
     infer_meet_name,
     infer_output_path,
+    is_registration_header,
     normalize_fragment,
+    normalize_table_row,
     resolve_output_path,
 )
 
@@ -154,7 +156,11 @@ class VerificationSettings:
 
 
 def default_report_path(output_path: Path, source_format: str) -> Path:
-    if output_path == DEFAULT_OUTPUT_TS and source_format in {"auto", "masters"}:
+    if output_path == DEFAULT_OUTPUT_TS and source_format in {
+        "auto",
+        "masters",
+        "registration",
+    }:
         return DEFAULT_REPORT_PATH
     return output_path.with_name(f"{output_path.stem}_report.txt")
 
@@ -165,7 +171,11 @@ def build_verification_settings(argv: Optional[Sequence[str]] = None) -> Verific
     parser.add_argument("--meet-name")
     parser.add_argument("--output-path")
     parser.add_argument("--report-path")
-    parser.add_argument("--source-format", choices=["auto", "masters", "owlcms"], default="auto")
+    parser.add_argument(
+        "--source-format",
+        choices=["auto", "masters", "owlcms", "registration"],
+        default="auto",
+    )
     parser.add_argument("--schedule-path")
     parser.add_argument("--skip-schedule-checks", action="store_true")
     parser.add_argument("--start-member-id", type=int, default=3100)
@@ -177,7 +187,11 @@ def build_verification_settings(argv: Optional[Sequence[str]] = None) -> Verific
     elif args.schedule_path:
         schedule_path = resolve_output_path(args.schedule_path)
     else:
-        schedule_path = DEFAULT_SCHEDULE_PATH if args.source_format in {"auto", "masters"} else None
+        schedule_path = (
+            DEFAULT_SCHEDULE_PATH
+            if args.source_format in {"auto", "masters"}
+            else None
+        )
 
     return VerificationSettings(
         pdf_url=args.pdf_url or DEFAULT_PDF_URL,
@@ -238,9 +252,17 @@ def count_raw_owlcms_rows(pdf_bytes: bytes) -> int:
         for page in pdf.pages:
             for table in page.extract_tables() or []:
                 for raw_row in table:
-                    row = [normalize_fragment(value) if value else "" for value in raw_row]
+                    row = [
+                        normalize_fragment(value) if value else ""
+                        for value in raw_row
+                    ]
                     if len(row) >= 6:
-                        lot_text, age_text, name, entry_total_text = row[-6], row[-5], row[-4], row[-3]
+                        lot_text, age_text, name, entry_total_text = (
+                            row[-6],
+                            row[-5],
+                            row[-4],
+                            row[-3],
+                        )
                         if (
                             lot_text.isdigit()
                             and age_text.isdigit()
@@ -249,7 +271,12 @@ def count_raw_owlcms_rows(pdf_bytes: bytes) -> int:
                         ):
                             total += 1
                     elif len(row) == 6:
-                        lot_text, age_text, name, entry_total_text = row[0], row[1], row[2], row[3]
+                        lot_text, age_text, name, entry_total_text = (
+                            row[0],
+                            row[1],
+                            row[2],
+                            row[3],
+                        )
                         if (
                             lot_text.isdigit()
                             and age_text.isdigit()
@@ -260,10 +287,30 @@ def count_raw_owlcms_rows(pdf_bytes: bytes) -> int:
     return total
 
 
+def count_raw_registration_rows(pdf_bytes: bytes) -> int:
+    total = 0
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            for table in page.extract_tables() or []:
+                for raw_row in table:
+                    row = normalize_table_row(raw_row)
+                    if not any(row) or is_registration_header(row):
+                        continue
+                    if (
+                        len(row) >= 8
+                        and row[2] in {"Female", "Male"}
+                        and row[6].isdigit()
+                        and WEIGHT_CLASS_PATTERN.fullmatch(row[5])
+                    ):
+                        total += 1
+    return total
+
+
 def collect_name_issues(entries: list[dict]) -> list[str]:
     return sorted(
         {
-            f'{entry["name"]} | club={entry["club"]} | session={entry["sessionNumber"]} {entry["sessionPlatform"]}'
+            f'{entry["name"]} | club={entry["club"]} | '
+            f'session={entry.get("sessionNumber")} {entry.get("sessionPlatform")}'
             for entry in entries
             if any(pattern.search(entry.get("name", "")) for pattern in NAME_PATTERNS)
         }
@@ -273,7 +320,8 @@ def collect_name_issues(entries: list[dict]) -> list[str]:
 def collect_club_issues(entries: list[dict]) -> list[str]:
     return sorted(
         {
-            f'{entry["name"]} | {entry["club"]} | session={entry["sessionNumber"]} {entry["sessionPlatform"]}'
+            f'{entry["name"]} | {entry["club"]} | '
+            f'session={entry.get("sessionNumber")} {entry.get("sessionPlatform")}'
             for entry in entries
             if entry.get("club", "") in TRUNCATED_CLUB_VALUES or entry.get("club") == ""
         }
@@ -298,7 +346,8 @@ def collect_wso_issues(entries: list[dict], source_format: str) -> list[str]:
 def collect_weight_class_issues(entries: list[dict]) -> list[str]:
     return sorted(
         {
-            f'{entry["name"]} | weightClass={entry["weightClass"]} | session={entry["sessionNumber"]} {entry["sessionPlatform"]}'
+            f'{entry["name"]} | weightClass={entry["weightClass"]} | '
+            f'session={entry.get("sessionNumber")} {entry.get("sessionPlatform")}'
             for entry in entries
             if not WEIGHT_CLASS_PATTERN.fullmatch(entry.get("weightClass", ""))
         }
@@ -315,7 +364,26 @@ def collect_gender_issues(entries: list[dict]) -> list[str]:
     )
 
 
-def collect_session_issues(entries: list[dict]) -> list[str]:
+def collect_session_issues(entries: list[dict], source_format: str) -> list[str]:
+    if source_format == "registration":
+        return sorted(
+            {
+                f'{entry["name"]} | session={entry.get("sessionNumber")} | '
+                f'platform={entry.get("sessionPlatform")}'
+                for entry in entries
+                if (
+                    entry.get("sessionNumber") is not None
+                    and (
+                        not isinstance(entry.get("sessionNumber"), int)
+                        or entry["sessionNumber"] <= 0
+                    )
+                )
+                or (
+                    entry.get("sessionPlatform")
+                    and entry.get("sessionPlatform") not in EXPECTED_PLATFORMS
+                )
+            }
+        )
     return sorted(
         {
             f'{entry["name"]} | session={entry["sessionNumber"]} | platform={entry["sessionPlatform"]}'
@@ -396,6 +464,8 @@ def collect_session_coverage(entries: list[dict], expected: dict[int, set[str]])
 def collect_actual_session_counts(entries: list[dict]) -> list[str]:
     counts: dict[tuple[int, str], int] = {}
     for entry in entries:
+        if entry.get("sessionNumber") is None or not entry.get("sessionPlatform"):
+            continue
         key = (entry["sessionNumber"], entry["sessionPlatform"])
         counts[key] = counts.get(key, 0) + 1
     return [
@@ -411,7 +481,7 @@ def collect_all_issues(entries: list[dict], source_format: str, expected_meet: s
         "wsos": collect_wso_issues(entries, source_format),
         "weightClasses": collect_weight_class_issues(entries),
         "genders": collect_gender_issues(entries),
-        "sessions": collect_session_issues(entries),
+        "sessions": collect_session_issues(entries, source_format),
         "memberIds": collect_member_id_issues(entries),
         "meets": collect_meet_issues(entries, expected_meet),
         "prefixes": collect_leftover_prefix_issues(entries, source_format),
@@ -452,11 +522,20 @@ def collect_checks_to_do(entries: list[dict], source_format: str) -> list[str]:
                 if entry.get("wso", "") in TRUNCATED_WSO_VALUES
             }
         )
-        checks.append(f"Review specifically truncated WSO values: {len(truncated_wso_values)}")
+        checks.append(
+            f"Review specifically truncated WSO values: {len(truncated_wso_values)}"
+        )
         for value in truncated_wso_values:
             checks.append(f"- {value}")
+    elif source_format == "owlcms":
+        checks.append(
+            "OWLCMS note: WSO checks skipped unless the source explicitly exposes WSO."
+        )
     else:
-        checks.append("OWLCMS note: WSO checks skipped unless the source explicitly exposes WSO.")
+        checks.append(
+            "Registration note: session, platform, and WSO checks skipped because "
+            "the source does not expose them."
+        )
 
     return checks
 
@@ -467,8 +546,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     pdf_bytes = pdf_file.getvalue()
     actual_format = detect_source_format(pdf_bytes, settings.source_format)
     meet_name = settings.meet_name or infer_meet_name(pdf_bytes, actual_format)
-    output_path = settings.output_path if str(settings.output_path) not in {"", "."} else infer_output_path(settings.pdf_url, meet_name, actual_format)
-    report_path = settings.report_path if str(settings.report_path) not in {"", "."} else default_report_path(output_path, actual_format)
+    output_path = (
+        settings.output_path
+        if str(settings.output_path) not in {"", "."}
+        else infer_output_path(settings.pdf_url, meet_name, actual_format)
+    )
+    report_path = (
+        settings.report_path
+        if str(settings.report_path) not in {"", "."}
+        else default_report_path(output_path, actual_format)
+    )
 
     if not output_path.exists():
         raise FileNotFoundError(
@@ -484,7 +571,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         start_member_id=settings.start_member_id,
     )
 
-    raw_source_rows = count_raw_master_rows(pdf_bytes) if actual_format == "masters" else count_raw_owlcms_rows(pdf_bytes)
+    if actual_format == "masters":
+        raw_source_rows = count_raw_master_rows(pdf_bytes)
+    elif actual_format == "registration":
+        raw_source_rows = count_raw_registration_rows(pdf_bytes)
+    else:
+        raw_source_rows = count_raw_owlcms_rows(pdf_bytes)
     issues = collect_all_issues(output_entries, actual_format, meet_name)
     checks_to_do = collect_checks_to_do(output_entries, actual_format)
     lines: list[str] = []
@@ -500,7 +592,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     if actual_format == "masters":
         lines.append("Parser matches raw source rows: skipped")
     else:
-        lines.append(f"Parser matches raw source rows: {len(parsed_entries) == raw_source_rows}")
+        lines.append(
+            f"Parser matches raw source rows: {len(parsed_entries) == raw_source_rows}"
+        )
 
     if actual_format == "masters" and settings.schedule_path and settings.schedule_path.exists():
         expected_session_platforms = load_expected_session_platforms(settings.schedule_path)

@@ -88,3 +88,19 @@
 - Verify that continuation pages do not leave athletes attached to the previous platform block.
 - Spot-check boundary cases where a page starts or ends mid-session.
 - Treat missing `wso` as acceptable when the source format does not expose it.
+
+## Pan Am Masters Registration Table Shape
+
+- Source documents can be registration lists rather than final session start lists, with a header like `First Name | Last Names | Gender | Country | Master Age | Weight Class | Announced Total | Adaptive Athlete`.
+- This layout is best parsed from `pdfplumber.extract_tables()`. The raw text is readable, but table extraction cleanly preserves the first/last name, country, age bucket, weight, total, and adaptive columns.
+- Concrete example row:
+  - `Susan | Gunther | Female | United States | 75-79 | 53 | 60 | NO / NO`
+- There is no `Lot`, `Club`, `WSO`, `Session`, `Platform`, `Day`, or `Comp Time` data in this source. The parser handles this as a separate `registration` source format instead of forcing it through the masters inline-tail parser.
+- Mapping choices:
+  - `name` joins `First Name` and `Last Names`.
+  - `club` stores the `Country` value because the Convex athlete shape has no country/federation field.
+  - `age` stores the lower bound of the `Master Age` bucket, e.g. `75-79` becomes `75` and `30-34` becomes `30`.
+  - `sessionNumber`, `sessionPlatform`, and `wso` are omitted because the source does not expose them.
+  - `adaptive` is true when `Adaptive Athlete` starts with `YES`, including variants like `YES/Mobility`, `Yes/Mobility`, and `Yes / Mobilidad`.
+- For the 2026 Pan American Masters one-time output, `sessionNumber` and `sessionPlatform` were enriched from the final lifting schedule PDF in `scrapers/usaw/owlcms_schedule_scraper/final_scraper.py`; all assigned platforms are `Red`.
+- Verification for this format should compare parsed rows to raw table athlete rows and skip schedule coverage checks, since missing sessions are expected for a registration list.
