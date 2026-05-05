@@ -1,9 +1,3 @@
-name: "USA Weightlifting American Records"
-url: "https://www.usaweightlifting.org/american-records"
-filter:
-  - css: "ul.chakra-list__root"
-  - html2text
----
 name: "USA Masters Weightlifting Results"
 url: "https://usamasters.net/results-and-rankings"
 filter:
@@ -32,10 +26,4 @@ name: "USAW International Rankings"
 url: "https://www.usaweightlifting.org/resources/athlete-information-and-programs/international-squad-standings"
 filter:
   - css: ".css-11jy1p4"
-  - html2text
----
-name: "USAW Standards"
-url: "https://www.usaweightlifting.org/resources/athlete-information-and-programs/selection-procedures"
-filter:
-  - css: ".css-0"
   - html2text
