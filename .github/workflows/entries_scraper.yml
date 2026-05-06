@@ -32,6 +32,8 @@ jobs:
             name: 2026 Tennesse-Kentucky WSO Championship
           - url: 'https://usaweightlifting.sport80.com/public/events/14510/entries/21402?bl='
             name: 2026 Virus Weightlifting Finals, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14849/entries/21724?bl=locator'
+            name: 2026 Carolina WSO Championship
     defaults:
       run:
         working-directory: ./scrapers/usaw/entry_scraper
