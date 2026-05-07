@@ -1,6 +1,18 @@
 import { v } from "convex/values";
 import { query, internalMutation } from "./_generated/server";
 
+type IntlRankingInput = {
+  legacyId?: number;
+  meet?: string;
+  ranking?: number;
+  name?: string;
+  weightClass?: string;
+  total?: number;
+  percentA?: number;
+  gender?: string;
+  ageCategory?: string;
+};
+
 // Get all international rankings
 export const getAll = query({
   args: {},
@@ -95,3 +107,142 @@ export const deleteByMeetGenderAge = internalMutation({
     return toDelete.length;
   },
 });
+
+// Differential upsert for a specific meet + gender + age category group.
+// Uses ranking as the stable row key within the group.
+export const replaceByMeetGenderAge = internalMutation({
+  args: {
+    meet: v.string(),
+    gender: v.string(),
+    ageCategory: v.string(),
+    rankings: v.array(
+      v.object({
+        legacyId: v.optional(v.number()),
+        meet: v.optional(v.string()),
+        ranking: v.optional(v.number()),
+        name: v.optional(v.string()),
+        weightClass: v.optional(v.string()),
+        total: v.optional(v.number()),
+        percentA: v.optional(v.number()),
+        gender: v.optional(v.string()),
+        ageCategory: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const existingRows = await ctx.db
+      .query("intl_rankings")
+      .withIndex("by_gender_age", (q) =>
+        q.eq("gender", args.gender).eq("ageCategory", args.ageCategory)
+      )
+      .collect();
+    const groupRows = existingRows.filter((r) => r.meet === args.meet);
+
+    const existingByRanking = new Map<number, (typeof groupRows)[number]>();
+    for (const row of groupRows) {
+      if (row.ranking != null) existingByRanking.set(row.ranking, row);
+    }
+
+    const incomingRankings = new Set<number>();
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const ranking of args.rankings) {
+      if (ranking.ranking == null) {
+        await ctx.db.insert("intl_rankings", ranking);
+        inserted++;
+        continue;
+      }
+
+      incomingRankings.add(ranking.ranking);
+      const existing = existingByRanking.get(ranking.ranking);
+      if (!existing) {
+        await ctx.db.insert("intl_rankings", ranking);
+        inserted++;
+        continue;
+      }
+
+      if (intlRankingChanged(existing, ranking)) {
+        await ctx.db.patch(existing._id, ranking);
+        updated++;
+      } else {
+        unchanged++;
+      }
+    }
+
+    let deleted = 0;
+    for (const row of groupRows) {
+      if (row.ranking == null || !incomingRankings.has(row.ranking)) {
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+    }
+
+    return { inserted, updated, unchanged, deleted };
+  },
+});
+
+function intlRankingChanged(
+  existing: IntlRankingInput,
+  incoming: IntlRankingInput
+): boolean {
+  return (
+    existing.legacyId !== incoming.legacyId ||
+    existing.meet !== incoming.meet ||
+    existing.ranking !== incoming.ranking ||
+    existing.name !== incoming.name ||
+    existing.weightClass !== incoming.weightClass ||
+    existing.total !== incoming.total ||
+    existing.percentA !== incoming.percentA ||
+    existing.gender !== incoming.gender ||
+    existing.ageCategory !== incoming.ageCategory
+  );
+}
+
+export const deleteGroupsNotIn = internalMutation({
+  args: {
+    groups: v.array(
+      v.object({
+        meet: v.string(),
+        gender: v.string(),
+        ageCategory: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const activeGroups = new Set(
+      args.groups.map((group) => groupKey(group.meet, group.gender, group.ageCategory))
+    );
+    const rows = await ctx.db.query("intl_rankings").collect();
+    const deletedByGroup = new Map<string, {
+      meet: string;
+      gender: string;
+      ageCategory: string;
+      deleted: number;
+    }>();
+
+    for (const row of rows) {
+      if (!row.meet || !row.gender || !row.ageCategory) continue;
+
+      const key = groupKey(row.meet, row.gender, row.ageCategory);
+      if (activeGroups.has(key)) continue;
+
+      await ctx.db.delete(row._id);
+      const existing = deletedByGroup.get(key) ?? {
+        meet: row.meet,
+        gender: row.gender,
+        ageCategory: row.ageCategory,
+        deleted: 0,
+      };
+      existing.deleted++;
+      deletedByGroup.set(key, existing);
+    }
+
+    return { deletedGroups: Array.from(deletedByGroup.values()) };
+  },
+});
+
+function groupKey(meet: string, gender: string, ageCategory: string): string {
+  return `${meet}::${gender}::${ageCategory}`;
+}

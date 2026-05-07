@@ -425,20 +425,45 @@ export const replaceIntlRankingsForGroup = action({
       })
     ),
   },
-  handler: async (ctx, args): Promise<{ deleted: number; inserted: number }> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ inserted: number; updated: number; unchanged: number; deleted: number }> => {
     assertScraperSecret(args.scraperSecret);
-    const deleted = await ctx.runMutation(internal.intlRankings.deleteByMeetGenderAge, {
+    return ctx.runMutation(internal.intlRankings.replaceByMeetGenderAge, {
       meet: args.meet,
       gender: args.gender,
       ageCategory: args.ageCategory,
+      rankings: args.rankings,
     });
+  },
+});
 
-    let inserted = 0;
-    for (const ranking of args.rankings) {
-      await ctx.runMutation(internal.intlRankings.upsertIntlRanking, ranking);
-      inserted++;
-    }
-
-    return { deleted, inserted };
+export const deleteMissingIntlRankingGroups = action({
+  args: {
+    scraperSecret: v.string(),
+    groups: v.array(
+      v.object({
+        meet: v.string(),
+        gender: v.string(),
+        ageCategory: v.string(),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    deletedGroups: Array<{
+      meet: string;
+      gender: string;
+      ageCategory: string;
+      deleted: number;
+    }>;
+  }> => {
+    assertScraperSecret(args.scraperSecret);
+    return ctx.runMutation(internal.intlRankings.deleteGroupsNotIn, {
+      groups: args.groups,
+    });
   },
 });
