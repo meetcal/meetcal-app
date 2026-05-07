@@ -2,8 +2,8 @@ name: International Rankings Scraper
 
 on:
   schedule:
-    # Run daily at 4:30 AM UTC
-    - cron: '30 4 * * *'
+    # Run daily at 4:00 AM UTC
+    - cron: '00 4 * * *'
   workflow_dispatch:
 
 jobs:
