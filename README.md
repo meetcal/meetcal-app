@@ -1,5 +1,8 @@
 # MeetCal 📅
 
+iOS: https://apps.apple.com/us/app/meetcal/id6741133286
+Android: https://play.google.com/store/apps/details?id=com.memohnsen.meetcal
+
 A React Native application built with Expo for managing athletic schedules and meet calendars.
 
 [![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
