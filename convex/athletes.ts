@@ -12,6 +12,16 @@ export const getByMeet = query({
   },
 });
 
+export const getByMeetAndSession = query({
+  args: { meet: v.string(), sessionNumber: v.float64(), sessionPlatform: v.string() },
+  handler: async (ctx, { meet, sessionNumber, sessionPlatform }) => {
+    return ctx.db
+      .query("athletes")
+      .withIndex("by_meet_and_session", (q) => q.eq("meet", meet).eq("sessionNumber", sessionNumber).eq("sessionPlatform", sessionPlatform))
+      .collect();
+  },
+});
+
 // Get athletes with their session schedule info joined in JS
 // Replaces the Supabase `athletes_with_session` view
 export const getWithSessionByMeet = query({
