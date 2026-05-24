@@ -19,8 +19,11 @@ from typing import Optional, Sequence
 
 from assign_athlete_sessions import (
     DEFAULT_OUTPUT_PATH,
+    OUTPUT_MEET_NAMES,
+    SOURCE_MEET_NAMES,
     assign_placements,
-    fetch_athletes_from_convex,
+    fetch_all_source_athletes_from_convex,
+    is_adaptive_athlete,
 )
 from final_scraper import (
     MEET_NAME,
@@ -42,14 +45,14 @@ PRESERVED_FIELDS = (
     "gender",
     "weightClass",
     "entryTotal",
-    "meet",
     "adaptive",
 )
 
 
 @dataclass
 class VerificationSettings:
-    meet_name: str
+    schedule_meet_name: str
+    source_meet_names: tuple[str, ...]
     pdf_url: str
     output_path: Path
     report_path: Path
@@ -60,7 +63,14 @@ def build_verification_settings(argv: Optional[Sequence[str]] = None) -> Verific
     parser = argparse.ArgumentParser(
         description="Verify athlete placement TypeScript output"
     )
-    parser.add_argument("--meet", default=MEET_NAME)
+    parser.add_argument("--schedule-meet", default=MEET_NAME)
+    parser.add_argument("--meet", default=MEET_NAME, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--source-meet",
+        action="append",
+        dest="source_meets",
+        help="Convex source meet name (repeatable)",
+    )
     parser.add_argument("--url", default=PDF_URL)
     parser.add_argument("--output", default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--report-path")
@@ -73,8 +83,10 @@ def build_verification_settings(argv: Optional[Sequence[str]] = None) -> Verific
         if args.report_path
         else output_path.with_name(f"{output_path.stem}_report.txt")
     )
+    source_meet_names = tuple(args.source_meets or SOURCE_MEET_NAMES)
     return VerificationSettings(
-        meet_name=args.meet,
+        schedule_meet_name=args.schedule_meet or args.meet,
+        source_meet_names=source_meet_names,
         pdf_url=args.url,
         output_path=output_path,
         report_path=report_path,
@@ -151,26 +163,22 @@ def collect_session_issues(entries: list[dict]) -> list[str]:
     )
 
 
-def collect_meet_issues(entries: list[dict], expected_meet: str) -> list[str]:
+def collect_meet_issues(entries: list[dict]) -> list[str]:
     return sorted(
         {
             f'{entry["name"]} | meet={entry.get("meet")}'
             for entry in entries
-            if entry.get("meet") != expected_meet
+            if entry.get("meet") not in OUTPUT_MEET_NAMES
         }
     )
 
 
 def collect_member_id_issues(entries: list[dict]) -> list[str]:
-    seen: set[str] = set()
     issues: set[str] = set()
     for entry in entries:
         member_id = str(entry.get("memberId", ""))
         if not re.fullmatch(r"\d+", member_id):
             issues.add(f'{entry["name"]} | memberId={member_id}')
-        if member_id in seen:
-            issues.add(f"duplicate memberId={member_id} | name={entry['name']}")
-        seen.add(member_id)
     return sorted(issues)
 
 
@@ -197,33 +205,44 @@ def collect_weight_class_issues(entries: list[dict]) -> list[str]:
 
 
 def collect_preserved_field_issues(
-    output_entries: list[dict], expected_by_member: dict[str, dict]
+    output_entries: list[dict], source_athletes: list[dict]
 ) -> list[str]:
     issues: set[str] = set()
-    for entry in output_entries:
-        member_id = str(entry.get("memberId", ""))
-        expected = expected_by_member.get(member_id)
-        if expected is None:
-            issues.add(f'missing convex athlete for memberId={member_id} | name={entry["name"]}')
-            continue
+    if len(output_entries) != len(source_athletes):
+        issues.add(
+            f"output row count {len(output_entries)} != convex athlete count "
+            f"{len(source_athletes)}"
+        )
+        return sorted(issues)
+
+    for entry, expected in zip(output_entries, source_athletes):
         for field in PRESERVED_FIELDS:
-            if entry.get(field) != expected.get(field):
+            if field == "adaptive":
+                expected_value = is_adaptive_athlete(expected)
+            elif field == "memberId":
+                expected_value = str(expected.get("memberId", ""))
+            else:
+                expected_value = expected.get(field)
+            if entry.get(field) != expected_value:
                 issues.add(
                     f'{entry["name"]} | {field} output={entry.get(field)!r} '
-                    f'expected={expected.get(field)!r}'
+                    f'expected={expected_value!r}'
                 )
     return sorted(issues)
 
 
 def collect_assignment_mismatch_issues(
-    output_entries: list[dict], expected_placements: dict[str, dict]
+    output_entries: list[dict], expected_placements: list[dict]
 ) -> list[str]:
     issues: set[str] = set()
-    for entry in output_entries:
-        member_id = str(entry.get("memberId", ""))
-        expected = expected_placements.get(member_id)
-        if expected is None:
-            continue
+    if len(output_entries) != len(expected_placements):
+        issues.add(
+            f"output row count {len(output_entries)} != recomputed placement count "
+            f"{len(expected_placements)}"
+        )
+        return sorted(issues)
+
+    for entry, expected in zip(output_entries, expected_placements):
         for field in ("sessionNumber", "sessionPlatform"):
             if entry.get(field) != expected.get(field):
                 issues.add(
@@ -303,9 +322,8 @@ def collect_actual_session_counts(entries: list[dict]) -> list[str]:
 
 def collect_all_issues(
     output_entries: list[dict],
-    expected_placements: dict[str, dict],
-    expected_by_member: dict[str, dict],
-    expected_meet: str,
+    expected_placements: list[dict],
+    source_athletes: list[dict],
     valid_pairs: set[tuple[int, str]],
 ) -> dict[str, list[str]]:
     return {
@@ -318,10 +336,10 @@ def collect_all_issues(
             output_entries, expected_placements
         ),
         "preservedFields": collect_preserved_field_issues(
-            output_entries, expected_by_member
+            output_entries, source_athletes
         ),
         "memberIds": collect_member_id_issues(output_entries),
-        "meets": collect_meet_issues(output_entries, expected_meet),
+        "meets": collect_meet_issues(output_entries),
         "genders": collect_gender_issues(output_entries),
         "weightClasses": collect_weight_class_issues(output_entries),
     }
@@ -337,28 +355,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     output_entries = load_output_entries(settings.output_path)
-    athletes = fetch_athletes_from_convex(meet_name=settings.meet_name)
-    expected_by_member = {
-        str(athlete.get("memberId", "")): athlete for athlete in athletes
-    }
+    athletes = fetch_all_source_athletes_from_convex(settings.source_meet_names)
 
     pdf_file = download_pdf(settings.pdf_url)
     schedule = extract_assignment_schedule_data(
-        pdf_file=BytesIO(pdf_file.getvalue()), meet_name=settings.meet_name
+        pdf_file=BytesIO(pdf_file.getvalue()), meet_name=settings.schedule_meet_name
     )
     recomputed_placements, unassigned = assign_placements(
-        athletes=athletes, schedule=schedule
+        athletes=athletes,
+        schedule=schedule,
+        schedule_meet_name=settings.schedule_meet_name,
     )
-    expected_placements = {
-        str(placement["memberId"]): placement for placement in recomputed_placements
-    }
     valid_pairs = valid_assignment_session_platforms(schedule)
 
     issues = collect_all_issues(
         output_entries=output_entries,
-        expected_placements=expected_placements,
-        expected_by_member=expected_by_member,
-        expected_meet=settings.meet_name,
+        expected_placements=recomputed_placements,
+        source_athletes=athletes,
         valid_pairs=valid_pairs,
     )
 
@@ -378,7 +391,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         missing_session_platforms = []
 
     lines: list[str] = []
-    lines.append(f"Meet name: {settings.meet_name}")
+    lines.append(f"Schedule meet: {settings.schedule_meet_name}")
+    lines.append(f"Source meets: {len(settings.source_meet_names)}")
     lines.append(f"Convex athletes: {len(athletes)}")
     lines.append(f"Assignment schedule rows: {len(schedule)}")
     lines.append(f"Output rows: {len(output_entries)}")

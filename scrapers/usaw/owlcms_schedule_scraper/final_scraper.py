@@ -369,6 +369,8 @@ def build_ncw_prelim_header_map(headers: Sequence[str]) -> dict[str, int]:
             header_map["time_idx"] = idx
         elif "gender" in header_lower:
             header_map["gender_idx"] = idx
+        elif "age" in header_lower and "group" in header_lower:
+            header_map["age_group_idx"] = idx
         elif "estimated" in header_lower or (
             "total" in header_lower and "entry" in header_lower
         ):
@@ -432,6 +434,7 @@ def extract_ncw_prelim_entry(
         return None, current_date, current_session
 
     gender = ncw_prelim_cell(row, header_map, "gender_idx", 5, offset).strip().upper()
+    age_group = ncw_prelim_cell(row, header_map, "age_group_idx", 6, offset).strip()
     entry_totals_range = ncw_prelim_cell(
         row, header_map, "entry_totals_idx", 8, offset
     ).strip()
@@ -459,6 +462,7 @@ def extract_ncw_prelim_entry(
             "platform": platform,
             "weight_class": weight_class,
             "gender": gender,
+            "age_group": age_group,
             "entry_totals_range": entry_totals_range,
             "meet": meet_name,
             "_explicit_session": explicit_session is not None,
@@ -501,6 +505,23 @@ def assign_ncw_prelim_sessions(rows: Sequence[dict]) -> List[dict]:
             assigned.append(cleaned)
 
     return assigned
+
+
+def fix_ncw_prelim_platform_errors(rows: Sequence[dict]) -> List[dict]:
+    fixed: List[dict] = []
+    for row in rows:
+        updated = dict(row)
+        session_id = updated.get("session_id")
+        age_group = str(updated.get("age_group", "")).upper()
+        if (
+            session_id is not None
+            and float(session_id) == 44
+            and updated.get("platform") == "Red"
+            and age_group == "NAT"
+        ):
+            updated["platform"] = "White"
+        fixed.append(updated)
+    return fixed
 
 
 def find_ncw_prelim_header_sections(
@@ -658,7 +679,7 @@ def extract_ncw_prelim_schedule_data(
                 )
                 all_rows.extend(parsed)
 
-    reconciled = assign_ncw_prelim_sessions(all_rows)
+    reconciled = fix_ncw_prelim_platform_errors(assign_ncw_prelim_sessions(all_rows))
     deduped = dedupe_rows(reconciled)
     combined = combine_session_rows(deduped)
     print(
@@ -677,7 +698,9 @@ def to_assign_schedule_row(entry: dict) -> dict:
         "sess": str(session_value),
         "plat": entry["platform"],
         "gender": entry.get("gender", ""),
+        "age_group": entry.get("age_group", ""),
         "weight_category": entry["weight_class"],
+        "age_group_weight_category": entry["weight_class"],
         "estimated_entry_totals_(min___max)": entry.get("entry_totals_range", ""),
         "meet": entry["meet"],
     }
@@ -704,7 +727,7 @@ def extract_ncw_prelim_assignment_rows(
                 )
                 all_rows.extend(parsed)
 
-    reconciled = assign_ncw_prelim_sessions(all_rows)
+    reconciled = fix_ncw_prelim_platform_errors(assign_ncw_prelim_sessions(all_rows))
     deduped = dedupe_rows(reconciled)
     print(
         f"Extracted {len(deduped)} assignment schedule rows "

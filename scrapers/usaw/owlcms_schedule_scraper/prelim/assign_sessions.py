@@ -17,6 +17,76 @@ from typing import List, Dict, Optional, Tuple
 MEET_NAME = "2026 USA Weightlifting National Championships, Powered by Rogue Fitness"
 
 
+def meet_event_category(meet: str) -> str:
+    lowered = meet.lower()
+    if "wso" in lowered:
+        return "wso"
+    if "youth" in lowered:
+        return "youth"
+    if "junior" in lowered:
+        return "jr_u25"
+    if "under 25" in lowered:
+        return "jr_u25"
+    if "national championships" in lowered:
+        return "nat"
+    return "unknown"
+
+
+def parse_session_age_group_category(age_group: str) -> Optional[str]:
+    if not age_group:
+        return None
+
+    normalized = age_group.strip().upper()
+    if normalized == "WSO":
+        return "wso"
+    if normalized == "NAT":
+        return "nat"
+    if "JR" in normalized or "U25" in normalized:
+        return "jr_u25"
+    if "U11" in normalized or "U13" in normalized:
+        return "youth_u11_u13"
+    if "14" in normalized and "15" in normalized:
+        return "youth_14_15"
+    if "16" in normalized and "17" in normalized:
+        return "youth_16_17"
+    return None
+
+
+def youth_age_subgroup(age: int) -> Optional[str]:
+    if age <= 13:
+        return "youth_u11_u13"
+    if age <= 15:
+        return "youth_14_15"
+    if age <= 17:
+        return "youth_16_17"
+    return None
+
+
+def athlete_matches_session_age_group(
+    athlete_event_category: str,
+    athlete_age: Optional[int],
+    session_age_group: str,
+) -> bool:
+    session_category = parse_session_age_group_category(session_age_group)
+    if session_category is None:
+        return True
+    if athlete_event_category == "wso":
+        return session_category == "wso"
+    if session_category == "wso":
+        return False
+    if athlete_event_category == "youth":
+        if not session_category.startswith("youth_"):
+            return False
+        if athlete_age is None:
+            return False
+        return session_category == youth_age_subgroup(int(athlete_age))
+    if athlete_event_category == "jr_u25":
+        return session_category == "jr_u25"
+    if athlete_event_category == "nat":
+        return session_category == "nat"
+    return False
+
+
 def parse_age_group(
     age_group_str: str,
 ) -> Tuple[Optional[str], Optional[int], Optional[int]]:
@@ -275,6 +345,7 @@ def find_matching_session(athlete: Dict, schedule: List[Dict]) -> Optional[Dict]
     athlete_total = (
         int(athlete.get("entry_total", 0)) if athlete.get("entry_total") else None
     )
+    athlete_event_category = athlete.get("event_category")
 
     if not athlete_age:
         return None
@@ -314,6 +385,21 @@ def find_matching_session(athlete: Dict, schedule: List[Dict]) -> Optional[Dict]
         session_gender = session.get("gender", "")
         if session_gender and session_gender != gender_code:
             continue
+
+        session_age_group = session.get("age_group", "")
+        if session_age_group:
+            session_category = parse_session_age_group_category(session_age_group)
+            if session_category == "wso":
+                if athlete_event_category != "wso":
+                    continue
+            elif athlete_event_category == "wso":
+                continue
+            elif athlete_event_category and not athlete_matches_session_age_group(
+                athlete_event_category,
+                athlete_age,
+                session_age_group,
+            ):
+                continue
 
         # For UMWF, check age group
         if is_umwf:
