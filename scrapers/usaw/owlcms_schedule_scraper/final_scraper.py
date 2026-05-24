@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import pdfplumber
@@ -29,12 +30,18 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[3] / ".env.local")
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+
+
+def get_convex_url() -> Optional[str]:
+    return os.getenv("CONVEX_URL") or os.getenv("EXPO_PUBLIC_CONVEX_URL")
 
 # ---------------------------
 # Top-level scraper config
 # ---------------------------
-PDF_URL = "https://storage.googleapis.com/production-ipower-v1-0-4/354/1018354/vixoE8Rk/8fbeb85a8fc44ab1b15023ee7d0f0494?fileName=2026%20Pan%20Am%20Masters%20-%20Final%20Lifting%20Schedule.pdf"
-MEET_NAME = "2026 Pan American Masters"
+PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt7b3763235e6b397c/6a111b3ad7617bb684580901/2026_-_NCW_-_Preliminary_Schedule.pdf"
+MEET_NAME = "2026 USA Weightlifting National Championships, Powered by Rogue Fitness"
 START_ID = 123
 DEFAULT_YEAR = 2026
 WEIGH_IN_OFFSET_HOURS = 2
@@ -67,6 +74,36 @@ PLATFORM_ALIASES = {
     "B": "WHITE",
     "C": "BLUE",
 }
+MONTH_NAMES = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+WEEKDAY_NAMES = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
+
+@dataclass
+class NcwPrelimState:
+    current_date: Optional[str] = None
+    current_session: Optional[float] = None
+    last_headers: Optional[List[str]] = None
 
 
 @dataclass
@@ -237,6 +274,463 @@ def parse_date_value(raw: str, default_year: int) -> Optional[str]:
                 return None
 
     return None
+
+
+def parse_long_form_date(raw: str) -> Optional[str]:
+    value = raw.replace("\n", " ").strip()
+    if not value:
+        return None
+
+    match = re.search(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", value)
+    if match:
+        try:
+            parsed = datetime.strptime(
+                f"{match.group(1)} {match.group(2)} {match.group(3)}",
+                "%B %d %Y",
+            )
+            return parsed.date().isoformat()
+        except ValueError:
+            pass
+
+    return parse_date_value(value, DEFAULT_YEAR)
+
+
+def normalize_table_row(raw_row: Sequence[object]) -> List[str]:
+    return [normalize_cell(cell) for cell in raw_row]
+
+
+def row_has_schedule_date(row: Sequence[str]) -> bool:
+    row_text = " ".join(cell for cell in row if cell)
+    if not any(month in row_text for month in MONTH_NAMES):
+        return False
+    return any(day in row_text for day in WEEKDAY_NAMES)
+
+
+def parse_schedule_date_row(row: Sequence[str]) -> Optional[str]:
+    row_text = " ".join(cell for cell in row if cell)
+    return parse_long_form_date(row_text)
+
+
+def is_date_only_row(row: Sequence[str], header_map: dict[str, int]) -> bool:
+    if not row_has_schedule_date(row):
+        return False
+
+    platform_idx = header_map.get("platform_idx", 2)
+    platform = extract_platform(
+        [row[platform_idx] if platform_idx < len(row) else ""]
+    )
+    if platform:
+        return False
+
+    weigh_idx = header_map.get("weigh_idx", 3)
+    time_idx = header_map.get("time_idx", 4)
+    if parse_time_value(row[weigh_idx] if weigh_idx < len(row) else ""):
+        return False
+    if parse_time_value(row[time_idx] if time_idx < len(row) else ""):
+        return False
+
+    return True
+
+
+def is_ncw_prelim_header_row(row: Sequence[str]) -> bool:
+    row_text = " ".join(cell.lower() for cell in row if cell)
+    keywords_found = sum(
+        keyword in row_text
+        for keyword in (
+            "sess",
+            "date",
+            "plat",
+            "weigh",
+            "time",
+            "gender",
+            "category",
+        )
+    )
+    return keywords_found >= 4
+
+
+def build_ncw_prelim_header_map(headers: Sequence[str]) -> dict[str, int]:
+    header_map: dict[str, int] = {}
+    for idx, header in enumerate(headers):
+        if not header:
+            continue
+        header_lower = header.lower().strip().replace("\n", " ")
+        if "weight" in header_lower and "category" in header_lower:
+            header_map["weight_class_idx"] = idx
+        elif header_lower == "weigh":
+            header_map["weigh_idx"] = idx
+        elif "date" in header_lower:
+            header_map["date_idx"] = idx
+        elif "sess" in header_lower:
+            header_map["session_idx"] = idx
+        elif "plat" in header_lower:
+            header_map["platform_idx"] = idx
+        elif "time" in header_lower:
+            header_map["time_idx"] = idx
+        elif "gender" in header_lower:
+            header_map["gender_idx"] = idx
+        elif "estimated" in header_lower or (
+            "total" in header_lower and "entry" in header_lower
+        ):
+            header_map["entry_totals_idx"] = idx
+    return header_map
+
+
+def table_has_ncw_prelim_headers(table: Sequence[Sequence[object]]) -> bool:
+    for raw_row in table:
+        row = normalize_table_row(raw_row)
+        if is_ncw_prelim_header_row(row):
+            return True
+    return False
+
+
+def ncw_prelim_row_offset(row: Sequence[str], header_map: dict[str, int]) -> int:
+    platform_idx = header_map.get("platform_idx", 2)
+    for idx, value in enumerate(row):
+        if extract_platform([value]):
+            return idx - platform_idx
+    return 0
+
+
+def ncw_prelim_cell(
+    row: Sequence[str],
+    header_map: dict[str, int],
+    column: str,
+    default_idx: int,
+    offset: int,
+) -> str:
+    index = header_map.get(column, default_idx) + offset
+    return row[index] if 0 <= index < len(row) else ""
+
+
+def extract_ncw_prelim_entry(
+    row: Sequence[str],
+    header_map: dict[str, int],
+    meet_name: str,
+    current_date: Optional[str],
+    current_session: Optional[float],
+) -> Tuple[Optional[dict], Optional[str], Optional[float]]:
+    offset = ncw_prelim_row_offset(row, header_map)
+
+    platform = extract_platform(
+        [ncw_prelim_cell(row, header_map, "platform_idx", 2, offset)]
+    )
+    if not platform:
+        return None, current_date, current_session
+
+    weigh_time = parse_time_value(
+        ncw_prelim_cell(row, header_map, "weigh_idx", 3, offset)
+    )
+    start_time = parse_time_value(
+        ncw_prelim_cell(row, header_map, "time_idx", 4, offset)
+    )
+    if not weigh_time or not start_time:
+        return None, current_date, current_session
+
+    weight_class = ncw_prelim_cell(row, header_map, "weight_class_idx", 7, offset).strip()
+    if not weight_class or weight_class == "---":
+        return None, current_date, current_session
+
+    gender = ncw_prelim_cell(row, header_map, "gender_idx", 5, offset).strip().upper()
+    entry_totals_range = ncw_prelim_cell(
+        row, header_map, "entry_totals_idx", 8, offset
+    ).strip()
+
+    date_str = ncw_prelim_cell(row, header_map, "date_idx", 0, offset)
+    if date_str:
+        parsed_date = parse_long_form_date(date_str)
+        if parsed_date:
+            current_date = parsed_date
+
+    session_str = ncw_prelim_cell(row, header_map, "session_idx", 1, offset).strip()
+    explicit_session = re.fullmatch(r"\d+", session_str)
+    if explicit_session:
+        current_session = float(int(session_str))
+
+    if not current_date or current_session is None:
+        return None, current_date, current_session
+
+    return (
+        {
+            "date": current_date,
+            "session_id": current_session,
+            "start_time": start_time.strftime("%H:%M:%S"),
+            "weigh_in_time": weigh_time.strftime("%H:%M:%S"),
+            "platform": platform,
+            "weight_class": weight_class,
+            "gender": gender,
+            "entry_totals_range": entry_totals_range,
+            "meet": meet_name,
+            "_explicit_session": explicit_session is not None,
+        },
+        current_date,
+        current_session,
+    )
+
+
+def assign_ncw_prelim_sessions(rows: Sequence[dict]) -> List[dict]:
+    groups: dict[tuple[str, str, str], List[dict]] = {}
+    group_order: List[tuple[str, str, str]] = []
+
+    for row in rows:
+        key = (row["date"], row["weigh_in_time"], row["start_time"])
+        if key not in groups:
+            groups[key] = []
+            group_order.append(key)
+        groups[key].append(row)
+
+    assigned: List[dict] = []
+    last_session_id: Optional[float] = None
+
+    for key in group_order:
+        group = groups[key]
+        explicit_sessions = [
+            row["session_id"] for row in group if row.get("_explicit_session")
+        ]
+        if explicit_sessions:
+            session_id = explicit_sessions[0]
+        elif last_session_id is not None:
+            session_id = last_session_id + 1
+        else:
+            session_id = group[0]["session_id"]
+
+        last_session_id = session_id
+        for row in group:
+            row["session_id"] = session_id
+            cleaned = {k: v for k, v in row.items() if k != "_explicit_session"}
+            assigned.append(cleaned)
+
+    return assigned
+
+
+def find_ncw_prelim_header_sections(
+    table: Sequence[Sequence[object]],
+) -> List[dict]:
+    sections: List[dict] = []
+    normalized_table = [normalize_table_row(raw_row) for raw_row in table]
+
+    for idx, row in enumerate(normalized_table):
+        if not is_ncw_prelim_header_row(row):
+            continue
+
+        date_for_section = None
+        for look_back in range(1, min(4, idx + 1)):
+            prev_row = normalized_table[idx - look_back]
+            if row_has_schedule_date(prev_row):
+                date_for_section = parse_schedule_date_row(prev_row)
+                break
+
+        sections.append(
+            {
+                "header_row": row,
+                "start_idx": idx + 1,
+                "date_text": date_for_section,
+            }
+        )
+
+    return sections
+
+
+def parse_ncw_prelim_rows_with_headers(
+    data_rows: Sequence[Sequence[object]],
+    headers: Sequence[str],
+    meet_name: str,
+    state: NcwPrelimState,
+    section_date: Optional[str] = None,
+) -> Tuple[List[dict], NcwPrelimState]:
+    rows: List[dict] = []
+    header_map = build_ncw_prelim_header_map(headers)
+    current_date = state.current_date
+    current_session = state.current_session
+
+    if section_date:
+        current_date = section_date
+        state.current_date = section_date
+    elif not current_date:
+        date_idx = header_map.get("date_idx", 0)
+        for raw_row in data_rows[:10]:
+            row = normalize_table_row(raw_row)
+            if date_idx < len(row):
+                parsed_date = parse_long_form_date(row[date_idx])
+                if parsed_date:
+                    current_date = parsed_date
+                    state.current_date = parsed_date
+                    break
+
+    for raw_row in data_rows:
+        row = normalize_table_row(raw_row)
+        if not any(cell for cell in row):
+            continue
+
+        if is_date_only_row(row, header_map):
+            parsed_date = parse_schedule_date_row(row)
+            if parsed_date:
+                current_date = parsed_date
+                state.current_date = parsed_date
+            continue
+
+        entry, current_date, current_session = extract_ncw_prelim_entry(
+            row=row,
+            header_map=header_map,
+            meet_name=meet_name,
+            current_date=current_date,
+            current_session=current_session,
+        )
+        if entry is None:
+            continue
+
+        state.current_date = current_date
+        state.current_session = current_session
+        rows.append(entry)
+
+    return rows, state
+
+
+def parse_ncw_prelim_table(
+    table: Sequence[Sequence[object]],
+    meet_name: str,
+    state: NcwPrelimState,
+) -> Tuple[List[dict], NcwPrelimState]:
+    rows: List[dict] = []
+    sections = find_ncw_prelim_header_sections(table)
+
+    if sections:
+        if sections[0]["start_idx"] > 0 and state.last_headers:
+            pre_header_rows = table[: sections[0]["start_idx"]]
+            parsed, state = parse_ncw_prelim_rows_with_headers(
+                data_rows=pre_header_rows,
+                headers=state.last_headers,
+                meet_name=meet_name,
+                state=state,
+                section_date=None,
+            )
+            rows.extend(parsed)
+
+        for index, section in enumerate(sections):
+            end_idx = (
+                sections[index + 1]["start_idx"] - 1
+                if index + 1 < len(sections)
+                else len(table)
+            )
+            data_rows = table[section["start_idx"] : end_idx]
+            state.last_headers = section["header_row"]
+            parsed, state = parse_ncw_prelim_rows_with_headers(
+                data_rows=data_rows,
+                headers=section["header_row"],
+                meet_name=meet_name,
+                state=state,
+                section_date=section.get("date_text"),
+            )
+            rows.extend(parsed)
+        return rows, state
+
+    if state.last_headers:
+        parsed, state = parse_ncw_prelim_rows_with_headers(
+            data_rows=table,
+            headers=state.last_headers,
+            meet_name=meet_name,
+            state=state,
+            section_date=None,
+        )
+        rows.extend(parsed)
+
+    return rows, state
+
+
+def extract_ncw_prelim_schedule_data(
+    pdf_file: BytesIO, meet_name: str
+) -> List[dict]:
+    print("Extracting rows using NCW preliminary schedule parser...")
+    all_rows: List[dict] = []
+    state = NcwPrelimState()
+
+    with pdfplumber.open(pdf_file) as pdf:
+        total_pages = len(pdf.pages)
+        for idx, page in enumerate(pdf.pages, 1):
+            print(f"Processing page {idx}/{total_pages}")
+            for table in page.extract_tables() or []:
+                if not table:
+                    continue
+                parsed, state = parse_ncw_prelim_table(
+                    table=table,
+                    meet_name=meet_name,
+                    state=state,
+                )
+                all_rows.extend(parsed)
+
+    reconciled = assign_ncw_prelim_sessions(all_rows)
+    deduped = dedupe_rows(reconciled)
+    combined = combine_session_rows(deduped)
+    print(
+        f"Extracted {len(combined)} session rows "
+        f"({len(deduped)} unique class rows, {len(all_rows)} raw rows)"
+    )
+    return combined
+
+
+def to_assign_schedule_row(entry: dict) -> dict:
+    session_id = entry["session_id"]
+    session_value = (
+        int(session_id) if float(session_id).is_integer() else session_id
+    )
+    return {
+        "sess": str(session_value),
+        "plat": entry["platform"],
+        "gender": entry.get("gender", ""),
+        "weight_category": entry["weight_class"],
+        "estimated_entry_totals_(min___max)": entry.get("entry_totals_range", ""),
+        "meet": entry["meet"],
+    }
+
+
+def extract_ncw_prelim_assignment_rows(
+    pdf_file: BytesIO, meet_name: str
+) -> List[dict]:
+    print("Extracting assignment schedule rows from PDF...")
+    all_rows: List[dict] = []
+    state = NcwPrelimState()
+
+    with pdfplumber.open(pdf_file) as pdf:
+        total_pages = len(pdf.pages)
+        for idx, page in enumerate(pdf.pages, 1):
+            print(f"Processing page {idx}/{total_pages}")
+            for table in page.extract_tables() or []:
+                if not table:
+                    continue
+                parsed, state = parse_ncw_prelim_table(
+                    table=table,
+                    meet_name=meet_name,
+                    state=state,
+                )
+                all_rows.extend(parsed)
+
+    reconciled = assign_ncw_prelim_sessions(all_rows)
+    deduped = dedupe_rows(reconciled)
+    print(
+        f"Extracted {len(deduped)} assignment schedule rows "
+        f"({len(all_rows)} raw rows before dedupe)"
+    )
+    return deduped
+
+
+def extract_assignment_schedule_data(
+    pdf_file: BytesIO, meet_name: str
+) -> List[dict]:
+    with pdfplumber.open(pdf_file) as pdf:
+        uses_ncw_prelim = any(
+            table_has_ncw_prelim_headers(table)
+            for page in pdf.pages
+            for table in (page.extract_tables() or [])
+        )
+
+    if not uses_ncw_prelim:
+        raise ValueError(
+            "Assignment schedule extraction requires an NCW preliminary schedule PDF"
+        )
+
+    pdf_file.seek(0)
+    rows = extract_ncw_prelim_assignment_rows(pdf_file=pdf_file, meet_name=meet_name)
+    return [to_assign_schedule_row(row) for row in rows]
 
 
 def normalize_ocr_token(value: str) -> str:
@@ -505,7 +999,9 @@ def extract_rows_from_ocr_lines(lines: Sequence[OcrLine], meet_name: str) -> Lis
         }
         session_tops = [candidate["top"] for candidate in session_candidates]
         for class_top, weight_class, _ in weight_class_candidates:
-            nearest_session_top = min(session_tops, key=lambda top: abs(top - class_top))
+            nearest_session_top = min(
+                session_tops, key=lambda top: abs(top - class_top)
+            )
             classes_by_session_top[nearest_session_top].append(weight_class)
 
     rows: List[dict] = []
@@ -782,7 +1278,11 @@ def format_combined_weight_classes(weight_classes: Sequence[str]) -> str:
     formatted = []
     for category, groups in grouped_by_category.items():
         sorted_groups = sorted(groups, key=class_sort_key)
-        label = "All" if all(is_all_weight_category(g, category) for g in groups) else category
+        label = (
+            "All"
+            if all(is_all_weight_category(g, category) for g in groups)
+            else category
+        )
         formatted.append(
             {
                 "sort": class_sort_key(sorted_groups[0]),
@@ -790,7 +1290,9 @@ def format_combined_weight_classes(weight_classes: Sequence[str]) -> str:
             }
         )
 
-    return ", ".join(item["text"] for item in sorted(formatted, key=lambda item: item["sort"]))
+    return ", ".join(
+        item["text"] for item in sorted(formatted, key=lambda item: item["sort"])
+    )
 
 
 def combine_session_rows(rows: Sequence[dict]) -> List[dict]:
@@ -835,6 +1337,17 @@ def dedupe_rows(rows: Sequence[dict]) -> List[dict]:
 
 
 def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
+    with pdfplumber.open(pdf_file) as pdf:
+        uses_ncw_prelim = any(
+            table_has_ncw_prelim_headers(table)
+            for page in pdf.pages
+            for table in (page.extract_tables() or [])
+        )
+
+    if uses_ncw_prelim:
+        pdf_file.seek(0)
+        return extract_ncw_prelim_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+
     print("Extracting rows from PDF...")
     all_rows: List[dict] = []
     current_date: Optional[str] = None
@@ -861,7 +1374,9 @@ def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
                 all_rows.extend(parsed)
 
         if not all_rows:
-            print("No table rows found; trying OCR fallback for image-only schedule PDF...")
+            print(
+                "No table rows found; trying OCR fallback for image-only schedule PDF..."
+            )
             for idx, page in enumerate(pdf.pages, 1):
                 print(f"OCR processing page {idx}/{total_pages}")
                 all_rows.extend(
@@ -958,11 +1473,13 @@ def export_ts(rows: Sequence[ScheduleRow], output_path: str) -> None:
 
 
 def ingest_to_convex(rows: Sequence[ScheduleRow]) -> dict:
-    convex_url = os.getenv("CONVEX_URL")
+    convex_url = get_convex_url()
     scraper_secret = os.getenv("SCRAPER_SECRET")
 
     if not convex_url or not scraper_secret:
-        raise ValueError("CONVEX_URL and SCRAPER_SECRET are required for convex mode")
+        raise ValueError(
+            "CONVEX_URL (or EXPO_PUBLIC_CONVEX_URL) and SCRAPER_SECRET are required for convex mode"
+        )
 
     endpoint = f"{convex_url.rstrip('/')}/api/action"
     inserted = 0

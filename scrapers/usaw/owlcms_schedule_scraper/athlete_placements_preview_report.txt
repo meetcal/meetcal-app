@@ -1,0 +1,264 @@
+Meet name: 2026 USA Weightlifting National Championships, Powered by Rogue Fitness
+Convex athletes: 236
+Assignment schedule rows: 121
+Output rows: 236
+Recomputed placements: 236
+Output matches Convex athlete count: True
+Output matches recomputed placements: True
+Unassigned athletes: 0
+Missing sessions from schedule: 23
+Missing session/platform combos from schedule: 84
+
+sessionCoverage:
+- session 1 | platform Red | athletes 0
+- session 1 | platform White | athletes 0
+- session 1 | platform Blue | athletes 0
+- session 2 | platform Red | athletes 0
+- session 2 | platform White | athletes 0
+- session 2 | platform Blue | athletes 0
+- session 3 | platform Red | athletes 0
+- session 3 | platform White | athletes 0
+- session 3 | platform Blue | athletes 0
+- session 4 | platform Red | athletes 0
+- session 4 | platform White | athletes 0
+- session 4 | platform Blue | athletes 0
+- session 5 | platform Red | athletes 0
+- session 5 | platform White | athletes 0
+- session 5 | platform Blue | athletes 0
+- session 6 | platform Red | athletes 0
+- session 6 | platform White | athletes 0
+- session 6 | platform Blue | athletes 0
+- session 7 | platform Red | athletes 0
+- session 7 | platform White | athletes 0
+- session 7 | platform Blue | athletes 0
+- session 8 | platform Red | athletes 0
+- session 8 | platform White | athletes 0
+- session 8 | platform Blue | athletes 0
+- session 9 | platform Red | athletes 0
+- session 9 | platform White | athletes 0
+- session 9 | platform Blue | athletes 0
+- session 10 | platform Red | athletes 0
+- session 10 | platform White | athletes 0
+- session 10 | platform Blue | athletes 0
+- session 11 | platform Red | athletes 0
+- session 11 | platform White | athletes 0
+- session 11 | platform Blue | athletes 0
+- session 12 | platform Red | athletes 0
+- session 12 | platform White | athletes 0
+- session 12 | platform Blue | athletes 0
+- session 13 | platform Red | athletes 0
+- session 13 | platform White | athletes 0
+- session 13 | platform Blue | athletes 0
+- session 14 | platform Red | athletes 0
+- session 14 | platform White | athletes 0
+- session 14 | platform Blue | athletes 0
+- session 15 | platform Red | athletes 0
+- session 15 | platform White | athletes 0
+- session 15 | platform Blue | athletes 0
+- session 16 | platform Red | athletes 0
+- session 16 | platform White | athletes 0
+- session 16 | platform Blue | athletes 0
+- session 17 | platform Red | athletes 0
+- session 17 | platform White | athletes 0
+- session 17 | platform Blue | athletes 0
+- session 18 | platform Red | athletes 0
+- session 18 | platform White | athletes 2
+- session 18 | platform Blue | athletes 0
+- session 19 | platform Red | athletes 0
+- session 19 | platform White | athletes 0
+- session 19 | platform Blue | athletes 0
+- session 20 | platform Red | athletes 0
+- session 20 | platform White | athletes 0
+- session 21 | platform Red | athletes 0
+- session 21 | platform White | athletes 0
+- session 21 | platform Blue | athletes 0
+- session 22 | platform Red | athletes 0
+- session 22 | platform White | athletes 1
+- session 22 | platform Blue | athletes 0
+- session 23 | platform Red | athletes 0
+- session 23 | platform Blue | athletes 0
+- session 24 | platform Red | athletes 0
+- session 24 | platform Blue | athletes 6
+- session 25 | platform Red | athletes 4
+- session 25 | platform Blue | athletes 5
+- session 26 | platform Red | athletes 0
+- session 26 | platform White | athletes 0
+- session 26 | platform Blue | athletes 0
+- session 27 | platform Red | athletes 1
+- session 27 | platform White | athletes 14
+- session 27 | platform Blue | athletes 0
+- session 28 | platform Red | athletes 0
+- session 28 | platform Blue | athletes 1
+- session 29 | platform Red | athletes 0
+- session 29 | platform Blue | athletes 0
+- session 30 | platform Red | athletes 0
+- session 30 | platform Blue | athletes 13
+- session 31 | platform Red | athletes 0
+- session 31 | platform White | athletes 2
+- session 31 | platform Blue | athletes 0
+- session 32 | platform Red | athletes 14
+- session 32 | platform White | athletes 5
+- session 32 | platform Blue | athletes 0
+- session 33 | platform Red | athletes 7
+- session 33 | platform Blue | athletes 8
+- session 34 | platform Red | athletes 7
+- session 34 | platform Blue | athletes 0
+- session 35 | platform Red | athletes 7
+- session 35 | platform White | athletes 0
+- session 35 | platform Blue | athletes 5
+- session 36 | platform Red | athletes 3
+- session 36 | platform White | athletes 5
+- session 36 | platform Blue | athletes 11
+- session 37 | platform Red | athletes 7
+- session 37 | platform Blue | athletes 5
+- session 38 | platform Red | athletes 7
+- session 38 | platform Blue | athletes 5
+- session 39 | platform Red | athletes 0
+- session 39 | platform White | athletes 3
+- session 39 | platform Blue | athletes 5
+- session 40 | platform Red | athletes 7
+- session 40 | platform White | athletes 6
+- session 40 | platform Blue | athletes 9
+- session 41 | platform Red | athletes 6
+- session 41 | platform Blue | athletes 9
+- session 42 | platform Red | athletes 7
+- session 42 | platform Blue | athletes 8
+- session 43 | platform Red | athletes 0
+- session 43 | platform White | athletes 3
+- session 43 | platform Blue | athletes 0
+- session 44 | platform Red | athletes 7
+- session 44 | platform White | athletes 0
+- session 44 | platform Blue | athletes 0
+- session 45 | platform Red | athletes 11
+- session 45 | platform Blue | athletes 10
+
+missingSessionCoverage:
+- session 1
+- session 2
+- session 3
+- session 4
+- session 5
+- session 6
+- session 7
+- session 8
+- session 9
+- session 10
+- session 11
+- session 12
+- session 13
+- session 14
+- session 15
+- session 16
+- session 17
+- session 19
+- session 20
+- session 21
+- session 23
+- session 26
+- session 29
+- session 1 | platform Red
+- session 1 | platform White
+- session 1 | platform Blue
+- session 2 | platform Red
+- session 2 | platform White
+- session 2 | platform Blue
+- session 3 | platform Red
+- session 3 | platform White
+- session 3 | platform Blue
+- session 4 | platform Red
+- session 4 | platform White
+- session 4 | platform Blue
+- session 5 | platform Red
+- session 5 | platform White
+- session 5 | platform Blue
+- session 6 | platform Red
+- session 6 | platform White
+- session 6 | platform Blue
+- session 7 | platform Red
+- session 7 | platform White
+- session 7 | platform Blue
+- session 8 | platform Red
+- session 8 | platform White
+- session 8 | platform Blue
+- session 9 | platform Red
+- session 9 | platform White
+- session 9 | platform Blue
+- session 10 | platform Red
+- session 10 | platform White
+- session 10 | platform Blue
+- session 11 | platform Red
+- session 11 | platform White
+- session 11 | platform Blue
+- session 12 | platform Red
+- session 12 | platform White
+- session 12 | platform Blue
+- session 13 | platform Red
+- session 13 | platform White
+- session 13 | platform Blue
+- session 14 | platform Red
+- session 14 | platform White
+- session 14 | platform Blue
+- session 15 | platform Red
+- session 15 | platform White
+- session 15 | platform Blue
+- session 16 | platform Red
+- session 16 | platform White
+- session 16 | platform Blue
+- session 17 | platform Red
+- session 17 | platform White
+- session 17 | platform Blue
+- session 18 | platform Red
+- session 18 | platform Blue
+- session 19 | platform Red
+- session 19 | platform White
+- session 19 | platform Blue
+- session 20 | platform Red
+- session 20 | platform White
+- session 21 | platform Red
+- session 21 | platform White
+- session 21 | platform Blue
+- session 22 | platform Red
+- session 22 | platform Blue
+- session 23 | platform Red
+- session 23 | platform Blue
+- session 24 | platform Red
+- session 26 | platform Red
+- session 26 | platform White
+- session 26 | platform Blue
+- session 27 | platform Blue
+- session 28 | platform Red
+- session 29 | platform Red
+- session 29 | platform Blue
+- session 30 | platform Red
+- session 31 | platform Red
+- session 31 | platform Blue
+- session 32 | platform Blue
+- session 34 | platform Blue
+- session 35 | platform White
+- session 39 | platform Red
+- session 43 | platform Red
+- session 43 | platform Blue
+- session 44 | platform White
+- session 44 | platform Blue
+
+unassigned: 0
+
+sessions: 0
+
+scheduleMembership: 0
+
+assignmentMismatch: 0
+
+preservedFields: 0
+
+memberIds: 0
+
+meets: 0
+
+genders: 0
+
+weightClasses: 0
+
+checksToDo:
+Review empty session/platform slots from final schedule: 23 sessions, 84 combos
+Empty slots are expected when the preliminary schedule includes youth or other groups without athletes in this meet entry list.

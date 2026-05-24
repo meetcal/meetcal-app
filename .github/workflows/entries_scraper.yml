@@ -34,6 +34,20 @@ jobs:
             name: 2026 Virus Weightlifting Finals, Powered by Rogue Fitness
           - url: 'https://usaweightlifting.sport80.com/public/events/14849/entries/21724?bl=locator'
             name: 2026 Carolina WSO Championship
+          - url: 'https://usaweightlifting.sport80.com/public/events/14378/entries/21267?bl='
+            name: The 2026 National Youth Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14382/entries/21275?bl='
+            name: The 2026 National Under 25 Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14380/entries/21271?bl='
+            name: The 2026 National Junior Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14379/entries/21269?bl='
+            name: ADAPTIVE ATHLETES - The 2026 National Youth Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14383/entries/21277?bl='
+            name: ADAPTIVE ATHLETES - The 2026 National Under 25 Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14381/entries/21273?bl='
+            name: ADAPTIVE ATHLETES - The 2026 National Junior Championships, Powered by Rogue Fitness
+          - url: 'https://usaweightlifting.sport80.com/public/events/14373/entries/21261?bl='
+            name: ADAPTIVE ATHLETES - 2026 USA Weightlifting National Championships, Powered by Rogue Fitness 
     defaults:
       run:
         working-directory: ./scrapers/usaw/entry_scraper

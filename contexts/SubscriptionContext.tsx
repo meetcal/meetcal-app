@@ -21,6 +21,10 @@ interface SubscriptionCacheData {
   timestamp: number;
 }
 
+type SubscriptionCacheEntry = SubscriptionCacheData & {
+  isExpired: boolean;
+};
+
 const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -54,7 +58,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   };
 
   // Helper function to get subscription from cache
-  const getSubscriptionCache = async (): Promise<SubscriptionCacheData | null> => {
+  const getSubscriptionCache = async (
+    markStaleCache = false
+  ): Promise<SubscriptionCacheEntry | null> => {
     try {
       const cached = await AsyncStorage.getItem(SUBSCRIPTION_CACHE_KEY);
       if (!cached) return null;
@@ -63,16 +69,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const now = Date.now();
       const isExpired = now - parsed.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
-      if (isExpired) {
+      if (isExpired && markStaleCache) {
         console.log('Subscription cache expired (older than 7 days), using stale');
         setIsUsingStaleCache(true);
-        setLastSyncTimestamp(parsed.timestamp);
-        return parsed;
       }
 
       setLastSyncTimestamp(parsed.timestamp);
-      setIsUsingStaleCache(false);
-      return parsed;
+      if (!isExpired || markStaleCache) {
+        setIsUsingStaleCache(isExpired);
+      }
+      return { ...parsed, isExpired };
     } catch (error) {
       console.error('Error getting subscription cache:', error);
       return null;
@@ -133,7 +139,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
       if (!hasNetwork) {
         console.log('No network available, using cached subscription data');
-        const cached = await getSubscriptionCache();
+        const cached = await getSubscriptionCache(true);
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
@@ -158,14 +164,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     } catch (error) {
       console.error('Failed to check subscription status:', error);
       // On error, try to get status from cache
-      const cached = await getSubscriptionCache();
+      const cached = await getSubscriptionCache(false);
       if (cached) {
         setIsSubscribed(cached.isSubscribed);
         setSubscriptionType(cached.subscriptionType);
+        setIsUsingStaleCache(false);
       } else {
         console.warn('Error checking subscription and no cache available, setting unknown state');
         setIsSubscribed(null);
         setSubscriptionType('unknown');
+        setIsUsingStaleCache(false);
       }
       setIsLoading(false);
     }
@@ -185,7 +193,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           return;
         }
 
-        const cached = await getSubscriptionCache();
+        const cached = await getSubscriptionCache(false);
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
@@ -204,6 +212,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
 
         if (!hasNetwork) {
+          if (cached?.isExpired) {
+            setIsUsingStaleCache(true);
+          }
           setIsLoading(false);
           return;
         }

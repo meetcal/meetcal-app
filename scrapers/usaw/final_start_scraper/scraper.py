@@ -30,8 +30,10 @@ try:
 except ImportError:
     from pypdf import PdfReader
 
-DEFAULT_PDF_URL = "https://storage.googleapis.com/production-ipower-v1-0-4/354/1018354/vixoE8Rk/566c75eba862479aa64f4a14e7c0f85f?fileName=2026%20Pan%20Am%20Masters%20-%20Final%20Start%20List,%20May%203,%202026.pdf"
-DEFAULT_MEET_NAME = "2026 Pan American Masters"
+DEFAULT_PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt7b3763235e6b397c/6a111b3ad7617bb684580901/2026_-_NCW_-_Preliminary_Schedule.pdf"
+DEFAULT_MEET_NAME = (
+    "2026 USA Weightlifting National Championships, Powered by Rogue Fitness"
+)
 DEFAULT_OUTPUT_TS = Path(__file__).with_name("convex_output.ts")
 START_MEMBER_ID = 3100
 REQUEST_TIMEOUT_SECONDS = 45
