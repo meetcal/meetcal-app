@@ -21,3 +21,9 @@ url: "https://usamasters.net/masters-records-grand-slam"
 filter:
   - css: ".kv-ee-row.kv-ee-position"
   - html2text
+---
+name: "USAW Nats"
+url: "https://www.usaweightlifting.org/2026-national-championships"
+filter:
+  - css: "chakra-list__item css-8kwtd2"
+  - html2text
