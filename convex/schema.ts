@@ -29,7 +29,8 @@ export default defineSchema({
     .index("by_memberId", ["memberId"])
     // Used by fetch-club-stats.ts: eq('club', club) and eq('club', club) + eq('meet', meet)
     .index("by_club", ["club"])
-    .index("by_club_and_meet", ["club", "meet"]),
+    .index("by_club_and_meet", ["club", "meet"])
+    .index("by_meet_and_wso", ["meet", "wso"]),
 
   // ── intl_rankings ─────────────────────────────────────────────────────────
   intl_rankings: defineTable({

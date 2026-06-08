@@ -69,6 +69,16 @@ export const getByClub = query({
   },
 });
 
+export const getByWsoAndMeet = query({
+  args: { meet: v.string(), wso: v.string() },
+  handler: async (ctx, { meet, wso }) => {
+    return ctx.db
+      .query("athletes")
+      .withIndex("by_meet_and_wso", (q) => q.eq("meet", meet).eq("wso", wso))
+      .collect();
+  },
+});
+
 // Get athletes for a specific club at a specific meet
 export const getByClubAndMeet = query({
   args: { club: v.string(), meet: v.string() },

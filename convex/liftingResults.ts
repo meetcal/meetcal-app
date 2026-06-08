@@ -21,6 +21,19 @@ export const getByNames = query({
   },
 });
 
+export const getByName = query({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    const batches = await ctx.db
+      .query("lifting_results")
+      .withIndex("by_name", (q) => q.eq("name", name))
+      .collect()
+
+    batches.sort((a, b) => b.date.localeCompare(a.date));
+    return batches;
+  },
+});
+
 // Get historical results for a list of athletes since a cutoff date (for attempt estimator)
 // Uses by_name_and_date index to avoid returning unbounded history
 export const getByNamesSince = query({
@@ -111,6 +124,32 @@ export const getNationalRankings = query({
         q.and(
           q.neq(q.field("name"), undefined),
           q.neq(q.field("total"), undefined)
+        )
+      )
+      .collect();
+
+    // Sort by total descending (highest first, matching Supabase behaviour)
+    rows.sort((a, b) => (b.total ?? 0) - (a.total ?? 0));
+    return rows;
+  },
+});
+
+export const getNatRankings = query({
+  args: {
+    federation: v.string(),
+    ageCategory: v.string(),
+  },
+  handler: async (ctx, { federation, ageCategory }) => {
+    const rows = await ctx.db
+      .query("lifting_results")
+      .withIndex("by_federation_and_age", (q) =>
+        q.eq("federation", federation).eq("age", ageCategory)
+      )
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("name"), undefined),
+          q.neq(q.field("total"), undefined),
+          q.neq(q.field("total"), 0)
         )
       )
       .collect();

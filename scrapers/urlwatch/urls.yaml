@@ -21,9 +21,3 @@ url: "https://usamasters.net/masters-records-grand-slam"
 filter:
   - css: ".kv-ee-row.kv-ee-position"
   - html2text
----
-name: "USAW International Rankings"
-url: "https://www.usaweightlifting.org/resources/athlete-information-and-programs/international-squad-standings"
-filter:
-  - css: ".css-11jy1p4"
-  - html2text
