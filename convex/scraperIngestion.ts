@@ -248,6 +248,20 @@ export const ingestSessionSchedule = action({
   },
 });
 
+export const deleteSessionScheduleByMeet = action({
+  args: {
+    scraperSecret: v.string(),
+    meet: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number }> => {
+    assertScraperSecret(args.scraperSecret);
+    const deleted = await ctx.runMutation(internal.schedule.deleteByMeet, {
+      meet: args.meet,
+    });
+    return { deleted };
+  },
+});
+
 // ── WSO Records ────────────────────────────────────────────────────────────────
 
 export const ingestWSORecord = action({

@@ -23,11 +23,16 @@ from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import pdfplumber
 import requests
 from dotenv import load_dotenv
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 load_dotenv()
 load_dotenv(Path(__file__).resolve().parents[3] / ".env.local")
@@ -41,6 +46,7 @@ def get_convex_url() -> Optional[str]:
 # Top-level scraper config
 # ---------------------------
 PDF_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt7b3763235e6b397c/6a111b3ad7617bb684580901/2026_-_NCW_-_Preliminary_Schedule.pdf"
+START_LIST_URL = "https://assets.contentstack.io/v3/assets/blteb7d012fc7ebef7f/blt4c16dd3b8ea80091/6a29bded2650fd0c87594a5f/2026_-_NCW_-_START_LIST.pdf"
 MEET_NAME = "2026 USA Weightlifting National Championships, Powered by Rogue Fitness"
 START_ID = 123
 DEFAULT_YEAR = 2026
@@ -61,6 +67,7 @@ PLATFORM_VALUES = {
     "ROGUE",
 }
 CONVEX_INGEST_PATH = "scraperIngestion:ingestSessionSchedule"
+CONVEX_DELETE_PATH = "scraperIngestion:deleteSessionScheduleByMeet"
 PLATFORM_SORT_ORDER = {
     "Red": 0,
     "White": 1,
@@ -73,6 +80,26 @@ PLATFORM_ALIASES = {
     "A": "RED",
     "B": "WHITE",
     "C": "BLUE",
+}
+START_LIST_TAIL_PATTERN = re.compile(
+    rf"\s(?P<entry_total>\d{{1,3}})(?:\s*(?P<group>[A-Z]))?\s+"
+    rf"(?P<session>\d+(?:\.\d+)?)\s*(?P<platform>{'|'.join(PLATFORM_VALUES)})\s+"
+    r"\d{1,2}-[A-Za-z]{3}\s+\d{1,2}:\d{2}\s+[AP]M$",
+    re.IGNORECASE,
+)
+START_LIST_YEAR_AGE_PATTERN = re.compile(
+    r"(?:\b[A-Z]{2,3}\b\s+)?(19\d{2}|20\d{2})\s+(\d{1,2})(?=\s|[A-Za-z]|$)"
+)
+START_LIST_COMP_MARKERS = {
+    "ADAP",
+    "JR",
+    "JUNIOR",
+    "MIL",
+    "NAT",
+    "OPEN",
+    "TKOK",
+    "UNI",
+    "WSO",
 }
 MONTH_NAMES = (
     "January",
@@ -166,6 +193,16 @@ class OcrLine:
     @property
     def text(self) -> str:
         return " ".join(str(word["text"]) for word in self.words)
+
+
+@dataclass
+class CompactScheduleClass:
+    category: str
+    weight: str
+    group: str
+    count: int
+    is_wso: bool
+    is_marker: bool
 
 
 def download_pdf(url: str) -> BytesIO:
@@ -1253,6 +1290,863 @@ def parse_rows_from_table(
     return rows, current_date, current_session, current_platform
 
 
+def parse_basic_schedule_text_line(line: str, meet_name: str) -> Optional[dict]:
+    match = re.fullmatch(
+        r"\s*(?P<session>\d+(?:\.\d+)?)\s+"
+        r"(?P<platform>[A-Za-z]+)\s+"
+        r"(?P<date>\d{1,2}-[A-Za-z]{3}|[A-Za-z]{3,9}\s+\d{1,2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+"
+        r"(?P<time>\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+"
+        r"(?P<count>\d+)\s*",
+        line,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    session_id = parse_session_value(match.group("session"))
+    platform = extract_platform([match.group("platform")])
+    date_value = parse_date_value(match.group("date"), DEFAULT_YEAR)
+    start_time = parse_time_value(match.group("time"))
+    if not (session_id is not None and platform and date_value and start_time):
+        return None
+
+    weigh_time = (
+        datetime.combine(date_cls(2000, 1, 1), start_time)
+        - timedelta(hours=WEIGH_IN_OFFSET_HOURS)
+    ).time()
+    return {
+        "date": date_value,
+        "session_id": session_id,
+        "start_time": start_time.strftime("%H:%M:%S"),
+        "weigh_in_time": weigh_time.strftime("%H:%M:%S"),
+        "platform": platform,
+        "weight_class": "",
+        "meet": meet_name,
+    }
+
+
+def extract_basic_schedule_text_rows(page: pdfplumber.page.Page, meet_name: str) -> List[dict]:
+    rows: List[dict] = []
+    text = page.extract_text() or ""
+    for raw_line in text.splitlines():
+        line = normalize_cell(raw_line)
+        parsed = parse_basic_schedule_text_line(line=line, meet_name=meet_name)
+        if parsed:
+            rows.append(parsed)
+    return rows
+
+
+COMPACT_WEEKDAY_PATTERN = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+COMPACT_MONTH_PATTERN = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+COMPACT_PLATFORM_PATTERN = "|".join(sorted(PLATFORM_VALUES, key=len, reverse=True))
+COMPACT_TIME_PATTERN = r"\d{1,2}:\d{2}\s*(?:AM|PM)"
+COMPACT_PLATFORM_RE = re.compile(
+    rf"^(?:{COMPACT_WEEKDAY_PATTERN}\s+)?"
+    rf"(?:(?:{COMPACT_MONTH_PATTERN})\s+\d{{1,2}}\s+)?"
+    rf"(?:(?P<session>\d{{1,3}})\s+)?"
+    rf"(?P<platform>{COMPACT_PLATFORM_PATTERN})\s+"
+    rf"(?P<weigh>{COMPACT_TIME_PATTERN})\s+"
+    rf"(?P<start>{COMPACT_TIME_PATTERN})\s+"
+    r"(?P<gender>[FM])(?:\s+(?P<rest>.+))?$",
+    re.IGNORECASE,
+)
+COMPACT_CLASS_TOTAL_RE = re.compile(
+    r"^(?P<head>.+?)\s+\d+\s*[-–]\s*\d+\s+(?P<count>\d+)(?:\s+\d+)?$"
+)
+COMPACT_CLASS_HEAD_RE = re.compile(
+    r"^(?P<prefix>.*?)\s*(?P<weight>\d{1,3}\+?(?:\s*[-–]\s*\d{1,3}\+?)?)\s+"
+    r"(?P<group>[A-Z])$"
+)
+COMPACT_MARKERS = {"ADAP", "MIL", "NAT", "WSO"}
+
+
+def is_compact_schedule_pdf(pdf: pdfplumber.PDF) -> bool:
+    text = "\n".join(page.extract_text() or "" for page in pdf.pages[:2])
+    return (
+        "Age Weight # Lifters" in text
+        and "Date Session Platform Weigh-In Start" in text
+    )
+
+
+def compact_clean_line(line: str) -> str:
+    line = normalize_cell(line)
+    line = line.replace("—", "-").replace("–", "-")
+    return line
+
+
+def compact_is_noise_line(line: str) -> bool:
+    upper = line.upper()
+    if not line:
+        return True
+    if upper.startswith("2026 USAW"):
+        return True
+    if "AGE WEIGHT # LIFTERS" in upper:
+        return True
+    if "DATE SESSION PLATFORM" in upper:
+        return True
+    if upper.startswith("OWL CMS"):
+        return True
+    if re.fullmatch(r"PAGE\s+\d+\s+OF\s+\d+", upper):
+        return True
+    return False
+
+
+def compact_strip_prefixes(line: str) -> str:
+    clean = compact_clean_line(line)
+    clean = re.sub(rf"^(?:{COMPACT_WEEKDAY_PATTERN})\s+", "", clean, flags=re.I)
+    clean = re.sub(
+        rf"^(?:{COMPACT_MONTH_PATTERN})\s+\d{{1,2}}\s+", "",
+        clean,
+        flags=re.I,
+    )
+    clean = re.sub(r"^\d{1,3}\s+(?=(?:ADAP|MIL|NAT|WSO|U\d{1,2}|JR|U25|Open|M\d{2}|W\d{2}|\d))", "", clean, flags=re.I)
+    return normalize_cell(clean)
+
+
+def normalize_compact_weight(weight: str) -> str:
+    return normalize_cell(weight.replace("–", "-").replace("—", "-")).replace(" - ", "-")
+
+
+def parse_compact_class_text(text: str) -> Optional[CompactScheduleClass]:
+    clean = compact_strip_prefixes(text)
+    total_match = COMPACT_CLASS_TOTAL_RE.fullmatch(clean)
+    if not total_match:
+        return None
+
+    head = normalize_cell(total_match.group("head"))
+    head_match = COMPACT_CLASS_HEAD_RE.fullmatch(head)
+    if not head_match:
+        return None
+
+    prefix_tokens = [
+        token
+        for token in normalize_cell(head_match.group("prefix")).split()
+        if token
+    ]
+    marker_tokens = {token.upper() for token in prefix_tokens if token.upper() in COMPACT_MARKERS}
+    category_tokens = [
+        token
+        for token in prefix_tokens
+        if token.upper() not in COMPACT_MARKERS
+    ]
+    category = display_start_list_category(category_tokens[-1]) if category_tokens else ""
+    if category.upper() == "OPEN":
+        category = "Open"
+
+    return CompactScheduleClass(
+        category=category,
+        weight=normalize_compact_weight(head_match.group("weight")),
+        group=head_match.group("group").upper(),
+        count=int(total_match.group("count")),
+        is_wso="WSO" in marker_tokens,
+        is_marker=bool(marker_tokens - {"WSO"}),
+    )
+
+
+def compact_weight_bounds(weight: str) -> Tuple[int, int, bool]:
+    clean = normalize_compact_weight(weight)
+    numbers = [int(value) for value in re.findall(r"\d+", clean)]
+    if not numbers:
+        return 0, 0, False
+    return numbers[0], numbers[-1], clean.endswith("+")
+
+
+def compact_weight_sort_key(weight: str) -> Tuple[int, int, str]:
+    low, high, _ = compact_weight_bounds(weight)
+    return low, high, weight
+
+
+def format_compact_weight_range(
+    weights: Set[str], strip_plus_for_range: bool = False
+) -> str:
+    if not weights:
+        return ""
+
+    ordered = sorted(weights, key=compact_weight_sort_key)
+    if len(ordered) == 1:
+        weight = ordered[0]
+        if strip_plus_for_range:
+            weight = weight.rstrip("+")
+        return f"{weight}kg"
+
+    lows = []
+    highs = []
+    has_plus_high = False
+    for weight in ordered:
+        low, high, plus_high = compact_weight_bounds(weight)
+        lows.append(low)
+        highs.append(high)
+        has_plus_high = has_plus_high or plus_high
+
+    high_text = str(max(highs))
+    if has_plus_high and not strip_plus_for_range:
+        high_text += "+"
+    return f"{min(lows)}-{high_text}kg"
+
+
+def format_compact_schedule_label(classes: Sequence[CompactScheduleClass]) -> str:
+    if not classes:
+        return ""
+
+    if all(item.is_wso for item in classes):
+        weights = {item.weight for item in classes}
+        return f"WSO {format_compact_weight_range(weights, strip_plus_for_range=True)}"
+
+    visible_classes = [item for item in classes if not item.is_wso]
+    if not visible_classes:
+        visible_classes = list(classes)
+
+    covered_by_group: Dict[str, Set[str]] = {}
+    for item in visible_classes:
+        if item.category and not item.is_marker:
+            covered_by_group.setdefault(item.group, set()).add(item.weight)
+
+    grouped: Dict[Tuple[str, str], Set[str]] = {}
+    for item in visible_classes:
+        if item.is_marker and item.weight in covered_by_group.get(item.group, set()):
+            continue
+        grouped.setdefault((item.category, item.group), set()).add(item.weight)
+
+    label_groups: Dict[Tuple[str, str], List[str]] = {}
+    for (category, group), weights in grouped.items():
+        weight_range = format_compact_weight_range(weights)
+        label_groups.setdefault((weight_range, group), []).append(category)
+
+    labels = []
+    for (weight_range, group), categories in sorted(
+        label_groups.items(),
+        key=lambda item: (
+            min(start_list_category_sort_key(category or "ZZ") for category in item[1]),
+            compact_weight_sort_key(item[0][0].replace("kg", "")),
+            item[0][1],
+        ),
+    ):
+        display_categories = [
+            display_start_list_category(category)
+            for category in sorted(categories, key=start_list_category_sort_key)
+            if category
+        ]
+        category_prefix = f"{'/'.join(display_categories)} " if display_categories else ""
+        group_suffix = f" {group}" if group else ""
+        labels.append(f"{category_prefix}{weight_range}{group_suffix}")
+    return " // ".join(labels)
+
+
+def extract_compact_visual_lines(pdf_file: BytesIO) -> List[str]:
+    lines: List[str] = []
+    with pdfplumber.open(pdf_file) as pdf:
+        for page in pdf.pages:
+            words = page.extract_words(
+                x_tolerance=2,
+                y_tolerance=3,
+                keep_blank_chars=False,
+                use_text_flow=False,
+            )
+            current_words: List[dict] = []
+            current_top: Optional[float] = None
+
+            for word in sorted(words, key=lambda item: (item["top"], item["x0"])):
+                top = float(word["top"])
+                if current_top is None or abs(top - current_top) <= 3:
+                    current_words.append(word)
+                    current_top = top if current_top is None else current_top
+                    continue
+
+                line_words = sorted(current_words, key=lambda item: item["x0"])
+                lines.append(compact_clean_line(" ".join(item["text"] for item in line_words)))
+                current_words = [word]
+                current_top = top
+
+            if current_words:
+                line_words = sorted(current_words, key=lambda item: item["x0"])
+                lines.append(compact_clean_line(" ".join(item["text"] for item in line_words)))
+    return lines
+
+
+def compact_platform_order(platform: str) -> int:
+    return PLATFORM_SORT_ORDER.get(platform.title(), 99)
+
+
+def extract_compact_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
+    print("Extracting rows using compact OWLCMS schedule parser...")
+    raw_lines = extract_compact_visual_lines(pdf_file)
+
+    first_date = None
+    for line in raw_lines:
+        parsed_date = parse_date_value(line, DEFAULT_YEAR)
+        if parsed_date:
+            first_date = parsed_date
+            break
+    if first_date is None:
+        raise ValueError("Could not infer first date from compact schedule PDF")
+
+    rows: List[dict] = []
+    pending_classes: List[CompactScheduleClass] = []
+    current_row: Optional[dict] = None
+    current_session: Optional[int] = None
+    pending_session: Optional[int] = None
+    last_platform_order: Optional[int] = None
+
+    def finish_current_row() -> None:
+        nonlocal current_row
+        if not current_row:
+            return
+        rows.append(current_row)
+        current_row = None
+
+    def add_class_to_current(item: CompactScheduleClass) -> None:
+        nonlocal current_row
+        if not current_row:
+            pending_classes.append(item)
+            return
+        current_row["_classes"].append(item)
+        current_row["_class_total"] += item.count
+        if current_row["_target_total"] and current_row["_class_total"] >= current_row["_target_total"]:
+            finish_current_row()
+
+    for raw_line in raw_lines:
+        line = compact_clean_line(raw_line)
+        if compact_is_noise_line(line):
+            continue
+
+        if re.fullmatch(r"\d{1,3}", line):
+            session_marker = int(line)
+            if (
+                current_row
+                and int(current_row["session_id"]) == session_marker
+                and current_row.get("_target_total")
+                and current_row.get("_class_total", 0) < current_row.get("_target_total", 0)
+            ):
+                continue
+            finish_current_row()
+            pending_session = session_marker
+            current_session = pending_session
+            last_platform_order = None
+            continue
+
+        platform_match = COMPACT_PLATFORM_RE.fullmatch(line)
+        if platform_match:
+            explicit_session = platform_match.group("session")
+            platform = extract_platform([platform_match.group("platform")])
+            if not platform:
+                continue
+
+            weigh_time = parse_time_value(platform_match.group("weigh"))
+            start_time = parse_time_value(platform_match.group("start"))
+            if not weigh_time or not start_time:
+                continue
+
+            start_time_text = start_time.strftime("%H:%M:%S")
+            weigh_time_text = weigh_time.strftime("%H:%M:%S")
+            continues_current_row = (
+                current_row
+                and current_row["platform"] == platform
+                and current_row["start_time"] == start_time_text
+                and current_row["weigh_in_time"] == weigh_time_text
+                and current_row.get("_target_total")
+                and current_row.get("_class_total", 0) < current_row.get("_target_total", 0)
+            )
+
+            order = compact_platform_order(platform)
+            if explicit_session:
+                current_session = int(explicit_session)
+                pending_session = None
+            elif continues_current_row:
+                current_session = int(current_row["session_id"])
+            elif pending_session is not None:
+                current_session = pending_session
+                pending_session = None
+            elif current_session is None:
+                current_session = 1
+            elif last_platform_order is not None and order <= last_platform_order:
+                current_session += 1
+
+            last_platform_order = order
+            if current_session is None:
+                continue
+
+            rest = normalize_cell(platform_match.group("rest") or "")
+            target_total = 0
+            inline_class = parse_compact_class_text(rest) if rest else None
+            if inline_class:
+                target_match = re.search(r"\s(\d+)\s*$", rest)
+                target_total = int(target_match.group(1)) if target_match else inline_class.count
+            elif rest and re.fullmatch(r"\d+", rest):
+                target_total = int(rest)
+
+            if (
+                continues_current_row
+                and int(current_row["session_id"]) == current_session
+            ):
+                if target_total:
+                    current_row["_target_total"] = target_total
+                if inline_class:
+                    add_class_to_current(inline_class)
+                continue
+
+            finish_current_row()
+
+            current_row = {
+                "date": first_date,
+                "session_id": float(current_session),
+                "start_time": start_time_text,
+                "weigh_in_time": weigh_time_text,
+                "platform": platform,
+                "weight_class": "",
+                "meet": meet_name,
+                "_gender": platform_match.group("gender").upper(),
+                "_classes": [],
+                "_target_total": target_total,
+                "_class_total": 0,
+            }
+            for item in pending_classes:
+                add_class_to_current(item)
+            pending_classes = []
+            if inline_class:
+                add_class_to_current(inline_class)
+            continue
+
+        parsed_class = parse_compact_class_text(line)
+        if parsed_class:
+            add_class_to_current(parsed_class)
+
+    finish_current_row()
+
+    merged_by_key: Dict[Tuple[float, str, str, str], dict] = {}
+    merged_order: List[Tuple[float, str, str, str]] = []
+    for row in rows:
+        key = (
+            row["session_id"],
+            row["start_time"],
+            row["weigh_in_time"],
+            row["platform"],
+        )
+        if key not in merged_by_key:
+            merged_by_key[key] = row
+            merged_order.append(key)
+            continue
+        merged_by_key[key]["_classes"].extend(row.get("_classes", []))
+        merged_by_key[key]["_class_total"] += row.get("_class_total", 0)
+
+    rows = [merged_by_key[key] for key in merged_order]
+
+    current_date = datetime.strptime(first_date, "%Y-%m-%d").date()
+    previous_start: Optional[time] = None
+    previous_session: Optional[float] = None
+    for row in rows:
+        start_time = parse_time_value(row["start_time"])
+        session_id = row["session_id"]
+        if (
+            previous_session is not None
+            and session_id != previous_session
+            and previous_start is not None
+            and start_time
+            and start_time < previous_start
+        ):
+            current_date += timedelta(days=1)
+        row["date"] = current_date.isoformat()
+        if start_time:
+            previous_start = start_time
+        previous_session = session_id
+        row["_lifter_count"] = row.get("_class_total", 0)
+        row["weight_class"] = format_compact_schedule_label(row.pop("_classes"))
+        row.pop("_target_total", None)
+        row.pop("_class_total", None)
+
+    print(f"Extracted {len(rows)} compact schedule rows")
+    return rows
+
+
+def has_start_list_tail(line: str) -> bool:
+    return bool(START_LIST_TAIL_PATTERN.search(line))
+
+
+def is_withdrawn_start_list_line(line: str) -> bool:
+    if has_start_list_tail(line):
+        return False
+    if not START_LIST_YEAR_AGE_PATTERN.search(line):
+        return False
+    tokens = normalize_cell(line).split()
+    if len(tokens) < 2:
+        return False
+    withdrawal_tokens = [
+        token for token in tokens[-3:] if re.fullmatch(r"[WB]{4,}", token.upper())
+    ]
+    return bool(withdrawal_tokens) and any("W" in token.upper() for token in withdrawal_tokens)
+
+
+def iter_start_list_lines(pdf_bytes: bytes) -> Sequence[str]:
+    if PdfReader is None:
+        raise RuntimeError("pypdf is required to read start-list PDF text")
+
+    lines = []
+    reader = PdfReader(BytesIO(pdf_bytes))
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        for raw_line in text.splitlines():
+            line = normalize_cell(raw_line)
+            if not line:
+                continue
+            if is_withdrawn_start_list_line(line):
+                continue
+            if line.startswith("WSO Lot"):
+                continue
+            if "Start List" in line or "presented by" in line.lower():
+                continue
+            lines.append(line)
+    return lines
+
+
+def iter_start_list_row_lines(pdf_bytes: bytes) -> Sequence[str]:
+    rows = []
+    pending_line = ""
+
+    for line in iter_start_list_lines(pdf_bytes):
+        if pending_line:
+            combined_line = normalize_cell(f"{pending_line} {line}")
+            if has_start_list_tail(combined_line):
+                rows.append(combined_line)
+                pending_line = ""
+                continue
+            if has_start_list_tail(line):
+                rows.append(line)
+                pending_line = ""
+                continue
+            pending_line = combined_line
+            continue
+
+        if has_start_list_tail(line):
+            rows.append(line)
+        else:
+            pending_line = line
+
+    return rows
+
+
+def is_start_list_category_token(token: str) -> bool:
+    upper = token.upper()
+    return (
+        upper in START_LIST_COMP_MARKERS
+        or re.fullmatch(r"U\d{1,2}", upper) is not None
+        or re.fullmatch(r"\d{1,2}-\d{1,2}(?:YO)?", upper) is not None
+        or re.fullmatch(r"[MW]\d{2}", upper) is not None
+    )
+
+
+def split_start_list_competitions(after_year: str) -> str:
+    tokens = normalize_start_list_competition_text(after_year).split()
+    if tokens and tokens[0] == "0":
+        tokens = tokens[1:]
+
+    for idx, token in enumerate(tokens):
+        upper = token.upper()
+        next_token = tokens[idx + 1] if idx + 1 < len(tokens) else ""
+        if is_start_list_category_token(upper):
+            return " ".join(tokens[idx:])
+        if upper in {"W", "M"} and normalize_start_list_weight(next_token):
+            return " ".join(tokens[idx:])
+    return ""
+
+
+def normalize_start_list_weight(token: str) -> str:
+    clean = token.strip().replace(" ", "")
+    if re.fullmatch(r"\d{2,3}\+?", clean):
+        return clean
+    return ""
+
+
+def normalize_start_list_competition_text(value: str) -> str:
+    normalized = normalize_cell(value)
+    return re.sub(r"(?<=[A-Za-z.])(?=(WSO|NAT|MIL|ADAP)\b)", " ", normalized)
+
+
+def start_list_weight_value(weight: str) -> int:
+    return int(re.sub(r"\D", "", weight) or "0")
+
+
+def start_list_category_sort_key(category: str) -> Tuple[int, str]:
+    upper = category.upper()
+    if match := re.fullmatch(r"U(\d{1,2})", upper):
+        return int(match.group(1)), upper
+    if match := re.fullmatch(r"(\d{1,2})-(\d{1,2})(?:YO)?", upper):
+        return int(match.group(1)), upper
+    if upper == "JR":
+        return 18, upper
+    if upper == "U23":
+        return 23, upper
+    if upper == "OPEN":
+        return 30, upper
+    if re.fullmatch(r"[MW](\d{2})", upper):
+        return int(upper[1:]), upper
+    if upper == "WSO":
+        return 900, upper
+    return 999, upper
+
+
+def format_weight_range(weights: Set[str], strip_plus_for_range: bool = False) -> str:
+    ordered = sorted(weights, key=start_list_weight_value)
+    if not ordered:
+        return ""
+    if len(ordered) == 1:
+        weight = ordered[0]
+        if strip_plus_for_range:
+            weight = weight.rstrip("+")
+        return f"{weight}kg"
+
+    first = ordered[0].rstrip("+") if strip_plus_for_range else ordered[0]
+    last = ordered[-1].rstrip("+") if strip_plus_for_range else ordered[-1]
+    return f"{first}-{last}kg"
+
+
+def display_start_list_category(category: str) -> str:
+    upper = category.upper()
+    if re.fullmatch(r"14-15(?:YO)?", upper):
+        return "U15"
+    if re.fullmatch(r"16-17(?:YO)?", upper):
+        return "U17"
+    return category
+
+
+def extract_start_list_class_entries(
+    competitions: str, group: str, source_wso: str, athlete_key: str
+) -> Sequence[dict]:
+    tokens = [
+        token
+        for token in normalize_start_list_competition_text(competitions)
+        .replace("/", " / ")
+        .split()
+        if token != "/"
+    ]
+    entries = []
+    is_wso = any(token.upper() == "WSO" for token in tokens)
+
+    for idx, token in enumerate(tokens):
+        upper = token.upper().replace("JUNIOR", "JR")
+        if upper == "WSO":
+            continue
+        if not is_start_list_category_token(upper):
+            continue
+
+        gender_index = None
+        for candidate_idx in range(idx + 1, min(idx + 5, len(tokens))):
+            if tokens[candidate_idx].upper() in {"W", "M"}:
+                gender_index = candidate_idx
+                break
+        if gender_index is None or gender_index + 1 >= len(tokens):
+            continue
+
+        weight = normalize_start_list_weight(tokens[gender_index + 1])
+        if not weight:
+            continue
+
+        entries.append(
+            {
+                "category": (
+                    "WSO"
+                    if is_wso
+                    else "" if upper in {"ADAP", "MIL", "NAT"} else upper
+                ),
+                "group": group,
+                "weight": weight,
+                "is_wso": is_wso,
+                "is_marker": upper in {"ADAP", "MIL", "NAT"},
+                "source_wso": source_wso,
+                "athlete_key": athlete_key,
+            }
+        )
+
+    return entries
+
+
+def extract_start_list_source_wso(before_year: str) -> str:
+    match = re.match(r"(?P<wso>.+?)\s+\d+\s*.+$", normalize_cell(before_year))
+    return normalize_cell(match.group("wso")) if match else ""
+
+
+def parse_start_list_schedule_classes(line: str) -> Optional[Tuple[Tuple[int, str], Sequence[dict]]]:
+    tail_match = START_LIST_TAIL_PATTERN.search(line)
+    if not tail_match:
+        return None
+
+    year_age_match = START_LIST_YEAR_AGE_PATTERN.search(line[: tail_match.start()])
+    if not year_age_match:
+        return None
+
+    session_id = parse_session_value(tail_match.group("session"))
+    platform = extract_platform([tail_match.group("platform")])
+    group = (tail_match.group("group") or "").upper()
+    if session_id is None or not platform:
+        return None
+
+    source_wso = extract_start_list_source_wso(line[: year_age_match.start()])
+    athlete_key = normalize_cell(line[: tail_match.start()])
+    competitions = split_start_list_competitions(
+        line[year_age_match.end() : tail_match.start()]
+    )
+    if not competitions:
+        return None
+
+    class_entries = extract_start_list_class_entries(
+        competitions, group, source_wso, athlete_key
+    )
+    if not class_entries:
+        return None
+    return (int(session_id), platform), class_entries
+
+
+def format_start_list_schedule_label(class_entries: Sequence[dict]) -> str:
+    wso_entries = [entry for entry in class_entries if entry.get("is_wso")]
+    non_wso_entries = [entry for entry in class_entries if not entry.get("is_wso")]
+    source_wsos = {
+        entry.get("source_wso", "")
+        for entry in class_entries
+        if entry.get("source_wso")
+    }
+    athlete_keys = {
+        entry.get("athlete_key", "")
+        for entry in class_entries
+        if entry.get("athlete_key")
+    }
+    wso_athlete_keys = {
+        entry.get("athlete_key", "")
+        for entry in wso_entries
+        if entry.get("athlete_key")
+    }
+    all_athletes_entered_wso = bool(athlete_keys) and athlete_keys == wso_athlete_keys
+    if wso_entries and (len(source_wsos) == 1 or all_athletes_entered_wso):
+        wso_weights = {entry["weight"] for entry in wso_entries}
+        return f"WSO {format_weight_range(wso_weights, strip_plus_for_range=True)}"
+
+    if non_wso_entries:
+        class_entries = non_wso_entries
+    else:
+        class_entries = [
+            {**entry, "category": "", "is_wso": False, "is_marker": True}
+            for entry in wso_entries
+        ]
+
+    group_counts_by_category: Dict[str, Dict[str, int]] = {}
+    weights_by_category_group: Dict[Tuple[str, str], Set[str]] = {}
+    for entry in class_entries:
+        if entry.get("is_marker") or not entry.get("category"):
+            continue
+        category = entry["category"]
+        group = entry.get("group", "")
+        group_counts_by_category.setdefault(category, {})
+        group_counts_by_category[category][group] = (
+            group_counts_by_category[category].get(group, 0) + 1
+        )
+        weights_by_category_group.setdefault((category, group), set()).add(
+            entry["weight"]
+        )
+
+    dominant_group_by_category = {
+        category: max(group_counts.items(), key=lambda item: item[1])[0]
+        for category, group_counts in group_counts_by_category.items()
+    }
+
+    normalized_entries = []
+    for entry in class_entries:
+        next_entry = dict(entry)
+        category = next_entry.get("category")
+        group = next_entry.get("group", "")
+        dominant_group = dominant_group_by_category.get(category or "")
+        if (
+            category
+            and dominant_group
+            and group != dominant_group
+            and group_counts_by_category.get(category, {}).get(group) == 1
+            and next_entry["weight"]
+            in weights_by_category_group.get((category, dominant_group), set())
+        ):
+            next_entry["group"] = dominant_group
+        normalized_entries.append(next_entry)
+
+    covered_by_category: Dict[str, Set[str]] = {}
+    for entry in normalized_entries:
+        if entry.get("category") and not entry.get("is_marker"):
+            covered_by_category.setdefault(entry.get("group", ""), set()).add(
+                entry["weight"]
+            )
+
+    grouped: Dict[Tuple[str, str], Set[str]] = {}
+    for entry in normalized_entries:
+        if (
+            entry.get("is_marker")
+            and entry["weight"] in covered_by_category.get(entry.get("group", ""), set())
+        ):
+            continue
+        key = (entry["category"], entry.get("group", ""))
+        grouped.setdefault(key, set()).add(entry["weight"])
+
+    label_groups: Dict[Tuple[str, str], List[str]] = {}
+    for (category, group), weights in grouped.items():
+        weight_range = format_weight_range(weights)
+        label_groups.setdefault((weight_range, group), []).append(category)
+
+    labels = []
+    for (weight_range, group), categories in sorted(
+        label_groups.items(),
+        key=lambda item: (
+            min(start_list_category_sort_key(category) for category in item[1]),
+            item[0][1],
+            item[0][0],
+        ),
+    ):
+        display_categories = [
+            display_start_list_category(category)
+            for category in sorted(categories, key=start_list_category_sort_key)
+            if category
+        ]
+        category_prefix = f"{'/'.join(display_categories)} " if display_categories else ""
+        group_suffix = f" {group}" if group else ""
+        labels.append(f"{category_prefix}{weight_range}{group_suffix}")
+    return " // ".join(labels)
+
+
+def extract_start_list_schedule_labels(start_list_url: str) -> Dict[Tuple[int, str], str]:
+    print(f"Downloading start-list PDF for schedule classes: {start_list_url}")
+    pdf_file = download_pdf(start_list_url)
+    class_entries_by_session: Dict[Tuple[int, str], List[dict]] = {}
+
+    for line in iter_start_list_row_lines(pdf_file.getvalue()):
+        parsed = parse_start_list_schedule_classes(line)
+        if not parsed:
+            continue
+        key, class_entries = parsed
+        class_entries_by_session.setdefault(key, []).extend(class_entries)
+
+    labels = {
+        key: format_start_list_schedule_label(entries)
+        for key, entries in class_entries_by_session.items()
+    }
+    print(f"Extracted start-list class labels for {len(labels)} schedule rows")
+    return labels
+
+
+def apply_start_list_schedule_labels(
+    rows: Sequence[dict], start_list_url: Optional[str]
+) -> List[dict]:
+    if not start_list_url:
+        return [dict(row) for row in rows]
+
+    labels = extract_start_list_schedule_labels(start_list_url)
+    updated = []
+    missing = []
+    for row in rows:
+        next_row = dict(row)
+        key = (int(next_row["session_id"]), next_row["platform"])
+        if not next_row.get("weight_class") and labels.get(key):
+            next_row["weight_class"] = labels[key]
+        elif not next_row.get("weight_class"):
+            missing.append(key)
+        updated.append(next_row)
+
+    if missing:
+        print(f"Missing start-list class labels for {len(set(missing))} schedule rows")
+    return updated
+
+
 def class_sort_key(weight_class: str) -> Tuple[str, int, str]:
     m = re.match(r"\s*([MW])(\d{2})\b", weight_class, re.IGNORECASE)
     if not m:
@@ -1359,17 +2253,25 @@ def dedupe_rows(rows: Sequence[dict]) -> List[dict]:
     return list(unique.values())
 
 
-def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
+def extract_schedule_data(
+    pdf_file: BytesIO, meet_name: str, start_list_url: Optional[str] = None
+) -> List[dict]:
     with pdfplumber.open(pdf_file) as pdf:
+        uses_compact_schedule = is_compact_schedule_pdf(pdf)
         uses_ncw_prelim = any(
             table_has_ncw_prelim_headers(table)
             for page in pdf.pages
             for table in (page.extract_tables() or [])
         )
 
+    if uses_compact_schedule:
+        pdf_file.seek(0)
+        return extract_compact_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+
     if uses_ncw_prelim:
         pdf_file.seek(0)
-        return extract_ncw_prelim_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+        rows = extract_ncw_prelim_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+        return apply_start_list_schedule_labels(rows, start_list_url)
 
     print("Extracting rows from PDF...")
     all_rows: List[dict] = []
@@ -1395,6 +2297,9 @@ def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
                     )
                 )
                 all_rows.extend(parsed)
+            all_rows.extend(
+                extract_basic_schedule_text_rows(page=page, meet_name=meet_name)
+            )
 
         if not all_rows:
             print(
@@ -1408,6 +2313,7 @@ def extract_schedule_data(pdf_file: BytesIO, meet_name: str) -> List[dict]:
 
     deduped = dedupe_rows(all_rows)
     combined = combine_session_rows(deduped)
+    combined = apply_start_list_schedule_labels(combined, start_list_url)
     print(
         f"Extracted {len(combined)} session rows "
         f"({len(deduped)} unique class rows, {len(all_rows)} raw rows)"
@@ -1543,9 +2449,42 @@ def ingest_to_convex(rows: Sequence[ScheduleRow]) -> dict:
     }
 
 
-def run(mode: str, url: str, meet_name: str, output_path: str, start_id: int) -> None:
+def delete_schedule_from_convex(meet_name: str) -> dict:
+    convex_url = get_convex_url()
+    scraper_secret = os.getenv("SCRAPER_SECRET")
+
+    if not convex_url or not scraper_secret:
+        raise ValueError(
+            "CONVEX_URL (or EXPO_PUBLIC_CONVEX_URL) and SCRAPER_SECRET are required for convex mode"
+        )
+
+    endpoint = f"{convex_url.rstrip('/')}/api/action"
+    response = requests.post(
+        endpoint,
+        json={
+            "path": CONVEX_DELETE_PATH,
+            "args": {"scraperSecret": scraper_secret, "meet": meet_name},
+        },
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data.get("value", {}) if isinstance(data, dict) else {}
+
+
+def run(
+    mode: str,
+    url: str,
+    meet_name: str,
+    output_path: str,
+    start_id: int,
+    start_list_url: Optional[str],
+    replace_existing: bool,
+) -> None:
     pdf_file = download_pdf(url)
-    parsed_rows = extract_schedule_data(pdf_file=pdf_file, meet_name=meet_name)
+    parsed_rows = extract_schedule_data(
+        pdf_file=pdf_file, meet_name=meet_name, start_list_url=start_list_url
+    )
     rows_with_ids = add_ids(parsed_rows, start_id=start_id)
 
     if mode == "dry-run":
@@ -1556,6 +2495,11 @@ def run(mode: str, url: str, meet_name: str, output_path: str, start_id: int) ->
         print(f"Dry run complete. Parsed {len(rows_with_ids)} rows.")
         print(f"Preview file: {output_path}")
         return
+
+    if replace_existing:
+        stats = delete_schedule_from_convex(meet_name)
+        print("Deleted existing Convex schedule rows:")
+        print(stats)
 
     stats = ingest_to_convex(rows_with_ids)
     print("Convex ingest complete:")
@@ -1584,6 +2528,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_OUTPUT_PATH,
         help="Output path for dry-run mode. Defaults to TypeScript rows; use .csv for CSV.",
     )
+    parser.add_argument(
+        "--start-list-url",
+        default=None,
+        help="Optional start-list PDF URL used to fill schedule weight-class labels.",
+    )
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="In convex mode, delete existing schedule rows for the meet before ingesting.",
+    )
     return parser
 
 
@@ -1595,6 +2549,8 @@ def main() -> None:
         meet_name=args.meet,
         output_path=args.output,
         start_id=args.start_id,
+        start_list_url=args.start_list_url,
+        replace_existing=args.replace_existing,
     )
 
 

@@ -79,6 +79,35 @@ export const getByWsoAndMeet = query({
   },
 });
 
+export const getWsoHistoryByNames = query({
+  args: { names: v.array(v.string()), excludeMeet: v.optional(v.string()) },
+  handler: async (ctx, { names, excludeMeet }) => {
+    const requestedNames = new Set(names);
+    if (requestedNames.size === 0) {
+      return [];
+    }
+
+    const rows = await ctx.db.query("athletes").collect();
+    const countsByName = new Map<string, Map<string, number>>();
+
+    for (const row of rows) {
+      if (!requestedNames.has(row.name) || !row.wso || row.meet === excludeMeet) {
+        continue;
+      }
+      if (!countsByName.has(row.name)) {
+        countsByName.set(row.name, new Map());
+      }
+      const counts = countsByName.get(row.name)!;
+      counts.set(row.wso, (counts.get(row.wso) ?? 0) + 1);
+    }
+
+    return [...countsByName.entries()].map(([name, counts]) => {
+      const [wso] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      return { name, wso };
+    });
+  },
+});
+
 // Get athletes for a specific club at a specific meet
 export const getByClubAndMeet = query({
   args: { club: v.string(), meet: v.string() },

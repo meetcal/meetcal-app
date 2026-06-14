@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -21,7 +22,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import unquote, urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pdfplumber
 
@@ -63,6 +64,7 @@ COMP_MARKERS = {
     "JUNIOR",
     "ADAP",
     "MIL",
+    "NAT",
     "TKOK",
     "14-15YO",
     "16-17YO",
@@ -95,6 +97,10 @@ REGISTRATION_HEADER = [
     "Adaptive Athlete",
 ]
 REGISTRATION_AGE_PATTERN = re.compile(r"^(?P<age>\d{2})(?:-\d{2}|\+)?$")
+CLUB_ALIASES = {
+    "Heavy Athletics": "Marin Heavy Athletics",
+    "Jacksonville University Weightlifting": "Jacksonville Weightlifting",
+}
 
 
 @dataclass
@@ -105,6 +111,7 @@ class RunSettings:
     start_member_id: int = START_MEMBER_ID
     source_format: str = "auto"
     run_verification: bool = True
+    backfill_wso_from_convex: bool = False
 
 
 @dataclass
@@ -144,9 +151,41 @@ def has_tail_pattern(line: str) -> bool:
     return bool(TAIL_PATTERN.search(line) or ROGUE_TAIL_PATTERN.search(line))
 
 
+def is_withdrawn_master_line(line: str) -> bool:
+    if has_tail_pattern(line):
+        return False
+    if not YEAR_AGE_PATTERN.search(line):
+        return False
+    tokens = normalize_fragment(line).split()
+    if len(tokens) < 2:
+        return False
+    withdrawal_tokens = [
+        token for token in tokens[-3:] if re.fullmatch(r"[WB]{4,}", token.upper())
+    ]
+    return bool(withdrawal_tokens) and any("W" in token.upper() for token in withdrawal_tokens)
+
+
 def download_pdf(url: str) -> BytesIO:
     with urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
         return BytesIO(response.read())
+
+
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key, value.strip().strip("\"'"))
+
+
+def get_convex_url() -> Optional[str]:
+    root = Path(__file__).resolve().parents[3]
+    load_env_file(root / ".env.local")
+    load_env_file(root / ".env")
+    return os.getenv("CONVEX_URL") or os.getenv("EXPO_PUBLIC_CONVEX_URL")
 
 
 def normalize_fragment(value: str) -> str:
@@ -183,7 +222,7 @@ def normalize_club(raw_club: str) -> str:
     club = normalize_fragment(raw_club)
     if club in {"", "0"}:
         return "Unaffiliated"
-    return club
+    return CLUB_ALIASES.get(club, club)
 
 
 def normalize_weight_class(raw_weight: str) -> str:
@@ -191,6 +230,11 @@ def normalize_weight_class(raw_weight: str) -> str:
     if WEIGHT_CLASS_PATTERN.fullmatch(candidate):
         return candidate
     return ""
+
+
+def normalize_competition_marker_spacing(value: str) -> str:
+    normalized = normalize_fragment(value)
+    return re.sub(r"(?<=[A-Za-z.])(?=(WSO|NAT|MIL|ADAP)\b)", " ", normalized)
 
 
 def parse_owlcms_descriptor(value: str) -> Tuple[str, str, str]:
@@ -318,6 +362,11 @@ def build_run_settings(argv: Optional[Sequence[str]] = None) -> RunSettings:
         "--source-format", choices=sorted(SUPPORTED_SOURCE_FORMATS), default="auto"
     )
     parser.add_argument("--skip-verify", action="store_true")
+    parser.add_argument(
+        "--backfill-wso-from-convex",
+        action="store_true",
+        help="Fill blank WSO values from prior Convex athlete rows with the same name.",
+    )
     args = parser.parse_args(argv)
     return RunSettings(
         pdf_url=args.pdf_url or DEFAULT_PDF_URL,
@@ -326,6 +375,7 @@ def build_run_settings(argv: Optional[Sequence[str]] = None) -> RunSettings:
         start_member_id=args.start_member_id,
         source_format=args.source_format,
         run_verification=not args.skip_verify,
+        backfill_wso_from_convex=args.backfill_wso_from_convex,
     )
 
 
@@ -392,18 +442,25 @@ def parse_weight_class_and_gender(competitions: str) -> Tuple[str, str]:
 def parse_head(before_year: str) -> Optional[Tuple[str, str]]:
     cleaned = normalize_fragment(re.sub(r"\s+[A-Z]{2,3}$", "", before_year.strip()))
     match = re.match(r"(?P<wso>.+?)\s+(?P<lot>\d+)\s*(?P<name>.+)$", cleaned)
-    if not match:
+    if match:
+        wso = normalize_fragment(match.group("wso"))
+        name = normalize_name(match.group("name"))
+        if not name:
+            return None
+        return name, wso
+
+    missing_wso_match = re.match(r"(?P<lot>\d+)\s*(?P<name>.+)$", cleaned)
+    if not missing_wso_match:
         return None
 
-    wso = normalize_fragment(match.group("wso"))
-    name = normalize_name(match.group("name"))
+    name = normalize_name(missing_wso_match.group("name"))
     if not name:
         return None
-    return name, wso
+    return name, ""
 
 
 def split_club_and_competitions(after_year: str) -> Optional[Tuple[str, str]]:
-    tokens = normalize_fragment(after_year).split()
+    tokens = normalize_competition_marker_spacing(after_year).split()
     if tokens and tokens[0] == "0":
         tokens = tokens[1:]
 
@@ -412,7 +469,11 @@ def split_club_and_competitions(after_year: str) -> Optional[Tuple[str, str]]:
         upper = token.upper()
         next_token = tokens[idx + 1] if idx + 1 < len(tokens) else ""
 
-        if upper in COMP_MARKERS or re.fullmatch(r"U\d{1,2}", upper):
+        if (
+            upper in COMP_MARKERS
+            or re.fullmatch(r"U\d{1,2}", upper)
+            or re.fullmatch(r"\d{1,2}-\d{1,2}(?:YO)?", upper)
+        ):
             start_idx = idx
             break
 
@@ -503,6 +564,8 @@ def iter_master_lines(pdf_bytes: bytes) -> Iterable[str]:
         for raw_line in text.splitlines():
             line = normalize_fragment(raw_line)
             if not line:
+                continue
+            if is_withdrawn_master_line(line):
                 continue
             if line.startswith("WSO Lot"):
                 continue
@@ -915,7 +978,148 @@ def parse_owlcms_row(
     return entry
 
 
+def is_compact_owlcms_row(row: Sequence[str]) -> bool:
+    if len(row) < 12:
+        return False
+    lot_text = row[5]
+    age_text = row[6]
+    raw_name = row[8]
+    entry_total_text = row[9]
+    return (
+        lot_text.isdigit()
+        and age_text.isdigit()
+        and entry_total_text.isdigit()
+        and OWLCMS_NAME_PATTERN.fullmatch(raw_name) is not None
+    )
+
+
+def parse_compact_owlcms_row(
+    row: Sequence[str], context: OwlcmsSessionContext, meet_name: str
+) -> Optional[Dict[str, object]]:
+    if len(row) < 12 or not is_compact_owlcms_row(row):
+        return None
+
+    session_cell = row[0]
+    session_match = OWLCMS_SESSION_PATTERN.fullmatch(session_cell)
+    if session_match:
+        context.session_number = int(session_match.group("session"))
+        context.session_platform = session_match.group("platform").title()
+        context.reset_for_session()
+
+    parsed_gender = parse_owlcms_gender(row[2])
+    if parsed_gender:
+        context.gender = parsed_gender
+
+    row_category = ""
+    category_cell = row[3].upper()
+    if category_cell and OWLCMS_CATEGORY_PATTERN.fullmatch(category_cell):
+        row_category = category_cell
+        context.current_category = row_category
+
+    row_weight = normalize_weight_class(row[4])
+    if row_weight:
+        category_key = row_category or context.current_category
+        if category_key:
+            context.category_weights[category_key] = row_weight
+            context.current_category = category_key
+        context.current_weight = row_weight
+
+    if context.session_number is None or not context.session_platform:
+        return None
+    if not context.gender:
+        return None
+
+    raw_comps = row[11]
+    weight_class = derive_owlcms_weight(
+        row_category=row_category,
+        row_weight=row_weight,
+        comps=raw_comps,
+        context=context,
+    )
+    if not weight_class:
+        return None
+
+    return {
+        "adaptive": "ADAP" in raw_comps.upper() or row_category == "ADAP",
+        "age": int(row[6]),
+        "club": normalize_club(row[10]),
+        "entryTotal": int(row[9]),
+        "gender": context.gender,
+        "meet": meet_name,
+        "name": normalize_comma_name(row[8]),
+        "sessionNumber": context.session_number,
+        "sessionPlatform": context.session_platform,
+        "weightClass": weight_class,
+    }
+
+
+def extract_compact_owlcms_entries(
+    pdf_bytes: bytes, meet_name: str
+) -> List[Dict[str, object]]:
+    entries: List[Dict[str, object]] = []
+    context = OwlcmsSessionContext()
+
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            page_contexts = extract_owlcms_page_contexts(page.extract_text() or "")
+            rows: List[List[str]] = []
+            for table in page.extract_tables() or []:
+                for raw_row in table:
+                    row = normalize_table_row(raw_row)
+                    if not any(row):
+                        continue
+                    if any(
+                        marker in value
+                        for marker in OWLCMS_HEADER_MARKERS
+                        for value in row
+                        if value
+                    ):
+                        continue
+                    rows.append(row)
+
+            if not rows:
+                continue
+
+            first_explicit_key = next(
+                (get_owlcms_session_key(row[:-6]) for row in rows if get_owlcms_session_key(row[:-6])),
+                None,
+            )
+            if rows and not get_owlcms_session_key(rows[0][:-6]) and page_contexts:
+                leading_context = None
+                if first_explicit_key:
+                    first_explicit_index = next(
+                        (
+                            index
+                            for index, page_context in enumerate(page_contexts)
+                            if (
+                                page_context.session_number,
+                                page_context.session_platform,
+                            )
+                            == first_explicit_key
+                        ),
+                        -1,
+                    )
+                    if first_explicit_index > 0:
+                        leading_context = page_contexts[first_explicit_index - 1]
+                elif len(page_contexts) == 1:
+                    leading_context = page_contexts[0]
+
+                if leading_context:
+                    apply_owlcms_page_context(context, leading_context)
+
+            for row in rows:
+                    parsed = parse_compact_owlcms_row(row, context, meet_name)
+                    if parsed:
+                        entries.append(parsed)
+
+    return entries
+
+
 def extract_owlcms_entries(pdf_bytes: bytes, meet_name: str) -> List[Dict[str, object]]:
+    compact_entries = extract_compact_owlcms_entries(pdf_bytes, meet_name)
+    if compact_entries:
+        return compact_entries
+
     entries: List[Dict[str, object]] = []
     context = OwlcmsSessionContext()
 
@@ -1039,6 +1243,61 @@ def assign_member_ids(
     return entries
 
 
+def query_convex_wso_history(
+    names: Sequence[str], exclude_meet: str
+) -> Dict[str, str]:
+    convex_url = get_convex_url()
+    if not convex_url:
+        print("Skipping WSO backfill: CONVEX_URL or EXPO_PUBLIC_CONVEX_URL is not set")
+        return {}
+
+    payload = {
+        "path": "athletes:getWsoHistoryByNames",
+        "args": {"names": list(names), "excludeMeet": exclude_meet},
+    }
+    request = Request(
+        f"{convex_url.rstrip('/')}/api/query",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        data = json.loads(response.read().decode("utf-8") or "{}")
+
+    rows = data.get("value", []) if isinstance(data, dict) else []
+    return {
+        normalize_name(str(row.get("name", ""))): str(row.get("wso", ""))
+        for row in rows
+        if row.get("name") and row.get("wso")
+    }
+
+
+def backfill_missing_wsos_from_convex(
+    entries: List[Dict[str, object]], meet_name: str
+) -> int:
+    missing_names = sorted(
+        {
+            str(entry["name"])
+            for entry in entries
+            if not normalize_fragment(str(entry.get("wso", "")))
+        }
+    )
+    if not missing_names:
+        return 0
+
+    history = query_convex_wso_history(missing_names, exclude_meet=meet_name)
+    updated = 0
+    for entry in entries:
+        if normalize_fragment(str(entry.get("wso", ""))):
+            continue
+        wso = history.get(normalize_name(str(entry["name"])))
+        if not wso:
+            continue
+        entry["wso"] = wso
+        updated += 1
+    return updated
+
+
 def extract_entries(
     pdf_file: BytesIO,
     meet_name: str = DEFAULT_MEET_NAME,
@@ -1147,12 +1406,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         source_format=actual_format,
         start_member_id=settings.start_member_id,
     )
+    backfilled_wsos = 0
+    if settings.backfill_wso_from_convex:
+        backfilled_wsos = backfill_missing_wsos_from_convex(entries, meet_name)
     write_typescript(entries, output_path)
     issues = audit_entries(entries)
     print(f"Parsed {len(entries)} entries", flush=True)
     print(f"Detected format: {actual_format}", flush=True)
     print(f"Meet name: {meet_name}", flush=True)
     print(f"Wrote {output_path}", flush=True)
+    print(f"Backfilled WSOs from Convex: {backfilled_wsos}", flush=True)
     print(f"Audit issues: {len(issues)}", flush=True)
     for issue in issues[:10]:
         print(f"- {issue}", flush=True)

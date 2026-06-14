@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -142,6 +143,9 @@ CLUB_CHECK_PATTERNS = {
     ),
     "Review clubs that collapsed to placeholder values": ("-", ""),
 }
+CLUB_AGE_SUFFIX_PATTERN = re.compile(r"(?:^|\s)(14-15|16-17)(?:YO)?$", re.IGNORECASE)
+CLUB_MARKER_SUFFIX_PATTERN = re.compile(r"(?:^|\s)(NAT|MIL|ADAP|WSO)$", re.IGNORECASE)
+CLUB_FUSED_MARKER_PATTERN = re.compile(r"[A-Za-z.](NAT|MIL|ADAP|WSO)\b")
 
 
 @dataclass
@@ -256,7 +260,15 @@ def count_raw_owlcms_rows(pdf_bytes: bytes) -> int:
                         normalize_fragment(value) if value else ""
                         for value in raw_row
                     ]
-                    if len(row) >= 6:
+                    if (
+                        len(row) >= 12
+                        and row[5].isdigit()
+                        and row[6].isdigit()
+                        and row[9].isdigit()
+                        and ", " in row[8]
+                    ):
+                        total += 1
+                    elif len(row) >= 6:
                         lot_text, age_text, name, entry_total_text = (
                             row[-6],
                             row[-5],
@@ -326,6 +338,56 @@ def collect_club_issues(entries: list[dict]) -> list[str]:
             if entry.get("club", "") in TRUNCATED_CLUB_VALUES or entry.get("club") == ""
         }
     )
+
+
+def collect_semantic_club_issues(entries: list[dict]) -> list[str]:
+    issues: set[str] = set()
+    for entry in entries:
+        club = entry.get("club", "")
+        reason = ""
+        if CLUB_AGE_SUFFIX_PATTERN.search(club):
+            reason = "club ends with age category token"
+        elif CLUB_MARKER_SUFFIX_PATTERN.search(club):
+            reason = "club ends with competition marker"
+        elif CLUB_FUSED_MARKER_PATTERN.search(club):
+            reason = "club contains fused competition marker"
+
+        if reason:
+            issues.add(
+                f'{reason}: {entry["name"]} | {club} | '
+                f'session={entry.get("sessionNumber")} {entry.get("sessionPlatform")}'
+            )
+    return sorted(issues)
+
+
+def normalize_club_for_similarity(value: str) -> str:
+    normalized = value.upper()
+    normalized = re.sub(r"\b(THE|CLUB|WL|WLC|WEIGHTLIFTING|WEIGHTLIFTING CLUB)\b", "", normalized)
+    normalized = re.sub(r"[^A-Z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def collect_similar_club_variants(entries: list[dict]) -> list[str]:
+    clubs = sorted({entry.get("club", "") for entry in entries if entry.get("club")})
+    normalized = {club: normalize_club_for_similarity(club) for club in clubs}
+    variants: list[str] = []
+
+    for index, club in enumerate(clubs):
+        club_norm = normalized[club]
+        if len(club_norm) < 6:
+            continue
+        for other in clubs[index + 1 :]:
+            other_norm = normalized[other]
+            if len(other_norm) < 6 or club_norm == other_norm:
+                continue
+            ratio = SequenceMatcher(None, club_norm, other_norm).ratio()
+            contains = club_norm in other_norm or other_norm in club_norm
+            if ratio >= 0.93 or (contains and min(len(club_norm), len(other_norm)) >= 10):
+                variants.append(
+                    f"{club} <> {other} | normalized={club_norm} <> {other_norm} | ratio={ratio:.2f}"
+                )
+
+    return variants[:100]
 
 
 def collect_wso_issues(entries: list[dict], source_format: str) -> list[str]:
@@ -478,6 +540,8 @@ def collect_all_issues(entries: list[dict], source_format: str, expected_meet: s
     return {
         "names": collect_name_issues(entries),
         "clubs": collect_club_issues(entries),
+        "semanticClubs": collect_semantic_club_issues(entries),
+        "similarClubVariants": collect_similar_club_variants(entries),
         "wsos": collect_wso_issues(entries, source_format),
         "weightClasses": collect_weight_class_issues(entries),
         "genders": collect_gender_issues(entries),
