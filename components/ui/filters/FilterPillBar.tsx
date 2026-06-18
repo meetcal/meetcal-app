@@ -1,7 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
-import { getChevronIcon } from "@/lib/start-list-utils";
 import React, { useCallback, useRef, useState } from "react";
 import {
   LayoutRectangle,
@@ -13,36 +12,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-export interface PillFilterOption {
-  value: string;
-  label: string;
-}
-
-export interface PillFilterConfig {
-  /** Unique id, matches the filter key */
-  id: string;
-  /** Label shown on the pill when no value is selected */
-  label: string;
-  /** Currently selected value ("" means no selection) */
-  value: string;
-  /** Options shown in the dropdown menu */
-  options: PillFilterOption[];
-  /** Label for the "clear"/all option at the top of the menu */
-  allOptionLabel?: string;
-  /**
-   * When provided, tapping the pill calls this handler instead of opening the
-   * inline dropdown (used for Club which needs a searchable popup).
-   */
-  onPress?: () => void;
-}
-
-interface FilterPillBarProps {
-  configs: PillFilterConfig[];
-  onSelect: (id: string, value: string) => void;
-  hasActiveFilters?: boolean;
-  onReset?: () => void;
-}
+import {
+  pillRowContentStyle,
+  PillContent,
+  ResetPill,
+} from "./FilterPillButton";
+import type { FilterPillBarProps, PillFilterConfig } from "./FilterPillTypes";
 
 type AnchoredMenu = {
   config: PillFilterConfig;
@@ -52,6 +27,10 @@ type AnchoredMenu = {
 const MENU_MAX_HEIGHT_RATIO = 0.45;
 const MENU_WIDTH = 240;
 
+/**
+ * Default / Android filter pill bar. Uses a custom anchored dropdown menu.
+ * iOS uses FilterPillBar.ios.tsx which renders the native UIMenu (liquid glass).
+ */
 const FilterPillBar: React.FC<FilterPillBarProps> = ({
   configs,
   onSelect,
@@ -64,26 +43,17 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
   const [activeMenu, setActiveMenu] = useState<AnchoredMenu | null>(null);
   const pillRefs = useRef<Record<string, View | null>>({});
 
-  const getPillLabel = useCallback((config: PillFilterConfig) => {
-    if (!config.value) return config.label;
-    const option = config.options.find((opt) => opt.value === config.value);
-    return option?.label ?? config.value;
+  const handlePillPress = useCallback((config: PillFilterConfig) => {
+    if (config.onPress) {
+      config.onPress();
+      return;
+    }
+    const node = pillRefs.current[config.id];
+    if (!node) return;
+    node.measureInWindow((x, y, width, height) => {
+      setActiveMenu({ config, anchor: { x, y, width, height } });
+    });
   }, []);
-
-  const handlePillPress = useCallback(
-    (config: PillFilterConfig) => {
-      if (config.onPress) {
-        config.onPress();
-        return;
-      }
-      const node = pillRefs.current[config.id];
-      if (!node) return;
-      node.measureInWindow((x, y, width, height) => {
-        setActiveMenu({ config, anchor: { x, y, width, height } });
-      });
-    },
-    [],
-  );
 
   const handleMenuSelect = useCallback(
     (value: string) => {
@@ -95,7 +65,6 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
     [activeMenu, onSelect],
   );
 
-  // Compute the dropdown position so it stays on-screen.
   const menuPosition = (() => {
     if (!activeMenu) return null;
     const { anchor } = activeMenu;
@@ -117,68 +86,28 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pillRow}
+        contentContainerStyle={pillRowContentStyle}
         keyboardShouldPersistTaps="handled"
       >
-        {hasActiveFilters && onReset && (
-          <Pressable
-            onPress={onReset}
-            style={({ pressed }) => [
-              styles.resetPill,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Clear all filters"
+        {hasActiveFilters && onReset && <ResetPill onPress={onReset} />}
+        {configs.map((config) => (
+          <View
+            key={config.id}
+            ref={(node) => {
+              pillRefs.current[config.id] = node;
+            }}
+            collapsable={false}
           >
-            <IconSymbol name="xmark" size={13} color={colors.text} />
-          </Pressable>
-        )}
-        {configs.map((config) => {
-          const isActive = Boolean(config.value);
-          return (
-            <View
-              key={config.id}
-              ref={(node) => {
-                pillRefs.current[config.id] = node;
-              }}
-              collapsable={false}
+            <Pressable
+              onPress={() => handlePillPress(config)}
+              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter by ${config.label}`}
             >
-              <Pressable
-                onPress={() => handlePillPress(config)}
-                style={({ pressed }) => [
-                  styles.pill,
-                  {
-                    backgroundColor: isActive ? colors.link : colors.card,
-                    borderColor: isActive ? colors.link : colors.border,
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Filter by ${config.label}`}
-              >
-                <ThemedText
-                  style={[
-                    styles.pillText,
-                    { color: isActive ? "#FFFFFF" : colors.text },
-                    isActive && styles.pillTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {getPillLabel(config)}
-                </ThemedText>
-                <IconSymbol
-                  name={getChevronIcon("down")}
-                  size={12}
-                  color={isActive ? "#FFFFFF" : colors.secondaryText}
-                />
-              </Pressable>
-            </View>
-          );
-        })}
+              <PillContent config={config} />
+            </Pressable>
+          </View>
+        ))}
       </ScrollView>
 
       <Modal
@@ -268,37 +197,6 @@ const MenuRow: React.FC<MenuRowProps> = ({ label, selected, onPress }) => {
 export default FilterPillBar;
 
 const styles = StyleSheet.create({
-  pillRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 2,
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
-    borderWidth: 1,
-  },
-  pillText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  pillTextActive: {
-    fontWeight: "600",
-  },
-  resetPill: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-  },
   menuBackdrop: {
     ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
