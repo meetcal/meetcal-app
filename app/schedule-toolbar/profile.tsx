@@ -19,6 +19,7 @@ import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Platform,
@@ -322,9 +323,11 @@ export default function ProfileScreen() {
           </Pressable>
 
           <Pressable
+            disabled={isClearingCache}
             style={({ pressed }) => [
               styles.section,
-              pressed && { backgroundColor: colors.pressed },
+              isClearingCache && styles.disabledSection,
+              pressed && !isClearingCache && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
               if (isClearingCache) return;
@@ -345,14 +348,18 @@ export default function ProfileScreen() {
             }}
           >
             <View style={styles.fieldRow}>
-              <ThemedText style={[styles.label, { color: colors.text }]}>
-                Clear Cache
+              <ThemedText style={[styles.label, { color: colors.text }]}> 
+                {isClearingCache ? "Clearing Cache..." : "Clear Cache"}
               </ThemedText>
-              <IconSymbol
-                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
-                size={20}
-                color={colors.link}
-              />
+              {isClearingCache ? (
+                <ActivityIndicator size="small" color={colors.link} />
+              ) : (
+                <IconSymbol
+                  name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                  size={20}
+                  color={colors.link}
+                />
+              )}
             </View>
           </Pressable>
         </View>
@@ -459,6 +466,9 @@ const styles = StyleSheet.create({
   section: {
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  disabledSection: {
+    opacity: 0.65,
   },
   sectionDivider: {
     height: 1,

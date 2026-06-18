@@ -10,7 +10,6 @@ import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
   federationRecordsResource,
-  federationsResource,
   fetchAgeGroups,
 } from "@/lib/database/fetch-records";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
@@ -20,6 +19,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
+const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF"];
 
 export default function RecordsScreen() {
   return (
@@ -32,7 +32,6 @@ export default function RecordsScreen() {
 function RecordsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
-  const [availableFederations, setAvailableFederations] = useState<string[]>([]);
   const [ageGroupsCache, setAgeGroupsCache] = useState<Record<string, string[]>>(
     {},
   );
@@ -46,16 +45,6 @@ function RecordsScreenContent() {
     filterModalProps,
   } = useFilterState<Filters>({
     defaultFilters: { federation: "", gender: "Men", ageGroup: "" },
-  });
-
-  const {
-    data: federations,
-    isInitialLoading: isFederationsLoading,
-    error: federationsError,
-  } = useMutableResource({
-    resource: federationsResource,
-    params: [] as const,
-    initialData: [] as string[],
   });
 
   const recordsParams = useMemo(
@@ -73,30 +62,22 @@ function RecordsScreenContent() {
     enabled: Boolean(recordsParams),
   });
 
-  const loading = isFederationsLoading || (Boolean(filters.federation) && isRecordsLoading);
-  const fetchError = federationsError || recordsError;
+  const loading = Boolean(filters.federation) && isRecordsLoading;
+  const fetchError = recordsError;
 
   useEffect(() => {
-    const filteredFederations = federations.filter(
-      (federation) => federation.toUpperCase() !== "BWL",
-    );
-    setAvailableFederations(filteredFederations);
-
-    if (!filteredFederations.length || filters.federation) {
+    if (filters.federation) {
       return;
     }
 
-    const preferredFederation = filteredFederations.includes("USAW")
-      ? "USAW"
-      : filteredFederations[0];
     const defaults = {
-      federation: preferredFederation,
+      federation: "USAW",
       gender: "Men" as Gender,
       ageGroup: "Senior",
     };
     setFilters(defaults);
     setTempFilters(defaults);
-  }, [federations, filters.federation, setFilters, setTempFilters]);
+  }, [filters.federation, setFilters, setTempFilters]);
 
   const ageGroupsForFederation = useMemo(
     () => sortAgeGroups(Object.keys(allRecords)),
@@ -217,7 +198,7 @@ function RecordsScreenContent() {
         {
           id: "federation",
           title: "Federation",
-          options: availableFederations.map((fed) => ({
+          options: HARDCODED_FEDERATIONS.map((fed) => ({
             value: fed,
             label: fed,
           })),
@@ -244,7 +225,6 @@ function RecordsScreenContent() {
     [
       ageGroupsCache,
       ageGroupsForFederation,
-      availableFederations,
       fetchAgeGroupsForFederation,
       filters.federation,
     ],
