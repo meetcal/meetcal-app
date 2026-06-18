@@ -1,4 +1,9 @@
 import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
+import SessionSortControl from "@/components/schedule-details/sessionSort/SessionSortControl";
+import type {
+  SortDirection,
+  SortKey,
+} from "@/components/schedule-details/sessionSort/types";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -12,7 +17,6 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
-    Modal,
     Pressable,
     StyleSheet,
     View
@@ -48,9 +52,6 @@ export default function SessionAthletes({
   meetId: MeetName;
   refreshKey: number;
 }) {
-  type SortKey = "entryTotal" | "snatch" | "cj" | "total";
-  type SortDirection = "asc" | "desc";
-
   const router = useRouter();
   const colors = useAppColors();
   const { athletes: sessionAthletes, isLoading, isRefreshing, refreshAthletes } =
@@ -61,7 +62,6 @@ export default function SessionAthletes({
   const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [sortModalVisible, setSortModalVisible] = useState(false);
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const refreshKeyRef = useRef(refreshKey);
@@ -211,18 +211,31 @@ export default function SessionAthletes({
     return "Best Total";
   }, [sortKey]);
 
-  const handleSortPress = useCallback(() => {
-    setSortModalVisible(true);
-  }, []);
-
   const handleSortSelect = useCallback(
     (key: SortKey, direction: SortDirection) => {
       setSortKey(key);
       setSortDirection(direction);
-      setSortModalVisible(false);
     },
     [],
   );
+
+  const handleSortLockedPress = useCallback(() => {
+    const authResult = requireAuth({
+      feature: "sort-athletes",
+      message: "Sign in to access premium features.",
+      returnPath: "/shared-screens/schedule-details",
+    });
+    if (authResult === null || authResult === false) {
+      return;
+    }
+    router.push({
+      pathname: "/shared-screens/paywall",
+      params: {
+        from: "/shared-screens/schedule-details",
+        feature: "sort-athletes",
+      },
+    } as any);
+  }, [requireAuth, router]);
 
    
   const loading = isLoading || (sessionAthletes.length === 0 && isRefreshing);
@@ -242,51 +255,15 @@ export default function SessionAthletes({
                 <ThemedText style={styles.athletesTitle}>
                   Session Athletes
                 </ThemedText>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.sortButton,
-                    pressed && isSubscribed && { opacity: 0.8 },
-                  ]}
-                  onPress={
-                    isSubscribed
-                      ? handleSortPress
-                      : () => {
-                          const authResult = requireAuth({
-                            feature: "sort-athletes",
-                            message: "Sign in to access premium features.",
-                            returnPath: "/shared-screens/schedule-details",
-                          });
-                          if (authResult === null || authResult === false) {
-                            return;
-                          }
-                          router.push({
-                            pathname: "/shared-screens/paywall",
-                            params: {
-                              from: "/shared-screens/schedule-details",
-                              feature: "sort-athletes",
-                            },
-                          } as any);
-                        }
-                  }
-                >
-                  <IconSymbol
-                    name={isSubscribed ? "arrow.up.arrow.down" : "lock"}
-                    size={18}
-                    color={isSubscribed ? colors.text : colors.secondaryText}
-                  />
-                  <ThemedText
-                    style={[
-                      styles.sortLabel,
-                      {
-                        color: isSubscribed
-                          ? colors.text
-                          : colors.secondaryText,
-                      },
-                    ]}
-                  >
-                    {sortLabel}
-                  </ThemedText>
-                </Pressable>
+                <SessionSortControl
+                  isSubscribed={!!isSubscribed}
+                  sortLabel={sortLabel}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  sortOptions={sortOptions}
+                  onSelect={handleSortSelect}
+                  onLockedPress={handleSortLockedPress}
+                />
               </View>
             </View>
             <View style={styles.loadingContainer}>
@@ -314,47 +291,15 @@ export default function SessionAthletes({
             <ThemedText style={styles.athletesTitle}>
               Session Athletes
             </ThemedText>
-            <Pressable
-              style={({ pressed }) => [
-                styles.sortButton,
-                pressed && isSubscribed && { opacity: 0.8 },
-              ]}
-              onPress={
-                isSubscribed
-                  ? handleSortPress
-                  : () => {
-                      const authResult = requireAuth({
-                        feature: "sort-athletes",
-                        message: "Sign in to access premium features.",
-                        returnPath: "/shared-screens/schedule-details",
-                      });
-                      if (authResult === null || authResult === false) {
-                        return;
-                      }
-                      router.push({
-                        pathname: "/shared-screens/paywall",
-                        params: {
-                          from: "/shared-screens/schedule-details",
-                          feature: "sort-athletes",
-                        },
-                      } as any);
-                    }
-              }
-            >
-              <IconSymbol
-                name={isSubscribed ? "arrow.up.arrow.down" : "lock"}
-                size={18}
-                color={isSubscribed ? colors.text : colors.secondaryText}
-              />
-              <ThemedText
-                style={[
-                  styles.sortLabel,
-                  { color: isSubscribed ? colors.text : colors.secondaryText },
-                ]}
-              >
-                {sortLabel}
-              </ThemedText>
-            </Pressable>
+            <SessionSortControl
+              isSubscribed={!!isSubscribed}
+              sortLabel={sortLabel}
+              sortKey={sortKey}
+              sortDirection={sortDirection}
+              sortOptions={sortOptions}
+              onSelect={handleSortSelect}
+              onLockedPress={handleSortLockedPress}
+            />
           </View>
         </View>
 
@@ -573,68 +518,6 @@ export default function SessionAthletes({
           </View>
         ))}
       </View>
-      <Modal
-        visible={sortModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSortModalVisible(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setSortModalVisible(false)}
-        >
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: colors.card }]}
-          >
-            <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-              Sort Athletes
-            </ThemedText>
-            {sortOptions.map((option) => {
-              const isSelected =
-                option.key === sortKey && option.direction === sortDirection;
-              return (
-                <Pressable
-                  key={`${option.key}-${option.direction}`}
-                  style={({ pressed }) => [
-                    styles.modalOption,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                  onPress={() => handleSortSelect(option.key, option.direction)}
-                >
-                  <ThemedText
-                    style={[styles.modalOptionText, { color: colors.text }]}
-                  >
-                    {option.label}
-                  </ThemedText>
-                  {isSelected ? (
-                    <IconSymbol
-                      name="checkmark"
-                      size={16}
-                      color={colors.link}
-                    />
-                  ) : null}
-                </Pressable>
-              );
-            })}
-            <Pressable
-              style={({ pressed }) => [
-                styles.modalCancel,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={() => setSortModalVisible(false)}
-            >
-              <ThemedText
-                style={[
-                  styles.modalCancelText,
-                  { color: colors.secondaryText },
-                ]}
-              >
-                Cancel
-              </ThemedText>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -657,55 +540,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  sortButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  sortLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    paddingHorizontal: 4,
-    marginBottom: 8,
-  },
-  modalOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  modalOptionText: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  modalCancel: {
-    marginTop: 8,
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  modalCancelText: {
-    fontSize: 15,
-    fontWeight: "600",
   },
   athleteSection: {
     padding: 16,
