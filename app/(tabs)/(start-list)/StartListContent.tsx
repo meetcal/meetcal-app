@@ -6,7 +6,11 @@ import {
   AthleteItem,
 } from "@/components/start-list/AthleteItem";
 import { StartListSkeleton } from "@/components/start-list/StartListSkeleton";
-import StartListFilterModal from "@/components/ui/filters/StartListFilterModal";
+import {
+  ClubFilterModal,
+  FilterPillBar,
+  type PillFilterConfig,
+} from "@/components/ui/filters";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
@@ -32,6 +36,7 @@ import {
   parseWeightClasses,
   requestCalendarPermissions,
   sortAthletes,
+  sortWeightClasses,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
 import type { Schedule as ScheduleType } from "@/types/schedule";
@@ -82,8 +87,36 @@ type AthleteSortOption =
   | "bestSnatch"
   | "bestCJ";
 
+const AGE_GROUP_OPTIONS = [
+  "U13",
+  "U15",
+  "U17",
+  "Junior",
+  "Senior",
+  "Masters 35",
+  "Masters 40",
+  "Masters 45",
+  "Masters 50",
+  "Masters 55",
+  "Masters 60",
+  "Masters 65",
+  "Masters 70",
+  "Masters 75",
+  "Masters 80",
+  "Masters 85",
+  "Masters 90+",
+];
+
+const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
+  { value: "alphabetical", label: "A-Z" },
+  { value: "entryTotal", label: "Entry Total" },
+  { value: "bestTotal", label: "Best Total" },
+  { value: "bestSnatch", label: "Best Sn" },
+  { value: "bestCJ", label: "Best CJ" },
+];
+
 export default function StartListScreen() {
-  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showClubModal, setShowClubModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState("");
   const [clubFilter, setClubFilter] = useState("");
   const [ageGroupFilter, setAgeGroupFilter] = useState("");
@@ -419,28 +452,241 @@ export default function StartListScreen() {
     ],
   );
 
-  useLayoutEffect(() => {
-    const filterIcon =
-      Platform.select({
-        ios: "line.3.horizontal.decrease",
-        android: "filter",
-      }) || "line.3.horizontal.decrease";
+  const availableWeightClasses = useMemo(() => {
+    const matchesAgeAndAdaptive = (athlete: LiftResult) => {
+      if (ageGroupFilter && getAgeCategory(athlete.age) !== ageGroupFilter) {
+        return false;
+      }
+      if (adaptiveAthleteFilter === "Adaptive Athletes") {
+        return athlete.adaptive === true;
+      }
+      if (adaptiveAthleteFilter === "Non-Adaptive Athletes") {
+        return athlete.adaptive === false;
+      }
+      return true;
+    };
 
+    // Determine the heaviest class per gender so it can be shown as "+kg".
+    const maleWeightClasses = new Set<string>();
+    const femaleWeightClasses = new Set<string>();
+    athletes.forEach((athlete) => {
+      if (!matchesAgeAndAdaptive(athlete)) return;
+      parseWeightClasses(athlete.weightClass).forEach((wc) => {
+        if (athlete.gender.toLowerCase() === "male") maleWeightClasses.add(wc);
+        else if (athlete.gender.toLowerCase() === "female")
+          femaleWeightClasses.add(wc);
+      });
+    });
+
+    const getHeaviest = (set: Set<string>) => {
+      const sorted = Array.from(set).sort(sortWeightClasses);
+      return sorted[sorted.length - 1];
+    };
+    const heaviestMale = getHeaviest(maleWeightClasses);
+    const heaviestFemale = getHeaviest(femaleWeightClasses);
+
+    const weightClasses = new Set<string>();
+
+    if (genderFilter) {
+      const relevantHeaviest =
+        genderFilter.toLowerCase() === "male" ? heaviestMale : heaviestFemale;
+      if (relevantHeaviest) {
+        weightClasses.add(`${relevantHeaviest.replace(/\+?kg$/, "")}+kg`);
+      }
+    } else {
+      [heaviestMale, heaviestFemale].forEach((wc) => {
+        if (wc) weightClasses.add(`${wc.replace(/\+?kg$/, "")}+kg`);
+      });
+    }
+
+    athletes.forEach((athlete) => {
+      if (
+        genderFilter &&
+        athlete.gender.toLowerCase() !== genderFilter.toLowerCase()
+      ) {
+        return;
+      }
+      if (!matchesAgeAndAdaptive(athlete)) return;
+      parseWeightClasses(athlete.weightClass).forEach((wc) => {
+        if (wc !== heaviestMale && wc !== heaviestFemale) {
+          weightClasses.add(wc);
+        }
+      });
+    });
+
+    return Array.from(weightClasses).sort(sortWeightClasses);
+  }, [athletes, ageGroupFilter, adaptiveAthleteFilter, genderFilter]);
+
+  const availableAgeGroups = useMemo(() => {
+    const present = new Set(
+      athletes.map((athlete) => getAgeCategory(athlete.age)),
+    );
+    return AGE_GROUP_OPTIONS.filter((ag) => present.has(ag));
+  }, [athletes]);
+
+  const hasAdaptiveAthletes = useMemo(
+    () => athletes.some((athlete) => athlete.adaptive === true),
+    [athletes],
+  );
+
+  const availableWsos = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          athletes
+            .map((athlete) => athlete.wso?.trim())
+            .filter((wso): wso is string => Boolean(wso)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [athletes],
+  );
+
+  const pillConfigs = useMemo<PillFilterConfig[]>(() => {
+    const configs: PillFilterConfig[] = [
+      {
+        id: "sort",
+        label: "Sort",
+        value: sortOption === "alphabetical" ? "" : sortOption,
+        options: SORT_OPTIONS.filter((opt) => opt.value !== "alphabetical"),
+        allOptionLabel: "A-Z",
+      },
+      {
+        id: "gender",
+        label: "Gender",
+        value: genderFilter,
+        options: [
+          { value: "Male", label: "Male" },
+          { value: "Female", label: "Female" },
+        ],
+        allOptionLabel: "All Genders",
+      },
+      {
+        id: "ageGroup",
+        label: "Age Group",
+        value: ageGroupFilter,
+        options: availableAgeGroups.map((ag) => ({
+          value: ag,
+          label: ag.replace("Masters ", "M"),
+        })),
+        allOptionLabel: "All Ages",
+      },
+      {
+        id: "weightClass",
+        label: "Weight Class",
+        value: weightClassFilter,
+        options: availableWeightClasses.map((wc) => ({
+          value: wc,
+          label: wc.replace("kg", ""),
+        })),
+        allOptionLabel: "All Weights",
+      },
+    ];
+
+    if (hasAdaptiveAthletes) {
+      configs.push({
+        id: "adaptiveAthlete",
+        label: "Adaptive",
+        value: adaptiveAthleteFilter,
+        options: [
+          { value: "Adaptive Athletes", label: "Adaptive" },
+          { value: "Non-Adaptive Athletes", label: "Non-Adaptive" },
+        ],
+        allOptionLabel: "All Athletes",
+      });
+    }
+
+    // Club opens a dedicated searchable popup.
+    configs.push({
+      id: "club",
+      label: "Club",
+      value: clubFilter === STARRED_CLUBS_FILTER ? "Favorites" : clubFilter,
+      options: [],
+      onPress: () => setShowClubModal(true),
+    });
+
+    if (availableWsos.length > 0) {
+      configs.push({
+        id: "wso",
+        label: "WSO",
+        value: wsoFilter,
+        options: availableWsos.map((wso) => ({ value: wso, label: wso })),
+        allOptionLabel: "All Regions",
+      });
+    }
+
+    return configs;
+  }, [
+    sortOption,
+    genderFilter,
+    ageGroupFilter,
+    weightClassFilter,
+    adaptiveAthleteFilter,
+    clubFilter,
+    wsoFilter,
+    availableAgeGroups,
+    availableWeightClasses,
+    availableWsos,
+    hasAdaptiveAthletes,
+  ]);
+
+  const trackFilterApply = useCallback(() => {
+    setFilterApplyCount((prev) => {
+      const nextCount = prev + 1;
+      AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch(
+        (error) => {
+          console.warn(
+            "StartList: Failed to persist filter apply count",
+            error,
+          );
+        },
+      );
+      requestReviewIfEligible(nextCount);
+      return nextCount;
+    });
+  }, [requestReviewIfEligible]);
+
+  const handlePillSelect = useCallback(
+    (id: string, value: string) => {
+      trackFilterApply();
+      switch (id) {
+        case "sort":
+          setSortOption((value || "alphabetical") as AthleteSortOption);
+          break;
+        case "gender":
+          setGenderFilter(value);
+          setWeightClassFilter("");
+          break;
+        case "ageGroup":
+          setAgeGroupFilter(value);
+          setWeightClassFilter("");
+          break;
+        case "adaptiveAthlete":
+          setAdaptiveAthleteFilter(value);
+          setWeightClassFilter("");
+          break;
+        case "weightClass":
+          setWeightClassFilter(value);
+          break;
+        case "wso":
+          setWsoFilter(value);
+          break;
+      }
+    },
+    [trackFilterApply],
+  );
+
+  const handleSelectClub = useCallback(
+    (club: string) => {
+      trackFilterApply();
+      setClubFilter(club);
+    },
+    [trackFilterApply],
+  );
+
+  useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>
-          <Pressable
-            style={styles.headerIconButton}
-            onPress={() => setShowFilterModal(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Open filters"
-          >
-            <IconSymbol
-              name={filterIcon}
-              size={24}
-              color={hasActiveFilters ? colors.link : colors.text}
-            />
-          </Pressable>
           <Pressable
             style={styles.headerIconButton}
             onPress={() => setShowSaveModal(true)}
@@ -456,7 +702,7 @@ export default function StartListScreen() {
         </View>
       ),
     });
-  }, [colors.link, colors.text, hasActiveFilters, navigation]);
+  }, [colors.text, navigation]);
 
   const normalizedAthletes = useMemo(() => {
     return athletes.map((athlete) => ({
@@ -840,32 +1086,6 @@ export default function StartListScreen() {
     [pendingCalendarSessions],
   );
 
-  // Update apply handler
-  const handleApplyFilters = (filters: {
-    weightClass: string;
-    club: string;
-    ageGroup: string;
-    adaptiveAthlete: string;
-    gender: string;
-    wso: string;
-    sort: AthleteSortOption;
-  }) => {
-    setWeightClassFilter(filters.weightClass);
-    setClubFilter(filters.club);
-    setAgeGroupFilter(filters.ageGroup);
-    setAdaptiveAthleteFilter(filters.adaptiveAthlete);
-    setGenderFilter(filters.gender);
-    setWsoFilter(filters.wso);
-    setSortOption(filters.sort);
-
-    const nextCount = filterApplyCount + 1;
-    setFilterApplyCount(nextCount);
-    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch((error) => {
-      console.warn("StartList: Failed to persist filter apply count", error);
-    });
-    requestReviewIfEligible(nextCount);
-  };
-
   // Add resetFilters function before the return statement
   const resetFilters = () => {
     setWeightClassFilter("");
@@ -1232,6 +1452,15 @@ export default function StartListScreen() {
             )}
           </View>
         </View>
+
+        <View style={styles.pillBarContainer}>
+          <FilterPillBar
+            configs={pillConfigs}
+            onSelect={handlePillSelect}
+            hasActiveFilters={hasActiveFilters}
+            onReset={resetFilters}
+          />
+        </View>
       </View>
 
       <ExpandedIdProvider>
@@ -1266,21 +1495,14 @@ export default function StartListScreen() {
         />
       </ExpandedIdProvider>
 
-      <StartListFilterModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
+      <ClubFilterModal
+        visible={showClubModal}
+        onClose={() => setShowClubModal(false)}
         athletes={athletes}
         starredClubs={starredClubs}
         onToggleStarredClub={toggleStarredClub}
-        weightClassFilter={weightClassFilter}
-        clubFilter={clubFilter}
-        ageGroupFilter={ageGroupFilter}
-        adaptiveAthleteFilter={adaptiveAthleteFilter}
-        genderFilter={genderFilter}
-        wsoFilter={wsoFilter}
-        sortOption={sortOption}
-        onApplyFilters={handleApplyFilters}
-        onResetFilters={resetFilters}
+        selectedClub={clubFilter}
+        onSelectClub={handleSelectClub}
       />
 
       <ActionModal
@@ -1361,7 +1583,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   filterContainer: {
-    padding: 16,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   headerActions: {
     flexDirection: "row",
@@ -1376,6 +1600,10 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     marginBottom: 2,
+  },
+  pillBarContainer: {
+    marginTop: 12,
+    marginHorizontal: -16,
   },
   searchBar: {
     flexDirection: "row",
