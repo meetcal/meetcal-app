@@ -51,7 +51,7 @@ export function useScheduleData(
   selectedMeet: MeetName | null,
 ): UseScheduleDataReturn {
   const params = useMemo(
-    () => (selectedMeet ? ([selectedMeet] as const) : null),
+    () => (selectedMeet ? ([selectedMeet] as [MeetName]) : null),
     [selectedMeet],
   );
   const [emptySchedule] = useState<Schedule>([]);

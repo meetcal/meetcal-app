@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   checkerboard: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   checkerRow: {
     flex: 1,

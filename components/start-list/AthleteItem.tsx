@@ -223,8 +223,13 @@ export const AthleteItem = React.memo(function AthleteItem({
                   <ThemedText
                     style={[styles.detailValue, { color: "#007AFF" }]}
                   >
-                    Session {athlete.session.number} •{" "}
-                    {athlete.session.platform} Platform
+                    Session{" "}
+                    {athlete.session.number}
+                    {" "}
+                    •{" "}
+                    {athlete.session.platform}
+                    {" "}
+                    Platform
                   </ThemedText>
                   <IconSymbol
                     name={getChevronIcon("right")}
@@ -251,8 +256,10 @@ export const AthleteItem = React.memo(function AthleteItem({
                       athlete.session.date ??
                         getSessionDetails(athlete.session.number)?.date,
                       meetDetails?.time.timeZoneIdentifier,
-                    )}{" "}
-                    •{" "}
+                    )}
+{" "}
+                    •
+{" "}
                     {formatSessionTime(
                       athlete.session.startTime ??
                         getSessionDetails(

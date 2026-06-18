@@ -40,7 +40,7 @@ module.exports = defineConfig([
       "react/jsx-indent-props": ["error", 2],
 
       // One expression per line in JSX
-      "react/jsx-one-expression-per-line": ["error", { allow: "single-child" }],
+      "react/jsx-one-expression-per-line": "off",
 
       // Disable React in scope rule (not needed in modern React)
       "react/react-in-jsx-scope": "off",
@@ -49,6 +49,12 @@ module.exports = defineConfig([
       "react/prop-types": "off",
 
       // React Native specific rules (from eslint-config-expo)
+      "react-hooks/immutability": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "off",
       "react-native/no-unused-styles": "error",
       // "react-native/no-inline-styles": "warn",
       "react-native/no-color-literals": "warn",

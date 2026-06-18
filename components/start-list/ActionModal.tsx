@@ -40,7 +40,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
             ]}
           >
             <ThemedText style={[styles.saveModalTitle, { color: colors.text }]}>
-              Save {athleteCount} Athletes
+              Save{" "}
+              {athleteCount}
+              {" "}
+              Athletes
             </ThemedText>
             <Pressable
               style={({ pressed }) => [

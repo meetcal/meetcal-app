@@ -40,6 +40,9 @@ export type CalendarDestination = {
 
 const MAX_ANDROID_INT = 2_147_483_647;
 const PREFERRED_ANDROID_CALENDAR_ID_KEY = "@preferred_android_calendar_id";
+type WritableCalendar = Awaited<
+  ReturnType<typeof Calendar.getCalendarsAsync>
+>[number];
 
 function isAndroidSafeCalendarId(calendarId: string): boolean {
   if (!/^\d+$/.test(calendarId)) {
@@ -49,13 +52,13 @@ function isAndroidSafeCalendarId(calendarId: string): boolean {
   return Number(calendarId) <= MAX_ANDROID_INT;
 }
 
-function isWritableAndroidCalendar(calendar: Calendar.Calendar): boolean {
+function isWritableAndroidCalendar(calendar: WritableCalendar): boolean {
   return calendar.allowsModifications && isAndroidSafeCalendarId(calendar.id);
 }
 
 function compareAndroidCalendars(
-  left: Calendar.Calendar,
-  right: Calendar.Calendar,
+  left: WritableCalendar,
+  right: WritableCalendar,
 ): number {
   const leftPrimary = left.isPrimary ? 1 : 0;
   const rightPrimary = right.isPrimary ? 1 : 0;
@@ -78,7 +81,7 @@ function compareAndroidCalendars(
   return (left.title || "").localeCompare(right.title || "");
 }
 
-function buildCalendarLabel(calendar: Calendar.Calendar): string {
+function buildCalendarLabel(calendar: WritableCalendar): string {
   const parts = [calendar.title];
   if (calendar.ownerAccount && calendar.ownerAccount !== calendar.title) {
     parts.push(calendar.ownerAccount);
@@ -97,7 +100,7 @@ function buildCalendarLabel(calendar: Calendar.Calendar): string {
 }
 
 function toCalendarDestination(
-  calendar: Calendar.Calendar,
+  calendar: WritableCalendar,
 ): CalendarDestination {
   return {
     id: calendar.id,

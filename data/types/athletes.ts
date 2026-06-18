@@ -22,7 +22,6 @@ export interface LiftResult {
 
 export interface SupabaseLiftResult {
   id: number;
-  convexId?: string;
   event_id: string;
   meet: string;
   date: string;

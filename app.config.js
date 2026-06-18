@@ -58,6 +58,8 @@ export default ({ config }) => ({
     'expo-router',
     'expo-secure-store',
     'expo-sharing',
+    'expo-splash-screen',
+    'expo-status-bar',
     'expo-web-browser',
     [
       'expo-build-properties',

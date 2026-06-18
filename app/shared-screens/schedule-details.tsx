@@ -5,7 +5,6 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useScheduleData } from "@/hooks/useScheduleData";
-import { useFocusEffect } from "@react-navigation/native";
 import {
   DaySchedule,
   Platform as PlatformDetails,
@@ -13,7 +12,7 @@ import {
 import { Session } from "@/types/schedule-details";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 

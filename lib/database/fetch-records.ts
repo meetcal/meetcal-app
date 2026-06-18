@@ -1,19 +1,18 @@
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 type RecordsCache = Record<string, RecordsData>;
 type RecordsRow = {
-  ageCategory: string;
-  gender: 'men' | 'women';
-  weightClass: string;
-  snatchRecord: number | null;
-  cjRecord: number | null;
-  totalRecord: number | null;
-  recordType: string;
+  age_category: string;
+  gender: string;
+  weight_class: string;
+  snatch_record: number | null;
+  cj_record: number | null;
+  total_record: number | null;
+  record_type: string;
 };
 
 function weightClassSort(a: string, b: string): number {
@@ -52,17 +51,17 @@ function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
   const result: RecordsData = {};
 
   rows.forEach((row) => {
-    const ageKey = row.ageCategory;
+    const ageKey = row.age_category;
     if (!result[ageKey]) {
       result[ageKey] = { Men: [], Women: [] };
     }
 
-    const genderProp = row.gender === 'men' ? 'Men' : 'Women';
+    const genderProp = row.gender.toLowerCase() === 'men' ? 'Men' : 'Women';
     result[ageKey][genderProp].push({
-      weightClass: row.weightClass,
-      snatchRecord: row.snatchRecord ?? 0,
-      cjRecord: row.cjRecord ?? 0,
-      totalRecord: row.totalRecord ?? 0,
+      weightClass: row.weight_class,
+      snatchRecord: row.snatch_record ?? 0,
+      cjRecord: row.cj_record ?? 0,
+      totalRecord: row.total_record ?? 0,
     });
   });
 
@@ -122,10 +121,12 @@ async function fetchRecordsFresh(
     throw new Error('Offline');
   }
 
-  const rows = await convex.query(api.records.getByFederation, {
-    recordType: federation,
-    ageCategory: ageGroup,
-    gender: gender?.toLowerCase(),
+  const allRows = await getJson<RecordsRow[]>('/data/records');
+  const rows = allRows.filter((row) => {
+    if (row.record_type !== federation) return false;
+    if (ageGroup && row.age_category !== ageGroup) return false;
+    if (gender && row.gender.toLowerCase() !== gender.toLowerCase()) return false;
+    return true;
   });
 
   return mapRowsToRecordsData(rows as RecordsRow[]);
@@ -137,7 +138,10 @@ async function fetchFederationsFresh(): Promise<string[]> {
     throw new Error('Offline');
   }
 
-  return await convex.query(api.records.listFederations, {});
+  const rows = await getJson<RecordsRow[]>('/data/records');
+  return Array.from(new Set(rows.map((row) => row.record_type))).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  );
 }
 
 async function persistFederationRecords(federation: string, result: RecordsData) {

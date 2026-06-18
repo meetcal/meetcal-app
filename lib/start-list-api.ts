@@ -1,7 +1,6 @@
 import { SupabaseLiftResult } from '@/data/types/athletes';
+import { fetchApiYearBests } from '@/lib/api/meetcal-api';
 import { getAllCachedLiftingResultsForAthlete } from '@/lib/database/offline-store';
-import { convexHttp } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
@@ -55,10 +54,7 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   try {
     const cutoffDate = oneYearAgo.toISOString().split('T')[0];
-    const results = await convexHttp.query(api.liftingResults.getYearBestsByName, {
-      name: athleteName,
-      cutoffDate,
-    });
+    const results = await fetchApiYearBests(athleteName, cutoffDate);
     if (results.length === 0) {
       const fallback = await getOfflineFallback(athleteName);
       if (fallback.bestSnatch > 0 || fallback.bestCJ > 0 || fallback.bestTotal > 0) {
@@ -67,9 +63,9 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
       return fallback;
     }
     const result: YearBests = {
-      bestSnatch: Math.max(...results.map(r => r.snatchBest || 0)),
-      bestCJ: Math.max(...results.map(r => r.cjBest || 0)),
-      bestTotal: Math.max(...results.map(r => r.total || 0)),
+      bestSnatch: Math.max(...results.map(r => r.bestSnatch || 0)),
+      bestCJ: Math.max(...results.map(r => r.bestCJ || 0)),
+      bestTotal: Math.max(...results.map(r => r.bestTotal || 0)),
     };
     cache.set(athleteName, result);
     return result;

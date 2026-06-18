@@ -1,8 +1,7 @@
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 export type IntlRanking = {
   meet: string | null;
@@ -13,6 +12,17 @@ export type IntlRanking = {
   percentA: number | null;
   gender: 'Men' | 'Women' | null;
   ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
+};
+
+type ApiIntlRanking = {
+  meet: string | null;
+  ranking: number | null;
+  name: string | null;
+  weight_class: string | null;
+  total: number | null;
+  percent_a: number | null;
+  gender: 'Men' | 'Women' | null;
+  age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
 };
 
 async function readIntlRankingsCache() {
@@ -26,7 +36,17 @@ async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
     throw new Error('Offline');
   }
 
-  return await convex.query(api.intlRankings.getAll, {}) as IntlRanking[];
+  const rows = await getJson<ApiIntlRanking[]>('/data/intl-rankings');
+  return rows.map((row) => ({
+    meet: row.meet,
+    ranking: row.ranking,
+    name: row.name,
+    weightClass: row.weight_class,
+    total: row.total,
+    percentA: row.percent_a,
+    gender: row.gender,
+    ageCategory: row.age_category,
+  }));
 }
 
 async function persistIntlRankings(rankings: IntlRanking[]) {

@@ -29,8 +29,7 @@ import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,

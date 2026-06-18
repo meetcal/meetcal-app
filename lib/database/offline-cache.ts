@@ -11,6 +11,7 @@ export const OFFLINE_CACHE_KEYS = {
   intlRankings: '@offline_cache/intl_rankings',
   records: '@offline_cache/records',
   wsoRecords: '@offline_cache/wso_records',
+  wsoRecordsFiltered: '@offline_cache/wso_records_filtered',
   adaptiveRecords: '@offline_cache/adaptive_records',
   nationalRankings: '@offline_cache/national_rankings',
   clubs: '@offline_cache/clubs',

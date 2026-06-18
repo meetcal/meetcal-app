@@ -1182,7 +1182,7 @@ export default function StartListScreen() {
             borderBottomWidth: 1,
           },
         ]}
-        >
+      >
           <View style={styles.searchContainer}>
             <View
               style={[
@@ -1192,7 +1192,7 @@ export default function StartListScreen() {
                 borderColor: colors.border,
               },
             ]}
-          >
+            >
             <IconSymbol
               name={
                 Platform.select({

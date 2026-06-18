@@ -134,7 +134,8 @@ const EditProfileModal = ({
               style={[styles.modalHeader, { borderBottomColor: colors.border }]}
             >
               <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-                Edit {editingField ? formatTitle(editingField) : ""}
+                Edit{" "}
+                {editingField ? formatTitle(editingField) : ""}
               </ThemedText>
               <TouchableOpacity
                 style={styles.closeButton}

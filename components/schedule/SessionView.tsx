@@ -48,7 +48,8 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   return (
     <View style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
-        Session {session.number}
+        Session{" "}
+        {session.number}
       </ThemedText>
 
       <View
@@ -85,7 +86,9 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
                     { color: colors.secondaryText },
                   ]}
                 >
-                  Start: {platform.platformStartTime || session.startTime}{" "}
+                  Start:{" "}
+                  {platform.platformStartTime || session.startTime}
+                  {" "}
                   {timeZone}
                 </ThemedText>
               </View>

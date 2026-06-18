@@ -34,12 +34,15 @@ function AttemptRateRow({
       <ThemedText
         style={[styles.attemptRateValue, { color: getRateColor(rates.rate, colors) }]}
       >
-        {rates.rate.toFixed(1)}%
-      </ThemedText>
+        {rates.rate.toFixed(1)}
+%
+</ThemedText>
       <ThemedText
         style={[styles.attemptRateSubtext, { color: colors.secondaryText }]}
       >
-        {rates.makes}/{rates.total}
+        {rates.makes}
+/
+{rates.total}
       </ThemedText>
     </View>
   );
@@ -164,8 +167,9 @@ function AthleteStats({
                 { color: getRateColor(stats.snatchMakeRate, colors) },
               ]}
             >
-              {stats.snatchMakeRate.toFixed(1)}%
-            </ThemedText>
+              {stats.snatchMakeRate.toFixed(1)}
+%
+</ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -205,8 +209,9 @@ function AthleteStats({
                 { color: getRateColor(stats.cjMakeRate, colors) },
               ]}
             >
-              {stats.cjMakeRate.toFixed(1)}%
-            </ThemedText>
+              {stats.cjMakeRate.toFixed(1)}
+%
+</ThemedText>
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -267,7 +272,7 @@ export default function AthleteResultsScreen() {
           }
         } catch (cacheError) {
           console.log(
-            `Cache miss for athlete results, fetching from Convex ${cacheError}`,
+            `Cache miss for athlete results, fetching from API ${cacheError}`,
           );
         }
 
@@ -349,7 +354,8 @@ export default function AthleteResultsScreen() {
               <ThemedText
                 style={[styles.emptyStateText, { color: colors.secondaryText }]}
               >
-                No meet results found for {name}
+                No meet results found for{" "}
+                {name}
               </ThemedText>
             </View>
           </View>
@@ -358,7 +364,7 @@ export default function AthleteResultsScreen() {
             <AthleteStats results={athleteResults} colors={colors} />
             {athleteResults.map((result, index) => (
               <View
-                key={result.convexId ?? (result as { _id?: string })._id ?? `${result.event_id}-${result.meet}-${result.date}-${index}`}
+                key={`${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`}
                 style={[
                   styles.card,
                   { backgroundColor: colors.card },
@@ -372,7 +378,8 @@ export default function AthleteResultsScreen() {
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
-                    Date: {new Date(result.date).toLocaleDateString()}
+                    Date:{" "}
+                    {new Date(result.date).toLocaleDateString()}
                   </ThemedText>
                   <ThemedText
                     style={[
@@ -429,7 +436,11 @@ export default function AthleteResultsScreen() {
 
                 <View style={styles.section}>
                   <ThemedText style={styles.total}>
-                    {result.snatch_best ?? "—"}/{result.cj_best ?? "—"}/{result.total ?? "—"}
+                    {result.snatch_best ?? "—"}
+/
+{result.cj_best ?? "—"}
+/
+{result.total ?? "—"}
                   </ThemedText>
                 </View>
               </View>

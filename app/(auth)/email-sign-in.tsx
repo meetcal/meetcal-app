@@ -1,7 +1,7 @@
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { cacheAuthState } from "@/lib/authCache";
-import { useSignIn } from "@clerk/expo";
+import { useSignIn } from "@clerk/expo/legacy";
 import * as Sentry from "@sentry/react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -31,7 +31,7 @@ function getErrorMessage(error: unknown, phase: EmailAuthPhase): string {
 
 function getClerkErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
-  const errors = (error as { errors?: Array<{ code?: string }> }).errors;
+  const errors = (error as { errors?: { code?: string }[] }).errors;
   const code = errors?.[0]?.code;
   return typeof code === "string" ? code : undefined;
 }

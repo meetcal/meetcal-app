@@ -2,7 +2,7 @@ import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-import type { Router } from "expo-router";
+import type { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -21,7 +21,7 @@ interface NotificationSettingsProps {
   };
   subscriptionStatus: SubscriptionStatus;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
-  router: Router;
+  router: ReturnType<typeof useRouter>;
 }
 
 const NOTIFICATION_ENABLED_KEY = "@notification_enabled";

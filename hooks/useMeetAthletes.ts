@@ -31,11 +31,59 @@ const athletesResource = createMutableResource<LiftResult[], [MeetName]>({
   isEqual: defaultIsEqual,
 });
 
+function normalizePlatformKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function filterSessionAthletes(
+  athletes: LiftResult[],
+  sessionNumber: number,
+  platform: string,
+) {
+  const normalizedPlatform = normalizePlatformKey(platform);
+  return athletes.filter((athlete) => {
+    const athleteSession = athlete.session;
+    if (!athleteSession) return false;
+    if (athleteSession.number !== sessionNumber) return false;
+    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
+  });
+}
+
+const sessionAthletesResource = createMutableResource<
+  LiftResult[],
+  [MeetName, number, string]
+>({
+  getKey: (meet, sessionNumber, platform) =>
+    `athletes:${meet}:session:${sessionNumber}:${platform}`,
+  loadCached: async (meet, sessionNumber, platform) => {
+    const meetData = await getMeetData(meet);
+    const athletes = filterSessionAthletes(
+      meetData.athletes,
+      sessionNumber,
+      platform,
+    );
+    return athletes.length > 0
+      ? {
+          data: athletes,
+          lastUpdatedAt: meetData.lastSyncTime || null,
+        }
+      : null;
+  },
+  fetchFresh: async (meet, sessionNumber, platform) =>
+    filterSessionAthletes(
+      await fetchAthletesWithSession(meet, sessionNumber, platform),
+      sessionNumber,
+      platform,
+    ),
+  persistFresh: async () => null,
+  isEqual: defaultIsEqual,
+});
+
 export function useMeetAthletes(
   selectedMeet: MeetName | null,
 ): UseMeetAthletesReturn {
   const params = useMemo(
-    () => (selectedMeet ? ([selectedMeet] as const) : null),
+    () => (selectedMeet ? ([selectedMeet] as [MeetName]) : null),
     [selectedMeet],
   );
   const [emptyAthletes] = useState<LiftResult[]>([]);
@@ -47,6 +95,39 @@ export function useMeetAthletes(
   } = useMutableResource({
     resource: athletesResource,
     params: params ?? ([] as unknown as [MeetName]),
+    initialData: emptyAthletes,
+    enabled: Boolean(params),
+  });
+
+  return {
+    athletes,
+    isLoading: isInitialLoading,
+    isRefreshing,
+    refreshAthletes: refresh,
+  };
+}
+
+export function useSessionAthletes(
+  selectedMeet: MeetName | null,
+  sessionNumber: number,
+  platform: string,
+): UseMeetAthletesReturn {
+  const params = useMemo(
+    () =>
+      selectedMeet
+        ? ([selectedMeet, sessionNumber, platform] as [MeetName, number, string])
+        : null,
+    [platform, selectedMeet, sessionNumber],
+  );
+  const [emptyAthletes] = useState<LiftResult[]>([]);
+  const {
+    data: athletes,
+    isInitialLoading,
+    isRefreshing,
+    refresh,
+  } = useMutableResource({
+    resource: sessionAthletesResource,
+    params: params ?? ([] as unknown as [MeetName, number, string]),
     initialData: emptyAthletes,
     enabled: Boolean(params),
   });

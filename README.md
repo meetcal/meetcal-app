@@ -12,7 +12,7 @@ A React Native application built with Expo for managing athletic schedules and m
 
 - Schedule management for athletes and meets
 - Athlete data management
-- Real-time data with Convex (reactive queries and mutations)
+- Self-hosted MeetCal API with offline-first app caching
 - Cross-platform support (iOS, Android)
 
 ## Tech Stack
@@ -22,7 +22,7 @@ A React Native application built with Expo for managing athletic schedules and m
 | **Framework** | React Native 0.83, React 19 |
 | **Platform** | Expo SDK ~55, Expo Router |
 | **Language** | TypeScript |
-| **Backend** | Convex (real-time database, server functions) |
+| **Backend** | Self-hosted Rust API, PostgreSQL |
 | **Authentication** | Clerk (JWT, secure token storage) |
 | **Subscriptions** | RevenueCat (in-app purchases, subscription tiers) |
 | **Analytics** | PostHog & Sentry (event tracking, remote config) |
@@ -32,7 +32,7 @@ A React Native application built with Expo for managing athletic schedules and m
 
 ## Architecture
 
-- **Offline-first data layer** — Multi-layer caching (in-memory, AsyncStorage) with Convex-backed sync when online and graceful degradation when offline
+- **Offline-first data layer** — Multi-layer caching (in-memory, AsyncStorage) with API-backed sync when online and graceful degradation when offline
 - **Context-based state management** — Custom providers and hooks for theme, subscriptions, saved sessions, and selected meet state
 - **File-based routing** — Expo Router with feature-grouped folders, tab navigation, and modal screen stacks
 - **Push notification system** — Scheduled reminders for weigh-ins and competition sessions with user-configurable timing; remote messaging via OneSignal

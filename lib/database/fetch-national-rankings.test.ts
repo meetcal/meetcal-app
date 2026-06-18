@@ -5,20 +5,10 @@ import {
 } from "@/lib/database/offline-cache";
 import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
 
-const mockQuery = jest.fn();
+const mockGetJson = jest.fn();
 
-jest.mock("@/lib/convex", () => ({
-  convex: {
-    query: (...args: any[]) => mockQuery(...args),
-  },
-}));
-
-jest.mock("@/convex/_generated/api", () => ({
-  api: {
-    liftingResults: {
-      getNationalRankings: "liftingResults:getNationalRankings",
-    },
-  },
+jest.mock("@/lib/api/meetcal-api", () => ({
+  getJson: (...args: any[]) => mockGetJson(...args),
 }));
 
 jest.mock("@/lib/database/offline-cache", () => ({
@@ -42,7 +32,7 @@ describe("fetchNationalRankings offline cache behavior", () => {
   });
 
   it("returns deduped online rankings and updates offline cache", async () => {
-    mockQuery.mockResolvedValue([
+    mockGetJson.mockResolvedValue([
       { name: "Athlete A", total: 250 },
       { name: "Athlete A", total: 240 },
       { name: "Athlete B", total: 235 },
@@ -61,8 +51,8 @@ describe("fetchNationalRankings offline cache behavior", () => {
     );
   });
 
-  it("falls back to cached rankings when convex fails", async () => {
-    mockQuery.mockRejectedValue(new Error("network failed"));
+  it("falls back to cached rankings when API fails", async () => {
+    mockGetJson.mockRejectedValue(new Error("network failed"));
     mockGetOfflineCache.mockResolvedValue({
       data: {
         "Open Women's 71kg": [{ name: "Cached Athlete", total: 220 }],
@@ -75,8 +65,8 @@ describe("fetchNationalRankings offline cache behavior", () => {
     expect(result).toEqual([{ name: "Cached Athlete", total: 220 }]);
   });
 
-  it("throws when convex fails and no cached rankings exist", async () => {
-    mockQuery.mockRejectedValue(new Error("network failed"));
+  it("throws when API fails and no cached rankings exist", async () => {
+    mockGetJson.mockRejectedValue(new Error("network failed"));
     mockGetOfflineCache.mockResolvedValue(null);
 
     await expect(fetchNationalRankings("Open Men's 102kg")).rejects.toThrow();

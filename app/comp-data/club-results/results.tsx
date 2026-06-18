@@ -357,6 +357,26 @@ function MeetResultsByClubScreenContent() {
               colors={colors}
             />
           </View>
+          <View style={styles.makeRateRow}>
+            <MakeRateCard
+              title="Snatch"
+              value={formatMakeRate(clubStats.snatchMakeRate)}
+              accentColor={colors.fail}
+              colors={colors}
+            />
+            <MakeRateCard
+              title="C&J"
+              value={formatMakeRate(clubStats.cjMakeRate)}
+              accentColor={colors.success}
+              colors={colors}
+            />
+            <MakeRateCard
+              title="Overall"
+              value={formatMakeRate(clubStats.combinedMakeRate)}
+              accentColor={colors.link}
+              colors={colors}
+            />
+          </View>
         </Animated.View>
 
         {/* Share Button */}
@@ -529,11 +549,33 @@ const ShareableRecapView = React.forwardRef<
         />
       </View>
 
+      <View style={shareableStyles.makeRateRow}>
+        <ShareableMakeRateCard
+          value={formatMakeRate(stats.snatchMakeRate)}
+          label="SNATCH MAKE"
+          accentColor="#FF375F"
+        />
+        <ShareableMakeRateCard
+          value={formatMakeRate(stats.cjMakeRate)}
+          label="C&J MAKE"
+          accentColor="#32D74B"
+        />
+        <ShareableMakeRateCard
+          value={formatMakeRate(stats.combinedMakeRate)}
+          label="OVERALL MAKE"
+          accentColor="#FFD60A"
+        />
+      </View>
+
     </View>
   );
 });
 
 ShareableRecapView.displayName = "ShareableRecapView";
+
+function formatMakeRate(rate: number | undefined) {
+  return `${Math.round(rate ?? 0)}%`;
+}
 
 // Shareable Medal Block
 function ShareableMedalBlock({
@@ -580,6 +622,55 @@ function ShareableStatCard({
       <Text style={shareableStyles.statEmoji}>{emoji}</Text>
       <Text style={shareableStyles.statValue}>{value}</Text>
       <Text style={shareableStyles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function MakeRateCard({
+  title,
+  value,
+  accentColor,
+  colors,
+}: {
+  title: string;
+  value: string;
+  accentColor: string;
+  colors: ReturnType<typeof useAppColors>;
+}) {
+  return (
+    <View
+      style={[
+        styles.makeRateCard,
+        {
+          backgroundColor: colors.card,
+          borderTopColor: accentColor,
+        },
+      ]}
+    >
+      <IconSymbol name="stats-chart" size={20} color={accentColor} />
+      <ThemedText style={[styles.makeRateValue, { color: colors.text }]}>
+        {value}
+      </ThemedText>
+      <ThemedText style={[styles.makeRateTitle, { color: colors.secondaryText }]}>
+        {title}
+      </ThemedText>
+    </View>
+  );
+}
+
+function ShareableMakeRateCard({
+  value,
+  label,
+  accentColor,
+}: {
+  value: string;
+  label: string;
+  accentColor: string;
+}) {
+  return (
+    <View style={[shareableStyles.makeRateCard, { borderTopColor: accentColor }]}>
+      <Text style={shareableStyles.makeRateValue}>{value}</Text>
+      <Text style={shareableStyles.makeRateLabel}>{label}</Text>
     </View>
   );
 }
@@ -803,6 +894,34 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
+  makeRateRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  makeRateCard: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: "flex-start",
+    gap: 5,
+    borderTopWidth: 3,
+  },
+  makeRateValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    lineHeight: 28,
+    includeFontPadding: false,
+  },
+  makeRateTitle: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
   // Share button
   shareButtonContainer: {
     paddingHorizontal: 16,
@@ -857,7 +976,7 @@ const styles = StyleSheet.create({
   },
   previewImage: {
     width: "100%",
-    aspectRatio: 800 / 720,
+    aspectRatio: 800 / 1000,
     borderRadius: 12,
   },
   shareButton: {
@@ -885,7 +1004,7 @@ const styles = StyleSheet.create({
 const shareableStyles = StyleSheet.create({
   container: {
     width: 800,
-    height: 900,
+    height: 1000,
     backgroundColor: "#0A0A0F",
     padding: 50,
     overflow: "hidden",
@@ -1007,5 +1126,32 @@ const shareableStyles = StyleSheet.create({
     fontWeight: "700",
     color: "#8E8E93",
     letterSpacing: 1.2,
+  },
+  makeRateRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  makeRateCard: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    borderTopWidth: 3,
+    gap: 8,
+  },
+  makeRateValue: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    lineHeight: 42,
+    includeFontPadding: false,
+  },
+  makeRateLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#8E8E93",
+    letterSpacing: 1,
   },
 });

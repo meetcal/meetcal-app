@@ -1,7 +1,6 @@
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 export type NationalRanking = {
   id: number;
@@ -41,10 +40,10 @@ async function readNationalRankingsCache(weightClassAge: string) {
 }
 
 async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
-  const rows = await convex.query(api.liftingResults.getNationalRankings, {
+  const rows = await getJson<NationalRankingRow[]>('/data/nat-rankings', {
     federation: 'USAW',
-    ageCategory: weightClassAge,
-  }) as NationalRankingRow[];
+    age_category: weightClassAge,
+  });
 
   return mapRankings(rows);
 }

@@ -13,6 +13,9 @@ export interface ClubMeetStats {
   totalPRs: number;
   perfect6for6: number;
   totalWeightLifted: number;
+  snatchMakeRate: number;
+  cjMakeRate: number;
+  combinedMakeRate: number;
   athleteResults: AthleteResult[];
 }
 
