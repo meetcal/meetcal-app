@@ -1,8 +1,10 @@
-import { api } from "@/convex/_generated/api";
-import { convex } from "@/lib/convex";
+import {
+  fetchUserPreferences,
+  patchAutoUnsavePreference,
+} from "@/lib/api/meetcal-api";
 import { AuthGuardOptions } from "@/utils/authGuard";
-import { useUser } from "@clerk/expo";
-import type { Router } from "expo-router";
+import { useAuth, useUser } from "@clerk/expo";
+import type { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
@@ -16,7 +18,7 @@ interface AutoUnsaveSettingProps {
   };
   isSubscribed: boolean;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
-  router: Router;
+  router: ReturnType<typeof useRouter>;
 }
 
 export function AutoUnsaveSetting({
@@ -26,6 +28,7 @@ export function AutoUnsaveSetting({
   router,
 }: AutoUnsaveSettingProps) {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,12 +43,11 @@ export function AutoUnsaveSetting({
 
     const loadPreference = async () => {
       try {
-        const result = await convex.query(
-          api.userPreferences.getForCurrentUser,
-          {},
-        );
+        const token = await getToken();
+        if (!token) throw new Error("Missing Clerk token");
+        const result = await fetchUserPreferences(token);
         if (!cancelled) {
-          setIsEnabled(result.autoUnsaveStartedSessions);
+          setIsEnabled(result.auto_unsave_started_sessions);
         }
       } catch {
         if (!cancelled) {
@@ -62,7 +64,7 @@ export function AutoUnsaveSetting({
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [getToken, user?.id]);
 
   const handleToggle = async () => {
     const authResult = requireAuth({
@@ -88,9 +90,9 @@ export function AutoUnsaveSetting({
     const nextValue = !isEnabled;
     setIsEnabled(nextValue);
     try {
-      await convex.mutation(api.userPreferences.setAutoUnsaveStartedSessions, {
-        enabled: nextValue,
-      });
+      const token = await getToken();
+      if (!token) throw new Error("Missing Clerk token");
+      await patchAutoUnsavePreference(token, nextValue);
     } catch (error) {
       setIsEnabled(!nextValue);
       console.error("Error updating auto-unsave setting:", error);

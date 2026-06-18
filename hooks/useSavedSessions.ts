@@ -3,9 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime } from '@/utils/time';
-import { useUser } from '@clerk/expo';
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
+import { useAuth, useUser } from '@clerk/expo';
 import { scheduleNotification, cancelNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
@@ -15,6 +13,12 @@ import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
 import { getCachedAuthState } from '@/lib/authCache';
+import {
+  deleteSavedSession as deleteSavedSessionFromApi,
+  deleteSavedSessions as deleteSavedSessionsFromApi,
+  fetchSavedSessions,
+  putSavedSession,
+} from '@/lib/api/meetcal-api';
 
 // Function to generate unique session IDs
 function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
@@ -60,6 +64,7 @@ function parseStoredSessions(raw: string | null): SavedSession[] {
 
 export function useSavedSessions() {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const { selectedMeet } = useSelectedMeet();
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -171,22 +176,27 @@ export function useSavedSessions() {
       sessionsRef.current = localSessions;
       setSavedSessions(localSessions);
 
-      // Fetch from Convex
+      // Fetch from the API when Clerk can provide a fresh token.
       if (user?.id) {
-        const convexSessions = await convex.query(api.savedSessions.getByUser, { userId: user.id });
+        const token = await getToken().catch(() => null);
+        if (!token) {
+          setSavedSessions(localSessions);
+          return;
+        }
+        const apiSessions = await fetchSavedSessions(token);
 
-        if (convexSessions && convexSessions.length > 0) {
-          const formattedSessions = convexSessions.map(s => ({
-            id: s.sessionId,
+        if (apiSessions && apiSessions.length > 0) {
+          const formattedSessions = apiSessions.map(s => ({
+            id: s.session_id,
             meet: s.meet as MeetName,
-            sessionNumber: s.sessionNumber,
+            sessionNumber: s.session_number,
             platform: s.platform,
-            weightClass: s.weightClass ?? '',
-            startTime: s.startTime ?? '',
-            weighInTime: calculateWeighInTime(s.startTime ?? ''),
+            weightClass: s.weight_class ?? '',
+            startTime: s.start_time ?? '',
+            weighInTime: calculateWeighInTime(s.start_time ?? ''),
             date: s.date ?? '',
-            notes: s.notes,
-            athleteNames: s.athleteNames,
+            notes: s.notes ?? undefined,
+            athleteNames: s.athlete_names,
           }));
           await commitSessions(formattedSessions);
         } else {
@@ -382,23 +392,23 @@ export function useSavedSessions() {
 
       await commitSessions(nextSessions);
 
-      // 2. Upsert to Convex
+      // 2. Upsert to the API when online/authenticated. Local save remains source of truth offline.
       if (user?.id) {
         try {
-          await convex.mutation(api.savedSessions.upsert, {
-            sessionId: updatedSession.id,
-            userId: user.id,
+          const token = await getToken();
+          if (!token) throw new Error('Missing Clerk token');
+          await putSavedSession(token, updatedSession.id, {
             meet: updatedSession.meet,
-            sessionNumber: updatedSession.sessionNumber,
+            session_number: updatedSession.sessionNumber,
             platform: updatedSession.platform,
-            weightClass: updatedSession.weightClass,
-            startTime: updatedSession.startTime,
+            weight_class: updatedSession.weightClass,
+            start_time: updatedSession.startTime,
             date: updatedSession.date,
             notes: updatedSession.notes,
-            athleteNames: updatedSession.athleteNames,
+            athlete_names: updatedSession.athleteNames,
           });
-        } catch (convexError) {
-          console.error('Error saving session to Convex:', convexError);
+        } catch (apiError) {
+          console.error('Error saving session to API:', apiError);
           // Local save already succeeded, so keep success semantics for device caching.
         }
       }
@@ -543,12 +553,14 @@ export function useSavedSessions() {
       const updatedSessions = currentSessions.filter(session => session.id !== sessionId);
       await commitSessions(updatedSessions);
 
-      // 2. Delete from Convex
+      // 2. Delete from the API when online/authenticated.
       if (user?.id) {
         try {
-          await convex.mutation(api.savedSessions.remove, { sessionId, userId: user.id });
-        } catch (convexError) {
-          console.error('Error removing session from Convex:', convexError);
+          const token = await getToken();
+          if (!token) throw new Error('Missing Clerk token');
+          await deleteSavedSessionFromApi(token, sessionId);
+        } catch (apiError) {
+          console.error('Error removing session from API:', apiError);
         }
       }
 
@@ -586,23 +598,27 @@ export function useSavedSessions() {
         const currentSessions = await readStoredSessions();
         const filteredSessions = currentSessions.filter(s => s.meet !== meet);
         await commitSessions(filteredSessions);
-        // Delete only sessions for this meet from Convex
+        // Delete only sessions for this meet from the API
         if (user?.id) {
           try {
-            await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id, meet });
+            const token = await getToken();
+            if (!token) throw new Error('Missing Clerk token');
+            await deleteSavedSessionsFromApi(token, meet);
           } catch (e) {
-            console.error('Error deleting sessions for meet from Convex:', e);
+            console.error('Error deleting sessions for meet from API:', e);
           }
         }
       } else {
         // 1. Clear all local storage and state
         await commitSessions([]);
-        // 2. Delete all sessions for this user from Convex
+        // 2. Delete all sessions for this user from the API
         if (user?.id) {
           try {
-            await convex.mutation(api.savedSessions.removeAllForUser, { userId: user.id });
+            const token = await getToken();
+            if (!token) throw new Error('Missing Clerk token');
+            await deleteSavedSessionsFromApi(token);
           } catch (e) {
-            console.error('Error deleting sessions from Convex:', e);
+            console.error('Error deleting sessions from API:', e);
           }
         }
       }

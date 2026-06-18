@@ -1,8 +1,7 @@
-import { api } from '@/convex/_generated/api';
-import { convex } from '@/lib/convex';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 export type QualifyingTotal = {
   id: number;
@@ -23,11 +22,11 @@ export type QualifyingTotalsData = {
 };
 
 type QualifyingTotalRow = {
-  eventName: string;
-  ageCategory: string;
+  event_name: string;
+  age_category: string;
   gender: 'Men' | 'Women';
-  weightClass: string;
-  qualifyingTotal: number;
+  weight_class: string;
+  qualifying_total: number;
 };
 
 function filterTotals(
@@ -85,17 +84,17 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
     throw new Error('Offline');
   }
 
-  const rows = await convex.query(api.qualifyingTotals.getAll, {}) as QualifyingTotalRow[];
+  const rows = await getJson<QualifyingTotalRow[]>('/data/qualifying-totals');
 
   const result: QualifyingTotalsData = {};
   rows.forEach((row) => {
-    const e = row.eventName;
-    const a = row.ageCategory;
+    const e = row.event_name;
+    const a = row.age_category;
     const g = row.gender;
-    const w = row.weightClass;
+    const w = row.weight_class;
     if (!result[e]) result[e] = {};
     if (!result[e][a]) result[e][a] = { Men: {}, Women: {} };
-    result[e][a][g][w] = row.qualifyingTotal;
+    result[e][a][g][w] = row.qualifying_total;
   });
 
   return result;

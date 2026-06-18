@@ -9,7 +9,7 @@ function createEmptyBests(): SupabaseBests {
 }
 
 function maxSuccessfulAttempt(
-  attempts: Array<number | null | undefined>,
+  attempts: (number | null | undefined)[],
 ): number | null {
   const successful = attempts.filter(
     (attempt): attempt is number => typeof attempt === "number" && attempt > 0,

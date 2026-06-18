@@ -1,6 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { api } from "@/convex/_generated/api";
-import { convex } from "@/lib/convex";
+import { searchApi } from "@/lib/api/meetcal-api";
 import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
@@ -98,7 +97,10 @@ function AnimatedCounter({
     ? display.toFixed(decimals)
     : display.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-  return <Text style={style}>{formatted}{suffix}</Text>;
+  return <Text style={style}>
+{formatted}
+{suffix}
+</Text>;
 }
 
 function PulsingDot({ active }: { active: boolean }) {
@@ -204,7 +206,7 @@ export default function WeightliftingWrappedScreen() {
     }
     setLoadingSuggestions(true);
     try {
-      const names: string[] = await convex.query(api.athletes.searchByName, { query: query.trim() });
+      const { suggestions: names } = await searchApi(query.trim());
       const words = query.trim().toLowerCase().split(/\s+/);
       const filtered = names.filter((name) => {
         const lower = name.toLowerCase();
@@ -250,61 +252,33 @@ export default function WeightliftingWrappedScreen() {
       const startDate = `${selectedYear}-01-01`;
       const endDate = `${selectedYear + 1}-01-01`;
 
-      let rows = await convex.query(api.liftingResults.getByNames, { names: [normalizedName] });
-      let data: LiftingResult[] = rows
-        .filter((r: any) => r.date >= startDate && r.date < endDate)
-        .map((r: any): LiftingResult => ({
-          id: r._id,
-          event_id: r.eventId,
+      const response = await searchApi(normalizedName, startDate, endDate);
+      const words = normalizedName.toLowerCase().split(/\s+/);
+      const data: LiftingResult[] = response.results
+        .filter((r) => {
+          const lower = (r.name || "").toLowerCase();
+          return words.every((w) => lower.includes(w));
+        })
+        .map((r): LiftingResult => ({
+          id: r.id,
+          event_id: r.event_id,
           meet: r.meet,
           date: r.date,
           name: r.name,
           age: r.age,
-          body_weight: r.bodyWeight,
+          body_weight: r.body_weight,
           snatch1: r.snatch1,
           snatch2: r.snatch2,
           snatch3: r.snatch3,
-          snatch_best: r.snatchBest,
+          snatch_best: r.snatch_best,
           cj1: r.cj1,
           cj2: r.cj2,
           cj3: r.cj3,
-          cj_best: r.cjBest,
+          cj_best: r.cj_best,
           total: r.total,
         }))
         .sort((a: LiftingResult, b: LiftingResult) => a.date.localeCompare(b.date))
         .slice(0, 600);
-
-      if (data.length === 0) {
-        const searchRows = await convex.query(api.liftingResults.searchByNameAndYear, {
-          query: normalizedName,
-          startDate,
-          endDate,
-        });
-        const words = normalizedName.toLowerCase().split(/\s+/);
-        data = searchRows
-          .filter((r: any) => {
-            const lower = (r.name || "").toLowerCase();
-            return words.every((w) => lower.includes(w));
-          })
-          .slice(0, 600).map((r: any): LiftingResult => ({
-          id: r._id,
-          event_id: r.eventId,
-          meet: r.meet,
-          date: r.date,
-          name: r.name,
-          age: r.age,
-          body_weight: r.bodyWeight,
-          snatch1: r.snatch1,
-          snatch2: r.snatch2,
-          snatch3: r.snatch3,
-          snatch_best: r.snatchBest,
-          cj1: r.cj1,
-          cj2: r.cj2,
-          cj3: r.cj3,
-          cj_best: r.cjBest,
-          total: r.total,
-        }));
-      }
 
       if (!data || data.length === 0) {
         Alert.alert("No Results", `No results found for ${searchQuery} in ${selectedYear}`);
@@ -473,7 +447,10 @@ export default function WeightliftingWrappedScreen() {
           onPress={(e) => handleTap(e.nativeEvent.locationX)}
         >
           <SlideContent active={isActive}>
-            {index === 0 && <TitleSlide name={athleteName} year={selectedYear} stats={wrappedStats} active={isActive} />}
+            {index === 0 && <TitleSlide
+              name={athleteName} year={selectedYear} stats={wrappedStats}
+              active={isActive}
+            />}
             {index === 1 && <TotalWeightSlide stats={wrappedStats} active={isActive} />}
             {index === 2 && <PersonalRecordsSlide stats={wrappedStats} active={isActive} />}
             {index === 3 && <ConsistencySlide stats={wrappedStats} active={isActive} />}
@@ -606,7 +583,11 @@ export default function WeightliftingWrappedScreen() {
         )}
         <Animated.View entering={FadeInDown.duration(600).delay(100)}>
           <Text style={styles.searchPreTitle}>YOUR</Text>
-          <Text style={styles.searchTitle}>YEAR IN{"\n"}LIFTING</Text>
+          <Text style={styles.searchTitle}>
+YEAR IN
+{"\n"}
+LIFTING
+</Text>
           <View style={styles.searchTitleAccent} />
         </Animated.View>
 
@@ -688,8 +669,10 @@ export default function WeightliftingWrappedScreen() {
 
         <Animated.View entering={FadeIn.duration(500).delay(600)}>
           <Text style={styles.searchFooter}>
-            Discover your year in weightlifting.{"\n"}See your stats in a shareable format.
-          </Text>
+            Discover your year in weightlifting.
+{"\n"}
+See your stats in a shareable format.
+</Text>
         </Animated.View>
       </ScrollView>
     </View>
@@ -715,7 +698,10 @@ function TitleSlide({ name, year, stats, active }: { name: string; year: number;
         </View>
         <View style={styles.titleBottomDivider} />
         <View style={styles.titleBottomStat}>
-          <Text style={styles.titleBottomNumber}>{stats.makePercentage.toFixed(0)}%</Text>
+          <Text style={styles.titleBottomNumber}>
+{stats.makePercentage.toFixed(0)}
+%
+</Text>
           <Text style={styles.titleBottomLabel}>make rate</Text>
         </View>
         <View style={styles.titleBottomDivider} />
@@ -797,7 +783,10 @@ function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: 
         <View style={styles.prCard}>
           <Text style={styles.prLabel}>SNATCH</Text>
           {active ? (
-            <AnimatedCounter value={stats.bestSnatch} delay={300} suffix="kg" style={styles.prValue} />
+            <AnimatedCounter
+              value={stats.bestSnatch} delay={300} suffix="kg"
+              style={styles.prValue}
+            />
           ) : (
             <Text style={styles.prValue}>0kg</Text>
           )}
@@ -805,7 +794,10 @@ function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: 
         <View style={[styles.prCard, styles.prCardLarge]}>
           <Text style={styles.prLabelLarge}>BEST TOTAL</Text>
           {active ? (
-            <AnimatedCounter value={stats.bestTotal} delay={600} suffix="kg" style={styles.prValueLarge} />
+            <AnimatedCounter
+              value={stats.bestTotal} delay={600} suffix="kg"
+              style={styles.prValueLarge}
+            />
           ) : (
             <Text style={styles.prValueLarge}>0kg</Text>
           )}
@@ -813,7 +805,10 @@ function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: 
         <View style={styles.prCard}>
           <Text style={styles.prLabel}>CLEAN & JERK</Text>
           {active ? (
-            <AnimatedCounter value={stats.bestCleanJerk} delay={900} suffix="kg" style={styles.prValue} />
+            <AnimatedCounter
+              value={stats.bestCleanJerk} delay={900} suffix="kg"
+              style={styles.prValue}
+            />
           ) : (
             <Text style={styles.prValue}>0kg</Text>
           )}
@@ -873,14 +868,22 @@ function ConsistencySlide({ stats, active }: { stats: WrappedStats; active: bool
             ) : (
               <Text style={styles.consistencyStatNumber}>0</Text>
             )}
-            <Text style={styles.consistencyStatLabel}>CONSECUTIVE{"\n"}MAKES</Text>
+            <Text style={styles.consistencyStatLabel}>
+CONSECUTIVE
+{"\n"}
+MAKES
+</Text>
           </View>
           <View style={styles.consistencyStatDivider} />
           <View style={styles.consistencyStat}>
             <Text style={styles.consistencyStatNumber}>
               {percentage >= 80 ? "ELITE" : percentage >= 60 ? "SOLID" : "GROWING"}
             </Text>
-            <Text style={styles.consistencyStatLabel}>ACCURACY{"\n"}TIER</Text>
+            <Text style={styles.consistencyStatLabel}>
+ACCURACY
+{"\n"}
+TIER
+</Text>
           </View>
         </View>
       </View>
@@ -897,7 +900,12 @@ function MeetJourneySlide({ stats, year, active }: { stats: WrappedStats; year: 
 
   return (
     <View style={styles.slideInner}>
-      <Text style={styles.slideTopLabel}>YOUR {year} JOURNEY</Text>
+      <Text style={styles.slideTopLabel}>
+YOUR
+{year}
+{' '}
+JOURNEY
+</Text>
       <View style={styles.journeyCenter}>
         <View style={styles.journeyHero}>
           {active ? (
@@ -915,7 +923,10 @@ function MeetJourneySlide({ stats, year, active }: { stats: WrappedStats; year: 
 
         <View style={styles.journeyStatsRow}>
           <View style={styles.journeyStat}>
-            <Text style={styles.journeyStatNumber}>{stats.averageTotal.toFixed(0)}kg</Text>
+            <Text style={styles.journeyStatNumber}>
+{stats.averageTotal.toFixed(0)}
+kg
+</Text>
             <Text style={styles.journeyStatLabel}>AVG TOTAL</Text>
           </View>
           <View style={styles.journeyStat}>
@@ -974,26 +985,38 @@ function ShareSlide({
 }) {
   return (
     <View style={styles.slideInner}>
-      <Text style={styles.slideTopLabel}>THAT'S A WRAP</Text>
+      <Text style={styles.slideTopLabel}>THAT&apos;S A WRAP</Text>
       <View style={styles.shareCenter}>
         <Text style={styles.shareYear}>{year}</Text>
         <Text style={styles.shareName}>{name.toUpperCase()}</Text>
 
         <View style={styles.shareSummaryGrid}>
           <View style={styles.shareSummaryItem}>
-            <Text style={styles.shareSummaryValue}>{stats.bestSnatch}kg</Text>
+            <Text style={styles.shareSummaryValue}>
+{stats.bestSnatch}
+kg
+</Text>
             <Text style={styles.shareSummaryLabel}>SNATCH</Text>
           </View>
           <View style={styles.shareSummaryItem}>
-            <Text style={styles.shareSummaryValue}>{stats.bestCleanJerk}kg</Text>
+            <Text style={styles.shareSummaryValue}>
+{stats.bestCleanJerk}
+kg
+</Text>
             <Text style={styles.shareSummaryLabel}>C&J</Text>
           </View>
           <View style={styles.shareSummaryItem}>
-            <Text style={styles.shareSummaryValue}>{stats.bestTotal}kg</Text>
+            <Text style={styles.shareSummaryValue}>
+{stats.bestTotal}
+kg
+</Text>
             <Text style={styles.shareSummaryLabel}>TOTAL</Text>
           </View>
           <View style={styles.shareSummaryItem}>
-            <Text style={styles.shareSummaryValue}>{stats.makePercentage.toFixed(0)}%</Text>
+            <Text style={styles.shareSummaryValue}>
+{stats.makePercentage.toFixed(0)}
+%
+</Text>
             <Text style={styles.shareSummaryLabel}>MAKES</Text>
           </View>
         </View>
@@ -1059,7 +1082,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   slideOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.15)",
   },
   slideContentInner: {

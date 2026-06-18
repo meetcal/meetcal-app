@@ -5,7 +5,7 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useMeetAthletes } from "@/hooks/useMeetAthletes";
+import { useSessionAthletes } from "@/hooks/useMeetAthletes";
 import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useRouter } from "expo-router";
@@ -17,10 +17,6 @@ import {
     StyleSheet,
     View
 } from "react-native";
-
-function normalizePlatformKey(value: string) {
-  return value.trim().toLowerCase();
-}
 
 function toSessionAthletesByPlatform(
   platform: string,
@@ -41,20 +37,6 @@ function toSessionAthletesByPlatform(
   };
 }
 
-function filterSessionAthletes(
-  athletes: LiftResult[],
-  sessionNumber: number,
-  platform: string,
-) {
-  const normalizedPlatform = normalizePlatformKey(platform);
-  return athletes.filter((athlete) => {
-    const athleteSession = athlete.session;
-    if (!athleteSession) return false;
-    if (athleteSession.number !== sessionNumber) return false;
-    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
-  });
-}
-
 export default function SessionAthletes({
   sessionNumber,
   platform,
@@ -71,8 +53,8 @@ export default function SessionAthletes({
 
   const router = useRouter();
   const colors = useAppColors();
-  const { athletes: meetAthletes, isLoading, isRefreshing, refreshAthletes } =
-    useMeetAthletes(meetId);
+  const { athletes: sessionAthletes, isLoading, isRefreshing, refreshAthletes } =
+    useSessionAthletes(meetId, sessionNumber, platform);
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
@@ -83,11 +65,6 @@ export default function SessionAthletes({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const refreshKeyRef = useRef(refreshKey);
-
-  const sessionAthletes = useMemo(
-    () => filterSessionAthletes(meetAthletes, sessionNumber, platform),
-    [meetAthletes, sessionNumber, platform],
-  );
 
   const athletes = useMemo(
     () => toSessionAthletesByPlatform(platform, sessionAthletes),

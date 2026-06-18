@@ -64,8 +64,8 @@ function RecordsScreenContent() {
   });
 
   const wsoParams = useMemo(
-    () => (filters.wso ? ([filters.wso] as const) : null),
-    [filters.wso],
+    () => (filters.wso ? ([filters.wso, filters.ageGroup, filters.gender] as const) : null),
+    [filters.ageGroup, filters.gender, filters.wso],
   );
   const {
     data: records,
@@ -73,7 +73,7 @@ function RecordsScreenContent() {
     error: recordsError,
   } = useMutableResource({
     resource: wsoRecordsResource,
-    params: (wsoParams ?? ([""] as const)) as [string],
+    params: (wsoParams ?? (["", "Senior", "Men"] as const)) as [string, string, Gender],
     initialData: EMPTY_RECORDS_DATA,
     enabled: Boolean(wsoParams),
   });

@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheetContent: {

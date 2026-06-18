@@ -1,16 +1,15 @@
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 type StandardsRow = {
-  ageCategory: keyof StandardsData;
-  gender: 'men' | 'women';
-  weightClass: string;
-  standardA: number | null;
-  standardB: number | null;
+  age_category: string;
+  gender: string;
+  weight_class: string;
+  standard_a: number | null;
+  standard_b: number | null;
 };
 
 function weightClassSort(a: string, b: string): number {
@@ -59,13 +58,13 @@ function mapRows(rows: StandardsRow[]): StandardsData {
   };
 
   rows.forEach((row) => {
-    const ageKey = row.ageCategory;
-    const genderKey = row.gender;
+    const ageKey = row.age_category.toLowerCase() as keyof StandardsData;
+    const genderKey = row.gender.toLowerCase() as 'men' | 'women';
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
-      weightClass: row.weightClass,
-      a: row.standardA ?? 0,
-      b: row.standardB ?? 0,
+      weightClass: row.weight_class,
+      a: row.standard_a ?? 0,
+      b: row.standard_b ?? 0,
     });
   });
 
@@ -78,7 +77,7 @@ function mapRows(rows: StandardsRow[]): StandardsData {
 }
 
 /**
- * Fetches standards data from Convex and organizes it into the StandardsData shape.
+ * Fetches standards data from the MeetCal API and organizes it into the StandardsData shape.
  * If ageGroup and gender are provided, fetches only that subset.
  */
 export async function fetchStandards(
@@ -115,9 +114,11 @@ async function fetchStandardsFresh(
     throw new Error('Offline');
   }
 
-  const rows = await convex.query(api.standards.getFiltered, {
-    ageCategory: ageGroup,
-    gender,
+  const allRows = await getJson<StandardsRow[]>('/data/standards');
+  const rows = allRows.filter((row) => {
+    if (ageGroup && row.age_category.toLowerCase() !== ageGroup) return false;
+    if (gender && row.gender.toLowerCase() !== gender) return false;
+    return true;
   });
 
   return mapRows(rows as StandardsRow[]);

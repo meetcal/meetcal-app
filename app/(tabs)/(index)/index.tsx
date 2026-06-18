@@ -1,6 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { useNavigation, usePathname, useRouter } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, usePathname, useRouter } from "expo-router";
 import {
   useCallback,
   useEffect,

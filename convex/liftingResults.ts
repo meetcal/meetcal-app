@@ -265,3 +265,26 @@ export const deleteByMeet = internalMutation({
     return rows.length;
   },
 });
+
+export const deleteByEventIdAndNames = internalMutation({
+  args: {
+    eventId: v.string(),
+    names: v.array(v.string()),
+  },
+  handler: async (ctx, { eventId, names }) => {
+    let deleted = 0;
+    for (const name of names) {
+      const row = await ctx.db
+        .query("lifting_results")
+        .withIndex("by_event_and_name", (q) =>
+          q.eq("eventId", eventId).eq("name", name)
+        )
+        .unique();
+      if (row) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  },
+});

@@ -85,7 +85,7 @@ function NationalRankingsScreenContent() {
   }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 
   const resourceParams = useMemo(
-    () => (filters.weightClass ? ([filters.weightClass] as const) : null),
+    () => (filters.weightClass ? ([filters.weightClass] as [string]) : null),
     [filters.weightClass],
   );
   const {

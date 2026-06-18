@@ -1,7 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { api } from "@/convex/_generated/api";
 import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -10,7 +9,6 @@ import {
   calculateEstimates,
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
-import { convex } from "@/lib/convex";
 import {
   getAllCachedLiftingResultsForAthlete,
   getMeetLiftingResults,
@@ -20,6 +18,7 @@ import {
 } from "@/lib/database/offline-store";
 import {
   fetchAthletesWithSession,
+  fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -171,28 +170,7 @@ export default function AttemptEstimatorScreen() {
         const twoYearsAgo = new Date();
         twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
         const cutoffDate = twoYearsAgo.toISOString().split('T')[0];
-        const rows = await convex.query(api.liftingResults.getByNamesSince, {
-          names: freshAllNames,
-          cutoffDate,
-        });
-        freshResults = rows.map((r: any): SupabaseLiftResult => ({
-          id: r._id,
-          event_id: r.eventId,
-          meet: r.meet,
-          date: r.date,
-          name: r.name,
-          age: r.age,
-          body_weight: r.bodyWeight,
-          snatch1: r.snatch1,
-          snatch2: r.snatch2,
-          snatch3: r.snatch3,
-          snatch_best: r.snatchBest,
-          cj1: r.cj1,
-          cj2: r.cj2,
-          cj3: r.cj3,
-          cj_best: r.cjBest,
-          total: r.total,
-        }));
+        freshResults = await fetchRecentAthleteHistoryForNames(freshAllNames, cutoffDate);
       }
       await saveMeetLiftingResults(meetId, freshResults);
 

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MeetName, Meet, timezoneOffsets, USTimeZoneIdentifier } from '@/data/types/meet';
+import { MeetName, Meet } from '@/data/types/meet';
 import {
   clearImplicitMeetData,
   clearMeetData,
@@ -9,17 +9,21 @@ import {
   saveMeetLiftingResults,
   saveMeetSchedule,
 } from './offline-store';
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchAthletesWithSession, fetchAthleteHistoryForNames, fetchLiftingResultsForMeet, fetchSchedule } from './queries';
 import { createMutableResource } from '@/lib/data/mutable-resource';
+import {
+  fetchApiMeetByName,
+  fetchApiMeetPackage,
+  fetchApiMeets,
+  mapApiAthlete,
+  mapApiLiftingResult,
+  mapPackageSchedule,
+} from '@/lib/api/meetcal-api';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
 const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
-const INITIAL_LOAD_TIMEOUT_MS = 10000;
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
@@ -87,42 +91,6 @@ export async function clearCachedMeetsList(): Promise<void> {
   }
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
-}
-
-// Helper function to determine if a date is in DST
-function isDateInDST(date: Date, timeZoneIdentifier: USTimeZoneIdentifier): boolean {
-  // Phoenix and Honolulu don't observe DST
-  if (timeZoneIdentifier === 'America/Phoenix' || timeZoneIdentifier === 'Pacific/Honolulu') {
-    return false;
-  }
-
-  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
-  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
-  const dst = Math.max(jan, jul) !== date.getTimezoneOffset();
-  return dst;
-}
-
-// Helper function to get UTC offset for a timezone at a specific date
-function getUTCOffsetForDate(timeZoneIdentifier: USTimeZoneIdentifier, date: Date): number {
-  const isDST = isDateInDST(date, timeZoneIdentifier);
-  return timezoneOffsets[timeZoneIdentifier][isDST ? 'dst' : 'standard'];
-}
-
 // Initialize or get cache info
 async function getCacheInfo(): Promise<CacheInfo> {
   try {
@@ -152,36 +120,7 @@ async function saveCacheInfo(info: CacheInfo) {
   }
 }
 
-function mapMeetRow(meet: any): Meet {
-  const timeZoneIdentifier = meet.timeZone as USTimeZoneIdentifier;
-  const startDate = new Date(meet.startDate);
-  return {
-    id: meet._id,
-    name: meet.name,
-    venue: {
-      name: meet.venueName,
-      address: {
-        street: meet.venueStreet,
-        city: meet.venueCity,
-        state: meet.venueState,
-        zip: meet.venueZip
-      }
-    },
-    time: {
-      timeZone: meet.timeZone,
-      timeZoneIdentifier: timeZoneIdentifier,
-      abbreviation: meet.timeZoneAbbr || 'EST',
-      utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate)
-    },
-    dates: {
-      start: meet.startDate,
-      end: meet.endDate
-    },
-    status: meet.status
-  };
-}
-
-// Fetch all active meets from Convex
+// Fetch all active meets from the MeetCal API
 export async function fetchMeetsFresh(): Promise<Meet[]> {
   if (inFlightFetchMeets) {
     return inFlightFetchMeets;
@@ -192,15 +131,9 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
       const hasNetwork = await isNetworkAvailable();
       if (!hasNetwork) throw new Error('Offline');
 
-      const meetsData = await withTimeout(
-        convex.query(api.meets.listActive, {}),
-        INITIAL_LOAD_TIMEOUT_MS,
-        'fetchMeets'
-      );
-
-      const mapped = meetsData.map(mapMeetRow);
-      await setCachedMeets(mapped);
-      return mapped;
+      const meets = await fetchApiMeets();
+      await setCachedMeets(meets);
+      return meets;
     } catch (error) {
       const err = error as Error;
       const isTimeout = err.message.includes('fetchMeets timed out');
@@ -259,18 +192,14 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
     const hasNetwork = await isNetworkAvailable();
     if (!hasNetwork) return null;
 
-    const actualMeet = await withTimeout(
-      convex.query(api.meets.getByName, { name }),
-      INITIAL_LOAD_TIMEOUT_MS,
-      'fetchMeetByName'
-    );
+    const actualMeet = await fetchApiMeetByName(name);
 
     if (!actualMeet) {
       console.log('No meet found with name:', name);
       return null;
     }
 
-    return mapMeetRow(actualMeet);
+    return actualMeet;
   } catch (error) {
     console.error('Error in fetchMeetByName:', error);
     const cached = await getCachedMeets();
@@ -359,67 +288,49 @@ async function manageCacheSize() {
 // Prefetch meet data
 export async function prefetchMeetData(meet: MeetName) {
   const errors: string[] = [];
-  let athleteNames: string[] = [];
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  const historyCutoffDate = twoYearsAgo.toISOString().split('T')[0];
 
   try {
-    const schedule = await fetchSchedule(meet);
+    const pkg = await fetchApiMeetPackage(meet, historyCutoffDate);
+    const schedule = mapPackageSchedule(pkg);
+    const athletes = pkg.athletes.map(mapApiAthlete);
+    const athleteNames = Array.from(
+      new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
+    );
+    const liftingResults = pkg.meet_results.map(mapApiLiftingResult);
+
     if (schedule.length > 0) {
       await saveMeetSchedule(meet, schedule);
     }
-  } catch (error) {
-    console.error('Prefetch schedule failed:', { meet, error });
-    errors.push('schedule');
-  }
-
-  try {
-    const athletes = await fetchAthletesWithSession(meet);
     await saveMeetAthletes(meet, athletes);
-    athleteNames = Array.from(
-      new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
-    );
-  } catch (error) {
-    console.error('Prefetch athletes failed:', { meet, error });
-    errors.push('athletes');
-  }
 
-  if (athleteNames.length > 0) {
-    try {
-      const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
-      if (liftingResults.length > 0) {
-        validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
-      }
+    if (liftingResults.length > 0) {
+      validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
       await saveMeetLiftingResults(meet, liftingResults);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('SQLITE_FULL')) {
-        try {
-          await clearImplicitMeetData(meet);
-          const liftingResults = await fetchLiftingResultsForMeet(meet, athleteNames);
-          if (liftingResults.length > 0) {
-            validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
-          }
-          await saveMeetLiftingResults(meet, liftingResults);
-        } catch (retryError) {
-          console.error('Prefetch lifting results failed after cleanup retry:', { meet, error: retryError });
-          errors.push('lifting_results');
-        }
-      } else {
-        console.error('Prefetch lifting results failed:', { meet, error });
-        errors.push('lifting_results');
-      }
     }
 
-    const ATHLETE_HISTORY_BATCH_SIZE = 15;
-    for (let i = 0; i < athleteNames.length; i += ATHLETE_HISTORY_BATCH_SIZE) {
-      const batch = athleteNames.slice(i, i + ATHLETE_HISTORY_BATCH_SIZE);
+    await Promise.all(
+      Object.entries(pkg.recent_results_by_name).map(([name, results]) =>
+        saveAthleteHistory(name, results.map(mapApiLiftingResult)),
+      ),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('SQLITE_FULL')) {
       try {
-        const byName = await fetchAthleteHistoryForNames(batch);
-        await Promise.all(
-          Object.entries(byName).map(([name, results]) => saveAthleteHistory(name, results)),
-        );
-      } catch (error) {
-        console.error('Prefetch athlete history failed:', { meet, batch: batch.length, error });
+        await clearImplicitMeetData(meet);
+        const pkg = await fetchApiMeetPackage(meet, historyCutoffDate);
+        const liftingResults = pkg.meet_results.map(mapApiLiftingResult);
+        await saveMeetLiftingResults(meet, liftingResults);
+      } catch (retryError) {
+        console.error('Prefetch meet package failed after cleanup retry:', { meet, error: retryError });
+        errors.push('meet_package');
       }
+    } else {
+      console.error('Prefetch meet package failed:', { meet, error });
+      errors.push('meet_package');
     }
   }
 

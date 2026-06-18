@@ -18,21 +18,11 @@ jest.mock("@/data/meets/config", () => ({
 
 import { fetchLiftingResultsForMeet } from "@/lib/database/queries";
 
-const mockQuery = jest.fn();
+const mockFetchApiLiftingResultsForMeet = jest.fn();
 
-jest.mock("@/lib/convex", () => ({
-  convex: {
-    query: (...args: any[]) => mockQuery(...args),
-  },
-}));
-
-jest.mock("@/convex/_generated/api", () => ({
-  api: {
-    liftingResults: {
-      getByNames: "liftingResults:getByNames",
-      getByMeet: "liftingResults:getByMeet",
-    },
-  },
+jest.mock("@/lib/api/meetcal-api", () => ({
+  fetchApiLiftingResultsForMeet: (...args: any[]) =>
+    mockFetchApiLiftingResultsForMeet(...args),
 }));
 
 describe("fetchLiftingResultsForMeet", () => {
@@ -41,7 +31,7 @@ describe("fetchLiftingResultsForMeet", () => {
   });
 
   it("returns meet-scoped results", async () => {
-    mockQuery.mockResolvedValue([
+    mockFetchApiLiftingResultsForMeet.mockResolvedValue([
       { name: "Athlete A", meet: "Test Meet", total: 200 },
     ]);
 
@@ -50,17 +40,17 @@ describe("fetchLiftingResultsForMeet", () => {
     ]);
 
     expect(result).toBeDefined();
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiLiftingResultsForMeet).toHaveBeenCalledTimes(1);
   });
 
   it("returns empty array when meet has no results", async () => {
-    mockQuery.mockResolvedValue([]);
+    mockFetchApiLiftingResultsForMeet.mockResolvedValue([]);
 
     const result = await fetchLiftingResultsForMeet("Test Meet" as any, [
       "Athlete A",
     ]);
 
     expect(result).toEqual([]);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiLiftingResultsForMeet).toHaveBeenCalledTimes(1);
   });
 });

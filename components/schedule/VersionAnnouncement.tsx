@@ -99,7 +99,8 @@ export function VersionAnnouncement({
                 {announcement.title}
               </Text>
               <Text style={[styles.version, { color: colors.secondaryText }]}>
-                Version {CURRENT_VERSION}
+                Version{" "}
+                {CURRENT_VERSION}
               </Text>
             </View>
             <TouchableOpacity

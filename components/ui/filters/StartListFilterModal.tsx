@@ -40,6 +40,13 @@ const AGE_GROUP_OPTIONS = [
   "Masters 90+",
 ];
 
+type AthleteSortOption =
+  | "alphabetical"
+  | "entryTotal"
+  | "bestTotal"
+  | "bestSnatch"
+  | "bestCJ";
+
 interface StartListFilterModalProps {
   visible: boolean;
   onClose: () => void;
@@ -52,7 +59,7 @@ interface StartListFilterModalProps {
   adaptiveAthleteFilter: string;
   genderFilter: string;
   wsoFilter: string;
-  sortOption: string;
+  sortOption: AthleteSortOption;
   onApplyFilters: (filters: {
     weightClass: string;
     club: string;
@@ -60,7 +67,7 @@ interface StartListFilterModalProps {
     adaptiveAthlete: string;
     gender: string;
     wso: string;
-    sort: string;
+    sort: AthleteSortOption;
   }) => void;
   onResetFilters: () => void;
 }
@@ -573,7 +580,7 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
           adaptiveAthlete: filters.adaptiveAthlete,
           gender: filters.gender,
           wso: filters.wso,
-          sort: filters.sort,
+          sort: filters.sort as AthleteSortOption,
         });
       }}
       onResetFilters={onResetFilters}

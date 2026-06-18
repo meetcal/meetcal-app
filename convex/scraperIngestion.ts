@@ -69,6 +69,22 @@ export const ingestLiftingResult = action({
   },
 });
 
+export const deleteLiftingResultsByEventIdAndNames = action({
+  args: {
+    scraperSecret: v.string(),
+    eventId: v.string(),
+    names: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ deleted: number }> => {
+    assertScraperSecret(args.scraperSecret);
+    const deleted = await ctx.runMutation(internal.liftingResults.deleteByEventIdAndNames, {
+      eventId: args.eventId,
+      names: args.names,
+    });
+    return { deleted };
+  },
+});
+
 // ── Records ────────────────────────────────────────────────────────────────────
 
 export const ingestRecord = action({

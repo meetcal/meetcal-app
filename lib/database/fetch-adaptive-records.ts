@@ -1,18 +1,16 @@
-import { convex } from '@/lib/convex';
-import { api } from '@/convex/_generated/api';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import { getJson } from '@/lib/api/meetcal-api';
 
 type Gender = 'Men' | 'Women';
 
 type AdaptiveRecordRow = {
-  age: string | null;
-  snatchBest: number | null;
-  cjBest: number | null;
+  weight_class: string;
+  snatch: number | null;
+  cj: number | null;
   total: number | null;
-  name: string | null;
 };
 
 const AGE_GROUP_KEY = 'Adaptive';
@@ -32,33 +30,15 @@ function weightClassSort(a: string, b: string): number {
   return aVal - bVal;
 }
 
-// Extract weight class from age column (e.g., "Women's Masters (35-39) 69kg" -> "69kg")
-function extractWeightClass(ageString: string): string | null {
-  const match = ageString.match(/(\d+\+?kg)$/i);
-  return match ? match[1] : null;
-}
-
 async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
-  const allAdaptive = await convex.query(api.liftingResults.getAdaptive, { excludeFederation: 'BWL' });
-  const rows = allAdaptive.filter(r => r.age && r.age.includes(gender)) as AdaptiveRecordRow[];
-  const weightClassRecords = new Map<string, AdaptiveRecordRow>();
-
-  rows.forEach((row) => {
-    if (!row.age) return;
-    const weightClass = extractWeightClass(row.age);
-    if (!weightClass) return;
-    if (row.total == null) return;
-
-    const existing = weightClassRecords.get(weightClass);
-    if (!existing || (row.total ?? 0) > (existing.total ?? 0)) {
-      weightClassRecords.set(weightClass, row);
-    }
+  const rows = await getJson<AdaptiveRecordRow[]>('/data/adaptive', {
+    exclude_federation: 'BWL',
+    gender,
   });
-
-  const records = Array.from(weightClassRecords.entries()).map(([weightClass, row]) => ({
-    weightClass,
-    snatchRecord: row.snatchBest ?? 0,
-    cjRecord: row.cjBest ?? 0,
+  const records = rows.map((row) => ({
+    weightClass: row.weight_class.endsWith('kg') ? row.weight_class : `${row.weight_class}kg`,
+    snatchRecord: row.snatch ?? 0,
+    cjRecord: row.cj ?? 0,
     totalRecord: row.total ?? 0,
   }));
 
