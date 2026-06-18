@@ -121,7 +121,7 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
               style={[
                 styles.searchBar,
                 {
-                  backgroundColor: colors.borderBottom,
+                  backgroundColor: colors.pressed,
                   borderColor: colors.border,
                 },
               ]}
