@@ -6,14 +6,36 @@ import { getJson } from '@/lib/api/meetcal-api';
 
 type RecordsCache = Record<string, RecordsData>;
 type RecordsRow = {
-  age_category: string;
-  gender: string;
-  weight_class: string;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
   snatch_record: number | null;
   cj_record: number | null;
   total_record: number | null;
+  record_type: string | null;
+};
+
+type CompleteRecordsRow = {
+  age_category: string;
+  gender: string;
+  weight_class: string;
+  snatch_record: number;
+  cj_record: number;
+  total_record: number;
   record_type: string;
 };
+
+function isCompleteRecordsRow(row: RecordsRow): row is CompleteRecordsRow {
+  return Boolean(
+    row.age_category &&
+      row.gender &&
+      row.weight_class &&
+      row.record_type &&
+      row.snatch_record != null &&
+      row.cj_record != null &&
+      row.total_record != null,
+  );
+}
 
 function weightClassSort(a: string, b: string): number {
   const parse = (w: string) => {
@@ -47,7 +69,7 @@ function filterRecordsData(source: RecordsData, ageGroup?: string, gender?: 'Men
   return result;
 }
 
-function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
+function mapRowsToRecordsData(rows: CompleteRecordsRow[]): RecordsData {
   const result: RecordsData = {};
 
   rows.forEach((row) => {
@@ -59,9 +81,9 @@ function mapRowsToRecordsData(rows: RecordsRow[]): RecordsData {
     const genderProp = row.gender.toLowerCase() === 'men' ? 'Men' : 'Women';
     result[ageKey][genderProp].push({
       weightClass: row.weight_class,
-      snatchRecord: row.snatch_record ?? 0,
-      cjRecord: row.cj_record ?? 0,
-      totalRecord: row.total_record ?? 0,
+      snatchRecord: row.snatch_record,
+      cjRecord: row.cj_record,
+      totalRecord: row.total_record,
     });
   });
 
@@ -122,14 +144,14 @@ async function fetchRecordsFresh(
   }
 
   const allRows = await getJson<RecordsRow[]>('/data/records');
-  const rows = allRows.filter((row) => {
+  const rows = allRows.filter(isCompleteRecordsRow).filter((row) => {
     if (row.record_type !== federation) return false;
     if (ageGroup && row.age_category !== ageGroup) return false;
     if (gender && row.gender.toLowerCase() !== gender.toLowerCase()) return false;
     return true;
   });
 
-  return mapRowsToRecordsData(rows as RecordsRow[]);
+  return mapRowsToRecordsData(rows);
 }
 
 async function fetchFederationsFresh(): Promise<string[]> {
@@ -139,7 +161,9 @@ async function fetchFederationsFresh(): Promise<string[]> {
   }
 
   const rows = await getJson<RecordsRow[]>('/data/records');
-  return Array.from(new Set(rows.map((row) => row.record_type))).sort((a, b) =>
+  return Array.from(
+    new Set(rows.filter(isCompleteRecordsRow).map((row) => row.record_type)),
+  ).sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' }),
   );
 }

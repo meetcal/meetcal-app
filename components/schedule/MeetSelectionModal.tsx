@@ -45,6 +45,7 @@ export function MeetSelectionModal({
       onRequestClose={onClose}
     >
       <Pressable
+        testID="meet-selection-modal-backdrop"
         style={[
           styles.modalOverlay,
           {
@@ -53,7 +54,11 @@ export function MeetSelectionModal({
         ]}
         onPress={onClose}
       >
-        <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+        <Pressable
+          testID="meet-selection-modal"
+          style={[styles.modalContent, { backgroundColor: colors.card }]}
+          onPress={(e) => e.stopPropagation()}
+        >
           <View
             style={[styles.modalHeader, { borderBottomColor: colors.border }]}
           >
@@ -61,6 +66,9 @@ export function MeetSelectionModal({
               Select Your Meet
             </ThemedText>
             <Pressable
+              testID="meet-selection-close"
+              accessibilityRole="button"
+              accessibilityLabel="Close meet selector"
               style={({ pressed }) => [
                 styles.closeButton,
                 pressed && { opacity: 0.8 },
@@ -90,6 +98,9 @@ export function MeetSelectionModal({
             {meets.map((meet) => (
               <Pressable
                 key={meet.id}
+                testID={`meet-option-${meet.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${meet.name}`}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },

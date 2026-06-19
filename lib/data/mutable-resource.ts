@@ -28,6 +28,15 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     lastUpdatedAt: number | null;
     source: "network";
   }>;
+  revalidateWithCached: (
+    cached: ResourceCacheEntry<unknown> | null,
+    ...params: TParams
+  ) => Promise<{
+    data: T;
+    changed: boolean;
+    lastUpdatedAt: number | null;
+    source: "network";
+  }>;
   invalidate: (...params: TParams) => Promise<void>;
 };
 
@@ -60,44 +69,52 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
   config: MutableResourceConfig<T, TParams>,
 ): MutableResource<T, TParams> {
   const isEqual = config.isEqual ?? defaultIsEqual<T>;
+  const revalidateWithCached = async (
+    cached: ResourceCacheEntry<T> | null | undefined,
+    ...params: TParams
+  ) => {
+    const key = config.getKey(...params);
+    const existingRequest = inFlightRequests.get(key);
+    if (existingRequest) {
+      return existingRequest as Promise<{
+        data: T;
+        changed: boolean;
+        lastUpdatedAt: number | null;
+        source: "network";
+      }>;
+    }
+
+    const request = (async () => {
+      const cacheEntry = cached === undefined
+        ? await config.loadCached(...params)
+        : cached;
+      const fresh = await config.fetchFresh(...params);
+      const changed = !cacheEntry || !isEqual(cacheEntry.data, fresh);
+      const persisted = changed
+        ? await config.persistFresh(fresh, ...params)
+        : null;
+
+      return {
+        data: changed ? fresh : cacheEntry.data,
+        changed,
+        lastUpdatedAt:
+          persisted?.lastUpdatedAt ?? cacheEntry?.lastUpdatedAt ?? Date.now(),
+        source: "network" as const,
+      };
+    })().finally(() => {
+      inFlightRequests.delete(key);
+    });
+
+    inFlightRequests.set(key, request);
+    return request;
+  };
 
   return {
     getKey: (...params) => config.getKey(...params),
     loadCached: (...params) => config.loadCached(...params),
-    revalidate: async (...params) => {
-      const key = config.getKey(...params);
-      const existingRequest = inFlightRequests.get(key);
-      if (existingRequest) {
-        return existingRequest as Promise<{
-          data: T;
-          changed: boolean;
-          lastUpdatedAt: number | null;
-          source: "network";
-        }>;
-      }
-
-      const request = (async () => {
-        const cached = await config.loadCached(...params);
-        const fresh = await config.fetchFresh(...params);
-        const changed = !cached || !isEqual(cached.data, fresh);
-        const persisted = changed
-          ? await config.persistFresh(fresh, ...params)
-          : null;
-
-        return {
-          data: changed ? fresh : cached.data,
-          changed,
-          lastUpdatedAt:
-            persisted?.lastUpdatedAt ?? cached?.lastUpdatedAt ?? Date.now(),
-          source: "network" as const,
-        };
-      })().finally(() => {
-        inFlightRequests.delete(key);
-      });
-
-      inFlightRequests.set(key, request);
-      return request;
-    },
+    revalidate: async (...params) => revalidateWithCached(undefined, ...params),
+    revalidateWithCached: async (cached, ...params) =>
+      revalidateWithCached(cached as ResourceCacheEntry<T> | null, ...params),
     invalidate: async (...params) => {
       const key = config.getKey(...params);
       inFlightRequests.delete(key);

@@ -19,7 +19,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
-const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF"];
+const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
 
 export default function RecordsScreen() {
   return (
@@ -141,17 +141,17 @@ function RecordsScreenContent() {
   };
 
   const getFilterDisplayText = () => {
-    const fed = filters.federation || "N/A";
+    const fed = filters.federation || "USAW";
     const gen = filters.gender === "Men" ? "Men" : "Women";
-    const age = getAgeGroupDisplayText(displayAgeGroup) || "N/A";
+    const age = getAgeGroupDisplayText(displayAgeGroup) || "Senior";
     return `${fed} • ${gen} • ${age}`;
   };
 
   const handleResetFilters = () => {
     const reset = {
-      federation: "",
+      federation: "USAW",
       gender: "Men" as Gender,
-      ageGroup: "",
+      ageGroup: "Senior",
     };
     setFilters(reset);
     setTempFilters(reset);

@@ -19,13 +19,20 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     multiRemove: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
+    getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
   },
 }));
 
 import {
+  clearMeetData,
   getAthleteLiftingResults,
+  getMeetData,
+  getMeetSchedule,
+  getSessionAthletesFromMeetCache,
   initStore,
+  saveMeetAthletes,
   saveMeetLiftingResults,
+  saveMeetSchedule,
 } from "@/lib/database/offline-store";
 
 describe("offline-store athlete lifting results", () => {
@@ -60,5 +67,132 @@ describe("offline-store athlete lifting results", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("  JANE   DOE ");
+  });
+
+  it("preserves cached athlete session details when saving a plain athlete payload", async () => {
+    await saveMeetAthletes("Test Meet", [
+      {
+        memberId: "123",
+        name: "Jane Doe",
+        age: 25,
+        club: "Club",
+        gender: "Women",
+        weightClass: "71kg",
+        entryTotal: 200,
+        adaptive: false,
+        session: {
+          number: 4,
+          platform: "Red",
+          date: "2026-06-20",
+          startTime: "10:00 AM",
+          weighInTime: "8:00 AM",
+        },
+      },
+    ]);
+
+    await saveMeetAthletes("Test Meet", [
+      {
+        memberId: "123",
+        name: "Jane Doe",
+        age: 25,
+        club: "Club",
+        gender: "Women",
+        weightClass: "71kg",
+        entryTotal: 205,
+        adaptive: false,
+      },
+    ]);
+
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.athletes[0]).toMatchObject({
+      entryTotal: 205,
+      session: {
+        number: 4,
+        platform: "Red",
+      },
+    });
+  });
+
+  it("hydrates schedules from the out-of-line schedule key", async () => {
+    const schedule = [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "Test Meet-1-Red",
+            number: 1,
+            startTime: "10:00 AM",
+            weighInTime: "8:00 AM",
+            platforms: [
+              {
+                platform: "Red",
+                weightClass: "71kg",
+                platformStartTime: "10:00 AM",
+              },
+            ],
+          },
+        ],
+      },
+    ] as any;
+
+    await saveMeetSchedule("Test Meet", schedule);
+
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.scheduleKey).toBe("meetcal_schedule_Test Meet");
+    await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
+  });
+
+  it("writes and clears session-scoped athlete caches", async () => {
+    await saveMeetAthletes("Test Meet", [
+      {
+        memberId: "123",
+        name: "Jane Doe",
+        age: 25,
+        club: "Club",
+        gender: "Women",
+        weightClass: "71kg",
+        entryTotal: 200,
+        adaptive: false,
+        session: {
+          number: 4,
+          platform: "Red",
+          date: "2026-06-20",
+          startTime: "10:00 AM",
+          weighInTime: "8:00 AM",
+        },
+      },
+      {
+        memberId: "456",
+        name: "John Doe",
+        age: 27,
+        club: "Club",
+        gender: "Men",
+        weightClass: "89kg",
+        entryTotal: 300,
+        adaptive: false,
+        session: {
+          number: 5,
+          platform: "Blue",
+          date: "2026-06-20",
+          startTime: "12:00 PM",
+          weighInTime: "10:00 AM",
+        },
+      },
+    ]);
+
+    const redSession = await getSessionAthletesFromMeetCache(
+      "Test Meet" as any,
+      4,
+      "Red",
+    );
+    expect(redSession).toHaveLength(1);
+    expect(redSession[0].name).toBe("Jane Doe");
+
+    await clearMeetData("Test Meet" as any);
+
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toEqual([]);
   });
 });

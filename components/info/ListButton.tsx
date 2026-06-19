@@ -8,13 +8,17 @@ interface ListButtonProps {
   title: string;
   onPress: () => void;
   lastSection?: boolean;
+  testID?: string;
 }
 
-const ListButton = ({ title, onPress, lastSection }: ListButtonProps) => {
+const ListButton = ({ title, onPress, lastSection, testID }: ListButtonProps) => {
   const colors = useAppColors();
 
   return (
     <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={title}
       style={({ pressed }) => [
         styles.section,
         {

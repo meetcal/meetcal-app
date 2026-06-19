@@ -1,4 +1,7 @@
-import { getAthleteBestsBatch } from "@/components/schedule-details/athleteBests";
+import {
+  getAthleteBestsBatch,
+  getCachedAthleteBestsBatch,
+} from "@/components/schedule-details/athleteBests";
 import SessionSortControl from "@/components/schedule-details/sessionSort/SessionSortControl";
 import type {
   SortDirection,
@@ -65,6 +68,34 @@ export default function SessionAthletes({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const refreshKeyRef = useRef(refreshKey);
+  const loadStartedAtRef = useRef(performance.now());
+  const loggedLoadRef = useRef(false);
+  const bestsLoadStartedAtRef = useRef(performance.now());
+  const loggedBestsLoadRef = useRef(false);
+
+  useEffect(() => {
+    loadStartedAtRef.current = performance.now();
+    loggedLoadRef.current = false;
+  }, [meetId, platform, sessionNumber]);
+
+  useEffect(() => {
+    if (!__DEV__ || loggedLoadRef.current || isLoading) {
+      return;
+    }
+    if (sessionAthletes.length === 0) {
+      return;
+    }
+
+    loggedLoadRef.current = true;
+    const elapsedMs = Math.round(performance.now() - loadStartedAtRef.current);
+    console.info("[perf] session athletes ready", {
+      elapsedMs,
+      meetId,
+      sessionNumber,
+      platform,
+      athleteCount: sessionAthletes.length,
+    });
+  }, [isLoading, meetId, platform, sessionAthletes.length, sessionNumber]);
 
   const athletes = useMemo(
     () => toSessionAthletesByPlatform(platform, sessionAthletes),
@@ -75,6 +106,12 @@ export default function SessionAthletes({
     let cancelled = false;
 
     async function loadBests() {
+      if (!isSubscribed) {
+        setAthleteBests({});
+        setLoadingBests({});
+        return;
+      }
+
       const athleteNames = sessionAthletes.map((athlete) => athlete.name);
 
       if (athleteNames.length === 0) {
@@ -83,23 +120,45 @@ export default function SessionAthletes({
         return;
       }
 
-      setLoadingBests(
-        athleteNames.reduce<Record<string, boolean>>((acc, name) => {
-          acc[name] = true;
-          return acc;
-        }, {}),
-      );
-
       try {
+        bestsLoadStartedAtRef.current = performance.now();
+        loggedBestsLoadRef.current = false;
+
+        const cachedBestsMap = await getCachedAthleteBestsBatch(athleteNames);
+        if (cancelled) return;
+
+        setAthleteBests(cachedBestsMap);
+        setLoadingBests({});
+
+        if (__DEV__ && !loggedBestsLoadRef.current) {
+          loggedBestsLoadRef.current = true;
+          console.info("[perf] session bests cache ready", {
+            elapsedMs: Math.round(
+              performance.now() - bestsLoadStartedAtRef.current,
+            ),
+            meetId,
+            sessionNumber,
+            platform,
+            athleteCount: athleteNames.length,
+          });
+        }
+
         const bestsMap = await getAthleteBestsBatch(athleteNames, meetId);
         if (cancelled) return;
         setAthleteBests(bestsMap);
-        setLoadingBests(
-          athleteNames.reduce<Record<string, boolean>>((acc, name) => {
-            acc[name] = false;
-            return acc;
-          }, {}),
-        );
+        setLoadingBests({});
+
+        if (__DEV__) {
+          console.info("[perf] session bests ready", {
+            elapsedMs: Math.round(
+              performance.now() - bestsLoadStartedAtRef.current,
+            ),
+            meetId,
+            sessionNumber,
+            platform,
+            athleteCount: athleteNames.length,
+          });
+        }
       } catch (error) {
         if (cancelled) return;
         console.error("Error loading athlete bests:", error);
@@ -113,7 +172,7 @@ export default function SessionAthletes({
     return () => {
       cancelled = true;
     };
-  }, [meetId, sessionAthletes]);
+  }, [isSubscribed, meetId, platform, sessionAthletes, sessionNumber]);
 
   useEffect(() => {
     if (refreshKeyRef.current === refreshKey) {

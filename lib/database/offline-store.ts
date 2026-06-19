@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
-import type { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
+import type { LiftResult, Platform, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
 import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 import { Buffer } from 'buffer';
@@ -10,8 +10,10 @@ import pako from 'pako';
 const STORE_KEY = 'meetcal_offline_store';
 const SCHEDULE_KEY_PREFIX = 'meetcal_schedule_';
 const ATHLETES_KEY_PREFIX = 'meetcal_athletes_';
+const SESSION_ATHLETES_KEY_PREFIX = 'meetcal_session_athletes_';
 const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
 const ATHLETE_HISTORY_KEY_PREFIX = 'meetcal_athlete_history_';
+const ATHLETE_BESTS_KEY_PREFIX = 'meetcal_athlete_bests_';
 const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 const LIFTING_RESULTS_FORMAT = 'deflate-base64-chunks-v1';
@@ -352,6 +354,10 @@ function getAthleteHistoryKey(normalizedName: string): string {
   return `${ATHLETE_HISTORY_KEY_PREFIX}${normalizedName}`;
 }
 
+function getAthleteBestsKey(normalizedName: string): string {
+  return `${ATHLETE_BESTS_KEY_PREFIX}${normalizedName}`;
+}
+
 export async function saveAthleteHistory(
   athleteName: string,
   results: SupabaseLiftResult[],
@@ -362,6 +368,66 @@ export async function saveAthleteHistory(
   } catch (error) {
     console.error('Error saving athlete history:', error);
     throw error;
+  }
+}
+
+function normalizeCachedBests(value: unknown): SupabaseBests | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Partial<SupabaseBests>;
+  return {
+    snatch_best: typeof row.snatch_best === 'number' ? row.snatch_best : null,
+    cj_best: typeof row.cj_best === 'number' ? row.cj_best : null,
+    total: typeof row.total === 'number' ? row.total : null,
+  };
+}
+
+export async function saveAthleteBestsBatch(
+  bestsByName: Record<string, SupabaseBests>,
+): Promise<void> {
+  try {
+    const entries = Object.entries(bestsByName)
+      .filter(([athleteName]) => normalizeAthleteName(athleteName).length > 0)
+      .map(([athleteName, bests]) => [
+        getAthleteBestsKey(normalizeAthleteName(athleteName)),
+        JSON.stringify(bests),
+      ] as [string, string]);
+
+    if (entries.length === 0) return;
+    await AsyncStorage.multiSet(entries);
+  } catch (error) {
+    console.error('Error saving athlete bests:', error);
+    throw error;
+  }
+}
+
+export async function getCachedAthleteBestsForNames(
+  athleteNames: string[],
+): Promise<Record<string, SupabaseBests | undefined>> {
+  const uniqueNames = Array.from(new Set(athleteNames.filter(Boolean)));
+  const keysByName = uniqueNames.map((name) => ({
+    name,
+    key: getAthleteBestsKey(normalizeAthleteName(name)),
+  }));
+
+  try {
+    const entries = await AsyncStorage.multiGet(keysByName.map(({ key }) => key));
+    return entries.reduce<Record<string, SupabaseBests | undefined>>(
+      (acc, [, payload], index) => {
+        const name = keysByName[index]?.name;
+        if (!name || !payload) return acc;
+
+        try {
+          acc[name] = normalizeCachedBests(JSON.parse(payload)) ?? undefined;
+        } catch {
+          acc[name] = undefined;
+        }
+        return acc;
+      },
+      {},
+    );
+  } catch (error) {
+    console.error('Error getting cached athlete bests:', error);
+    return {};
   }
 }
 
@@ -449,6 +515,63 @@ function normalizeAthleteName(name: string | null | undefined): string {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function getSessionAthletesKey(
+  meetId: MeetName | string,
+  sessionNumber: number,
+  platform: string,
+): string {
+  return `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:${sessionNumber}:${encodeURIComponent(normalizePlatformValue(platform))}`;
+}
+
+function groupAthletesBySession(athletes: LiftResult[]) {
+  const groups = new Map<string, LiftResult[]>();
+
+  athletes.forEach((athlete) => {
+    const session = athlete.session;
+    if (!session) return;
+
+    const key = `${session.number}:${normalizePlatformValue(session.platform)}`;
+    const group = groups.get(key) ?? [];
+    group.push(athlete);
+    groups.set(key, group);
+  });
+
+  return groups;
+}
+
+export async function saveSessionAthletes(
+  meetId: MeetName | string,
+  sessionNumber: number,
+  platform: string,
+  athletes: LiftResult[],
+): Promise<void> {
+  try {
+    const key = getSessionAthletesKey(meetId, sessionNumber, platform);
+    await AsyncStorage.setItem(key, JSON.stringify(athletes));
+  } catch (error) {
+    console.error('Error saving session athletes:', error);
+    throw error;
+  }
+}
+
+async function saveSessionAthleteCaches(
+  meetId: MeetName | string,
+  athletes: LiftResult[],
+): Promise<void> {
+  const grouped = groupAthletesBySession(athletes);
+  if (grouped.size === 0) return;
+
+  const entries = Array.from(grouped.entries()).map(([groupKey, group]) => {
+    const [sessionNumber, platform] = groupKey.split(':');
+    return [
+      getSessionAthletesKey(meetId, Number(sessionNumber), platform),
+      JSON.stringify(group),
+    ] as [string, string];
+  });
+
+  await AsyncStorage.multiSet(entries);
+}
+
 // Get athletes for a specific session/platform from cached meet data
 export async function getSessionAthletesFromMeetCache(
   meetId: MeetName,
@@ -456,6 +579,16 @@ export async function getSessionAthletesFromMeetCache(
   platform: string
 ): Promise<LiftResult[]> {
   try {
+    const sessionPayload = await AsyncStorage.getItem(
+      getSessionAthletesKey(meetId, sessionNumber, platform),
+    );
+    if (sessionPayload) {
+      const parsed = JSON.parse(sessionPayload);
+      if (Array.isArray(parsed)) {
+        return parsed as LiftResult[];
+      }
+    }
+
     const meetData = await getMeetData(meetId);
     const normalizedPlatform = normalizePlatformValue(platform);
 
@@ -576,11 +709,60 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
   }
 }
 
+export async function getMeetSchedule(meetId: string): Promise<Schedule> {
+  try {
+    const meetData = await getMeetData(meetId as MeetName);
+    if (!meetData.scheduleKey) {
+      return [];
+    }
+
+    const schedulePayload = await AsyncStorage.getItem(meetData.scheduleKey);
+    if (!schedulePayload) {
+      return [];
+    }
+
+    const parsed = JSON.parse(schedulePayload);
+    return Array.isArray(parsed) ? (parsed as Schedule) : [];
+  } catch (error) {
+    console.error('Error getting meet schedule:', error);
+    return [];
+  }
+}
+
 // Save meet athletes to store
 export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): Promise<void> {
   try {
     const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
-    await AsyncStorage.setItem(athletesKey, JSON.stringify(athletes));
+    const existingPayload = await AsyncStorage.getItem(athletesKey);
+    let existingAthletes: LiftResult[] = [];
+    if (existingPayload) {
+      try {
+        const parsed = JSON.parse(existingPayload);
+        existingAthletes = Array.isArray(parsed) ? (parsed as LiftResult[]) : [];
+      } catch (parseError) {
+        console.warn('Ignoring invalid cached athlete payload:', parseError);
+      }
+    }
+    const existingByKey = new Map(
+      existingAthletes.map((athlete) => [
+        athlete.memberId || athlete.name.trim().toLowerCase(),
+        athlete,
+      ]),
+    );
+    const mergedAthletes = athletes.map((athlete) => {
+      if (athlete.session) return athlete;
+      const existing = existingByKey.get(
+        athlete.memberId || athlete.name.trim().toLowerCase(),
+      );
+      return existing?.session
+        ? {
+            ...athlete,
+            session: existing.session,
+          }
+        : athlete;
+    });
+    await AsyncStorage.setItem(athletesKey, JSON.stringify(mergedAthletes));
+    await saveSessionAthleteCaches(meetId, mergedAthletes);
 
     const store = await getStore();
     if (!store.meets[meetId]) {
@@ -666,6 +848,15 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
       await AsyncStorage.removeItem(athletesKey);
       if (liftingResultsKey) {
         await clearStoredLiftingResultsValue(liftingResultsKey);
+      }
+      const keys = await AsyncStorage.getAllKeys();
+      const sessionAthleteKeys = keys.filter((key) =>
+        key.startsWith(
+          `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meet)}:`,
+        ),
+      );
+      if (sessionAthleteKeys.length > 0) {
+        await AsyncStorage.multiRemove(sessionAthleteKeys);
       }
       const emptyMeetData: MeetData = {
         schedule: null,

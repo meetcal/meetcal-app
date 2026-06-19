@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   clearMeetSchedule,
-  getMeetData,
+  getMeetSchedule,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 import { MeetName } from "@/data/types/meet";
@@ -22,13 +22,13 @@ interface UseScheduleDataReturn {
 const scheduleResource = createMutableResource<Schedule, [MeetName]>({
   getKey: (meet) => `schedule:${meet}`,
   loadCached: async (meet) => {
-    const meetData = await getMeetData(meet);
-    if (!meetData.schedule) {
+    const schedule = await getMeetSchedule(meet);
+    if (schedule.length === 0) {
       return null;
     }
     return {
-      data: meetData.schedule,
-      lastUpdatedAt: meetData.lastSyncTime || null,
+      data: schedule,
+      lastUpdatedAt: null,
     };
   },
   fetchFresh: async (meet) => fetchSchedule(meet),

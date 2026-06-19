@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   MutableResource,
+  ResourceCacheEntry,
   ResourceSource,
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
@@ -55,7 +56,10 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   sourceRef.current = source;
 
   const refresh = useCallback(
-    async (forceBackground = false) => {
+    async (
+      forceBackground = false,
+      preloadedCache?: ResourceCacheEntry<T> | null,
+    ) => {
       if (!enabled) return;
 
       const hasData = sourceRef.current !== null || forceBackground;
@@ -66,7 +70,12 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       }
 
       try {
-        const result = await resource.revalidate(...paramsRef.current);
+        const result = preloadedCache === undefined
+          ? await resource.revalidate(...paramsRef.current)
+          : await resource.revalidateWithCached(
+              preloadedCache,
+              ...paramsRef.current,
+            );
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
@@ -133,13 +142,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       if (cached) {
         setData(cached.data);
         setLastUpdatedAt(cached.lastUpdatedAt);
-      setSource("cache");
-      setIsInitialLoading(false);
-        void refresh(true);
+        setSource("cache");
+        setIsInitialLoading(false);
+        void refresh(true, cached);
         return;
       }
 
-      await refresh(false);
+      await refresh(false, null);
     }
 
     loadResource().catch((loadError) => {

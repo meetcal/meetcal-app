@@ -181,6 +181,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   // Initialize subscription status - cache-first, no blocking network check
   useEffect(() => {
+    let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
     const initializeStatus = async () => {
       setIsLoading(true);
       try {
@@ -202,24 +205,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           setSubscriptionType('unknown');
         }
 
-        let hasNetwork = false;
-        try {
-          hasNetwork = await isNetworkAvailable();
-        } catch (e) {
-          console.error('Failed to check network availability:', e);
-          setIsLoading(false);
-          return;
+        if (cached?.isExpired) {
+          setIsUsingStaleCache(true);
         }
+        setIsLoading(false);
 
-        if (!hasNetwork) {
-          if (cached?.isExpired) {
-            setIsUsingStaleCache(true);
+        refreshTimeout = setTimeout(() => {
+          if (!cancelled) {
+            void checkSubscriptionStatus();
           }
-          setIsLoading(false);
-          return;
-        }
-
-        await checkSubscriptionStatus();
+        }, 8000);
       } catch (error) {
         console.error('Failed to initialize subscription status:', error);
         setIsLoading(false);
@@ -227,6 +222,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
 
     initializeStatus();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
   }, []);
 
   // Listen for RevenueCat updates

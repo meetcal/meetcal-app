@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
-import { prefetchMeetData, fetchMeetsFresh, getCachedMeets } from '@/lib/database/meet-manager';
+import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 
 type SelectedMeetContextType = {
@@ -32,6 +32,34 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
 
+  const beginMeetWarmup = useCallback((meet: MeetName, label: string) => {
+    setIsSyncing(true);
+    setSyncStatus('syncing');
+
+    warmMeetData(meet)
+      .then(() => {
+        setLastSynced(Date.now());
+        setSyncStatus('idle');
+      })
+      .catch((error) => {
+        console.error(`Error ${label}:`, error);
+        setSyncStatus('error');
+      })
+      .finally(() => {
+        setIsSyncing(false);
+      });
+  }, []);
+
+  const activateMeet = useCallback((meet: MeetName, meetData: Meet) => {
+    setSelectedMeetState(meet);
+    setMeetDetails(meetData);
+
+    setSyncManager((current) => {
+      current?.stopSync();
+      return new SyncManager(meet);
+    });
+  }, []);
+
   // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
     try {
@@ -41,33 +69,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         throw new Error('Selected meet not found in available meets');
       }
 
-      // Optimistically update UI immediately
-      setSelectedMeetState(meet);
-      setMeetDetails(meetData);
+      activateMeet(meet, meetData);
 
       // Save to storage
       await AsyncStorage.setItem('@selected_meet', meet);
 
-      // Create new sync manager for the meet
-      const manager = new SyncManager(meet);
-      setSyncManager(manager);
-
-      // Prefetch data in background (non-blocking)
-      setIsSyncing(true);
-      setSyncStatus('syncing');
-
-      prefetchMeetData(meet)
-        .then(() => {
-          setLastSynced(Date.now());
-          setSyncStatus('idle');
-        })
-        .catch((error) => {
-          console.error('Error prefetching meet data:', error);
-          setSyncStatus('error');
-        })
-        .finally(() => {
-          setIsSyncing(false);
-        });
+      beginMeetWarmup(meet, 'preloading meet data');
 
     } catch (error) {
       console.error('Error saving selected meet:', error);
@@ -83,29 +90,9 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Initialize meet data
   const initializeMeetData = useCallback(async (meet: MeetName, meetData: Meet) => {
-    // Set meet state immediately so first paint is not blocked by background prefetch.
-    setSelectedMeetState(meet);
-    setMeetDetails(meetData);
-
-    const manager = new SyncManager(meet);
-    setSyncManager(manager);
-
-    setIsSyncing(true);
-    setSyncStatus('syncing');
-
-    prefetchMeetData(meet)
-      .then(() => {
-        setLastSynced(Date.now());
-        setSyncStatus('idle');
-      })
-      .catch((error) => {
-        console.error('Error initializing meet data:', error);
-        setSyncStatus('error');
-      })
-      .finally(() => {
-        setIsSyncing(false);
-      });
-  }, []);
+    activateMeet(meet, meetData);
+    beginMeetWarmup(meet, 'initializing meet data');
+  }, [activateMeet, beginMeetWarmup]);
 
   const syncAvailableMeets = useCallback(async (options?: { forceFresh?: boolean }) => {
     await clearExpiredDownloadedMeets();
@@ -132,46 +119,71 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   }, []);
 
   // Load available meets
+  const chooseMeet = useCallback(
+    (meets: Meet[], stored: string | null) => {
+      if (selectedMeet) {
+        return meets.find((meet) => meet.name === selectedMeet) ?? null;
+      }
+      if (stored) {
+        const storedMeet = meets.find((meet) => meet.name === stored);
+        if (storedMeet) return storedMeet;
+      }
+      return meets[0] ?? null;
+    },
+    [selectedMeet],
+  );
+
   const loadMeets = useCallback(async () => {
       try {
-        const meets = await syncAvailableMeets();
-        setAvailableMeets(meets);
+        void clearExpiredDownloadedMeets().catch((error) => {
+          console.error('Error clearing expired downloaded meets:', error);
+        });
 
-        if (meets.length === 0) {
+        const [cachedMeets, stored] = await Promise.all([
+          getCachedMeets(),
+          AsyncStorage.getItem('@selected_meet'),
+        ]);
+
+        let activeMeet = selectedMeet;
+        let initializedFromCache = false;
+
+        if (cachedMeets.length > 0) {
+          setAvailableMeets(cachedMeets);
+          const cachedChoice = chooseMeet(cachedMeets, stored);
+          if (cachedChoice) {
+            activeMeet = cachedChoice.name;
+          }
+          if (cachedChoice && !selectedMeet) {
+            await initializeMeetData(cachedChoice.name, cachedChoice);
+            initializedFromCache = true;
+          }
+          setIsLoading(false);
+        }
+
+        const freshMeets = await fetchMeetsFresh();
+        setAvailableMeets((current) => {
+          const currentSerialized = JSON.stringify(current);
+          const nextSerialized = JSON.stringify(freshMeets);
+          return currentSerialized === nextSerialized ? current : freshMeets;
+        });
+
+        if (freshMeets.length === 0) {
           console.log('No meets available');
           setIsLoading(false);
           return;
         }
 
-        // If we have a selected meet that's no longer in the available meets (e.g. became completed),
-        // switch to the first available meet
-        if (selectedMeet && !meets.find(m => m.name === selectedMeet)) {
+        if (activeMeet && !freshMeets.find(m => m.name === activeMeet)) {
           console.log('Selected meet no longer available, switching to first available meet');
           await AsyncStorage.removeItem('@selected_meet');
-          await initializeMeetData(meets[0].name, meets[0]);
+          await initializeMeetData(freshMeets[0].name, freshMeets[0]);
           return;
         }
 
-        // Try to load stored meet if we don't have one selected
-        if (!selectedMeet) {
-          const stored = await AsyncStorage.getItem('@selected_meet');
-          console.log('Stored meet from AsyncStorage:', stored);
-
-          if (stored) {
-            // Only use stored meet if it still exists in available meets
-            const meetData = meets.find(m => m.name === stored);
-            if (meetData) {
-              await initializeMeetData(stored, meetData);
-            } else {
-              // Clear stored meet if it no longer exists
-              await AsyncStorage.removeItem('@selected_meet');
-              console.log('Stored meet no longer exists, using first available meet');
-              await initializeMeetData(meets[0].name, meets[0]);
-            }
-          } else {
-            // No stored meet, use first available
-            console.log('No stored meet, using first available meet:', meets[0].name);
-            await initializeMeetData(meets[0].name, meets[0]);
+        if (!initializedFromCache && !activeMeet) {
+          const freshChoice = chooseMeet(freshMeets, stored);
+          if (freshChoice) {
+            await initializeMeetData(freshChoice.name, freshChoice);
           }
         }
       } catch (error) {
@@ -179,7 +191,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       } finally {
         setIsLoading(false);
       }
-  }, [selectedMeet, initializeMeetData, syncAvailableMeets]);
+  }, [chooseMeet, initializeMeetData, selectedMeet]);
 
     // Initial load
   useEffect(() => {

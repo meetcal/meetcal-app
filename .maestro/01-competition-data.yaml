@@ -1,0 +1,106 @@
+appId: ${APP_ID}
+name: Competition data route coverage
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn: "Info tab"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "National & World Records"
+- extendedWaitUntil:
+    visible: "Records"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "WSO Records"
+- extendedWaitUntil:
+    visible: "WSO Records"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "Adaptive American Records"
+- extendedWaitUntil:
+    visible: "Adaptive American Records"
+    timeout: 30000
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "National Rankings"
+- extendedWaitUntil:
+    visible: "National Rankings"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "Qualifying Totals"
+- extendedWaitUntil:
+    visible: "Qualifying Totals"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- scroll
+- tapOn: "A/B Standards"
+- extendedWaitUntil:
+    visible: "A/B Standards"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- scroll
+- tapOn: "International Rankings"
+- extendedWaitUntil:
+    visible: "International Rankings"
+    timeout: 30000
+- assertVisible:
+    id: "filter-bar"
+- assertVisible:
+    id: "data-table"
+

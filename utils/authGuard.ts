@@ -3,6 +3,7 @@ import { useUser } from '@clerk/expo';
 import { Alert } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { cacheAuthState, getCachedAuthState } from '@/lib/authCache';
+import { isMaestroE2E } from '@/lib/e2e';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export interface AuthGuardOptions {
@@ -89,6 +90,10 @@ export function useAuthGuard() {
    * @returns true if authenticated, false if login is required, null if still loading
    */
   const requireAuth = useCallback((options: AuthGuardOptions): boolean | null => {
+    if (isMaestroE2E()) {
+      return true;
+    }
+
     if (!isCacheResolved || hasNetwork === null) {
       return null;
     }

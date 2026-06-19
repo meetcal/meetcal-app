@@ -4,14 +4,14 @@ import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-
 import { getJson } from '@/lib/api/meetcal-api';
 
 export type IntlRanking = {
-  meet: string | null;
-  ranking: number | null;
-  name: string | null;
-  weightClass: string | null;
-  total: number | null;
-  percentA: number | null;
-  gender: 'Men' | 'Women' | null;
-  ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
+  meet: string;
+  ranking: number;
+  name: string;
+  weightClass: string;
+  total: number;
+  percentA: number;
+  gender: 'Men' | 'Women';
+  ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | 'University';
 };
 
 type ApiIntlRanking = {
@@ -22,8 +22,30 @@ type ApiIntlRanking = {
   total: number | null;
   percent_a: number | null;
   gender: 'Men' | 'Women' | null;
-  age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | null;
+  age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | 'University' | null;
 };
+
+function isCompleteIntlRanking(row: ApiIntlRanking): row is {
+  meet: string;
+  ranking: number;
+  name: string;
+  weight_class: string;
+  total: number;
+  percent_a: number;
+  gender: 'Men' | 'Women';
+  age_category: IntlRanking['ageCategory'];
+} {
+  return Boolean(
+    row.meet &&
+      row.ranking != null &&
+      row.name &&
+      row.weight_class &&
+      row.total != null &&
+      row.percent_a != null &&
+      row.gender &&
+      row.age_category,
+  );
+}
 
 async function readIntlRankingsCache() {
   const cached = await getOfflineCache<IntlRanking[]>(OFFLINE_CACHE_KEYS.intlRankings);
@@ -37,7 +59,7 @@ async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
   }
 
   const rows = await getJson<ApiIntlRanking[]>('/data/intl-rankings');
-  return rows.map((row) => ({
+  return rows.filter(isCompleteIntlRanking).map((row) => ({
     meet: row.meet,
     ranking: row.ranking,
     name: row.name,

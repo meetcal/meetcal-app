@@ -1,0 +1,42 @@
+appId: ${APP_ID}
+name: Schedule details, offline data, and profile settings
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn:
+    text: "Schedule tab"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "schedule-screen"
+    timeout: 30000
+- tapOn:
+    id: "schedule-session-1-Red"
+- extendedWaitUntil:
+    visible: "Session 1"
+    timeout: 30000
+- assertVisible: "Red"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "schedule-screen"
+    timeout: 30000
+- tapOn: "Offline data"
+- extendedWaitUntil:
+    visible: "Offline Data"
+    timeout: 30000
+- assertVisible: "Schedule & Start List"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "schedule-screen"
+    timeout: 30000
+- tapOn: "My profile and settings"
+- extendedWaitUntil:
+    visible: "My Profile"
+    timeout: 30000

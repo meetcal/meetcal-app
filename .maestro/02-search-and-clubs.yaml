@@ -1,0 +1,39 @@
+appId: ${APP_ID}
+name: Search, wrapped, and club results entry points
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn: "Info tab"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "All Meet Results"
+- extendedWaitUntil:
+    visible: "Meet Results"
+    timeout: 30000
+- assertVisible: "Search for an athlete"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "Weightlifting Wrapped"
+- extendedWaitUntil:
+    visible: "YEAR IN LIFTING"
+    timeout: 30000
+- assertVisible: "ATHLETE NAME"
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- tapOn: "Club Meet Results"
+- extendedWaitUntil:
+    visible: "Search clubs..."
+    timeout: 30000
