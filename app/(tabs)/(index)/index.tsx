@@ -1,5 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { useFocusEffect, useNavigation, usePathname, useRouter } from "expo-router";
+import { useNavigation, usePathname, useRouter } from "expo-router";
 import {
   useCallback,
   useEffect,
@@ -38,6 +38,7 @@ import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
+import { isMaestroE2E } from "@/lib/e2e";
 import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
 
@@ -169,15 +170,10 @@ export default function ScheduleScreen() {
     initStore();
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!selectedMeet) return;
-      void refreshSchedule();
-    }, [refreshSchedule, selectedMeet]),
-  );
-
   // Check onboarding status on mount
   useEffect(() => {
+    if (isMaestroE2E()) return;
+
     let aborted = false;
 
     const checkOnboarding = async () => {
@@ -311,6 +307,7 @@ export default function ScheduleScreen() {
 
   return (
     <ThemedView
+      testID="schedule-screen"
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <OnboardingView
@@ -330,6 +327,9 @@ export default function ScheduleScreen() {
       >
         <View style={styles.filterRow}>
           <Pressable
+            testID="schedule-meet-selector"
+            accessibilityRole="button"
+            accessibilityLabel="Open meet selector"
             style={({ pressed }) => [
               styles.filterButton,
               {

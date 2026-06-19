@@ -46,7 +46,10 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   if (sortedPlatforms.length === 0) return null;
 
   return (
-    <View style={[styles.sessionContainer, { backgroundColor: colors.card }]}>
+    <View
+      testID={`schedule-session-${session.number}`}
+      style={[styles.sessionContainer, { backgroundColor: colors.card }]}
+    >
       <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
         Session{" "}
         {session.number}
@@ -58,6 +61,9 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
         {sortedPlatforms.map((platform, index) => (
           <Pressable
             key={platform.platform}
+            testID={`schedule-session-${session.number}-${platform.platform}`}
+            accessibilityRole="button"
+            accessibilityLabel={`Open session ${session.number} platform ${platform.platform}`}
             style={({ pressed }) => [
               styles.platformCard,
               { backgroundColor: colors.card },

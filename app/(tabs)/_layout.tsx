@@ -1,6 +1,7 @@
 import { HapticTab } from "@/components/ui/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
+import { isMaestroE2E } from "@/lib/e2e";
 import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { Platform, StyleSheet } from "react-native";
@@ -13,7 +14,7 @@ export default function TabLayout() {
     Platform.OS === "ios"
       ? parseInt(String(Platform.Version).split(".")[0], 10)
       : 0;
-  const isIOS26OrHigher = iosVersion >= 26;
+  const isIOS26OrHigher = iosVersion >= 26 && !isMaestroE2E();
 
   if (Platform.OS === "ios" && isIOS26OrHigher) {
     return (
@@ -76,6 +77,7 @@ export default function TabLayout() {
         name="(index)"
         options={{
           headerShown: false,
+          tabBarAccessibilityLabel: "Schedule tab",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="calendar" color={String(color)} />
           ),
@@ -85,6 +87,7 @@ export default function TabLayout() {
         name="(saved)"
         options={{
           headerShown: false,
+          tabBarAccessibilityLabel: "Saved tab",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="bookmark.fill" color={String(color)} />
           ),
@@ -94,6 +97,7 @@ export default function TabLayout() {
         name="(start-list)"
         options={{
           headerShown: false,
+          tabBarAccessibilityLabel: "Start list tab",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="list.bullet" color={String(color)} />
           ),
@@ -103,6 +107,7 @@ export default function TabLayout() {
         name="(info)"
         options={{
           headerShown: false,
+          tabBarAccessibilityLabel: "Info tab",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="info.circle.fill" color={String(color)} />
           ),

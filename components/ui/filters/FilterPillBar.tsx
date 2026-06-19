@@ -84,6 +84,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
   return (
     <>
       <ScrollView
+        testID="filter-pill-bar"
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={pillRowContentStyle}
@@ -99,6 +100,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
             collapsable={false}
           >
             <Pressable
+              testID={`filter-pill-${config.id}`}
               onPress={() => handlePillPress(config)}
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               accessibilityRole="button"
@@ -172,6 +174,7 @@ const MenuRow: React.FC<MenuRowProps> = ({ label, selected, onPress }) => {
   const colors = useAppColors();
   return (
     <Pressable
+      testID={`filter-option-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
       style={({ pressed }) => [
         styles.menuRow,
         { borderBottomColor: colors.border },

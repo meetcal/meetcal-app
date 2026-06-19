@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { CURRENT_VERSION, getAnnouncementForVersion, VERSION_ANNOUNCEMENT_KEY } from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
+import { isMaestroE2E } from "@/lib/e2e";
 import { VersionAnnouncementProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
@@ -27,6 +28,8 @@ export function VersionAnnouncement({
     propAnnouncement || getAnnouncementForVersion(CURRENT_VERSION);
 
   useEffect(() => {
+    if (isMaestroE2E()) return;
+
     if (announcement) {
       checkIfShouldShow();
     }
@@ -65,7 +68,7 @@ export function VersionAnnouncement({
     }
   };
 
-  if (!announcement) {
+  if (!announcement || isMaestroE2E()) {
     return null;
   }
 

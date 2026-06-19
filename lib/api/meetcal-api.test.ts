@@ -2,6 +2,7 @@ import {
   buildApiUrl,
   fetchApiClubNames,
   fetchApiMeets,
+  fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
   fetchUserPreferences,
@@ -75,6 +76,39 @@ describe('meetcal API client', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(fetchApiWsoList()).resolves.toEqual(['Carolina', 'Ohio']);
+  });
+
+  it('fetches batch year bests with encoded names', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          'Athlete A': {
+            best_snatch: 100,
+            best_cj: 120,
+            best_total: 220,
+          },
+          'Athlete B': {
+            best_snatch: 90,
+            best_cj: 110,
+            best_total: 200,
+          },
+        }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      fetchApiYearBestsByNames(['Athlete A', 'Athlete B'], '2025-06-19'),
+    ).resolves.toEqual({
+      'Athlete A': { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
+      'Athlete B': { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.meetcal.app/lifting-results/bests?names=Athlete+A%2CAthlete+B&cutoff_date=2025-06-19',
+      expect.any(Object),
+    );
   });
 
   it('throws when runtime response validation fails', async () => {

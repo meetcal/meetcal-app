@@ -688,6 +688,7 @@ export default function SavedScreen() {
 
   return (
     <ThemedView
+      testID="saved-screen"
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <FlatList
@@ -699,7 +700,7 @@ export default function SavedScreen() {
           { paddingBottom: insets.bottom + 100 },
         ]}
         ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
+          <View testID="saved-empty-state" style={styles.emptyContainer}>
             <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>No saved sessions</ThemedText>
           </View>
         )}

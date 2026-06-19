@@ -4,7 +4,12 @@ import { MeetName } from "@/data/types/meet";
 import { LiftResult } from "@/data/types/athletes";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
-import { getMeetData, saveMeetAthletes } from "@/lib/database/offline-store";
+import {
+  getMeetData,
+  getSessionAthletesFromMeetCache,
+  saveMeetAthletes,
+  saveSessionAthletes,
+} from "@/lib/database/offline-store";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
 
 interface UseMeetAthletesReturn {
@@ -56,15 +61,27 @@ const sessionAthletesResource = createMutableResource<
   getKey: (meet, sessionNumber, platform) =>
     `athletes:${meet}:session:${sessionNumber}:${platform}`,
   loadCached: async (meet, sessionNumber, platform) => {
+    const athletes = await getSessionAthletesFromMeetCache(
+      meet,
+      sessionNumber,
+      platform,
+    );
+    if (athletes.length > 0) {
+      return {
+        data: athletes,
+        lastUpdatedAt: Date.now(),
+      };
+    }
+
     const meetData = await getMeetData(meet);
-    const athletes = filterSessionAthletes(
+    const sessionAthletes = filterSessionAthletes(
       meetData.athletes,
       sessionNumber,
       platform,
     );
-    return athletes.length > 0
+    return sessionAthletes.length > 0
       ? {
-          data: athletes,
+          data: sessionAthletes,
           lastUpdatedAt: meetData.lastSyncTime || null,
         }
       : null;
@@ -75,7 +92,10 @@ const sessionAthletesResource = createMutableResource<
       sessionNumber,
       platform,
     ),
-  persistFresh: async () => null,
+  persistFresh: async (data, meet, sessionNumber, platform) => {
+    await saveSessionAthletes(meet, sessionNumber, platform, data);
+    return { data, lastUpdatedAt: Date.now() };
+  },
   isEqual: defaultIsEqual,
 });
 

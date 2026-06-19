@@ -4,10 +4,12 @@ import {
   clearImplicitMeetData,
   clearMeetData,
   getMeetData,
+  saveAthleteBestsBatch,
   saveAthleteHistory,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
+  saveSessionAthletes,
 } from './offline-store';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { createMutableResource } from '@/lib/data/mutable-resource';
@@ -19,6 +21,9 @@ import {
   mapApiLiftingResult,
   mapPackageSchedule,
 } from '@/lib/api/meetcal-api';
+import { fetchAthletesWithSession, fetchSchedule } from './queries';
+import type { Schedule } from '@/types/schedule';
+import { calculateInitialPage } from '@/utils/dateTime';
 
 const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
@@ -28,6 +33,10 @@ const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
 let lastFetchMeetsTimeoutLogAt = 0;
+const criticalPrefetchRequests = new Map<MeetName, Promise<void>>();
+const fullPrefetchRequests = new Map<MeetName, Promise<void>>();
+const PRIORITY_SESSION_PREFETCH_LIMIT = 8;
+const FULL_PREFETCH_DELAY_MS = 5000;
 
 interface MeetInfo {
   lastAccessed: number;
@@ -239,6 +248,18 @@ export async function updateMeetAccess(meet: MeetName) {
   await saveCacheInfo(info);
 }
 
+export async function touchMeetAccess(meet: MeetName) {
+  const info = await getCacheInfo();
+  const currentMeetInfo = info.meets[meet];
+
+  info.meets[meet] = {
+    lastAccessed: Date.now(),
+    size: currentMeetInfo?.size ?? 0,
+  };
+
+  await saveCacheInfo(info);
+}
+
 // Clean up old meet data
 async function cleanupOldMeetData() {
   const info = await getCacheInfo();
@@ -287,6 +308,17 @@ async function manageCacheSize() {
 
 // Prefetch meet data
 export async function prefetchMeetData(meet: MeetName) {
+  const inFlight = fullPrefetchRequests.get(meet);
+  if (inFlight) return inFlight;
+
+  const request = prefetchMeetDataUncached(meet).finally(() => {
+    fullPrefetchRequests.delete(meet);
+  });
+  fullPrefetchRequests.set(meet, request);
+  return request;
+}
+
+async function prefetchMeetDataUncached(meet: MeetName) {
   const errors: string[] = [];
   const twoYearsAgo = new Date();
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
@@ -311,8 +343,21 @@ export async function prefetchMeetData(meet: MeetName) {
       await saveMeetLiftingResults(meet, liftingResults);
     }
 
+    await saveAthleteBestsBatch(
+      Object.fromEntries(
+        Object.entries(pkg.year_bests_by_name ?? {}).map(([name, bests]) => [
+          name,
+          {
+            snatch_best: bests.best_snatch > 0 ? bests.best_snatch : null,
+            cj_best: bests.best_cj > 0 ? bests.best_cj : null,
+            total: bests.best_total > 0 ? bests.best_total : null,
+          },
+        ]),
+      ),
+    );
+
     await Promise.all(
-      Object.entries(pkg.recent_results_by_name).map(([name, results]) =>
+      Object.entries(pkg.recent_results_by_name ?? {}).map(([name, results]) =>
         saveAthleteHistory(name, results.map(mapApiLiftingResult)),
       ),
     );
@@ -339,4 +384,100 @@ export async function prefetchMeetData(meet: MeetName) {
   if (errors.length > 0) {
     throw new Error(`Offline prefetch incomplete (${meet}): ${errors.join(', ')}`);
   }
-} 
+}
+
+export async function prefetchCriticalMeetData(meet: MeetName) {
+  const inFlight = criticalPrefetchRequests.get(meet);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const hasNetwork = await isNetworkAvailable();
+    if (!hasNetwork) return;
+
+    const scheduleRequest = fetchSchedule(meet).then(async (schedule) => {
+      if (schedule.length > 0) {
+        await saveMeetSchedule(meet, schedule);
+        await prefetchPrioritySessionAthletes(meet, schedule);
+      }
+      return schedule;
+    });
+
+    const athletesRequest = fetchAthletesWithSession(meet).then(async (athletes) => {
+      await saveMeetAthletes(meet, athletes);
+      return athletes;
+    });
+
+    const [scheduleResult, athletesResult] = await Promise.allSettled([
+      scheduleRequest,
+      athletesRequest,
+    ]);
+
+    if (scheduleResult.status === 'rejected' && athletesResult.status === 'rejected') {
+      throw new Error(`Critical meet prefetch failed for ${meet}`);
+    }
+
+    await touchMeetAccess(meet);
+  })().finally(() => {
+    criticalPrefetchRequests.delete(meet);
+  });
+
+  criticalPrefetchRequests.set(meet, request);
+  return request;
+}
+
+function getPrioritySessionTargetGroups(schedule: Schedule) {
+  const initialDayIndex = calculateInitialPage(schedule);
+  const priorityDays = [
+    ...schedule.slice(initialDayIndex),
+    ...schedule.slice(0, initialDayIndex).reverse(),
+  ];
+  let remainingTargets = PRIORITY_SESSION_PREFETCH_LIMIT;
+  const targetGroups: { sessionNumber: number; platform: string }[][] = [];
+
+  for (const day of priorityDays) {
+    if (remainingTargets <= 0) break;
+
+    const dayTargets = day.sessions
+      .flatMap((session) =>
+        session.platforms.map((platform) => ({
+          sessionNumber: session.number,
+          platform: platform.platform,
+        })),
+      )
+      .slice(0, remainingTargets);
+
+    if (dayTargets.length > 0) {
+      targetGroups.push(dayTargets);
+      remainingTargets -= dayTargets.length;
+    }
+  }
+
+  return targetGroups;
+}
+
+async function prefetchPrioritySessionAthletes(
+  meet: MeetName,
+  schedule: Schedule,
+) {
+  const targetGroups = getPrioritySessionTargetGroups(schedule);
+  if (targetGroups.length === 0) return;
+
+  for (const targets of targetGroups) {
+    await Promise.allSettled(
+      targets.map(async ({ sessionNumber, platform }) => {
+        const athletes = await fetchAthletesWithSession(meet, sessionNumber, platform);
+        await saveSessionAthletes(meet, sessionNumber, platform, athletes);
+      }),
+    );
+  }
+}
+
+export function warmMeetData(meet: MeetName): Promise<void> {
+  return prefetchCriticalMeetData(meet).then(() => {
+    setTimeout(() => {
+      prefetchMeetData(meet).catch((error) => {
+        console.error('Deferred full meet prefetch failed:', { meet, error });
+      });
+    }, FULL_PREFETCH_DELAY_MS);
+  });
+}

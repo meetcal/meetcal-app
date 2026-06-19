@@ -20,6 +20,7 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   loadingContent?: React.ReactNode;
   scrollViewProps?: object;
+  testID?: string;
 }
 
 function DataTableRow<T>({
@@ -44,12 +45,14 @@ export function DataTable<T>({
   emptyMessage = "No data available.",
   loadingContent,
   scrollViewProps,
+  testID = "data-table",
 }: DataTableProps<T>) {
   const colors = useAppColors();
 
   return (
     <ScrollView
       style={styles.scrollView}
+      testID={testID}
       contentContainerStyle={styles.scrollContent}
       contentInsetAdjustmentBehavior="automatic"
       {...scrollViewProps}

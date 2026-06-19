@@ -43,6 +43,7 @@ export default function InfoScreen() {
 
   return (
     <ThemedView
+      testID="info-screen"
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <Stack.Screen
@@ -74,16 +75,19 @@ export default function InfoScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ListButton
             title="Adaptive American Records"
+            testID="info-adaptive-records"
             onPress={() => openCompDataScreen("/comp-data/adap-records", "adaptive-records")}
           />
 
           <ListButton
             title="All Meet Results"
+            testID="info-all-meet-results"
             onPress={() => openCompDataScreen("/comp-data/all-meet-results", "all-meet-results")}
           />
 
           <ListButton
             title="Club Meet Results"
+            testID="info-club-meet-results"
             onPress={() =>
               openCompDataScreen("/comp-data/club-results/clubs-list", "club-meet-results")
             }
@@ -91,6 +95,7 @@ export default function InfoScreen() {
 
           <ListButton
             title="National Rankings"
+            testID="info-national-rankings"
             onPress={() =>
               openCompDataScreen("/comp-data/national-rankings", "national-rankings")
             }
@@ -98,21 +103,25 @@ export default function InfoScreen() {
 
           <ListButton
             title="National & World Records"
+            testID="info-records"
             onPress={() => openCompDataScreen("/comp-data/records", "records")}
           />
 
           <ListButton
             title="Weightlifting Wrapped"
+            testID="info-weightlifting-wrapped"
             onPress={() => router.push("/comp-data/weightlifting-wrapped")}
           />
 
           <ListButton
             title="WSO Records"
+            testID="info-wso-records"
             onPress={() => openCompDataScreen("/comp-data/wso-records", "wso-records")}
           />
 
           <ListButton
             title="Qualifying Totals"
+            testID="info-qualifying-totals"
             lastSection={true}
             onPress={() =>
               openCompDataScreen("/comp-data/new-qualifying-totals", "qualifying-totals")
@@ -124,11 +133,13 @@ export default function InfoScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ListButton
             title="A/B Standards"
+            testID="info-standards"
             onPress={() => openCompDataScreen("/comp-data/new-standards", "standards")}
           />
 
           <ListButton
             title="International Rankings"
+            testID="info-international-rankings"
             lastSection={true}
             onPress={() => openCompDataScreen("/comp-data/rankings", "international-rankings")}
           />

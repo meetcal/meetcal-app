@@ -22,12 +22,13 @@ import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   getMeetData,
+  getMeetSchedule,
   saveMeetAthletes,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
-import { fetchAthletes, fetchSchedule } from "@/lib/database/queries";
+import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { getLastYearBests, preloadYearBests, type YearBests } from "@/lib/start-list-api";
+import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   compareStartTimes,
   getAgeCategory,
@@ -142,6 +143,8 @@ export default function StartListScreen() {
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
   const latestLoadIdRef = useRef(0);
+  const loadStartedAtRef = useRef(performance.now());
+  const loggedReadyRef = useRef(false);
   const [generatedImageWhiteUri, setGeneratedImageWhiteUri] = useState<
     string | null
   >(null);
@@ -250,10 +253,13 @@ export default function StartListScreen() {
   );
 
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
-    const cachedMeetData = await getMeetData(meet).catch(() => null);
+    const [cachedMeetData, cachedSchedule] = await Promise.all([
+      getMeetData(meet).catch(() => null),
+      getMeetSchedule(meet).catch(() => []),
+    ]);
     return {
       cachedAthletes: cachedMeetData?.athletes ?? [],
-      cachedSchedule: cachedMeetData?.schedule ?? [],
+      cachedSchedule,
     };
   }, []);
 
@@ -273,7 +279,11 @@ export default function StartListScreen() {
 
       const validMeet = selectedMeet;
       const requestId = ++latestLoadIdRef.current;
-      if (!forceRefresh) setLoading(true);
+      if (!forceRefresh) {
+        loadStartedAtRef.current = performance.now();
+        loggedReadyRef.current = false;
+        setLoading(true);
+      }
 
       const requestPromise = (async () => {
         const snapshot = await loadMeetSnapshot(validMeet);
@@ -299,7 +309,7 @@ export default function StartListScreen() {
         }
 
         const [athletesResult, scheduleResult] = await Promise.allSettled([
-          fetchAthletes(validMeet),
+          fetchAthletesWithSession(validMeet),
           fetchSchedule(validMeet),
         ]);
 
@@ -349,6 +359,20 @@ export default function StartListScreen() {
   useEffect(() => {
     loadStartListData(false);
   }, [loadStartListData]);
+
+  useEffect(() => {
+    if (!__DEV__ || loggedReadyRef.current || loading || athletes.length === 0) {
+      return;
+    }
+
+    loggedReadyRef.current = true;
+    console.info("[perf] start list ready", {
+      elapsedMs: Math.round(performance.now() - loadStartedAtRef.current),
+      meet: selectedMeet,
+      athleteCount: athletes.length,
+      scheduleDays: scheduleData.length,
+    });
+  }, [athletes.length, loading, scheduleData.length, selectedMeet]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -735,11 +759,9 @@ export default function StartListScreen() {
         const uniqueNames = Array.from(
           new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
         );
-        const bests = await Promise.all(
-          uniqueNames.map(async (name) => [name, await getLastYearBests(name)] as const),
-        );
+        const bests = await getLastYearBestsBatch(uniqueNames);
         if (!isCancelled) {
-          setAthleteBests(Object.fromEntries(bests));
+          setAthleteBests(bests);
         }
       } catch (error) {
         if (!isCancelled) {
@@ -1390,6 +1412,7 @@ export default function StartListScreen() {
 
   return (
     <ThemedView
+      testID="start-list-screen"
       style={[styles.container, { backgroundColor: colors.background }]}
       key={selectedMeet}
     >
@@ -1424,6 +1447,7 @@ export default function StartListScreen() {
               color={colors.secondaryText}
             />
             <TextInput
+              testID="start-list-search"
               style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search athletes..."
               placeholderTextColor={colors.secondaryText}

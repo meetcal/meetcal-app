@@ -44,6 +44,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
 
   return (
     <ScrollView
+      testID="filter-pill-bar"
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={pillRowContentStyle}
@@ -57,6 +58,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
           return (
             <Pressable
               key={config.id}
+              testID={`filter-pill-${config.id}`}
               onPress={config.onPress}
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               accessibilityRole="button"
@@ -70,6 +72,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
         return (
           <MenuView
             key={config.id}
+            testID={`filter-pill-${config.id}`}
             title={config.label}
             actions={buildActions(config)}
             onPressAction={({ nativeEvent }) => {

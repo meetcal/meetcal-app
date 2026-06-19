@@ -1,0 +1,47 @@
+appId: ${APP_ID}
+name: Main tabs and schedule shell
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn:
+    text: "Schedule tab"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "schedule-screen"
+    timeout: 60000
+- tapOn:
+    id: "schedule-meet-selector"
+- extendedWaitUntil:
+    visible:
+      id: "meet-selection-modal"
+    timeout: 15000
+- tapOn:
+    id: "meet-selection-close"
+- assertNotVisible:
+    id: "meet-selection-modal"
+- tapOn:
+    text: "Saved tab"
+- extendedWaitUntil:
+    visible:
+      id: "saved-screen"
+    timeout: 30000
+- assertVisible: "Saved"
+- tapOn:
+    text: "Start list tab"
+- extendedWaitUntil:
+    visible:
+      id: "start-list-screen"
+    timeout: 60000
+- assertVisible: "Search athletes..."
+- tapOn:
+    text: "Info tab"
+- extendedWaitUntil:
+    visible:
+      id: "info-screen"
+    timeout: 30000
+- assertVisible: "National"
+- assertVisible: "International"

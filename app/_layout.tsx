@@ -114,7 +114,6 @@ export default Sentry.wrap(function RootLayout() {
         }
 
         OneSignal.initialize(ONESIGNAL_APP_ID);
-        await OneSignal.Notifications.requestPermission(false);
       } catch (e) {
         console.warn("Initialization error:", e);
       } finally {
@@ -204,6 +203,18 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       OneSignal.logout();
     }
   }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
+
+  useEffect(() => {
+    const requestPermissionAfterFirstPaint = setTimeout(() => {
+      OneSignal.Notifications.requestPermission(false).catch((error) => {
+        console.warn("OneSignal permission request failed:", error);
+      });
+    }, 8000);
+
+    return () => {
+      clearTimeout(requestPermissionAfterFirstPaint);
+    };
+  }, []);
 
   useEffect(() => {
     async function hideSplash() {

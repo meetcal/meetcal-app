@@ -7,9 +7,10 @@ import { Pressable, StyleSheet, View } from "react-native";
 interface FilterBarProps {
   displayText: string;
   onPress: () => void;
+  testID?: string;
 }
 
-export function FilterBar({ displayText, onPress }: FilterBarProps) {
+export function FilterBar({ displayText, onPress, testID = "filter-bar" }: FilterBarProps) {
   const colors = useAppColors();
 
   return (
@@ -25,6 +26,9 @@ export function FilterBar({ displayText, onPress }: FilterBarProps) {
     >
       <View style={styles.filterButtons}>
         <Pressable
+          testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel="Open filters"
           style={({ pressed }) => [
             styles.filterButton,
             {

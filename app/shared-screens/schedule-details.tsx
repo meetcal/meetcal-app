@@ -12,7 +12,7 @@ import {
 import { Session } from "@/types/schedule-details";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
-import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
@@ -50,30 +50,10 @@ export default function SessionDetailsScreen() {
   const parsedSessionNumber = params.sessionNumber
     ? parseInt(params.sessionNumber, 10)
     : NaN;
-  const hasValidSessionNumber = !isNaN(parsedSessionNumber);
   const {
     schedule: currentSchedule,
     refreshSchedule,
   } = useScheduleData((params.meet || null) as MeetName | null);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!params.meet || !hasValidSessionNumber) return;
-
-      let cancelled = false;
-
-      void (async () => {
-        await refreshSchedule();
-        if (!cancelled) {
-          setRefreshKey((prev) => prev + 1);
-        }
-      })();
-
-      return () => {
-        cancelled = true;
-      };
-    }, [hasValidSessionNumber, params.meet, refreshSchedule]),
-  );
 
   // Get the correct weight class from current schedule
   const sessionWeightClass = useMemo(() => {

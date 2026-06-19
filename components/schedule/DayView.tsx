@@ -32,6 +32,7 @@ export function DayView({
 
   return (
     <FlatList
+      testID="schedule-day-list"
       data={day.sessions}
       keyExtractor={(item) => item.id}
       renderItem={renderSession}

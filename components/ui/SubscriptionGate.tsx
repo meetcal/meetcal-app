@@ -4,6 +4,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { ActivityIndicator, StyleSheet } from "react-native";
 import PaywallScreen from "@/app/shared-screens/paywall";
+import { isMaestroE2E } from "@/lib/e2e";
 
 interface SubscriptionGateProps {
   children: React.ReactNode;
@@ -12,6 +13,10 @@ interface SubscriptionGateProps {
 export function SubscriptionGate({ children }: SubscriptionGateProps) {
   const colors = useAppColors();
   const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
+
+  if (isMaestroE2E()) {
+    return <>{children}</>;
+  }
 
   if (isSubscriptionLoading) {
     return (

@@ -9,6 +9,7 @@ import type { Schedule } from '@/types/schedule';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
 const DEFAULT_TIMEOUT_MS = 10000;
+const SLOW_API_LOG_THRESHOLD_MS = 500;
 
 export const MEETCAL_API_BASE_URL =
   process.env.EXPO_PUBLIC_MEETCAL_API_URL || DEFAULT_API_BASE_URL;
@@ -99,6 +100,10 @@ async function requestJson<T>(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const url = buildApiUrl(path, query);
+  const startedAt =
+    typeof performance !== 'undefined' ? performance.now() : Date.now();
+  let status: number | null = null;
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -111,12 +116,13 @@ async function requestJson<T>(
   }
 
   try {
-    const response = await fetch(buildApiUrl(path, query), {
+    const response = await fetch(url, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
+    status = response.status;
     const text = await response.text();
 
     if (!response.ok) {
@@ -136,6 +142,21 @@ async function requestJson<T>(
     }
     throw error;
   } finally {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      const elapsedMs = Math.round(
+        (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+          startedAt,
+      );
+      if (elapsedMs >= SLOW_API_LOG_THRESHOLD_MS) {
+        console.info('[perf] slow api request', {
+          elapsedMs,
+          method,
+          path,
+          status,
+          url,
+        });
+      }
+    }
     clearTimeout(timeoutId);
   }
 }
@@ -592,6 +613,30 @@ export async function fetchApiYearBests(name: string, cutoffDate?: string) {
     cutoff_date: cutoffDate,
   }), '/lifting-results/year', ['best_snatch', 'best_cj', 'best_total']) as ApiYearBests;
   return [mapApiYearBests(row)];
+}
+
+export async function fetchApiYearBestsByNames(
+  names: string[],
+  cutoffDate?: string,
+): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
+  if (names.length === 0) return {};
+  const response = await getJson('/lifting-results/bests', {
+    names,
+    cutoff_date: cutoffDate,
+  });
+  assertObject(response, '/lifting-results/bests');
+  return Object.fromEntries(
+    Object.entries(response).map(([name, row]) => [
+      name,
+      mapApiYearBests(
+        assertHasFields(row, `/lifting-results/bests.${name}`, [
+          'best_snatch',
+          'best_cj',
+          'best_total',
+        ]) as ApiYearBests,
+      ),
+    ]),
+  );
 }
 
 export async function searchApi(query: string, startDate?: string, endDate?: string) {
