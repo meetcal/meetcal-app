@@ -145,6 +145,54 @@ struct SimpleEntry: TimelineEntry {
     let selectedMeet: String
 }
 
+struct DataWidgetRow: Codable, Hashable {
+    let leading: String
+    let title: String
+    let trailing: String
+    let subtitle: String?
+}
+
+struct DataWidgetPayload: Codable {
+    let title: String
+    let subtitle: String
+    let emptyMessage: String
+    let rows: [DataWidgetRow]
+}
+
+struct DataWidgetEntry: TimelineEntry {
+    let date: Date
+    let payload: DataWidgetPayload
+}
+
+struct DataWidgetProvider: TimelineProvider {
+    let defaultsKey: String
+    let fallbackPayload: DataWidgetPayload
+
+    func placeholder(in context: Context) -> DataWidgetEntry {
+        DataWidgetEntry(date: Date(), payload: fallbackPayload)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (DataWidgetEntry) -> ()) {
+        completion(loadEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DataWidgetEntry>) -> ()) {
+        let entry = loadEntry()
+        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
+        completion(Timeline(entries: [entry], policy: .after(refreshDate)))
+    }
+
+    private func loadEntry() -> DataWidgetEntry {
+        let sharedDefaults = UserDefaults.appGroup
+        guard let data = sharedDefaults.data(forKey: defaultsKey),
+              let payload = try? JSONDecoder().decode(DataWidgetPayload.self, from: data) else {
+            return DataWidgetEntry(date: Date(), payload: fallbackPayload)
+        }
+
+        return DataWidgetEntry(date: Date(), payload: payload)
+    }
+}
+
 struct Platform: View {
     let text: String
 
@@ -265,6 +313,90 @@ struct LargeWidgetView: View {
     }
 }
 
+struct DataWidgetRowView: View {
+    let row: DataWidgetRow
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(row.leading)
+                .frame(width: 42, height: 22)
+                .font(.caption2)
+                .bold()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .background(Color.blue)
+                .foregroundStyle(.white)
+                .cornerRadius(11)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title)
+                    .font(.caption)
+                    .bold()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let subtitle = row.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            Text(row.trailing)
+                .font(.caption)
+                .bold()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.bottom, 2)
+    }
+}
+
+struct LargeDataWidgetView: View {
+    let entry: DataWidgetEntry
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.payload.title)
+                        .font(.caption)
+                        .bold()
+                        .foregroundStyle(.blue)
+                        .lineLimit(1)
+                    Text(entry.payload.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Spacer()
+            }
+            .padding(.top)
+
+            Divider()
+
+            if entry.payload.rows.isEmpty {
+                Text(entry.payload.emptyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                ForEach(entry.payload.rows.prefix(7), id: \.self) { row in
+                    DataWidgetRowView(row: row)
+                }
+                Spacer()
+            }
+        }
+    }
+}
+
 struct SavedWidgetEntryView: View {
     var entry: Provider.Entry
     @Environment(\.widgetFamily) var family
@@ -281,7 +413,6 @@ struct SavedWidgetEntryView: View {
     }
 }
 
-@main
 struct SavedWidget: Widget {
     let kind: String = "SavedWidget"
 
@@ -293,6 +424,91 @@ struct SavedWidget: Widget {
         .configurationDisplayName("Saved Sessions")
         .description("Get a quick glance at your saved sessions.")
         .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}
+
+struct QualifyingTotalsWidget: Widget {
+    let kind: String = "QualifyingTotalsWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(
+            kind: kind,
+            provider: DataWidgetProvider(
+                defaultsKey: "qualifyingTotalsWidgetData",
+                fallbackPayload: DataWidgetPayload(
+                    title: "Qualifying Totals",
+                    subtitle: "Open MeetCal to choose filters",
+                    emptyMessage: "No qualifying totals",
+                    rows: []
+                )
+            )
+        ) { entry in
+            LargeDataWidgetView(entry: entry, systemImage: "target")
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Qualifying Totals")
+        .description("See qualifying totals for your selected event.")
+        .supportedFamilies([.systemLarge])
+    }
+}
+
+struct StandardsWidget: Widget {
+    let kind: String = "StandardsWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(
+            kind: kind,
+            provider: DataWidgetProvider(
+                defaultsKey: "standardsWidgetData",
+                fallbackPayload: DataWidgetPayload(
+                    title: "A/B Standards",
+                    subtitle: "Open MeetCal to choose filters",
+                    emptyMessage: "No standards",
+                    rows: []
+                )
+            )
+        ) { entry in
+            LargeDataWidgetView(entry: entry, systemImage: "chart.bar")
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("A/B Standards")
+        .description("See USA Weightlifting A/B standards.")
+        .supportedFamilies([.systemLarge])
+    }
+}
+
+struct InternationalRankingsWidget: Widget {
+    let kind: String = "InternationalRankingsWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(
+            kind: kind,
+            provider: DataWidgetProvider(
+                defaultsKey: "intlRankingsWidgetData",
+                fallbackPayload: DataWidgetPayload(
+                    title: "International Rankings",
+                    subtitle: "Open MeetCal to choose filters",
+                    emptyMessage: "No rankings",
+                    rows: []
+                )
+            )
+        ) { entry in
+            LargeDataWidgetView(entry: entry, systemImage: "globe.americas")
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("International Rankings")
+        .description("See international rankings for your selected filters.")
+        .supportedFamilies([.systemLarge])
+    }
+}
+
+@main
+struct SavedWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        SavedWidget()
+        QualifyingTotalsWidget()
+        StandardsWidget()
+        InternationalRankingsWidget()
     }
 }
 
