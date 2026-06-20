@@ -8,11 +8,13 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
-  '5.4.2': {
+  '6.0.0': {
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',
     features: [
-      'Fixed a few bugs'
+      'Optimized app loading to show you data 25x faster',
+      'Improved login experience',
+      'New iOS widgets'
     ],
   },
 };
@@ -22,4 +24,4 @@ export function getAnnouncementForVersion(version: string): Omit<VersionAnnounce
 }
 
 export const VERSION_ANNOUNCEMENT_KEY = "@version_announcement_seen";
-export const CURRENT_VERSION = Constants.expoConfig?.version || "5.4.2";
+export const CURRENT_VERSION = Constants.expoConfig?.version || "6.0.0";
