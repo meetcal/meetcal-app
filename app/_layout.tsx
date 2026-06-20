@@ -36,10 +36,10 @@ import * as Sentry from '@sentry/react-native';
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
   (__DEV__ ? "development" : "production");
-const SENTRY_TRACES_SAMPLE_RATE = __DEV__ ? 1.0 : 0.2;
-const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0.1;
-const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0.05;
-const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0.5;
+const SENTRY_TRACES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
+const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
+const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
+const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 
 Sentry.init({
   dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
@@ -51,7 +51,21 @@ Sentry.init({
   replaysSessionSampleRate: SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
   replaysOnErrorSampleRate: SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
   replaysSessionQuality: __DEV__ ? "medium" : "low",
-  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+  enableAutoPerformanceTracing: __DEV__,
+  enableAutoSessionTracking: __DEV__,
+  enableAppStartTracking: __DEV__,
+  enableNativeFramesTracking: __DEV__,
+  enableStallTracking: __DEV__,
+  enableAppHangTracking: __DEV__,
+  attachScreenshot: false,
+  attachViewHierarchy: false,
+  enableCaptureFailedRequests: false,
+  maxCacheItems: __DEV__ ? 30 : 10,
+  maxQueueSize: __DEV__ ? 30 : 10,
+  shutdownTimeout: __DEV__ ? 2000 : 500,
+  integrations: __DEV__
+    ? [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()]
+    : [],
   beforeBreadcrumb(breadcrumb) {
     if (__DEV__ && breadcrumb.category === 'console') {
       return null;

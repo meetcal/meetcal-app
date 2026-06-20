@@ -2,7 +2,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { OnboardingViewProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Calendar from "expo-calendar";
+import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
