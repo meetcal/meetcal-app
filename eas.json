@@ -5,10 +5,10 @@
   },
   "build": {
     "development": {
-      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
+        "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium"
       },
       "env": {
@@ -17,26 +17,25 @@
       "channel": "development"
     },
     "development-simulator": {
-      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
+        "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
         "simulator": true
       },
       "channel": "development-simulator"
     },
     "preview": {
-      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "distribution": "internal",
       "ios": {
+        "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
         "simulator": true
       },
       "channel": "preview"
     },
     "production": {
-      "prebuildCommand": "if [ \"$EAS_BUILD_PLATFORM\" = \"ios\" ]; then npx expo prebuild -p ios --clean; fi",
       "autoIncrement": true,
       "credentialsSource": "remote",
       "channel": "production",
@@ -45,6 +44,7 @@
         "image": "ubuntu-24.04-jdk-17-ndk-r27b"
       },
       "ios": {
+        "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
         "image": "latest"
       }
