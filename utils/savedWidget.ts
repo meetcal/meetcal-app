@@ -1,6 +1,7 @@
 import { NativeModules } from 'react-native';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import { MeetName } from '@/data/types/meet';
+import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
 
 let hasLoggedMissingWidgetModule = false;
 
@@ -24,12 +25,25 @@ export const syncSavedWidget = (
 
   const tz = eventTimezone ?? 'UTC';
   const widgetSessions = filtered.map(session => ({
+    id: session.id,
+    meet: session.meet,
     platform: session.platform,
     session_number: session.sessionNumber,
     start_time: session.startTime,
+    weigh_in_time: session.weighInTime,
     weight_class: session.weightClass,
     date: session.date,
     time_zone: tz,
+    url: createSessionDetailsDeepLink({
+      id: session.id,
+      meet: session.meet,
+      sessionNumber: session.sessionNumber,
+      platform: session.platform,
+      weightClass: session.weightClass,
+      startTime: session.startTime,
+      weighInTime: session.weighInTime,
+      date: session.date,
+    }),
   }));
 
   console.log(`[Widget] Syncing: meet="${selectedMeet}", sessions=${widgetSessions.length}`);

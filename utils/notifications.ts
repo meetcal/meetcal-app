@@ -1,5 +1,7 @@
 import * as Notifications from 'expo-notifications';
 
+import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -10,7 +12,24 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function scheduleNotification(title: string, body: string, trigger: Date, identifier?: string): Promise<string | undefined> {
+type SessionNotificationData = {
+  id?: string;
+  meet?: string;
+  sessionNumber?: string | number;
+  platform?: string;
+  weightClass?: string;
+  startTime?: string;
+  weighInTime?: string;
+  date?: string;
+};
+
+export async function scheduleNotification(
+  title: string,
+  body: string,
+  trigger: Date,
+  identifier?: string,
+  session?: SessionNotificationData,
+): Promise<string | undefined> {
   const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000));
 
   if (seconds <= 0) {
@@ -24,7 +43,10 @@ export async function scheduleNotification(title: string, body: string, trigger:
       body,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
-      data: { identifier },
+      data: {
+        identifier,
+        url: session ? createSessionDetailsDeepLink(session) : undefined,
+      },
     },
     // @ts-ignore - Expo accepts this trigger format but TypeScript types are incorrect
     trigger: {

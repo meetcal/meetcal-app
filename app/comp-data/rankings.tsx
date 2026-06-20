@@ -14,7 +14,7 @@ import {
 } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -29,6 +29,22 @@ export default function RecordsScreen() {
 function RecordsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
+  const routeParams = useLocalSearchParams<{
+    meet?: string;
+    age_category?: string;
+    gender?: string;
+  }>();
+  const defaultFilters = useMemo<Filters>(
+    () => ({
+      meet: routeParams.meet || "",
+      age_category: routeParams.age_category || "",
+      gender: routeParams.gender || "",
+    }),
+    [routeParams.age_category, routeParams.gender, routeParams.meet],
+  );
+  const hasRouteFilters = Boolean(
+    defaultFilters.meet || defaultFilters.age_category || defaultFilters.gender,
+  );
   const {
     filters,
     setFilters,
@@ -36,7 +52,7 @@ function RecordsScreenContent() {
     openFilters,
     filterModalProps,
   } = useFilterState<Filters>({
-    defaultFilters: { meet: "", age_category: "", gender: "" },
+    defaultFilters,
   });
 
   const [intlRankings, setIntlRankings] = useState<IntlRanking[]>([]);
@@ -54,7 +70,7 @@ function RecordsScreenContent() {
   }, [data]);
 
   // Only set default filters the first time rankings are loaded
-  const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(false);
+  const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(hasRouteFilters);
   useEffect(() => {
     if (!hasSetDefaultFilters && intlRankings.length > 0) {
       const availableAgeCategories = Array.from(

@@ -511,7 +511,17 @@ export function useSavedSessions() {
                 `Session Reminder`,
                 `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
                 triggerDate,
-                updatedSession.id
+                updatedSession.id,
+                {
+                  id: updatedSession.id,
+                  meet: updatedSession.meet,
+                  sessionNumber: updatedSession.sessionNumber,
+                  platform: updatedSession.platform,
+                  weightClass: updatedSession.weightClass,
+                  startTime,
+                  weighInTime: calculateWeighInTime(startTime),
+                  date: sessionDayDate,
+                },
               );
               if (notificationId) {
                 console.log('Notification Scheduling - scheduleNotification called successfully.', notificationId);

@@ -77,7 +77,10 @@ export default ({ config }) => ({
         },
       },
     ],
-    '@bacons/apple-targets',
+    [
+      '@bacons/apple-targets/app.plugin',
+      { root: 'targets' },
+    ],
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
     [
