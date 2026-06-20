@@ -2,6 +2,7 @@ import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSett
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
+import { ProfileActionSetting } from "@/components/profile/ProfileActionSetting";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -257,6 +258,14 @@ export default function ProfileScreen() {
             requireAuth={requireAuth}
             router={router}
           />
+          {Platform.OS === "ios" && (
+            <ProfileActionSetting
+              colors={colors}
+              label="Widget Settings"
+              description="Set filters for large Apple widgets."
+              onPress={() => router.push("/schedule-toolbar/widget-settings")}
+            />
+          )}
           {Platform.OS === "android" && (
             <AndroidCalendarSetting colors={colors} />
           )}

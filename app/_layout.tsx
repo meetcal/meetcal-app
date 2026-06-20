@@ -253,6 +253,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="schedule-toolbar/offline-data" />
         <Stack.Screen name="schedule-toolbar/profile" />
+        <Stack.Screen name="schedule-toolbar/widget-settings" />
       </Stack>
       <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
     </>

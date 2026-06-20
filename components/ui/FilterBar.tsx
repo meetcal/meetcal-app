@@ -40,6 +40,8 @@ export function FilterBar({ displayText, onPress, testID = "filter-bar" }: Filte
           onPress={onPress}
         >
           <ThemedText
+            numberOfLines={1}
+            ellipsizeMode="tail"
             style={[styles.filterButtonText, { color: colors.secondaryText }]}
           >
             {displayText}

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 
@@ -40,13 +40,17 @@ export function ProfileActionSetting({
         <ThemedText style={[styles.label, { color: colors.text }]}>
           {label}
         </ThemedText>
-        <ThemedText
-          style={[styles.description, { color: colors.secondaryText }]}
-        >
-          {description}
-        </ThemedText>
+        {!!description && (
+          <ThemedText
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[styles.description, { color: colors.secondaryText }]}
+          >
+            {description}
+          </ThemedText>
+        )}
       </View>
-      <View style={styles.valueContainer}>
+      <View style={[styles.valueContainer, !value && styles.iconOnlyContainer]}>
         {!!value && (
           <ThemedText
             style={[styles.value, { color: colors.secondaryText }]}
@@ -58,7 +62,7 @@ export function ProfileActionSetting({
         )}
         <View style={styles.chevronContainer}>
           <IconSymbol
-            name="chevron-forward"
+            name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
             size={20}
             color={colors.link}
           />
@@ -96,6 +100,10 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: "flex-end",
     minWidth: 0,
+  },
+  iconOnlyContainer: {
+    flex: 0,
+    width: 20,
   },
   value: {
     flexShrink: 1,
