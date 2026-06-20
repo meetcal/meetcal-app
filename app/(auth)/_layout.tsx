@@ -64,7 +64,7 @@ export default function AuthRoutesLayout() {
       return <Redirect href="/(tabs)/(index)" />
     } else {
       console.log('[AuthLayout] Offline: cache not valid, showing auth stack.')
-      return <Stack />
+      return <Stack screenOptions={{ headerShown: false }} />
     }
   }
 
@@ -75,7 +75,7 @@ export default function AuthRoutesLayout() {
 
   if (error) {
     console.log('[AuthLayout] Error fetching cached auth state. Displaying auth stack.')
-    return <Stack />
+    return <Stack screenOptions={{ headerShown: false }} />
   }
 
   if (isClerkLoaded && isSignedIn) {
@@ -89,10 +89,10 @@ export default function AuthRoutesLayout() {
       return <Redirect href="/(tabs)/(index)" />
     } else {
       console.log('[AuthLayout] Online: Clerk not signed in, cache not valid. Showing auth stack.')
-      return <Stack />
+      return <Stack screenOptions={{ headerShown: false }} />
     }
   }
 
   console.log('[AuthLayout] Fallback: No definitive auth state. Displaying auth stack.')
-  return <Stack />
+  return <Stack screenOptions={{ headerShown: false }} />
 } 

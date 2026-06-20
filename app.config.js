@@ -61,6 +61,7 @@ export default ({ config }) => ({
     'expo-splash-screen',
     'expo-status-bar',
     'expo-web-browser',
+    '@clerk/expo',
     [
       'expo-build-properties',
       {
