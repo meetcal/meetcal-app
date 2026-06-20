@@ -29,7 +29,7 @@ import {
   WidgetSettings,
 } from "@/utils/dataWidgets";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -48,8 +48,10 @@ export default function WidgetSettingsScreen() {
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<WidgetSettings>(defaultWidgetSettings);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const lastAutoSyncedKey = useRef<string | null>(null);
 
   const {
     data: totalsData,
@@ -82,7 +84,8 @@ export default function WidgetSettingsScreen() {
   useEffect(() => {
     loadWidgetSettings()
       .then((stored) => setSettings(stored))
-      .catch(() => setSettings(defaultWidgetSettings));
+      .catch(() => setSettings(defaultWidgetSettings))
+      .finally(() => setSettingsLoaded(true));
   }, []);
 
   const eventOptions = useMemo(
@@ -110,9 +113,14 @@ export default function WidgetSettingsScreen() {
   );
 
   useEffect(() => {
-    setSettings((previous) => normalizeSettings(previous));
+    if (!settingsLoaded) return;
+
+    setSettings((previous) => {
+      const normalized = normalizeSettings(previous);
+      return areWidgetSettingsEqual(previous, normalized) ? previous : normalized;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventOptions, meetOptions, intlRankings.length, totalsData]);
+  }, [eventOptions, meetOptions, intlRankings.length, settingsLoaded, totalsData]);
 
   const syncWidgets = async (nextSettings: WidgetSettings, showAlert = true) => {
     setIsSaving(true);
@@ -168,6 +176,57 @@ export default function WidgetSettingsScreen() {
     intlRankings,
     settings.intlRankings,
   );
+
+  useEffect(() => {
+    const hasLoadedWidgetData =
+      eventOptions.length > 0 &&
+      Object.keys(standardsData).length > 0 &&
+      intlRankings.length > 0;
+
+    if (!settingsLoaded || loading || error || !hasLoadedWidgetData) return;
+
+    const totalAgeOptions = settings.qualifyingTotals.event
+      ? sortAgeGroups(Object.keys(totalsData[settings.qualifyingTotals.event] ?? {}), {
+          includeExtended: true,
+        })
+      : [];
+    const hasValidDefaultFilters =
+      eventOptions.includes(settings.qualifyingTotals.event) &&
+      totalAgeOptions.includes(settings.qualifyingTotals.ageGroup) &&
+      meetOptions.includes(settings.intlRankings.meet);
+    if (!hasValidDefaultFilters) return;
+
+    const syncKey = JSON.stringify({
+      settings,
+      qualifyingTotalsRows: qualifyingTotals.rows.length,
+      standardsRows: standards.rows.length,
+      rankingsRows: rankings.rows.length,
+    });
+    if (lastAutoSyncedKey.current === syncKey) return;
+    lastAutoSyncedKey.current = syncKey;
+
+    void saveWidgetSettings(settings).catch((saveError) => {
+      console.error("Failed to save widget settings", saveError);
+    });
+    syncDataWidgets({
+      qualifyingTotals,
+      standards,
+      intlRankings: rankings,
+    });
+  }, [
+    error,
+    eventOptions.length,
+    intlRankings.length,
+    loading,
+    meetOptions,
+    qualifyingTotals,
+    rankings,
+    settings,
+    settingsLoaded,
+    standards,
+    standardsData,
+    totalsData,
+  ]);
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -499,6 +558,10 @@ function WidgetSettingsRow({
       </View>
     </Pressable>
   );
+}
+
+function areWidgetSettingsEqual(a: WidgetSettings, b: WidgetSettings) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 const styles = StyleSheet.create({

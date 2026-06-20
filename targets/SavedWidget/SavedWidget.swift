@@ -8,6 +8,11 @@
 import WidgetKit
 import SwiftUI
 
+let meetCalSavedDeepLink = URL(string: "meetcal:///open/saved")
+let meetCalQualifyingTotalsDeepLink = URL(string: "meetcal:///comp-data/new-qualifying-totals")
+let meetCalStandardsDeepLink = URL(string: "meetcal:///comp-data/new-standards")
+let meetCalIntlRankingsDeepLink = URL(string: "meetcal:///comp-data/rankings")
+
 extension UserDefaults {
     static var appGroup: UserDefaults {
         UserDefaults(suiteName: "group.com.memohnsen.meetcal") ?? .standard
@@ -55,11 +60,15 @@ struct Provider: TimelineProvider {
         let widgetSessions = savedSessions
             .map { session in
                 WidgetSession(
+                    id: session.id,
+                    meet: session.meet,
                     platform: session.platform,
                     sessionNumber: session.session_number,
                     startTime: session.start_time,
+                    weighInTime: session.weigh_in_time,
                     weightClass: session.weight_class,
-                    date: session.date
+                    date: session.date,
+                    url: session.url
                 )
             }
             .filter { !$0.isPast }
@@ -69,19 +78,49 @@ struct Provider: TimelineProvider {
 }
 
 struct SessionsRowForWidget: Codable {
+    let id: String?
+    let meet: String?
     let platform: String
     let session_number: Int
     let start_time: String
+    let weigh_in_time: String?
     let weight_class: String
     let date: String
+    let url: String?
 }
 
 struct WidgetSession: Codable {
+    let id: String?
+    let meet: String?
     let platform: String
     let sessionNumber: Int
     let startTime: String
+    let weighInTime: String?
     let weightClass: String
     let date: String
+    let url: String?
+
+    init(
+        id: String? = nil,
+        meet: String? = nil,
+        platform: String,
+        sessionNumber: Int,
+        startTime: String,
+        weighInTime: String? = nil,
+        weightClass: String,
+        date: String,
+        url: String? = nil
+    ) {
+        self.id = id
+        self.meet = meet
+        self.platform = platform
+        self.sessionNumber = sessionNumber
+        self.startTime = startTime
+        self.weighInTime = weighInTime
+        self.weightClass = weightClass
+        self.date = date
+        self.url = url
+    }
 
     var formattedStartTime: String {
         let inputFormatter = DateFormatter()
@@ -156,6 +195,8 @@ struct DataWidgetPayload: Codable {
     let title: String
     let subtitle: String
     let emptyMessage: String
+    let linkURL: String?
+    let maxRows: Int?
     let rows: [DataWidgetRow]
 }
 
@@ -243,6 +284,42 @@ struct SessionView: View {
     }
 }
 
+func sessionDeepLink(_ session: WidgetSession, selectedMeet: String) -> URL? {
+    if let url = session.url, let parsed = URL(string: url) {
+        return parsed
+    }
+
+    var components = URLComponents()
+    components.scheme = "meetcal"
+    components.host = ""
+    components.path = "/shared-screens/schedule-details"
+    components.queryItems = [
+        URLQueryItem(name: "id", value: session.id),
+        URLQueryItem(name: "meet", value: session.meet ?? selectedMeet),
+        URLQueryItem(name: "sessionNumber", value: String(session.sessionNumber)),
+        URLQueryItem(name: "platform", value: session.platform),
+        URLQueryItem(name: "weightClass", value: session.weightClass),
+        URLQueryItem(name: "startTime", value: session.startTime),
+        URLQueryItem(name: "weighInTime", value: session.weighInTime),
+        URLQueryItem(name: "date", value: session.date)
+    ].filter { item in
+        guard let value = item.value else { return false }
+        return !value.isEmpty
+    }
+    return components.url
+}
+
+@ViewBuilder
+func linkedSessionView(_ session: WidgetSession, selectedMeet: String) -> some View {
+    if let url = sessionDeepLink(session, selectedMeet: selectedMeet) {
+        Link(destination: url) {
+            SessionView(session: session)
+        }
+    } else {
+        SessionView(session: session)
+    }
+}
+
 struct MediumWidgetView: View {
     var entry: Provider.Entry
 
@@ -270,7 +347,7 @@ struct MediumWidgetView: View {
                 Spacer()
             } else {
                 ForEach(entry.sessions.prefix(3).indices, id: \.self) { index in
-                    SessionView(session: entry.sessions[index])
+                    linkedSessionView(entry.sessions[index], selectedMeet: entry.selectedMeet)
                 }
                 Spacer()
             }
@@ -305,7 +382,7 @@ struct LargeWidgetView: View {
                 Spacer()
             } else {
                 ForEach(entry.sessions.prefix(7).indices, id: \.self) { index in
-                    SessionView(session: entry.sessions[index])
+                    linkedSessionView(entry.sessions[index], selectedMeet: entry.selectedMeet)
                 }
                 Spacer()
             }
@@ -317,39 +394,46 @@ struct DataWidgetRowView: View {
     let row: DataWidgetRow
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 6) {
             Text(row.leading)
-                .frame(width: 42, height: 22)
-                .font(.caption2)
+                .frame(width: 38, height: 21)
+                .font(.caption2.weight(.semibold))
                 .bold()
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.6)
                 .background(Color.blue)
                 .foregroundStyle(.white)
                 .cornerRadius(11)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                    .font(.caption)
-                    .bold()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                if let subtitle = row.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+            if !row.title.isEmpty || !(row.subtitle?.isEmpty ?? true) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if !row.title.isEmpty {
+                        Text(row.title)
+                            .font(.caption2)
+                            .bold()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    if let subtitle = row.subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
                 }
+                .layoutPriority(1)
             }
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 3)
 
             Text(row.trailing)
-                .font(.caption)
+                .font(.caption2)
                 .bold()
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.65)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
         }
         .padding(.bottom, 2)
     }
@@ -388,7 +472,7 @@ struct LargeDataWidgetView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
-                ForEach(entry.payload.rows.prefix(7), id: \.self) { row in
+                ForEach(entry.payload.rows.prefix(entry.payload.maxRows ?? 7), id: \.self) { row in
                     DataWidgetRowView(row: row)
                 }
                 Spacer()
@@ -420,6 +504,7 @@ struct SavedWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             SavedWidgetEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(meetCalSavedDeepLink)
         }
         .configurationDisplayName("Saved Sessions")
         .description("Get a quick glance at your saved sessions.")
@@ -439,12 +524,15 @@ struct QualifyingTotalsWidget: Widget {
                     title: "Qualifying Totals",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No qualifying totals",
+                    linkURL: meetCalQualifyingTotalsDeepLink?.absoluteString,
+                    maxRows: 10,
                     rows: []
                 )
             )
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "target")
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalQualifyingTotalsDeepLink)
         }
         .configurationDisplayName("Qualifying Totals")
         .description("See qualifying totals for your selected event.")
@@ -464,12 +552,15 @@ struct StandardsWidget: Widget {
                     title: "A/B Standards",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No standards",
+                    linkURL: meetCalStandardsDeepLink?.absoluteString,
+                    maxRows: 10,
                     rows: []
                 )
             )
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "chart.bar")
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalStandardsDeepLink)
         }
         .configurationDisplayName("A/B Standards")
         .description("See USA Weightlifting A/B standards.")
@@ -489,12 +580,15 @@ struct InternationalRankingsWidget: Widget {
                     title: "International Rankings",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No rankings",
+                    linkURL: meetCalIntlRankingsDeepLink?.absoluteString,
+                    maxRows: 7,
                     rows: []
                 )
             )
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "globe.americas")
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalIntlRankingsDeepLink)
         }
         .configurationDisplayName("International Rankings")
         .description("See international rankings for your selected filters.")

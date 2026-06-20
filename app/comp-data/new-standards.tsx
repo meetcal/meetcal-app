@@ -10,7 +10,7 @@ import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -26,8 +26,19 @@ export default function NewStandardsScreen() {
 function NewStandardsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
+  const routeParams = useLocalSearchParams<{
+    gender?: string;
+    ageGroup?: string;
+  }>();
+  const defaultFilters = useMemo<Filters>(
+    () => ({
+      gender: routeParams.gender || "men",
+      ageGroup: routeParams.ageGroup || "senior",
+    }),
+    [routeParams.ageGroup, routeParams.gender],
+  );
   const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
-    defaultFilters: { gender: "men", ageGroup: "senior" },
+    defaultFilters,
   });
 
   const {

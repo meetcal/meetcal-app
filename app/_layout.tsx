@@ -2,11 +2,12 @@ import { ClerkProvider, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import NetInfo from "@react-native-community/netinfo";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
+import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
@@ -24,6 +25,12 @@ import {
   useTheme,
 } from "@/contexts/ThemeContext";
 import { posthog } from "@/lib/posthog";
+import {
+  getNotificationDeepLink,
+  getOneSignalDeepLink,
+  normalizeDeepLinkHref,
+  openExternalLink,
+} from "@/utils/deepLinks";
 import * as Sentry from '@sentry/react-native';
 
 const SENTRY_ENVIRONMENT =
@@ -160,6 +167,20 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     user,
   } = useUser();
 
+  const openDeepLink = useCallback((value: string | null) => {
+    if (!value) return;
+
+    const href = normalizeDeepLinkHref(value);
+    if (href) {
+      router.push(href);
+      return;
+    }
+
+    void openExternalLink(value).catch((error) => {
+      console.warn("[DeepLinks] Failed to open external link:", error);
+    });
+  }, []);
+
   useEffect(() => {
     async function initialize() {
       try {
@@ -215,6 +236,40 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       clearTimeout(requestPermissionAfterFirstPaint);
     };
   }, []);
+
+  useEffect(() => {
+    const handleOneSignalClick = (event: unknown) => {
+      openDeepLink(getOneSignalDeepLink(event));
+    };
+
+    OneSignal.Notifications.addEventListener("click", handleOneSignalClick);
+
+    return () => {
+      OneSignal.Notifications.removeEventListener("click", handleOneSignalClick);
+    };
+  }, [openDeepLink]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        openDeepLink(
+          getNotificationDeepLink(response.notification.request.content.data),
+        );
+      },
+    );
+
+    const lastResponse = Notifications.getLastNotificationResponse();
+    if (lastResponse) {
+      openDeepLink(
+        getNotificationDeepLink(lastResponse.notification.request.content.data),
+      );
+      Notifications.clearLastNotificationResponse();
+    }
+
+    return () => {
+      subscription.remove();
+    };
+  }, [openDeepLink]);
 
   useEffect(() => {
     async function hideSplash() {

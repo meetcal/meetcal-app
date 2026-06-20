@@ -14,7 +14,7 @@ import {
 } from "@/lib/database/fetch-qualifying-totals";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -29,9 +29,22 @@ export default function QualifyingTotalsScreen() {
 function QualifyingTotalsScreenContent() {
   const colors = useAppColors();
   const { currentTheme } = useTheme();
+  const routeParams = useLocalSearchParams<{
+    event?: string;
+    gender?: string;
+    ageGroup?: string;
+  }>();
+  const defaultFilters = useMemo<Filters>(
+    () => ({
+      event: routeParams.event || "Nationals",
+      gender: routeParams.gender || "Men",
+      ageGroup: routeParams.ageGroup || "Senior",
+    }),
+    [routeParams.ageGroup, routeParams.event, routeParams.gender],
+  );
   const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
     useFilterState<Filters>({
-    defaultFilters: { event: "Nationals", gender: "Men", ageGroup: "Senior" },
+    defaultFilters,
   });
   const {
     data: totalsData,

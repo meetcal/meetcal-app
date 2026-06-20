@@ -4,6 +4,11 @@ import { NativeModules, Platform } from "react-native";
 import { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 import { IntlRanking } from "@/lib/database/fetchIntlRankings";
 import { StandardsData } from "@/types/standards";
+import {
+  createIntlRankingsDeepLink,
+  createQualifyingTotalsDeepLink,
+  createStandardsDeepLink,
+} from "@/utils/deepLinks";
 
 export type WidgetKind = "qualifyingTotals" | "standards" | "intlRankings";
 
@@ -35,6 +40,8 @@ export type DataWidgetPayload = {
   title: string;
   subtitle: string;
   emptyMessage: string;
+  linkURL: string;
+  maxRows: number;
   rows: WidgetRow[];
 };
 
@@ -108,9 +115,11 @@ export function buildQualifyingTotalsWidgetPayload(
       formatAgeGroup(settings.ageGroup),
     ].filter(Boolean).join(" • "),
     emptyMessage: "No qualifying totals",
+    linkURL: createQualifyingTotalsDeepLink(settings),
+    maxRows: 10,
     rows: Object.entries(totals).map(([weightClass, total]) => ({
       leading: weightClass,
-      title: "Qualifying total",
+      title: "",
       trailing: `${total}kg`,
     })),
   };
@@ -126,10 +135,12 @@ export function buildStandardsWidgetPayload(
     title: "A/B Standards",
     subtitle: `${formatGender(settings.gender)} • ${formatAgeGroup(settings.ageGroup)}`,
     emptyMessage: "No standards",
+    linkURL: createStandardsDeepLink(settings),
+    maxRows: 10,
     rows: standards.map((standard) => ({
       leading: standard.weightClass,
-      title: `A ${standard.a}kg`,
-      trailing: `B ${standard.b}kg`,
+      title: `${standard.a}kg`,
+      trailing: `${standard.b}kg`,
     })),
   };
 }
@@ -146,11 +157,12 @@ export function buildIntlRankingsWidgetPayload(
         (!settings.gender || ranking.gender === settings.gender),
     )
     .sort((a, b) => a.ranking - b.ranking)
+    .slice(0, 7)
     .map((ranking) => ({
       leading: `#${ranking.ranking}`,
       title: ranking.name,
       subtitle: `${ranking.weightClass} • ${ranking.total}kg`,
-      trailing: `${ranking.percentA.toFixed(1)}%`,
+      trailing: `${ranking.percentA}%`,
     }));
 
   return {
@@ -161,6 +173,8 @@ export function buildIntlRankingsWidgetPayload(
       settings.gender,
     ].filter(Boolean).join(" • "),
     emptyMessage: "No rankings",
+    linkURL: createIntlRankingsDeepLink(settings),
+    maxRows: 7,
     rows,
   };
 }
