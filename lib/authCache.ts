@@ -1,6 +1,4 @@
-import React from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { useAuth } from '@clerk/expo';
 import { isNetworkAvailable } from './networkUtils';
 
 const AUTH_CACHE_KEY = 'auth_state_cache';
@@ -147,49 +145,3 @@ export async function clearAuthCache() {
   }
 }
 
-export function useCachedAuth() {
-  const { isSignedIn, userId } = useAuth();
-  const [cachedAuthData, setCachedAuthData] = React.useState<AuthCacheData | null>(null);
-
-  // Load cached auth state on mount
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadCache() {
-      const cached = await getCachedAuthState();
-      if (cached && !cancelled) {
-        setCachedAuthData(cached);
-      }
-    }
-    loadCache();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Cache the auth state whenever it changes (only when online)
-  React.useEffect(() => {
-    async function updateCache() {
-      if (isSignedIn !== undefined) {
-        const hasNetwork = await isNetworkAvailable();
-        if (hasNetwork) {
-          // Only update cache when we have network connectivity
-          // This ensures we're caching verified online auth state
-          await cacheAuthState(isSignedIn, userId ?? undefined);
-
-          // Update local state
-          const updated = await getCachedAuthState();
-          setCachedAuthData(updated);
-        }
-      }
-    }
-    updateCache();
-  }, [isSignedIn, userId]);
-
-  return {
-    isSignedIn,
-    cachedAuthData,
-    isCacheStale: cachedAuthData ? Date.now() - cachedAuthData.timestamp > CACHE_EXPIRY_MS : false
-  };
-} 

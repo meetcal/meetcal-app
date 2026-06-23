@@ -4,6 +4,7 @@ import {
   clearImplicitMeetData,
   clearMeetData,
   getMeetData,
+  isMeetExplicitlyDownloaded,
   saveAthleteBestsBatch,
   saveAthleteHistory,
   saveMeetAthletes,
@@ -12,7 +13,6 @@ import {
   saveSessionAthletes,
 } from './offline-store';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { createMutableResource } from '@/lib/data/mutable-resource';
 import {
   fetchApiMeetByName,
   fetchApiMeetPackage,
@@ -25,7 +25,6 @@ import { fetchAthletesWithSession, fetchSchedule } from './queries';
 import type { Schedule } from '@/types/schedule';
 import { calculateInitialPage } from '@/utils/dateTime';
 
-const CACHE_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
 const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
@@ -164,33 +163,6 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
   return inFlightFetchMeets;
 }
 
-export const meetsResource = createMutableResource<Meet[], []>({
-  getKey: () => MEETS_LIST_CACHE_KEY,
-  loadCached: async () => {
-    const data = await getCachedMeets();
-    return data.length > 0 ? { data, lastUpdatedAt: null } : null;
-  },
-  fetchFresh: () => fetchMeetsFresh(),
-  persistFresh: async (data) => {
-    await setCachedMeets(data);
-    return { data, lastUpdatedAt: Date.now() };
-  },
-});
-
-export async function fetchMeets(): Promise<Meet[]> {
-  try {
-    const meets = await fetchMeetsFresh();
-    await setCachedMeets(meets);
-    return meets;
-  } catch (error) {
-    const cached = await getCachedMeets();
-    if (cached.length > 0) {
-      return cached;
-    }
-    throw error;
-  }
-}
-
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
@@ -260,49 +232,33 @@ export async function touchMeetAccess(meet: MeetName) {
   await saveCacheInfo(info);
 }
 
-// Clean up old meet data
+// Evict implicitly-cached meets beyond the most-recently-accessed MAX_CACHED_MEETS.
+//
+// Meets the user explicitly downloaded for offline use are always kept — they were
+// retained on purpose and are pruned only when their end date passes
+// (clearExpiredDownloadedMeets) or when the user deletes them. Everything else is
+// transient browse cache; without this bound it accumulates until the AsyncStorage
+// SQLite store hits SQLITE_FULL.
 async function cleanupOldMeetData() {
   const info = await getCacheInfo();
   const meets = Object.entries(info.meets) as [MeetName, MeetInfo][];
-  
-  // Sort by last accessed time
-  meets.sort(([, a], [, b]) => b.lastAccessed - a.lastAccessed);
-  
-  // Keep only recent meets
-  const meetsToRemove = meets.slice(MAX_CACHED_MEETS);
-  
-  for (const [meet] of meetsToRemove) {
-    await clearMeetData(meet);
-    delete info.meets[meet];
-  }
-  
-  await saveCacheInfo(info);
-}
 
-// Manage cache size
-async function manageCacheSize() {
-  const info = await getCacheInfo();
-  
-  if (info.totalSize <= CACHE_SIZE_LIMIT) {
-    return;
-  }
-  
-  const meets = Object.entries(info.meets) as [MeetName, MeetInfo][];
+  // Most-recently-accessed first so the active meet is never a candidate.
   meets.sort(([, a], [, b]) => b.lastAccessed - a.lastAccessed);
-  
-  for (const [meet] of meets.slice(1)) {
+
+  let implicitKept = 0;
+  for (const [meet] of meets) {
+    if (await isMeetExplicitlyDownloaded(meet)) {
+      continue;
+    }
+    implicitKept += 1;
+    if (implicitKept <= MAX_CACHED_MEETS) {
+      continue;
+    }
     await clearMeetData(meet);
-    const meetInfo = info.meets[meet];
-    if (meetInfo) {
-      info.totalSize -= meetInfo.size;
-    }
     delete info.meets[meet];
-    
-    if (info.totalSize <= CACHE_SIZE_LIMIT) {
-      break;
-    }
   }
-  
+
   await saveCacheInfo(info);
 }
 
@@ -356,11 +312,13 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       ),
     );
 
-    await Promise.all(
-      Object.entries(pkg.recent_results_by_name ?? {}).map(([name, results]) =>
-        saveAthleteHistory(name, results.map(mapApiLiftingResult)),
-      ),
-    );
+    // Persist athlete history one entry at a time. Each write compresses (pako)
+    // and serializes a potentially large result set; fanning every athlete out
+    // concurrently produces a memory spike big enough for the iOS watchdog to
+    // terminate the app mid-download.
+    for (const [name, results] of Object.entries(pkg.recent_results_by_name ?? {})) {
+      await saveAthleteHistory(name, results.map(mapApiLiftingResult));
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('SQLITE_FULL')) {
@@ -380,6 +338,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
   }
 
   await updateMeetAccess(meet);
+  await cleanupOldMeetData();
 
   if (errors.length > 0) {
     throw new Error(`Offline prefetch incomplete (${meet}): ${errors.join(', ')}`);
@@ -417,6 +376,9 @@ export async function prefetchCriticalMeetData(meet: MeetName) {
     }
 
     await touchMeetAccess(meet);
+    // Runs on every meet open, so this is where the browse cache is bounded back
+    // to MAX_CACHED_MEETS and stale implicit meets are evicted before they pile up.
+    await cleanupOldMeetData();
   })().finally(() => {
     criticalPrefetchRequests.delete(meet);
   });
@@ -473,7 +435,16 @@ async function prefetchPrioritySessionAthletes(
 }
 
 export function warmMeetData(meet: MeetName): Promise<void> {
-  return prefetchCriticalMeetData(meet).then(() => {
+  return prefetchCriticalMeetData(meet).then(async () => {
+    // The full meet package bundles ~2 years of lifting history for every athlete
+    // in the meet. Ingesting it (decode + per-athlete pako compression + storage
+    // writes) is memory-heavy, and running it automatically on every meet open is
+    // what lets the iOS watchdog terminate the app. Only auto-refresh it for meets
+    // the user explicitly downloaded for offline use; everyone else fetches the
+    // history they need on demand.
+    const isDownloaded = await isMeetExplicitlyDownloaded(meet);
+    if (!isDownloaded) return;
+
     setTimeout(() => {
       prefetchMeetData(meet).catch((error) => {
         console.error('Deferred full meet prefetch failed:', { meet, error });

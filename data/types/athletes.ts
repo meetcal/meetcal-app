@@ -44,6 +44,3 @@ export interface SupabaseBests {
   cj_best: number | null;
   total: number | null;
 }
-
-export type Gender = 'Men' | 'Women';
-export type AgeGroup = 'Senior' | 'U25' | 'U23' | 'Junior' | 'U17' | 'U15' | 'U13' | 'Masters 35-39' | 'Masters 40-44' | 'Masters 45-49' | 'Masters 50-54' | 'Masters 55-59' | 'Masters 60-64' | 'Masters 65-69' | 'Masters 70-74' | 'Masters 75-79' | 'Masters 80-84' | 'Masters 85-89' | 'Masters +90'; 

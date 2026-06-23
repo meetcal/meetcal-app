@@ -75,33 +75,6 @@ export async function fetchAllResultsForName(name: string): Promise<SupabaseLift
   return fetchApiResultsByNames([name]);
 }
 
-export async function fetchAthleteHistoryForNames(
-  names: string[],
-): Promise<Record<string, SupabaseLiftResult[]>> {
-  const byName: Record<string, SupabaseLiftResult[]> = {};
-  names.forEach((name) => {
-    byName[name] = [];
-  });
-  if (names.length === 0) return byName;
-
-  try {
-    const rows = await fetchApiResultsByNames(names);
-    const normalizedNameLookup = new Map(
-      names.map((name) => [name.trim().toLowerCase().replace(/\s+/g, ' '), name]),
-    );
-    rows.forEach((row) => {
-      const key = normalizedNameLookup.get(
-        (row.name || '').trim().toLowerCase().replace(/\s+/g, ' '),
-      );
-      if (key) byName[key].push(row);
-    });
-    return byName;
-  } catch (error) {
-    console.error('Error in fetchAthleteHistoryForNames:', error);
-    throw error;
-  }
-}
-
 export async function fetchRecentAthleteHistoryForNames(
   names: string[],
   cutoffDate?: string,

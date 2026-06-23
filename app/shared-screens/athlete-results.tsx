@@ -247,6 +247,16 @@ export default function AthleteResultsScreen() {
   const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
   const requestIdRef = useRef(0);
 
+  // Each cached entry can hold an athlete's entire competition history. Without
+  // this cleanup the map grows for every athlete opened during a session and is
+  // never released, steadily adding memory pressure that iOS punishes hardest.
+  useEffect(() => {
+    const cache = resultsCacheRef.current;
+    return () => {
+      cache.clear();
+    };
+  }, []);
+
   useEffect(() => {
     const fetchAthleteResults = async () => {
       if (!name) return;

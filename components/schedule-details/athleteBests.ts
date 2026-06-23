@@ -78,18 +78,20 @@ async function loadCachedBestsForNames(
 ): Promise<Record<string, SupabaseBests>> {
   const bestsByName: Record<string, SupabaseBests> = {};
 
-  await Promise.all(
-    names.map(async (name) => {
-      let bests = createEmptyBests();
-      try {
-        const cachedResults = await getAllCachedLiftingResultsForAthlete(name);
-        cachedResults.forEach((row) => {
-          bests = mergeIntoBests(bests, deriveRowBests(row));
-        });
-      } catch {}
-      bestsByName[name] = bests;
-    }),
-  );
+  // Resolve one athlete at a time. getAllCachedLiftingResultsForAthlete can fall
+  // through to scanning and pako-inflating every cached meet's results, so fanning
+  // all athletes out with Promise.all would run many large decompressions at once
+  // — a memory spike the iOS watchdog punishes. Sequential keeps peak memory flat.
+  for (const name of names) {
+    let bests = createEmptyBests();
+    try {
+      const cachedResults = await getAllCachedLiftingResultsForAthlete(name);
+      cachedResults.forEach((row) => {
+        bests = mergeIntoBests(bests, deriveRowBests(row));
+      });
+    } catch {}
+    bestsByName[name] = bests;
+  }
 
   return bestsByName;
 }

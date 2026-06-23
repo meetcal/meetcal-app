@@ -64,14 +64,6 @@ export interface Meet {
   };
 }
 
-// Utility type for meet-specific data
-export type MeetSpecificData<T> = {
-  [key: string]: T;
-};
-
-// Helper type for accessing meet-specific data
-export type MeetDataAccessor<T> = (meetName: MeetName) => T;
-
 /**
  * Type guard to check if a string is a valid MeetName
  */

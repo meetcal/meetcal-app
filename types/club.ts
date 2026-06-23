@@ -39,20 +39,3 @@ export interface AthleteResult {
   gender?: string;
   weight_class?: string;
 }
-
-export interface AthleteInfo {
-  name: string;
-  age: number;
-  gender: string;
-  weight_class: string;
-}
-
-export interface AthleteWeightClass {
-  name: string;
-  weight_class: string;
-}
-
-export interface MeetStatus {
-  name: string;
-  status: string;
-}

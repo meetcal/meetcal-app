@@ -7,7 +7,6 @@ import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resour
 import {
   getMeetData,
   getSessionAthletesFromMeetCache,
-  saveMeetAthletes,
   saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
@@ -18,23 +17,6 @@ interface UseMeetAthletesReturn {
   isRefreshing: boolean;
   refreshAthletes: () => Promise<void>;
 }
-
-const athletesResource = createMutableResource<LiftResult[], [MeetName]>({
-  getKey: (meet) => `athletes:${meet}`,
-  loadCached: async (meet) => {
-    const meetData = await getMeetData(meet);
-    return {
-      data: meetData.athletes,
-      lastUpdatedAt: meetData.lastSyncTime || null,
-    };
-  },
-  fetchFresh: async (meet) => fetchAthletesWithSession(meet),
-  persistFresh: async (data, meet) => {
-    await saveMeetAthletes(meet, data);
-    return { data, lastUpdatedAt: Date.now() };
-  },
-  isEqual: defaultIsEqual,
-});
 
 function normalizePlatformKey(value: string) {
   return value.trim().toLowerCase();
@@ -98,34 +80,6 @@ const sessionAthletesResource = createMutableResource<
   },
   isEqual: defaultIsEqual,
 });
-
-export function useMeetAthletes(
-  selectedMeet: MeetName | null,
-): UseMeetAthletesReturn {
-  const params = useMemo(
-    () => (selectedMeet ? ([selectedMeet] as [MeetName]) : null),
-    [selectedMeet],
-  );
-  const [emptyAthletes] = useState<LiftResult[]>([]);
-  const {
-    data: athletes,
-    isInitialLoading,
-    isRefreshing,
-    refresh,
-  } = useMutableResource({
-    resource: athletesResource,
-    params: params ?? ([] as unknown as [MeetName]),
-    initialData: emptyAthletes,
-    enabled: Boolean(params),
-  });
-
-  return {
-    athletes,
-    isLoading: isInitialLoading,
-    isRefreshing,
-    refreshAthletes: refresh,
-  };
-}
 
 export function useSessionAthletes(
   selectedMeet: MeetName | null,

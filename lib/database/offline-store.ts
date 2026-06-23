@@ -936,15 +936,6 @@ export async function getLastSyncTime(meet: MeetName): Promise<number | null> {
   }
 }
 
-// Check if meet data needs sync (older than 1 hour)
-export async function needsSync(meet: MeetName): Promise<boolean> {
-  const lastSync = await getLastSyncTime(meet);
-  if (!lastSync) return true;
-  
-  const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
-  return Date.now() - lastSync > oneHour;
-}
-
 async function getStore(): Promise<OfflineStore> {
   const store = await AsyncStorage.getItem(STORE_KEY);
   if (store) {
