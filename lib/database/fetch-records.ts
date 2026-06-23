@@ -188,21 +188,6 @@ export const federationRecordsResource = createMutableResource<
   persistFresh: (data, federation) => persistFederationRecords(federation, data),
 });
 
-export const federationsResource = createMutableResource<string[], []>({
-  getKey: () => `${OFFLINE_CACHE_KEYS.records}:federations`,
-  loadCached: async () => {
-    const cached = await readRecordsCache();
-    const data = Object.keys(cached?.data || {}).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: 'base' }),
-    );
-    return data.length > 0
-      ? { data, lastUpdatedAt: cached?.lastSynced ?? null }
-      : null;
-  },
-  fetchFresh: () => fetchFederationsFresh(),
-  persistFresh: async () => null,
-});
-
 export async function fetchRecords(
   federation: string = 'USAW',
   ageGroup?: string,

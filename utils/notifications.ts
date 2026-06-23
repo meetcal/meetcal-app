@@ -69,10 +69,3 @@ export async function cancelNotification(identifier: string) {
   }
 }
 
-export async function cancelAllNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-}
-
-export async function getScheduledNotifications() {
-  return await Notifications.getAllScheduledNotificationsAsync();
-} 

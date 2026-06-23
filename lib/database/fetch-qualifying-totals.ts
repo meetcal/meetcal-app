@@ -3,14 +3,6 @@ import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 import { getJson } from '@/lib/api/meetcal-api';
 
-export type QualifyingTotal = {
-  id: number;
-  eventName: string;
-  gender: 'Men' | 'Women';
-  ageCategory: string;
-  weightClass: string;
-  qualifyingTotal: number;
-};
 
 export type QualifyingTotalsData = {
   [eventName: string]: {

@@ -20,6 +20,12 @@ const mockFetchApiMeetPackage = jest.fn();
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
 const mockSaveSessionAthletes = jest.fn(async () => undefined);
+const mockIsMeetExplicitlyDownloaded = jest.fn(
+  async (_meet: string): Promise<boolean> => true,
+);
+const mockClearMeetData = jest.fn(
+  async (_meet: string): Promise<void> => undefined,
+);
 
 function isoDateOffset(days: number): string {
   const date = new Date();
@@ -44,7 +50,7 @@ jest.mock("@/lib/api/meetcal-api", () => {
 
 jest.mock("@/lib/database/offline-store", () => ({
   clearImplicitMeetData: jest.fn(async () => undefined),
-  clearMeetData: jest.fn(async () => undefined),
+  clearMeetData: (...args: unknown[]) => mockClearMeetData.apply(null, args),
   getMeetData: jest.fn(async () => ({
     schedule: null,
     scheduleKey: "",
@@ -53,6 +59,8 @@ jest.mock("@/lib/database/offline-store", () => ({
     liftingResultsKey: "",
     lastSyncTime: 0,
   })),
+  isMeetExplicitlyDownloaded: (...args: unknown[]) =>
+    mockIsMeetExplicitlyDownloaded.apply(null, args),
   saveAthleteHistory: jest.fn(async () => undefined),
   saveAthleteBestsBatch: jest.fn(async () => undefined),
   saveMeetAthletes: (...args: unknown[]) =>
@@ -64,12 +72,15 @@ jest.mock("@/lib/database/offline-store", () => ({
     mockSaveSessionAthletes.apply(null, args),
 }));
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   prefetchCriticalMeetData,
   validatePrefetchedLiftingResults,
   warmMeetData,
 } from "@/lib/database/meet-manager";
 import type { Schedule } from "@/types/schedule";
+
+const mockGetItem = AsyncStorage.getItem as jest.Mock;
 
 describe("validatePrefetchedLiftingResults", () => {
   it("throws when athletes exist but lifting results are empty", () => {
@@ -261,8 +272,9 @@ describe("prefetchCriticalMeetData", () => {
     ]);
   });
 
-  it("defers full meet package prefetch until after critical session caches", async () => {
+  it("defers full meet package prefetch for explicitly downloaded meets", async () => {
     jest.useFakeTimers();
+    mockIsMeetExplicitlyDownloaded.mockResolvedValue(true);
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -301,5 +313,106 @@ describe("prefetchCriticalMeetData", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("skips the full meet package prefetch when the meet is not explicitly downloaded", async () => {
+    jest.useFakeTimers();
+    mockIsMeetExplicitlyDownloaded.mockResolvedValue(false);
+    const schedule: Schedule = [
+      {
+        date: "Future Day 1",
+        fullDate: "2099-01-01",
+        sessions: [
+          {
+            id: "session-1",
+            number: 1,
+            startTime: "8:00 AM",
+            weighInTime: "6:00 AM",
+            platforms: [
+              { platform: "Red", weightClass: "Red class" },
+            ],
+          },
+        ],
+      },
+    ];
+    mockFetchSchedule.mockResolvedValue(schedule);
+
+    try {
+      await warmMeetData("Test Meet" as any);
+
+      // Critical session caches still warm, but the heavy history package never runs.
+      expect(mockSaveSessionAthletes).toHaveBeenCalledWith(
+        "Test Meet",
+        1,
+        "Red",
+        [{ name: "1-Red", session: { number: 1, platform: "Red" } }],
+      );
+
+      await jest.advanceTimersByTimeAsync(10000);
+      expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("cache eviction during prefetch", () => {
+  const MEET_CACHE_KEY = "@meet_cache_info";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchAthletesWithSession.mockResolvedValue([]);
+    mockFetchSchedule.mockResolvedValue([
+      {
+        date: "Future Day 1",
+        fullDate: "2099-01-01",
+        sessions: [
+          {
+            id: "session-1",
+            number: 1,
+            startTime: "8:00 AM",
+            weighInTime: "6:00 AM",
+            platforms: [{ platform: "Red", weightClass: "Red class" }],
+          },
+        ],
+      },
+    ] as Schedule);
+  });
+
+  afterEach(() => {
+    mockGetItem.mockImplementation(async () => null);
+  });
+
+  it("evicts the least-recently-used implicit meets but keeps explicitly downloaded ones", async () => {
+    const cacheInfo = {
+      totalSize: 0,
+      meets: {
+        "Downloaded Meet": { lastAccessed: 1, size: 0 }, // oldest, but downloaded
+        "Meet E": { lastAccessed: 5, size: 0 },
+        "Meet D": { lastAccessed: 4, size: 0 },
+        "Meet C": { lastAccessed: 3, size: 0 },
+        "Meet B": { lastAccessed: 2, size: 0 },
+      },
+    };
+    // getCacheInfo re-reads on each call; hand back a fresh copy so mutations in
+    // touchMeetAccess don't bleed into the cleanup pass.
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === MEET_CACHE_KEY ? JSON.stringify(cacheInfo) : null,
+    );
+    mockIsMeetExplicitlyDownloaded.mockImplementation(
+      async (meet: string) => meet === "Downloaded Meet",
+    );
+
+    await prefetchCriticalMeetData("Meet F" as any);
+
+    const clearedMeets = mockClearMeetData.mock.calls.map(([meet]) => meet);
+    // Keeps the 3 most-recent implicit meets (E, D, C); evicts B.
+    expect(clearedMeets).toContain("Meet B");
+    // Never evicts the meet the user downloaded for offline use.
+    expect(clearedMeets).not.toContain("Downloaded Meet");
+    // Keeps the recently-accessed implicit meets.
+    expect(clearedMeets).not.toContain("Meet E");
+    expect(clearedMeets).not.toContain("Meet D");
+    expect(clearedMeets).not.toContain("Meet C");
   });
 });

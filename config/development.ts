@@ -25,14 +25,6 @@ export const DEV_CONFIG = {
 };
 
 /**
- * Helper to check if splash delay should be bypassed in dev
- * Returns true only when __DEV__ and BYPASS_SPLASH_DELAY is true
- */
-export function isBypassSplashDelayEnabled(): boolean {
-  return __DEV__ && DEV_CONFIG.BYPASS_SPLASH_DELAY === true;
-}
-
-/**
  * Helper to get the simulated subscription status
  * Returns:
  * - true/false if simulation is enabled in dev mode

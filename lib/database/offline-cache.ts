@@ -50,8 +50,3 @@ export async function clearOfflineCache(key: string): Promise<void> {
     console.error('Error clearing offline cache:', error);
   }
 }
-
-export async function getOfflineLastSynced(key: string): Promise<number | null> {
-  const entry = await getOfflineCache(key);
-  return entry?.lastSynced ?? null;
-}
