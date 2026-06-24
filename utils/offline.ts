@@ -77,9 +77,22 @@ export const useOfflineData = () => {
     return availableMeets.filter((meet) => {
       const startDateValue = meet?.dates?.start;
       if (!startDateValue) return false;
-      const parsed = new Date(`${startDateValue}T00:00:00`);
-      if (Number.isNaN(parsed.getTime())) return false;
-      return parsed >= startOfToday && parsed <= endDate;
+      const start = new Date(`${startDateValue}T00:00:00`);
+      if (Number.isNaN(start.getTime())) return false;
+
+      const endDateValue = meet?.dates?.end;
+      if (!endDateValue) return false;
+      const end = new Date(`${endDateValue}T00:00:00`);
+      if (Number.isNaN(end.getTime())) return false;
+
+      // Show a meet if it starts within the next 21 days, OR if it is currently
+      // ongoing (started in the past but hasn't ended yet). Without the
+      // end-date check, a multi-day meet that began before today would be
+      // filtered out even though it's happening right now.
+      const isUpcoming = start >= startOfToday && start <= endDate;
+      const isOngoing = start < startOfToday && end >= startOfToday;
+
+      return isUpcoming || isOngoing;
     });
   }, [availableMeets]);
 
