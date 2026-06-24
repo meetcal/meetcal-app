@@ -379,6 +379,8 @@ const StartListFilterModal: React.FC<StartListFilterModalProps> = ({
                     placeholderTextColor={colors.secondaryText}
                     value={clubSearchQuery}
                     onChangeText={setClubSearchQuery}
+                    autoCorrect={false}
+                    spellCheck={false}
                   />
                   {clubSearchQuery.length > 0 && (
                     <Pressable

@@ -110,8 +110,26 @@ describe("data widget payloads", () => {
       })),
       { meet: "Worlds", ageCategory: "Senior", gender: "Men" },
     );
+    // maxRows is display-only metadata consumed by the native widget; the
+    // payload itself carries up to 20 rows regardless of maxRows.
     expect(rankingsPayload.maxRows).toBe(7);
-    expect(rankingsPayload.rows).toHaveLength(7);
+    expect(rankingsPayload.rows).toHaveLength(8);
     expect(rankingsPayload.rows[0].trailing).toBe("99.95%");
+
+    // The payload caps the underlying data at 20 rows even when more match.
+    const cappedPayload = buildIntlRankingsWidgetPayload(
+      Array.from({ length: 25 }, (_, index) => ({
+        ranking: index + 1,
+        name: `Athlete ${index + 1}`,
+        meet: "Worlds",
+        ageCategory: "Senior",
+        gender: "Men" as const,
+        weightClass: "89",
+        total: 300,
+        percentA: 90,
+      })),
+      { meet: "Worlds", ageCategory: "Senior", gender: "Men" },
+    );
+    expect(cappedPayload.rows).toHaveLength(20);
   });
 });

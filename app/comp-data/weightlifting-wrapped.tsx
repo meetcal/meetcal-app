@@ -602,6 +602,8 @@ LIFTING
               value={searchQuery}
               onChangeText={onSearchTextChange}
               autoCapitalize="words"
+              autoCorrect={false}
+              spellCheck={false}
               returnKeyType="search"
               onSubmitEditing={searchAthlete}
             />

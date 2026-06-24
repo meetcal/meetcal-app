@@ -247,6 +247,7 @@ function ClubMeetsListScreenContent() {
                 onChangeText={setSearchQuery}
                 autoCapitalize="none"
                 autoCorrect={false}
+                spellCheck={false}
               />
               {searchQuery.length > 0 && (
                 <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>

@@ -262,6 +262,8 @@ function ShareResultsByClubScreenContent() {
                 placeholderTextColor={colors.secondaryText}
                 value={searchText}
                 onChangeText={setSearchText}
+                autoCorrect={false}
+                spellCheck={false}
               />
               {searchText.length > 0 && (
                 <Pressable
