@@ -6,4 +6,7 @@
   <string name="no_saved_sessions">No saved sessions</string>
   <string name="widget_empty_state">No saved sessions</string>
   <string name="widget_icon_desc">MeetCal calendar icon</string>
+  <string name="widget_qualifying_desc">Qualifying totals for your selected event</string>
+  <string name="widget_standards_desc">USA Weightlifting A/B standards</string>
+  <string name="widget_intl_desc">International rankings for your selected filters</string>
 </resources>

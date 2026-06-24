@@ -392,56 +392,95 @@ struct LargeWidgetView: View {
 
 struct DataWidgetRowView: View {
     let row: DataWidgetRow
+    var centerTitle: Bool = false
+
+    private var leadingChip: some View {
+        Text(row.leading)
+            .frame(width: 38, height: 21)
+            .font(.caption2.weight(.semibold))
+            .bold()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .background(Color.blue)
+            .foregroundStyle(.white)
+            .cornerRadius(11)
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: centerTitle ? .center : .leading, spacing: 2) {
+            if !row.title.isEmpty {
+                Text(row.title)
+                    .font(.caption2)
+                    .bold()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            if let subtitle = row.subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+    }
+
+    private var trailingText: some View {
+        Text(row.trailing)
+            .font(.caption2)
+            .bold()
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
+            .fixedSize(horizontal: false, vertical: true)
+    }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 6) {
-            Text(row.leading)
-                .frame(width: 38, height: 21)
-                .font(.caption2.weight(.semibold))
-                .bold()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .background(Color.blue)
-                .foregroundStyle(.white)
-                .cornerRadius(11)
-
-            if !row.title.isEmpty || !(row.subtitle?.isEmpty ?? true) {
-                VStack(alignment: .leading, spacing: 2) {
-                    if !row.title.isEmpty {
-                        Text(row.title)
-                            .font(.caption2)
-                            .bold()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    if let subtitle = row.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
+        if centerTitle {
+            HStack(alignment: .center, spacing: 6) {
+                HStack(spacing: 0) {
+                    leadingChip
+                    Spacer(minLength: 0)
                 }
-                .layoutPriority(1)
+                .frame(maxWidth: .infinity)
+
+                titleBlock
+
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    trailingText
+                }
+                .frame(maxWidth: .infinity)
             }
+            .padding(.bottom, 2)
+        } else {
+            HStack(alignment: .center, spacing: 6) {
+                leadingChip
 
-            Spacer(minLength: 3)
+                if !row.title.isEmpty || !(row.subtitle?.isEmpty ?? true) {
+                    titleBlock
+                        .layoutPriority(1)
+                }
 
-            Text(row.trailing)
-                .font(.caption2)
-                .bold()
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
+                Spacer(minLength: 3)
+
+                trailingText
+                    .layoutPriority(2)
+            }
+            .padding(.bottom, 2)
         }
-        .padding(.bottom, 2)
     }
 }
 
 struct LargeDataWidgetView: View {
     let entry: DataWidgetEntry
     let systemImage: String
+    var centerTitle: Bool = false
+    @Environment(\.widgetFamily) var family
+
+    private var rowLimit: Int {
+        let maxRows = entry.payload.maxRows ?? 7
+        return family == .systemMedium ? min(maxRows, 3) : maxRows
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -472,8 +511,8 @@ struct LargeDataWidgetView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
-                ForEach(entry.payload.rows.prefix(entry.payload.maxRows ?? 7), id: \.self) { row in
-                    DataWidgetRowView(row: row)
+                ForEach(entry.payload.rows.prefix(rowLimit), id: \.self) { row in
+                    DataWidgetRowView(row: row, centerTitle: centerTitle)
                 }
                 Spacer()
             }
@@ -536,7 +575,7 @@ struct QualifyingTotalsWidget: Widget {
         }
         .configurationDisplayName("Qualifying Totals")
         .description("See qualifying totals for your selected event.")
-        .supportedFamilies([.systemLarge])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
@@ -558,13 +597,13 @@ struct StandardsWidget: Widget {
                 )
             )
         ) { entry in
-            LargeDataWidgetView(entry: entry, systemImage: "chart.bar")
+            LargeDataWidgetView(entry: entry, systemImage: "chart.bar", centerTitle: true)
                 .containerBackground(.fill.tertiary, for: .widget)
                 .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalStandardsDeepLink)
         }
         .configurationDisplayName("A/B Standards")
         .description("See USA Weightlifting A/B standards.")
-        .supportedFamilies([.systemLarge])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
@@ -592,7 +631,7 @@ struct InternationalRankingsWidget: Widget {
         }
         .configurationDisplayName("International Rankings")
         .description("See international rankings for your selected filters.")
-        .supportedFamilies([.systemLarge])
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 

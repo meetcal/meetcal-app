@@ -68,14 +68,23 @@ const withAndroidSavedWidget = config => {
 
     application.receiver = application.receiver || [];
 
-    const receiverName = `${packageName}.widget.SavedWidgetProvider`;
-    const existing = application.receiver.find(r => r?.$?.['android:name'] === receiverName);
-    if (!existing) {
+    const widgets = [
+      { className: 'SavedWidgetProvider', label: 'Saved Sessions', info: 'saved_widget_info' },
+      { className: 'QualifyingTotalsWidgetProvider', label: 'Qualifying Totals', info: 'qualifying_totals_widget_info' },
+      { className: 'StandardsWidgetProvider', label: 'A/B Standards', info: 'standards_widget_info' },
+      { className: 'IntlRankingsWidgetProvider', label: 'International Rankings', info: 'intl_rankings_widget_info' }
+    ];
+
+    for (const widget of widgets) {
+      const receiverName = `${packageName}.widget.${widget.className}`;
+      const existing = application.receiver.find(r => r?.$?.['android:name'] === receiverName);
+      if (existing) continue;
+
       application.receiver.push({
         $: {
           'android:name': receiverName,
           'android:exported': 'true',
-          'android:label': 'Saved Sessions'
+          'android:label': widget.label
         },
         'intent-filter': [
           {
@@ -89,7 +98,7 @@ const withAndroidSavedWidget = config => {
           {
             $: {
               'android:name': 'android.appwidget.provider',
-              'android:resource': '@xml/saved_widget_info'
+              'android:resource': `@xml/${widget.info}`
             }
           }
         ]

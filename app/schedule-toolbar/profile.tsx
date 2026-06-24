@@ -258,14 +258,16 @@ export default function ProfileScreen() {
             requireAuth={requireAuth}
             router={router}
           />
-          {Platform.OS === "ios" && (
-            <ProfileActionSetting
-              colors={colors}
-              label="Widget Settings"
-              description="Set filters for large Apple widgets."
-              onPress={() => router.push("/schedule-toolbar/widget-settings")}
-            />
-          )}
+          <ProfileActionSetting
+            colors={colors}
+            label="Widget Settings"
+            description={
+              Platform.OS === "ios"
+                ? "Set filters for large Apple widgets."
+                : "Set filters for home screen widgets."
+            }
+            onPress={() => router.push("/schedule-toolbar/widget-settings")}
+          />
           {Platform.OS === "android" && (
             <AndroidCalendarSetting colors={colors} />
           )}
