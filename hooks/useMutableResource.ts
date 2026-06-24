@@ -45,7 +45,9 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const sourceRef = useRef<ResourceSource | null>(null);
   const lastReconnectStateRef = useRef<boolean | null>(null);
   const previousKeyRef = useRef<string | null>(null);
+  const initialDataRef = useRef(initialData);
   paramsRef.current = params;
+  initialDataRef.current = initialData;
 
   const [data, setData] = useState<T>(initialData);
   const [error, setError] = useState<string | null>(null);
@@ -96,13 +98,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
 
   const invalidate = useCallback(async () => {
     await resource.invalidate(...paramsRef.current);
-    setData(initialData);
+    setData(initialDataRef.current);
     setError(null);
     setLastUpdatedAt(null);
     setSource(null);
     setIsInitialLoading(enabled);
     setIsRefreshing(false);
-  }, [enabled, initialData, resource]);
+  }, [enabled, resource]);
 
   const refreshResource = useCallback(
     () => refresh(sourceRef.current !== null),
@@ -127,7 +129,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       setError(null);
       setIsRefreshing(false);
       if (keyChanged) {
-        setData(initialData);
+        setData(initialDataRef.current);
         setLastUpdatedAt(null);
         setSource(null);
       }
@@ -163,7 +165,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     return () => {
       cancelled = true;
     };
-  }, [enabled, initialData, key, refresh, resource]);
+  }, [enabled, key, refresh, resource]);
 
   useEffect(() => {
     if (!enabled || !revalidateOnReconnect) return;

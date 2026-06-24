@@ -157,7 +157,7 @@ export function buildIntlRankingsWidgetPayload(
         (!settings.gender || ranking.gender === settings.gender),
     )
     .sort((a, b) => a.ranking - b.ranking)
-    .slice(0, 7)
+    .slice(0, 20)
     .map((ranking) => ({
       leading: `#${ranking.ranking}`,
       title: ranking.name,
@@ -184,7 +184,7 @@ export function syncDataWidgets(payloads: {
   standards: DataWidgetPayload;
   intlRankings: DataWidgetPayload;
 }) {
-  if (Platform.OS !== "ios") return;
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return;
 
   const module = NativeModules.SavedWidget;
   if (!module?.updateDataWidgets) {

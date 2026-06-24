@@ -8,12 +8,14 @@
   android:background="@drawable/widget_container_bg">
 
   <ImageView
+    android:id="@+id/widget_icon"
     android:layout_width="16dp"
     android:layout_height="16dp"
     android:contentDescription="@string/widget_icon_desc"
     android:src="@android:drawable/ic_menu_my_calendar" />
 
   <TextView
+    android:id="@+id/widget_title"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_marginStart="6dp"
