@@ -321,6 +321,7 @@ function AllMeetResultsScreenContent() {
             onChangeText={setSearchText}
             autoCapitalize="words"
             autoCorrect={false}
+            spellCheck={false}
             returnKeyType="search"
           />
           {searchText.length > 0 && (

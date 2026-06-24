@@ -13,11 +13,11 @@ dist/
 web-build/
 expo-env.d.ts
 
-android/build/
-android/app/build/
-android/.gradle/
-ios/Pods/
-ios/build/
+# Native projects are generated on EAS via `prebuild --clean`; never upload the
+# local copies, otherwise EAS reads bundle ids from them (e.g. a stale dev variant)
+# instead of resolving them from app.config.js for the build's environment.
+android/
+ios/
 
 .github/
 .idea/

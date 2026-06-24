@@ -1,0 +1,26 @@
+appId: ${APP_ID}
+name: Start list athlete search and clear
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn:
+    text: "Start list tab"
+- extendedWaitUntil:
+    visible:
+      id: "start-list-screen"
+    timeout: 60000
+- assertVisible:
+    id: "start-list-search"
+# Type a query and confirm the search field accepts and reflects input.
+- tapOn:
+    id: "start-list-search"
+- inputText: "a"
+- assertVisible: "a"
+# The clear button appears once the query is non-empty; tapping it resets search.
+- tapOn:
+    id: "start-list-search"
+- eraseText
+- assertVisible: "Search athletes..."

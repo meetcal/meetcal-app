@@ -1453,6 +1453,8 @@ export default function StartListScreen() {
               placeholderTextColor={colors.secondaryText}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              autoCorrect={false}
+              spellCheck={false}
             />
             {searchQuery.length > 0 && (
               <Pressable

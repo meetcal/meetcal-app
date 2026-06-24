@@ -143,6 +143,7 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoCorrect={false}
+                spellCheck={false}
               />
               {searchQuery.length > 0 && (
                 <Pressable
