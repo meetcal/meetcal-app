@@ -22,7 +22,12 @@ export class SyncManager {
     }
 
     this.syncInterval = setInterval(() => {
-      this.syncIfNeeded();
+      // Fire-and-forget timer: syncIfNeeded() re-throws on failure, so we must
+      // catch here. Otherwise a cancelled/aborted background fetch (e.g. the app
+      // is backgrounded mid-request) escapes as an unhandled promise rejection.
+      this.syncIfNeeded().catch((error) => {
+        console.error('Periodic sync failed:', error);
+      });
     }, SYNC_INTERVAL);
   }
 
