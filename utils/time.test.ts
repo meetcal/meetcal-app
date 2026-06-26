@@ -1,4 +1,8 @@
-import { calculateWeighInTime } from "@/utils/time";
+import {
+  AUTO_UNSAVE_DELAY_MS,
+  calculateWeighInTime,
+  hasSessionPassedAutoUnsaveWindow,
+} from "@/utils/time";
 
 describe("calculateWeighInTime", () => {
   beforeEach(() => {
@@ -28,5 +32,33 @@ describe("calculateWeighInTime", () => {
   it("falls back to 6:00 AM for invalid input", () => {
     expect(calculateWeighInTime("garbage")).toBe("6:00 AM");
     expect(calculateWeighInTime("99:99 AM")).toBe("6:00 AM");
+  });
+});
+
+describe("hasSessionPassedAutoUnsaveWindow", () => {
+  const now = new Date("2026-06-26T12:00:00Z");
+
+  it("returns false before two hours have elapsed", () => {
+    const start = new Date(now.getTime() - (AUTO_UNSAVE_DELAY_MS - 60_000));
+    expect(hasSessionPassedAutoUnsaveWindow(start, now)).toBe(false);
+  });
+
+  it("returns false for a session that has not started yet", () => {
+    const start = new Date(now.getTime() + 60 * 60 * 1000);
+    expect(hasSessionPassedAutoUnsaveWindow(start, now)).toBe(false);
+  });
+
+  it("returns true once exactly two hours have elapsed", () => {
+    const start = new Date(now.getTime() - AUTO_UNSAVE_DELAY_MS);
+    expect(hasSessionPassedAutoUnsaveWindow(start, now)).toBe(true);
+  });
+
+  it("returns true well after the window", () => {
+    const start = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    expect(hasSessionPassedAutoUnsaveWindow(start, now)).toBe(true);
+  });
+
+  it("returns false for an invalid date", () => {
+    expect(hasSessionPassedAutoUnsaveWindow(new Date("nope"), now)).toBe(false);
   });
 });
