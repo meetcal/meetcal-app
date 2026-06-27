@@ -49,6 +49,22 @@ function parseTo24Hour(startTime: string): { hour24: number; minutes: number } |
   return null;
 }
 
+// Saved sessions are auto-removed once this much time has elapsed since their start.
+export const AUTO_UNSAVE_DELAY_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Returns true when a session started at least AUTO_UNSAVE_DELAY_MS (2 hours)
+ * before `now`, meaning it qualifies for auto-removal.
+ */
+export function hasSessionPassedAutoUnsaveWindow(
+  sessionStart: Date,
+  now: Date = new Date(),
+): boolean {
+  const startMs = sessionStart.getTime();
+  if (Number.isNaN(startMs)) return false;
+  return now.getTime() - startMs >= AUTO_UNSAVE_DELAY_MS;
+}
+
 export function calculateWeighInTime(startTime: string): string {
   const parsed = parseTo24Hour(startTime);
   if (!parsed) {
