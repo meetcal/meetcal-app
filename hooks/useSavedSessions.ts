@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
-import { calculateWeighInTime } from '@/utils/time';
+import { calculateWeighInTime, hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 import { useAuth, useUser } from '@clerk/expo';
 import { scheduleNotification, cancelNotification } from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
@@ -17,6 +17,7 @@ import {
   deleteSavedSession as deleteSavedSessionFromApi,
   deleteSavedSessions as deleteSavedSessionsFromApi,
   fetchSavedSessions,
+  fetchUserPreferences,
   putSavedSession,
 } from '@/lib/api/meetcal-api';
 
@@ -212,6 +213,10 @@ export function useSavedSessions() {
       } else {
         setSavedSessions(localSessions);
       }
+
+      // Enforce the "auto-remove saved sessions 2 hours after they start"
+      // preference. The backend stores the flag; the client applies it on load.
+      await pruneStartedSessions();
     } catch (error) {
       console.error('Error loading saved sessions:', error);
       
@@ -597,6 +602,67 @@ export function useSavedSessions() {
     } catch (error) {
       console.error('Error removing session:', error);
       return false;
+    }
+  };
+
+  // Removes saved sessions that started more than 2 hours ago, but only when the
+  // user has the "auto-remove started sessions" preference enabled. Runs on load.
+  const pruneStartedSessions = async () => {
+    if (!user?.id) return;
+
+    let token: string | null = null;
+    try {
+      token = await getToken();
+    } catch {
+      return;
+    }
+    if (!token) return;
+
+    let autoUnsaveEnabled = false;
+    try {
+      const prefs = await fetchUserPreferences(token);
+      autoUnsaveEnabled = prefs.auto_unsave_started_sessions;
+    } catch (error) {
+      console.error('pruneStartedSessions: failed to fetch preferences', error);
+      return;
+    }
+    if (!autoUnsaveEnabled) return;
+
+    const sessions = await readStoredSessions();
+    if (sessions.length === 0) return;
+
+    const now = new Date();
+    const timeZoneByMeet = new Map<MeetName, string>();
+    const expiredIds: string[] = [];
+
+    for (const session of sessions) {
+      if (!session.startTime || !session.date) continue;
+
+      let timeZone = timeZoneByMeet.get(session.meet);
+      if (timeZone === undefined) {
+        try {
+          const config = await getMeetConfig(session.meet);
+          timeZone = config?.time?.timeZoneIdentifier ?? 'UTC';
+        } catch {
+          timeZone = 'UTC';
+        }
+        timeZoneByMeet.set(session.meet, timeZone);
+      }
+
+      let sessionStart: Date;
+      try {
+        sessionStart = convertToUTC(session.startTime, session.date, timeZone);
+      } catch {
+        continue;
+      }
+
+      if (hasSessionPassedAutoUnsaveWindow(sessionStart, now)) {
+        expiredIds.push(session.id);
+      }
+    }
+
+    for (const id of expiredIds) {
+      await removeSession(id);
     }
   };
 
