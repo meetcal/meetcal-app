@@ -332,36 +332,44 @@ async function prefetchMeetDataUncached(meet: MeetName) {
     // writing one athlete at a time. Sequential batches + per-athlete pako writes
     // keep peak memory bounded; the bulk roster history never sits in memory at
     // once, which is what previously let the iOS watchdog kill the download.
+    // Fetch *and* persist failures must be recorded here rather than bubbling up
+    // to the outer SQLITE_FULL handler below. That handler only restores
+    // meet_results, so a storage-full error during these larger full-history
+    // writes would otherwise let prefetch resolve "successfully" and silently
+    // mark the meet downloaded with partial/missing athlete history.
+    let historyIncomplete = false;
     for (let i = 0; i < athleteNames.length; i += HISTORY_DOWNLOAD_BATCH_SIZE) {
       const batch = athleteNames.slice(i, i + HISTORY_DOWNLOAD_BATCH_SIZE);
-      let batchResults: SupabaseLiftResult[];
       try {
-        batchResults = await fetchApiResultsByNames(batch);
+        const batchResults = await fetchApiResultsByNames(batch);
+
+        const resultsByName = new Map<string, SupabaseLiftResult[]>();
+        for (const row of batchResults) {
+          const key = normalizeAthleteNameForHistory(row.name);
+          const existing = resultsByName.get(key);
+          if (existing) {
+            existing.push(row);
+          } else {
+            resultsByName.set(key, [row]);
+          }
+        }
+
+        for (const name of batch) {
+          const rows =
+            resultsByName.get(normalizeAthleteNameForHistory(name)) ?? [];
+          await saveAthleteHistory(name, rows);
+        }
       } catch (historyError) {
         console.error('Prefetch athlete history batch failed:', {
           meet,
           names: batch,
           error: historyError,
         });
-        errors.push('athlete_history');
-        continue;
+        historyIncomplete = true;
       }
-
-      const resultsByName = new Map<string, SupabaseLiftResult[]>();
-      for (const row of batchResults) {
-        const key = normalizeAthleteNameForHistory(row.name);
-        const existing = resultsByName.get(key);
-        if (existing) {
-          existing.push(row);
-        } else {
-          resultsByName.set(key, [row]);
-        }
-      }
-
-      for (const name of batch) {
-        const rows = resultsByName.get(normalizeAthleteNameForHistory(name)) ?? [];
-        await saveAthleteHistory(name, rows);
-      }
+    }
+    if (historyIncomplete) {
+      errors.push('athlete_history');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

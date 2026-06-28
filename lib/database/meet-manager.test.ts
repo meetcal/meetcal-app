@@ -17,7 +17,9 @@ jest.mock("@/lib/networkUtils", () => ({
 const mockFetchSchedule = jest.fn();
 const mockFetchAthletesWithSession = jest.fn();
 const mockFetchApiMeetPackage = jest.fn();
-const mockFetchApiResultsByNames = jest.fn(async (_names: string[]) => []);
+const mockFetchApiResultsByNames = jest.fn(
+  async (_names: string[]): Promise<any[]> => [],
+);
 const mockSaveAthleteHistory = jest.fn(async () => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
@@ -440,6 +442,28 @@ describe("full athlete history download", () => {
     expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(25);
     expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(5);
     expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(30);
+  });
+
+  it("reports failure instead of silently succeeding when a history write fails", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A")],
+      meet_results: [{ name: "Athlete A" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      { name: "Athlete A", date: "2025-01-01" },
+    ]);
+    // Simulate a SQLITE_FULL (or any) failure persisting the larger full-history
+    // payload. This must surface as a rejected prefetch so the meet is not marked
+    // downloaded with missing history.
+    mockSaveAthleteHistory.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(prefetchMeetData("History Meet C" as any)).rejects.toThrow(
+      /athlete_history/,
+    );
   });
 });
 
