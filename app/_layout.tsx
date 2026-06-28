@@ -41,6 +41,46 @@ const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 
+// Clerk auth codes that represent expected user-input validation failures
+// (e.g. signing in with an email that has no account, entering a wrong
+// verification code). These are surfaced to the user inline by Clerk's UI and
+// are not application bugs, so we drop them to avoid polluting Sentry's error
+// stream. Primary signal is the `auth.clerk_code` tag attached to the event;
+// we also fall back to matching the known error messages in case the tag is
+// absent.
+const EXPECTED_CLERK_AUTH_CODES = new Set([
+  "form_identifier_not_found",
+  "form_code_incorrect",
+  "form_param_format_invalid",
+  "form_identifier_exists",
+  "form_password_incorrect",
+]);
+const EXPECTED_CLERK_AUTH_MESSAGES = [
+  "couldn't find your account",
+  "incorrect code",
+  "is incorrect",
+];
+
+function isExpectedClerkAuthError(event: Sentry.ErrorEvent): boolean {
+  const clerkCode = event.tags?.["auth.clerk_code"];
+  if (typeof clerkCode === "string" && EXPECTED_CLERK_AUTH_CODES.has(clerkCode)) {
+    return true;
+  }
+  const values = event.exception?.values;
+  if (values) {
+    for (const { value } of values) {
+      const message = value?.toLowerCase();
+      if (
+        message &&
+        EXPECTED_CLERK_AUTH_MESSAGES.some((expected) => message.includes(expected))
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 Sentry.init({
   dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
   environment: SENTRY_ENVIRONMENT,
@@ -74,6 +114,11 @@ Sentry.init({
   },
   beforeSend(event) {
     if (__DEV__) {
+      return null;
+    }
+    // Drop expected Clerk auth-validation errors (e.g. "Couldn't find your
+    // account."). These are normal user-input outcomes, not bugs.
+    if (isExpectedClerkAuthError(event)) {
       return null;
     }
     return event;
