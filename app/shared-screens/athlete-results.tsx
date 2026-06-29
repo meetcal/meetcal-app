@@ -273,26 +273,49 @@ export default function AthleteResultsScreen() {
 
       const requestId = ++requestIdRef.current;
       try {
-        let results: SupabaseLiftResult[] = [];
-
-        try {
-          const offlineResults = await getAllCachedLiftingResultsForAthlete(nameStr);
-          if (offlineResults && offlineResults.length > 0) {
-            results = offlineResults;
+        // The offline cache only ever holds a partial window of an athlete's
+        // history (downloaded meets cache the full set, but other entry points
+        // may have less), so treat it as a fast first paint / offline fallback —
+        // never as the complete record. Whenever we're online we still fetch the
+        // full history below and replace what the cache showed.
+        let displayedResults: SupabaseLiftResult[] = cachedResults ?? [];
+        if (displayedResults.length === 0) {
+          try {
+            const offlineResults =
+              await getAllCachedLiftingResultsForAthlete(nameStr);
+            if (requestId !== requestIdRef.current) return;
+            if (offlineResults && offlineResults.length > 0) {
+              displayedResults = offlineResults;
+              setAthleteResults(offlineResults);
+              setLoading(false);
+            }
+          } catch (cacheError) {
+            console.log(
+              `Cache miss for athlete results, fetching from API ${cacheError}`,
+            );
           }
-        } catch (cacheError) {
-          console.log(
-            `Cache miss for athlete results, fetching from API ${cacheError}`,
-          );
         }
 
-        if (results.length === 0) {
-          results = await fetchAllResultsForName(nameStr);
+        // Always fetch the complete history when online. /lifting-results/by-names
+        // returns the athlete's entire career with no date cap, and it is a single
+        // athlete so there is no bulk-memory concern.
+        try {
+          const fullResults = await fetchAllResultsForName(nameStr);
+          if (requestId !== requestIdRef.current) return;
+          // Guard against an empty API response clobbering cached history (e.g. a
+          // transient name-normalization miss): only replace when we actually got
+          // results, or when there was nothing cached to begin with.
+          if (fullResults.length > 0 || displayedResults.length === 0) {
+            resultsCacheRef.current.set(cacheKey, fullResults);
+            setAthleteResults(fullResults);
+          }
+        } catch (apiError) {
+          // Offline or the request failed: keep whatever the cache gave us.
+          if (requestId !== requestIdRef.current) return;
+          if (displayedResults.length === 0) {
+            console.error("Error fetching athlete results:", apiError);
+          }
         }
-
-        if (requestId !== requestIdRef.current) return;
-        resultsCacheRef.current.set(cacheKey, results);
-        setAthleteResults(results);
       } catch (error) {
         console.error("Error in fetchAthleteResults:", error);
       } finally {
