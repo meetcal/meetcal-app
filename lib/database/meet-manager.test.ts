@@ -17,6 +17,10 @@ jest.mock("@/lib/networkUtils", () => ({
 const mockFetchSchedule = jest.fn();
 const mockFetchAthletesWithSession = jest.fn();
 const mockFetchApiMeetPackage = jest.fn();
+const mockFetchApiResultsByNames = jest.fn(
+  async (_names: string[]): Promise<any[]> => [],
+);
+const mockSaveAthleteHistory = jest.fn(async () => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
 const mockSaveSessionAthletes = jest.fn(async () => undefined);
@@ -45,6 +49,8 @@ jest.mock("@/lib/api/meetcal-api", () => {
     ...actual,
     fetchApiMeetPackage: (...args: unknown[]) =>
       mockFetchApiMeetPackage(...args),
+    fetchApiResultsByNames: (...args: unknown[]) =>
+      mockFetchApiResultsByNames(...(args as [string[]])),
   };
 });
 
@@ -61,7 +67,8 @@ jest.mock("@/lib/database/offline-store", () => ({
   })),
   isMeetExplicitlyDownloaded: (...args: unknown[]) =>
     mockIsMeetExplicitlyDownloaded.apply(null, args),
-  saveAthleteHistory: jest.fn(async () => undefined),
+  saveAthleteHistory: (...args: unknown[]) =>
+    mockSaveAthleteHistory.apply(null, args),
   saveAthleteBestsBatch: jest.fn(async () => undefined),
   saveMeetAthletes: (...args: unknown[]) =>
     mockSaveMeetAthletes.apply(null, args),
@@ -75,6 +82,7 @@ jest.mock("@/lib/database/offline-store", () => ({
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   prefetchCriticalMeetData,
+  prefetchMeetData,
   validatePrefetchedLiftingResults,
   warmMeetData,
 } from "@/lib/database/meet-manager";
@@ -353,6 +361,109 @@ describe("prefetchCriticalMeetData", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe("full athlete history download", () => {
+  const buildAthlete = (name: string) => ({
+    member_id: name,
+    name,
+    age: 25,
+    club: "Club",
+    wso: null,
+    gender: "Male",
+    weight_class: "81",
+    entry_total: 0,
+    adaptive: false,
+    session: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchApiResultsByNames.mockResolvedValue([]);
+  });
+
+  it("caches each athlete's full history from /by-names, not the capped recent window", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A"), buildAthlete("Athlete B"), buildAthlete("Athlete C")],
+      meet_results: [{ name: "Athlete A" }],
+      // Intentionally a capped/partial window — must be ignored in favour of the
+      // full /by-names history below.
+      recent_results_by_name: {
+        "Athlete A": [{ name: "Athlete A", date: "2025-01-01" }],
+      },
+      year_bests_by_name: {},
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      { name: "Athlete A", date: "2025-06-01" },
+      { name: "Athlete A", date: "2014-06-01" },
+      { name: "Athlete B", date: "2010-06-01" },
+    ]);
+
+    await prefetchMeetData("History Meet A" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith([
+      "Athlete A",
+      "Athlete B",
+      "Athlete C",
+    ]);
+
+    // Athlete A gets its full multi-year history (2025 + 2014), not the single
+    // 2025 row from recent_results_by_name.
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete A", [
+      { name: "Athlete A", date: "2025-06-01" },
+      { name: "Athlete A", date: "2014-06-01" },
+    ]);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete B", [
+      { name: "Athlete B", date: "2010-06-01" },
+    ]);
+    // Athletes with no returned rows are still written (empty history).
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete C", []);
+  });
+
+  it("fetches history in sequential batches to keep peak memory bounded", async () => {
+    const athleteNames = Array.from({ length: 30 }, (_, i) => `Athlete ${i + 1}`);
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: athleteNames.map(buildAthlete),
+      meet_results: [{ name: "Athlete 1" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+
+    await prefetchMeetData("History Meet B" as any);
+
+    // 30 athletes / batch size 25 => 2 batches.
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(25);
+    expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(5);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(30);
+  });
+
+  it("reports failure instead of silently succeeding when a history write fails", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A")],
+      meet_results: [{ name: "Athlete A" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      { name: "Athlete A", date: "2025-01-01" },
+    ]);
+    // Simulate a SQLITE_FULL (or any) failure persisting the larger full-history
+    // payload. This must surface as a rejected prefetch so the meet is not marked
+    // downloaded with missing history.
+    mockSaveAthleteHistory.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(prefetchMeetData("History Meet C" as any)).rejects.toThrow(
+      /athlete_history/,
+    );
   });
 });
 

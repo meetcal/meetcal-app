@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
+import type { SupabaseLiftResult } from '@/data/types/athletes';
 import {
   clearImplicitMeetData,
   clearMeetData,
@@ -17,6 +18,7 @@ import {
   fetchApiMeetByName,
   fetchApiMeetPackage,
   fetchApiMeets,
+  fetchApiResultsByNames,
   mapApiAthlete,
   mapApiLiftingResult,
   mapPackageSchedule,
@@ -35,6 +37,16 @@ let lastFetchMeetsTimeoutLogAt = 0;
 const criticalPrefetchRequests = new Map<MeetName, Promise<void>>();
 const fullPrefetchRequests = new Map<MeetName, Promise<void>>();
 const PRIORITY_SESSION_PREFETCH_LIMIT = 8;
+// Downloaded meets cache the FULL competition history for every athlete on the
+// start list. We fetch that history in small sequential batches (rather than one
+// roster-wide payload) and persist one athlete at a time, keeping peak memory
+// bounded so the iOS watchdog can't terminate the download even though the total
+// history is now larger than the old 2-year window.
+const HISTORY_DOWNLOAD_BATCH_SIZE = 25;
+
+function normalizeAthleteNameForHistory(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
 const FULL_PREFETCH_DELAY_MS = 5000;
 
 interface MeetInfo {
@@ -312,12 +324,52 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       ),
     );
 
-    // Persist athlete history one entry at a time. Each write compresses (pako)
-    // and serializes a potentially large result set; fanning every athlete out
-    // concurrently produces a memory spike big enough for the iOS watchdog to
-    // terminate the app mid-download.
-    for (const [name, results] of Object.entries(pkg.recent_results_by_name ?? {})) {
-      await saveAthleteHistory(name, results.map(mapApiLiftingResult));
+    // Persist each athlete's FULL competition history so the athlete results
+    // screen shows complete history offline. We deliberately do NOT use the
+    // package's recent_results_by_name (a capped recent window kept for attempt
+    // estimates / bests) — instead we pull full history from /lifting-results
+    // /by-names in small sequential batches, grouping the rows by athlete and
+    // writing one athlete at a time. Sequential batches + per-athlete pako writes
+    // keep peak memory bounded; the bulk roster history never sits in memory at
+    // once, which is what previously let the iOS watchdog kill the download.
+    // Fetch *and* persist failures must be recorded here rather than bubbling up
+    // to the outer SQLITE_FULL handler below. That handler only restores
+    // meet_results, so a storage-full error during these larger full-history
+    // writes would otherwise let prefetch resolve "successfully" and silently
+    // mark the meet downloaded with partial/missing athlete history.
+    let historyIncomplete = false;
+    for (let i = 0; i < athleteNames.length; i += HISTORY_DOWNLOAD_BATCH_SIZE) {
+      const batch = athleteNames.slice(i, i + HISTORY_DOWNLOAD_BATCH_SIZE);
+      try {
+        const batchResults = await fetchApiResultsByNames(batch);
+
+        const resultsByName = new Map<string, SupabaseLiftResult[]>();
+        for (const row of batchResults) {
+          const key = normalizeAthleteNameForHistory(row.name);
+          const existing = resultsByName.get(key);
+          if (existing) {
+            existing.push(row);
+          } else {
+            resultsByName.set(key, [row]);
+          }
+        }
+
+        for (const name of batch) {
+          const rows =
+            resultsByName.get(normalizeAthleteNameForHistory(name)) ?? [];
+          await saveAthleteHistory(name, rows);
+        }
+      } catch (historyError) {
+        console.error('Prefetch athlete history batch failed:', {
+          meet,
+          names: batch,
+          error: historyError,
+        });
+        historyIncomplete = true;
+      }
+    }
+    if (historyIncomplete) {
+      errors.push('athlete_history');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
