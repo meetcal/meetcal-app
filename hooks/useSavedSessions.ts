@@ -10,6 +10,7 @@ import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
+import { reindexAppEntities } from '@/utils/appIntents';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
 import { getCachedAuthState } from '@/lib/authCache';
@@ -116,13 +117,17 @@ export function useSavedSessions() {
   useEffect(() => {
     if (!selectedMeet) {
       syncSavedWidget(null, savedSessions);
+      void reindexAppEntities();
       return;
     }
     getMeetConfig(selectedMeet)
       .then(config =>
         syncSavedWidget(selectedMeet, savedSessions, config?.time?.timeZoneIdentifier ?? 'UTC')
       )
-      .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'));
+      .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'))
+      .finally(() => {
+        void reindexAppEntities();
+      });
   }, [selectedMeet, savedSessions]);
 
   useEffect(() => {

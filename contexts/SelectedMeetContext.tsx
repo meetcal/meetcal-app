@@ -5,6 +5,7 @@ import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { reindexAppEntities } from '@/utils/appIntents';
 
 type SelectedMeetContextType = {
   selectedMeet: MeetName | null;
@@ -58,6 +59,8 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       current?.stopSync();
       return new SyncManager(meet);
     });
+
+    void reindexAppEntities();
   }, []);
 
   // Enhanced setSelectedMeet function with optimistic updates

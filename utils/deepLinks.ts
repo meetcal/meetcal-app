@@ -9,6 +9,7 @@ export const DEEP_LINKS = {
   qualifyingTotals: "/comp-data/new-qualifying-totals",
   standards: "/comp-data/new-standards",
   intlRankings: "/comp-data/rankings",
+  records: "/comp-data/records",
 } as const;
 
 type SessionDetailsParams = {
@@ -68,6 +69,10 @@ export function createIntlRankingsDeepLink(params: {
     age_category: params.ageCategory,
     gender: params.gender,
   });
+}
+
+export function createRecordsDeepLink() {
+  return createAppDeepLink(DEEP_LINKS.records);
 }
 
 export function getNotificationDeepLink(data: NotificationData) {

@@ -2,6 +2,7 @@ import {
   createAppDeepLink,
   createIntlRankingsDeepLink,
   createQualifyingTotalsDeepLink,
+  createRecordsDeepLink,
   createSessionDetailsDeepLink,
   createStandardsDeepLink,
   getNotificationDeepLink,
@@ -57,6 +58,8 @@ describe("deep link helpers", () => {
     ).toBe(
       "meetcal:///comp-data/rankings?meet=2026+World+Masters+Championships&age_category=Senior&gender=Men",
     );
+
+    expect(createRecordsDeepLink()).toBe("meetcal:///comp-data/records");
   });
 
   it("normalizes custom-scheme URLs to router hrefs", () => {
