@@ -27,20 +27,12 @@ struct MeetCalAppShortcuts: AppShortcutsProvider {
             phrases: [
                 "Show my saved sessions in \(.applicationName)",
                 "Show saved sessions in \(.applicationName)",
-                "What sessions did I save in \(.applicationName)"
-            ],
-            shortTitle: "Saved Sessions",
-            systemImageName: "bookmark.fill"
-        )
-
-        AppShortcut(
-            intent: OpenSavedSessionsIntent(),
-            phrases: [
+                "What sessions did I save in \(.applicationName)",
                 "Open my saved sessions in \(.applicationName)",
                 "Open saved sessions in \(.applicationName)"
             ],
-            shortTitle: "Open Saved",
-            systemImageName: "bookmark"
+            shortTitle: "Saved Sessions",
+            systemImageName: "bookmark.fill"
         )
 
         AppShortcut(

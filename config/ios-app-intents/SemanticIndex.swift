@@ -84,13 +84,19 @@ struct SemanticSavedSessionEntity: IndexedEntity, Identifiable {
     }
 
     init(_ session: SavedSessionEntity) {
-        self.id = session.id
-        self.title = "Session \(session.sessionNumber) — \(session.meet)"
-        self.detail = [session.platform, session.weightClass, session.startTime]
+        let title = "Session \(session.sessionNumber) — \(session.meet)"
+        let detail = [session.platform, session.weightClass, session.startTime]
             .filter { !$0.isEmpty }
             .joined(separator: " • ")
-        self.keywords = ["session", "saved", session.meet, session.platform, session.weightClass]
+        let keywords = ["session", "saved", session.meet, session.platform, session.weightClass]
             .filter { !$0.isEmpty }
+
+        self.id = session.id
+        self._title = EntityProperty<String>(indexingKey: \.title)
+        self._detail = EntityProperty<String?>(indexingKey: \.contentDescription)
+        self.keywords = keywords
+        self.title = title
+        self.detail = detail
     }
 }
 
@@ -134,10 +140,14 @@ struct SemanticMeetEntity: IndexedEntity, Identifiable {
     }
 
     init(_ meet: MeetEntity) {
+        let detail = [meet.dates, meet.location].filter { !$0.isEmpty }.joined(separator: " • ")
+
         self.id = meet.id
-        self.title = meet.name
-        self.detail = [meet.dates, meet.location].filter { !$0.isEmpty }.joined(separator: " • ")
+        self._title = EntityProperty<String>(indexingKey: \.title)
+        self._detail = EntityProperty<String?>(indexingKey: \.contentDescription)
         self.keywords = ["meet", "competition", meet.name, meet.location].filter { !$0.isEmpty }
+        self.title = meet.name
+        self.detail = detail
     }
 }
 
@@ -181,15 +191,21 @@ struct SemanticSessionEntity: IndexedEntity, Identifiable {
     }
 
     init(_ session: SessionEntity) {
-        self.id = session.id
-        self.title = "Session \(session.sessionNumber) — \(session.meet)"
-        self.detail = [
+        let title = "Session \(session.sessionNumber) — \(session.meet)"
+        let detail = [
             session.platform,
             session.weightClass,
             session.startTime,
         ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
-        self.keywords = ["session", session.meet, session.platform, session.weightClass ?? ""]
+        let keywords = ["session", session.meet, session.platform, session.weightClass ?? ""]
             .filter { !$0.isEmpty }
+
+        self.id = session.id
+        self._title = EntityProperty<String>(indexingKey: \.title)
+        self._detail = EntityProperty<String?>(indexingKey: \.contentDescription)
+        self.keywords = keywords
+        self.title = title
+        self.detail = detail
     }
 }
 
