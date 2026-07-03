@@ -86,7 +86,10 @@ struct AthleteQuery: EntityStringQuery {
 
         // Fall back to the global search endpoint.
         let response = try? await MeetCalAPI.shared.search(string)
-        let names = response?.results?.compactMap { $0.name } ?? []
+        let names =
+            [response?.matched_name].compactMap { $0 }
+            + (response?.suggestions ?? [])
+            + (response?.results?.compactMap { $0.name } ?? [])
         var seen = Set<String>()
         return names.compactMap { name -> AthleteEntity? in
             guard seen.insert(name.lowercased()).inserted else { return nil }
@@ -167,5 +170,21 @@ struct SessionQuery: EntityStringQuery {
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
         return await Self.sessions(forMeet: meet)
+    }
+}
+
+// MARK: - CompDataRowQuery
+
+struct CompDataRowQuery: EnumerableEntityQuery {
+    func allEntities() async throws -> [CompDataRowEntity] {
+        []
+    }
+
+    func entities(for identifiers: [CompDataRowEntity.ID]) async throws -> [CompDataRowEntity] {
+        []
+    }
+
+    func suggestedEntities() async throws -> [CompDataRowEntity] {
+        []
     }
 }

@@ -8,11 +8,19 @@ const {
 } = require('@expo/config-plugins/build/ios');
 
 const TEMPLATE_DIR = path.join(__dirname, 'ios-app-intents');
+const SHARED_MODEL_FILE = path.join(
+  __dirname,
+  '..',
+  'targets',
+  'SavedWidget',
+  'MeetCalSharedModels.swift',
+);
 
 // Swift App Intents sources + the React Native bridge (Obj-C + Swift).
 // All compiled into the MAIN app target so AppShortcutsProvider is discovered
 // and intents can share the App Group + make network calls.
 const FILES = [
+  'MeetCalSharedModels.swift',
   'SharedStore.swift',
   'MeetCalAPI.swift',
   'Entities.swift',
@@ -25,6 +33,21 @@ const FILES = [
   'AppIntentsBridge.m',
 ];
 
+const MIN_IOS_DEPLOYMENT_TARGET = '18.0';
+
+const normalizeIOSDeploymentTargets = (project) => {
+  const buildConfigs = project.pbxXCBuildConfigurationSection();
+  for (const [key, config] of Object.entries(buildConfigs)) {
+    if (key.endsWith('_comment') || !config?.buildSettings) continue;
+
+    const current = config.buildSettings.IPHONEOS_DEPLOYMENT_TARGET;
+    const currentNumber = Number.parseFloat(String(current ?? '0').replace(/"/g, ''));
+    if (!current || currentNumber < Number.parseFloat(MIN_IOS_DEPLOYMENT_TARGET)) {
+      config.buildSettings.IPHONEOS_DEPLOYMENT_TARGET = MIN_IOS_DEPLOYMENT_TARGET;
+    }
+  }
+};
+
 const withIOSAppIntents = (config) => {
   return withDangerousMod(config, [
     'ios',
@@ -34,7 +57,10 @@ const withIOSAppIntents = (config) => {
       const projectName = path.basename(sourceRoot);
 
       for (const file of FILES) {
-        const src = path.join(TEMPLATE_DIR, file);
+        const src =
+          file === 'MeetCalSharedModels.swift'
+            ? SHARED_MODEL_FILE
+            : path.join(TEMPLATE_DIR, file);
         const dest = path.join(sourceRoot, file);
         if (!fs.existsSync(src)) {
           throw new Error(
@@ -96,6 +122,8 @@ const withIOSAppIntents = (config) => {
           }
         }
       }
+
+      normalizeIOSDeploymentTargets(project);
 
       fs.writeFileSync(projectPath, project.writeSync());
 

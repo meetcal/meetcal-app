@@ -4,8 +4,9 @@
 //
 //  Donates entities to the Spotlight index so Siri AI (iOS 27) can answer from
 //  them. `IndexedEntity` + `CSSearchableIndex.indexAppEntities` exist since
-//  iOS 18; the iOS 27-only semantic-indexing additions (`@Property(indexingKey:)`)
-//  are gated with `if #available(iOS 27, *)` where used.
+//  iOS 18; richer Spotlight key mapping with `@Property(indexingKey:)` is
+//  available starting in iOS 18.4, so semantic wrapper entities are gated there
+//  while the app keeps its iOS 18.0 deployment target.
 //
 
 import Foundation
@@ -40,6 +41,171 @@ extension MeetEntity: IndexedEntity {
     }
 }
 
+extension SessionEntity: IndexedEntity {
+    var attributeSet: CSSearchableItemAttributeSet {
+        let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
+        attributes.title = "Session \(sessionNumber) — \(meet)"
+        var descriptionParts: [String] = [platform]
+        if let weightClass, !weightClass.isEmpty { descriptionParts.append(weightClass) }
+        if let startTime, !startTime.isEmpty { descriptionParts.append(startTime) }
+        attributes.contentDescription = descriptionParts.joined(separator: " • ")
+        attributes.keywords = ["session", meet, platform, weightClass ?? ""].filter { !$0.isEmpty }
+        return attributes
+    }
+}
+
+// MARK: - Semantic IndexedEntity wrappers (iOS 18.4+)
+
+@available(iOS 18.4, *)
+struct SemanticSavedSessionEntity: IndexedEntity, Identifiable {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Saved Session")
+    static var defaultQuery = SemanticSavedSessionQuery()
+
+    var id: String
+
+    @Property(indexingKey: \.title)
+    var title: String
+
+    @Property(indexingKey: \.contentDescription)
+    var detail: String?
+
+    var keywords: [String]
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)", subtitle: detail.map { "\($0)" })
+    }
+
+    var attributeSet: CSSearchableItemAttributeSet {
+        let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
+        attributes.title = title
+        attributes.contentDescription = detail
+        attributes.keywords = keywords
+        return attributes
+    }
+
+    init(_ session: SavedSessionEntity) {
+        self.id = session.id
+        self.title = "Session \(session.sessionNumber) — \(session.meet)"
+        self.detail = [session.platform, session.weightClass, session.startTime]
+            .filter { !$0.isEmpty }
+            .joined(separator: " • ")
+        self.keywords = ["session", "saved", session.meet, session.platform, session.weightClass]
+            .filter { !$0.isEmpty }
+    }
+}
+
+@available(iOS 18.4, *)
+struct SemanticSavedSessionQuery: EntityQuery {
+    func entities(for identifiers: [SemanticSavedSessionEntity.ID]) async throws -> [SemanticSavedSessionEntity] {
+        let wanted = Set(identifiers)
+        let selectedMeet = SharedStore.selectedMeet
+        return SharedStore.savedSessions()
+            .map { SavedSessionEntity(shared: $0, fallbackMeet: selectedMeet) }
+            .filter { wanted.contains($0.id) }
+            .map(SemanticSavedSessionEntity.init)
+    }
+}
+
+@available(iOS 18.4, *)
+struct SemanticMeetEntity: IndexedEntity, Identifiable {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Meet")
+    static var defaultQuery = SemanticMeetQuery()
+
+    var id: String
+
+    @Property(indexingKey: \.title)
+    var title: String
+
+    @Property(indexingKey: \.contentDescription)
+    var detail: String?
+
+    var keywords: [String]
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)", subtitle: detail.map { "\($0)" })
+    }
+
+    var attributeSet: CSSearchableItemAttributeSet {
+        let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
+        attributes.title = title
+        attributes.contentDescription = detail
+        attributes.keywords = keywords
+        return attributes
+    }
+
+    init(_ meet: MeetEntity) {
+        self.id = meet.id
+        self.title = meet.name
+        self.detail = [meet.dates, meet.location].filter { !$0.isEmpty }.joined(separator: " • ")
+        self.keywords = ["meet", "competition", meet.name, meet.location].filter { !$0.isEmpty }
+    }
+}
+
+@available(iOS 18.4, *)
+struct SemanticMeetQuery: EntityQuery {
+    func entities(for identifiers: [SemanticMeetEntity.ID]) async throws -> [SemanticMeetEntity] {
+        let wanted = Set(identifiers)
+        let meets = (try? await MeetCalAPI.shared.meets()) ?? []
+        return meets
+            .map { MeetEntity(api: $0) }
+            .filter { wanted.contains($0.id) }
+            .map(SemanticMeetEntity.init)
+    }
+}
+
+@available(iOS 18.4, *)
+struct SemanticSessionEntity: IndexedEntity, Identifiable {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Session")
+    static var defaultQuery = SemanticSessionQuery()
+
+    var id: String
+
+    @Property(indexingKey: \.title)
+    var title: String
+
+    @Property(indexingKey: \.contentDescription)
+    var detail: String?
+
+    var keywords: [String]
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)", subtitle: detail.map { "\($0)" })
+    }
+
+    var attributeSet: CSSearchableItemAttributeSet {
+        let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
+        attributes.title = title
+        attributes.contentDescription = detail
+        attributes.keywords = keywords
+        return attributes
+    }
+
+    init(_ session: SessionEntity) {
+        self.id = session.id
+        self.title = "Session \(session.sessionNumber) — \(session.meet)"
+        self.detail = [
+            session.platform,
+            session.weightClass,
+            session.startTime,
+        ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
+        self.keywords = ["session", session.meet, session.platform, session.weightClass ?? ""]
+            .filter { !$0.isEmpty }
+    }
+}
+
+@available(iOS 18.4, *)
+struct SemanticSessionQuery: EntityQuery {
+    func entities(for identifiers: [SemanticSessionEntity.ID]) async throws -> [SemanticSessionEntity] {
+        let selectedMeet = SharedStore.selectedMeet
+        guard !selectedMeet.isEmpty else { return [] }
+
+        let wanted = Set(identifiers)
+        return await SessionQuery.sessions(forMeet: selectedMeet)
+            .filter { wanted.contains($0.id) }
+            .map(SemanticSessionEntity.init)
+    }
+}
+
 // MARK: - Donation
 
 enum SemanticIndexDonator {
@@ -61,14 +227,35 @@ enum SemanticIndexDonator {
             SavedSessionEntity(shared: $0, fallbackMeet: selectedMeet)
         }
         if !savedSessions.isEmpty {
-            try? await index.indexAppEntities(savedSessions)
+            if #available(iOS 18.4, *) {
+                try? await index.indexAppEntities(savedSessions.map(SemanticSavedSessionEntity.init))
+            } else {
+                try? await index.indexAppEntities(savedSessions)
+            }
+        }
+
+        // Selected-meet schedule sessions (public, scoped to the meet the app
+        // currently mirrors for widgets/shortcuts).
+        if !selectedMeet.isEmpty {
+            let sessions = await SessionQuery.sessions(forMeet: selectedMeet)
+            if !sessions.isEmpty {
+                if #available(iOS 18.4, *) {
+                    try? await index.indexAppEntities(sessions.map(SemanticSessionEntity.init))
+                } else {
+                    try? await index.indexAppEntities(sessions)
+                }
+            }
         }
 
         // Upcoming meets (public).
         if let apiMeets = try? await MeetCalAPI.shared.meets() {
             let meets = apiMeets.prefix(25).map { MeetEntity(api: $0) }
             if !meets.isEmpty {
-                try? await index.indexAppEntities(Array(meets))
+                if #available(iOS 18.4, *) {
+                    try? await index.indexAppEntities(meets.map(SemanticMeetEntity.init))
+                } else {
+                    try? await index.indexAppEntities(Array(meets))
+                }
             }
         }
     }

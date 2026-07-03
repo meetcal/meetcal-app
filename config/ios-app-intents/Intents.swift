@@ -263,11 +263,32 @@ struct GetAthleteResultsIntent: AppIntent {
 
 // MARK: - Comp-data intents (App Group payloads)
 
+private func kgString(_ value: Double?) -> String {
+    guard let value else { return "—" }
+    if value.rounded() == value {
+        return "\(Int(value))kg"
+    }
+    return "\(value)kg"
+}
+
+private func compDataEntities(category: String, rows: [SnippetRow]) -> [CompDataRowEntity] {
+    rows.enumerated().map { index, row in
+        CompDataRowEntity(
+            id: "\(category)-\(index)-\(row.leading)-\(row.title)-\(row.trailing ?? "")",
+            category: category,
+            leading: row.leading,
+            title: row.title,
+            subtitle: row.subtitle,
+            trailing: row.trailing
+        )
+    }
+}
+
 private func compDataResult(
     payload: SharedDataPayload?,
     fallbackTitle: String,
     systemImage: String
-) -> (IntentDialog, SnippetListView) {
+) -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
     guard let payload else {
         let view = SnippetListView(
             title: fallbackTitle,
@@ -276,7 +297,7 @@ private func compDataResult(
             emptyMessage: "Open MeetCal and choose filters to see this data.",
             systemImage: systemImage
         )
-        return ("Open MeetCal and choose your filters to see \(fallbackTitle).", view)
+        return ("Open MeetCal and choose your filters to see \(fallbackTitle).", view, [])
     }
 
     let rows = payload.rows.map {
@@ -292,20 +313,139 @@ private func compDataResult(
         emptyMessage: payload.emptyMessage,
         systemImage: systemImage
     )
-    return (dialog, view)
+    return (dialog, view, compDataEntities(category: payload.title, rows: rows))
+}
+
+private func liveQualifyingTotalsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = (try? await MeetCalAPI.shared.qualifyingTotals()) ?? []
+    let preferred = apiRows.filter {
+        ($0.event_name ?? "") == "Nationals"
+            && ($0.gender ?? "") == "Men"
+            && ($0.age_category ?? "") == "Senior"
+    }
+    let selected = preferred.isEmpty ? apiRows : preferred
+    let rows = selected.prefix(8).map {
+        SnippetRow(
+            leading: $0.weight_class ?? "",
+            title: $0.event_name ?? "Qualifying Total",
+            subtitle: [$0.gender, $0.age_category].compactMap { $0 }.joined(separator: " • "),
+            trailing: kgString($0.qualifying_total)
+        )
+    }
+    let view = SnippetListView(
+        title: "Qualifying Totals",
+        subtitle: preferred.isEmpty ? "Latest data" : "Nationals • Men • Senior",
+        rows: rows,
+        emptyMessage: "No qualifying totals found",
+        systemImage: "target"
+    )
+    let dialog: IntentDialog = rows.isEmpty
+        ? "I couldn't find qualifying totals."
+        : "Here are qualifying totals from MeetCal."
+    return (dialog, view, compDataEntities(category: "Qualifying Totals", rows: rows))
+}
+
+private func liveStandardsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = (try? await MeetCalAPI.shared.standards()) ?? []
+    let preferred = apiRows.filter {
+        ($0.gender ?? "") == "Men"
+            && ($0.age_category ?? "") == "Senior"
+    }
+    let selected = preferred.isEmpty ? apiRows : preferred
+    let rows = selected.prefix(8).map {
+        SnippetRow(
+            leading: $0.weight_class ?? "",
+            title: kgString($0.standard_a),
+            subtitle: [$0.gender, $0.age_category].compactMap { $0 }.joined(separator: " • "),
+            trailing: kgString($0.standard_b)
+        )
+    }
+    let view = SnippetListView(
+        title: "A/B Standards",
+        subtitle: preferred.isEmpty ? "Latest data" : "Men • Senior",
+        rows: rows,
+        emptyMessage: "No standards found",
+        systemImage: "chart.bar"
+    )
+    let dialog: IntentDialog = rows.isEmpty
+        ? "I couldn't find standards."
+        : "Here are A and B standards from MeetCal."
+    return (dialog, view, compDataEntities(category: "A/B Standards", rows: rows))
+}
+
+private func liveRankingsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = (try? await MeetCalAPI.shared.intlRankings()) ?? []
+    let defaultMeet = apiRows.first?.meet
+    let preferred = apiRows.filter {
+        (defaultMeet == nil || $0.meet == defaultMeet)
+            && ($0.gender ?? "") == "Men"
+            && ($0.age_category ?? "") == "Senior"
+    }
+    let selected = preferred.isEmpty ? apiRows : preferred
+    let rows = selected.prefix(8).map {
+        SnippetRow(
+            leading: $0.ranking.map { "#\($0)" } ?? "",
+            title: $0.name ?? "Athlete",
+            subtitle: [$0.weight_class, $0.total.map { kgString($0) }].compactMap { $0 }.joined(separator: " • "),
+            trailing: $0.percent_a.map { "\($0)%" }
+        )
+    }
+    let view = SnippetListView(
+        title: "International Rankings",
+        subtitle: [defaultMeet, "Men", "Senior"].compactMap { $0 }.joined(separator: " • "),
+        rows: rows,
+        emptyMessage: "No rankings found",
+        systemImage: "globe.americas.fill"
+    )
+    let dialog: IntentDialog = rows.isEmpty
+        ? "I couldn't find international rankings."
+        : "Here are international rankings from MeetCal."
+    return (dialog, view, compDataEntities(category: "International Rankings", rows: rows))
+}
+
+private func liveRecordsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = (try? await MeetCalAPI.shared.records()) ?? []
+    let preferred = apiRows.filter {
+        ($0.record_type ?? "") == "USAW"
+            && ($0.gender ?? "") == "Men"
+            && ($0.age_category ?? "") == "Senior"
+    }
+    let selected = preferred.isEmpty ? apiRows : preferred
+    let rows = selected.prefix(8).map {
+        SnippetRow(
+            leading: $0.weight_class ?? "",
+            title: "Sn \(kgString($0.snatch_record))",
+            subtitle: [$0.record_type, $0.gender, $0.age_category].compactMap { $0 }.joined(separator: " • "),
+            trailing: "Total \(kgString($0.total_record))"
+        )
+    }
+    let view = SnippetListView(
+        title: "Records",
+        subtitle: preferred.isEmpty ? "Latest data" : "USAW • Men • Senior",
+        rows: rows,
+        emptyMessage: "No records found",
+        systemImage: "medal.fill"
+    )
+    let dialog: IntentDialog = rows.isEmpty
+        ? "I couldn't find records."
+        : "Here are records from MeetCal."
+    return (dialog, view, compDataEntities(category: "Records", rows: rows))
 }
 
 struct GetQualifyingTotalsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Qualifying Totals"
     static var description = IntentDescription("Show qualifying totals for your selected filters.")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let (dialog, view) = compDataResult(
+    func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        var (dialog, view, rows) = compDataResult(
             payload: SharedStore.qualifyingTotalsPayload(),
             fallbackTitle: "Qualifying Totals",
             systemImage: "target"
         )
-        return .result(dialog: dialog, view: view)
+        if rows.isEmpty {
+            (dialog, view, rows) = await liveQualifyingTotalsResult()
+        }
+        return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
@@ -313,13 +453,16 @@ struct GetStandardsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Standards"
     static var description = IntentDescription("Show A/B standards for your selected filters.")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let (dialog, view) = compDataResult(
+    func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        var (dialog, view, rows) = compDataResult(
             payload: SharedStore.standardsPayload(),
             fallbackTitle: "A/B Standards",
             systemImage: "chart.bar"
         )
-        return .result(dialog: dialog, view: view)
+        if rows.isEmpty {
+            (dialog, view, rows) = await liveStandardsResult()
+        }
+        return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
@@ -327,13 +470,26 @@ struct GetRankingsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Rankings"
     static var description = IntentDescription("Show international rankings for your selected filters.")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let (dialog, view) = compDataResult(
+    func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        var (dialog, view, rows) = compDataResult(
             payload: SharedStore.intlRankingsPayload(),
             fallbackTitle: "International Rankings",
             systemImage: "globe.americas.fill"
         )
-        return .result(dialog: dialog, view: view)
+        if rows.isEmpty {
+            (dialog, view, rows) = await liveRankingsResult()
+        }
+        return .result(value: rows, dialog: dialog, view: view)
+    }
+}
+
+struct GetRecordsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Records"
+    static var description = IntentDescription("Show competition records from MeetCal.")
+
+    func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        let (dialog, view, rows) = await liveRecordsResult()
+        return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
@@ -350,5 +506,32 @@ struct OpenSessionDetailsIntent: AppIntent {
     func perform() async throws -> some IntentResult & OpensIntent {
         let url = session.deepLinkURL ?? MeetCalDeepLinks.saved
         return .result(opensIntent: OpenURLIntent(url))
+    }
+}
+
+// MARK: - OpenSavedSessionsIntent
+
+struct OpenSavedSessionsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Saved Sessions"
+    static var description = IntentDescription("Open saved sessions in MeetCal.")
+    static var openAppWhenRun = true
+
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(MeetCalDeepLinks.saved))
+    }
+}
+
+// MARK: - OpenCompDataIntent
+
+struct OpenCompDataIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Competition Data"
+    static var description = IntentDescription("Open a competition data screen in MeetCal.")
+    static var openAppWhenRun = true
+
+    @Parameter(title: "Data")
+    var destination: CompDataDestination
+
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(destination.url))
     }
 }

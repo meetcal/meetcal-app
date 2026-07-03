@@ -34,6 +34,16 @@ struct MeetCalAppShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: OpenSavedSessionsIntent(),
+            phrases: [
+                "Open my saved sessions in \(.applicationName)",
+                "Open saved sessions in \(.applicationName)"
+            ],
+            shortTitle: "Open Saved",
+            systemImageName: "bookmark"
+        )
+
+        AppShortcut(
             intent: SearchAthleteIntent(),
             phrases: [
                 "Search for an athlete in \(.applicationName)",
@@ -93,6 +103,26 @@ struct MeetCalAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Rankings",
             systemImageName: "globe.americas.fill"
+        )
+
+        AppShortcut(
+            intent: GetRecordsIntent(),
+            phrases: [
+                "Show records in \(.applicationName)",
+                "Get weightlifting records in \(.applicationName)"
+            ],
+            shortTitle: "Records",
+            systemImageName: "medal.fill"
+        )
+
+        AppShortcut(
+            intent: OpenCompDataIntent(),
+            phrases: [
+                "Open competition data in \(.applicationName)",
+                "Open records and standards in \(.applicationName)"
+            ],
+            shortTitle: "Open Data",
+            systemImageName: "chart.bar.doc.horizontal"
         )
     }
 }

@@ -20,6 +20,7 @@ enum MeetCalDeepLinks {
     static let qualifyingTotals = URL(string: "meetcal:///comp-data/new-qualifying-totals")!
     static let standards = URL(string: "meetcal:///comp-data/new-standards")!
     static let rankings = URL(string: "meetcal:///comp-data/rankings")!
+    static let records = URL(string: "meetcal:///comp-data/records")!
 
     /// Mirrors the widget's `sessionDeepLink(...)`:
     /// `meetcal:///shared-screens/schedule-details?...`
@@ -51,6 +52,50 @@ enum MeetCalDeepLinks {
             return !value.isEmpty
         }
         return components.url
+    }
+}
+
+// MARK: - CompDataDestination
+
+enum CompDataDestination: String, AppEnum {
+    case qualifyingTotals
+    case standards
+    case rankings
+    case records
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Competition Data")
+
+    static var caseDisplayRepresentations: [CompDataDestination: DisplayRepresentation] = [
+        .qualifyingTotals: "Qualifying Totals",
+        .standards: "A/B Standards",
+        .rankings: "International Rankings",
+        .records: "Records",
+    ]
+
+    var title: String {
+        switch self {
+        case .qualifyingTotals:
+            return "Qualifying Totals"
+        case .standards:
+            return "A/B Standards"
+        case .rankings:
+            return "International Rankings"
+        case .records:
+            return "Records"
+        }
+    }
+
+    var url: URL {
+        switch self {
+        case .qualifyingTotals:
+            return MeetCalDeepLinks.qualifyingTotals
+        case .standards:
+            return MeetCalDeepLinks.standards
+        case .rankings:
+            return MeetCalDeepLinks.rankings
+        case .records:
+            return MeetCalDeepLinks.records
+        }
     }
 }
 
@@ -211,7 +256,7 @@ struct SavedSessionEntity: AppEntity, Identifiable {
     }
 
     init(shared session: SharedSavedSession, fallbackMeet: String) {
-        self.id = session.id
+        self.id = session.stableID
         self.meet = session.meet ?? fallbackMeet
         self.sessionNumber = session.sessionNumber
         self.platform = session.platform
@@ -220,5 +265,26 @@ struct SavedSessionEntity: AppEntity, Identifiable {
         self.weighInTime = session.weighInTime
         self.date = session.date
         self.url = session.url
+    }
+}
+
+// MARK: - CompDataRowEntity
+
+struct CompDataRowEntity: AppEntity, Identifiable {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Competition Data Row")
+    static var defaultQuery = CompDataRowQuery()
+
+    var id: String
+    var category: String
+    var leading: String
+    var title: String
+    var subtitle: String?
+    var trailing: String?
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(
+            title: "\(title.isEmpty ? leading : title)",
+            subtitle: "\(subtitle ?? trailing ?? category)"
+        )
     }
 }

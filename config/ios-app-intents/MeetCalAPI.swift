@@ -83,6 +83,43 @@ struct APIYearBests: Decodable {
     let best_total: Double?
 }
 
+struct APIQualifyingTotalRow: Decodable {
+    let event_name: String?
+    let gender: String?
+    let age_category: String?
+    let weight_class: String?
+    let qualifying_total: Double?
+}
+
+struct APIStandardRow: Decodable {
+    let age_category: String?
+    let gender: String?
+    let standard_a: Double?
+    let standard_b: Double?
+    let weight_class: String?
+}
+
+struct APIRecordRow: Decodable {
+    let age_category: String?
+    let gender: String?
+    let weight_class: String?
+    let record_type: String?
+    let snatch_record: Double?
+    let cj_record: Double?
+    let total_record: Double?
+}
+
+struct APIIntlRankingRow: Decodable {
+    let meet: String?
+    let ranking: Int?
+    let name: String?
+    let weight_class: String?
+    let total: Double?
+    let percent_a: Double?
+    let gender: String?
+    let age_category: String?
+}
+
 enum APIDateFormat {
     static func pretty(_ iso: String) -> String {
         let input = DateFormatter()
@@ -154,6 +191,22 @@ actor MeetCalAPI {
             "/lifting-results/bests",
             query: ["names": names.joined(separator: ",")]
         )
+    }
+
+    func qualifyingTotals() async throws -> [APIQualifyingTotalRow] {
+        try await getDecoded("/data/qualifying-totals")
+    }
+
+    func standards() async throws -> [APIStandardRow] {
+        try await getDecoded("/data/standards")
+    }
+
+    func records() async throws -> [APIRecordRow] {
+        try await getDecoded("/data/records")
+    }
+
+    func intlRankings() async throws -> [APIIntlRankingRow] {
+        try await getDecoded("/data/intl-rankings")
     }
 
     // MARK: Core request

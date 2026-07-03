@@ -51,7 +51,7 @@ export default ({ config }) => ({
   plugins: [
     [
       'onesignal-expo-plugin',
-      { mode: 'production' }
+      { mode: 'production', iPhoneDeploymentTarget: '18.0' }
     ],
     'expo-font',
     'expo-localization',
@@ -84,7 +84,6 @@ export default ({ config }) => ({
     ],
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
-    './config/withIOSAppIntents',
     [
       '@sentry/react-native',
       {
@@ -92,7 +91,8 @@ export default ({ config }) => ({
         project: "react-native",
         organization: "meetcal-llc"
       }
-    ]
+    ],
+    './config/withIOSAppIntents'
   ],
   experiments: {
     typedRoutes: true,
