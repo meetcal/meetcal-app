@@ -9,7 +9,8 @@
       "distribution": "internal",
       "ios": {
         "prebuildCommand": "prebuild --clean",
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "image": "latest"
       },
       "env": {
         "APP_VARIANT": "development"

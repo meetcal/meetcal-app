@@ -84,6 +84,7 @@ export default ({ config }) => ({
     ],
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
+    './config/withIOSAppIntents',
     [
       '@sentry/react-native',
       {
