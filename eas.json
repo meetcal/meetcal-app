@@ -9,7 +9,8 @@
       "distribution": "internal",
       "ios": {
         "prebuildCommand": "prebuild --clean",
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "image": "latest"
       },
       "env": {
         "APP_VARIANT": "development"
@@ -22,7 +23,8 @@
       "ios": {
         "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
-        "simulator": true
+        "simulator": true,
+        "image": "latest"
       },
       "channel": "development-simulator"
     },
@@ -31,7 +33,8 @@
       "ios": {
         "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
-        "simulator": true
+        "simulator": true,
+        "image": "latest"
       },
       "channel": "preview"
     },
