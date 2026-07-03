@@ -14,7 +14,8 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
     features: [
       'Optimized app loading to show you data 25x faster',
       'Improved login experience',
-      'New iOS widgets'
+      'New iOS widgets',
+      'Added support for shortcuts and Siri AI'
     ],
   },
 };
