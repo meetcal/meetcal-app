@@ -99,6 +99,86 @@ enum CompDataDestination: String, AppEnum {
     }
 }
 
+// MARK: - Competition data filters
+
+/// Gender filter for competition-data intents. Fixed set so Siri / the
+/// Shortcuts action can offer a picker. `apiValue` matches the API's strings.
+enum IntentGender: String, AppEnum {
+    case men
+    case women
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Gender")
+
+    static var caseDisplayRepresentations: [IntentGender: DisplayRepresentation] = [
+        .men: "Men",
+        .women: "Women",
+    ]
+
+    var apiValue: String {
+        switch self {
+        case .men: return "Men"
+        case .women: return "Women"
+        }
+    }
+}
+
+/// Age-category filter. Curated to the common USAW categories; `apiValue`
+/// matches the API's strings (compared case-insensitively at filter time).
+enum IntentAgeCategory: String, AppEnum {
+    case youth
+    case junior
+    case senior
+    case masters
+    case university
+    case u15
+    case u17
+    case u20
+    case u23
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Age Category")
+
+    static var caseDisplayRepresentations: [IntentAgeCategory: DisplayRepresentation] = [
+        .youth: "Youth",
+        .junior: "Junior",
+        .senior: "Senior",
+        .masters: "Masters",
+        .university: "University",
+        .u15: "U15",
+        .u17: "U17",
+        .u20: "U20",
+        .u23: "U23",
+    ]
+
+    var apiValue: String {
+        switch self {
+        case .youth: return "Youth"
+        case .junior: return "Junior"
+        case .senior: return "Senior"
+        case .masters: return "Masters"
+        case .university: return "University"
+        case .u15: return "U15"
+        case .u17: return "U17"
+        case .u20: return "U20"
+        case .u23: return "U23"
+        }
+    }
+}
+
+/// Applied competition-data filters. Any `nil` field means "don't constrain".
+struct CompDataFilters {
+    var gender: String? = nil
+    var ageCategory: String? = nil
+    var weightClass: String? = nil
+    var event: String? = nil
+    var recordType: String? = nil
+    var meet: String? = nil
+
+    var isEmpty: Bool {
+        gender == nil && ageCategory == nil && weightClass == nil
+            && event == nil && recordType == nil && meet == nil
+    }
+}
+
 // MARK: - MeetEntity
 
 struct MeetEntity: AppEntity, Identifiable {

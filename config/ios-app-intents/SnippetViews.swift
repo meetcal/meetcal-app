@@ -70,7 +70,7 @@ struct SnippetListView: View {
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary.opacity(0.7))
                             .lineLimit(1)
                     }
                 }
@@ -82,7 +82,7 @@ struct SnippetListView: View {
             if rows.isEmpty {
                 Text(emptyMessage)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.7))
             } else {
                 ForEach(rows.prefix(8)) { row in
                     HStack(alignment: .center, spacing: 8) {
@@ -93,11 +93,12 @@ struct SnippetListView: View {
                             Text(row.title)
                                 .font(.subheadline)
                                 .bold()
+                                .foregroundStyle(.primary)
                                 .lineLimit(1)
                             if let subtitle = row.subtitle, !subtitle.isEmpty {
                                 Text(subtitle)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.primary.opacity(0.7))
                                     .lineLimit(1)
                             }
                         }
@@ -106,6 +107,7 @@ struct SnippetListView: View {
                             Text(trailing)
                                 .font(.subheadline)
                                 .bold()
+                                .foregroundStyle(.primary)
                                 .lineLimit(1)
                         }
                     }

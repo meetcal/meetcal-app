@@ -76,7 +76,7 @@ struct SearchAthleteIntent: AppIntent {
             if let club = athlete.club, !club.isEmpty { subtitleParts.append(club) }
             var trailing: String?
             if let session = athlete.sessionNumber, let platform = athlete.platform {
-                trailing = "S\(session) • \(platform)"
+                trailing = "\(session) \(platform)"
             }
             return SnippetRow(
                 leading: "",
@@ -223,7 +223,7 @@ struct GetAthleteResultsIntent: AppIntent {
             let total = best.best_total.map { Int($0) }
             rows.append(SnippetRow(
                 leading: "",
-                title: "Season Bests",
+                title: "Personal Records",
                 subtitle: "Sn \(snatch.map(String.init) ?? "—") • CJ \(cj.map(String.init) ?? "—")",
                 trailing: total.map { "\($0) kg" } ?? "—"
             ))
@@ -243,7 +243,7 @@ struct GetAthleteResultsIntent: AppIntent {
         if rows.isEmpty {
             dialog = "I couldn't find results for \(name)."
         } else if let best = bests[name] ?? bests.values.first, let total = best.best_total {
-            dialog = "\(name)'s best total this season is \(Int(total)) kilograms."
+            dialog = "\(name)'s best total is \(Int(total)) kilograms."
         } else {
             dialog = "Here are recent results for \(name)."
         }
@@ -316,14 +316,39 @@ private func compDataResult(
     return (dialog, view, compDataEntities(category: payload.title, rows: rows))
 }
 
-private func liveQualifyingTotalsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+// MARK: - Comp data filter helpers
+
+/// Case-insensitive equality; a `nil`/empty filter matches everything.
+private func matchEq(_ value: String?, _ filter: String?) -> Bool {
+    guard let filter, !filter.isEmpty else { return true }
+    return (value ?? "").caseInsensitiveCompare(filter) == .orderedSame
+}
+
+/// Case-insensitive substring match; a `nil`/empty filter matches everything.
+private func matchContains(_ value: String?, _ filter: String?) -> Bool {
+    guard let filter, !filter.isEmpty else { return true }
+    return (value ?? "").range(of: filter, options: .caseInsensitive) != nil
+}
+
+/// Builds a " • "-joined subtitle from the non-empty applied filter labels.
+private func filterSubtitle(_ parts: [String?]) -> String {
+    let joined = parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
+    return joined.isEmpty ? "Latest data" : joined
+}
+
+private func liveQualifyingTotalsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
     let apiRows = (try? await MeetCalAPI.shared.qualifyingTotals()) ?? []
-    let preferred = apiRows.filter {
-        ($0.event_name ?? "") == "Nationals"
-            && ($0.gender ?? "") == "Men"
-            && ($0.age_category ?? "") == "Senior"
+    // With no filters, fall back to the previous Nationals / Men / Senior default.
+    let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
+    let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
+    let event = filters.event ?? (filters.isEmpty ? "Nationals" : nil)
+    let filtered = apiRows.filter {
+        matchEq($0.gender, gender)
+            && matchEq($0.age_category, age)
+            && matchContains($0.event_name, event)
+            && matchEq($0.weight_class, filters.weightClass)
     }
-    let selected = preferred.isEmpty ? apiRows : preferred
+    let selected = filtered.isEmpty ? apiRows : filtered
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -334,7 +359,7 @@ private func liveQualifyingTotalsResult() async -> (IntentDialog, SnippetListVie
     }
     let view = SnippetListView(
         title: "Qualifying Totals",
-        subtitle: preferred.isEmpty ? "Latest data" : "Nationals • Men • Senior",
+        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([event, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No qualifying totals found",
         systemImage: "target"
@@ -345,13 +370,16 @@ private func liveQualifyingTotalsResult() async -> (IntentDialog, SnippetListVie
     return (dialog, view, compDataEntities(category: "Qualifying Totals", rows: rows))
 }
 
-private func liveStandardsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+private func liveStandardsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
     let apiRows = (try? await MeetCalAPI.shared.standards()) ?? []
-    let preferred = apiRows.filter {
-        ($0.gender ?? "") == "Men"
-            && ($0.age_category ?? "") == "Senior"
+    let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
+    let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
+    let filtered = apiRows.filter {
+        matchEq($0.gender, gender)
+            && matchEq($0.age_category, age)
+            && matchEq($0.weight_class, filters.weightClass)
     }
-    let selected = preferred.isEmpty ? apiRows : preferred
+    let selected = filtered.isEmpty ? apiRows : filtered
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -362,7 +390,7 @@ private func liveStandardsResult() async -> (IntentDialog, SnippetListView, [Com
     }
     let view = SnippetListView(
         title: "A/B Standards",
-        subtitle: preferred.isEmpty ? "Latest data" : "Men • Senior",
+        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No standards found",
         systemImage: "chart.bar"
@@ -373,15 +401,21 @@ private func liveStandardsResult() async -> (IntentDialog, SnippetListView, [Com
     return (dialog, view, compDataEntities(category: "A/B Standards", rows: rows))
 }
 
-private func liveRankingsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+private func liveRankingsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
     let apiRows = (try? await MeetCalAPI.shared.intlRankings()) ?? []
-    let defaultMeet = apiRows.first?.meet
-    let preferred = apiRows.filter {
-        (defaultMeet == nil || $0.meet == defaultMeet)
-            && ($0.gender ?? "") == "Men"
-            && ($0.age_category ?? "") == "Senior"
+    // With no meet filter, default to the first meet in the feed.
+    let meet = filters.meet ?? (filters.isEmpty ? apiRows.first?.meet : nil)
+    let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
+    let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
+    let filtered = apiRows.filter {
+        matchContains($0.meet, meet)
+            && matchEq($0.gender, gender)
+            && matchEq($0.age_category, age)
+            && matchEq($0.weight_class, filters.weightClass)
     }
-    let selected = preferred.isEmpty ? apiRows : preferred
+    let unsorted = filtered.isEmpty ? apiRows : filtered
+    // Sort by ranking ascending; rows without a ranking go last.
+    let selected = unsorted.sorted { ($0.ranking ?? Int.max) < ($1.ranking ?? Int.max) }
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.ranking.map { "#\($0)" } ?? "",
@@ -392,7 +426,7 @@ private func liveRankingsResult() async -> (IntentDialog, SnippetListView, [Comp
     }
     let view = SnippetListView(
         title: "International Rankings",
-        subtitle: [defaultMeet, "Men", "Senior"].compactMap { $0 }.joined(separator: " • "),
+        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([meet, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No rankings found",
         systemImage: "globe.americas.fill"
@@ -403,14 +437,18 @@ private func liveRankingsResult() async -> (IntentDialog, SnippetListView, [Comp
     return (dialog, view, compDataEntities(category: "International Rankings", rows: rows))
 }
 
-private func liveRecordsResult() async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+private func liveRecordsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
     let apiRows = (try? await MeetCalAPI.shared.records()) ?? []
-    let preferred = apiRows.filter {
-        ($0.record_type ?? "") == "USAW"
-            && ($0.gender ?? "") == "Men"
-            && ($0.age_category ?? "") == "Senior"
+    let recordType = filters.recordType ?? (filters.isEmpty ? "USAW" : nil)
+    let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
+    let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
+    let filtered = apiRows.filter {
+        matchContains($0.record_type, recordType)
+            && matchEq($0.gender, gender)
+            && matchEq($0.age_category, age)
+            && matchEq($0.weight_class, filters.weightClass)
     }
-    let selected = preferred.isEmpty ? apiRows : preferred
+    let selected = filtered.isEmpty ? apiRows : filtered
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -421,7 +459,7 @@ private func liveRecordsResult() async -> (IntentDialog, SnippetListView, [CompD
     }
     let view = SnippetListView(
         title: "Records",
-        subtitle: preferred.isEmpty ? "Latest data" : "USAW • Men • Senior",
+        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([recordType, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No records found",
         systemImage: "medal.fill"
@@ -434,61 +472,142 @@ private func liveRecordsResult() async -> (IntentDialog, SnippetListView, [CompD
 
 struct GetQualifyingTotalsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Qualifying Totals"
-    static var description = IntentDescription("Show qualifying totals for your selected filters.")
+    static var description = IntentDescription("Show qualifying totals, optionally filtered by gender, age category, weight class, or event.")
+
+    @Parameter(title: "Gender")
+    var gender: IntentGender?
+
+    @Parameter(title: "Age Category")
+    var ageCategory: IntentAgeCategory?
+
+    @Parameter(title: "Weight Class")
+    var weightClass: String?
+
+    @Parameter(title: "Event")
+    var event: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
-        var (dialog, view, rows) = compDataResult(
-            payload: SharedStore.qualifyingTotalsPayload(),
-            fallbackTitle: "Qualifying Totals",
-            systemImage: "target"
+        let filters = CompDataFilters(
+            gender: gender?.apiValue,
+            ageCategory: ageCategory?.apiValue,
+            weightClass: weightClass,
+            event: event
         )
-        if rows.isEmpty {
-            (dialog, view, rows) = await liveQualifyingTotalsResult()
+        // No filters given: prefer the app's last-used selection, then live default.
+        if filters.isEmpty {
+            var (dialog, view, rows) = compDataResult(
+                payload: SharedStore.qualifyingTotalsPayload(),
+                fallbackTitle: "Qualifying Totals",
+                systemImage: "target"
+            )
+            if rows.isEmpty {
+                (dialog, view, rows) = await liveQualifyingTotalsResult(filters: filters)
+            }
+            return .result(value: rows, dialog: dialog, view: view)
         }
+        let (dialog, view, rows) = await liveQualifyingTotalsResult(filters: filters)
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
 struct GetStandardsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Standards"
-    static var description = IntentDescription("Show A/B standards for your selected filters.")
+    static var description = IntentDescription("Show A/B standards, optionally filtered by gender, age category, or weight class.")
+
+    @Parameter(title: "Gender")
+    var gender: IntentGender?
+
+    @Parameter(title: "Age Category")
+    var ageCategory: IntentAgeCategory?
+
+    @Parameter(title: "Weight Class")
+    var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
-        var (dialog, view, rows) = compDataResult(
-            payload: SharedStore.standardsPayload(),
-            fallbackTitle: "A/B Standards",
-            systemImage: "chart.bar"
+        let filters = CompDataFilters(
+            gender: gender?.apiValue,
+            ageCategory: ageCategory?.apiValue,
+            weightClass: weightClass
         )
-        if rows.isEmpty {
-            (dialog, view, rows) = await liveStandardsResult()
+        if filters.isEmpty {
+            var (dialog, view, rows) = compDataResult(
+                payload: SharedStore.standardsPayload(),
+                fallbackTitle: "A/B Standards",
+                systemImage: "chart.bar"
+            )
+            if rows.isEmpty {
+                (dialog, view, rows) = await liveStandardsResult(filters: filters)
+            }
+            return .result(value: rows, dialog: dialog, view: view)
         }
+        let (dialog, view, rows) = await liveStandardsResult(filters: filters)
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
 struct GetRankingsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Rankings"
-    static var description = IntentDescription("Show international rankings for your selected filters.")
+    static var description = IntentDescription("Show international rankings, optionally filtered by meet, gender, age category, or weight class.")
+
+    @Parameter(title: "Meet")
+    var meet: String?
+
+    @Parameter(title: "Gender")
+    var gender: IntentGender?
+
+    @Parameter(title: "Age Category")
+    var ageCategory: IntentAgeCategory?
+
+    @Parameter(title: "Weight Class")
+    var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
-        var (dialog, view, rows) = compDataResult(
-            payload: SharedStore.intlRankingsPayload(),
-            fallbackTitle: "International Rankings",
-            systemImage: "globe.americas.fill"
+        let filters = CompDataFilters(
+            gender: gender?.apiValue,
+            ageCategory: ageCategory?.apiValue,
+            weightClass: weightClass,
+            meet: meet
         )
-        if rows.isEmpty {
-            (dialog, view, rows) = await liveRankingsResult()
+        if filters.isEmpty {
+            var (dialog, view, rows) = compDataResult(
+                payload: SharedStore.intlRankingsPayload(),
+                fallbackTitle: "International Rankings",
+                systemImage: "globe.americas.fill"
+            )
+            if rows.isEmpty {
+                (dialog, view, rows) = await liveRankingsResult(filters: filters)
+            }
+            return .result(value: rows, dialog: dialog, view: view)
         }
+        let (dialog, view, rows) = await liveRankingsResult(filters: filters)
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
 
 struct GetRecordsIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Records"
-    static var description = IntentDescription("Show competition records from MeetCal.")
+    static var description = IntentDescription("Show competition records, optionally filtered by record type, gender, age category, or weight class.")
+
+    @Parameter(title: "Record Type")
+    var recordType: String?
+
+    @Parameter(title: "Gender")
+    var gender: IntentGender?
+
+    @Parameter(title: "Age Category")
+    var ageCategory: IntentAgeCategory?
+
+    @Parameter(title: "Weight Class")
+    var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
-        let (dialog, view, rows) = await liveRecordsResult()
+        let filters = CompDataFilters(
+            gender: gender?.apiValue,
+            ageCategory: ageCategory?.apiValue,
+            weightClass: weightClass,
+            recordType: recordType
+        )
+        let (dialog, view, rows) = await liveRecordsResult(filters: filters)
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
