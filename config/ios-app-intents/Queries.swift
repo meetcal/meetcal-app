@@ -81,7 +81,22 @@ struct AthleteQuery: EntityStringQuery {
             let matches = athletes
                 .map { AthleteEntity(api: $0) }
                 .filter { $0.name.lowercased().contains(needle) }
-            if !matches.isEmpty { return matches }
+            // Dedupe by name, preferring the entry that carries session/platform info.
+            var best: [String: AthleteEntity] = [:]
+            var order: [String] = []
+            for match in matches {
+                let key = match.name.lowercased()
+                if let existing = best[key] {
+                    if existing.sessionNumber == nil, match.sessionNumber != nil {
+                        best[key] = match
+                    }
+                } else {
+                    best[key] = match
+                    order.append(key)
+                }
+            }
+            let deduped = order.compactMap { best[$0] }
+            if !deduped.isEmpty { return deduped }
         }
 
         // Fall back to the global search endpoint.
