@@ -49,6 +49,9 @@ export default ({ config }) => ({
     favicon: './assets/favicon.png'
   },
   plugins: [
+    // Must be first: mods run in reverse plugin order, and this one has to run
+    // after @bacons/apple-targets has created the extension targets.
+    './config/withVersionSync',
     [
       'onesignal-expo-plugin',
       { mode: 'production', iPhoneDeploymentTarget: '18.0' }
