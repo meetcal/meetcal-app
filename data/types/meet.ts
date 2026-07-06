@@ -55,6 +55,8 @@ export interface Meet {
   id: string;
   name: MeetName;
   venue: Venue;
+  venueMapPdfUrl?: string | null;
+  venueMapAppleUrl?: string | null;
   time: TimeConfig;
   dates: DateRange;
   status: 'upcoming' | 'ongoing' | 'completed';
