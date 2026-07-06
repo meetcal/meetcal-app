@@ -205,6 +205,8 @@ export type ApiMeet = {
   venue_state: string;
   venue_street: string;
   venue_zip: string;
+  venue_map_pdf_url?: string | null;
+  venue_map_apple_url?: string | null;
   status: string;
 };
 
@@ -400,6 +402,8 @@ export function mapApiMeet(row: ApiMeet): Meet {
         zip: row.venue_zip,
       },
     },
+    venueMapPdfUrl: row.venue_map_pdf_url ?? null,
+    venueMapAppleUrl: row.venue_map_apple_url ?? null,
     time: {
       timeZone: row.time_zone,
       timeZoneIdentifier,

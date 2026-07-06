@@ -3,12 +3,55 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import React from "react";
-import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import React, { useState } from "react";
+import {
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 
 export default function EventInfoScreen() {
   const colors = useAppColors();
   const { meetDetails, isLoading } = useSelectedMeet();
+  const [showVenueMapModal, setShowVenueMapModal] = useState(false);
+
+  const venueMapPdfUrl = meetDetails?.venueMapPdfUrl ?? null;
+  const venueMapAppleUrl = meetDetails?.venueMapAppleUrl ?? null;
+  const hasVenueMap = Boolean(venueMapPdfUrl || venueMapAppleUrl);
+
+  const openVenueMapPdf = async () => {
+    if (!venueMapPdfUrl) return;
+    try {
+      await WebBrowser.openBrowserAsync(venueMapPdfUrl);
+    } catch (error) {
+      console.error("Failed to open venue map PDF:", error);
+    }
+  };
+
+  const openVenueMapApple = async () => {
+    if (!venueMapAppleUrl) return;
+    try {
+      await Linking.openURL(venueMapAppleUrl);
+    } catch (error) {
+      console.error("Failed to open venue map in Apple Maps:", error);
+    }
+  };
+
+  const handleVenueMapPress = () => {
+    if (venueMapPdfUrl && venueMapAppleUrl) {
+      setShowVenueMapModal(true);
+    } else if (venueMapPdfUrl) {
+      void openVenueMapPdf();
+    } else if (venueMapAppleUrl) {
+      void openVenueMapApple();
+    }
+  };
+
+  const venueMapLabel = venueMapPdfUrl && !venueMapAppleUrl ? "Venue Map (PDF)" : "Venue Map";
 
   const handleAddressPress = async () => {
     if (!meetDetails?.venue) return;
@@ -107,7 +150,106 @@ export default function EventInfoScreen() {
         </Pressable>
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+        {hasVenueMap && (
+          <Pressable
+            testID="info-venue-map"
+            accessibilityRole="button"
+            accessibilityLabel={venueMapLabel}
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed },
+            ]}
+            onPress={handleVenueMapPress}
+          >
+            <View style={styles.addressContainer}>
+              <ThemedText style={[styles.link, { color: colors.link }]}>
+                {venueMapLabel}
+              </ThemedText>
+              <IconSymbol name="chevron.right" size={20} color={colors.link} />
+            </View>
+          </Pressable>
+        )}
       </View>
+
+      <Modal
+        visible={showVenueMapModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowVenueMapModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { backgroundColor: colors.modalBackground }]}
+          onPress={() => setShowVenueMapModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: colors.card }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
+                Venue Map
+              </ThemedText>
+            </View>
+
+            <Pressable
+              testID="venue-map-pdf-option"
+              accessibilityRole="button"
+              accessibilityLabel="PDF"
+              style={({ pressed }) => [
+                styles.modalOption,
+                { borderBottomColor: colors.border },
+                pressed && { backgroundColor: colors.pressed },
+              ]}
+              onPress={() => {
+                setShowVenueMapModal(false);
+                void openVenueMapPdf();
+              }}
+            >
+              <ThemedText style={[styles.modalOptionText, { color: colors.link }]}>
+                PDF
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              testID="venue-map-apple-option"
+              accessibilityRole="button"
+              accessibilityLabel="Apple Maps"
+              style={({ pressed }) => [
+                styles.modalOption,
+                { borderBottomColor: colors.border },
+                pressed && { backgroundColor: colors.pressed },
+              ]}
+              onPress={() => {
+                setShowVenueMapModal(false);
+                void openVenueMapApple();
+              }}
+            >
+              <ThemedText style={[styles.modalOptionText, { color: colors.link }]}>
+                Apple Maps
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              style={({ pressed }) => [
+                styles.modalOption,
+                styles.modalCancel,
+                pressed && { backgroundColor: colors.pressed },
+              ]}
+              onPress={() => setShowVenueMapModal(false)}
+            >
+              <ThemedText
+                style={[styles.modalOptionText, { color: colors.secondaryText }]}
+              >
+                Cancel
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -158,5 +300,37 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginHorizontal: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContent: {
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  modalOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+  },
+  modalOptionText: {
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  modalCancel: {
+    borderBottomWidth: 0,
   },
 });
