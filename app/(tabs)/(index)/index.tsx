@@ -9,9 +9,7 @@ import {
   useState,
 } from "react";
 import {
-  Alert,
   FlatList,
-  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -30,8 +28,12 @@ import {
 import { PageIndicator } from "@/components/schedule/PageIndicator";
 import { ScheduleSkeleton } from "@/components/schedule/ScheduleSkeleton";
 import { VersionAnnouncement } from "@/components/schedule/VersionAnnouncement";
+import { NextSessionCard } from "@/components/saved/NextSessionCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
+import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
@@ -73,6 +75,7 @@ export default function ScheduleScreen() {
   } = useScheduleData(selectedMeet);
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
+  const { savedSessions } = useSavedSessions();
 
   const handleTitleChange = useCallback(
     (title: string) => {
@@ -259,7 +262,7 @@ export default function ScheduleScreen() {
         await setSelectedMeet(meetName);
       } catch (error) {
         console.error("Error saving selected meet:", error);
-        Alert.alert("Error", "Failed to update selected meet.");
+        showToast({ type: "error", message: "Failed to update selected meet." });
       } finally {
         setIsChangingMeet(false);
       }
@@ -363,6 +366,13 @@ export default function ScheduleScreen() {
         </View>
       </View>
 
+      <NextSessionCard
+        selectedMeet={selectedMeet}
+        meetDetails={meetDetails}
+        savedSessions={savedSessions}
+        style={styles.nextSession}
+      />
+
       <VersionAnnouncement />
 
       {!schedule || schedule.length === 0 ? (
@@ -376,16 +386,12 @@ export default function ScheduleScreen() {
             />
           }
         >
-          <Image
-            source={require("@/assets/images/MeetCal-no-bg.png")}
-            style={styles.emptyStateImage}
-            resizeMode="contain"
+          <EmptyState
+            image={require("@/assets/images/MeetCal-no-bg.png")}
+            imageSize={144}
+            title="No schedule yet"
+            message="No data has been loaded yet for this meet. Check back soon!"
           />
-          <ThemedText
-            style={[styles.emptyStateText, { color: colors.secondaryText }]}
-          >
-            No data has been loaded yet for this meet. Check back soon!
-          </ThemedText>
         </ScrollView>
       ) : (
         <View style={styles.contentContainer}>
@@ -481,18 +487,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingVertical: 24,
-    gap: 16,
   },
-  emptyStateText: {
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  emptyStateImage: {
-    width: 144,
-    height: 144,
+  nextSession: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   contentContainer: {
     flex: 1,

@@ -1,7 +1,9 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { MeetSelectionModalProps } from "@/types/schedule";
+import * as Haptics from "expo-haptics";
 import { useState } from "react";
 import {
   Modal,
@@ -27,6 +29,9 @@ export function MeetSelectionModal({
 
   const handleSelectMeet = async (meetName: string) => {
     if (isSelecting) return;
+    if (process.env.EXPO_OS === "ios") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setIsSelecting(true);
     try {
       await onSelectMeet(meetName);
@@ -56,9 +61,15 @@ export function MeetSelectionModal({
       >
         <Pressable
           testID="meet-selection-modal"
-          style={[styles.modalContent, { backgroundColor: colors.card }]}
+          style={styles.modalContent}
           onPress={(e) => e.stopPropagation()}
         >
+          <MaterialSurface
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            fallbackColor={colors.card}
+            intensity={64}
+          />
           <View
             style={[styles.modalHeader, { borderBottomColor: colors.border }]}
           >
@@ -148,7 +159,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContent: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     overflow: "hidden",
     marginHorizontal: 16,

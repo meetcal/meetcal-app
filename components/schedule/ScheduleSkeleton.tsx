@@ -1,50 +1,15 @@
+import { SkeletonBlock, useSkeletonPulse } from "@/components/ui/Skeleton";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { ScheduleSkeletonProps } from "@/types/schedule";
-import { useCallback, useEffect, useRef } from "react";
-import { Animated, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 export function ScheduleSkeleton({
   label = "Loading schedule...",
 }: ScheduleSkeletonProps) {
   const colors = useAppColors();
-  const skeletonPulse = useRef(new Animated.Value(0.4)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(skeletonPulse, {
-          toValue: 0.9,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(skeletonPulse, {
-          toValue: 0.4,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [skeletonPulse]);
-
-  const SkeletonBlock = useCallback(
-    ({ style }: { style: any }) => {
-      const backgroundColor = colors.card;
-      return (
-        <Animated.View
-          style={[
-            styles.skeletonBlock,
-            { backgroundColor, opacity: skeletonPulse },
-            style,
-          ]}
-        />
-      );
-    },
-    [colors, skeletonPulse],
-  );
+  const skeletonPulse = useSkeletonPulse();
 
   return (
     <ThemedView
@@ -68,10 +33,10 @@ export function ScheduleSkeleton({
             ]}
           >
             <View style={styles.filterTextContainer}>
-              <SkeletonBlock style={styles.skeletonLineShort} />
-              <SkeletonBlock style={styles.skeletonLine} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonLineShort} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonLine} />
             </View>
-            <SkeletonBlock style={styles.skeletonIcon} />
+            <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonIcon} />
           </View>
         </View>
       </View>
@@ -83,12 +48,12 @@ export function ScheduleSkeleton({
             style={[styles.sessionContainer, { backgroundColor: colors.card }]}
           >
             <View style={styles.skeletonSection}>
-              <SkeletonBlock style={styles.skeletonTitle} />
-              <SkeletonBlock style={styles.skeletonSubtitle} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonTitle} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonSubtitle} />
             </View>
             <View style={styles.skeletonTimeRow}>
-              <SkeletonBlock style={styles.skeletonChip} />
-              <SkeletonBlock style={styles.skeletonChip} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonChip} />
+              <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonChip} />
             </View>
             <View
               style={[
@@ -102,13 +67,13 @@ export function ScheduleSkeleton({
                   style={styles.platformCard}
                 >
                   <View style={styles.platformContent}>
-                    <SkeletonBlock style={styles.skeletonBadge} />
+                    <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonBadge} />
                     <View style={styles.platformInfo}>
-                      <SkeletonBlock style={styles.skeletonLine} />
-                      <SkeletonBlock style={styles.skeletonLineShort} />
+                      <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonLine} />
+                      <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonLineShort} />
                     </View>
                   </View>
-                  <SkeletonBlock style={styles.skeletonTiny} />
+                  <SkeletonBlock pulse={skeletonPulse} style={styles.skeletonTiny} />
                 </View>
               ))}
             </View>
@@ -163,9 +128,6 @@ const styles = StyleSheet.create({
   skeletonContent: {
     padding: 16,
     paddingBottom: 40,
-  },
-  skeletonBlock: {
-    borderRadius: 6,
   },
   sessionContainer: {
     borderRadius: 12,

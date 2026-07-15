@@ -1,10 +1,18 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon, getCloseIcon } from "@/lib/start-list-utils";
 import { ActionModalProps } from "@/types/start-list";
+import * as Haptics from "expo-haptics";
 import React from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+
+const selectionHaptic = () => {
+  if (process.env.EXPO_OS === "ios") {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+};
 
 const ActionModal: React.FC<ActionModalProps> = ({
   visible,
@@ -32,7 +40,13 @@ const ActionModal: React.FC<ActionModalProps> = ({
         ]}
         onPress={onClose}
       >
-        <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+          <MaterialSurface
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            fallbackColor={colors.card}
+            intensity={64}
+          />
           <View
             style={[
               styles.saveModalHeader,
@@ -67,6 +81,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
+              selectionHaptic();
               onClose();
               onSaveAll();
             }}
@@ -103,6 +118,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
+              selectionHaptic();
               onClose();
               onSaveToCalendar();
             }}
@@ -148,6 +164,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
+              selectionHaptic();
               onClose();
               onCreateShareableSchedule();
             }}
@@ -222,6 +239,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
               pressed && { backgroundColor: colors.pressed },
             ]}
             onPress={() => {
+              selectionHaptic();
               onClose();
               onDownloadShareableSchedule();
             }}

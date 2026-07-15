@@ -14,6 +14,7 @@ import Purchases from "react-native-purchases";
 import "react-native-reanimated";
 
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
+import { ToastProvider } from "@/components/ui/Toast";
 import { UpdateNotification } from "@/components/schedule/UpdateNotification";
 import { SavedSessionsProvider } from "@/contexts/SavedSessionsContext";
 import { SelectedMeetProvider } from "@/contexts/SelectedMeetContext";
@@ -314,7 +315,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   }
 
   return (
-    <>
+    <ToastProvider>
       <UpdateNotification />
       <OfflineIndicator />
       <Stack screenOptions={{ headerShown: false }}>
@@ -325,6 +326,6 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="schedule-toolbar/widget-settings" />
       </Stack>
       <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
-    </>
+    </ToastProvider>
   );
 }

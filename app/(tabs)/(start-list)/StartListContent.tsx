@@ -11,8 +11,10 @@ import {
   FilterPillBar,
   type PillFilterConfig,
 } from "@/components/ui/filters";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
@@ -55,6 +57,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
+import * as Haptics from "expo-haptics";
 import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, {
@@ -75,6 +78,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Reanimated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const REVIEW_COUNT_KEY = "startListFilterApplyCount";
@@ -298,10 +302,10 @@ export default function StartListScreen() {
         if (!hasNetwork) {
           setLoading(false);
           if (forceRefresh) {
-            Alert.alert(
-              "Error",
-              "Failed to refresh start list data. Please try again.",
-            );
+            showToast({
+              type: "error",
+              message: "Failed to refresh start list data. Please try again.",
+            });
             setAthletes(snapshot.cachedAthletes);
             setScheduleData(snapshot.cachedSchedule);
           }
@@ -335,10 +339,10 @@ export default function StartListScreen() {
           scheduleResult.status === "rejected" &&
           forceRefresh
         ) {
-          Alert.alert(
-            "Error",
-            "Failed to refresh start list data. Please try again.",
-          );
+          showToast({
+            type: "error",
+            message: "Failed to refresh start list data. Please try again.",
+          });
         }
 
         setAthletes(nextAthletes);
@@ -914,7 +918,7 @@ export default function StartListScreen() {
 
   const handleSaveAll = async () => {
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      Alert.alert("Error", "Please select a meet before saving sessions.");
+      showToast({ type: "error", message: "Please select a meet before saving sessions." });
       return;
     }
 
@@ -938,6 +942,11 @@ export default function StartListScreen() {
                 scheduleData,
               );
               if (success) {
+                if (process.env.EXPO_OS === "ios") {
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Success,
+                  );
+                }
                 Alert.alert(
                   "Success",
                   "Sessions have been saved to your list.",
@@ -952,10 +961,10 @@ export default function StartListScreen() {
                   ],
                 );
               } else {
-                Alert.alert("Error", "Failed to save sessions.");
+                showToast({ type: "error", message: "Failed to save sessions." });
               }
             } catch (error) {
-              Alert.alert("Error", "Failed to save sessions.");
+              showToast({ type: "error", message: "Failed to save sessions." });
               console.error(error);
             }
           },
@@ -971,10 +980,10 @@ export default function StartListScreen() {
     }
 
     if (!selectedMeet || !isMeetName(selectedMeet)) {
-      Alert.alert(
-        "Error",
-        "Please select a meet before adding events to calendar.",
-      );
+      showToast({
+        type: "error",
+        message: "Please select a meet before adding events to calendar.",
+      });
       return;
     }
 
@@ -1001,7 +1010,7 @@ export default function StartListScreen() {
     const sessionsToAdd = Array.from(sessionMap.values());
 
     if (sessionsToAdd.length === 0) {
-      Alert.alert("No Sessions", "There are no sessions to add to calendar.");
+      showToast({ type: "info", message: "There are no sessions to add to calendar." });
       return;
     }
 
@@ -1033,10 +1042,10 @@ export default function StartListScreen() {
                     sessionsToAdd,
                     preferredCalendar.id,
                   );
-                  Alert.alert(
-                    "Success",
-                    `Sessions have been added to ${preferredCalendar.title}.`,
-                  );
+                  showToast({
+                    type: "success",
+                    message: `Sessions added to ${preferredCalendar.title}.`,
+                  });
                   return;
                 }
 
@@ -1056,14 +1065,18 @@ export default function StartListScreen() {
               }
 
               await createCalendarEvents(sessionsToAdd);
-              Alert.alert("Success", "Sessions have been added to your calendar.");
+              showToast({
+                type: "success",
+                message: "Sessions have been added to your calendar.",
+              });
             } catch (error) {
-              Alert.alert(
-                "Error",
-                error instanceof Error
-                  ? error.message
-                  : "Failed to add sessions to calendar.",
-              );
+              showToast({
+                type: "error",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to add sessions to calendar.",
+              });
               console.error(error);
             }
           },
@@ -1089,18 +1102,19 @@ export default function StartListScreen() {
         );
         setShowCalendarPicker(false);
         setPendingCalendarSessions(null);
-        Alert.alert(
-          "Success",
-          `Sessions have been added to ${destination.title}.`,
-        );
+        showToast({
+          type: "success",
+          message: `Sessions added to ${destination.title}.`,
+        });
       } catch (error) {
         console.error("StartList: failed to write calendar events", error);
-        Alert.alert(
-          "Error",
-          error instanceof Error
-            ? error.message
-            : "Failed to add sessions to calendar.",
-        );
+        showToast({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to add sessions to calendar.",
+        });
       } finally {
         setIsCalendarPickerLoading(false);
       }
@@ -1188,19 +1202,20 @@ export default function StartListScreen() {
   // Capture schedule image for sharing
   const captureScheduleImage = async () => {
     if (!selectedShareGroup) {
-      Alert.alert(
-        "Select a Club or WSO",
-        "Please select a specific club or WSO from the filters to create a shareable schedule.",
-      );
+      showToast({
+        type: "info",
+        message:
+          "Select a specific club or WSO from the filters to create a shareable schedule.",
+      });
       return;
     }
 
     // Ensure there are filtered athletes
     if (filteredAthletes.length === 0) {
-      Alert.alert(
-        "Nothing to Share",
-        "No athletes were found for the current filters.",
-      );
+      showToast({
+        type: "info",
+        message: "No athletes were found for the current filters.",
+      });
       return;
     }
 
@@ -1214,10 +1229,10 @@ export default function StartListScreen() {
 
       if (!shareScheduleRef.current || !shareScheduleTransparentRef.current) {
         setShowShareViews(false);
-        Alert.alert(
-          "Error",
-          "Failed to generate schedule image. Please try again.",
-        );
+        showToast({
+          type: "error",
+          message: "Failed to generate schedule image. Please try again.",
+        });
         return;
       }
 
@@ -1243,31 +1258,35 @@ export default function StartListScreen() {
       setGeneratedImageWhiteUri(whiteUri);
       setGeneratedImageTransparentUri(transparentUri);
       setSelectedImageIndex(0);
+      if (process.env.EXPO_OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       setShowImagePreview(true);
     } catch (error) {
       setShowShareViews(false);
       console.error("Error capturing image:", error);
-      Alert.alert(
-        "Error",
-        "Failed to generate schedule image. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Failed to generate schedule image. Please try again.",
+      });
     }
   };
 
   const generateShareableScheduleCsv = async () => {
     if (!selectedShareGroup) {
-      Alert.alert(
-        "Select a Club or WSO",
-        "Please select a specific club or WSO from the filters to create a shareable schedule.",
-      );
+      showToast({
+        type: "info",
+        message:
+          "Select a specific club or WSO from the filters to create a shareable schedule.",
+      });
       return;
     }
 
     if (filteredAthletes.length === 0) {
-      Alert.alert(
-        "Nothing to Share",
-        "No athletes were found for the current filters.",
-      );
+      showToast({
+        type: "info",
+        message: "No athletes were found for the current filters.",
+      });
       return;
     }
 
@@ -1384,10 +1403,10 @@ export default function StartListScreen() {
     try {
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
-        Alert.alert(
-          "Sharing Unavailable",
-          "Sharing is not available on this device.",
-        );
+        showToast({
+          type: "info",
+          message: "Sharing is not available on this device.",
+        });
         return;
       }
 
@@ -1402,7 +1421,7 @@ export default function StartListScreen() {
       });
     } catch (error) {
       console.error("Error generating CSV:", error);
-      Alert.alert("Error", "Failed to generate CSV. Please try again.");
+      showToast({ type: "error", message: "Failed to generate CSV. Please try again." });
     }
   };
 
@@ -1489,37 +1508,78 @@ export default function StartListScreen() {
         </View>
       </View>
 
-      <ExpandedIdProvider>
-        <FlashList
-          ref={listRef}
-          data={filteredAthletes}
-          extraData={{
-            weightClassFilter,
-            clubFilter,
-            ageGroupFilter,
-            adaptiveAthleteFilter,
-            genderFilter,
-            wsoFilter,
-            searchQuery,
-          }}
-          keyExtractor={keyExtractor}
-          renderItem={renderListItem}
-          removeClippedSubviews={false}
-          drawDistance={350}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: 80 + insets.bottom },
-          ]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.text}
-            />
-          }
-        />
-      </ExpandedIdProvider>
+      <Reanimated.View
+        style={styles.listWrapper}
+        entering={FadeIn.duration(250)}
+      >
+        <ExpandedIdProvider>
+          <FlashList
+            ref={listRef}
+            data={filteredAthletes}
+            extraData={{
+              weightClassFilter,
+              clubFilter,
+              ageGroupFilter,
+              adaptiveAthleteFilter,
+              genderFilter,
+              wsoFilter,
+              searchQuery,
+            }}
+            keyExtractor={keyExtractor}
+            renderItem={renderListItem}
+            removeClippedSubviews={false}
+            drawDistance={350}
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingBottom: 80 + insets.bottom },
+            ]}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <EmptyState
+                style={styles.listEmpty}
+                icon={
+                  <IconSymbol
+                    name={
+                      hasActiveFilters || searchQuery.length > 0
+                        ? "magnifyingglass"
+                        : "list.bullet"
+                    }
+                    size={44}
+                    color={colors.secondaryText}
+                  />
+                }
+                title={
+                  hasActiveFilters || searchQuery.length > 0
+                    ? "No athletes match your filters"
+                    : "No athletes yet"
+                }
+                message={
+                  hasActiveFilters || searchQuery.length > 0
+                    ? "Try adjusting or clearing your filters to see more athletes."
+                    : "Athletes will appear here once the start list is published."
+                }
+                actionLabel={
+                  hasActiveFilters || searchQuery.length > 0
+                    ? "Clear filters"
+                    : undefined
+                }
+                onActionPress={
+                  hasActiveFilters || searchQuery.length > 0
+                    ? resetFilters
+                    : undefined
+                }
+              />
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.text}
+              />
+            }
+          />
+        </ExpandedIdProvider>
+      </Reanimated.View>
 
       <ClubFilterModal
         visible={showClubModal}
@@ -1603,10 +1663,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  listWrapper: {
+    flex: 1,
+  },
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 4,
     gap: 12,
+  },
+  listEmpty: {
+    paddingTop: 64,
   },
   filterContainer: {
     paddingTop: 16,

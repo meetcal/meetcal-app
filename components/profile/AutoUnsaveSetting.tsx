@@ -1,3 +1,4 @@
+import { showToast } from "@/components/ui/Toast";
 import {
   fetchUserPreferences,
   patchAutoUnsavePreference,
@@ -6,7 +7,6 @@ import { AuthGuardOptions } from "@/utils/authGuard";
 import { useAuth, useUser } from "@clerk/expo";
 import type { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Alert } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 
 interface AutoUnsaveSettingProps {
@@ -96,10 +96,10 @@ export function AutoUnsaveSetting({
     } catch (error) {
       setIsEnabled(!nextValue);
       console.error("Error updating auto-unsave setting:", error);
-      Alert.alert(
-        "Error",
-        "Failed to update auto-remove setting. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Failed to update auto-remove setting. Please try again.",
+      });
     }
   };
 

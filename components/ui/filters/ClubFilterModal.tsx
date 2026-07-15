@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { LiftResult } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -77,7 +78,15 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.sheetWrapper}>
-        <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+        <Pressable style={styles.sheetBackdrop} onPress={onClose}>
+          <MaterialSurface
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            fallbackColor="rgba(0,0,0,0.4)"
+            tint="dark"
+            intensity={24}
+          />
+        </Pressable>
         <View
           style={[
             styles.sheetContent,
@@ -295,7 +304,6 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheetContent: {
     position: "absolute",

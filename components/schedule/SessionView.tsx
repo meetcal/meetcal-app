@@ -7,6 +7,11 @@ import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { PlatformBadge } from "../schedule-details/PlatformBadge";
 
 export function SessionView({ session, timeZone, meet }: SessionViewProps) {
@@ -59,55 +64,91 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
         style={[styles.platformsContainer, { backgroundColor: colors.card }]}
       >
         {sortedPlatforms.map((platform, index) => (
-          <Pressable
+          <PlatformRow
             key={platform.platform}
-            testID={`schedule-session-${session.number}-${platform.platform}`}
-            accessibilityRole="button"
-            accessibilityLabel={`Open session ${session.number} platform ${platform.platform}`}
-            style={({ pressed }) => [
-              styles.platformCard,
-              { backgroundColor: colors.card },
-              index < sortedPlatforms.length - 1 && [
-                styles.platformCardBorder,
-                { borderBottomColor: colors.border },
-              ],
-              pressed && { backgroundColor: colors.pressed },
-            ]}
+            session={session}
+            platform={platform}
+            timeZone={timeZone}
+            colors={colors}
+            isLast={index === sortedPlatforms.length - 1}
             onPress={() => handlePlatformPress(platform)}
-          >
-            <View style={styles.platformContent}>
-              <PlatformBadge platform={platform.platform} />
-              <View style={styles.platformInfo}>
-                <ThemedText
-                  style={[
-                    styles.weightClassText,
-                    { color: colors.secondaryText },
-                  ]}
-                >
-                  {platform.weightClass}
-                </ThemedText>
-                <ThemedText
-                  style={[
-                    styles.platformTimeText,
-                    { color: colors.secondaryText },
-                  ]}
-                >
-                  Start:{" "}
-                  {platform.platformStartTime || session.startTime}
-                  {" "}
-                  {timeZone}
-                </ThemedText>
-              </View>
-            </View>
-            <IconSymbol
-              name="chevron.right"
-              size={20}
-              color={colors.secondaryText}
-            />
-          </Pressable>
+          />
         ))}
       </View>
     </View>
+  );
+}
+
+type PlatformRowProps = {
+  session: SessionViewProps["session"];
+  platform: SessionViewProps["session"]["platforms"][number];
+  timeZone: string;
+  colors: ReturnType<typeof useAppColors>;
+  isLast: boolean;
+  onPress: () => void;
+};
+
+function PlatformRow({
+  session,
+  platform,
+  timeZone,
+  colors,
+  isLast,
+  onPress,
+}: PlatformRowProps) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        testID={`schedule-session-${session.number}-${platform.platform}`}
+        accessibilityRole="button"
+        accessibilityLabel={`Open session ${session.number} platform ${platform.platform}`}
+        style={({ pressed }) => [
+          styles.platformCard,
+          { backgroundColor: colors.card },
+          !isLast && [
+            styles.platformCardBorder,
+            { borderBottomColor: colors.border },
+          ],
+          pressed && { backgroundColor: colors.pressed },
+        ]}
+        onPressIn={() => {
+          scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+        }}
+        onPress={onPress}
+      >
+        <View style={styles.platformContent}>
+          <PlatformBadge platform={platform.platform} />
+          <View style={styles.platformInfo}>
+            <ThemedText
+              style={[styles.weightClassText, { color: colors.secondaryText }]}
+            >
+              {platform.weightClass}
+            </ThemedText>
+            <ThemedText
+              style={[styles.platformTimeText, { color: colors.secondaryText }]}
+            >
+              Start:{" "}
+              {platform.platformStartTime || session.startTime}
+              {" "}
+              {timeZone}
+            </ThemedText>
+          </View>
+        </View>
+        <IconSymbol
+          name="chevron.right"
+          size={20}
+          color={colors.secondaryText}
+        />
+      </Pressable>
+    </Animated.View>
   );
 }
 

@@ -1,6 +1,8 @@
+import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
+import * as Haptics from "expo-haptics";
 import React, { useCallback, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
@@ -168,12 +170,18 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   );
 
   const handleApply = () => {
+    if (process.env.EXPO_OS === "ios") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     onApplyFilters(tempFilters);
     setExpandedSection(null);
     onClose();
   };
 
   const handleReset = () => {
+    if (process.env.EXPO_OS === "ios") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     const resetFilters = Object.keys(filters).reduce<Record<string, string>>(
       (acc, key) => {
         acc[key] = "";
@@ -215,7 +223,15 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
       onRequestClose={handleClose}
     >
       <View style={styles.sheetWrapper}>
-        <Pressable style={styles.sheetBackdrop} onPress={handleClose} />
+        <Pressable style={styles.sheetBackdrop} onPress={handleClose}>
+          <MaterialSurface
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            fallbackColor="rgba(0,0,0,0.4)"
+            tint="dark"
+            intensity={24}
+          />
+        </Pressable>
         <View
           style={[
             styles.sheetContent,
@@ -355,7 +371,6 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheetContent: {
     position: "absolute",

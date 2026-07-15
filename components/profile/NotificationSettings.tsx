@@ -1,4 +1,5 @@
 import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
+import { showToast } from "@/components/ui/Toast";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
@@ -183,10 +184,10 @@ export function NotificationSettings({
       }
     } catch (error) {
       console.error("Error toggling notifications:", error);
-      Alert.alert(
-        "Error",
-        "Failed to update notification settings. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Failed to update notification settings. Please try again.",
+      });
       // Revert UI state if there was an error
       setIsEnabled(!newEnabledState);
     }

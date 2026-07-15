@@ -1,6 +1,7 @@
 import { PlatformBadge } from "@/components/schedule-details/PlatformBadge";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
+import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -17,11 +18,16 @@ import {
 } from "@/utils/calendar";
 import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from "react-native-reanimated";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
   sessionNumber,
@@ -61,16 +67,30 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
 
-  const showSaveAlert = (action: "save" | "remove") => {
-    const title = action === "save" ? "Session Saved" : "Session Unsaved";
-    let message =
-      action === "save"
-        ? `Session ${sessionNumber} - ${platform} - ${sessionWeightClass} has been saved to your list`
-        : `Session ${sessionNumber} - ${platform} - ${sessionWeightClass} has been unsaved from your list`;
+  // Bounce the save button whenever the saved state flips (not on first mount).
+  const saveScale = useSharedValue(1);
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    saveScale.value = withSequence(
+      withSpring(1.12, { damping: 12, stiffness: 320 }),
+      withSpring(1, { damping: 14, stiffness: 300 }),
+    );
+  }, [isSaved, saveScale]);
+  const saveAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: saveScale.value }],
+  }));
 
-    Alert.alert(title, message, [{ text: "OK" }], {
-      userInterfaceStyle: "light",
-    });
+  const showSaveAlert = (action: "save" | "remove") => {
+    const message =
+      action === "save"
+        ? `Session ${sessionNumber} saved to your list`
+        : `Session ${sessionNumber} removed from your list`;
+
+    showToast({ type: "success", message });
   };
 
   const handleSavePress = async () => {
@@ -87,10 +107,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     if (isSaved) {
       const removed = await removeSession(sessionId);
       if (!removed) {
-        Alert.alert(
-          "Error",
-          "Failed to remove saved session. Please try again.",
-        );
+        showToast({
+          type: "error",
+          message: "Failed to remove saved session. Please try again.",
+        });
         return;
       }
       showSaveAlert("remove");
@@ -102,10 +122,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
       if (!sessionDay) {
         console.error("Session day not found in schedule");
-        Alert.alert(
-          "Error",
-          "Unable to save: session day not found. Please try again.",
-        );
+        showToast({
+          type: "error",
+          message: "Unable to save: session not found. Please try again.",
+        });
         return;
       }
 
@@ -121,13 +141,15 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         meet: meet,
       });
       if (!saved) {
-        Alert.alert("Error", "Failed to save session. Please try again.");
+        showToast({
+          type: "error",
+          message: "Failed to save session. Please try again.",
+        });
         return;
       }
       showSaveAlert("save");
       checkAndShowReviewPrompt();
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const checkAndShowReviewPrompt = async () => {
@@ -156,21 +178,17 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
   const showSuccessAlert = (openedSystemCalendar = false) => {
     if (Platform.OS === "android" && openedSystemCalendar) {
-      Alert.alert(
-        "Calendar Opened",
-        "Review the event in your calendar app and save it there.",
-        [{ text: "OK" }],
-        { userInterfaceStyle: "light" },
-      );
+      showToast({
+        type: "info",
+        message: "Review the event in your calendar app and save it there.",
+      });
       return;
     }
 
-    Alert.alert(
-      "Added to Calendar",
-      `Session ${sessionNumber} - ${platform} - ${sessionWeightClass} has been added to your calendar`,
-      [{ text: "OK" }],
-      { userInterfaceStyle: "light" },
-    );
+    showToast({
+      type: "success",
+      message: `Session ${sessionNumber} added to your calendar`,
+    });
   };
 
   const addToCalendar = async () => {
@@ -201,12 +219,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         sessionNumber,
         platform,
       });
-      Alert.alert(
-        "Error",
-        "Could not find session details. Please try again.",
-        [{ text: "OK" }],
-        { userInterfaceStyle: "light" },
-      );
+      showToast({
+        type: "error",
+        message: "Could not find session details. Please try again.",
+      });
       return;
     }
 
@@ -257,7 +273,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       }
 
       showSuccessAlert(openedSystemCalendar);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error("Error creating calendar event:", error);
 
@@ -271,8 +286,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               default: "Could not add event to calendar. Please try again.",
             });
 
-      Alert.alert("Error", errorMessage, [{ text: "OK" }], {
-        userInterfaceStyle: "light",
+      showToast({
+        type: "error",
+        message: errorMessage ?? "Could not add event to calendar.",
       });
     }
   };
@@ -301,17 +317,19 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       </View>
 
       <View style={styles.buttonContainer}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.saveButton,
-            pressed && styles.saveButtonPressed,
-          ]}
-          onPress={handleSavePress}
-        >
-          <ThemedText style={styles.saveButtonText}>
-            {isSaved ? "Unsave Session" : "Save Session"}
-          </ThemedText>
-        </Pressable>
+        <Animated.View style={[styles.saveButtonWrapper, saveAnimatedStyle]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.saveButton,
+              pressed && styles.saveButtonPressed,
+            ]}
+            onPress={handleSavePress}
+          >
+            <ThemedText style={styles.saveButtonText}>
+              {isSaved ? "Unsave Session" : "Save Session"}
+            </ThemedText>
+          </Pressable>
+        </Animated.View>
 
         <Pressable
           style={({ pressed }) => [
@@ -474,12 +492,14 @@ const styles = StyleSheet.create({
     gap: 12,
     flexDirection: "row",
   },
+  saveButtonWrapper: {
+    flex: 1,
+  },
   saveButton: {
     backgroundColor: "#007AFF",
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
-    flex: 1,
   },
   saveButtonPressed: {
     opacity: 0.8,

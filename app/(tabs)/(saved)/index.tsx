@@ -1,8 +1,10 @@
 import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
+import { NextSessionCard } from "@/components/saved/NextSessionCard";
 import SessionCard from "@/components/saved/SessionCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -163,13 +165,13 @@ export default function SavedScreen() {
                 `@sessions_reset_${user!.id}`,
                 Date.now().toString(),
               );
-              Alert.alert(
-                "Success",
-                "All saved sessions for this meet have been reset.",
-              );
+              showToast({
+                type: "success",
+                message: "All saved sessions for this meet have been reset.",
+              });
             } catch (error) {
               console.error("Error resetting sessions:", error);
-              Alert.alert("Error", "Failed to reset saved sessions.");
+              showToast({ type: "error", message: "Failed to reset saved sessions." });
             }
           },
         },
@@ -326,15 +328,15 @@ export default function SavedScreen() {
     }
 
     if (filteredSessions.length === 0) {
-      Alert.alert("No Sessions", "There are no sessions to add to calendar.");
+      showToast({ type: "info", message: "There are no sessions to add to calendar." });
       return;
     }
     // Check if schedules are still loading
     if (isSchedulesLoading) {
-      Alert.alert(
-        "Loading",
-        "Schedule data is still loading, please wait a moment.",
-      );
+      showToast({
+        type: "info",
+        message: "Schedule data is still loading, please wait a moment.",
+      });
       return;
     }
 
@@ -370,10 +372,11 @@ export default function SavedScreen() {
               }) as (SavedSession & { meet: MeetName })[];
 
               if (validSessions.length === 0) {
-                Alert.alert(
-                  "Error",
-                  "No valid sessions found with complete schedule information.",
-                );
+                showToast({
+                  type: "error",
+                  message:
+                    "No valid sessions found with complete schedule information.",
+                });
                 return;
               }
 
@@ -411,10 +414,11 @@ export default function SavedScreen() {
               }
 
               if (sessionsToAdd.length === 0) {
-                Alert.alert(
-                  "Error",
-                  "Could not extract necessary details for calendar events.",
-                );
+                showToast({
+                  type: "error",
+                  message:
+                    "Could not extract necessary details for calendar events.",
+                });
                 return;
               }
 
@@ -425,10 +429,10 @@ export default function SavedScreen() {
                     sessionsToAdd,
                     preferredCalendar.id,
                   );
-                  Alert.alert(
-                    "Success",
-                    `Sessions have been added to ${preferredCalendar.title}.`,
-                  );
+                  showToast({
+                    type: "success",
+                    message: `Sessions added to ${preferredCalendar.title}.`,
+                  });
                   return;
                 }
 
@@ -448,17 +452,18 @@ export default function SavedScreen() {
               }
 
               await createCalendarEvents(sessionsToAdd);
-              Alert.alert(
-                "Success",
-                "Sessions have been added to your calendar.",
-              );
+              showToast({
+                type: "success",
+                message: "Sessions have been added to your calendar.",
+              });
             } catch (error) {
-              Alert.alert(
-                "Error",
-                error instanceof Error
-                  ? error.message
-                  : "Failed to add sessions to calendar.",
-              );
+              showToast({
+                type: "error",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to add sessions to calendar.",
+              });
               console.error(error);
             }
           },
@@ -484,18 +489,19 @@ export default function SavedScreen() {
         );
         setShowCalendarPicker(false);
         setPendingCalendarSessions(null);
-        Alert.alert(
-          "Success",
-          `Sessions have been added to ${destination.title}.`,
-        );
+        showToast({
+          type: "success",
+          message: `Sessions added to ${destination.title}.`,
+        });
       } catch (error) {
         console.error("Saved: failed to write calendar events", error);
-        Alert.alert(
-          "Error",
-          error instanceof Error
-            ? error.message
-            : "Failed to add sessions to calendar.",
-        );
+        showToast({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to add sessions to calendar.",
+        });
       } finally {
         setIsCalendarPickerLoading(false);
       }
@@ -697,11 +703,31 @@ export default function SavedScreen() {
         renderItem={renderSession}
         contentContainerStyle={[
           styles.list,
+          filteredSessions.length === 0 && styles.listEmpty,
           { paddingBottom: insets.bottom + 100 },
         ]}
+        ListHeaderComponent={
+          <NextSessionCard
+            selectedMeet={selectedMeet}
+            meetDetails={meetDetails}
+            savedSessions={savedSessions}
+          />
+        }
         ListEmptyComponent={() => (
           <View testID="saved-empty-state" style={styles.emptyContainer}>
-            <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>No saved sessions</ThemedText>
+            <EmptyState
+              icon={
+                <IconSymbol
+                  name="bookmark.fill"
+                  size={48}
+                  color={colors.secondaryText}
+                />
+              }
+              title="No saved sessions"
+              message="Save sessions from the schedule to see them here"
+              actionLabel="Browse Schedule"
+              onActionPress={() => router.push("/(tabs)/(index)")}
+            />
           </View>
         )}
         refreshControl={
@@ -746,12 +772,11 @@ const styles = StyleSheet.create({
   list: {
     padding: 16,
   },
-  emptyContainer: {
-    padding: 16,
-    alignItems: "center",
+  listEmpty: {
+    flexGrow: 1,
   },
-  emptyText: {
-    fontSize: 16,
-    textAlign: "center",
+  emptyContainer: {
+    flex: 1,
+    minHeight: 320,
   },
 });
