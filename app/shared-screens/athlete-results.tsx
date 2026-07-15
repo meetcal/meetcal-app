@@ -1,4 +1,3 @@
-import { AttemptDots } from "@/components/athlete-results/AttemptDots";
 import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -431,10 +430,6 @@ export default function AthleteResultsScreen() {
                   styles.card,
                   { backgroundColor: colors.card },
                   index === 0 && { marginTop: 16 },
-                  isPR && {
-                    borderLeftWidth: 3,
-                    borderLeftColor: colors.prColor,
-                  },
                 ]}
               >
                 <View
@@ -495,16 +490,6 @@ export default function AthleteResultsScreen() {
                       />
                     </View>
                   </View>
-                  <View style={styles.dotsRow}>
-                    <AttemptDots
-                      attempts={[
-                        result.snatch1,
-                        result.snatch2,
-                        result.snatch3,
-                      ]}
-                      colors={colors}
-                    />
-                  </View>
                 </View>
 
                 <View
@@ -521,12 +506,6 @@ export default function AthleteResultsScreen() {
                       <AttemptDisplay attempt={result.cj2} colors={colors} />
                       <AttemptDisplay attempt={result.cj3} colors={colors} />
                     </View>
-                  </View>
-                  <View style={styles.dotsRow}>
-                    <AttemptDots
-                      attempts={[result.cj1, result.cj2, result.cj3]}
-                      colors={colors}
-                    />
                   </View>
                 </View>
 
@@ -625,11 +604,6 @@ const styles = StyleSheet.create({
   },
   rateBarWrap: {
     marginBottom: 10,
-  },
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 8,
   },
   meetDate: {
     fontSize: 15,

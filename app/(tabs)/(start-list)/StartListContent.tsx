@@ -78,7 +78,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Reanimated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const REVIEW_COUNT_KEY = "startListFilterApplyCount";
@@ -1508,10 +1507,7 @@ export default function StartListScreen() {
         </View>
       </View>
 
-      <Reanimated.View
-        style={styles.listWrapper}
-        entering={FadeIn.duration(250)}
-      >
+      <View style={styles.listWrapper}>
         <ExpandedIdProvider>
           <FlashList
             ref={listRef}
@@ -1579,7 +1575,7 @@ export default function StartListScreen() {
             }
           />
         </ExpandedIdProvider>
-      </Reanimated.View>
+      </View>
 
       <ClubFilterModal
         visible={showClubModal}

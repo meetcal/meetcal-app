@@ -155,7 +155,7 @@ export function NextSessionCard({
   };
 
   return (
-    <Animated.View entering={FadeInDown.duration(400)} style={style}>
+    <Animated.View entering={FadeInDown.duration(250)} style={style}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Your next session: Session ${session.sessionNumber} on ${session.platform} platform, ${countdownLabel}`}
@@ -179,19 +179,15 @@ export function NextSessionCard({
                 >
                   YOUR NEXT SESSION
                 </ThemedText>
-                <ThemedText style={[styles.title, { color: colors.text }]}>
-                  {`Session ${session.sessionNumber}${
-                    session.platform ? ` · ${session.platform} platform` : ""
-                  }`}
+                <ThemedText style={[styles.countdown, { color: colors.link }]}>
+                  {countdownLabel}
                 </ThemedText>
                 <View style={styles.metaRow}>
-                  {weighInLabel ? (
-                    <ThemedText
-                      style={[styles.meta, { color: colors.secondaryText }]}
-                    >
-                      {weighInLabel}
-                    </ThemedText>
-                  ) : null}
+                  <ThemedText style={[styles.meta, { color: colors.text }]}>
+                    {`Session ${session.sessionNumber}${
+                      session.platform ? ` · ${session.platform} platform` : ""
+                    }`}
+                  </ThemedText>
                   {weighInLabel ? (
                     <ThemedText
                       style={[styles.dot, { color: colors.secondaryText }]}
@@ -199,9 +195,13 @@ export function NextSessionCard({
                       ·
                     </ThemedText>
                   ) : null}
-                  <ThemedText style={[styles.countdown, { color: colors.link }]}>
-                    {countdownLabel}
-                  </ThemedText>
+                  {weighInLabel ? (
+                    <ThemedText
+                      style={[styles.meta, { color: colors.secondaryText }]}
+                    >
+                      {weighInLabel}
+                    </ThemedText>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -235,10 +235,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: Spacing.xs,
   },
-  title: {
-    ...Type.bodySemiBold,
-    marginBottom: Spacing.xs,
-  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -252,7 +248,9 @@ const styles = StyleSheet.create({
     ...Type.caption,
   },
   countdown: {
-    ...Type.caption,
+    fontSize: 19,
+    lineHeight: 24,
     fontWeight: "700",
+    marginBottom: Spacing.xs,
   },
 });

@@ -45,7 +45,7 @@ MeetCal wins on usefulness: schedules, start lists, athlete history, offline-fir
 ## 3. Tier 2 — Competition day & data storytelling
 
 6. **Countdown to your session.** On meet day, a pinned card on the Schedule and Saved screens: *"Session 4 · weigh-in 8:00 AM · starts in 2h 14m."* All the timing math already exists (`calculateWeighInTime`, the reminder scheduler in `useSavedSessions`). This is the single most useful-plus-experiential item in the roadmap.
-7. **Athlete results, visualized.** The data is already computed — this is purely presentational: attempt dots (green/red/—) per meet, success-rate rings with animated counters, PR highlight rows. Turns a wall of numbers into something a coach can read at a glance.
+7. **Athlete results, visualized.** The data is already computed — this is purely presentational: animated make-rate bars in the summary card and a PR badge on the athlete's best-total meet. (Attempt "dots" were prototyped and cut in review: the per-attempt numbers are already color-coded green/red, so dots duplicated the same information as extra ink.)
 8. **Material surfaces, platform-split.** `expo-glass-effect` (GlassView) on **iOS**, `BlurView` on **Android** — applied to the meet-selection pill, filter modals, and the start-list ActionModal, following the codebase's established `.ios.tsx` platform-split idiom. Both dependencies already ship in the binary.
 
 **Explicitly excluded (owner decision):**

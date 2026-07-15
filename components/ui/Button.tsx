@@ -29,6 +29,11 @@ export type ButtonProps = Omit<PressableProps, "style"> & {
   /** Optional element rendered before the title (e.g. an IconSymbol). */
   icon?: React.ReactNode;
   fullWidth?: boolean;
+  /**
+   * Opt-in light impact haptic on press (iOS only). Reserve for meaningful
+   * actions — leaving every button buzzing cheapens the signal.
+   */
+  haptic?: boolean;
   style?: ViewStyle;
 };
 
@@ -49,8 +54,11 @@ export function Button({
   disabled = false,
   icon,
   fullWidth = false,
+  haptic = false,
   style,
   onPress,
+  onPressIn,
+  onPressOut,
   ...rest
 }: ButtonProps) {
   const colors = useAppColors();
@@ -75,14 +83,14 @@ export function Button({
         disabled={isDisabled}
         onPressIn={(ev) => {
           scale.value = withSpring(0.96, { damping: 15, stiffness: 300 });
-          if (process.env.EXPO_OS === "ios") {
+          if (haptic && process.env.EXPO_OS === "ios") {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }
-          rest.onPressIn?.(ev);
+          onPressIn?.(ev);
         }}
         onPressOut={(ev) => {
           scale.value = withSpring(1, { damping: 15, stiffness: 300 });
-          rest.onPressOut?.(ev);
+          onPressOut?.(ev);
         }}
         onPress={onPress}
         style={[

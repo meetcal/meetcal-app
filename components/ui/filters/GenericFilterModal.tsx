@@ -1,4 +1,3 @@
-import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
@@ -223,15 +222,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
       onRequestClose={handleClose}
     >
       <View style={styles.sheetWrapper}>
-        <Pressable style={styles.sheetBackdrop} onPress={handleClose}>
-          <MaterialSurface
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-            fallbackColor="rgba(0,0,0,0.4)"
-            tint="dark"
-            intensity={24}
-          />
-        </Pressable>
+        <Pressable style={styles.sheetBackdrop} onPress={handleClose} />
         <View
           style={[
             styles.sheetContent,
@@ -371,6 +362,7 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sheetContent: {
     position: "absolute",

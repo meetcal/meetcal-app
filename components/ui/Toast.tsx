@@ -25,7 +25,7 @@ export type ToastType = "success" | "error" | "info";
 export interface ToastOptions {
   type: ToastType;
   message: string;
-  /** Auto-dismiss delay in ms. Defaults to 2500. */
+  /** Auto-dismiss delay in ms. Defaults to 3500 (6000 for errors). */
   duration?: number;
 }
 
@@ -33,7 +33,8 @@ interface ToastData extends ToastOptions {
   id: number;
 }
 
-const DEFAULT_DURATION = 2500;
+const DEFAULT_DURATION = 3500;
+const ERROR_DURATION = 6000;
 const HIDDEN_OFFSET = -200;
 
 // Module-level handle so non-component code can trigger toasts.
@@ -71,7 +72,7 @@ function getToastVisual(type: ToastType, colors: ReturnType<typeof useAppColors>
     case "success":
       return { backgroundColor: colors.success, icon: "checkmark.circle.fill" };
     case "error":
-      return { backgroundColor: colors.danger, icon: "close-circle" };
+      return { backgroundColor: colors.danger, icon: "xmark.circle.fill" };
     case "info":
     default:
       return { backgroundColor: colors.link, icon: "info.circle.fill" };
@@ -136,7 +137,10 @@ function ToastHost() {
     translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
 
     clearTimer();
-    timerRef.current = setTimeout(dismiss, toast.duration ?? DEFAULT_DURATION);
+    timerRef.current = setTimeout(
+      dismiss,
+      toast.duration ?? (toast.type === "error" ? ERROR_DURATION : DEFAULT_DURATION),
+    );
 
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps

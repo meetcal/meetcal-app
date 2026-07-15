@@ -1,5 +1,5 @@
 import { useAppColors } from "@/hooks/useAppColors";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -14,10 +14,18 @@ import Animated, {
 export function RateBar({ rate, color }: { rate: number; color: string }) {
   const colors = useAppColors();
   const progress = useSharedValue(0);
+  const hasAnimatedRef = useRef(false);
 
   useEffect(() => {
     const clamped = Math.max(0, Math.min(100, rate));
-    progress.value = withTiming(clamped, { duration: 900 });
+    if (hasAnimatedRef.current) {
+      // Data refresh (e.g. cached results replaced by full history):
+      // update without replaying the fill animation.
+      progress.value = clamped;
+    } else {
+      hasAnimatedRef.current = true;
+      progress.value = withTiming(clamped, { duration: 400 });
+    }
   }, [rate, progress]);
 
   const animatedStyle = useAnimatedStyle(() => ({
