@@ -2,6 +2,11 @@ import type { Schedule } from '@/types/schedule';
 import type { SupabaseBests, SupabaseLiftResult, LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import {
+  getMockAthletesWithSession,
+  getMockSchedule,
+  isMockedMeet,
+} from '@/config/dev-mock-meet';
+import {
   fetchApiAthletes,
   fetchApiAthletesWithSession,
   fetchApiLiftingResultsForMeet,
@@ -16,6 +21,10 @@ const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
 
 export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
+  if (__DEV__ && (await isMockedMeet(meet))) {
+    return getMockSchedule(meet);
+  }
+
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) return inFlight;
 
@@ -37,6 +46,10 @@ export async function fetchAthletesWithSession(
   sessionNumber?: number,
   platform?: string,
 ): Promise<LiftResult[]> {
+  if (__DEV__ && (await isMockedMeet(meet))) {
+    return getMockAthletesWithSession(meet, sessionNumber, platform);
+  }
+
   const key = `${meet}:${sessionNumber ?? ''}:${platform ?? ''}`;
   const inFlight = athletesWithSessionInFlight.get(key);
   if (inFlight) return inFlight;
