@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
+import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
@@ -36,6 +37,65 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
+  const confirmedMembershipRef = useRef<{
+    subscribed: boolean;
+    type: 'free' | 'quarterly' | 'lifetime';
+  } | null>(null);
+
+  // These are app-owned tags. RevenueCat's native OneSignal integration covers
+  // auto-renewing subscription events; this entitlement-based tag also covers
+  // non-renewing lifetime purchases.
+  const syncOneSignalMembershipTags = useCallback(async (
+    subscribed: boolean,
+    type: 'free' | 'quarterly' | 'lifetime'
+  ) => {
+    try {
+      const [oneSignalExternalId, revenueCatAppUserId] = await Promise.all([
+        OneSignal.User.getExternalId(),
+        Purchases.getAppUserID(),
+      ]);
+
+      // CustomerInfo can update while the auth providers are switching users.
+      // Only tag OneSignal when both SDKs are confirmed to represent the same user.
+      if (!oneSignalExternalId || oneSignalExternalId !== revenueCatAppUserId) {
+        return;
+      }
+
+      OneSignal.User.addTags({
+        is_paid_member: subscribed ? 'true' : 'false',
+        membership_type: subscribed ? type : 'free',
+      });
+    } catch (error) {
+      console.warn('Failed to sync OneSignal membership tags:', error);
+    }
+  }, []);
+
+  const recordConfirmedMembership = useCallback((
+    subscribed: boolean,
+    type: 'free' | 'quarterly' | 'lifetime'
+  ) => {
+    confirmedMembershipRef.current = { subscribed, type };
+    void syncOneSignalMembershipTags(subscribed, type);
+  }, [syncOneSignalMembershipTags]);
+
+  // A CustomerInfo refresh can finish before OneSignal finishes switching to the
+  // signed-in user. Retry the latest confirmed status when that identity arrives.
+  useEffect(() => {
+    const retryMembershipTagSync = () => {
+      const membership = confirmedMembershipRef.current;
+      if (membership) {
+        void syncOneSignalMembershipTags(
+          membership.subscribed,
+          membership.type
+        );
+      }
+    };
+
+    OneSignal.User.addEventListener('change', retryMembershipTagSync);
+    return () => {
+      OneSignal.User.removeEventListener('change', retryMembershipTagSync);
+    };
+  }, [syncOneSignalMembershipTags]);
 
   // Helper function to save subscription to cache with timestamp
   const saveSubscriptionCache = async (
@@ -158,6 +218,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       console.log('Real subscription status:', { hasActiveSubscription, type });
 
       await saveSubscriptionCache(hasActiveSubscription, type);
+      recordConfirmedMembership(hasActiveSubscription, type);
       setIsSubscribed(hasActiveSubscription);
       setSubscriptionType(type);
       setIsLoading(false);
@@ -244,6 +305,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           console.log('Subscription update received:', { hasActiveSubscription, type });
 
           await saveSubscriptionCache(hasActiveSubscription, type);
+          recordConfirmedMembership(hasActiveSubscription, type);
 
           setIsSubscribed(hasActiveSubscription);
           setSubscriptionType(type);
@@ -265,7 +327,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         customerInfoUpdateListener();
       }
     };
-  }, []);
+  }, [recordConfirmedMembership]);
 
   // Listen for network changes and refresh when coming back online
   useEffect(() => {
@@ -286,6 +348,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const setSubscribed = async (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
     try {
       await saveSubscriptionCache(value, type);
+      recordConfirmedMembership(value, type);
       setIsSubscribed(value);
       setSubscriptionType(type);
     } catch (e) {

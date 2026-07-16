@@ -26,6 +26,9 @@ update-preview:
 update-dev:
     bunx eas update --branch development --message "Production update"
 
+run:
+    bunx expo run:ios
+
 # Security and React scan
 scan:
     bunx rnsec scan
