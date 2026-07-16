@@ -8,6 +8,17 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
+  '6.1.0': {
+    title: 'What\'s New',
+    message: 'We\'ve made some improvements to enhance your experience!',
+    features: [
+      'Meet day countdown card showing your next session and weigh-in time',
+      'PR badges on athlete meet results',
+      'Start list now shows last results for athletes returning from time off',
+      'New Liquid Glass design on menus and pop-ups',
+      'Smoother animations and cleaner notifications throughout the app'
+    ],
+  },
   '6.0.0': {
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',

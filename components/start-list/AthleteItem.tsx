@@ -30,6 +30,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 export const AthleteItem = React.memo(function AthleteItem({
   athlete,
@@ -201,7 +202,8 @@ export const AthleteItem = React.memo(function AthleteItem({
         />
       </Pressable>
       {isExpanded && (
-        <View
+        <Animated.View
+          entering={FadeIn.duration(160)}
           style={[styles.detailsContainer, { borderTopColor: colors.border }]}
         >
           {athlete.session && (
@@ -431,7 +433,7 @@ export const AthleteItem = React.memo(function AthleteItem({
               color="#007AFF"
             />
           </Pressable>
-        </View>
+        </Animated.View>
       )}
     </View>
   );

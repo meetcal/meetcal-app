@@ -7,6 +7,7 @@ import {
   setPreferredAndroidCalendarId,
   type CalendarDestination,
 } from "@/utils/calendar";
+import { showToast } from "@/components/ui/Toast";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { ProfileActionSetting } from "./ProfileActionSetting";
@@ -75,10 +76,10 @@ export function AndroidCalendarSetting({
       setIsPickerVisible(true);
     } catch (error) {
       console.error("Profile: failed to load writable calendars", error);
-      Alert.alert(
-        "Error",
-        "Could not load your device calendars. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Could not load your device calendars. Please try again.",
+      });
     } finally {
       setIsPickerLoading(false);
     }
@@ -91,10 +92,10 @@ export function AndroidCalendarSetting({
       setIsPickerVisible(false);
     } catch (error) {
       console.error("Profile: failed to save preferred Android calendar", error);
-      Alert.alert(
-        "Error",
-        "Could not save the selected calendar. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Could not save the selected calendar. Please try again.",
+      });
     }
   }, []);
 
@@ -105,10 +106,10 @@ export function AndroidCalendarSetting({
       setIsPickerVisible(false);
     } catch (error) {
       console.error("Profile: failed to clear preferred Android calendar", error);
-      Alert.alert(
-        "Error",
-        "Could not clear the selected calendar. Please try again.",
-      );
+      showToast({
+        type: "error",
+        message: "Could not clear the selected calendar. Please try again.",
+      });
     }
   }, []);
 

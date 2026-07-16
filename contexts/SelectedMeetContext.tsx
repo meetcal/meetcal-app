@@ -4,6 +4,7 @@ import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
+import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { reindexAppEntities } from '@/utils/appIntents';
 
@@ -20,6 +21,21 @@ type SelectedMeetContextType = {
   refreshAvailableMeets: () => Promise<void>;
 };
 
+const SELECTED_MEET_KEY = '@selected_meet';
+const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
+
+// Parse a persisted out-of-window Meet, ignoring stale JSON that belongs to a
+// different meet than the one we're resolving.
+function parseStoredMeetDetails(raw: string | null, expectedName: string): Meet | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Meet;
+    return parsed && parsed.name === expectedName ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 const SelectedMeetContext = createContext<SelectedMeetContextType | undefined>(undefined);
 
 export function SelectedMeetProvider({ children }: { children: React.ReactNode }) {
@@ -32,6 +48,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
+  // Mirror of meetDetails so loadMeets can read the latest value without
+  // taking it as a dependency (which would reset the 5-minute interval).
+  const meetDetailsRef = useRef<Meet | null>(null);
+  useEffect(() => {
+    meetDetailsRef.current = meetDetails;
+  }, [meetDetails]);
 
   const beginMeetWarmup = useCallback((meet: MeetName, label: string) => {
     setIsSyncing(true);
@@ -65,28 +87,70 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
-    try {
-      // Find meet details from available meets
-      const meetData = availableMeets.find(m => m.name === meet);
-      if (!meetData) {
-        throw new Error('Selected meet not found in available meets');
+    // Capture the current selection so a transient lookup failure can restore
+    // it instead of discarding a previously valid meet.
+    const previousMeet = selectedMeet;
+    const previousMeetDetails = meetDetails;
+
+    // Find meet details from available meets; fall back to fetching by name so
+    // programmatic selection (deep links, dev tools) works for meets outside
+    // the upcoming-meets window.
+    let meetData = availableMeets.find(m => m.name === meet);
+    let resolvedOutOfWindow = false;
+    if (!meetData) {
+      let fetched: Meet | null;
+      try {
+        fetched = await fetchApiMeetByName(meet);
+      } catch (error) {
+        // Lookup failed (network error, not a definitive "not found"). Keep
+        // the previous valid selection and surface the error so the UI can
+        // toast — do not clear storage or null the state.
+        console.error('Error looking up selected meet:', error);
+        setSyncStatus('error');
+        throw error;
       }
+      if (fetched) {
+        meetData = fetched;
+        resolvedOutOfWindow = true;
+      }
+    }
 
-      activateMeet(meet, meetData);
-
-      // Save to storage
-      await AsyncStorage.setItem('@selected_meet', meet);
-
-      beginMeetWarmup(meet, 'preloading meet data');
-
-    } catch (error) {
-      console.error('Error saving selected meet:', error);
+    if (!meetData) {
+      // Definitively invalid: the lookup returned no meet. Clear selection.
+      console.error('Selected meet not found in available meets');
       setSyncStatus('error');
-      // Revert on error
       setSelectedMeetState(null);
       setMeetDetails(null);
       setSyncManager(null);
-      await AsyncStorage.removeItem('@selected_meet');
+      await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+      throw new Error('Selected meet not found in available meets');
+    }
+
+    try {
+      activateMeet(meet, meetData);
+
+      // Save to storage. Persist the resolved Meet object for out-of-window
+      // selections so an offline cold start can rehydrate it.
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, meet);
+      if (resolvedOutOfWindow) {
+        await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(meetData));
+      } else {
+        await AsyncStorage.removeItem(SELECTED_MEET_DETAILS_KEY);
+      }
+
+      beginMeetWarmup(meet, 'preloading meet data');
+    } catch (error) {
+      // Persisting failed after activation; restore the prior selection rather
+      // than leaving inconsistent state.
+      console.error('Error saving selected meet:', error);
+      setSyncStatus('error');
+      if (previousMeet && previousMeetDetails) {
+        activateMeet(previousMeet, previousMeetDetails);
+      } else {
+        setSelectedMeetState(null);
+        setMeetDetails(null);
+        setSyncManager(null);
+      }
       throw error;
     }
   };
@@ -142,25 +206,83 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           console.error('Error clearing expired downloaded meets:', error);
         });
 
-        const [cachedMeets, stored] = await Promise.all([
+        const [cachedMeets, stored, storedDetailsRaw] = await Promise.all([
           getCachedMeets(),
-          AsyncStorage.getItem('@selected_meet'),
+          AsyncStorage.getItem(SELECTED_MEET_KEY),
+          AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY),
         ]);
 
         let activeMeet = selectedMeet;
         let initializedFromCache = false;
+        let outOfWindowResolved = false;
 
+        // A stored meet missing from the upcoming window may still be valid
+        // (selected via dev tools or a deep link). It must be resolved by name
+        // before chooseMeet can fall back to the first available meet.
+        const pendingOutOfWindow =
+          !activeMeet && !!stored && !cachedMeets.find(m => m.name === stored);
+
+        // Paint the cached upcoming meets immediately for a fast first paint.
+        // When an out-of-window meet is pending resolution, hold off on the
+        // fallback choice so we don't stomp the user's stored selection —
+        // resolution happens below and swaps the real meet in.
         if (cachedMeets.length > 0) {
           setAvailableMeets(cachedMeets);
-          const cachedChoice = chooseMeet(cachedMeets, stored);
-          if (cachedChoice) {
-            activeMeet = cachedChoice.name;
-          }
-          if (cachedChoice && !selectedMeet) {
-            await initializeMeetData(cachedChoice.name, cachedChoice);
-            initializedFromCache = true;
+          if (!pendingOutOfWindow) {
+            const cachedChoice = chooseMeet(cachedMeets, stored);
+            if (cachedChoice) {
+              activeMeet = cachedChoice.name;
+            }
+            if (cachedChoice && !selectedMeet) {
+              await initializeMeetData(cachedChoice.name, cachedChoice);
+              initializedFromCache = true;
+            }
           }
           setIsLoading(false);
+        }
+
+        // Resolve the stored out-of-window meet by name AFTER the cache paint,
+        // so the by-name lookup's timeout never blocks first paint.
+        if (pendingOutOfWindow && stored) {
+          let resolved: Meet | null = null;
+          let lookupFailed = false;
+          try {
+            resolved = await fetchApiMeetByName(stored);
+          } catch {
+            // Offline or lookup failure: rehydrate from the persisted details
+            // so the user's out-of-window selection isn't silently dropped.
+            lookupFailed = true;
+            resolved = parseStoredMeetDetails(storedDetailsRaw, stored);
+          }
+
+          if (resolved) {
+            await initializeMeetData(resolved.name, resolved);
+            activeMeet = resolved.name;
+            outOfWindowResolved = true;
+            // Keep the persisted copy fresh for the next offline cold start.
+            await AsyncStorage.setItem(
+              SELECTED_MEET_DETAILS_KEY,
+              JSON.stringify(resolved),
+            );
+          } else {
+            // Neither the window cache nor persisted details have the meet.
+            if (!lookupFailed) {
+              // Online lookup confirmed the stored meet no longer exists —
+              // clean up the stale keys before falling back.
+              await AsyncStorage.multiRemove([
+                SELECTED_MEET_KEY,
+                SELECTED_MEET_DETAILS_KEY,
+              ]);
+            }
+            const fallback = chooseMeet(cachedMeets, lookupFailed ? stored : null);
+            if (fallback) {
+              activeMeet = fallback.name;
+              if (!selectedMeet) {
+                await initializeMeetData(fallback.name, fallback);
+                initializedFromCache = true;
+              }
+            }
+          }
         }
 
         const freshMeets = await fetchMeetsFresh();
@@ -177,8 +299,39 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         }
 
         if (activeMeet && !freshMeets.find(m => m.name === activeMeet)) {
+          if (outOfWindowResolved) {
+            // Already validated by name above — keep it.
+            return;
+          }
+          // When the out-of-window meet is already the active selection with
+          // its details loaded, it was resolved on a prior run. Skip the
+          // by-name refetch + re-initialization so we don't churn a new
+          // SyncManager and re-warm every 5 minutes / on every reconnect.
+          if (activeMeet === selectedMeet && meetDetailsRef.current?.name === activeMeet) {
+            return;
+          }
+          // Not in the upcoming window, but it may still be a valid meet
+          // (selected via dev tools or a deep link) — only revert when the
+          // meet can't be resolved by name at all.
+          let outOfWindowMeet: Meet | null = null;
+          try {
+            outOfWindowMeet = await fetchApiMeetByName(activeMeet);
+          } catch {
+            // Network hiccup: keep the current selection rather than
+            // discarding the user's meet on a failed lookup.
+            return;
+          }
+          if (outOfWindowMeet) {
+            await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
+            // Persist so an offline cold start can rehydrate this selection.
+            await AsyncStorage.setItem(
+              SELECTED_MEET_DETAILS_KEY,
+              JSON.stringify(outOfWindowMeet),
+            );
+            return;
+          }
           console.log('Selected meet no longer available, switching to first available meet');
-          await AsyncStorage.removeItem('@selected_meet');
+          await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
           await initializeMeetData(freshMeets[0].name, freshMeets[0]);
           return;
         }

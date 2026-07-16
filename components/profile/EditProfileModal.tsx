@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
+import { showToast } from "../ui/Toast";
 
 interface EditProfileModalProps {
   isEditing: boolean;
@@ -83,7 +84,7 @@ const EditProfileModal = ({
       setEditingField(null);
     } catch (err) {
       console.error("Error updating profile:", err);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+      showToast({ type: "error", message: "Failed to update profile. Please try again." });
     } finally {
       setIsLoading(false);
     }

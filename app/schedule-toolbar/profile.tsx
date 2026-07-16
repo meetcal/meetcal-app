@@ -6,6 +6,7 @@ import { ProfileActionSetting } from "@/components/profile/ProfileActionSetting"
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -109,7 +110,7 @@ export default function ProfileScreen() {
       router.replace("/(tabs)/(index)");
     } catch (err) {
       console.error("Error signing out:", err);
-      Alert.alert("Error", "Failed to sign out. Please try again.");
+      showToast({ type: "error", message: "Failed to sign out. Please try again." });
     }
   };
 
@@ -176,13 +177,13 @@ export default function ProfileScreen() {
       await clearCachedMeetsList();
       await refreshAvailableMeets();
       await forceSync();
-      Alert.alert(
-        "Cache Cleared",
-        "Cached meet data has been cleared and refreshed.",
-      );
+      showToast({
+        type: "success",
+        message: "Cached meet data has been cleared and refreshed.",
+      });
     } catch (error) {
       console.error("Error clearing cache:", error);
-      Alert.alert("Error", "Failed to clear cache. Please try again.");
+      showToast({ type: "error", message: "Failed to clear cache. Please try again." });
     } finally {
       setIsClearingCache(false);
     }
@@ -291,10 +292,10 @@ export default function ProfileScreen() {
                 await RevenueCatUI.presentCustomerCenter();
               } catch (error) {
                 console.error("Error opening Customer Center:", error);
-                Alert.alert(
-                  "Error",
-                  "Unable to open Customer Center. Please try again later.",
-                );
+                showToast({
+                  type: "error",
+                  message: "Unable to open Customer Center. Please try again later.",
+                });
               }
             }}
           >
