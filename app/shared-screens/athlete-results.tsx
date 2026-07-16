@@ -451,27 +451,16 @@ export default function AthleteResultsScreen() {
                     <ThemedText style={styles.meetName}>
                       {result.meet}
                     </ThemedText>
-                    {(
-                      [
-                        [isSnatchPR, "S"],
-                        [isCJPR, "CJ"],
-                        [isTotalPR, "T"],
-                      ] as const
-                    ).map(([isLiftPR, label]) =>
-                      isLiftPR ? (
-                        <View
-                          key={label}
-                          style={[
-                            styles.prBadge,
-                            { backgroundColor: colors.prColor },
-                          ]}
-                        >
-                          <ThemedText style={styles.prBadgeText}>
-                            {label}
-                          </ThemedText>
-                        </View>
-                      ) : null,
-                    )}
+                    {isSnatchPR || isCJPR || isTotalPR ? (
+                      <View
+                        style={[
+                          styles.prBadge,
+                          { backgroundColor: colors.prColor },
+                        ]}
+                      >
+                        <ThemedText style={styles.prBadgeText}>PR</ThemedText>
+                      </View>
+                    ) : null}
                   </View>
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}

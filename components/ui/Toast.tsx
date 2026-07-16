@@ -13,10 +13,10 @@ import React, {
 import { PanResponder, Pressable, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
+  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 
@@ -134,7 +134,10 @@ function ToastHost() {
       }
     }
 
-    translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
+    translateY.value = withTiming(0, {
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+    });
 
     clearTimer();
     timerRef.current = setTimeout(
@@ -159,7 +162,10 @@ function ToastHost() {
         if (gesture.dy < -20) {
           dismiss();
         } else {
-          translateY.value = withSpring(0, { damping: 18, stiffness: 180 });
+          translateY.value = withTiming(0, {
+            duration: 200,
+            easing: Easing.out(Easing.cubic),
+          });
         }
       },
     }),
