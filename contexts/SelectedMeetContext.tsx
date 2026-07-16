@@ -4,6 +4,7 @@ import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
+import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { reindexAppEntities } from '@/utils/appIntents';
 
@@ -66,8 +67,13 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
     try {
-      // Find meet details from available meets
-      const meetData = availableMeets.find(m => m.name === meet);
+      // Find meet details from available meets; fall back to fetching by
+      // name so programmatic selection (deep links, dev tools) works for
+      // meets outside the upcoming-meets window.
+      let meetData = availableMeets.find(m => m.name === meet);
+      if (!meetData) {
+        meetData = (await fetchApiMeetByName(meet)) ?? undefined;
+      }
       if (!meetData) {
         throw new Error('Selected meet not found in available meets');
       }
