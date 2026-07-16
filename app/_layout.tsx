@@ -208,35 +208,72 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     initialize();
   }, []);
 
-  // Effect to sync Clerk user with RevenueCat
+  // Keep Clerk, RevenueCat, and OneSignal on the same user identity. RevenueCat
+  // needs the OneSignal user ID to deliver its native OneSignal integration tags.
   useEffect(() => {
-    async function syncUserWithRevenueCat() {
-      if (isUserLoaded && user) {
-        try {
+    if (!isUserLoaded) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncOneSignalIdToRevenueCat = async (userState?: {
+      current: { externalId?: string; onesignalId?: string };
+    }) => {
+      const externalId =
+        userState?.current.externalId ?? (await OneSignal.User.getExternalId());
+      const oneSignalId =
+        userState?.current.onesignalId ??
+        (await OneSignal.User.getOnesignalId());
+
+      // Do not associate a stale OneSignal identity with this RevenueCat user.
+      if (!cancelled && externalId === user?.id && oneSignalId) {
+        await Purchases.setAttributes({
+          $onesignalUserId: oneSignalId,
+        });
+      }
+    };
+
+    const handleOneSignalUserChange = (state: {
+      current: { externalId?: string; onesignalId?: string };
+    }) => {
+      syncOneSignalIdToRevenueCat(state).catch((error) => {
+        console.error("Error syncing OneSignal ID to RevenueCat:", error);
+      });
+    };
+
+    const syncUser = async () => {
+      try {
+        if (user?.id) {
+          await Purchases.logIn(user.id);
+
           const email = user.primaryEmailAddress?.emailAddress;
           if (email) {
             await Purchases.setEmail(email);
-            await Purchases.logIn(user.id);
           }
-        } catch (error) {
-          console.error("Error syncing user with RevenueCat:", error);
+
+          OneSignal.User.addEventListener("change", handleOneSignalUserChange);
+          OneSignal.login(user.id);
+          if (email) {
+            OneSignal.User.addEmail(email);
+          }
+
+          await syncOneSignalIdToRevenueCat();
+        } else {
+          OneSignal.logout();
+          await Purchases.logOut();
         }
+      } catch (error) {
+        console.error("Error syncing authenticated user services:", error);
       }
-    }
+    };
 
-    syncUserWithRevenueCat();
-  }, [isUserLoaded, user]);
+    void syncUser();
 
-  useEffect(() => {
-    if (isUserLoaded && user?.id) {
-      OneSignal.login(user.id);
-      const email = user.primaryEmailAddress?.emailAddress;
-      if (email) {
-        OneSignal.User.addEmail(email);
-      }
-    } else if (isUserLoaded && !user?.id) {
-      OneSignal.logout();
-    }
+    return () => {
+      cancelled = true;
+      OneSignal.User.removeEventListener("change", handleOneSignalUserChange);
+    };
   }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
 
   useEffect(() => {
