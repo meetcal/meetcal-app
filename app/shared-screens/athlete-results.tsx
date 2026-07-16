@@ -343,23 +343,34 @@ export default function AthleteResultsScreen() {
     fetchAthleteResults();
   }, [name]);
 
-  // The athlete's best snatch / clean & jerk / total across all meets, used
-  // to flag the meets where each PR was actually set.
-  const bests = useMemo(() => {
-    return athleteResults.reduce(
-      (acc, result) => {
-        const snatch =
-          typeof result.snatch_best === "number" ? result.snatch_best : 0;
-        const cj = typeof result.cj_best === "number" ? result.cj_best : 0;
-        const total = typeof result.total === "number" ? result.total : 0;
-        return {
-          snatch: Math.max(acc.snatch, snatch),
-          cj: Math.max(acc.cj, cj),
-          total: Math.max(acc.total, total),
-        };
-      },
-      { snatch: 0, cj: 0, total: 0 },
-    );
+  // For each lift, the index of the meet where the athlete's PR was set.
+  // If the same best is hit at multiple meets, only the earliest one counts
+  // as the PR — matching it later isn't a new PR.
+  const prIndexes = useMemo(() => {
+    const findPRIndex = (
+      getValue: (result: (typeof athleteResults)[number]) => number | null,
+    ): number => {
+      let best = 0;
+      let prIndex = -1;
+      let prTime = Infinity;
+      athleteResults.forEach((result, index) => {
+        const value = getValue(result);
+        if (typeof value !== "number" || value <= 0 || value < best) return;
+        const parsed = new Date(result.date).getTime();
+        const time = Number.isNaN(parsed) ? Infinity : parsed;
+        if (value > best || time < prTime) {
+          best = value;
+          prIndex = index;
+          prTime = time;
+        }
+      });
+      return prIndex;
+    };
+    return {
+      snatch: findPRIndex((r) => r.snatch_best),
+      cj: findPRIndex((r) => r.cj_best),
+      total: findPRIndex((r) => r.total),
+    };
   }, [athleteResults]);
 
   if (!name) {
@@ -430,11 +441,9 @@ export default function AthleteResultsScreen() {
           <>
             <AthleteStats results={athleteResults} colors={colors} />
             {athleteResults.map((result, index) => {
-              const isSnatchPR =
-                bests.snatch > 0 && result.snatch_best === bests.snatch;
-              const isCJPR = bests.cj > 0 && result.cj_best === bests.cj;
-              const isTotalPR =
-                bests.total > 0 && result.total === bests.total;
+              const isSnatchPR = index === prIndexes.snatch;
+              const isCJPR = index === prIndexes.cj;
+              const isTotalPR = index === prIndexes.total;
               return (
               <View
                 key={`${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`}
