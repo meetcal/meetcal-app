@@ -2,7 +2,13 @@ import { ClerkProvider, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import NetInfo from "@react-native-community/netinfo";
 import { useFonts } from "expo-font";
-import { router, Stack } from "expo-router";
+import {
+  DarkTheme,
+  DefaultTheme,
+  router,
+  Stack,
+  ThemeProvider,
+} from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -315,17 +321,22 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   }
 
   return (
-    <ToastProvider>
-      <UpdateNotification />
-      <OfflineIndicator />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="schedule-toolbar/offline-data" />
-        <Stack.Screen name="schedule-toolbar/profile" />
-        <Stack.Screen name="schedule-toolbar/widget-settings" />
-      </Stack>
-      <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
-    </ToastProvider>
+    // Without a navigation theme, iOS 26+ native chrome (the Liquid Glass
+    // header buttons) falls back to react-navigation's light default even
+    // when the system is in dark mode.
+    <ThemeProvider value={currentTheme === "dark" ? DarkTheme : DefaultTheme}>
+      <ToastProvider>
+        <UpdateNotification />
+        <OfflineIndicator />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="schedule-toolbar/offline-data" />
+          <Stack.Screen name="schedule-toolbar/profile" />
+          <Stack.Screen name="schedule-toolbar/widget-settings" />
+        </Stack>
+        <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
