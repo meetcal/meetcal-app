@@ -343,12 +343,23 @@ export default function AthleteResultsScreen() {
     fetchAthleteResults();
   }, [name]);
 
-  // The athlete's best total across all meets, used to subtly flag PR rows.
-  const bestTotal = useMemo(() => {
-    return athleteResults.reduce((max, result) => {
-      const total = typeof result.total === "number" ? result.total : 0;
-      return total > max ? total : max;
-    }, 0);
+  // The athlete's best snatch / clean & jerk / total across all meets, used
+  // to flag the meets where each PR was actually set.
+  const bests = useMemo(() => {
+    return athleteResults.reduce(
+      (acc, result) => {
+        const snatch =
+          typeof result.snatch_best === "number" ? result.snatch_best : 0;
+        const cj = typeof result.cj_best === "number" ? result.cj_best : 0;
+        const total = typeof result.total === "number" ? result.total : 0;
+        return {
+          snatch: Math.max(acc.snatch, snatch),
+          cj: Math.max(acc.cj, cj),
+          total: Math.max(acc.total, total),
+        };
+      },
+      { snatch: 0, cj: 0, total: 0 },
+    );
   }, [athleteResults]);
 
   if (!name) {
@@ -419,10 +430,11 @@ export default function AthleteResultsScreen() {
           <>
             <AthleteStats results={athleteResults} colors={colors} />
             {athleteResults.map((result, index) => {
-              const isPR =
-                bestTotal > 0 &&
-                typeof result.total === "number" &&
-                result.total === bestTotal;
+              const isSnatchPR =
+                bests.snatch > 0 && result.snatch_best === bests.snatch;
+              const isCJPR = bests.cj > 0 && result.cj_best === bests.cj;
+              const isTotalPR =
+                bests.total > 0 && result.total === bests.total;
               return (
               <View
                 key={`${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`}
@@ -439,16 +451,27 @@ export default function AthleteResultsScreen() {
                     <ThemedText style={styles.meetName}>
                       {result.meet}
                     </ThemedText>
-                    {isPR ? (
-                      <View
-                        style={[
-                          styles.prBadge,
-                          { backgroundColor: colors.prColor },
-                        ]}
-                      >
-                        <ThemedText style={styles.prBadgeText}>PR</ThemedText>
-                      </View>
-                    ) : null}
+                    {(
+                      [
+                        [isSnatchPR, "S"],
+                        [isCJPR, "CJ"],
+                        [isTotalPR, "T"],
+                      ] as const
+                    ).map(([isLiftPR, label]) =>
+                      isLiftPR ? (
+                        <View
+                          key={label}
+                          style={[
+                            styles.prBadge,
+                            { backgroundColor: colors.prColor },
+                          ]}
+                        >
+                          <ThemedText style={styles.prBadgeText}>
+                            {label}
+                          </ThemedText>
+                        </View>
+                      ) : null,
+                    )}
                   </View>
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
@@ -510,17 +533,33 @@ export default function AthleteResultsScreen() {
                 </View>
 
                 <View style={styles.section}>
-                  <ThemedText
-                    style={[
-                      styles.total,
-                      isPR && { color: colors.prColor },
-                    ]}
-                  >
-                    {result.snatch_best ?? "—"}
-/
-{result.cj_best ?? "—"}
-/
-{result.total ?? "—"}
+                  <ThemedText style={styles.total}>
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isSnatchPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.snatch_best ?? "—"}
+                    </ThemedText>
+                    /
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isCJPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.cj_best ?? "—"}
+                    </ThemedText>
+                    /
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isTotalPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.total ?? "—"}
+                    </ThemedText>
                   </ThemedText>
                 </View>
               </View>
