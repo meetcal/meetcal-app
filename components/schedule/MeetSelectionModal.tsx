@@ -116,7 +116,7 @@ export function MeetSelectionModal({
                   styles.modalOption,
                   { borderBottomColor: colors.border },
                   selectedMeet === meet.name && {
-                    backgroundColor: colors.pressed,
+                    backgroundColor: colors.pressedTranslucent,
                   },
                   pressed && { opacity: 0.8 },
                 ]}

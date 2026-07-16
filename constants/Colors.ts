@@ -22,6 +22,9 @@ export const Colors = {
     secondaryText: '#6B6B6B',
     placeholder: '#999999', 
     pressed: '#F5F5F5',
+    // Translucent highlight for rows on glass/blur surfaces, where the
+    // opaque `pressed` would paint a solid slab over the material.
+    pressedTranslucent: 'rgba(120,120,128,0.16)',
     link: '#007AFF',
     modalBackground: "rgba(0,0,0,0.4)",
     success: '#34C759',
@@ -50,6 +53,7 @@ export const Colors = {
     primaryText: '#FFFFFF',
     secondaryText: '#8E8E93',
     pressed: '#2C2C2E',
+    pressedTranslucent: 'rgba(120,120,128,0.28)',
     link: '#007AFF',
     modalBackground: "rgba(0,0,0,0.6)",
     success: '#34C759',

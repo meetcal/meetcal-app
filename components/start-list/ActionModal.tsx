@@ -78,7 +78,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             style={({ pressed }) => [
               styles.saveOption,
               { borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed },
+              pressed && { backgroundColor: colors.pressedTranslucent },
             ]}
             onPress={() => {
               selectionHaptic();
@@ -115,7 +115,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             style={({ pressed }) => [
               styles.saveOption,
               { borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed },
+              pressed && { backgroundColor: colors.pressedTranslucent },
             ]}
             onPress={() => {
               selectionHaptic();
@@ -161,7 +161,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             style={({ pressed }) => [
               styles.saveOption,
               { borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed },
+              pressed && { backgroundColor: colors.pressedTranslucent },
             ]}
             onPress={() => {
               selectionHaptic();
@@ -236,7 +236,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
             style={({ pressed }) => [
               styles.saveOption,
               { borderBottomColor: colors.border },
-              pressed && { backgroundColor: colors.pressed },
+              pressed && { backgroundColor: colors.pressedTranslucent },
             ]}
             onPress={() => {
               selectionHaptic();
