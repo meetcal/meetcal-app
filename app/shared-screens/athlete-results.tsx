@@ -2,6 +2,7 @@ import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import { SupabaseLiftResult } from "@/types/athlete-results";
@@ -346,32 +347,10 @@ export default function AthleteResultsScreen() {
   // For each lift, the index of the meet where the athlete's PR was set.
   // If the same best is hit at multiple meets, only the earliest one counts
   // as the PR — matching it later isn't a new PR.
-  const prIndexes = useMemo(() => {
-    const findPRIndex = (
-      getValue: (result: (typeof athleteResults)[number]) => number | null,
-    ): number => {
-      let best = 0;
-      let prIndex = -1;
-      let prTime = Infinity;
-      athleteResults.forEach((result, index) => {
-        const value = getValue(result);
-        if (typeof value !== "number" || value <= 0 || value < best) return;
-        const parsed = new Date(result.date).getTime();
-        const time = Number.isNaN(parsed) ? Infinity : parsed;
-        if (value > best || time < prTime) {
-          best = value;
-          prIndex = index;
-          prTime = time;
-        }
-      });
-      return prIndex;
-    };
-    return {
-      snatch: findPRIndex((r) => r.snatch_best),
-      cj: findPRIndex((r) => r.cj_best),
-      total: findPRIndex((r) => r.total),
-    };
-  }, [athleteResults]);
+  const prIndexes = useMemo(
+    () => findPRIndexes(athleteResults),
+    [athleteResults],
+  );
 
   if (!name) {
     return (

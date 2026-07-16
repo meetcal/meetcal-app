@@ -3,8 +3,8 @@ import { Radius, Spacing, Type } from "@/constants/Layout";
 import { Meet, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SavedSession } from "@/hooks/useSavedSessions";
-import { convertToUTC } from "@/data/meets/config";
-import { getDateInTimeZone, getTimeZoneAbbreviation } from "@/utils/dateTime";
+import { selectNextSession } from "@/lib/next-session";
+import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -17,39 +17,6 @@ import {
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { ThemedText } from "@/components/ui/ThemedText";
-
-// Show the card for sessions starting in the future, and keep it visible for a
-// short grace window (30 min) after a session starts so an in-progress session
-// still surfaces.
-const STARTED_GRACE_MS = 30 * 60 * 1000;
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-/**
- * Today's calendar date (YYYY-MM-DD) in the meet's timezone. Reuses
- * getDateInTimeZone so we don't duplicate timezone math.
- */
-function getTodayInMeetTimeZone(timeZone: string): string {
-  const localMidnight = getDateInTimeZone(timeZone);
-  return `${localMidnight.getFullYear()}-${pad(localMidnight.getMonth() + 1)}-${pad(
-    localMidnight.getDate(),
-  )}`;
-}
-
-/**
- * The meet is "today / ongoing" when its backend status says so, or when the
- * current date in the meet's timezone falls within the meet's date range.
- */
-function isMeetTodayOrOngoing(meetDetails: Meet, timeZone: string): boolean {
-  if (meetDetails.status === "ongoing") return true;
-  const today = getTodayInMeetTimeZone(timeZone);
-  const start = (meetDetails.dates?.start ?? "").slice(0, 10);
-  const end = (meetDetails.dates?.end ?? "").slice(0, 10);
-  if (!start || !end) return false;
-  return today >= start && today <= end;
-}
 
 function formatCountdown(msRemaining: number): string {
   if (msRemaining <= 0) return "in progress";
@@ -99,34 +66,10 @@ export function NextSessionCard({
   // Find the soonest saved session for this meet that is still upcoming (or
   // started within the grace window). Uses the shared convertToUTC timezone
   // math rather than re-deriving instants.
-  const nextSession = useMemo(() => {
-    if (!selectedMeet || !meetDetails || !timeZoneIdentifier) return null;
-    if (!isMeetTodayOrOngoing(meetDetails, timeZoneIdentifier)) return null;
-
-    let best: { session: SavedSession; startMs: number } | null = null;
-    for (const session of savedSessions) {
-      if (session.meet !== selectedMeet) continue;
-      if (!session.startTime || !session.date) continue;
-
-      let startMs: number;
-      try {
-        startMs = convertToUTC(
-          session.startTime,
-          session.date,
-          timeZoneIdentifier,
-        ).getTime();
-      } catch {
-        continue;
-      }
-      if (Number.isNaN(startMs)) continue;
-      if (startMs <= now - STARTED_GRACE_MS) continue;
-
-      if (!best || startMs < best.startMs) {
-        best = { session, startMs };
-      }
-    }
-    return best;
-  }, [savedSessions, selectedMeet, meetDetails, timeZoneIdentifier, now]);
+  const nextSession = useMemo(
+    () => selectNextSession(savedSessions, selectedMeet, meetDetails, new Date(now)),
+    [savedSessions, selectedMeet, meetDetails, now],
+  );
 
   if (!nextSession) return null;
 
