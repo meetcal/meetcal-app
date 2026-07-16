@@ -155,16 +155,35 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
         let activeMeet = selectedMeet;
         let initializedFromCache = false;
+        let outOfWindowResolved = false;
+
+        // A stored meet missing from the upcoming window may still be valid
+        // (selected via dev tools or a deep link). Resolve it by name before
+        // chooseMeet can fall back to the first available meet.
+        if (!activeMeet && stored && !cachedMeets.find(m => m.name === stored)) {
+          try {
+            const storedMeet = await fetchApiMeetByName(stored);
+            if (storedMeet) {
+              await initializeMeetData(storedMeet.name, storedMeet);
+              activeMeet = storedMeet.name;
+              outOfWindowResolved = true;
+            }
+          } catch {
+            // Offline or lookup failure: fall through to the normal flow.
+          }
+        }
 
         if (cachedMeets.length > 0) {
           setAvailableMeets(cachedMeets);
-          const cachedChoice = chooseMeet(cachedMeets, stored);
-          if (cachedChoice) {
-            activeMeet = cachedChoice.name;
-          }
-          if (cachedChoice && !selectedMeet) {
-            await initializeMeetData(cachedChoice.name, cachedChoice);
-            initializedFromCache = true;
+          if (!outOfWindowResolved) {
+            const cachedChoice = chooseMeet(cachedMeets, stored);
+            if (cachedChoice) {
+              activeMeet = cachedChoice.name;
+            }
+            if (cachedChoice && !selectedMeet) {
+              await initializeMeetData(cachedChoice.name, cachedChoice);
+              initializedFromCache = true;
+            }
           }
           setIsLoading(false);
         }
@@ -183,6 +202,25 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         }
 
         if (activeMeet && !freshMeets.find(m => m.name === activeMeet)) {
+          if (outOfWindowResolved) {
+            // Already validated by name above — keep it.
+            return;
+          }
+          // Not in the upcoming window, but it may still be a valid meet
+          // (selected via dev tools or a deep link) — only revert when the
+          // meet can't be resolved by name at all.
+          let outOfWindowMeet: Meet | null = null;
+          try {
+            outOfWindowMeet = await fetchApiMeetByName(activeMeet);
+          } catch {
+            // Network hiccup: keep the current selection rather than
+            // discarding the user's meet on a failed lookup.
+            return;
+          }
+          if (outOfWindowMeet) {
+            await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
+            return;
+          }
           console.log('Selected meet no longer available, switching to first available meet');
           await AsyncStorage.removeItem('@selected_meet');
           await initializeMeetData(freshMeets[0].name, freshMeets[0]);
