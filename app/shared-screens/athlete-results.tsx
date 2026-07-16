@@ -1,12 +1,15 @@
+import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function getRateColor(rate: number, colors: any) {
@@ -145,7 +148,8 @@ function AthleteStats({
   }, [results]);
 
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(400)}
       style={[styles.card, { backgroundColor: colors.card, marginTop: 16 }]}
     >
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
@@ -170,6 +174,12 @@ function AthleteStats({
               {stats.snatchMakeRate.toFixed(1)}
 %
 </ThemedText>
+          </View>
+          <View style={styles.rateBarWrap}>
+            <RateBar
+              rate={stats.snatchMakeRate}
+              color={getRateColor(stats.snatchMakeRate, colors)}
+            />
           </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
@@ -213,6 +223,12 @@ function AthleteStats({
 %
 </ThemedText>
           </View>
+          <View style={styles.rateBarWrap}>
+            <RateBar
+              rate={stats.cjMakeRate}
+              color={getRateColor(stats.cjMakeRate, colors)}
+            />
+          </View>
           <View style={styles.attemptRatesContainer}>
             <AttemptRateRow
               attemptNumber={1}
@@ -232,7 +248,7 @@ function AthleteStats({
           </View>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -328,6 +344,14 @@ export default function AthleteResultsScreen() {
     fetchAthleteResults();
   }, [name]);
 
+  // For each lift, the index of the meet where the athlete's PR was set.
+  // If the same best is hit at multiple meets, only the earliest one counts
+  // as the PR — matching it later isn't a new PR.
+  const prIndexes = useMemo(
+    () => findPRIndexes(athleteResults),
+    [athleteResults],
+  );
+
   if (!name) {
     return (
       <ThemedView style={styles.container}>
@@ -395,7 +419,11 @@ export default function AthleteResultsScreen() {
         ) : (
           <>
             <AthleteStats results={athleteResults} colors={colors} />
-            {athleteResults.map((result, index) => (
+            {athleteResults.map((result, index) => {
+              const isSnatchPR = index === prIndexes.snatch;
+              const isCJPR = index === prIndexes.cj;
+              const isTotalPR = index === prIndexes.total;
+              return (
               <View
                 key={`${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`}
                 style={[
@@ -407,7 +435,21 @@ export default function AthleteResultsScreen() {
                 <View
                   style={[styles.section, { borderBottomColor: colors.border }]}
                 >
-                  <ThemedText style={styles.meetName}>{result.meet}</ThemedText>
+                  <View style={styles.meetNameRow}>
+                    <ThemedText style={styles.meetName}>
+                      {result.meet}
+                    </ThemedText>
+                    {isSnatchPR || isCJPR || isTotalPR ? (
+                      <View
+                        style={[
+                          styles.prBadge,
+                          { backgroundColor: colors.prColor },
+                        ]}
+                      >
+                        <ThemedText style={styles.prBadgeText}>PR</ThemedText>
+                      </View>
+                    ) : null}
+                  </View>
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
@@ -469,15 +511,37 @@ export default function AthleteResultsScreen() {
 
                 <View style={styles.section}>
                   <ThemedText style={styles.total}>
-                    {result.snatch_best ?? "—"}
-/
-{result.cj_best ?? "—"}
-/
-{result.total ?? "—"}
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isSnatchPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.snatch_best ?? "—"}
+                    </ThemedText>
+                    /
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isCJPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.cj_best ?? "—"}
+                    </ThemedText>
+                    /
+                    <ThemedText
+                      style={[
+                        styles.total,
+                        isTotalPR && { color: colors.prColor },
+                      ]}
+                    >
+                      {result.total ?? "—"}
+                    </ThemedText>
                   </ThemedText>
                 </View>
               </View>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -532,10 +596,30 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  meetNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
   meetName: {
     fontSize: 20,
     fontWeight: "600",
-    marginBottom: 4,
+    flexShrink: 1,
+  },
+  prBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  prBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  rateBarWrap: {
+    marginBottom: 10,
   },
   meetDate: {
     fontSize: 15,

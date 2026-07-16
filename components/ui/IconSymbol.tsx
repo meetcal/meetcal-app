@@ -17,6 +17,7 @@ const iconMap: Record<string, string> = {
   "list.bullet": "list",
   checkmark: "checkmark",
   "checkmark.circle.fill": "checkmark-circle",
+  "xmark.circle.fill": "close-circle",
   plus: "add",
   magnifyingglass: "search",
   "arrow.down.circle": "arrow-down-circle",

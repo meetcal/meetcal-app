@@ -32,7 +32,6 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -40,6 +39,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { showToast } from "@/components/ui/Toast";
 
 type ActiveModal = WidgetKind | null;
 
@@ -141,11 +141,17 @@ export default function WidgetSettingsScreen() {
         ),
       });
       if (showAlert) {
-        Alert.alert("Widget Settings Saved", "Your large widgets will update shortly.");
+        showToast({
+          type: "success",
+          message: "Widget settings saved. Your widgets will update shortly.",
+        });
       }
     } catch (error) {
       console.error("Failed to save widget settings", error);
-      Alert.alert("Error", "Failed to save widget settings. Please try again.");
+      showToast({
+        type: "error",
+        message: "Failed to save widget settings. Please try again.",
+      });
     } finally {
       setIsSaving(false);
     }

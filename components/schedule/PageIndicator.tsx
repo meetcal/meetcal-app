@@ -1,7 +1,49 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { PageIndicatorProps } from "@/types/schedule";
+import { useEffect } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  interpolate,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const INACTIVE_COLOR = "#5A9AD4";
+const ACTIVE_COLOR = "#007AFF";
+
+function Dot({ active, activeShadow }: { active: boolean; activeShadow: string }) {
+  const progress = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withSpring(active ? 1 : 0, {
+      damping: 15,
+      stiffness: 200,
+    });
+  }, [active, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [6, 18]),
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [INACTIVE_COLOR, ACTIVE_COLOR],
+    ),
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        active && styles.activeDot,
+        { shadowColor: active ? activeShadow : "transparent" },
+        animatedStyle,
+      ]}
+    />
+  );
+}
 
 export function PageIndicator({
   count,
@@ -41,19 +83,10 @@ export function PageIndicator({
           <Pressable
             key={index}
             onPress={() => onPageChange?.(index)}
-            style={[
-              styles.dot,
-              index === currentPage ? styles.activeDot : styles.inactiveDot,
-              {
-                backgroundColor: index === currentPage ? "#007AFF" : "#5A9AD4",
-                shadowColor:
-                  index === currentPage ? activeDotShadow : "transparent",
-                borderColor:
-                  index === currentPage ? "transparent" : "transparent",
-              },
-            ]}
             hitSlop={8}
-          />
+          >
+            <Dot active={index === currentPage} activeShadow={activeDotShadow} />
+          </Pressable>
         ))}
       </View>
     </View>
@@ -89,15 +122,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   dot: {
+    height: 6,
     borderRadius: 999,
   },
-  inactiveDot: {
-    width: 6,
-    height: 6,
-  },
   activeDot: {
-    width: 18,
-    height: 6,
     shadowOffset: {
       width: 0,
       height: 2,

@@ -17,6 +17,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// Multiple screens mount their own copy (schedule and info tabs). Both run
+// their storage check before either is dismissed, so without a session-level
+// claim the announcement pops up once per mounted copy.
+let announcementClaimedThisSession = false;
+
 export function VersionAnnouncement({
   announcement: propAnnouncement,
 }: VersionAnnouncementProps) {
@@ -40,7 +45,11 @@ export function VersionAnnouncement({
       const seenVersions = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
       const seenVersionsArray = seenVersions ? JSON.parse(seenVersions) : [];
 
-      if (!seenVersionsArray.includes(CURRENT_VERSION)) {
+      if (
+        !seenVersionsArray.includes(CURRENT_VERSION) &&
+        !announcementClaimedThisSession
+      ) {
+        announcementClaimedThisSession = true;
         setIsVisible(true);
       }
     } catch (error) {
@@ -239,6 +248,7 @@ const styles = StyleSheet.create({
 export async function resetVersionAnnouncement(): Promise<void> {
   try {
     await AsyncStorage.removeItem(VERSION_ANNOUNCEMENT_KEY);
+    announcementClaimedThisSession = false;
   } catch (error) {
     console.error("Error resetting version announcement:", error);
   }

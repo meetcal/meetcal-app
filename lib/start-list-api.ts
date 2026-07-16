@@ -1,5 +1,9 @@
 import { SupabaseLiftResult } from '@/data/types/athletes';
-import { fetchApiYearBests, fetchApiYearBestsByNames } from '@/lib/api/meetcal-api';
+import {
+  fetchApiResultsByNames,
+  fetchApiYearBests,
+  fetchApiYearBestsByNames,
+} from '@/lib/api/meetcal-api';
 import {
   getAllCachedLiftingResultsForAthlete,
   getCachedAthleteBestsForNames,
@@ -36,6 +40,53 @@ function hasRealBests(bests: YearBests): boolean {
   return bests.bestSnatch > 0 || bests.bestCJ > 0 || bests.bestTotal > 0;
 }
 
+/**
+ * Bests from an athlete's most recent meet only. Used as the fallback for
+ * athletes with no results inside the year-bests window, so the start list
+ * shows their last competition's numbers instead of "—".
+ */
+function deriveMostRecentMeetBests(results: SupabaseLiftResult[]): YearBests {
+  if (results.length === 0) return ZERO_BESTS;
+  const latest = results.reduce((newest, r) =>
+    (r.date ?? '') > (newest.date ?? '') ? r : newest,
+  );
+  const latestMeetRows = results.filter(
+    (r) => r.date === latest.date && r.meet === latest.meet,
+  );
+  return deriveBestsFromResults(latestMeetRows);
+}
+
+/**
+ * Fetches full histories for athletes whose year-bests came back empty and
+ * derives each athlete's bests from their most recent meet.
+ */
+async function getMostRecentMeetBestsBatch(
+  names: string[],
+): Promise<Record<string, YearBests>> {
+  const byName: Record<string, YearBests> = {};
+  if (names.length === 0) return byName;
+  try {
+    const rows = await fetchApiResultsByNames(names);
+    const grouped = new Map<string, SupabaseLiftResult[]>();
+    rows.forEach((row) => {
+      const group = grouped.get(row.name);
+      if (group) {
+        group.push(row);
+      } else {
+        grouped.set(row.name, [row]);
+      }
+    });
+    names.forEach((name) => {
+      byName[name] = deriveMostRecentMeetBests(grouped.get(name) ?? []);
+    });
+  } catch {
+    names.forEach((name) => {
+      byName[name] = ZERO_BESTS;
+    });
+  }
+  return byName;
+}
+
 function toStoredBests(bests: YearBests) {
   return {
     snatch_best: bests.bestSnatch > 0 ? bests.bestSnatch : null,
@@ -69,7 +120,7 @@ async function getOfflineFallback(athleteName: string): Promise<YearBests> {
       if (isNaN(d.getTime())) return true;
       return d.toISOString().split('T')[0] >= cutoff;
     });
-    if (recent.length === 0) return deriveBestsFromResults(results);
+    if (recent.length === 0) return deriveMostRecentMeetBests(results);
     return deriveBestsFromResults(recent);
   } catch {
     return ZERO_BESTS;
@@ -94,8 +145,12 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
   const storedBests = stored[athleteName];
   if (storedBests) {
     const result = fromStoredBests(storedBests);
-    cache.set(athleteName, result);
-    return result;
+    // Stored all-null rows (athletes cached before the most-recent-meet
+    // fallback existed) fall through so they get another chance to resolve.
+    if (hasRealBests(result)) {
+      cache.set(athleteName, result);
+      return result;
+    }
   }
 
   const oneYearAgo = new Date();
@@ -103,19 +158,25 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
   try {
     const cutoffDate = oneYearAgo.toISOString().split('T')[0];
     const results = await fetchApiYearBests(athleteName, cutoffDate);
-    if (results.length === 0) {
-      const fallback = await getOfflineFallback(athleteName);
+    const result: YearBests =
+      results.length === 0
+        ? ZERO_BESTS
+        : {
+            bestSnatch: Math.max(...results.map(r => r.bestSnatch || 0)),
+            bestCJ: Math.max(...results.map(r => r.bestCJ || 0)),
+            bestTotal: Math.max(...results.map(r => r.bestTotal || 0)),
+          };
+    if (!hasRealBests(result)) {
+      // Nothing inside the window: fall back to the most recent meet the
+      // athlete ever competed at.
+      const fallbackByName = await getMostRecentMeetBestsBatch([athleteName]);
+      const fallback = fallbackByName[athleteName] ?? ZERO_BESTS;
+      cache.set(athleteName, fallback);
       if (hasRealBests(fallback)) {
-        cache.set(athleteName, fallback);
         await saveAthleteBestsBatch({ [athleteName]: toStoredBests(fallback) });
       }
       return fallback;
     }
-    const result: YearBests = {
-      bestSnatch: Math.max(...results.map(r => r.bestSnatch || 0)),
-      bestCJ: Math.max(...results.map(r => r.bestCJ || 0)),
-      bestTotal: Math.max(...results.map(r => r.bestTotal || 0)),
-    };
     cache.set(athleteName, result);
     await saveAthleteBestsBatch({ [athleteName]: toStoredBests(result) });
     return result;
@@ -150,6 +211,9 @@ export async function getLastYearBestsBatch(
       const storedBests = stored[name];
       if (!storedBests) return;
       const result = fromStoredBests(storedBests);
+      // Skip stored all-null rows so athletes cached before the
+      // most-recent-meet fallback existed get another chance to resolve.
+      if (!hasRealBests(result)) return;
       cache.set(name, result);
       byName[name] = result;
     });
@@ -170,6 +234,7 @@ export async function getLastYearBestsBatch(
     const fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
     const persisted: Record<string, ReturnType<typeof toStoredBests>> = {};
 
+    const emptyNames: string[] = [];
     missing.forEach((name) => {
       const row = fetched[name];
       const bests = row
@@ -179,10 +244,28 @@ export async function getLastYearBestsBatch(
             bestTotal: row.bestTotal || 0,
           }
         : ZERO_BESTS;
+      if (!hasRealBests(bests)) {
+        emptyNames.push(name);
+        return;
+      }
       byName[name] = bests;
       cache.set(name, bests);
       persisted[name] = toStoredBests(bests);
     });
+
+    // Athletes with nothing inside the window: show their most recent
+    // meet's numbers instead of "—".
+    if (emptyNames.length > 0) {
+      const fallbacks = await getMostRecentMeetBestsBatch(emptyNames);
+      emptyNames.forEach((name) => {
+        const bests = fallbacks[name] ?? ZERO_BESTS;
+        byName[name] = bests;
+        cache.set(name, bests);
+        if (hasRealBests(bests)) {
+          persisted[name] = toStoredBests(bests);
+        }
+      });
+    }
 
     await saveAthleteBestsBatch(persisted);
   }

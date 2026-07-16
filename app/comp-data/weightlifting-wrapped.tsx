@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import {
   isNetworkAvailable,
@@ -11,7 +12,6 @@ import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -241,7 +241,7 @@ export default function WeightliftingWrappedScreen() {
 
   const searchAthlete = async () => {
     if (!searchQuery.trim()) {
-      Alert.alert("Error", "Please enter an athlete name");
+      showToast({ type: "error", message: "Please enter an athlete name" });
       return;
     }
 
@@ -281,7 +281,10 @@ export default function WeightliftingWrappedScreen() {
         .slice(0, 600);
 
       if (!data || data.length === 0) {
-        Alert.alert("No Results", `No results found for ${searchQuery} in ${selectedYear}`);
+        showToast({
+          type: "info",
+          message: `No results found for ${searchQuery} in ${selectedYear}`,
+        });
         return;
       }
 
@@ -292,7 +295,7 @@ export default function WeightliftingWrappedScreen() {
       setShowStats(true);
     } catch (error) {
       console.error("Error in searchAthlete:", error);
-      Alert.alert("Error", "An unexpected error occurred");
+      showToast({ type: "error", message: "An unexpected error occurred" });
     } finally {
       setLoading(false);
     }

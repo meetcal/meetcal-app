@@ -1,26 +1,12 @@
+import { SkeletonBlock } from "@/components/ui/Skeleton";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { StartListSkeletonProps } from "@/types/start-list";
-import React, { useCallback } from "react";
-import { Animated, ScrollView, StyleSheet, View } from "react-native";
+import React from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
   const colors = useAppColors();
-  const SkeletonBlock = useCallback(
-    ({ style }: { style: object }) => {
-      const backgroundColor = colors.background;
-      return (
-        <Animated.View
-          style={[
-            skeletonStyles.block,
-            { backgroundColor, opacity: skeletonPulse },
-            style,
-          ]}
-        />
-      );
-    },
-    [colors, skeletonPulse],
-  );
 
   return (
     <ThemedView
@@ -43,8 +29,8 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <SkeletonBlock style={skeletonStyles.icon} />
-            <SkeletonBlock style={skeletonStyles.searchLine} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.icon} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.searchLine} />
           </View>
         </View>
         <View style={skeletonStyles.buttonRow}>
@@ -54,8 +40,8 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <SkeletonBlock style={skeletonStyles.buttonIcon} />
-            <SkeletonBlock style={skeletonStyles.buttonText} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.buttonIcon} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.buttonText} />
           </View>
           <View
             style={[
@@ -63,8 +49,8 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <SkeletonBlock style={skeletonStyles.buttonIcon} />
-            <SkeletonBlock style={skeletonStyles.buttonText} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.buttonIcon} />
+            <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.buttonText} />
           </View>
         </View>
       </View>
@@ -78,8 +64,8 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
             ]}
           >
             <View style={skeletonStyles.cardHeader}>
-              <SkeletonBlock style={skeletonStyles.line} />
-              <SkeletonBlock style={skeletonStyles.tiny} />
+              <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.line} />
+              <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.tiny} />
             </View>
             <View
               style={[
@@ -88,16 +74,16 @@ export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
               ]}
             >
               <View style={skeletonStyles.detailRow}>
-                <SkeletonBlock style={skeletonStyles.label} />
-                <SkeletonBlock style={skeletonStyles.value} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.label} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.value} />
               </View>
               <View style={skeletonStyles.detailRow}>
-                <SkeletonBlock style={skeletonStyles.label} />
-                <SkeletonBlock style={skeletonStyles.valueShort} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.label} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.valueShort} />
               </View>
               <View style={skeletonStyles.detailRow}>
-                <SkeletonBlock style={skeletonStyles.label} />
-                <SkeletonBlock style={skeletonStyles.valueShort} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.label} />
+                <SkeletonBlock pulse={skeletonPulse} color={colors.background} style={skeletonStyles.valueShort} />
               </View>
             </View>
           </View>
@@ -112,7 +98,6 @@ const styles = StyleSheet.create({
 });
 
 const skeletonStyles = StyleSheet.create({
-  block: { borderRadius: 6 },
   icon: { width: 16, height: 16, borderRadius: 8 },
   searchLine: { height: 12, width: "70%", borderRadius: 6 },
   buttonIcon: { width: 14, height: 14, borderRadius: 7 },

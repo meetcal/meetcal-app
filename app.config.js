@@ -1,9 +1,7 @@
-const IS_DEV = process.env.APP_VARIANT === 'development';
-
 export default ({ config }) => ({
-  name: IS_DEV ? 'MeetCalDev' : 'MeetCal',
+  name: 'MeetCal',
   slug: 'meetcal',
-  version: '6.0.0',
+  version: '6.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   splash: {
@@ -16,14 +14,14 @@ export default ({ config }) => ({
   ],
   ios: {
     supportsTablet: false,
-    bundleIdentifier: IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal',
+    bundleIdentifier: 'com.memohnsen.meetcal',
     appleTeamId: 'HCK9FFW6UX',
     buildNumber: '1',
     entitlements: {
       'aps-environment': 'production',
       'com.apple.security.application-groups': [
         'group.com.memohnsen.meetcal',
-        `group.${IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal'}.onesignal`
+        'group.com.memohnsen.meetcal.onesignal'
       ]
     },
     config: {
@@ -41,7 +39,7 @@ export default ({ config }) => ({
       foregroundImage: './assets/images/ic_launcher_foreground.png',
       backgroundColor: '#ffffff'
     },
-    package: IS_DEV ? 'com.memohnsen.meetcal.dev' : 'com.memohnsen.meetcal',
+    package: 'com.memohnsen.meetcal',
     versionCode: 1,
     permissions: ["READ_CALENDAR", "WRITE_CALENDAR"]
   },

@@ -14,6 +14,7 @@ import { reindexAppEntities } from '@/utils/appIntents';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
 import { getCachedAuthState } from '@/lib/authCache';
+import { posthog } from '@/lib/posthog';
 import {
   deleteSavedSession as deleteSavedSessionFromApi,
   deleteSavedSessions as deleteSavedSessionsFromApi,
@@ -401,6 +402,15 @@ export function useSavedSessions() {
       }
 
       await commitSessions(nextSessions);
+
+      posthog.capture('session_saved', {
+        meet: updatedSession.meet,
+        session_number: updatedSession.sessionNumber,
+        platform: updatedSession.platform,
+        weight_class: updatedSession.weightClass,
+        is_update: existingSessionIndex >= 0,
+        athlete_count: updatedSession.athleteNames?.length ?? 0,
+      });
 
       // 2. Upsert to the API when online/authenticated. Local save remains source of truth offline.
       if (user?.id) {
