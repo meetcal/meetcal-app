@@ -1,9 +1,31 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getMockAthletesWithSession,
+  getMockedMeet,
   getMockSchedule,
+  isMockedMeet,
 } from "@/config/dev-mock-meet";
 
 const MEET = "Mock Meet";
+
+describe("dev mock meet hydration", () => {
+  // Relies on module state being unhydrated: no other test in this file
+  // exercises the hydration-backed reads, so the first call here starts fresh.
+  it("resolves concurrent reads to the persisted meet (no hydration race)", async () => {
+    await AsyncStorage.setItem("@dev_mock_meet", "Race Meet");
+
+    // Fire two reads concurrently before the AsyncStorage read settles. The
+    // second call must await the in-flight hydration rather than short-circuit
+    // on a not-yet-populated value.
+    const [mocked, isMocked] = await Promise.all([
+      getMockedMeet(),
+      isMockedMeet("Race Meet"),
+    ]);
+
+    expect(mocked).toBe("Race Meet");
+    expect(isMocked).toBe(true);
+  });
+});
 
 describe("getMockSchedule", () => {
   it("builds 3 days of sessions with sequential session numbers", () => {

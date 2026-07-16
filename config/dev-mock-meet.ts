@@ -15,15 +15,21 @@ const DEV_MOCK_MEET_KEY = '@dev_mock_meet';
 
 let mockedMeet: string | null = null;
 let hydrated = false;
+let hydratePromise: Promise<void> | null = null;
 
 async function hydrate(): Promise<void> {
   if (hydrated) return;
-  hydrated = true;
-  try {
-    mockedMeet = await AsyncStorage.getItem(DEV_MOCK_MEET_KEY);
-  } catch {
-    mockedMeet = null;
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      try {
+        mockedMeet = await AsyncStorage.getItem(DEV_MOCK_MEET_KEY);
+      } catch {
+        mockedMeet = null;
+      }
+      hydrated = true;
+    })();
   }
+  await hydratePromise;
 }
 
 export async function isMockedMeet(meet: MeetName): Promise<boolean> {
