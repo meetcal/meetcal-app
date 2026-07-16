@@ -10,6 +10,8 @@ import {
   VersionAnnouncement,
 } from "@/components/schedule/VersionAnnouncement";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
+import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuthGuard } from "@/utils/authGuard";
 import * as Sentry from '@sentry/react-native';
@@ -23,6 +25,7 @@ export default function InfoScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { requireAuth } = useAuthGuard();
+  const { setSelectedMeet } = useSelectedMeet();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
 
@@ -162,6 +165,25 @@ export default function InfoScreen() {
                 onPress={async () => {
                   await resetVersionAnnouncement();
                   setVersionAnnouncementKey((prev) => prev + 1);
+                }}
+              />
+              <ListButton
+                title="Select 2026 Nationals"
+                onPress={async () => {
+                  try {
+                    await setSelectedMeet(
+                      "2026 USA Weightlifting National Championships, Powered by Rogue Fitness",
+                    );
+                    showToast({
+                      type: "success",
+                      message: "Selected meet set to 2026 Nationals",
+                    });
+                  } catch {
+                    showToast({
+                      type: "error",
+                      message: "Failed to set selected meet",
+                    });
+                  }
                 }}
               />
               <ListButton title='Sentry Test' lastSection={true} onPress={ () => { Sentry.captureException(new Error('First error')) }}/>
