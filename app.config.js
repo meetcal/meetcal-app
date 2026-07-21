@@ -72,7 +72,7 @@ export default ({ config }) => ({
         },
         android: {
           compileSdkVersion: 36,
-          targetSdkVersion: 35,
+          targetSdkVersion: 36,
           buildToolsVersion: '36.1.0',
           minSdkVersion: 24,
           ndkVersion: '27.1.12297006',  // NDK version matching EAS Build
