@@ -7,6 +7,7 @@ import {
   claimIosReward,
   fetchReferral,
   MeetCalApiError,
+  releaseIosReward,
   type ApiReferralReward,
   type ApiReferralSummary,
 } from "@/lib/api/meetcal-api";
@@ -204,13 +205,32 @@ export default function ReferralScreen() {
           message: "Free month scheduled! It applies at your next renewal.",
         });
       } catch (e) {
-        // User backed out of Apple's sheet: reward stays claimable, do nothing.
+        // User backed out of Apple's sheet: the reward is still claimable, but
+        // the backend already reserved it (ios_offer_issued_at) when it handed
+        // out the signature. Release that reservation so the reward doesn't show
+        // as "scheduled" and re-claims aren't blocked for the throttle window.
         if (
           e &&
           typeof e === "object" &&
           "userCancelled" in e &&
           (e as { userCancelled?: boolean }).userCancelled
         ) {
+          try {
+            const token = await getToken();
+            if (token) await releaseIosReward(token, reward.id);
+          } catch (releaseErr) {
+            // Best-effort: the throttle lapses on its own if this fails.
+            console.warn("Failed to release iOS offer reservation:", releaseErr);
+          }
+          if (isMountedRef.current) {
+            setScheduledIds((prev) => {
+              if (!prev.has(reward.id)) return prev;
+              const next = new Set(prev);
+              next.delete(reward.id);
+              return next;
+            });
+          }
+          await load();
           return;
         }
         if (e instanceof MeetCalApiError && e.status === 409) {

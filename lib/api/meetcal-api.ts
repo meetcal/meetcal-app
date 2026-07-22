@@ -847,3 +847,17 @@ export async function claimIosReward(
     { token },
   );
 }
+
+// Release an outstanding iOS promotional-offer reservation. Called when the user
+// backs out of Apple's purchase sheet so the reward doesn't stay "scheduled"
+// (and re-claimable is unblocked) instead of waiting out the backend throttle.
+export async function releaseIosReward(
+  token: string,
+  rewardId: number,
+): Promise<void> {
+  await postJson(
+    `/users/me/rewards/${encodeURIComponent(rewardId)}/release-offer`,
+    {},
+    { token },
+  );
+}

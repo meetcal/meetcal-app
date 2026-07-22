@@ -88,7 +88,10 @@ export default function RedeemInviteScreen() {
   };
 
   const handleSkip = async () => {
-    await markRedeemPromptSeen();
+    // Skipping is a deliberate decline: also drop any pending deep-link code so
+    // the sign-in redirect (which checks the pending code before promptSeen)
+    // doesn't route back here on every future auth completion.
+    await Promise.all([markRedeemPromptSeen(), clearPendingReferralCode()]);
     continueOnward();
   };
 
