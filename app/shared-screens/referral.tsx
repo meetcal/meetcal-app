@@ -12,7 +12,7 @@ import {
 } from "@/lib/api/meetcal-api";
 import { useAuth } from "@clerk/expo";
 import { Stack } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -62,37 +62,47 @@ export default function ReferralScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(false);
-  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useState<number | null>(null);
+  // Rewards the user just claimed on this device. The backend keeps their
+  // status as "earned" until the store redemption arrives via webhook, so we
+  // hold a local "scheduled" state to avoid a second claim in the meantime.
+  const [scheduledIds, setScheduledIds] = useState<Set<number>>(new Set());
+
+  // Guards every async setState path against updates after unmount.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const token = await getToken();
       if (!token) throw new Error("Missing Clerk token");
       const result = await fetchReferral(token);
+      if (!isMountedRef.current) return;
       setSummary(result);
       setError(false);
     } catch (e) {
       console.error("Failed to load referral summary:", e);
-      setError(true);
+      if (isMountedRef.current) setError(true);
     }
   }, [getToken]);
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       setIsLoading(true);
       await load();
-      if (!cancelled) setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [load]);
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await load();
-    setIsRefreshing(false);
+    if (isMountedRef.current) setIsRefreshing(false);
   }, [load]);
 
   const handleShare = useCallback(async () => {
@@ -133,7 +143,7 @@ export default function ReferralScreen() {
           });
         }
       } finally {
-        setClaimingId(null);
+        if (isMountedRef.current) setClaimingId(null);
       }
     },
     [getToken, load],
@@ -169,10 +179,20 @@ export default function ReferralScreen() {
 
         await Purchases.purchaseDiscountedProduct(product, promotionalOffer);
 
+        // The backend hands out the signature without consuming the reward; it
+        // flips to "delivered" only when RevenueCat reports the redemption.
+        // Mark it scheduled locally so the Claim button doesn't reappear.
+        if (isMountedRef.current) {
+          setScheduledIds((prev) => {
+            const next = new Set(prev);
+            next.add(reward.id);
+            return next;
+          });
+        }
         await load();
         showToast({
           type: "success",
-          message: "Free month claimed! It applies at your next renewal.",
+          message: "Free month scheduled! It applies at your next renewal.",
         });
       } catch (e) {
         // User backed out of Apple's sheet: reward stays claimable, do nothing.
@@ -197,7 +217,7 @@ export default function ReferralScreen() {
           });
         }
       } finally {
-        setClaimingId(null);
+        if (isMountedRef.current) setClaimingId(null);
       }
     },
     [getToken, load],
@@ -415,8 +435,18 @@ export default function ReferralScreen() {
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             {summary.rewards.map((reward, index) => {
               const earnedDate = formatEarnedDate(reward.earned_at);
-              const isClaimable = reward.status === "earned";
+              const isScheduled = scheduledIds.has(reward.id);
+              // A locally-scheduled reward whose status hasn't flipped yet is no
+              // longer claimable, even though the backend still reports "earned".
+              const isClaimable = reward.status === "earned" && !isScheduled;
               const isClaiming = claimingId === reward.id;
+              const statusLabel = isScheduled
+                ? "Free month scheduled — may take a few minutes to reflect"
+                : REWARD_STATUS_LABEL[reward.status];
+              const statusColor =
+                isClaimable || isScheduled
+                  ? colors.success
+                  : colors.secondaryText;
               return (
                 <View key={reward.id}>
                   {index > 0 && (
@@ -432,17 +462,12 @@ export default function ReferralScreen() {
                         1 month free
                       </ThemedText>
                       <ThemedText
-                        style={[
-                          styles.rewardStatus,
-                          {
-                            color: isClaimable
-                              ? colors.success
-                              : colors.secondaryText,
-                          },
-                        ]}
+                        style={[styles.rewardStatus, { color: statusColor }]}
                       >
-                        {REWARD_STATUS_LABEL[reward.status]}
-                        {earnedDate ? ` · Earned ${earnedDate}` : ""}
+                        {statusLabel}
+                        {earnedDate && !isScheduled
+                          ? ` · Earned ${earnedDate}`
+                          : ""}
                       </ThemedText>
                     </View>
                     {isClaimable && (

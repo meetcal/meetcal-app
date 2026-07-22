@@ -757,7 +757,8 @@ export type ReferralRewardStatus =
   | 'failed';
 
 export type ApiReferralReward = {
-  id: string;
+  // Backend sends a JSON number (BIGSERIAL primary key).
+  id: number;
   status: ReferralRewardStatus;
   earned_at: string;
 };
@@ -822,7 +823,7 @@ export async function redeemReferralCode(
 
 export async function claimAndroidReward(
   token: string,
-  rewardId: string,
+  rewardId: number,
 ): Promise<ApiAndroidClaimResult> {
   return postJson(
     `/users/me/rewards/${encodeURIComponent(rewardId)}/claim`,
@@ -833,7 +834,7 @@ export async function claimAndroidReward(
 
 export async function claimIosReward(
   token: string,
-  rewardId: string,
+  rewardId: number,
 ): Promise<ApiIosPromotionalOffer> {
   return postJson(
     `/users/me/rewards/${encodeURIComponent(rewardId)}/claim`,

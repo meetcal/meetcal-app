@@ -29,6 +29,27 @@ type SubscriptionCacheEntry = SubscriptionCacheData & {
 const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+const VALID_SUBSCRIPTION_TYPES: SubscriptionCacheData['subscriptionType'][] = [
+  'free',
+  'monthly',
+  'annual',
+  'lifetime',
+  'unknown',
+];
+
+// A cache entry written before the type union changed can hold a retired value
+// (e.g. the legacy 'quarterly'). Remap anything unrecognized to 'unknown' so a
+// stale label never renders before the next RevenueCat refresh corrects it.
+function normalizeCachedSubscriptionType(
+  value: unknown,
+): SubscriptionCacheData['subscriptionType'] {
+  return VALID_SUBSCRIPTION_TYPES.includes(
+    value as SubscriptionCacheData['subscriptionType'],
+  )
+    ? (value as SubscriptionCacheData['subscriptionType'])
+    : 'unknown';
+}
+
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
@@ -126,6 +147,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (!cached) return null;
 
       const parsed: SubscriptionCacheData = JSON.parse(cached);
+      parsed.subscriptionType = normalizeCachedSubscriptionType(
+        parsed.subscriptionType,
+      );
       const now = Date.now();
       const isExpired = now - parsed.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
