@@ -761,6 +761,11 @@ export type ApiReferralReward = {
   id: number;
   status: ReferralRewardStatus;
   earned_at: string;
+  // Set when an Apple promotional-offer signature was last issued for this
+  // reward (RFC3339 timestamp, or null). While recent (~48h) the reward is
+  // "scheduled": the offer is outstanding and the claim endpoint 409s a
+  // re-claim until the redemption lands and flips the status to delivered.
+  ios_offer_issued_at?: string | number | null;
 };
 
 export type ApiReferralSummary = {
@@ -779,9 +784,9 @@ export type RedeemReferralErrorCode =
   | 'invalid_code'
   | 'not_eligible';
 
-/** Android claim response body. */
+/** Android claim response body (delivery is synchronous, so always delivered). */
 export type ApiAndroidClaimResult = {
-  status: 'delivering' | 'delivered';
+  status: 'delivered';
 };
 
 /**

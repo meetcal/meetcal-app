@@ -10,6 +10,7 @@ import {
   type ApiReferralReward,
   type ApiReferralSummary,
 } from "@/lib/api/meetcal-api";
+import { isIosOfferOutstanding } from "@/utils/referral";
 import { useAuth } from "@clerk/expo";
 import { Stack } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,9 +64,10 @@ export default function ReferralScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [claimingId, setClaimingId] = useState<number | null>(null);
-  // Rewards the user just claimed on this device. The backend keeps their
-  // status as "earned" until the store redemption arrives via webhook, so we
-  // hold a local "scheduled" state to avoid a second claim in the meantime.
+  // Immediate post-purchase bridge: rewards just claimed on this device, held
+  // locally until the refetch surfaces the backend's ios_offer_issued_at. The
+  // persistent scheduled state is derived from that timestamp (see below), so
+  // this set only needs to cover the gap before load() lands.
   const [scheduledIds, setScheduledIds] = useState<Set<number>>(new Set());
 
   // Guards every async setState path against updates after unmount.
@@ -130,7 +132,14 @@ export default function ReferralScreen() {
             "Free month claimed! Your next billing date moves 30 days later.",
         });
       } catch (e) {
-        if (e instanceof MeetCalApiError && e.status === 503) {
+        if (e instanceof MeetCalApiError && e.status === 409) {
+          // Already claimed/in progress elsewhere — reconcile from the server.
+          await load();
+          showToast({
+            type: "info",
+            message: "This free month is already being applied.",
+          });
+        } else if (e instanceof MeetCalApiError && e.status === 503) {
           showToast({
             type: "error",
             message: "Reward claiming is temporarily unavailable. Try again later.",
@@ -202,6 +211,23 @@ export default function ReferralScreen() {
           "userCancelled" in e &&
           (e as { userCancelled?: boolean }).userCancelled
         ) {
+          return;
+        }
+        if (e instanceof MeetCalApiError && e.status === 409) {
+          // An offer is already outstanding for this reward (~48h window).
+          // Treat as already-scheduled: bridge locally, then reconcile.
+          if (isMountedRef.current) {
+            setScheduledIds((prev) => {
+              const next = new Set(prev);
+              next.add(reward.id);
+              return next;
+            });
+          }
+          await load();
+          showToast({
+            type: "info",
+            message: "Your free month is already scheduled for your next renewal.",
+          });
           return;
         }
         if (e instanceof MeetCalApiError && e.status === 503) {
@@ -435,9 +461,14 @@ export default function ReferralScreen() {
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             {summary.rewards.map((reward, index) => {
               const earnedDate = formatEarnedDate(reward.earned_at);
-              const isScheduled = scheduledIds.has(reward.id);
-              // A locally-scheduled reward whose status hasn't flipped yet is no
-              // longer claimable, even though the backend still reports "earned".
+              // Scheduled = a recent Apple offer is outstanding (persisted by
+              // the backend, survives restart) or a just-completed local claim
+              // (bridge until the refetch lands).
+              const isScheduled =
+                scheduledIds.has(reward.id) ||
+                isIosOfferOutstanding(reward.ios_offer_issued_at);
+              // A scheduled reward whose status hasn't flipped yet is no longer
+              // claimable, even though the backend still reports "earned".
               const isClaimable = reward.status === "earned" && !isScheduled;
               const isClaiming = claimingId === reward.id;
               const statusLabel = isScheduled

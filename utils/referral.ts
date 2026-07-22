@@ -70,6 +70,47 @@ export async function markRedeemPromptSeen(): Promise<void> {
   }
 }
 
+// How long after an Apple promotional-offer signature is issued the reward is
+// treated as "scheduled". The backend 409s a re-claim during this window while
+// it waits for the RevenueCat redemption webhook.
+export const IOS_OFFER_OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Tolerant timestamp parser: accepts an RFC3339/ISO string, a numeric epoch-ms
+ * string, or an epoch-ms number. Returns epoch milliseconds, or null if the
+ * value is missing or unparseable.
+ */
+export function parseTimestampMs(
+  value: string | number | null | undefined,
+): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) {
+    const epoch = Number(trimmed);
+    return Number.isFinite(epoch) ? epoch : null;
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Whether an Apple promotional offer issued at `issuedAt` is still outstanding
+ * (recent enough that the reward should render as scheduled, not claimable).
+ */
+export function isIosOfferOutstanding(
+  issuedAt: string | number | null | undefined,
+  now: number = Date.now(),
+  windowMs: number = IOS_OFFER_OUTSTANDING_WINDOW_MS,
+): boolean {
+  const ms = parseTimestampMs(issuedAt);
+  if (ms == null) return false;
+  return now - ms < windowMs;
+}
+
 /**
  * Extract the referral redeem error code from a failed request. The backend
  * returns one of the documented codes; we look for it in a JSON `error`/`code`
