@@ -10,6 +10,7 @@ export const DEEP_LINKS = {
   standards: "/comp-data/new-standards",
   intlRankings: "/comp-data/rankings",
   records: "/comp-data/records",
+  invite: "/invite",
 } as const;
 
 type SessionDetailsParams = {
@@ -73,6 +74,10 @@ export function createIntlRankingsDeepLink(params: {
 
 export function createRecordsDeepLink() {
   return createAppDeepLink(DEEP_LINKS.records);
+}
+
+export function createInviteDeepLink(code: string) {
+  return createAppDeepLink(`${DEEP_LINKS.invite}/${encodeURIComponent(code)}`);
 }
 
 export function getNotificationDeepLink(data: NotificationData) {
