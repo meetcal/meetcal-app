@@ -375,53 +375,52 @@ class IWFWorldRecordsScraper:
             new_count = len(new_records)
             modified_count = len(modified_records)
             
-            # Build message text
             if new_count == 0 and modified_count == 0:
-                # No changes
-                message_text = "IWF scraper ran successfully. No new records or updates."
-            else:
-                # Build list of updated records
-                message_lines = []
+                print("No database changes; skipping Slack notification")
+                return False
+
+            # Build message text
+            message_lines = []
                 
-                # Summary
-                message_lines.append("IWF Records Summary:\n")
-                message_lines.append(f"• {new_count} new record(s) inserted")
-                message_lines.append(f"• {modified_count} record(s) updated")
+            # Summary
+            message_lines.append("IWF Records Summary:\n")
+            message_lines.append(f"• {new_count} new record(s) inserted")
+            message_lines.append(f"• {modified_count} record(s) updated")
                 
-                # Updated records section
-                if modified_count > 0:
-                    message_lines.append("\n:memo: Updated Records\n")
-                    
-                    for item in modified_records:
-                        record = item['record']
-                        old = item['old']
-                        
-                        # Format: Record Type | Age Category | Gender | Weight Class
-                        record_line = f"• {record['record_type']} | {record['age_category']} | {record['gender']} | {record['weight_class']}"
-                        message_lines.append(record_line)
-                        
-                        # Build change details
-                        changes_list = []
-                        
-                        if old.get('snatch_record') != record.get('snatch_record'):
-                            old_val = old.get('snatch_record') or 'N/A'
-                            new_val = record.get('snatch_record') or 'N/A'
-                            changes_list.append(f"Snatch: {old_val}kg → {new_val}kg")
-                        
-                        if old.get('cj_record') != record.get('cj_record'):
-                            old_val = old.get('cj_record') or 'N/A'
-                            new_val = record.get('cj_record') or 'N/A'
-                            changes_list.append(f"C&J: {old_val}kg → {new_val}kg")
-                        
-                        if old.get('total_record') != record.get('total_record'):
-                            old_val = old.get('total_record') or 'N/A'
-                            new_val = record.get('total_record') or 'N/A'
-                            changes_list.append(f"Total: {old_val}kg → {new_val}kg")
-                        
-                        if changes_list:
-                            message_lines.append(f"  {', '.join(changes_list)}")
+            # Updated records section
+            if modified_count > 0:
+                message_lines.append("\n:memo: Updated Records\n")
+
+                for item in modified_records:
+                    record = item['record']
+                    old = item['old']
+
+                    # Format: Record Type | Age Category | Gender | Weight Class
+                    record_line = f"• {record['record_type']} | {record['age_category']} | {record['gender']} | {record['weight_class']}"
+                    message_lines.append(record_line)
+
+                    # Build change details
+                    changes_list = []
+
+                    if old.get('snatch_record') != record.get('snatch_record'):
+                        old_val = old.get('snatch_record') or 'N/A'
+                        new_val = record.get('snatch_record') or 'N/A'
+                        changes_list.append(f"Snatch: {old_val}kg → {new_val}kg")
+
+                    if old.get('cj_record') != record.get('cj_record'):
+                        old_val = old.get('cj_record') or 'N/A'
+                        new_val = record.get('cj_record') or 'N/A'
+                        changes_list.append(f"C&J: {old_val}kg → {new_val}kg")
+
+                    if old.get('total_record') != record.get('total_record'):
+                        old_val = old.get('total_record') or 'N/A'
+                        new_val = record.get('total_record') or 'N/A'
+                        changes_list.append(f"Total: {old_val}kg → {new_val}kg")
+
+                    if changes_list:
+                        message_lines.append(f"  {', '.join(changes_list)}")
                 
-                message_text = "\n".join(message_lines)
+            message_text = "\n".join(message_lines)
             
             # Send to Slack
             data = {
@@ -537,4 +536,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

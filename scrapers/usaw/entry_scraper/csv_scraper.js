@@ -321,6 +321,10 @@ async function sendSlackNotification(upsertStats, meetName) {
     
     // Calculate total upserted (inserted + updated)
     const upsertedCount = upsertStats.inserted + upsertStats.updated;
+    if (upsertedCount === 0 && upsertStats.skipped === 0) {
+        console.log('No database changes; skipping Slack notification.');
+        return;
+    }
     
     // Create the message
     let message = `*Entry Scraper Update - ${meetName}*\n\n`;

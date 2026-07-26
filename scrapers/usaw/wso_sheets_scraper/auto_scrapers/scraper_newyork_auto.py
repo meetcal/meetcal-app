@@ -226,9 +226,17 @@ class NewYorkAutoScraper:
 
         total_inserted = sum(len(r.get("inserted", [])) for r in results)
         total_updated = sum(len(r.get("updated", [])) for r in results)
+        errors = [r for r in results if r.get("error")]
+        if total_inserted + total_updated == 0 and not errors:
+            print("No database changes; skipping Slack notification")
+            return
 
         # Build message
-        title = f"{self.wso_name} WSO Records - Automated Scrape Complete"
+        title = (
+            f"{self.wso_name} WSO Records - Automated Scrape Failed"
+            if errors
+            else f"{self.wso_name} WSO Records - Automated Scrape Complete"
+        )
 
         if self.dry_run:
             message = f"*{title}*\n\n*DRY RUN* - Processed {total_pdfs} PDF files"
@@ -238,6 +246,10 @@ class NewYorkAutoScraper:
                 f"Processed *{total_pdfs}* PDF files\n"
                 f"*{total_inserted}* new records, *{total_updated}* updated records"
             )
+            if errors:
+                message += "\n" + "\n".join(
+                    f"⚠ *{result['category']}*: {result['error']}" for result in errors
+                )
 
         payload = {"text": message}
 

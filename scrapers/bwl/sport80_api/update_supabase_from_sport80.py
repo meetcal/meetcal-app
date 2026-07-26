@@ -165,6 +165,10 @@ def fetch_meet_results_from_sport80(api_client: SportEighty, event_data_dict: di
 
 def send_slack_notification(added_meet_names: list[str]):
     """Send a Slack notification with the names of meets added and timestamp."""
+    if not added_meet_names:
+        logging.info("No database changes; skipping Slack notification.")
+        return
+
     if not SLACK_WEBHOOK_URL:
         logging.info("Slack webhook URL not configured. Skipping notification.")
         return
@@ -173,9 +177,7 @@ def send_slack_notification(added_meet_names: list[str]):
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     
     # Create the message
-    if not added_meet_names:
-        message = f"🇬🇧 No new BWL meet results added to Supabase"
-    elif len(added_meet_names) == 1:
+    if len(added_meet_names) == 1:
         message = f"🇬🇧 1 BWL Meet Added to Supabase:\n• {added_meet_names[0]}"
     else:
         meet_list = "\n".join([f"• {name}" for name in added_meet_names])

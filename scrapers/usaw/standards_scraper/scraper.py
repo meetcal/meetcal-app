@@ -402,6 +402,10 @@ class StandardsScraper:
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with upsert summary."""
+        if is_dry_run or not inserted and not updated:
+            print("No database changes; skipping Slack notification")
+            return
+
         if not self.slack_webhook_url:
             print("⚠ Slack webhook not configured, skipping notification")
             return
