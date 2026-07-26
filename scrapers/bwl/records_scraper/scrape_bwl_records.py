@@ -606,12 +606,16 @@ def upsert_records_to_supabase(records: List[Dict]) -> Dict:
 
 def send_slack_notification(upsert_results: Dict):
     """Send Slack notification with scraping results"""
+    inserted = upsert_results.get('inserted', 0)
+    updated = upsert_results.get('updated', 0)
+    if inserted + updated == 0:
+        logging.info("No database changes; skipping Slack notification.")
+        return
+
     if not SLACK_RECORDS_WEBHOOK_URL:
         logging.info("Slack webhook URL not configured. Skipping notification.")
         return
     
-    inserted = upsert_results.get('inserted', 0)
-    updated = upsert_results.get('updated', 0)
     updated_details = upsert_results.get('updated_details', [])
     
     message = f"🇬🇧 BWL Records Scraper Completed\n"
@@ -747,4 +751,3 @@ if __name__ == "__main__":
         dry_run()
     else:
         main()
-

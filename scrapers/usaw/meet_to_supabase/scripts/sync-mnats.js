@@ -384,6 +384,11 @@ async function retry(fn, maxRetries = 3) {
  * @param {Array<string>} meetNames - Array of meet names that were added
  */
 async function sendSlackNotification(meetsAddedCount, meetNames = []) {
+  if (meetsAddedCount === 0) {
+    console.log('No database changes; skipping Slack notification.');
+    return;
+  }
+
   if (!SLACK_WEBHOOK_URL) {
     console.log('Slack webhook URL not configured. Skipping notification.');
     return;
@@ -425,8 +430,6 @@ async function syncMeets() {
     
     if (!meetsData || meetsData.length === 0) {
       console.log('No meets data found');
-      // Send Slack notification even when 0 meets are found
-      await sendSlackNotification(0, []);
       return;
     }
     
@@ -481,4 +484,4 @@ async function syncMeets() {
 }
 
 // Run the sync process
-syncMeets(); 
+syncMeets();

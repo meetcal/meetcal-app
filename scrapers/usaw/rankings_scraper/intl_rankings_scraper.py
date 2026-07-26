@@ -453,27 +453,28 @@ def send_slack_notification(group_results: List[Dict[str, Any]], dry_run: bool =
         if result.get("inserted", 0) + result.get("updated", 0) + result.get("deleted", 0) > 0
     ]
 
-    if changed_groups:
-        lines = ["*International rankings changed:*"]
-        for result in sorted(changed_groups, key=group_label):
-            changed_count = (
-                int(result.get("inserted", 0))
-                + int(result.get("updated", 0))
-                + int(result.get("deleted", 0))
+    if not changed_groups:
+        logging.info("No database changes; skipping Slack notification.")
+        return
+
+    lines = ["*International rankings changed:*"]
+    for result in sorted(changed_groups, key=group_label):
+        changed_count = (
+            int(result.get("inserted", 0))
+            + int(result.get("updated", 0))
+            + int(result.get("deleted", 0))
+        )
+        if result.get("pruned"):
+            lines.append(
+                f"- {group_label(result)}: {changed_count} removed because the group is no longer on USAW"
             )
-            if result.get("pruned"):
-                lines.append(
-                    f"- {group_label(result)}: {changed_count} removed because the group is no longer on USAW"
-                )
-            else:
-                lines.append(
-                    f"- {group_label(result)}: {changed_count} changed "
-                    f"({result.get('inserted', 0)} inserted, {result.get('updated', 0)} updated, "
-                    f"{result.get('deleted', 0)} deleted)"
-                )
-        text = "\n".join(lines)
-    else:
-        text = "International rankings scraper completed: no rankings changed."
+        else:
+            lines.append(
+                f"- {group_label(result)}: {changed_count} changed "
+                f"({result.get('inserted', 0)} inserted, {result.get('updated', 0)} updated, "
+                f"{result.get('deleted', 0)} deleted)"
+            )
+    text = "\n".join(lines)
 
     try:
         response = requests.post(

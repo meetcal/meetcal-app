@@ -414,6 +414,10 @@ class WSORecordsScraper:
         """Send Slack notification with change summary."""
         total_inserted = len(self.changes["inserted"])
         total_updated = len(self.changes["updated"])
+        if total_inserted + total_updated == 0:
+            print("No database changes; skipping Slack notification")
+            return
+
 
         if total_inserted == 0 and total_updated == 0:
             message = f"📊 *{self.wso_name} WSO Records - No Changes*\n\nScraper ran successfully. No new records or updates."

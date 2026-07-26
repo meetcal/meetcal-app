@@ -187,10 +187,12 @@ async function retry(fn, maxRetries = 3) {
 }
 
 async function sendSlackNotification(insertCount, addedMeetNames) {
+  if (insertCount === 0) {
+    console.log('No database changes; skipping Slack notification');
+    return;
+  }
   if (!SLACK_WEBHOOK_URL) return;
-  const message = insertCount === 0
-    ? 'No new Nationals meets added to Convex'
-    : `${insertCount} Nationals meets added to Convex\n\nMeets added:\n${addedMeetNames.map(n => `- ${n}`).join('\n')}`;
+  const message = `${insertCount} Nationals meets added to Convex\n\nMeets added:\n${addedMeetNames.map(n => `- ${n}`).join('\n')}`;
   try {
     await axios.post(SLACK_WEBHOOK_URL, { text: message }, { timeout: 30000 });
   } catch (error) {

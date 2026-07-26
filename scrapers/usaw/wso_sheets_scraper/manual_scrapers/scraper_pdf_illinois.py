@@ -227,6 +227,10 @@ class WSORecordsIllinoisScraper:
         return self.convex_client.action("scraperIngestion:replaceWSORecordSet", payload)
 
     def send_slack_notification(self, result: Dict[str, int], record_count: int):
+        if result["inserted"] + result["updated"] + result["deleted"] == 0:
+            print("No database changes; skipping Slack notification")
+            return
+
         if not self.slack_webhook_url:
             print("Slack webhook not configured, skipping notification")
             return

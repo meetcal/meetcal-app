@@ -317,6 +317,10 @@ class WSORecordsPAWVScraper:
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], updated: List[Dict[str, Any]]):
         """Send Slack notification with upsert summary."""
+        if not inserted and not updated:
+            print("No database changes; skipping Slack notification")
+            return
+
         if not self.slack_webhook_url:
             print("⚠ Slack webhook not configured, skipping notification")
             return

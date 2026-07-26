@@ -458,6 +458,10 @@ class USAMWEventsScraper:
     
     def send_slack_notification(self, inserted: List[Dict[str, Any]], skipped: List[Dict[str, Any]], is_dry_run: bool = False):
         """Send Slack notification with results."""
+        if is_dry_run or not inserted:
+            print("No database changes; skipping Slack notification")
+            return
+
         if not self.slack_webhook_url:
             print("Slack webhook URL not configured. Skipping notification.")
             return

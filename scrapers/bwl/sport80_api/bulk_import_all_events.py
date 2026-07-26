@@ -281,11 +281,6 @@ def main():
         logging.critical("SUPABASE_URL and SUPABASE_KEY must be set. Exiting.")
         return
 
-    # Send start notification
-    send_slack_notification(
-        f"🚀 Started bulk import of Sport80 events ({START_YEAR}-{END_YEAR})"
-    )
-
     sport80_api = SportEighty(subdomain=BWL_DOMAIN, return_dict=True, debug=logging.WARNING)
     
     # Fetch ALL events across all years
@@ -441,17 +436,19 @@ def main():
     logging.info(f"Errors: {error_count}")
     logging.info("="*80)
 
-    # Send completion notification
-    summary_message = (
-        f"✅ Bulk import completed!\n"
-        f"• Added {len(added_meet_names)} meets\n"
-        f"• Total results: {total_results_added}\n"
-        f"• Skipped: {skipped_count}\n"
-        f"• Errors: {error_count}"
-    )
-    send_slack_notification(summary_message)
+    if total_results_added > 0 or error_count > 0:
+        status = "⚠️ Bulk import completed with errors" if error_count else "✅ Bulk import changed the database"
+        summary_message = (
+            f"{status}\n"
+            f"• Added {len(added_meet_names)} meets\n"
+            f"• Total results: {total_results_added}\n"
+            f"• Skipped: {skipped_count}\n"
+            f"• Errors: {error_count}"
+        )
+        send_slack_notification(summary_message)
+    else:
+        logging.info("No database changes; skipping Slack notification.")
 
 
 if __name__ == "__main__":
     main()
-
