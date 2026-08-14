@@ -59,3 +59,4 @@ credentials.json
 
 push-notification-send.md
 .env.local
+.direnv/
