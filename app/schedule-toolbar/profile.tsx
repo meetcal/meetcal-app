@@ -34,7 +34,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export type EditableField = "firstName" | "lastName" | "email";
-export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
+export type SubscriptionStatus =
+  | "free"
+  | "monthly"
+  | "annual"
+  | "lifetime"
+  | "unknown";
 
 function ProfileField({
   label,
@@ -272,6 +277,22 @@ export default function ProfileScreen() {
           {Platform.OS === "android" && (
             <AndroidCalendarSetting colors={colors} />
           )}
+          <ProfileActionSetting
+            colors={colors}
+            label="Refer Friends, Earn Free Months"
+            description="For every 5 friends who subscribe, get 1 month free."
+            onPress={() => {
+              const authResult = requireAuth({
+                feature: "referrals",
+                message: "Sign in to view your referral rewards.",
+                returnPath: "/schedule-toolbar/profile",
+              });
+              if (authResult === null || authResult === false) {
+                return;
+              }
+              router.push("/shared-screens/referral");
+            }}
+          />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>

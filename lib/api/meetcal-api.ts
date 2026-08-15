@@ -169,6 +169,14 @@ export function getJson<T>(
   return requestJson<T>('GET', path, query, undefined, options);
 }
 
+export function postJson<T>(
+  path: string,
+  body: unknown,
+  options?: RequestOptions,
+): Promise<T> {
+  return requestJson<T>('POST', path, undefined, body, options);
+}
+
 export function putJson<T>(
   path: string,
   body: unknown,
@@ -734,4 +742,122 @@ export async function patchAutoUnsavePreference(
   enabled: boolean,
 ): Promise<{ auto_unsave_started_sessions: boolean }> {
   return patchJson('/users/me/preferences/auto-unsave', { enabled }, { token });
+}
+
+// ---------------------------------------------------------------------------
+// Referral rewards
+// ---------------------------------------------------------------------------
+
+export type ReferralRewardStatus =
+  | 'earned'
+  | 'claimed'
+  | 'delivering'
+  | 'delivered'
+  | 'reversed'
+  | 'failed';
+
+export type ApiReferralReward = {
+  // Backend sends a JSON number (BIGSERIAL primary key).
+  id: number;
+  status: ReferralRewardStatus;
+  earned_at: string;
+  // Set when an Apple promotional-offer signature was last issued for this
+  // reward (RFC3339 timestamp, or null). While recent (~48h) the reward is
+  // "scheduled": the offer is outstanding and the claim endpoint 409s a
+  // re-claim until the redemption lands and flips the status to delivered.
+  ios_offer_issued_at?: string | number | null;
+};
+
+export type ApiReferralSummary = {
+  code: string;
+  share_url: string;
+  pending_count: number;
+  qualifying_count: number;
+  qualified_count: number;
+  reward_months_available: number;
+  rewards: ApiReferralReward[];
+};
+
+export type RedeemReferralErrorCode =
+  | 'self_referral'
+  | 'already_redeemed'
+  | 'invalid_code'
+  | 'not_eligible';
+
+/** Android claim response body (delivery is synchronous, so always delivered). */
+export type ApiAndroidClaimResult = {
+  status: 'delivered';
+};
+
+/**
+ * iOS claim response body: an Apple promotional-offer signature bundle. The
+ * fields map directly onto react-native-purchases' `PurchasesPromotionalOffer`
+ * (see claim flow in the referral screen).
+ */
+export type ApiIosPromotionalOffer = {
+  product_id: string;
+  offer_id: string;
+  key_id: string;
+  nonce: string;
+  timestamp: number;
+  signature: string;
+};
+
+export async function fetchReferral(token: string): Promise<ApiReferralSummary> {
+  return assertHasFields(
+    await getJson('/users/me/referral', undefined, { token }),
+    '/users/me/referral',
+    [
+      'code',
+      'share_url',
+      'pending_count',
+      'qualifying_count',
+      'qualified_count',
+      'reward_months_available',
+      'rewards',
+    ],
+  ) as ApiReferralSummary;
+}
+
+export async function redeemReferralCode(
+  token: string,
+  code: string,
+): Promise<void> {
+  await postJson('/users/me/referral/redeem', { code }, { token });
+}
+
+export async function claimAndroidReward(
+  token: string,
+  rewardId: number,
+): Promise<ApiAndroidClaimResult> {
+  return postJson(
+    `/users/me/rewards/${encodeURIComponent(rewardId)}/claim`,
+    { platform: 'android' },
+    { token },
+  );
+}
+
+export async function claimIosReward(
+  token: string,
+  rewardId: number,
+): Promise<ApiIosPromotionalOffer> {
+  return postJson(
+    `/users/me/rewards/${encodeURIComponent(rewardId)}/claim`,
+    { platform: 'ios' },
+    { token },
+  );
+}
+
+// Release an outstanding iOS promotional-offer reservation. Called when the user
+// backs out of Apple's purchase sheet so the reward doesn't stay "scheduled"
+// (and re-claimable is unblocked) instead of waiting out the backend throttle.
+export async function releaseIosReward(
+  token: string,
+  rewardId: number,
+): Promise<void> {
+  await postJson(
+    `/users/me/rewards/${encodeURIComponent(rewardId)}/release-offer`,
+    {},
+    { token },
+  );
 }

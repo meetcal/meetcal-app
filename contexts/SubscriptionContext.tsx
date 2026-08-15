@@ -7,8 +7,8 @@ import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtil
 
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
-  subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown' | null;
-  setSubscribed: (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => Promise<void>;
+  subscriptionType: 'free' | 'monthly' | 'annual' | 'lifetime' | 'unknown' | null;
+  setSubscribed: (value: boolean, type: 'free' | 'monthly' | 'annual' | 'lifetime') => Promise<void>;
   isLoading: boolean;
   restorePurchases: () => Promise<boolean>;
   checkSubscriptionStatus: () => Promise<void>;
@@ -18,7 +18,7 @@ type SubscriptionContextType = {
 
 interface SubscriptionCacheData {
   isSubscribed: boolean;
-  subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown';
+  subscriptionType: 'free' | 'monthly' | 'annual' | 'lifetime' | 'unknown';
   timestamp: number;
 }
 
@@ -29,17 +29,38 @@ type SubscriptionCacheEntry = SubscriptionCacheData & {
 const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+const VALID_SUBSCRIPTION_TYPES: SubscriptionCacheData['subscriptionType'][] = [
+  'free',
+  'monthly',
+  'annual',
+  'lifetime',
+  'unknown',
+];
+
+// A cache entry written before the type union changed can hold a retired value
+// (e.g. the legacy 'quarterly'). Remap anything unrecognized to 'unknown' so a
+// stale label never renders before the next RevenueCat refresh corrects it.
+function normalizeCachedSubscriptionType(
+  value: unknown,
+): SubscriptionCacheData['subscriptionType'] {
+  return VALID_SUBSCRIPTION_TYPES.includes(
+    value as SubscriptionCacheData['subscriptionType'],
+  )
+    ? (value as SubscriptionCacheData['subscriptionType'])
+    : 'unknown';
+}
+
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
-  const [subscriptionType, setSubscriptionType] = useState<'free' | 'quarterly' | 'lifetime' | 'unknown' | null>(null);
+  const [subscriptionType, setSubscriptionType] = useState<'free' | 'monthly' | 'annual' | 'lifetime' | 'unknown' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
   const confirmedMembershipRef = useRef<{
     subscribed: boolean;
-    type: 'free' | 'quarterly' | 'lifetime';
+    type: 'free' | 'monthly' | 'annual' | 'lifetime';
   } | null>(null);
 
   // These are app-owned tags. RevenueCat's native OneSignal integration covers
@@ -47,7 +68,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   // non-renewing lifetime purchases.
   const syncOneSignalMembershipTags = useCallback(async (
     subscribed: boolean,
-    type: 'free' | 'quarterly' | 'lifetime'
+    type: 'free' | 'monthly' | 'annual' | 'lifetime'
   ) => {
     try {
       const [oneSignalExternalId, revenueCatAppUserId] = await Promise.all([
@@ -72,7 +93,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const recordConfirmedMembership = useCallback((
     subscribed: boolean,
-    type: 'free' | 'quarterly' | 'lifetime'
+    type: 'free' | 'monthly' | 'annual' | 'lifetime'
   ) => {
     confirmedMembershipRef.current = { subscribed, type };
     void syncOneSignalMembershipTags(subscribed, type);
@@ -100,7 +121,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   // Helper function to save subscription to cache with timestamp
   const saveSubscriptionCache = async (
     subscribed: boolean,
-    type: 'free' | 'quarterly' | 'lifetime'
+    type: 'free' | 'monthly' | 'annual' | 'lifetime'
   ) => {
     try {
       const cacheData: SubscriptionCacheData = {
@@ -126,6 +147,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (!cached) return null;
 
       const parsed: SubscriptionCacheData = JSON.parse(cached);
+      parsed.subscriptionType = normalizeCachedSubscriptionType(
+        parsed.subscriptionType,
+      );
       const now = Date.now();
       const isExpired = now - parsed.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
@@ -146,24 +170,35 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   };
 
   // Helper function to check subscription status consistently
-  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'quarterly' | 'lifetime']> => {
+  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'monthly' | 'annual' | 'lifetime']> => {
     // Check for simulated subscription first
     const simulatedStatus = getSimulatedSubscriptionStatus();
     if (simulatedStatus !== null) {
       console.log('Using simulated subscription status:', simulatedStatus);
-      return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
+      return [simulatedStatus, simulatedStatus ? 'monthly' : 'free'];
     }
 
     const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
-    let subscriptionType: 'free' | 'quarterly' | 'lifetime' = 'free';
+    let subscriptionType: 'free' | 'monthly' | 'annual' | 'lifetime' = 'free';
 
     if (hasActiveEntitlement) {
-      // Check the specific product identifier or entitlement to determine type
+      // Check the specific product identifier to determine type. The live
+      // products are monthly and annual; lifetime detection is retained for
+      // legacy purchasers still on the old non-renewing product.
       const entitlement = customerInfo.entitlements.active['Subscriptions'];
-      if (entitlement?.productIdentifier.includes('lifetime')) {
+      const productIdentifier = entitlement?.productIdentifier.toLowerCase() ?? '';
+      if (productIdentifier.includes('lifetime')) {
         subscriptionType = 'lifetime';
+      } else if (
+        productIdentifier.includes('annual') ||
+        productIdentifier.includes('year')
+      ) {
+        subscriptionType = 'annual';
+      } else if (productIdentifier.includes('month')) {
+        subscriptionType = 'monthly';
       } else {
-        subscriptionType = 'quarterly';
+        // Unrecognized paid product: still gates as a paid subscription.
+        subscriptionType = 'monthly';
       }
     }
 
@@ -186,7 +221,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const simulatedStatus = getSimulatedSubscriptionStatus();
       if (simulatedStatus !== null) {
         console.log('Using simulated subscription status:', simulatedStatus);
-        const type = simulatedStatus ? 'quarterly' : 'free';
+        const type = simulatedStatus ? 'monthly' : 'free';
         await saveSubscriptionCache(simulatedStatus, type);
         setIsSubscribed(simulatedStatus);
         setSubscriptionType(type);
@@ -250,7 +285,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       try {
         const simulatedStatus = getSimulatedSubscriptionStatus();
         if (simulatedStatus !== null) {
-          const type = simulatedStatus ? 'quarterly' : 'free';
+          const type = simulatedStatus ? 'monthly' : 'free';
           setIsSubscribed(simulatedStatus);
           setSubscriptionType(type);
           setIsLoading(false);
@@ -345,7 +380,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, [isUsingStaleCache]);
 
-  const setSubscribed = async (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
+  const setSubscribed = async (value: boolean, type: 'free' | 'monthly' | 'annual' | 'lifetime') => {
     try {
       await saveSubscriptionCache(value, type);
       recordConfirmedMembership(value, type);
