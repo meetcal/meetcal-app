@@ -1,6 +1,0 @@
-convex==0.7.0
-requests==2.32.3
-python-dotenv==1.0.1
-pdfplumber==0.11.7
-beautifulsoup4==4.12.3
-

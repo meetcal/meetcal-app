@@ -19,7 +19,6 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "convex",
     "node_modules"
   ]
 }
