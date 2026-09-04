@@ -26,7 +26,7 @@ export interface SupabaseLiftResult {
   meet: string;
   date: string;
   name: string;
-  age: number;
+  age: string | number;
   body_weight: number;
   snatch1: number | null;
   snatch2: number | null;

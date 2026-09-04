@@ -5,14 +5,17 @@ import { DaySchedule, Schedule } from "@/types/schedule";
  * @param timeZoneIdentifier - IANA timezone identifier (e.g., "America/New_York")
  * @returns Abbreviated timezone (e.g., "EST", "PST") or "Local" if unavailable
  */
-export function getTimeZoneAbbreviation(timeZoneIdentifier: string): string {
+export function getTimeZoneAbbreviation(
+  timeZoneIdentifier: string,
+  instant: Date = new Date(),
+): string {
   try {
     return (
       new Intl.DateTimeFormat("en-US", {
         timeZone: timeZoneIdentifier,
         timeZoneName: "short",
       })
-        .formatToParts(new Date())
+        .formatToParts(instant)
         .find((part) => part.type === "timeZoneName")?.value || "Local"
     );
   } catch {

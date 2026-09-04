@@ -49,6 +49,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# jest
+coverage/
+
 app-example
 
 .env
