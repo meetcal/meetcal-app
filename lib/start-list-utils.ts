@@ -168,6 +168,7 @@ export function calculateWeighInTime(startTime: string): string | null {
 }
 
 export function getAgeCategory(age: number): string {
+  if (!Number.isFinite(age) || age <= 0) return 'Unknown';
   if (age <= 13) return 'U13';
   if (age >= 14 && age <= 15) return 'U15';
   if (age >= 16 && age <= 17) return 'U17';

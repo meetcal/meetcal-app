@@ -2,9 +2,12 @@ import {
   buildApiUrl,
   fetchApiClubNames,
   fetchApiMeets,
+  fetchApiMeetPackage,
+  fetchApiResultsByNames,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
+  fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
   mapApiAthlete,
@@ -13,6 +16,8 @@ import {
   mapApiSchedule,
   mapApiYearBests,
   mapPackageSchedule,
+  NAMES_QUERY_CHUNK_SIZE,
+  searchApi,
 } from './meetcal-api';
 
 describe('meetcal API client', () => {
@@ -265,5 +270,207 @@ describe('meetcal API mappers', () => {
     expect(schedule).toHaveLength(1);
     expect(schedule[0].sessions[0].platforms).toHaveLength(2);
     expect(formatApiTime('08:00:00')).toBe('8:00 AM');
+  });
+
+  it('keeps lifting-result age as the API category string', () => {
+    expect(mapApiLiftingResult({
+      meet: 'Test Meet',
+      date: '2026-06-20',
+      name: 'Athlete A',
+      age: 'Open Men 73kg',
+      body_weight: 72.5,
+      snatch1: 100,
+      snatch2: 105,
+      snatch3: 0,
+      snatch_best: 105,
+      cj1: 130,
+      cj2: 135,
+      cj3: 0,
+      cj_best: 135,
+      total: 240,
+    }).age).toBe('Open Men 73kg');
+  });
+
+  it('coerces missing athlete ages to 0 rather than NaN', () => {
+    expect(mapApiAthlete({
+      member_id: '123',
+      adaptive: false,
+      age: Number.NaN,
+      club: 'Club',
+      entry_total: 250,
+      gender: 'Men',
+      name: 'Athlete A',
+      weight_class: '73kg',
+    }).age).toBe(0);
+  });
+
+  it('drops invalid clock strings instead of echoing them', () => {
+    expect(formatApiTime('not-a-time')).toBe('');
+    expect(formatApiTime('25:99')).toBe('');
+  });
+
+  it('computes New York DST offset from the meet date, not the device zone', () => {
+    const summer = mapApiMeet({
+      name: 'Summer Meet',
+      federation: 'USAW',
+      status: 'upcoming',
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'America/New_York',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'Columbus',
+      venue_state: 'OH',
+      venue_zip: '43215',
+    });
+    const winter = mapApiMeet({
+      name: 'Winter Meet',
+      federation: 'USAW',
+      status: 'upcoming',
+      start_date: '2026-01-15',
+      end_date: '2026-01-16',
+      time_zone: 'America/New_York',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'Columbus',
+      venue_state: 'OH',
+      venue_zip: '43215',
+    });
+    expect(summer.time.utcOffset).toBe(4);
+    expect(winter.time.utcOffset).toBe(5);
+    expect(summer.time.abbreviation).toMatch(/E[SD]T/);
+  });
+
+  it('falls unknown IANA zones back to America/New_York for identifier math', () => {
+    const meet = mapApiMeet({
+      name: 'Mystery Meet',
+      federation: 'USAW',
+      status: 'not-a-status',
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'Not/AZone',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'Columbus',
+      venue_state: 'OH',
+      venue_zip: '43215',
+    });
+    expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
+    expect(meet.status).toBe('upcoming');
+  });
+});
+
+describe('meetcal API client error and auth boundaries', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  function mockFetch(body: string, status = 200) {
+    const fetchMock = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => body,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  it('rejects empty JSON bodies', async () => {
+    mockFetch('');
+    await expect(fetchApiMeets()).rejects.toThrow('returned an empty body');
+  });
+
+  it('rejects invalid JSON bodies', async () => {
+    mockFetch('{not-json');
+    await expect(fetchApiMeets()).rejects.toThrow('returned invalid JSON');
+  });
+
+  it('does not fetch when the name list is empty', async () => {
+    const fetchMock = mockFetch('[]');
+    await expect(fetchApiResultsByNames([])).resolves.toEqual([]);
+    await expect(fetchApiYearBestsByNames([])).resolves.toEqual({});
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('chunks oversized name lists', async () => {
+    const fetchMock = mockFetch('[]');
+    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+    await fetchApiResultsByNames(names);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires an auth token for saved sessions', async () => {
+    await expect(fetchSavedSessions('')).rejects.toThrow('requires an auth token');
+    await expect(fetchUserPreferences('   ')).rejects.toThrow('requires an auth token');
+  });
+
+  it('rejects saved-session payloads that are not arrays', async () => {
+    mockFetch(JSON.stringify({ sessions: { nope: true } }));
+    await expect(fetchSavedSessions('clerk-token')).rejects.toThrow(
+      '/users/me/saved-sessions.sessions expected an array response',
+    );
+  });
+
+  it('rejects saved-session rows missing required fields', async () => {
+    mockFetch(JSON.stringify({
+      sessions: [{ session_id: 's1', meet: 'Meet' }],
+    }));
+    await expect(fetchSavedSessions('clerk-token')).rejects.toThrow('missing fields');
+  });
+
+  it('maps a valid saved-session payload', async () => {
+    mockFetch(JSON.stringify({
+      sessions: [{
+        session_id: 's1',
+        meet: 'Test Meet',
+        session_number: 2,
+        platform: 'Red',
+        athlete_names: ['Athlete A'],
+        updated_at: 1,
+      }],
+    }));
+    await expect(fetchSavedSessions('clerk-token')).resolves.toEqual([
+      {
+        session_id: 's1',
+        meet: 'Test Meet',
+        session_number: 2,
+        platform: 'Red',
+        weight_class: null,
+        start_time: null,
+        date: null,
+        notes: null,
+        athlete_names: ['Athlete A'],
+        updated_at: 1,
+      },
+    ]);
+  });
+
+  it('rejects preferences when the flag is not a boolean', async () => {
+    mockFetch(JSON.stringify({ auto_unsave_started_sessions: 'yes' }));
+    await expect(fetchUserPreferences('clerk-token')).rejects.toThrow('expected a boolean');
+  });
+
+  it('rejects search results that are not an array', async () => {
+    mockFetch(JSON.stringify({
+      matched_name: null,
+      suggestions: ['A'],
+      results: { bad: true },
+    }));
+    await expect(searchApi('A')).rejects.toThrow('/search.results expected an array response');
+  });
+
+  it('rejects meet packages whose collection fields are not arrays', async () => {
+    mockFetch(JSON.stringify({
+      meet: { name: 'Meet' },
+      schedule: [],
+      athletes: { nope: true },
+      meet_results: [],
+    }));
+    await expect(fetchApiMeetPackage('Test Meet')).rejects.toThrow(
+      '/meets/package.athletes expected an array response',
+    );
   });
 });

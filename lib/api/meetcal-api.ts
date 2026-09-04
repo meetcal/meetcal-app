@@ -6,10 +6,68 @@ import {
   USTimeZoneIdentifier,
 } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
+import { getTimeZoneAbbreviation } from '@/utils/dateTime';
+import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
 const DEFAULT_TIMEOUT_MS = 10000;
 const SLOW_API_LOG_THRESHOLD_MS = 500;
+export const NAMES_QUERY_CHUNK_SIZE = 40;
+
+function chunkValues<T>(values: T[], size: number): T[][] {
+  if (values.length === 0) return [];
+  const chunks: T[][] = [];
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function parseResponseJson(method: string, path: string, text: string): unknown {
+  if (!text) {
+    throw new Error(`${method} ${path} returned an empty body`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${method} ${path} returned invalid JSON`);
+  }
+}
+
+function requireToken(token: string | null | undefined, label: string): string {
+  if (typeof token !== 'string' || token.trim().length === 0) {
+    throw new Error(`${label} requires an auth token`);
+  }
+  return token;
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function instantForMeetDate(dateIso: string | null | undefined): Date {
+  if (typeof dateIso !== 'string' || dateIso.length === 0) {
+    return new Date();
+  }
+  const [datePart] = dateIso.split('T');
+  const [year, month, day] = (datePart ?? '').split('-').map(Number);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return new Date();
+  }
+  return new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+}
+
+function resolveTimeZoneIdentifier(value: string): USTimeZoneIdentifier {
+  if (Object.prototype.hasOwnProperty.call(timezoneOffsets, value)) {
+    return value as USTimeZoneIdentifier;
+  }
+  return 'America/New_York';
+}
 
 export const MEETCAL_API_BASE_URL =
   process.env.EXPO_PUBLIC_MEETCAL_API_URL || DEFAULT_API_BASE_URL;
@@ -133,8 +191,7 @@ async function requestJson<T>(
       );
     }
 
-    if (!text) return undefined as T;
-    return JSON.parse(text) as T;
+    return parseResponseJson(method, path, text) as T;
   } catch (error) {
     if (error instanceof MeetCalApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
@@ -315,42 +372,9 @@ export type ApiSavedSession = {
   updated_at: number;
 };
 
-export type ApiSearchResponse = {
-  matched_name: string | null;
-  suggestions: string[];
-  results: ApiLiftingResult[];
-};
-
-function isDateInDST(date: Date, timeZoneIdentifier: USTimeZoneIdentifier): boolean {
-  if (timeZoneIdentifier === 'America/Phoenix' || timeZoneIdentifier === 'Pacific/Honolulu') {
-    return false;
-  }
-  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
-  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
-  return Math.max(jan, jul) !== date.getTimezoneOffset();
-}
-
-function getUTCOffsetForDate(timeZoneIdentifier: USTimeZoneIdentifier, date: Date): number {
-  const isDST = isDateInDST(date, timeZoneIdentifier);
-  return timezoneOffsets[timeZoneIdentifier]?.[isDST ? 'dst' : 'standard'] ?? 5;
-}
-
-function timeZoneAbbreviation(timeZoneIdentifier: string): string {
-  switch (timeZoneIdentifier) {
-    case 'America/Chicago':
-      return 'CST';
-    case 'America/Denver':
-    case 'America/Phoenix':
-      return 'MST';
-    case 'America/Los_Angeles':
-      return 'PST';
-    case 'America/Anchorage':
-      return 'AKST';
-    case 'Pacific/Honolulu':
-      return 'HST';
-    default:
-      return 'EST';
-  }
+function getUTCOffsetHours(timeZoneIdentifier: string, dateIso: string): number {
+  const instant = instantForMeetDate(dateIso);
+  return -getOffsetMinutesAtInstant(timeZoneIdentifier, instant) / 60;
 }
 
 export function normalizePlatform(platform: string | null | undefined): Platform {
@@ -362,14 +386,14 @@ export function normalizePlatform(platform: string | null | undefined): Platform
 
 export function formatApiTime(time: string | null | undefined): string {
   if (!time) return '';
-  if (/^\d{1,2}:\d{2}\s*[AP]M$/i.test(time)) return time;
-  const [hoursRaw, minutesRaw] = time.split(':');
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  try {
+    const { hour, minute } = parseClockTime(time);
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHours = hour % 12 || 12;
+    return `${displayHours}:${minute.toString().padStart(2, '0')} ${period}`;
+  } catch {
+    return '';
+  }
 }
 
 function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentifier): string {
@@ -388,8 +412,16 @@ function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentif
 }
 
 export function mapApiMeet(row: ApiMeet): Meet {
-  const timeZoneIdentifier = row.time_zone as USTimeZoneIdentifier;
-  const startDate = new Date(row.start_date);
+  const timeZoneIdentifier = resolveTimeZoneIdentifier(row.time_zone || '');
+  const offsetZone =
+    getTimeZoneAbbreviation(row.time_zone || timeZoneIdentifier) === 'Local'
+      ? timeZoneIdentifier
+      : row.time_zone;
+  const meetInstant = instantForMeetDate(row.start_date);
+  const status =
+    row.status === 'ongoing' || row.status === 'completed' || row.status === 'upcoming'
+      ? row.status
+      : 'upcoming';
   return {
     id: row.id || row.name,
     name: row.name,
@@ -407,14 +439,14 @@ export function mapApiMeet(row: ApiMeet): Meet {
     time: {
       timeZone: row.time_zone,
       timeZoneIdentifier,
-      abbreviation: timeZoneAbbreviation(row.time_zone),
-      utcOffset: getUTCOffsetForDate(timeZoneIdentifier, startDate),
+      abbreviation: getTimeZoneAbbreviation(row.time_zone || timeZoneIdentifier, meetInstant),
+      utcOffset: getUTCOffsetHours(offsetZone, row.start_date),
     },
     dates: {
       start: row.start_date,
       end: row.end_date,
     },
-    status: row.status as Meet['status'],
+    status,
   };
 }
 
@@ -487,7 +519,7 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
   return {
     memberId: row.member_id || '',
     name: row.name,
-    age: row.age,
+    age: toFiniteNumber(row.age, 0),
     club: row.club,
     wso: row.wso || undefined,
     gender: row.gender || '',
@@ -513,7 +545,7 @@ export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseL
     meet: row.meet ?? '',
     date: row.date ?? '',
     name: row.name ?? '',
-    age: row.age as unknown as number,
+    age: typeof row.age === 'number' || typeof row.age === 'string' ? row.age : '',
     body_weight: row.body_weight ?? 0,
     snatch1: row.snatch1 ?? null,
     snatch2: row.snatch2 ?? null,
@@ -537,7 +569,17 @@ export function mapApiYearBests(row: ApiYearBests) {
 
 export async function fetchApiMeets(): Promise<Meet[]> {
   const rows = assertArray<ApiMeet>(await getJson('/meets'), '/meets');
-  return rows.map(mapApiMeet);
+  return rows.map((row, index) =>
+    mapApiMeet(
+      assertHasFields(row, `/meets[${index}]`, [
+        'name',
+        'start_date',
+        'end_date',
+        'time_zone',
+        'status',
+      ]) as ApiMeet,
+    ),
+  );
 }
 
 export async function fetchApiMeetByName(meet: string): Promise<Meet | null> {
@@ -593,10 +635,15 @@ export async function fetchApiLiftingResultsForMeet(meet: MeetName): Promise<Sup
 
 export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
-  const rows = assertArray<ApiLiftingResult>(await getJson('/lifting-results/by-names', {
-    names,
-  }), '/lifting-results/by-names');
-  return rows.map(mapApiLiftingResult);
+  const rows: SupabaseLiftResult[] = [];
+  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+    const part = assertArray<ApiLiftingResult>(
+      await getJson('/lifting-results/by-names', { names: chunk }),
+      '/lifting-results/by-names',
+    );
+    rows.push(...part.map(mapApiLiftingResult));
+  }
+  return rows;
 }
 
 export async function fetchApiRecentResultsByNames(
@@ -604,11 +651,18 @@ export async function fetchApiRecentResultsByNames(
   cutoffDate?: string,
 ): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
-  const rows = assertArray<ApiLiftingResult>(await getJson('/lifting-results/recent', {
-    names,
-    cutoff_date: cutoffDate,
-  }), '/lifting-results/recent');
-  return rows.map(mapApiLiftingResult);
+  const rows: SupabaseLiftResult[] = [];
+  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+    const part = assertArray<ApiLiftingResult>(
+      await getJson('/lifting-results/recent', {
+        names: chunk,
+        cutoff_date: cutoffDate,
+      }),
+      '/lifting-results/recent',
+    );
+    rows.push(...part.map(mapApiLiftingResult));
+  }
+  return rows;
 }
 
 export async function fetchApiYearBests(name: string, cutoffDate?: string) {
@@ -624,23 +678,24 @@ export async function fetchApiYearBestsByNames(
   cutoffDate?: string,
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
-  const response = await getJson('/lifting-results/bests', {
-    names,
-    cutoff_date: cutoffDate,
-  });
-  assertObject(response, '/lifting-results/bests');
-  return Object.fromEntries(
-    Object.entries(response).map(([name, row]) => [
-      name,
-      mapApiYearBests(
+  const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
+  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+    const response = await getJson('/lifting-results/bests', {
+      names: chunk,
+      cutoff_date: cutoffDate,
+    });
+    assertObject(response, '/lifting-results/bests');
+    for (const [name, row] of Object.entries(response)) {
+      merged[name] = mapApiYearBests(
         assertHasFields(row, `/lifting-results/bests.${name}`, [
           'best_snatch',
           'best_cj',
           'best_total',
         ]) as ApiYearBests,
-      ),
-    ]),
-  );
+      );
+    }
+  }
+  return merged;
 }
 
 export async function searchApi(query: string, startDate?: string, endDate?: string) {
@@ -648,11 +703,13 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     query,
     start_date: startDate,
     end_date: endDate,
-  }), '/search', ['matched_name', 'suggestions', 'results']) as ApiSearchResponse;
+  }), '/search', ['matched_name', 'suggestions', 'results']);
+  const suggestions = assertStringArray(response.suggestions, '/search.suggestions');
+  const results = assertArray<ApiLiftingResult>(response.results, '/search.results');
   return {
-    matchedName: response.matched_name,
-    suggestions: response.suggestions,
-    results: response.results.map(mapApiLiftingResult),
+    matchedName: typeof response.matched_name === 'string' ? response.matched_name : null,
+    suggestions,
+    results: results.map(mapApiLiftingResult),
   };
 }
 
@@ -660,10 +717,15 @@ export async function fetchApiMeetPackage(
   meet: MeetName,
   historyCutoffDate?: string,
 ): Promise<ApiMeetPackage> {
-  return assertHasFields(await getJson('/meets/package', {
+  const pkg = assertHasFields(await getJson('/meets/package', {
     meet,
     history_cutoff_date: historyCutoffDate,
-  }, { timeoutMs: 20000 }), '/meets/package', ['meet', 'schedule', 'athletes', 'meet_results']) as ApiMeetPackage;
+  }, { timeoutMs: 20000 }), '/meets/package', ['meet', 'schedule', 'athletes', 'meet_results']);
+  assertObject(pkg.meet, '/meets/package.meet');
+  assertArray(pkg.schedule, '/meets/package.schedule');
+  assertArray(pkg.athletes, '/meets/package.athletes');
+  assertArray(pkg.meet_results, '/meets/package.meet_results');
+  return pkg as ApiMeetPackage;
 }
 
 export async function fetchApiWsoList(): Promise<string[]> {
@@ -683,13 +745,56 @@ export async function fetchApiClubNames(): Promise<string[]> {
   return assertStringArray(await getJson('/clubs'), '/clubs');
 }
 
+function mapApiSavedSession(row: unknown, index: number): ApiSavedSession {
+  const obj = assertHasFields(row, `/users/me/saved-sessions[${index}]`, [
+    'session_id',
+    'meet',
+    'session_number',
+    'platform',
+    'athlete_names',
+    'updated_at',
+  ]);
+  if (typeof obj.session_id !== 'string' || obj.session_id.length === 0) {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid session_id`);
+  }
+  if (typeof obj.meet !== 'string' || obj.meet.length === 0) {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid meet`);
+  }
+  if (typeof obj.session_number !== 'number' || !Number.isFinite(obj.session_number)) {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid session_number`);
+  }
+  if (typeof obj.platform !== 'string') {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid platform`);
+  }
+  if (!Array.isArray(obj.athlete_names) || !obj.athlete_names.every((name) => typeof name === 'string')) {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid athlete_names`);
+  }
+  if (typeof obj.updated_at !== 'number' || !Number.isFinite(obj.updated_at)) {
+    throw new Error(`/users/me/saved-sessions[${index}] has invalid updated_at`);
+  }
+  return {
+    session_id: obj.session_id,
+    meet: obj.meet,
+    session_number: obj.session_number,
+    platform: obj.platform,
+    weight_class: typeof obj.weight_class === 'string' ? obj.weight_class : null,
+    start_time: typeof obj.start_time === 'string' ? obj.start_time : null,
+    date: typeof obj.date === 'string' ? obj.date : null,
+    notes: typeof obj.notes === 'string' ? obj.notes : null,
+    athlete_names: obj.athlete_names,
+    updated_at: obj.updated_at,
+  };
+}
+
 export async function fetchSavedSessions(token: string): Promise<ApiSavedSession[]> {
-  const response = await getJson<{ sessions: ApiSavedSession[] }>(
-    '/users/me/saved-sessions',
-    undefined,
-    { token },
+  const authToken = requireToken(token, 'fetchSavedSessions');
+  const response = await getJson('/users/me/saved-sessions', undefined, { token: authToken });
+  assertObject(response, '/users/me/saved-sessions');
+  const sessions = assertArray<unknown>(
+    (response as { sessions?: unknown }).sessions,
+    '/users/me/saved-sessions.sessions',
   );
-  return response.sessions;
+  return sessions.map(mapApiSavedSession);
 }
 
 export async function putSavedSession(
@@ -706,32 +811,74 @@ export async function putSavedSession(
     athlete_names?: string[];
   },
 ): Promise<{ session_id: string; updated_at: number }> {
-  return putJson(`/users/me/saved-sessions/${encodeURIComponent(sessionId)}`, body, { token });
+  const authToken = requireToken(token, 'putSavedSession');
+  const row = assertHasFields(
+    await putJson(`/users/me/saved-sessions/${encodeURIComponent(sessionId)}`, body, {
+      token: authToken,
+    }),
+    'putSavedSession',
+    ['session_id', 'updated_at'],
+  );
+  if (typeof row.session_id !== 'string' || typeof row.updated_at !== 'number') {
+    throw new Error('putSavedSession returned an invalid payload');
+  }
+  return { session_id: row.session_id, updated_at: row.updated_at };
 }
 
 export async function deleteSavedSession(
   token: string,
   sessionId: string,
 ): Promise<{ deleted: boolean }> {
-  return deleteJson(`/users/me/saved-sessions/${encodeURIComponent(sessionId)}`, undefined, { token });
+  const authToken = requireToken(token, 'deleteSavedSession');
+  const row = await deleteJson(
+    `/users/me/saved-sessions/${encodeURIComponent(sessionId)}`,
+    undefined,
+    { token: authToken },
+  );
+  assertObject(row, 'deleteSavedSession');
+  return { deleted: (row as { deleted?: unknown }).deleted === true };
 }
 
 export async function deleteSavedSessions(
   token: string,
   meet?: string,
 ): Promise<{ deleted_count: number }> {
-  return deleteJson('/users/me/saved-sessions', { meet }, { token });
+  const authToken = requireToken(token, 'deleteSavedSessions');
+  const row = await deleteJson('/users/me/saved-sessions', { meet }, { token: authToken });
+  assertObject(row, 'deleteSavedSessions');
+  const deletedCount = (row as { deleted_count?: unknown }).deleted_count;
+  return {
+    deleted_count: typeof deletedCount === 'number' && Number.isFinite(deletedCount) ? deletedCount : 0,
+  };
 }
 
 export async function fetchUserPreferences(
   token: string,
 ): Promise<{ auto_unsave_started_sessions: boolean }> {
-  return getJson('/users/me/preferences', undefined, { token });
+  const authToken = requireToken(token, 'fetchUserPreferences');
+  const row = assertHasFields(
+    await getJson('/users/me/preferences', undefined, { token: authToken }),
+    '/users/me/preferences',
+    ['auto_unsave_started_sessions'],
+  );
+  if (typeof row.auto_unsave_started_sessions !== 'boolean') {
+    throw new Error('/users/me/preferences.auto_unsave_started_sessions expected a boolean');
+  }
+  return { auto_unsave_started_sessions: row.auto_unsave_started_sessions };
 }
 
 export async function patchAutoUnsavePreference(
   token: string,
   enabled: boolean,
 ): Promise<{ auto_unsave_started_sessions: boolean }> {
-  return patchJson('/users/me/preferences/auto-unsave', { enabled }, { token });
+  const authToken = requireToken(token, 'patchAutoUnsavePreference');
+  const row = assertHasFields(
+    await patchJson('/users/me/preferences/auto-unsave', { enabled }, { token: authToken }),
+    '/users/me/preferences/auto-unsave',
+    ['auto_unsave_started_sessions'],
+  );
+  if (typeof row.auto_unsave_started_sessions !== 'boolean') {
+    throw new Error('/users/me/preferences/auto-unsave.auto_unsave_started_sessions expected a boolean');
+  }
+  return { auto_unsave_started_sessions: row.auto_unsave_started_sessions };
 }

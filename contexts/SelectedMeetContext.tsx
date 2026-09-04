@@ -29,8 +29,10 @@ const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
 function parseStoredMeetDetails(raw: string | null, expectedName: string): Meet | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Meet;
-    return parsed && parsed.name === expectedName ? parsed : null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const meet = parsed as Meet;
+    return typeof meet.name === 'string' && meet.name === expectedName ? meet : null;
   } catch {
     return null;
   }

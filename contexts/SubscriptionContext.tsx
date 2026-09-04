@@ -125,20 +125,30 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const cached = await AsyncStorage.getItem(SUBSCRIPTION_CACHE_KEY);
       if (!cached) return null;
 
-      const parsed: SubscriptionCacheData = JSON.parse(cached);
+      const parsed: unknown = JSON.parse(cached);
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed) ||
+        typeof (parsed as SubscriptionCacheData).isSubscribed !== 'boolean' ||
+        typeof (parsed as SubscriptionCacheData).timestamp !== 'number'
+      ) {
+        return null;
+      }
+      const cacheData = parsed as SubscriptionCacheData;
       const now = Date.now();
-      const isExpired = now - parsed.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
+      const isExpired = now - cacheData.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
       if (isExpired && markStaleCache) {
         console.log('Subscription cache expired (older than 7 days), using stale');
         setIsUsingStaleCache(true);
       }
 
-      setLastSyncTimestamp(parsed.timestamp);
+      setLastSyncTimestamp(cacheData.timestamp);
       if (!isExpired || markStaleCache) {
         setIsUsingStaleCache(isExpired);
       }
-      return { ...parsed, isExpired };
+      return { ...cacheData, isExpired };
     } catch (error) {
       console.error('Error getting subscription cache:', error);
       return null;

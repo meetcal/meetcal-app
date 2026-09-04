@@ -19,11 +19,20 @@ export const OFFLINE_CACHE_KEYS = {
   clubMeetStats: '@offline_cache/club_meet_stats',
 } as const;
 
+function isOfflineCacheEntry(value: unknown): value is OfflineCacheEntry<unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!('data' in value)) return false;
+  const lastSynced = (value as { lastSynced?: unknown }).lastSynced;
+  return typeof lastSynced === 'number' && Number.isFinite(lastSynced);
+}
+
 export async function getOfflineCache<T>(key: string): Promise<OfflineCacheEntry<T> | null> {
   try {
     const stored = await AsyncStorage.getItem(key);
     if (!stored) return null;
-    return JSON.parse(stored) as OfflineCacheEntry<T>;
+    const parsed: unknown = JSON.parse(stored);
+    if (!isOfflineCacheEntry(parsed)) return null;
+    return parsed as OfflineCacheEntry<T>;
   } catch (error) {
     console.error('Error reading offline cache:', error);
     return null;
