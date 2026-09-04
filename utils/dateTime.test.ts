@@ -14,6 +14,21 @@ describe("getTimeZoneAbbreviation", () => {
     expect(abbr).toMatch(/E[SD]T/);
   });
 
+  it("uses the provided instant for DST vs standard abbreviations", () => {
+    expect(
+      getTimeZoneAbbreviation(
+        "America/New_York",
+        new Date("2026-01-15T17:00:00.000Z"),
+      ),
+    ).toBe("EST");
+    expect(
+      getTimeZoneAbbreviation(
+        "America/New_York",
+        new Date("2026-07-15T16:00:00.000Z"),
+      ),
+    ).toBe("EDT");
+  });
+
   it("returns 'Local' for an invalid timezone", () => {
     expect(getTimeZoneAbbreviation("Not/AZone")).toBe("Local");
   });
