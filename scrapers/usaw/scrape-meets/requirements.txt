@@ -1,5 +1,0 @@
-requests
-python-dotenv
-notion-client
-playwright
-beautifulsoup4
