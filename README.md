@@ -6,13 +6,15 @@
 
 A React Native application built with Expo for managing athletic schedules and meet calendars.
 
+All live data goes through the MeetCal backend API (PostgreSQL via the Rust service in [meetcal-backend](https://github.com/meetcal/meetcal-backend)). Scraper ingestion also lives there — this repo is the mobile client only.
+
 [![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
 
 ## Features
 
 - Schedule management for athletes and meets
 - Athlete data management
-- Self-hosted MeetCal API with offline-first app caching
+- Self-hosted MeetCal API (`https://api.meetcal.app`) with offline-first app caching
 - Cross-platform support (iOS, Android)
 
 ## Tech Stack
@@ -47,6 +49,10 @@ A React Native application built with Expo for managing athletic schedules and m
 - Device calendar integration for session reminders
 - Dark mode support with system theme detection
 - Subscription management (free, quarterly, lifetime tiers)
+
+## Environment
+
+Copy `.env.example` to `.env.local` and fill in values. The app never talks to Convex; `EXPO_PUBLIC_MEETCAL_API_URL` is the only data-backend URL.
 
 ## Native API Integration
 

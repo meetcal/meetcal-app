@@ -1,5 +1,4 @@
 node_modules/
-scrapers/
 .env
 .env*.local
 package-lock.json
