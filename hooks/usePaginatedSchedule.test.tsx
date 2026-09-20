@@ -166,4 +166,33 @@ describe("usePaginatedSchedule width changes", () => {
       animated: false,
     });
   });
+
+  it("re-anchors on the day the list opened at, with no swipe", () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness />);
+    });
+
+    // The list mounts on `initialScrollIndex` (today's day) and only reports it
+    // through viewability -- no momentum scroll ever fires.
+    act(() => {
+      captured!.onViewableItemsChanged({
+        viewableItems: [{ index: 2, item: day("2026-06-22") }],
+        changed: [],
+      } as unknown as Parameters<
+        ReturnType<typeof usePaginatedSchedule>["onViewableItemsChanged"]
+      >[0]);
+    });
+    expect(captured!.currentPage).toBe(2);
+
+    setWidth(1000);
+    act(() => {
+      tree.update(<Harness />);
+    });
+
+    expect(scrollToOffset).toHaveBeenCalledWith({
+      offset: 2000,
+      animated: false,
+    });
+  });
 });

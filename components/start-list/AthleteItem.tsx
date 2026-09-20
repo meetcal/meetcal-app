@@ -120,24 +120,30 @@ export const AthleteItem = React.memo(function AthleteItem({
     }
     // RN 0.88 removed InteractionManager from core; idle callbacks are the
     // replacement for deferring work until after the expand animation paints.
+    // The timeout is the safety net InteractionManager gave us for free: an
+    // idle period is never guaranteed (a list that is scrolled continuously
+    // never yields one), and without it the row would spin forever.
     let cancelled = false;
-    const handle = requestIdleCallback(() => {
-      if (cancelled) return;
-      setLoadingBests(true);
-      getLastYearBests(athlete.name)
-        .then((bests) => {
-          if (cancelled) return;
-          setYearBests(bests);
-          setLoadingBests(false);
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          if (__DEV__)
-            console.warn("[AthleteItem] getLastYearBests failed", err);
-          setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-          setLoadingBests(false);
-        });
-    });
+    const handle = requestIdleCallback(
+      () => {
+        if (cancelled) return;
+        setLoadingBests(true);
+        getLastYearBests(athlete.name)
+          .then((bests) => {
+            if (cancelled) return;
+            setYearBests(bests);
+            setLoadingBests(false);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            if (__DEV__)
+              console.warn("[AthleteItem] getLastYearBests failed", err);
+            setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+            setLoadingBests(false);
+          });
+      },
+      { timeout: 500 },
+    );
     return () => {
       cancelled = true;
       cancelIdleCallback(handle);

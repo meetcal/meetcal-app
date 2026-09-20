@@ -54,7 +54,14 @@ export function usePaginatedSchedule({
       changed: ListViewToken[];
     }) => {
       if (viewableItems.length > 0) {
-        const currentItem = viewableItems[0].item as DaySchedule;
+        const [first] = viewableItems;
+        // Keep `currentPage` honest even when the user never swiped: the list
+        // can open on `initialScrollIndex` (today's day), and the re-anchor
+        // effect below would otherwise snap back to day 0 on the first fold.
+        if (typeof first.index === "number") {
+          setCurrentPage(first.index);
+        }
+        const currentItem = first.item as DaySchedule;
         const formattedTitle = formatDayTitle(currentItem);
         if (previousHeaderTitleRef.current === formattedTitle) return;
         previousHeaderTitleRef.current = formattedTitle;
