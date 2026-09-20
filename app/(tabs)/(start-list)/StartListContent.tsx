@@ -79,6 +79,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const REVIEW_COUNT_KEY = "startListFilterApplyCount";
 const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
@@ -120,6 +121,7 @@ const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
 ];
 
 export default function StartListScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState("");
   const [clubFilter, setClubFilter] = useState("");
@@ -156,8 +158,9 @@ export default function StartListScreen() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showShareViews, setShowShareViews] = useState(false);
-  const shareScheduleRef = useRef<View>(null);
-  const shareScheduleTransparentRef = useRef<View>(null);
+  const shareScheduleRef = useRef<React.ComponentRef<typeof View>>(null);
+  const shareScheduleTransparentRef =
+    useRef<React.ComponentRef<typeof View>>(null);
   const [filterApplyCount, setFilterApplyCount] = useState(0);
   const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
     [],
@@ -1411,7 +1414,8 @@ export default function StartListScreen() {
 
       const fileName = `meetcal-schedule-${sanitizeFileName(selectedShareGroup)}-${Date.now()}.csv`;
       const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
-      file.write(csvContent, { encoding: "utf8" });
+      // expo-file-system 58: File.write() is async; share only after it lands.
+      await file.write(csvContent, { encoding: "utf8" });
 
       await Sharing.shareAsync(file.uri, {
         mimeType: "text/csv",
@@ -1431,7 +1435,7 @@ export default function StartListScreen() {
   return (
     <ThemedView
       testID="start-list-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       key={selectedMeet}
     >
       <View

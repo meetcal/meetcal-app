@@ -8,6 +8,15 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
+  '6.2.0': {
+    title: 'What\'s New',
+    message: 'MeetCal is now built for iPhone Duo.',
+    features: [
+      'Full-screen layout on the iPhone Duo inner display',
+      'Schedule keeps your place when you fold, unfold, or enter Split View',
+      'Rebuilt on Expo SDK 58 for iOS 27'
+    ],
+  },
   '6.1.0': {
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',

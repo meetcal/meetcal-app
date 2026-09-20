@@ -17,6 +17,7 @@ import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function RecordsScreen() {
   return (
@@ -27,6 +28,7 @@ export default function RecordsScreen() {
 }
 
 function RecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
@@ -250,7 +252,7 @@ function RecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

@@ -16,8 +16,10 @@ import {
   View,
 } from "react-native";
 import PaywallScreen from "../shared-screens/paywall";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function OfflineDataScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const {
     isSubscribed,
@@ -59,7 +61,7 @@ export default function OfflineDataScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

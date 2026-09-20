@@ -4,6 +4,9 @@ import { OnboardingViewProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
+// Named import: eslint-plugin-import cannot see enums re-exported through
+// expo-notifications' nested `export *` chain on the namespace object.
+import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 
@@ -169,7 +172,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("default", {
           name: "default",
-          importance: Notifications.AndroidImportance.MAX,
+          importance: AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: "#FF231F7C",
         });

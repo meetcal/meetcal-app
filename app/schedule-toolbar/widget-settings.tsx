@@ -40,10 +40,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { showToast } from "@/components/ui/Toast";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 type ActiveModal = WidgetKind | null;
 
 export default function WidgetSettingsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -235,7 +237,7 @@ export default function WidgetSettingsScreen() {
   ]);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen
         options={{
           title: "Widget Settings",

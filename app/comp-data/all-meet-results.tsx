@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function AllMeetResultsScreen() {
   return (
@@ -32,6 +33,7 @@ export default function AllMeetResultsScreen() {
 }
 
 function AllMeetResultsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const router = useRouter();
@@ -267,7 +269,7 @@ function AllMeetResultsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

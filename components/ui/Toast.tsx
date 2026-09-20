@@ -182,7 +182,15 @@ function ToastHost() {
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrapper, { paddingTop: insets.top + Spacing.xs }, animatedStyle]}
+      style={[
+        styles.wrapper,
+        {
+          paddingTop: insets.top + Spacing.xs,
+          left: insets.left,
+          right: insets.right,
+        },
+        animatedStyle,
+      ]}
     >
       <Pressable
         {...panResponder.panHandlers}

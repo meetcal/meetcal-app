@@ -43,9 +43,32 @@ import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
 import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/**
+ * iOS 27.1 leading-aligns the native nav title on iPhone Duo's reorganised bar,
+ * and `headerTitleAlign` is ignored by the iOS native stack. Rendering the date
+ * as a custom title view puts it back in the centre, as on every other iPhone.
+ * The explicit width keeps it inside the safe area rather than under the band.
+ */
+function HeaderDate({ children }: { children: string }) {
+  const colors = useAppColors();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  return (
+    <View
+      style={[styles.headerDate, { width: width - insets.left - insets.right }]}
+    >
+      <ThemedText style={[styles.headerDateText, { color: colors.text }]}>
+        {children}
+      </ThemedText>
+    </View>
+  );
+}
 
 export default function ScheduleScreen() {
-  const { width } = useWindowDimensions();
+  const screenInsets = useScreenHorizontalInsets();
   const navigation = useNavigation();
   const {
     selectedMeet,
@@ -79,13 +102,17 @@ export default function ScheduleScreen() {
 
   const handleTitleChange = useCallback(
     (title: string) => {
-      navigation.setOptions({ title });
+      navigation.setOptions({
+        title,
+        headerTitle: () => <HeaderDate>{title}</HeaderDate>,
+      });
     },
     [navigation],
   );
 
   const {
     currentPage,
+    pageWidth,
     flatListRef,
     handlePageChange,
     onViewableItemsChanged,
@@ -235,6 +262,7 @@ export default function ScheduleScreen() {
         }).format(startDate);
         navigation.setOptions({
           title: formattedDate,
+          headerTitle: () => <HeaderDate>{formattedDate}</HeaderDate>,
         });
       }
     }
@@ -273,7 +301,7 @@ export default function ScheduleScreen() {
   // Render day view
   const renderDayView = useCallback(
     ({ item }: { item: any }) => (
-      <View style={[styles.pageContainer, { width }]}>
+      <View style={[styles.pageContainer, { width: pageWidth }]}>
         <DayView
           day={item}
           timeZone={timeZoneAbbreviation}
@@ -283,7 +311,7 @@ export default function ScheduleScreen() {
         />
       </View>
     ),
-    [width, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
+    [pageWidth, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
   );
 
   if (isMeetLoading) {
@@ -293,7 +321,7 @@ export default function ScheduleScreen() {
   if (!selectedMeet || !meetDetails) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <View style={styles.loadingContainer}>
           <ThemedText style={[styles.loadingText, { color: colors.text }]}>
@@ -311,7 +339,7 @@ export default function ScheduleScreen() {
   return (
     <ThemedView
       testID="schedule-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <OnboardingView
         visible={showOnboarding}
@@ -407,8 +435,8 @@ export default function ScheduleScreen() {
             renderItem={renderDayView}
             initialScrollIndex={initialScrollIndex}
             getItemLayout={(data, index) => ({
-              length: width,
-              offset: width * index,
+              length: pageWidth,
+              offset: pageWidth * index,
               index,
             })}
             onViewableItemsChanged={onViewableItemsChanged}
@@ -504,6 +532,13 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     textAlign: "center",
+  },
+  headerDate: {
+    alignItems: "center",
+  },
+  headerDateText: {
+    fontSize: 17,
+    fontWeight: "600",
   },
   headerActions: {
     flexDirection: "row",

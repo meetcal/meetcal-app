@@ -23,6 +23,7 @@ import { Filters, Gender } from "@/types/wso-records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_WSO_LIST: string[] = [];
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
@@ -36,6 +37,7 @@ export default function RecordsScreen() {
 }
 
 function RecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = React.useState<
@@ -224,7 +226,7 @@ function RecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

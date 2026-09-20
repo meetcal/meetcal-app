@@ -32,6 +32,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export type EditableField = "firstName" | "lastName" | "email";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
@@ -77,6 +78,7 @@ function ProfileField({
 }
 
 export default function ProfileScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -195,7 +197,7 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

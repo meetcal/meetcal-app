@@ -22,6 +22,7 @@ import { getWeightClasses } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function NationalRankingsScreen() {
   return (
@@ -32,6 +33,7 @@ export default function NationalRankingsScreen() {
 }
 
 function NationalRankingsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
 
@@ -167,7 +169,7 @@ function NationalRankingsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

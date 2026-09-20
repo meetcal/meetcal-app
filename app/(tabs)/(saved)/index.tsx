@@ -49,6 +49,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 // Update SavedSession type to include meet
 declare module "@/hooks/useSavedSessions" {
@@ -59,6 +60,7 @@ declare module "@/hooks/useSavedSessions" {
 }
 
 export default function SavedScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const { user } = useUser();
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } =
     useSavedSessions();
@@ -695,7 +697,7 @@ export default function SavedScreen() {
   return (
     <ThemedView
       testID="saved-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <FlatList
         data={filteredSessions}

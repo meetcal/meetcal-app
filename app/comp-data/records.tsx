@@ -17,6 +17,7 @@ import { AgeGroup, Filters, Gender, RecordsData, WeightClassRecord } from "@/typ
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
@@ -30,6 +31,7 @@ export default function RecordsScreen() {
 }
 
 function RecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = useState<Record<string, string[]>>(
@@ -232,7 +234,7 @@ function RecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

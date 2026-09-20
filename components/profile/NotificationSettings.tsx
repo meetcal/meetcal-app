@@ -3,6 +3,9 @@ import { showToast } from "@/components/ui/Toast";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
+// Named import: eslint-plugin-import cannot see enums re-exported through
+// expo-notifications' nested `export *` chain on the namespace object.
+import { AndroidImportance } from "expo-notifications";
 import type { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -71,7 +74,7 @@ export function NotificationSettings({
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
         name: "default",
-        importance: Notifications.AndroidImportance.MAX,
+        importance: AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#FF231F7C",
       });
@@ -162,7 +165,7 @@ export function NotificationSettings({
         if (Platform.OS === "android") {
           await Notifications.setNotificationChannelAsync("default", {
             name: "default",
-            importance: Notifications.AndroidImportance.MAX,
+            importance: AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
             lightColor: "#FF231F7C",
           });

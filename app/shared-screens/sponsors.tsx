@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const sponsors: Sponsor[] = [
   {
@@ -60,6 +61,7 @@ const sponsors: Sponsor[] = [
 ];
 
 export default function SponsorsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -90,7 +92,7 @@ export default function SponsorsScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

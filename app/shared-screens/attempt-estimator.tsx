@@ -30,6 +30,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   const opacity = useRef(new Animated.Value(0.4)).current;
@@ -80,6 +81,7 @@ function filterSessionAthletes(
 }
 
 export default function AttemptEstimatorScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const params = useLocalSearchParams<{
     sessionNumber: string;
@@ -213,7 +215,7 @@ export default function AttemptEstimatorScreen() {
   if (!hasValidParams) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <Stack.Screen
           options={{
@@ -245,7 +247,7 @@ export default function AttemptEstimatorScreen() {
   if (loading) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <Stack.Screen
           options={{
@@ -272,7 +274,7 @@ export default function AttemptEstimatorScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

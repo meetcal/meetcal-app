@@ -25,7 +25,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   StyleSheet,
   View,
@@ -119,21 +118,30 @@ export const AthleteItem = React.memo(function AthleteItem({
         "ms since tap",
       );
     }
-    const task = InteractionManager.runAfterInteractions(() => {
+    // RN 0.88 removed InteractionManager from core; idle callbacks are the
+    // replacement for deferring work until after the expand animation paints.
+    let cancelled = false;
+    const handle = requestIdleCallback(() => {
+      if (cancelled) return;
       setLoadingBests(true);
       getLastYearBests(athlete.name)
         .then((bests) => {
+          if (cancelled) return;
           setYearBests(bests);
           setLoadingBests(false);
         })
         .catch((err) => {
+          if (cancelled) return;
           if (__DEV__)
             console.warn("[AthleteItem] getLastYearBests failed", err);
           setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
           setLoadingBests(false);
         });
     });
-    return () => task.cancel();
+    return () => {
+      cancelled = true;
+      cancelIdleCallback(handle);
+    };
   }, [isExpanded, athlete.name]);
 
   const handleSessionPress = useCallback(() => {

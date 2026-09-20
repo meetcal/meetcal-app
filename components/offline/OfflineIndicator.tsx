@@ -87,6 +87,8 @@ export function OfflineIndicator() {
           backgroundColor: colors.background,
           transform: [{ translateY: slideAnim }],
           paddingTop: insets.top - 10,
+          left: insets.left,
+          right: insets.right,
         },
       ]}
     >

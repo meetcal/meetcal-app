@@ -73,7 +73,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const [tempFilters, setTempFilters] = useState<Record<string, string>>({});
   const prevTempFiltersRef = useRef<Record<string, string>>({});
   const pendingDependencyResetRef = useRef<Record<string, boolean>>({});
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const sectionLayoutsRef = useRef<Record<string, number>>({});
 
   const { height: windowHeight } = useWindowDimensions();

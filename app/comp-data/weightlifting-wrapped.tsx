@@ -446,7 +446,15 @@ export default function WeightliftingWrappedScreen() {
         <View style={styles.slideOverlay} />
 
         <Pressable
-          style={[styles.slideContainer, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 60 }]}
+          style={[
+            styles.slideContainer,
+            {
+              paddingTop: insets.top + 20,
+              paddingBottom: insets.bottom + 60,
+              paddingLeft: insets.left + 24,
+              paddingRight: insets.right + 24,
+            },
+          ]}
           onPress={(e) => handleTap(e.nativeEvent.locationX)}
         >
           <SlideContent active={isActive}>
@@ -492,7 +500,12 @@ export default function WeightliftingWrappedScreen() {
           />
         </ViewShot>
 
-        <View style={[styles.dotsContainer, { bottom: insets.bottom + 16 }]}>
+        <View
+          style={[
+            styles.dotsContainer,
+            { bottom: insets.bottom + 16, left: insets.left, right: insets.right },
+          ]}
+        >
           {Array.from({ length: SLIDE_COUNT }, (_, i) => (
             <Pressable key={i} onPress={() => goToSlide(i)}>
               <PulsingDot active={currentSlide === i} />
@@ -501,7 +514,7 @@ export default function WeightliftingWrappedScreen() {
         </View>
 
         <Pressable
-          style={[styles.closeButton, { top: insets.top + 8 }]}
+          style={[styles.closeButton, { top: insets.top + 8, right: insets.right + 16 }]}
           onPress={() => {
             setShowStats(false);
             setCurrentSlide(0);
@@ -514,7 +527,16 @@ export default function WeightliftingWrappedScreen() {
         </Pressable>
 
         {currentSlide === SLIDE_COUNT - 1 && (
-          <View style={[styles.shareOverlay, { bottom: insets.bottom + 48 }]}>
+          <View
+            style={[
+              styles.shareOverlay,
+              {
+                bottom: insets.bottom + 48,
+                left: insets.left + 24,
+                right: insets.right + 24,
+              },
+            ]}
+          >
             <Pressable
               style={({ pressed }) => [styles.shareActionButton, pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] }]}
               onPress={shareWrapped}
@@ -559,7 +581,7 @@ export default function WeightliftingWrappedScreen() {
       />
 
       <Pressable
-        style={[styles.backNavButton, { top: insets.top + 8 }]}
+        style={[styles.backNavButton, { top: insets.top + 8, left: insets.left + 16 }]}
         onPress={() => router.back()}
         hitSlop={16}
       >
@@ -572,7 +594,12 @@ export default function WeightliftingWrappedScreen() {
         style={styles.searchScroll}
         contentContainerStyle={[
           styles.searchScrollContent,
-          { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
+          {
+            paddingTop: insets.top + 40,
+            paddingBottom: insets.bottom + 40,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
       >

@@ -5,8 +5,10 @@ import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
+import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
 
 export default function PaywallScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const router = useRouter();
   const { currentTheme } = useTheme();
   const { from, feature } = useLocalSearchParams<{ from?: string; feature?: string }>();
@@ -75,6 +77,7 @@ export default function PaywallScreen() {
           {
             backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
           },
+          screenInsets,
         ]}
       >
         <Stack.Screen
@@ -100,7 +103,7 @@ export default function PaywallScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, screenInsets]}>
       <Stack.Screen
         options={{
           headerTitle: 'Premium Features',

@@ -23,6 +23,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function ClubMeetsListScreen() {
   return (
@@ -33,6 +34,7 @@ export default function ClubMeetsListScreen() {
 }
 
 function ClubMeetsListScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -194,7 +196,7 @@ function ClubMeetsListScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

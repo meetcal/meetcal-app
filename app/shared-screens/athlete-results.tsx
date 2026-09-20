@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 function getRateColor(rate: number, colors: any) {
   if (rate >= 80) return colors.success;
@@ -253,6 +254,7 @@ function AthleteStats({
 }
 
 export default function AthleteResultsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { name } = useLocalSearchParams<{ name?: string; meet?: string }>();
   const insets = useSafeAreaInsets();
@@ -362,7 +364,7 @@ export default function AthleteResultsScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

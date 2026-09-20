@@ -15,8 +15,10 @@ import { calculateWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function SessionDetailsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
@@ -131,7 +133,7 @@ export default function SessionDetailsScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

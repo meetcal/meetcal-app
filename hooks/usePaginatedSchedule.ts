@@ -1,5 +1,10 @@
-import { useRef, useCallback, useState, RefObject } from "react";
-import { FlatList, ViewToken, useWindowDimensions } from "react-native";
+import { useRef, useCallback, useEffect, useState, RefObject } from "react";
+import {
+  FlatListInstance,
+  ListViewToken,
+  useWindowDimensions,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DaySchedule, Schedule } from "@/types/schedule";
 
 interface UsePaginatedScheduleParams {
@@ -10,11 +15,13 @@ interface UsePaginatedScheduleParams {
 
 interface UsePaginatedScheduleReturn {
   currentPage: number;
-  flatListRef: RefObject<FlatList | null>;
+  /** Width of one day page: the window minus the horizontal safe-area band. */
+  pageWidth: number;
+  flatListRef: RefObject<FlatListInstance | null>;
   handlePageChange: (index: number) => void;
   onViewableItemsChanged: (info: {
-    viewableItems: ViewToken[];
-    changed: ViewToken[];
+    viewableItems: ListViewToken[];
+    changed: ListViewToken[];
   }) => void;
   onMomentumScrollEnd: (event: any) => void;
   viewabilityConfig: { itemVisiblePercentThreshold: number };
@@ -25,9 +32,14 @@ export function usePaginatedSchedule({
   onTitleChange,
   formatDayTitle,
 }: UsePaginatedScheduleParams): UsePaginatedScheduleReturn {
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // The screen container is padded by the horizontal safe-area insets, so a
+  // page is narrower than the window on devices that reserve a side band
+  // (iPhone Duo). Paging off the raw window width lands between days.
+  const pageWidth = windowWidth - insets.left - insets.right;
   const [currentPage, setCurrentPage] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatListInstance>(null);
   const previousHeaderTitleRef = useRef<string>("");
 
   const viewabilityConfig = useRef({
@@ -38,8 +50,8 @@ export function usePaginatedSchedule({
     ({
       viewableItems,
     }: {
-      viewableItems: ViewToken[];
-      changed: ViewToken[];
+      viewableItems: ListViewToken[];
+      changed: ListViewToken[];
     }) => {
       if (viewableItems.length > 0) {
         const currentItem = viewableItems[0].item as DaySchedule;
@@ -61,18 +73,32 @@ export function usePaginatedSchedule({
     [currentPage],
   );
 
+  // Folding/unfolding (iPhone Duo) or entering Split View changes the page
+  // width and leaves the horizontal offset pointing between pages. Re-anchor
+  // on the page the user was already reading whenever it changes.
+  const lastPageWidthRef = useRef(pageWidth);
+  useEffect(() => {
+    if (lastPageWidthRef.current === pageWidth) return;
+    lastPageWidthRef.current = pageWidth;
+    flatListRef.current?.scrollToOffset({
+      offset: currentPage * pageWidth,
+      animated: false,
+    });
+  }, [pageWidth, currentPage]);
+
   const onMomentumScrollEnd = useCallback(
     (event: any) => {
-      const newPage = Math.round(event.nativeEvent.contentOffset.x / width);
+      const newPage = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
       if (newPage !== currentPage) {
         setCurrentPage(newPage);
       }
     },
-    [currentPage, width],
+    [currentPage, pageWidth],
   );
 
   return {
     currentPage,
+    pageWidth,
     flatListRef,
     handlePageChange,
     onViewableItemsChanged,

@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { captureRef } from "react-native-view-shot";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function MeetResultsByClubScreen() {
   return (
@@ -38,6 +39,7 @@ export default function MeetResultsByClubScreen() {
 }
 
 function MeetResultsByClubScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -63,7 +65,7 @@ function MeetResultsByClubScreenContent() {
     enabled: Boolean(params),
   });
 
-  const shareableViewRef = useRef<View>(null);
+  const shareableViewRef = useRef<React.ComponentRef<typeof View>>(null);
 
   // Animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -213,7 +215,7 @@ function MeetResultsByClubScreenContent() {
 
   if (isLoading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
@@ -228,7 +230,7 @@ function MeetResultsByClubScreenContent() {
 
   if (error || !clubStats) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
@@ -256,7 +258,7 @@ function MeetResultsByClubScreenContent() {
   const totalMedals = clubStats.goldMedals + clubStats.silverMedals + clubStats.bronzeMedals;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen options={{ headerShown: false }} />
       {topBar}
       <ScrollView
@@ -472,7 +474,7 @@ function PremiumStatCard({
 
 // Shareable Recap View (800x1000, dark premium)
 const ShareableRecapView = React.forwardRef<
-  View,
+  React.ComponentRef<typeof View>,
   { club: string; meet: string; stats: ClubMeetStats }
 >(({ club, meet, stats }, ref) => {
   return (
