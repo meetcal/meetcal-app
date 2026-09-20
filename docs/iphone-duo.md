@@ -68,6 +68,19 @@ for us — nothing to hand-maintain, as long as `AppDelegate.swift` stays unmodi
 - **Clamp anchored overlays to the safe area.** `FilterPillBar` positions its menu
   against `windowWidth - insets.right` rather than the raw window edge.
 
+- **Header buttons must be native bar items.** iOS 27 relocates navigation,
+  toolbar and tab bar controls into the shared vertical region on the side.
+  It can only do that for real `UIBarButtonItem`s — a custom React view passed
+  as `headerLeft`/`headerRight` stays pinned to the horizontal bar. Use
+  expo-router's `unstable_headerLeftItems` / `unstable_headerRightItems`
+  (iOS only; keep the React `headerRight` for Android). Native items cannot host
+  a spinner, so express in-flight state with `disabled` instead.
+
+- **The nav title needs a custom view.** iOS 27.1 leading-aligns the native title
+  on Duo, and `headerTitleAlign` is documented as ignored on iOS. The home date
+  renders through `HeaderDate` so it stays centred; verified that the native
+  title lands at x=20 without it.
+
 ## Testing
 
 The `iPhone Duo` simulator (iOS 27.1) exercises the folded, open, and rotated poses.

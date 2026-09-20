@@ -714,6 +714,21 @@ export default function StartListScreen() {
   );
 
   useLayoutEffect(() => {
+    // Native UIBarButtonItem on iOS so it moves into iPhone Duo's vertical bar.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: "Open download options",
+            icon: { type: "sfSymbol", name: "square.and.arrow.down" },
+            onPress: () => setShowSaveModal(true),
+          },
+        ],
+      });
+      return;
+    }
+
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>

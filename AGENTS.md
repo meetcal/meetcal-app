@@ -101,5 +101,6 @@ Maestro is optional in CI. Run it when a change touches navigation, auth gates, 
 - iPhone Duo / iOS 27: the app is resizable and the inner display ignores `orientation: 'portrait'`. Branch on `useWindowDimensions()` width, never on orientation.
 - The Duo reserves an 84pt side band for status items and the floating tab rail, reported as `insets.left`/`insets.right`. Screens apply it at their outermost container with `useScreenHorizontalInsets()`; only do it once per subtree (chrome inside a screen inherits it, chrome mounted in `app/_layout.tsx` does not). See `docs/iphone-duo.md`.
 - Width-derived layout must use the *usable* width, not the window. `usePaginatedSchedule` exposes `pageWidth` for this and re-anchors the current page when it changes; new width-derived layout needs the same treatment plus a test.
+- Header buttons are native bar items (`unstable_headerLeftItems` / `unstable_headerRightItems`) on iOS so iOS 27 can move them into iPhone Duo's vertical bar; custom React `headerLeft`/`headerRight` stays stuck in the horizontal bar. Keep the React version for Android.
 - EAS Build has no Xcode 27 image yet, so cloud builds letterbox on Duo. A Duo-optimized store build must come from a local Xcode 27.1 archive.
 - Ignore `scrapers/` unless the task is scrape-specific. The Convex-removal PR is a different branch; do not mix that work here.

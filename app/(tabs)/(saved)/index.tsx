@@ -659,6 +659,30 @@ export default function SavedScreen() {
         ? colors.text
         : colors.secondaryText;
 
+    // Native UIBarButtonItems on iOS so they move into iPhone Duo's vertical bar.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: "Add to calendar",
+            icon: { type: "sfSymbol", name: "calendar" },
+            tintColor: calendarIconColor,
+            disabled: isSchedulesLoading,
+            onPress: handleSaveToCalendar,
+          },
+          {
+            type: "button",
+            label: "Delete all saved sessions",
+            icon: { type: "sfSymbol", name: "trash" },
+            tintColor: colors.danger,
+            onPress: handleResetSessions,
+          },
+        ],
+      });
+      return;
+    }
+
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>

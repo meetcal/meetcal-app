@@ -132,61 +132,65 @@ export default function ScheduleScreen() {
 
   // Header configuration
   useLayoutEffect(() => {
-    const offlineDataIcon =
-      Platform.OS === "ios" ? "square.and.arrow.down" : "download";
+    const openOfflineData = () => router.push("/schedule-toolbar/offline-data");
+    const openProfile = () => {
+      if (!isUserLoaded) return;
+      if (isSignedIn) {
+        router.push("/schedule-toolbar/profile");
+      } else {
+        router.push({
+          pathname: "/(auth)/sign-in",
+          params: { from: "info" },
+        });
+      }
+    };
+
+    // Native UIBarButtonItems on iOS. Custom React views stay pinned to the
+    // horizontal bar, so only native items get relocated into iPhone Duo's
+    // vertical bar alongside the tab rail the way system apps do.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerLeftItems: () => [
+          {
+            type: "button",
+            label: "Offline data",
+            icon: { type: "sfSymbol", name: "square.and.arrow.down" },
+            onPress: openOfflineData,
+          },
+        ],
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: isSignedIn ? "My profile and settings" : "Sign in",
+            icon: { type: "sfSymbol", name: "person.circle.fill" },
+            onPress: openProfile,
+          },
+        ],
+      });
+      return;
+    }
+
     navigation.setOptions({
-      ...(Platform.OS === "ios" && {
-        headerLeft: () => (
+      headerRight: () => (
+        <View style={styles.headerActions}>
           <Pressable
             style={styles.headerIconButton}
-            onPress={() => router.push("/schedule-toolbar/offline-data")}
+            onPress={openOfflineData}
             accessibilityRole="button"
             accessibilityLabel="Offline data"
           >
-            <IconSymbol name={offlineDataIcon} size={24} color={colors.text} />
+            <IconSymbol name="download" size={24} color={colors.text} />
           </Pressable>
-        ),
-      }),
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          {Platform.OS === "android" && (
-            <Pressable
-              style={styles.headerIconButton}
-              onPress={() => router.push("/schedule-toolbar/offline-data")}
-              accessibilityRole="button"
-              accessibilityLabel="Offline data"
-            >
-              <IconSymbol
-                name={offlineDataIcon}
-                size={24}
-                color={colors.text}
-              />
-            </Pressable>
-          )}
           <Pressable
             style={[styles.headerIconButton, { paddingTop: 8 }]}
-            onPress={() => {
-              if (!isUserLoaded) return;
-              if (isSignedIn) {
-                router.push("/schedule-toolbar/profile");
-              } else {
-                router.push({
-                  pathname: "/(auth)/sign-in",
-                  params: { from: "info" },
-                });
-              }
-            }}
+            onPress={openProfile}
             accessibilityRole="button"
             accessibilityLabel={
               isSignedIn ? "My profile and settings" : "Sign in"
             }
           >
             <IconSymbol
-              name={
-                Platform.OS === "ios"
-                  ? "person.circle.fill"
-                  : "person-circle-sharp"
-              }
+              name="person-circle-sharp"
               size={24}
               color={colors.text}
             />
