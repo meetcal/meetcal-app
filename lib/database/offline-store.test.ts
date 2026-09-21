@@ -26,10 +26,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 import {
   clearMeetData,
   getAthleteLiftingResults,
+  getExplicitlyDownloadedMeetIds,
   getMeetData,
+  getMeetLiftingResults,
   getMeetSchedule,
   getSessionAthletesFromMeetCache,
   initStore,
+  markMeetExplicitlyDownloaded,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
@@ -194,5 +197,72 @@ describe("offline-store athlete lifting results", () => {
     await expect(
       getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("offline-store corrupt payload handling", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("degrades to no cached results when a chunk payload decodes to a non-array", async () => {
+    await saveMeetLiftingResults("Test Meet", [
+      {
+        id: 1,
+        event_id: "evt",
+        meet: "Test Meet",
+        date: "2026-01-01",
+        name: "Jane Doe",
+        age: 25,
+        body_weight: 65,
+        snatch1: 90,
+        snatch2: null,
+        snatch3: null,
+        snatch_best: 90,
+        cj1: 110,
+        cj2: null,
+        cj3: null,
+        cj_best: 110,
+        total: 200,
+      } as any,
+    ]);
+
+    // Overwrite chunk 0 with a payload that inflates to a valid but non-array
+    // JSON document. Before the narrowing this reached callers as an object
+    // and blew up on `.filter`.
+    const chunkKey = Array.from(mockStorage.keys()).find((key) =>
+      key.includes("__chunk_0"),
+    )!;
+    mockStorage.set(chunkKey, "not base64 deflate");
+
+    await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
+  });
+
+  it("survives a truncated store payload when clearing a meet", async () => {
+    mockStorage.set("meetcal_offline_store", "{\"meets\":");
+
+    await expect(clearMeetData("Test Meet" as any)).resolves.toBeUndefined();
+  });
+});
+
+describe("explicit meet downloads", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("returns an empty set when nothing has been downloaded", async () => {
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set());
+  });
+
+  it("reports every downloaded meet from a single read", async () => {
+    await markMeetExplicitlyDownloaded("Meet A" as any, true);
+    await markMeetExplicitlyDownloaded("Meet B" as any, true);
+    await markMeetExplicitlyDownloaded("Meet B" as any, false);
+
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(
+      new Set(["Meet A"]),
+    );
   });
 });

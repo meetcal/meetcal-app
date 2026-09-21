@@ -47,6 +47,24 @@ export type DataWidgetPayload = {
 
 export const WIDGET_SETTINGS_STORAGE_KEY = "meetcal.widgetSettings";
 
+/**
+ * `maxRows` is display-only metadata the native widget honours
+ * (`SavedWidget.swift` renders `min(maxRows, 3)` on medium, `maxRows`
+ * otherwise). It is *not* a bound on what we serialize.
+ */
+export const QUALIFYING_TOTALS_WIDGET_MAX_ROWS = 10;
+export const STANDARDS_WIDGET_MAX_ROWS = 10;
+export const INTL_RANKINGS_WIDGET_MAX_ROWS = 7;
+
+/**
+ * The bound on rows actually serialized across the bridge, so a widget refresh
+ * costs the same whether the selected age group has eight weight classes or
+ * the whole federation's. International rankings already capped here; the
+ * qualifying-totals and standards payloads did not, and shipped every matching
+ * row into a widget that can render ten.
+ */
+export const WIDGET_PAYLOAD_ROW_LIMIT = 20;
+
 export const defaultWidgetSettings: WidgetSettings = {
   qualifyingTotals: {
     event: "Nationals",
@@ -69,7 +87,8 @@ export async function loadWidgetSettings(): Promise<WidgetSettings> {
   if (!stored) return defaultWidgetSettings;
 
   try {
-    return mergeWidgetSettings(JSON.parse(stored));
+    const parsed: unknown = JSON.parse(stored);
+    return mergeWidgetSettings(parsed);
   } catch {
     return defaultWidgetSettings;
   }
@@ -82,20 +101,91 @@ export async function saveWidgetSettings(settings: WidgetSettings) {
   );
 }
 
+function readSection(value: unknown, key: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const section = (value as Record<string, unknown>)[key];
+  if (!section || typeof section !== "object" || Array.isArray(section)) {
+    return {};
+  }
+  return section as Record<string, unknown>;
+}
+
+function readString(section: Record<string, unknown>, key: string, fallback: string): string {
+  const value = section[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function readEnum<T extends string>(
+  section: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const value = section[key];
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+/**
+ * Narrows stored widget settings instead of `as Partial<WidgetSettings>`-ing
+ * them past `JSON.parse`. The old spread copied whatever was on disk straight
+ * into the payload, so a hand-edited or migrated value ("M" for a gender, a
+ * string where a section object belongs) reached the native widget as a lookup
+ * key that matches nothing and rendered an empty widget with no explanation.
+ */
 export function mergeWidgetSettings(value: unknown): WidgetSettings {
-  const parsed = value as Partial<WidgetSettings> | null;
+  const qualifyingTotals = readSection(value, "qualifyingTotals");
+  const standards = readSection(value, "standards");
+  const intlRankings = readSection(value, "intlRankings");
+
   return {
     qualifyingTotals: {
-      ...defaultWidgetSettings.qualifyingTotals,
-      ...(parsed?.qualifyingTotals ?? {}),
+      event: readString(
+        qualifyingTotals,
+        "event",
+        defaultWidgetSettings.qualifyingTotals.event,
+      ),
+      gender: readEnum(
+        qualifyingTotals,
+        "gender",
+        ["Men", "Women"] as const,
+        defaultWidgetSettings.qualifyingTotals.gender,
+      ),
+      ageGroup: readString(
+        qualifyingTotals,
+        "ageGroup",
+        defaultWidgetSettings.qualifyingTotals.ageGroup,
+      ),
     },
     standards: {
-      ...defaultWidgetSettings.standards,
-      ...(parsed?.standards ?? {}),
+      gender: readEnum(
+        standards,
+        "gender",
+        ["men", "women"] as const,
+        defaultWidgetSettings.standards.gender,
+      ),
+      ageGroup: readString(
+        standards,
+        "ageGroup",
+        defaultWidgetSettings.standards.ageGroup,
+      ),
     },
     intlRankings: {
-      ...defaultWidgetSettings.intlRankings,
-      ...(parsed?.intlRankings ?? {}),
+      meet: readString(
+        intlRankings,
+        "meet",
+        defaultWidgetSettings.intlRankings.meet,
+      ),
+      ageCategory: readString(
+        intlRankings,
+        "ageCategory",
+        defaultWidgetSettings.intlRankings.ageCategory,
+      ),
+      gender: readEnum(
+        intlRankings,
+        "gender",
+        ["Men", "Women", ""] as const,
+        defaultWidgetSettings.intlRankings.gender,
+      ),
     },
   };
 }
@@ -116,12 +206,14 @@ export function buildQualifyingTotalsWidgetPayload(
     ].filter(Boolean).join(" • "),
     emptyMessage: "No qualifying totals",
     linkURL: createQualifyingTotalsDeepLink(settings),
-    maxRows: 10,
-    rows: Object.entries(totals).map(([weightClass, total]) => ({
-      leading: weightClass,
-      title: "",
-      trailing: `${total}kg`,
-    })),
+    maxRows: QUALIFYING_TOTALS_WIDGET_MAX_ROWS,
+    rows: Object.entries(totals)
+      .slice(0, WIDGET_PAYLOAD_ROW_LIMIT)
+      .map(([weightClass, total]) => ({
+        leading: weightClass,
+        title: "",
+        trailing: `${total}kg`,
+      })),
   };
 }
 
@@ -136,8 +228,8 @@ export function buildStandardsWidgetPayload(
     subtitle: `${formatGender(settings.gender)} • ${formatAgeGroup(settings.ageGroup)}`,
     emptyMessage: "No standards",
     linkURL: createStandardsDeepLink(settings),
-    maxRows: 10,
-    rows: standards.map((standard) => ({
+    maxRows: STANDARDS_WIDGET_MAX_ROWS,
+    rows: standards.slice(0, WIDGET_PAYLOAD_ROW_LIMIT).map((standard) => ({
       leading: standard.weightClass,
       title: `${standard.a}kg`,
       trailing: `${standard.b}kg`,
@@ -157,7 +249,7 @@ export function buildIntlRankingsWidgetPayload(
         (!settings.gender || ranking.gender === settings.gender),
     )
     .sort((a, b) => a.ranking - b.ranking)
-    .slice(0, 20)
+    .slice(0, WIDGET_PAYLOAD_ROW_LIMIT)
     .map((ranking) => ({
       leading: `#${ranking.ranking}`,
       title: ranking.name,
@@ -174,7 +266,7 @@ export function buildIntlRankingsWidgetPayload(
     ].filter(Boolean).join(" • "),
     emptyMessage: "No rankings",
     linkURL: createIntlRankingsDeepLink(settings),
-    maxRows: 7,
+    maxRows: INTL_RANKINGS_WIDGET_MAX_ROWS,
     rows,
   };
 }

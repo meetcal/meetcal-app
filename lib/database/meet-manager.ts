@@ -5,6 +5,7 @@ import { normalizeAthleteName } from '@/lib/athletes';
 import {
   clearImplicitMeetData,
   clearMeetData,
+  getExplicitlyDownloadedMeetIds,
   getMeetData,
   isMeetExplicitlyDownloaded,
   saveAthleteBestsBatch,
@@ -26,7 +27,11 @@ import {
 } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
 import type { Schedule } from '@/types/schedule';
-import { calculateInitialPage } from '@/utils/dateTime';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  calculateInitialPage,
+  getHistoryCutoffDate,
+} from '@/utils/dateTime';
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
@@ -71,13 +76,10 @@ export function validatePrefetchedLiftingResults(
   athleteNames: string[],
   liftingResults: { name?: string | null }[],
 ): void {
-  const normalizeName = (value: string | null | undefined) =>
-    (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
   if (athleteNames.length > 0 && liftingResults.length > 0) {
-    const athleteSet = new Set(athleteNames.map(normalizeName));
+    const athleteSet = new Set(athleteNames.map(normalizeAthleteName));
     const matchedCount = liftingResults.reduce((count, result) => {
-      return athleteSet.has(normalizeName(result.name)) ? count + 1 : count;
+      return athleteSet.has(normalizeAthleteName(result.name)) ? count + 1 : count;
     }, 0);
 
     if (matchedCount === 0) {
@@ -86,12 +88,34 @@ export function validatePrefetchedLiftingResults(
   }
 }
 
+/**
+ * The cached meets list is the offline source for the meet picker, the schedule
+ * header and every meet-local time conversion, so a row without `name`,
+ * `dates` or `time` is not a meet we can render — it would surface as
+ * `Cannot read property 'timeZoneIdentifier' of undefined` in a screen rather
+ * than as a missing row here.
+ */
+function isCachedMeet(value: unknown): value is Meet {
+  if (!value || typeof value !== 'object') return false;
+  const meet = value as Partial<Meet>;
+  return (
+    typeof meet.name === 'string' &&
+    meet.name.length > 0 &&
+    typeof meet.dates === 'object' &&
+    meet.dates !== null &&
+    typeof meet.time === 'object' &&
+    meet.time !== null &&
+    typeof meet.time.timeZoneIdentifier === 'string'
+  );
+}
+
 export async function getCachedMeets(): Promise<Meet[]> {
   try {
     const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
     if (!cached) return [];
-    const parsed = JSON.parse(cached);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(cached);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isCachedMeet);
   } catch (error) {
     console.error('Error reading cached meets list:', error);
     return [];
@@ -278,9 +302,14 @@ async function cleanupOldMeetData() {
   // Most-recently-accessed first so the active meet is never a candidate.
   meets.sort(([, a], [, b]) => b.lastAccessed - a.lastAccessed);
 
+  // One read of the downloads blob for the whole sweep: this runs on every
+  // meet open, and the per-meet `isMeetExplicitlyDownloaded` call re-read and
+  // re-parsed the same AsyncStorage value once per cached meet.
+  const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
+
   let implicitKept = 0;
   for (const [meet] of meets) {
-    if (await isMeetExplicitlyDownloaded(meet)) {
+    if (explicitlyDownloaded.has(meet)) {
       continue;
     }
     implicitKept += 1;
@@ -308,9 +337,7 @@ export async function prefetchMeetData(meet: MeetName) {
 
 async function prefetchMeetDataUncached(meet: MeetName) {
   const errors: string[] = [];
-  const twoYearsAgo = new Date();
-  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-  const historyCutoffDate = twoYearsAgo.toISOString().split('T')[0];
+  const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
 
   try {
     const pkg = await fetchApiMeetPackage(meet, historyCutoffDate);

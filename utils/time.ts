@@ -52,6 +52,16 @@ function parseTo24Hour(startTime: string): { hour24: number; minutes: number } |
 // Saved sessions are auto-removed once this much time has elapsed since their start.
 export const AUTO_UNSAVE_DELAY_MS = 2 * 60 * 60 * 1000;
 
+/** USAW weigh-in opens this many hours before the session's start time. */
+export const WEIGH_IN_LEAD_HOURS = 2;
+
+/**
+ * Shown when `startTime` cannot be parsed. Callers that can have a missing
+ * start time (API rows, schedule fallbacks) check for one first rather than
+ * display this, so reaching it means a malformed *present* value.
+ */
+const WEIGH_IN_FALLBACK = "6:00 AM";
+
 /**
  * Returns true when a session started at least AUTO_UNSAVE_DELAY_MS (2 hours)
  * before `now`, meaning it qualifies for auto-removal.
@@ -72,13 +82,12 @@ export function calculateWeighInTime(startTime: string): string {
       'calculateWeighInTime: invalid startTime format, expected "HH:MM AM/PM" or "HH:MM[:SS]"',
       { startTime },
     );
-    return "6:00 AM";
+    return WEIGH_IN_FALLBACK;
   }
   const { minutes } = parsed;
-  let { hour24 } = parsed;
+  const { hour24 } = parsed;
 
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
+  let weighInHour = hour24 - WEIGH_IN_LEAD_HOURS;
 
   // Handle day wrap
   if (weighInHour < 0) weighInHour += 24;

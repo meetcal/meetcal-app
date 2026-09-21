@@ -1,8 +1,8 @@
 import type { Meet } from "@/data/types/meet";
+import { toMeetCalendarDate } from "@/utils/dateTime";
 import {
   getUpcomingMeetsWindow,
   selectUpcomingMeets,
-  toMeetCalendarDate,
 } from "@/hooks/useUpcomingMeets";
 
 const meet = (name: string, start: string, end = start): Meet =>

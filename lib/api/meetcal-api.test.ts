@@ -10,6 +10,8 @@ import {
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
+  getJsonArray,
+  getJsonObject,
   mapApiAthlete,
   mapApiLiftingResult,
   mapApiMeet,
@@ -471,6 +473,28 @@ describe('meetcal API client error and auth boundaries', () => {
     }));
     await expect(fetchApiMeetPackage('Test Meet')).rejects.toThrow(
       '/meets/package.athletes expected an array response',
+    );
+  });
+
+  it('rejects an object where a row array endpoint is expected', async () => {
+    // Callers go straight to `.filter`/`.map`, so an envelope response used to
+    // surface as "rows.filter is not a function" inside a fetcher rather than
+    // naming the endpoint.
+    mockFetch(JSON.stringify({ rows: [] }));
+    await expect(getJsonArray('/data/records')).rejects.toThrow(
+      '/data/records expected an array response',
+    );
+  });
+
+  it('accepts an empty row array', async () => {
+    mockFetch('[]');
+    await expect(getJsonArray('/data/records')).resolves.toEqual([]);
+  });
+
+  it('rejects an array where a single object is expected', async () => {
+    mockFetch('[]');
+    await expect(getJsonObject('/clubs/meet-stats')).rejects.toThrow(
+      '/clubs/meet-stats expected an object response',
     );
   });
 });

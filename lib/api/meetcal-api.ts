@@ -11,8 +11,25 @@ import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
 const DEFAULT_TIMEOUT_MS = 10000;
+/**
+ * `/meets/package` bundles the schedule, the whole roster and ~2 years of
+ * lifting history, so it legitimately takes longer than a table read.
+ */
+const MEET_PACKAGE_TIMEOUT_MS = 20000;
 const SLOW_API_LOG_THRESHOLD_MS = 500;
 export const NAMES_QUERY_CHUNK_SIZE = 40;
+
+/**
+ * Meet dates are calendar dates with no time. 16:00 UTC is inside the same
+ * calendar day for every `USTimeZoneIdentifier` (UTC-10 .. UTC-4), so reading
+ * the zone offset at this instant gives the meet's own offset on that date.
+ */
+const MEET_DATE_OFFSET_PROBE_HOUR_UTC = 16;
+/**
+ * Noon UTC is inside the same calendar day in every US meet timezone, so a
+ * meet date rendered from this instant never slips to the previous/next day.
+ */
+const MEET_DATE_DISPLAY_HOUR_UTC = 12;
 
 function chunkValues<T>(values: T[], size: number): T[][] {
   if (values.length === 0) return [];
@@ -59,12 +76,27 @@ function instantForMeetDate(dateIso: string | null | undefined): Date {
   if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
     return new Date();
   }
-  return new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+  return new Date(
+    Date.UTC(year, month - 1, day, MEET_DATE_OFFSET_PROBE_HOUR_UTC, 0, 0),
+  );
 }
 
+/**
+ * Deliberately falls back rather than throwing: a meet with an unrecognised
+ * `time_zone` still has a name, a venue and a schedule, and rejecting it here
+ * would drop the whole `/meets` list over one bad row. The fallback is not
+ * silent though — every displayed time for that meet will be an hour or three
+ * off, and this is the only place that can say why.
+ */
 function resolveTimeZoneIdentifier(value: string): USTimeZoneIdentifier {
   if (Object.prototype.hasOwnProperty.call(timezoneOffsets, value)) {
     return value as USTimeZoneIdentifier;
+  }
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.warn(
+      '[api] unknown meet time zone, falling back to America/New_York',
+      value,
+    );
   }
   return 'America/New_York';
 }
@@ -224,6 +256,34 @@ export function getJson<T>(
   options?: RequestOptions,
 ): Promise<T> {
   return requestJson<T>('GET', path, query, undefined, options);
+}
+
+/**
+ * `getJson` for the endpoints that return a bare row array.
+ *
+ * `getJson<Row[]>(...)` is an unchecked `as T` past a `JSON.parse`: the callers
+ * then go straight to `.filter`/`.map`, so an object response (an error
+ * envelope, a paging wrapper) fails as `rows.filter is not a function` deep
+ * inside a fetcher. Asserting here names the endpoint that misbehaved and keeps
+ * boundary validation in one place.
+ */
+export async function getJsonArray<T>(
+  path: string,
+  query?: Record<string, QueryValue>,
+  options?: RequestOptions,
+): Promise<T[]> {
+  return assertArray<T>(await getJson<unknown>(path, query, options), path);
+}
+
+/** `getJson` for the endpoints that return a single JSON object. */
+export async function getJsonObject<T>(
+  path: string,
+  query?: Record<string, QueryValue>,
+  options?: RequestOptions,
+): Promise<T> {
+  const response = await getJson<unknown>(path, query, options);
+  assertObject(response, path);
+  return response as T;
 }
 
 export function putJson<T>(
@@ -401,7 +461,9 @@ function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentif
   const [year, month, day] = datePart.split('-').map(Number);
   const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
     ? new Date(date)
-    : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    : new Date(
+        Date.UTC(year, month - 1, day, MEET_DATE_DISPLAY_HOUR_UTC, 0, 0),
+      );
 
   return safeUtcDate.toLocaleDateString('en-US', {
     month: 'long',
@@ -720,7 +782,7 @@ export async function fetchApiMeetPackage(
   const pkg = assertHasFields(await getJson('/meets/package', {
     meet,
     history_cutoff_date: historyCutoffDate,
-  }, { timeoutMs: 20000 }), '/meets/package', ['meet', 'schedule', 'athletes', 'meet_results']);
+  }, { timeoutMs: MEET_PACKAGE_TIMEOUT_MS }), '/meets/package', ['meet', 'schedule', 'athletes', 'meet_results']);
   assertObject(pkg.meet, '/meets/package.meet');
   assertArray(pkg.schedule, '/meets/package.schedule');
   assertArray(pkg.athletes, '/meets/package.athletes');

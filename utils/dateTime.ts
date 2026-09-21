@@ -169,3 +169,48 @@ export function getCalendarDateInTimeZone(timeZone: string): string {
     localMidnight.getDate(),
   )}`;
 }
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The calendar-date part of a meet date field, or "" when it isn't one.
+ *
+ * Meet dates are calendar dates, so date windows are compared as `YYYY-MM-DD`
+ * strings. Going through `new Date("2026-06-01")` instead would produce UTC
+ * midnight, which is the previous day in every US timezone, and a meet ending
+ * on the first day of a window would be filtered out.
+ */
+export function toMeetCalendarDate(value: string | null | undefined): string {
+  if (typeof value !== "string") return "";
+  const [datePart] = value.split("T");
+  return ISO_DATE_REGEX.test(datePart ?? "") ? datePart : "";
+}
+
+/**
+ * How far back the attempt estimator and the offline meet download pull an
+ * athlete's competition history.
+ */
+export const ATTEMPT_HISTORY_YEARS = 2;
+
+/** How far back "year bests" on the start list look. */
+export const YEAR_BESTS_YEARS = 1;
+
+/**
+ * The `YYYY-MM-DD` cutoff `years` before `now`, for history windows.
+ *
+ * One copy of the policy: this was open-coded six times as
+ * `const d = new Date(); d.setFullYear(d.getFullYear() - N);
+ * d.toISOString().split("T")[0]`, which mixes *device-local* `getFullYear` with
+ * a *UTC* `toISOString` and so lands on a different day either side of
+ * midnight. Everything here is UTC, so the cutoff is the same instant for every
+ * device.
+ */
+export function getHistoryCutoffDate(
+  years: number,
+  now: Date = new Date(),
+): string {
+  const cutoff = new Date(
+    Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()),
+  );
+  return cutoff.toISOString().split("T")[0];
+}

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { getDateInTimeZone } from "@/utils/dateTime";
+import { getDateInTimeZone, toMeetCalendarDate } from "@/utils/dateTime";
 import { Meet } from "@/data/types/meet";
 
 interface UseUpcomingMeetsParams {
@@ -11,8 +11,6 @@ interface UseUpcomingMeetsReturn {
   upcomingMeets: Meet[];
 }
 
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
 }
@@ -20,20 +18,6 @@ function pad(value: number): string {
 /** `YYYY-MM-DD` for a Date whose *local* fields carry the calendar date. */
 function toCalendarDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-/**
- * The calendar-date part of a meet date field, or "" when it isn't one.
- *
- * Meet dates are calendar dates, so the whole window is compared as
- * `YYYY-MM-DD` strings. Going through `new Date("2026-06-01")` instead would
- * produce UTC midnight, which is the previous day in every US timezone, and a
- * meet ending on the first day of the window would be filtered out.
- */
-export function toMeetCalendarDate(value: string | null | undefined): string {
-  if (typeof value !== "string") return "";
-  const [datePart] = value.split("T");
-  return ISO_DATE_REGEX.test(datePart ?? "") ? datePart : "";
 }
 
 /** The inclusive `YYYY-MM-DD` window a meet has to overlap to be listed. */

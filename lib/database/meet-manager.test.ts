@@ -24,9 +24,13 @@ const mockSaveAthleteHistory = jest.fn(async () => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
 const mockSaveSessionAthletes = jest.fn(async () => undefined);
-const mockIsMeetExplicitlyDownloaded = jest.fn(
-  async (_meet: string): Promise<boolean> => true,
-);
+// Single source of truth for "did the user download this meet for offline
+// use". Both accessors read it so a test can set it once regardless of whether
+// production code asks per meet or asks for the whole set.
+let mockIsExplicitlyDownloaded: (meet: string) => boolean = () => true;
+const setExplicitlyDownloaded = (predicate: (meet: string) => boolean) => {
+  mockIsExplicitlyDownloaded = predicate;
+};
 const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
@@ -65,8 +69,11 @@ jest.mock("@/lib/database/offline-store", () => ({
     liftingResultsKey: "",
     lastSyncTime: 0,
   })),
-  isMeetExplicitlyDownloaded: (...args: unknown[]) =>
-    mockIsMeetExplicitlyDownloaded.apply(null, args),
+  isMeetExplicitlyDownloaded: async (meet: string) =>
+    mockIsExplicitlyDownloaded(meet),
+  getExplicitlyDownloadedMeetIds: async () => ({
+    has: (meet: string) => mockIsExplicitlyDownloaded(meet),
+  }),
   saveAthleteHistory: (...args: unknown[]) =>
     mockSaveAthleteHistory.apply(null, args),
   saveAthleteBestsBatch: jest.fn(async () => undefined),
@@ -281,7 +288,7 @@ describe("prefetchCriticalMeetData", () => {
 
   it("defers full meet package prefetch for explicitly downloaded meets", async () => {
     jest.useFakeTimers();
-    mockIsMeetExplicitlyDownloaded.mockResolvedValue(true);
+    setExplicitlyDownloaded(() => true);
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -324,7 +331,7 @@ describe("prefetchCriticalMeetData", () => {
 
   it("skips the full meet package prefetch when the meet is not explicitly downloaded", async () => {
     jest.useFakeTimers();
-    mockIsMeetExplicitlyDownloaded.mockResolvedValue(false);
+    setExplicitlyDownloaded(() => false);
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -509,9 +516,7 @@ describe("cache eviction during prefetch", () => {
     mockGetItem.mockImplementation(async (key: string) =>
       key === MEET_CACHE_KEY ? JSON.stringify(cacheInfo) : null,
     );
-    mockIsMeetExplicitlyDownloaded.mockImplementation(
-      async (meet: string) => meet === "Downloaded Meet",
-    );
+    setExplicitlyDownloaded((meet) => meet === "Downloaded Meet");
 
     await prefetchCriticalMeetData("Meet F" as any);
 

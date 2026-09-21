@@ -2,16 +2,16 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { fetchApiWsoAgeGroups, fetchApiWsoList, getJson } from '@/lib/api/meetcal-api';
+import { fetchApiWsoAgeGroups, fetchApiWsoList, getJsonArray } from '@/lib/api/meetcal-api';
 import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
 type WSORecordsCache = Record<string, RecordsData>;
 type FilteredWSORecordsCache = Record<string, RecordsData>;
 type WSORecordRow = {
-  age_category: string;
-  gender: string;
-  weight_class: string;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
   snatch_record: number | null;
   cj_record: number | null;
   total_record: number | null;
@@ -68,20 +68,27 @@ async function fetchWSORecordsFresh(
     throw new Error('Offline');
   }
 
-  const rows = await getJson<WSORecordRow[]>('/data/wso/records', {
+  const rows = await getJsonArray<WSORecordRow>('/data/wso/records', {
     wso,
     age_category: ageGroup,
     gender,
   });
 
-  const ageGroups = Array.from(new Set(rows.map((row) => row.age_category)));
+  // `age_category`/`weight_class` are nullable in the source table. A null
+  // age category used to create a literal "null" bucket in the records map,
+  // which then rendered as an age group the user could select.
+  const completeRows = rows.filter(
+    (row): row is WSORecordRow & { age_category: string; weight_class: string } =>
+      Boolean(row?.age_category && row.weight_class),
+  );
+  const ageGroups = Array.from(new Set(completeRows.map((row) => row.age_category)));
 
   const result: RecordsData = {};
   ageGroups.forEach((g) => {
     result[g] = { Men: [], Women: [] };
   });
 
-  rows.forEach((row) => {
+  completeRows.forEach((row) => {
     const ageKey = row.age_category;
     const genderKey = row.gender as 'Men' | 'Women';
     if (!result[ageKey]) return;

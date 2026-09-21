@@ -22,6 +22,10 @@ import {
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+} from "@/utils/dateTime";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -80,8 +84,17 @@ export default function AttemptEstimatorScreen() {
     new Set(),
   );
 
+  // The screen is reachable straight from a start list, so the user can move
+  // between sessions while a load is still running. Without this guard the
+  // previous session's estimates land in state after the new session's, and
+  // the table shows session A's athletes under session B's header — the same
+  // defect the start list carries a request id for.
+  const requestIdRef = useRef(0);
+
   const loadData = useCallback(async () => {
     if (!hasValidParams) return;
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     setLoading(true);
     try {
       const meetId = params.meet as MeetName;
@@ -104,9 +117,7 @@ export default function AttemptEstimatorScreen() {
             athleteNameSet.has(normalizeAthleteName(result.name)),
           );
         } else {
-          const twoYearsAgo = new Date();
-          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-          const cutoffDate = twoYearsAgo.toISOString().split("T")[0];
+          const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
           const allResults: SupabaseLiftResult[] = [];
           for (const athlete of cachedSessionAthletes) {
             if (!athlete.name?.trim()) continue;
@@ -120,10 +131,12 @@ export default function AttemptEstimatorScreen() {
           }
           cachedSessionResults = allResults;
         }
+        if (isStale()) return;
         setEstimates(
           calculateEstimates(cachedSessionAthletes, cachedSessionResults),
         );
       } else {
+        if (isStale()) return;
         setEstimates([]);
       }
 
@@ -148,9 +161,7 @@ export default function AttemptEstimatorScreen() {
 
       let freshResults: SupabaseLiftResult[] = [];
       if (freshAllNames.length > 0) {
-        const twoYearsAgo = new Date();
-        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-        const cutoffDate = twoYearsAgo.toISOString().split('T')[0];
+        const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
         freshResults = await fetchRecentAthleteHistoryForNames(freshAllNames, cutoffDate);
       }
       await saveMeetLiftingResults(meetId, freshResults);
@@ -159,6 +170,7 @@ export default function AttemptEstimatorScreen() {
         freshSessionNameSet.has(normalizeAthleteName(result.name)),
       );
 
+      if (isStale()) return;
       if (freshSessionAthletes.length > 0) {
         setEstimates(
           calculateEstimates(freshSessionAthletes, freshSessionResults),
@@ -167,14 +179,22 @@ export default function AttemptEstimatorScreen() {
         setEstimates([]);
       }
     } catch (error) {
+      if (isStale()) return;
       console.error("Error loading data:", error);
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   }, [hasValidParams, sessionNumber, params.platform, params.meet]);
 
   useEffect(() => {
     loadData();
+    return () => {
+      // Invalidate whatever is in flight: an unmount or a parameter change
+      // must not repaint this screen with the old session's estimates.
+      requestIdRef.current += 1;
+    };
   }, [loadData]);
 
   const toggleAthlete = (athleteId: string) => {

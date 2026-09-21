@@ -2,6 +2,9 @@ import {
   buildIntlRankingsWidgetPayload,
   buildQualifyingTotalsWidgetPayload,
   buildStandardsWidgetPayload,
+  defaultWidgetSettings,
+  mergeWidgetSettings,
+  WIDGET_PAYLOAD_ROW_LIMIT,
 } from "@/utils/dataWidgets";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
@@ -131,5 +134,90 @@ describe("data widget payloads", () => {
       { meet: "Worlds", ageCategory: "Senior", gender: "Men" },
     );
     expect(cappedPayload.rows).toHaveLength(20);
+  });
+
+  it("caps the rows it serializes for every widget kind", () => {
+    const totals = Object.fromEntries(
+      Array.from({ length: 40 }, (_, index) => [`${index}`, 100 + index]),
+    );
+    expect(
+      buildQualifyingTotalsWidgetPayload(
+        { Nationals: { Senior: { Men: totals, Women: {} } } },
+        { event: "Nationals", gender: "Men", ageGroup: "Senior" },
+      ).rows,
+    ).toHaveLength(WIDGET_PAYLOAD_ROW_LIMIT);
+
+    expect(
+      buildStandardsWidgetPayload(
+        {
+          senior: {
+            men: Array.from({ length: 40 }, (_, index) => ({
+              weightClass: `${index}`,
+              a: 300,
+              b: 280,
+            })),
+          },
+        },
+        { gender: "men", ageGroup: "senior" },
+      ).rows,
+    ).toHaveLength(WIDGET_PAYLOAD_ROW_LIMIT);
+  });
+
+  it("renders an empty payload rather than throwing on empty data", () => {
+    expect(
+      buildQualifyingTotalsWidgetPayload(
+        {},
+        { event: "Nationals", gender: "Men", ageGroup: "Senior" },
+      ).rows,
+    ).toEqual([]);
+    expect(
+      buildStandardsWidgetPayload({}, { gender: "men", ageGroup: "senior" })
+        .rows,
+    ).toEqual([]);
+    expect(
+      buildIntlRankingsWidgetPayload([], {
+        meet: "",
+        ageCategory: "",
+        gender: "",
+      }).rows,
+    ).toEqual([]);
+  });
+});
+
+describe("mergeWidgetSettings", () => {
+  it("falls back to defaults for a non-object payload", () => {
+    expect(mergeWidgetSettings(null)).toEqual(defaultWidgetSettings);
+    expect(mergeWidgetSettings("nope")).toEqual(defaultWidgetSettings);
+    expect(mergeWidgetSettings([1, 2, 3])).toEqual(defaultWidgetSettings);
+  });
+
+  it("ignores a section that is not an object", () => {
+    expect(mergeWidgetSettings({ standards: "men" }).standards).toEqual(
+      defaultWidgetSettings.standards,
+    );
+  });
+
+  it("rejects a gender outside the allowed set", () => {
+    // "M" is not a key in the standards data, so before narrowing it produced
+    // an empty widget with no way to tell why.
+    expect(mergeWidgetSettings({ standards: { gender: "M" } }).standards.gender)
+      .toBe(defaultWidgetSettings.standards.gender);
+    expect(
+      mergeWidgetSettings({ qualifyingTotals: { gender: 7 } }).qualifyingTotals
+        .gender,
+    ).toBe(defaultWidgetSettings.qualifyingTotals.gender);
+  });
+
+  it("keeps valid stored values, including the empty intl gender", () => {
+    expect(
+      mergeWidgetSettings({
+        standards: { gender: "women", ageGroup: "u15" },
+        intlRankings: { meet: "Worlds", ageCategory: "Junior", gender: "" },
+      }),
+    ).toEqual({
+      ...defaultWidgetSettings,
+      standards: { gender: "women", ageGroup: "u15" },
+      intlRankings: { meet: "Worlds", ageCategory: "Junior", gender: "" },
+    });
   });
 });

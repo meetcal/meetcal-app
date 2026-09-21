@@ -1,6 +1,6 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 
 export type NationalRanking = {
   id: number;
@@ -40,7 +40,7 @@ async function readNationalRankingsCache(weightClassAge: string) {
 }
 
 async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
-  const rows = await getJson<NationalRankingRow[]>('/data/nat-rankings', {
+  const rows = await getJsonArray<NationalRankingRow>('/data/nat-rankings', {
     federation: 'USAW',
     age_category: weightClassAge,
   });

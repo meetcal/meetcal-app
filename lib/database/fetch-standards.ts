@@ -2,16 +2,32 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
 type StandardsRow = {
-  age_category: string;
-  gender: string;
-  weight_class: string;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
   standard_a: number | null;
   standard_b: number | null;
 };
+
+type CompleteStandardsRow = StandardsRow & {
+  age_category: string;
+  gender: string;
+  weight_class: string;
+};
+
+/**
+ * `age_category`/`gender`/`weight_class` are nullable in the source table.
+ * `.toLowerCase()` on a null row threw and took the *whole* standards payload
+ * down, offline cache included — the same one-bad-row failure the qualifying
+ * totals fetcher already guards against.
+ */
+function isCompleteStandardsRow(row: StandardsRow): row is CompleteStandardsRow {
+  return Boolean(row && row.age_category && row.gender && row.weight_class);
+}
 
 function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' | 'women'): StandardsData {
   if (!ageGroup && !gender) return data;
@@ -36,7 +52,7 @@ function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' 
   return result;
 }
 
-function mapRows(rows: StandardsRow[]): StandardsData {
+function mapRows(rows: CompleteStandardsRow[]): StandardsData {
   const result: StandardsData = {
     u15: { men: [], women: [] },
     youth: { men: [], women: [] },
@@ -101,14 +117,14 @@ async function fetchStandardsFresh(
     throw new Error('Offline');
   }
 
-  const allRows = await getJson<StandardsRow[]>('/data/standards');
-  const rows = allRows.filter((row) => {
+  const allRows = await getJsonArray<StandardsRow>('/data/standards');
+  const rows = allRows.filter(isCompleteStandardsRow).filter((row) => {
     if (ageGroup && row.age_category.toLowerCase() !== ageGroup) return false;
     if (gender && row.gender.toLowerCase() !== gender) return false;
     return true;
   });
 
-  return mapRows(rows as StandardsRow[]);
+  return mapRows(rows);
 }
 
 async function persistStandards(data: StandardsData) {

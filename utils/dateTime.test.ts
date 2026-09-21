@@ -4,6 +4,8 @@ import {
   formatIsoDateTitle,
   calculateInitialPage,
   meetCalendarDateAnchor,
+  getHistoryCutoffDate,
+  YEAR_BESTS_YEARS,
 } from "@/utils/dateTime";
 import type { DaySchedule, Schedule } from "@/types/schedule";
 
@@ -187,5 +189,34 @@ describe("calculateInitialPage", () => {
       day({ fullDate: "2026-12-02" }),
     ];
     expect(calculateInitialPage(future)).toBe(0);
+  });
+});
+
+describe("getHistoryCutoffDate", () => {
+  it("returns the same calendar date N years earlier", () => {
+    expect(
+      getHistoryCutoffDate(2, new Date("2026-06-20T12:00:00Z")),
+    ).toBe("2024-06-20");
+    expect(
+      getHistoryCutoffDate(YEAR_BESTS_YEARS, new Date("2026-06-20T12:00:00Z")),
+    ).toBe("2025-06-20");
+  });
+
+  it("is UTC-stable across the device-midnight boundary", () => {
+    // The open-coded version mixed local `getFullYear()` with a UTC
+    // `toISOString()`, so two devices a few hours apart disagreed on the
+    // cutoff.
+    expect(getHistoryCutoffDate(1, new Date("2026-01-01T00:00:00Z"))).toBe(
+      "2025-01-01",
+    );
+    expect(getHistoryCutoffDate(1, new Date("2026-01-01T23:59:59Z"))).toBe(
+      "2025-01-01",
+    );
+  });
+
+  it("normalizes Feb 29 to Mar 1 rather than producing an invalid date", () => {
+    expect(getHistoryCutoffDate(1, new Date("2024-02-29T12:00:00Z"))).toBe(
+      "2023-03-01",
+    );
   });
 });

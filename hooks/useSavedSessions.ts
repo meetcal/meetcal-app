@@ -42,6 +42,19 @@ export interface SavedSession {
   athleteName?: string; // For backward compatibility
 }
 
+/** A session reminder fires this long before the session's start time. */
+const NOTIFICATION_LEAD_MS = 60 * 60 * 1000;
+
+/**
+ * Saving a session used to emit ~15 `console.log` lines — including the same
+ * instant formatted in three timezones — on every save, in production. Keep
+ * the trace, keep it out of release builds.
+ */
+function logNotificationScheduling(step: string, detail?: unknown): void {
+  if (!__DEV__) return;
+  console.log(`[notifications] ${step}`, detail);
+}
+
 function parseStoredSessions(raw: string | null): SavedSession[] {
   if (!raw) return [];
   try {
@@ -435,15 +448,19 @@ export function useSavedSessions() {
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
       try {
         const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
-        console.log('Notification Scheduling Check - Enabled:', notificationsEnabled);
+        logNotificationScheduling('enabled', notificationsEnabled);
 
         if (notificationsEnabled === 'true') {
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
-          console.log(`Notification Scheduling - Fetching schedule for: ${meetName}, Session ${sessionNumber}, Platform ${platform}`);
+          logNotificationScheduling('fetching schedule', {
+            meetName,
+            sessionNumber,
+            platform,
+          });
           const schedule = await fetchSchedule(meetName);
-          console.log('Notification Scheduling - Schedule fetched:', schedule ? `${schedule.length} days` : 'null or empty');
+          logNotificationScheduling('schedule days', schedule?.length ?? 0);
 
           if (!schedule || schedule.length === 0) {
              console.error(`Notification Scheduling - Could not fetch or schedule is empty for meet: ${meetName}`);
@@ -460,11 +477,13 @@ export function useSavedSessions() {
               break;
             }
           }
-          console.log('Notification Scheduling - Session found:', foundSession ? `Yes (Date: ${sessionDayDate})` : 'No');
+          logNotificationScheduling(
+            'session found',
+            foundSession ? sessionDayDate : false,
+          );
 
           if (foundSession && sessionDayDate) {
             const startTime = getPlatformStartTime(foundSession, platform);
-            console.log(`Notification Scheduling - Start time found: ${startTime}`);
             
             // Get meet config for timezone information
             const meetConfig = await getMeetConfig(meetName);
@@ -476,56 +495,19 @@ export function useSavedSessions() {
               meetConfig.time.timeZoneIdentifier,
             );
             
-            // Format times for clearer logging
-            const sessionDateEastern = sessionDate.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const sessionDateMeetLocal = sessionDate.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-
-            const triggerDate = new Date(sessionDate.getTime() - 60 * 60 * 1000);
+            const triggerDate = new Date(
+              sessionDate.getTime() - NOTIFICATION_LEAD_MS,
+            );
             const now = new Date();
-            
-            const triggerDateEastern = triggerDate.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const triggerDateMeetLocal = triggerDate.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const nowEastern = now.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const nowMeetLocal = now.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
 
-            console.log(`Notification Scheduling - Session Date (UTC): ${sessionDate.toISOString()}`);
-            console.log(`Notification Scheduling - Session Date (Eastern): ${sessionDateEastern}`);
-            console.log(`Notification Scheduling - Session Date (${meetConfig.time.abbreviation}): ${sessionDateMeetLocal}`);
-            console.log(`Notification Scheduling - Trigger Date (UTC): ${triggerDate.toISOString()}`);
-            console.log(`Notification Scheduling - Trigger Date (Eastern): ${triggerDateEastern}`);
-            console.log(`Notification Scheduling - Trigger Date (${meetConfig.time.abbreviation}): ${triggerDateMeetLocal}`);
-            console.log(`Notification Scheduling - triggerDate > now: ${triggerDate > now}`);
+            logNotificationScheduling('trigger', {
+              sessionUtc: sessionDate.toISOString(),
+              triggerUtc: triggerDate.toISOString(),
+              meetZone: meetConfig.time.timeZoneIdentifier,
+              willSchedule: triggerDate > now,
+            });
 
             if (triggerDate > now) {
-              console.log('Notification Scheduling - Condition met, attempting to schedule...');
               const notificationId = await scheduleNotification(
                 `Session Reminder`,
                 `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
@@ -542,17 +524,9 @@ export function useSavedSessions() {
                   date: sessionDayDate,
                 },
               );
-              if (notificationId) {
-                console.log('Notification Scheduling - scheduleNotification called successfully.', notificationId);
-              }
-            } else {
-              console.log('Notification Scheduling - Trigger date is in the past, not scheduling.');
+              logNotificationScheduling('scheduled', notificationId);
             }
-          } else {
-            console.log('Notification Scheduling - Session not found or date missing, cannot schedule.');
           }
-        } else {
-          console.log('Notification Scheduling - Notifications are disabled in settings.');
         }
       } catch (notifError) {
         console.error('Notification Scheduling - Error caught during scheduling block:', notifError);
@@ -601,8 +575,6 @@ export function useSavedSessions() {
           if (notificationsEnabled === 'true') {
              // Only cancel if notifications were potentially scheduled
             await cancelNotification(sessionToRemove.id);
-          } else {
-            console.log(`removeSession: Notifications disabled, skipping cancellation for ${sessionToRemove.id}`);
           }
         } catch (cancelError) {
           console.error(`removeSession: Failed to cancel notification for ${sessionToRemove.id}:`, cancelError);

@@ -2,7 +2,7 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
@@ -113,7 +113,7 @@ async function fetchRecordsFresh(
     throw new Error('Offline');
   }
 
-  const allRows = await getJson<RecordsRow[]>('/data/records');
+  const allRows = await getJsonArray<RecordsRow>('/data/records');
   const rows = allRows.filter(isCompleteRecordsRow).filter((row) => {
     if (row.record_type !== federation) return false;
     if (ageGroup && row.age_category !== ageGroup) return false;
@@ -130,7 +130,7 @@ async function fetchFederationsFresh(): Promise<string[]> {
     throw new Error('Offline');
   }
 
-  const rows = await getJson<RecordsRow[]>('/data/records');
+  const rows = await getJsonArray<RecordsRow>('/data/records');
   return Array.from(
     new Set(rows.filter(isCompleteRecordsRow).map((row) => row.record_type)),
   ).sort((a, b) =>
