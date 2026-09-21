@@ -1,9 +1,10 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import { SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { filterSessionAthletes, normalizeAthleteName } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
@@ -56,28 +57,6 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
       </View>
     </Animated.View>
   );
-}
-
-function normalizePlatformKey(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function normalizeAthleteName(name: string | null | undefined) {
-  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function filterSessionAthletes(
-  athletes: LiftResult[],
-  sessionNumber: number,
-  platform: string,
-) {
-  const normalizedPlatform = normalizePlatformKey(platform);
-  return athletes.filter((athlete) => {
-    const athleteSession = athlete.session;
-    if (!athleteSession) return false;
-    if (athleteSession.number !== sessionNumber) return false;
-    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
-  });
 }
 
 export default function AttemptEstimatorScreen() {

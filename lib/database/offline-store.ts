@@ -5,6 +5,11 @@ import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
 import { Buffer } from 'buffer';
 import pako from 'pako';
+import {
+  filterSessionAthletes,
+  normalizeAthleteName,
+  normalizePlatformKey,
+} from '@/lib/athletes';
 
 
 const STORE_KEY = 'meetcal_offline_store';
@@ -507,20 +512,12 @@ export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseL
   }
 }
 
-function normalizePlatformValue(platform: string | undefined): string {
-  return (platform || '').trim().toLowerCase();
-}
-
-function normalizeAthleteName(name: string | null | undefined): string {
-  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 function getSessionAthletesKey(
   meetId: MeetName | string,
   sessionNumber: number,
   platform: string,
 ): string {
-  return `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:${sessionNumber}:${encodeURIComponent(normalizePlatformValue(platform))}`;
+  return `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:${sessionNumber}:${encodeURIComponent(normalizePlatformKey(platform))}`;
 }
 
 function groupAthletesBySession(athletes: LiftResult[]) {
@@ -530,7 +527,7 @@ function groupAthletesBySession(athletes: LiftResult[]) {
     const session = athlete.session;
     if (!session) return;
 
-    const key = `${session.number}:${normalizePlatformValue(session.platform)}`;
+    const key = `${session.number}:${normalizePlatformKey(session.platform)}`;
     const group = groups.get(key) ?? [];
     group.push(athlete);
     groups.set(key, group);
@@ -590,14 +587,7 @@ export async function getSessionAthletesFromMeetCache(
     }
 
     const meetData = await getMeetData(meetId);
-    const normalizedPlatform = normalizePlatformValue(platform);
-
-    return meetData.athletes.filter((athlete) => {
-      const athleteSession = athlete.session;
-      if (!athleteSession) return false;
-      if (athleteSession.number !== sessionNumber) return false;
-      return normalizePlatformValue(athleteSession.platform) === normalizedPlatform;
-    });
+    return filterSessionAthletes(meetData.athletes, sessionNumber, platform);
   } catch (error) {
     console.error('Error getting session athletes from cache:', error);
     return [];

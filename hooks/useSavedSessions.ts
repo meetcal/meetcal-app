@@ -4,7 +4,11 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime, hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 import { useAuth, useUser } from '@clerk/expo';
-import { scheduleNotification, cancelNotification } from '@/utils/notifications';
+import {
+  cancelNotification,
+  NOTIFICATION_ENABLED_KEY,
+  scheduleNotification,
+} from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
@@ -15,6 +19,7 @@ import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
 import { getCachedAuthState } from '@/lib/authCache';
 import { posthog } from '@/lib/posthog';
+import { generateSessionId, getSavedSessionsKey } from '@/utils/session';
 import {
   deleteSavedSession as deleteSavedSessionFromApi,
   deleteSavedSessions as deleteSavedSessionsFromApi,
@@ -22,16 +27,6 @@ import {
   fetchUserPreferences,
   putSavedSession,
 } from '@/lib/api/meetcal-api';
-
-// Function to generate unique session IDs
-function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
-  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
-}
-
-// Function to get user-specific storage key
-const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
-
-const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
 export interface SavedSession {
   id: string;

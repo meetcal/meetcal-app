@@ -3,6 +3,7 @@ import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 import { getJson } from '@/lib/api/meetcal-api';
+import { weightClassSort } from './weight-class-sort';
 
 type Gender = 'Men' | 'Women';
 
@@ -14,21 +15,6 @@ type AdaptiveRecordRow = {
 };
 
 const AGE_GROUP_KEY = 'Adaptive';
-
-// Custom sort: lowest to highest, '+' always last
-function weightClassSort(a: string, b: string): number {
-  const parse = (w: string) => {
-    if (w.includes('+')) return Infinity;
-    const num = parseInt(w.replace(/[^\d]/g, ''), 10);
-    return Number.isNaN(num) ? Infinity : num;
-  };
-  const aVal = parse(a);
-  const bVal = parse(b);
-  if (aVal === bVal) return 0;
-  if (aVal === Infinity) return 1;
-  if (bVal === Infinity) return -1;
-  return aVal - bVal;
-}
 
 async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
   const rows = await getJson<AdaptiveRecordRow[]>('/data/adaptive', {

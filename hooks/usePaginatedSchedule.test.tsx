@@ -1,4 +1,5 @@
 import React from "react";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import { act, create } from "react-test-renderer";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { DaySchedule, Schedule } from "@/types/schedule";
@@ -19,6 +20,18 @@ const useWindowDimensions = require("react-native/Libraries/Utilities/useWindowD
 const { useSafeAreaInsets } = require("react-native-safe-area-context") as {
   useSafeAreaInsets: jest.Mock;
 };
+
+/** A momentum-scroll event carrying the horizontal offset the hook reads. */
+const momentumEvent = (x: number) =>
+  ({
+    nativeEvent: {
+      contentInset: { bottom: 0, left: 0, right: 0, top: 0 },
+      contentOffset: { x, y: 0 },
+      contentSize: { height: 900, width: x + 1000 },
+      layoutMeasurement: { height: 900, width: 1000 },
+      zoomScale: 1,
+    },
+  }) as NativeSyntheticEvent<NativeScrollEvent>;
 
 const setWidth = (width: number) => {
   useWindowDimensions.mockReturnValue({
@@ -126,9 +139,7 @@ describe("usePaginatedSchedule width changes", () => {
     });
 
     act(() => {
-      captured!.onMomentumScrollEnd({
-        nativeEvent: { contentOffset: { x: 764 } },
-      });
+      captured!.onMomentumScrollEnd(momentumEvent(764));
     });
     expect(captured!.currentPage).toBe(2);
     expect(captured!.pageWidth).toBe(382);
@@ -151,9 +162,7 @@ describe("usePaginatedSchedule width changes", () => {
     });
 
     act(() => {
-      captured!.onMomentumScrollEnd({
-        nativeEvent: { contentOffset: { x: 800 } },
-      });
+      captured!.onMomentumScrollEnd(momentumEvent(800));
     });
 
     setWidth(1000);

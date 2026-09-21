@@ -1188,7 +1188,7 @@ export default function StartListScreen() {
           from: "/(tabs)/(start-list)",
           feature: "share-schedule-image",
         },
-      } as any);
+      });
     }
   };
 
@@ -1212,7 +1212,7 @@ export default function StartListScreen() {
           from: "/(tabs)/(start-list)",
           feature: "export-csv",
         },
-      } as any);
+      });
     }
   };
 

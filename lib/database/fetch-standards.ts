@@ -3,6 +3,7 @@ import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 import { getJson } from '@/lib/api/meetcal-api';
+import { weightClassSort } from './weight-class-sort';
 
 type StandardsRow = {
   age_category: string;
@@ -11,20 +12,6 @@ type StandardsRow = {
   standard_a: number | null;
   standard_b: number | null;
 };
-
-function weightClassSort(a: string, b: string): number {
-  const parse = (w: string) => {
-    if (w.startsWith('+')) return Infinity;
-    const num = parseInt(w, 10);
-    return isNaN(num) ? Infinity : num;
-  };
-  const aVal = parse(a);
-  const bVal = parse(b);
-  if (aVal === bVal) return 0;
-  if (aVal === Infinity) return 1;
-  if (bVal === Infinity) return -1;
-  return aVal - bVal;
-}
 
 function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' | 'women'): StandardsData {
   if (!ageGroup && !gender) return data;

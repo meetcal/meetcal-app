@@ -1,7 +1,7 @@
 import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { useAppColors } from "@/hooks/useAppColors";
+import { AppColors, useAppColors } from "@/hooks/useAppColors";
 import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
@@ -13,7 +13,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
-function getRateColor(rate: number, colors: any) {
+function getRateColor(rate: number, colors: AppColors) {
   if (rate >= 80) return colors.success;
   if (rate < 70) return colors.fail;
   return "#FF9500";
@@ -26,7 +26,7 @@ function AttemptRateRow({
 }: {
   attemptNumber: number;
   rates: { makes: number; total: number; rate: number };
-  colors: any;
+  colors: AppColors;
 }) {
   return (
     <View style={styles.attemptRateRow}>
@@ -57,7 +57,7 @@ function AthleteStats({
   colors,
 }: {
   results: SupabaseLiftResult[];
-  colors: any;
+  colors: AppColors;
 }) {
   const stats = useMemo(() => {
     let snatchAttempts = 0;
@@ -556,7 +556,7 @@ function AttemptDisplay({
   colors,
 }: {
   attempt: number | null;
-  colors: any;
+  colors: AppColors;
 }) {
   if (attempt === null || attempt === 0) {
     return (

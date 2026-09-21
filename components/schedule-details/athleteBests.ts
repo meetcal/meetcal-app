@@ -1,5 +1,6 @@
 import { SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
+import { maxSuccessfulAttempt } from "@/lib/athletes";
 import {
   getAllCachedLiftingResultsForAthlete,
   getCachedAthleteBestsForNames,
@@ -12,16 +13,6 @@ const bestsBatchInFlight = new Map<string, Promise<Record<string, SupabaseBests>
 
 function createEmptyBests(): SupabaseBests {
   return { snatch_best: null, cj_best: null, total: null };
-}
-
-function maxSuccessfulAttempt(
-  attempts: (number | null | undefined)[],
-): number | null {
-  const successful = attempts.filter(
-    (attempt): attempt is number => typeof attempt === "number" && attempt > 0,
-  );
-  if (successful.length === 0) return null;
-  return Math.max(...successful);
 }
 
 function deriveRowBests(row: {

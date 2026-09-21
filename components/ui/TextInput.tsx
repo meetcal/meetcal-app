@@ -1,9 +1,7 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import { TextInput as RNTextInput, StyleSheet } from "react-native";
 
-interface TextInputProps extends React.ComponentProps<typeof RNTextInput> {
-  style?: any;
-}
+type TextInputProps = React.ComponentProps<typeof RNTextInput>;
 
 export const TextInput = ({ style, ...props }: TextInputProps) => {
   const colors = useAppColors();

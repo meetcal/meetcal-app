@@ -2,14 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { Radius, Shadows, Spacing, Type } from "@/constants/Layout";
 import { useAppColors } from "@/hooks/useAppColors";
 import * as Haptics from "expo-haptics";
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PanResponder, Pressable, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -52,18 +45,16 @@ export function showToast(options: ToastOptions) {
   }
 }
 
-const ToastContext = createContext<(options: ToastOptions) => void>(showToast);
-
-export function useToast() {
-  return useContext(ToastContext);
-}
-
+/**
+ * Mounts the single toast host. Callers reach the toast imperatively through
+ * `showToast`, so there is no context value to provide.
+ */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
-    <ToastContext.Provider value={showToast}>
+    <>
       {children}
       <ToastHost />
-    </ToastContext.Provider>
+    </>
   );
 }
 

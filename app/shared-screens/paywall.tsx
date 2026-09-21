@@ -25,7 +25,7 @@ export default function PaywallScreen() {
           from: from || '/(tabs)',
           feature: feature || 'subscription',
         },
-      } as any);
+      });
     }
   }, [isLoaded, user, router, from, feature]);
 

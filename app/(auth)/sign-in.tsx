@@ -30,7 +30,7 @@ export default function SignInScreen() {
             from: from || "/(tabs)/(index)",
             feature,
           },
-        } as any);
+        });
         return;
       }
 

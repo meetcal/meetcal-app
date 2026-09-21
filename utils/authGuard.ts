@@ -128,7 +128,7 @@ export function useAuthGuard() {
                 from: options.returnPath || '/(tabs)',
                 feature: options.feature,
               },
-            } as any);
+            });
           },
         },
       ]

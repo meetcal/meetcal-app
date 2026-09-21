@@ -41,6 +41,7 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
+import { DaySchedule } from "@/types/schedule";
 import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
@@ -304,7 +305,7 @@ export default function ScheduleScreen() {
 
   // Render day view
   const renderDayView = useCallback(
-    ({ item }: { item: any }) => (
+    ({ item }: { item: DaySchedule }) => (
       <View style={[styles.pageContainer, { width: pageWidth }]}>
         <DayView
           day={item}

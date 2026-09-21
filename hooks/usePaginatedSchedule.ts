@@ -2,6 +2,8 @@ import { useRef, useCallback, useEffect, useState, RefObject } from "react";
 import {
   FlatListInstance,
   ListViewToken,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +25,7 @@ interface UsePaginatedScheduleReturn {
     viewableItems: ListViewToken[];
     changed: ListViewToken[];
   }) => void;
-  onMomentumScrollEnd: (event: any) => void;
+  onMomentumScrollEnd: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   viewabilityConfig: { itemVisiblePercentThreshold: number };
 }
 
@@ -94,7 +96,7 @@ export function usePaginatedSchedule({
   }, [pageWidth, currentPage]);
 
   const onMomentumScrollEnd = useCallback(
-    (event: any) => {
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const newPage = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
       if (newPage !== currentPage) {
         setCurrentPage(newPage);

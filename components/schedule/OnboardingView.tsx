@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { OnboardingViewProps } from "@/types/schedule";
+import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
@@ -183,12 +184,12 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
         if (__DEV__) {
           console.log("Notification access granted");
         }
-        await AsyncStorage.setItem("@notification_enabled", "true");
+        await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
       } else {
         if (__DEV__) {
           console.log("Notification access denied");
         }
-        await AsyncStorage.setItem("@notification_enabled", "false");
+        await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
       }
     } catch (error) {
       if (__DEV__) {

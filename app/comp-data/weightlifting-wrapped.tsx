@@ -17,8 +17,10 @@ import {
   Pressable,
   ScrollView,
   Share,
+  type StyleProp,
   StyleSheet,
   Text,
+  type TextStyle,
   TextInput,
   useWindowDimensions,
   View,
@@ -69,7 +71,7 @@ function AnimatedCounter({
   delay?: number;
   suffix?: string;
   decimals?: number;
-  style?: any;
+  style?: StyleProp<TextStyle>;
 }) {
   const [display, setDisplay] = useState(0);
 

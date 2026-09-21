@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { MeetName } from "@/data/types/meet";
 import { LiftResult } from "@/data/types/athletes";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import { filterSessionAthletes } from "@/lib/athletes";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
 import {
   getMeetData,
@@ -16,24 +17,6 @@ interface UseMeetAthletesReturn {
   isLoading: boolean;
   isRefreshing: boolean;
   refreshAthletes: () => Promise<void>;
-}
-
-function normalizePlatformKey(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function filterSessionAthletes(
-  athletes: LiftResult[],
-  sessionNumber: number,
-  platform: string,
-) {
-  const normalizedPlatform = normalizePlatformKey(platform);
-  return athletes.filter((athlete) => {
-    const athleteSession = athlete.session;
-    if (!athleteSession) return false;
-    if (athleteSession.number !== sessionNumber) return false;
-    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
-  });
 }
 
 const sessionAthletesResource = createMutableResource<

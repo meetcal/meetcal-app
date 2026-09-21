@@ -27,7 +27,11 @@ import {
 } from "@/utils/calendar";
 import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { migrateSessionsToMeetSpecific } from "@/utils/migration";
-import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
+import {
+  getAllSavedSessionsKeys,
+  getSavedSessionsKey,
+  makeLookupKey,
+} from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -50,14 +54,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-
-// Update SavedSession type to include meet
-declare module "@/hooks/useSavedSessions" {
-  interface SavedSession {
-    meet: MeetName;
-    id: string; // Now we ensure ID is always present
-  }
-}
 
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
@@ -132,15 +128,8 @@ export default function SavedScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              if (typeof resetAllSessions === "function") {
-                await resetAllSessions(selectedMeet ?? undefined);
-              }
-              const STORAGE_KEYS = [
-                getSavedSessionsKey(user!.id),
-                `savedSessions_${user!.id}`,
-                `@savedSessions_${user!.id}`,
-                `sessions_${user!.id}`,
-              ];
+              await resetAllSessions(selectedMeet ?? undefined);
+              const STORAGE_KEYS = getAllSavedSessionsKeys(user!.id);
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
                 if (stored) {
@@ -226,12 +215,7 @@ export default function SavedScreen() {
 
     try {
       console.log("Starting session migration");
-      const STORAGE_KEYS = [
-        getSavedSessionsKey(user.id), // Changed from getSavedWarmupsKey
-        `savedSessions_${user.id}`,
-        `@savedSessions_${user.id}`,
-        `sessions_${user.id}`,
-      ];
+      const STORAGE_KEYS = getAllSavedSessionsKeys(user.id);
       let needsMigration = false;
 
       for (const key of STORAGE_KEYS) {
@@ -325,7 +309,7 @@ export default function SavedScreen() {
           from: "/(tabs)/(saved)",
           feature: "add-to-calendar",
         },
-      } as any);
+      });
       return;
     }
 
@@ -511,21 +495,17 @@ export default function SavedScreen() {
     [pendingCalendarSessions],
   );
 
-  // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
       console.log("Force reloading sessions from source...");
-      // REMOVE: Old implementation reading from AsyncStorage and calling saveSession
-      // ADD: Call loadSavedSessions from the hook
       await loadSavedSessions();
     } catch (error) {
       console.error("Error force reloading sessions:", error);
     } finally {
       setRefreshing(false);
     }
-    // ADD: loadSavedSessions to dependency array
   }, [refreshing, loadSavedSessions]);
 
   const renderSession = useCallback(

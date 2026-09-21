@@ -434,7 +434,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                     from: "/(tabs)/(start-list)",
                     feature: "athlete-results",
                   },
-                } as any);
+                });
               }
             }}
           >

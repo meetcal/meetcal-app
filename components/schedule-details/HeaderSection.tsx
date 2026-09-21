@@ -384,7 +384,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     from: "/shared-screens/schedule-details",
                     feature: "qualifying-totals",
                   },
-                } as any);
+                });
               }
             }}
           >
@@ -438,7 +438,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     from: "/shared-screens/schedule-details",
                     feature: "attempt-estimator",
                   },
-                } as any);
+                });
               }
             }}
           >

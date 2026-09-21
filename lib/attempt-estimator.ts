@@ -1,4 +1,5 @@
 import { LiftResult, SupabaseLiftResult } from '@/data/types/athletes';
+import { maxSuccessfulAttempt, normalizeAthleteName } from '@/lib/athletes';
 
 export interface AthleteAttemptEstimate {
   id: string;
@@ -25,18 +26,6 @@ interface AttemptData {
 enum LiftType {
   Snatch = 'snatch',
   CleanJerk = 'cj'
-}
-
-function normalizeAthleteName(name: string | null | undefined): string {
-  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function maxSuccessfulAttempt(attempts: Array<number | null | undefined>): number | null {
-  const successful = attempts.filter(
-    (attempt): attempt is number => typeof attempt === "number" && attempt > 0,
-  );
-  if (successful.length === 0) return null;
-  return Math.max(...successful);
 }
 
 function getSnatchBest(result: SupabaseLiftResult): number | null {

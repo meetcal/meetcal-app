@@ -293,7 +293,7 @@ export default function SessionAthletes({
         from: "/shared-screens/schedule-details",
         feature: "sort-athletes",
       },
-    } as any);
+    });
   }, [requireAuth, router]);
 
    
@@ -494,7 +494,7 @@ export default function SessionAthletes({
                             from: "/shared-screens/schedule-details",
                             feature: "athlete-bests",
                           },
-                        } as any);
+                        });
                       }}
                     >
                       <View style={styles.premiumLabelsRow}>

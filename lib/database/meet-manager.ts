@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import type { SupabaseLiftResult } from '@/data/types/athletes';
+import { normalizeAthleteName } from '@/lib/athletes';
 import {
   clearImplicitMeetData,
   clearMeetData,
@@ -44,9 +45,6 @@ const PRIORITY_SESSION_PREFETCH_LIMIT = 8;
 // history is now larger than the old 2-year window.
 const HISTORY_DOWNLOAD_BATCH_SIZE = 25;
 
-function normalizeAthleteNameForHistory(value: string | null | undefined): string {
-  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
 const FULL_PREFETCH_DELAY_MS = 5000;
 
 interface MeetInfo {
@@ -345,7 +343,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
 
         const resultsByName = new Map<string, SupabaseLiftResult[]>();
         for (const row of batchResults) {
-          const key = normalizeAthleteNameForHistory(row.name);
+          const key = normalizeAthleteName(row.name);
           const existing = resultsByName.get(key);
           if (existing) {
             existing.push(row);
@@ -356,7 +354,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
 
         for (const name of batch) {
           const rows =
-            resultsByName.get(normalizeAthleteNameForHistory(name)) ?? [];
+            resultsByName.get(normalizeAthleteName(name)) ?? [];
           await saveAthleteHistory(name, rows);
         }
       } catch (historyError) {

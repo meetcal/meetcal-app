@@ -1,6 +1,7 @@
 import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
 import { AuthGuardOptions } from "@/utils/authGuard";
+import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 // Named import: eslint-plugin-import cannot see enums re-exported through
@@ -27,8 +28,6 @@ interface NotificationSettingsProps {
   requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: ReturnType<typeof useRouter>;
 }
-
-const NOTIFICATION_ENABLED_KEY = "@notification_enabled";
 
 export function NotificationSettings({
   colors,
@@ -119,7 +118,7 @@ export function NotificationSettings({
                   from: "/(tabs)/(index)/profile",
                   feature: "session-reminders",
                 },
-              } as any);
+              });
             },
           },
         ],
