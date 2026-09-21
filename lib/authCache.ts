@@ -3,10 +3,33 @@ import { isNetworkAvailable } from './networkUtils';
 
 const AUTH_CACHE_KEY = 'auth_state_cache';
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+/**
+ * How often a still-correct entry is rewritten purely to slide its expiry.
+ *
+ * The 7 days mean "auth was verified within the last week", not "first signed
+ * in a week ago", so re-verification has to move the timestamp. Deduplicating
+ * on the signature alone froze it: `getCachedAuthState` seeds
+ * `lastPersistedSignature` from what it read, so every later
+ * `cacheAuthState(true, sameUser)` early-returned and the entry aged out on
+ * day 7 no matter how many times the user had been verified online since.
+ * Rewriting on every call would mean a SecureStore write from every mounted
+ * `useAuthGuard`, so refresh at most once a day.
+ */
+const CACHE_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 let inFlightRead: Promise<AuthCacheData | null> | null = null;
 let lastPersistedSignature: string | null = null;
-let inFlightWrite: Promise<void> | null = null;
-let inFlightWriteSignature: string | null = null;
+let lastPersistedAt = 0;
+/**
+ * Tail of the serialized write chain. Writes and the clear share it so they
+ * can never interleave: two overlapping writes with *different* signatures
+ * used to run concurrently and share one `.finally`, so whichever settled
+ * first released the in-flight tracking for both. `clearAuthCache` then saw
+ * "nothing in flight", deleted the key, and the loser's write landed after the
+ * delete — leaving `isSignedIn: true` on disk after a sign-out.
+ */
+let writeChain: Promise<void> = Promise.resolve();
 
 interface AuthCacheData {
   isSignedIn: boolean;
@@ -42,36 +65,29 @@ export async function cacheAuthState(
   userId?: string
 ) {
   const signature = getAuthSignature(isSignedIn, userId);
-  if (signature === lastPersistedSignature) {
+  const isWindowFresh = Date.now() - lastPersistedAt < CACHE_REFRESH_INTERVAL_MS;
+  if (signature === lastPersistedSignature && isWindowFresh) {
     return;
   }
 
-  if (inFlightWrite && signature === inFlightWriteSignature) {
-    await inFlightWrite;
-    return;
-  }
+  const write = writeChain.then(async () => {
+    try {
+      const cacheData: AuthCacheData = {
+        isSignedIn,
+        timestamp: Date.now(),
+        userId,
+      };
+      await SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(cacheData));
+      lastPersistedSignature = signature;
+      lastPersistedAt = cacheData.timestamp;
+      console.log('Auth state cached successfully');
+    } catch (error) {
+      console.error('Error caching auth state:', error);
+    }
+  });
 
-  try {
-    const cacheData: AuthCacheData = {
-      isSignedIn,
-      timestamp: Date.now(),
-      userId,
-    };
-    inFlightWriteSignature = signature;
-    inFlightWrite = SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(cacheData))
-      .then(() => {
-        lastPersistedSignature = signature;
-        console.log('Auth state cached successfully');
-      })
-      .finally(() => {
-        inFlightWrite = null;
-        inFlightWriteSignature = null;
-      });
-
-    await inFlightWrite;
-  } catch (error) {
-    console.error('Error caching auth state:', error);
-  }
+  writeChain = write;
+  await write;
 }
 
 export async function getCachedAuthState(): Promise<AuthCacheData | null> {
@@ -114,6 +130,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
           parsed.isSignedIn,
           parsed.userId
         );
+        lastPersistedAt = parsed.timestamp;
         return parsed;
       }
     }
@@ -122,6 +139,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
       parsed.isSignedIn,
       parsed.userId
     );
+    lastPersistedAt = parsed.timestamp;
     return parsed;
   } catch (error) {
     console.error('Error getting cached auth state:', error);
@@ -135,15 +153,18 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 }
 
 export async function clearAuthCache() {
-  try {
-    if (inFlightWrite) {
-      await inFlightWrite;
+  const clear = writeChain.then(async () => {
+    try {
+      await SecureStore.deleteItemAsync(AUTH_CACHE_KEY);
+      lastPersistedSignature = null;
+      lastPersistedAt = 0;
+      console.log('Auth cache cleared');
+    } catch (error) {
+      console.error('Error clearing auth cache:', error);
     }
-    await SecureStore.deleteItemAsync(AUTH_CACHE_KEY);
-    lastPersistedSignature = null;
-    console.log('Auth cache cleared');
-  } catch (error) {
-    console.error('Error clearing auth cache:', error);
-  }
+  });
+
+  writeChain = clear;
+  await clear;
 }
 

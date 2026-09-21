@@ -24,14 +24,31 @@ describe("calculateWeighInTime", () => {
     expect(calculateWeighInTime("09:15")).toBe("7:15 AM");
   });
 
+  it("accepts 12-hour times with seconds or no space", () => {
+    expect(calculateWeighInTime("9:00:00 AM")).toBe("7:00 AM");
+    expect(calculateWeighInTime("2:30PM")).toBe("12:30 PM");
+  });
+
   it("wraps around midnight", () => {
     expect(calculateWeighInTime("1:00 AM")).toBe("11:00 PM");
     expect(calculateWeighInTime("12:00 AM")).toBe("10:00 PM");
   });
 
-  it("falls back to 6:00 AM for invalid input", () => {
-    expect(calculateWeighInTime("garbage")).toBe("6:00 AM");
-    expect(calculateWeighInTime("99:99 AM")).toBe("6:00 AM");
+  it("reports an unknown weigh-in rather than inventing one", () => {
+    // Regression: this used to return a hard-coded "6:00 AM", which then got
+    // persisted onto the saved session, pushed to the API and shipped in the
+    // reminder notification's deep-link params.
+    expect(calculateWeighInTime("garbage")).toBe("");
+    expect(calculateWeighInTime("99:99 AM")).toBe("");
+  });
+
+  it("treats a missing start time as unknown, without warning", () => {
+    // `formatApiTime` maps a null `start_time` to "", and that reaches every
+    // unguarded call site in useSavedSessions / schedule-details.
+    const warn = jest.spyOn(console, "warn");
+    expect(calculateWeighInTime("")).toBe("");
+    expect(calculateWeighInTime("   ")).toBe("");
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

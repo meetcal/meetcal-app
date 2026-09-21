@@ -130,18 +130,18 @@ export default function EventInfoScreen() {
             <View style={styles.addressContainer}>
               <View>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.name}
+                  {meetDetails.venue?.name}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.address.street}
+                  {meetDetails.venue?.address?.street}
                 </ThemedText>
                 <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue.address.city}
+                  {meetDetails.venue?.address?.city}
 ,
 {" "}
-                  {meetDetails.venue.address.state}
+                  {meetDetails.venue?.address?.state}
 {" "}
-                  {meetDetails.venue.address.zip}
+                  {meetDetails.venue?.address?.zip}
                 </ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />

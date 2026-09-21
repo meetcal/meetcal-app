@@ -3,7 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { LiftResult } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getCloseIcon, STARRED_CLUBS_FILTER } from "@/lib/start-list-utils";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   Platform,
@@ -62,6 +62,14 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
       ),
     [sortedClubOptions, searchQuery],
   );
+
+  // The sheet stays mounted (`Modal visible=`), so a query typed and then
+  // abandoned via the backdrop, the close button or hardware back survived and
+  // reopened the sheet pre-filtered — sometimes to zero rows. Selecting a club
+  // cleared it; its sibling dismissal paths did not.
+  useEffect(() => {
+    if (!visible) setSearchQuery("");
+  }, [visible]);
 
   const handleSelect = (club: string) => {
     onSelectClub(club);

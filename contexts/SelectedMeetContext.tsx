@@ -24,15 +24,29 @@ type SelectedMeetContextType = {
 const SELECTED_MEET_KEY = '@selected_meet';
 const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 // Parse a persisted out-of-window Meet, ignoring stale JSON that belongs to a
 // different meet than the one we're resolving.
+//
+// The `Meet` type declares `venue`, `venue.address` and `time` as non-null,
+// and screens read them that way — `components/info/EventInfoScreen` renders
+// `meetDetails.venue.address.street` with no guard. Everything the API builds
+// has those, but this blob was written by whatever version of the app the user
+// last ran, and a truncated or older-schema entry would be handed straight to
+// the Info tab as a `Meet` and crash it. Validate the shape the type promises
+// instead of `as Meet`-ing past the parse.
 function parseStoredMeetDetails(raw: string | null, expectedName: string): Meet | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    const meet = parsed as Meet;
-    return typeof meet.name === 'string' && meet.name === expectedName ? meet : null;
+    if (!isRecord(parsed)) return null;
+    if (parsed.name !== expectedName) return null;
+    if (!isRecord(parsed.venue) || !isRecord(parsed.venue.address)) return null;
+    if (!isRecord(parsed.time) || !isRecord(parsed.dates)) return null;
+    return parsed as unknown as Meet;
   } catch {
     return null;
   }

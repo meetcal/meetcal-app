@@ -3,6 +3,7 @@ import { useIsOffline } from "@/hooks/useIsOffline";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import type { SupabaseLiftResult } from "@/data/types/athletes";
+import { calculateWrappedStats } from "@/lib/wrapped-stats";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
@@ -269,87 +270,6 @@ export default function WeightliftingWrappedScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const calculateWrappedStats = (data: SupabaseLiftResult[]): WrappedStats => {
-    let totalWeight = 0;
-    let totalAttempts = 0;
-    let successfulAttempts = 0;
-    let bestSnatch = 0;
-    let bestCJ = 0;
-    let bestTotal = 0;
-    let totalSum = 0;
-    let validTotals = 0;
-    let consecutiveMakes = 0;
-    let maxConsecutiveMakes = 0;
-    const meetTotals: { [key: string]: number } = {};
-
-    data.forEach((result) => {
-      [result.snatch1, result.snatch2, result.snatch3, result.cj1, result.cj2, result.cj3].forEach((attempt) => {
-        if (attempt && attempt > 0) {
-          totalWeight += attempt;
-          successfulAttempts++;
-          consecutiveMakes++;
-          maxConsecutiveMakes = Math.max(maxConsecutiveMakes, consecutiveMakes);
-        } else if (attempt !== null && attempt !== 0) {
-          totalAttempts++;
-          consecutiveMakes = 0;
-        }
-        if (attempt !== null && attempt !== 0) totalAttempts++;
-      });
-
-      if (result.snatch_best) bestSnatch = Math.max(bestSnatch, result.snatch_best);
-      if (result.cj_best) bestCJ = Math.max(bestCJ, result.cj_best);
-      if (result.total) {
-        bestTotal = Math.max(bestTotal, result.total);
-        totalSum += result.total;
-        validTotals++;
-        meetTotals[result.meet] = Math.max(meetTotals[result.meet] || 0, result.total);
-      }
-    });
-
-    const makePercentage = totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
-    const averageTotal = validTotals > 0 ? totalSum / validTotals : 0;
-    const topMeet = Object.keys(meetTotals).reduce(
-      (a, b) => (meetTotals[a] > meetTotals[b] ? a : b),
-      Object.keys(meetTotals)[0] || "N/A",
-    );
-    const firstTotal = data[0]?.total || 0;
-    const lastTotal = data[data.length - 1]?.total || 0;
-    const improvement = lastTotal - firstTotal;
-
-    const attemptCounts = { "1st": 0, "2nd": 0, "3rd": 0 };
-    data.forEach((result) => {
-      if (result.snatch1 && result.snatch1 > 0) attemptCounts["1st"]++;
-      if (result.snatch2 && result.snatch2 > 0) attemptCounts["2nd"]++;
-      if (result.snatch3 && result.snatch3 > 0) attemptCounts["3rd"]++;
-      if (result.cj1 && result.cj1 > 0) attemptCounts["1st"]++;
-      if (result.cj2 && result.cj2 > 0) attemptCounts["2nd"]++;
-      if (result.cj3 && result.cj3 > 0) attemptCounts["3rd"]++;
-    });
-    const favoriteAttempt = Object.keys(attemptCounts).reduce((a, b) =>
-      attemptCounts[a as keyof typeof attemptCounts] > attemptCounts[b as keyof typeof attemptCounts] ? a : b,
-    );
-
-    let yearRank = "Rising Star";
-    if (makePercentage >= 90) yearRank = "Consistency King";
-    else if (bestTotal >= 300) yearRank = "Heavy Hitter";
-    else if (data.length >= 5) yearRank = "Meet Regular";
-
-    return {
-      totalWeightLifted: totalWeight,
-      totalMeets: new Set(data.map((r) => r.meet)).size,
-      makePercentage,
-      bestSnatch,
-      bestCleanJerk: bestCJ,
-      bestTotal,
-      averageTotal,
-      topMeet,
-      improvementFromFirst: improvement,
-      consecutiveMakes: maxConsecutiveMakes,
-      favoriteAttempt,
-      yearRank,
-    };
   };
 
   const goToSlide = useCallback((index: number) => {

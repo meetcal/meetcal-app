@@ -208,11 +208,7 @@ export function useSavedSessions() {
             platform: s.platform,
             weightClass: s.weight_class ?? '',
             startTime: s.start_time ?? '',
-            // calculateWeighInTime falls back to a hard-coded "6:00 AM" when it
-            // cannot parse its input, so an API row with a null start_time
-            // would otherwise be stored and displayed with an invented weigh-in
-            // time. Same guard as the schedule-fallback path below.
-            weighInTime: s.start_time ? calculateWeighInTime(s.start_time) : '',
+            weighInTime: calculateWeighInTime(s.start_time ?? ''),
             date: s.date ?? '',
             notes: s.notes ?? undefined,
             athleteNames: s.athlete_names,
@@ -326,7 +322,7 @@ export function useSavedSessions() {
                   platform: athlete.session!.platform,
                   weightClass: athlete.weightClass ?? '',
                   startTime: fallbackStartTime,
-                  weighInTime: fallbackStartTime ? calculateWeighInTime(fallbackStartTime) : '',
+                  weighInTime: calculateWeighInTime(fallbackStartTime),
                   date: athlete.session?.date ?? '',
                   athleteNames: []
                 },

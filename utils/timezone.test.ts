@@ -12,6 +12,17 @@ describe("timezone utilities", () => {
       expect(parseClockTime("12:00 PM")).toEqual({ hour: 12, minute: 0 });
     });
 
+    it("parses 12-hour times that carry seconds", () => {
+      // Regression: the 24-hour branch already allowed optional seconds and
+      // `formatTo12Hour` in data/meets/config.ts has an explicit branch for
+      // this shape, but the AM/PM branch rejected it. `formatApiTime` swallows
+      // the throw and returns "", so a session with `start_time: "9:00:00 AM"`
+      // rendered a blank start time and was skipped by lib/next-session.
+      expect(parseClockTime("9:00:00 AM")).toEqual({ hour: 9, minute: 0 });
+      expect(parseClockTime("12:30:45 PM")).toEqual({ hour: 12, minute: 30 });
+      expect(parseClockTime("12:00:00 AM")).toEqual({ hour: 0, minute: 0 });
+    });
+
   it("parses 24-hour times", () => {
     expect(parseClockTime("13:30")).toEqual({ hour: 13, minute: 30 });
     expect(parseClockTime("08:00:00")).toEqual({ hour: 8, minute: 0 });

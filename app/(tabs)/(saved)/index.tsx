@@ -195,11 +195,9 @@ export default function SavedScreen() {
                 displayDate: day.date,
                 fullDate: day.fullDate,
                 startTime,
-                // Guard the empty case: calculateWeighInTime returns a
-                // hard-coded "6:00 AM" for input it cannot parse, and a
-                // schedule row with no start time would surface that invented
-                // time on the card and in the calendar export.
-                weighInTime: startTime ? calculateWeighInTime(startTime) : "",
+                // "" when the schedule row has no start time, which the card
+                // and the calendar export both read as "unknown".
+                weighInTime: calculateWeighInTime(startTime),
                 weightClass: platformInfo.weightClass,
               },
             );
@@ -380,9 +378,8 @@ export default function SavedScreen() {
                   const startTime = lookup?.startTime || session.startTime;
                   const weighInTime =
                     lookup?.weighInTime ||
-                    (startTime
-                      ? calculateWeighInTime(startTime)
-                      : session.weighInTime);
+                    calculateWeighInTime(startTime) ||
+                    session.weighInTime;
 
                   return {
                     date: lookup?.fullDate || "",

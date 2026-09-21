@@ -1,5 +1,10 @@
 import { LiftResult, SupabaseLiftResult } from '@/data/types/athletes';
-import { maxSuccessfulAttempt, normalizeAthleteName } from '@/lib/athletes';
+import {
+  maxSuccessfulAttempt,
+  normalizeAthleteName,
+  wasAttemptMade,
+  wasAttemptTaken,
+} from '@/lib/athletes';
 
 export interface AthleteAttemptEstimate {
   id: string;
@@ -83,12 +88,18 @@ function calculateAverageIncrease(
 }
 
 /**
- * Share of openers the athlete made.
+ * Share of **openers** the athlete made, per lift.
  *
- * Attempts are stored as kilos, negative when the lift was missed, and
- * null/0 when it was never taken. So an opener counts towards the denominator
- * whenever it is a non-zero number, and towards the numerator only when it is
- * positive — the same convention the athlete-results screen uses.
+ * Attempt classification is the shared convention in `lib/athletes.ts`: a
+ * non-zero number was taken, a positive number was made.
+ *
+ * This is deliberately a different measurement from
+ * `lib/wrapped-stats.ts`'s `makePercentage`, not a disagreeing definition of
+ * the same one. Wrapped scores all six attempts of a calendar year to tell the
+ * athlete how consistent they were. Here we are predicting the opener we are
+ * about to print, so second and third attempts — which are *chosen in reaction
+ * to* the opener, and are taken at all only when the opener went a certain way
+ * — would bias the estimate. Openers only, split by lift.
  */
 function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj: number } {
   let snatchFirstAttempts = 0;
@@ -97,14 +108,14 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   let cjFirstMakes = 0;
 
   for (const result of results) {
-    if (typeof result.snatch1 === 'number' && result.snatch1 !== 0) {
+    if (wasAttemptTaken(result.snatch1)) {
       snatchFirstAttempts++;
-      if (result.snatch1 > 0) snatchFirstMakes++;
+      if (wasAttemptMade(result.snatch1)) snatchFirstMakes++;
     }
 
-    if (typeof result.cj1 === 'number' && result.cj1 !== 0) {
+    if (wasAttemptTaken(result.cj1)) {
       cjFirstAttempts++;
-      if (result.cj1 > 0) cjFirstMakes++;
+      if (wasAttemptMade(result.cj1)) cjFirstMakes++;
     }
   }
 

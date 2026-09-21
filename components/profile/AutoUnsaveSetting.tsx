@@ -31,10 +31,16 @@ export function AutoUnsaveSetting({
   const { getToken } = useAuth();
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // "We could not read the server's answer" is not the same as "the preference
+  // is off". Rendering a failed load as OFF told a user whose sessions *are*
+  // being auto-removed that they are not, and made the switch interactive in
+  // that wrong state, so one tap wrote a value they never actually saw.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!user?.id) {
       setIsEnabled(false);
+      setLoadFailed(false);
       setIsLoading(false);
       return;
     }
@@ -48,10 +54,12 @@ export function AutoUnsaveSetting({
         const result = await fetchUserPreferences(token);
         if (!cancelled) {
           setIsEnabled(result.auto_unsave_started_sessions);
+          setLoadFailed(false);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
-          setIsEnabled(false);
+          console.warn("Failed to load auto-unsave preference:", error);
+          setLoadFailed(true);
         }
       } finally {
         if (!cancelled) {
@@ -87,12 +95,24 @@ export function AutoUnsaveSetting({
       return;
     }
 
+    if (loadFailed) {
+      showToast({
+        type: "error",
+        message: "Couldn't read your current setting. Try again once you're back online.",
+      });
+      return;
+    }
+
     const nextValue = !isEnabled;
     setIsEnabled(nextValue);
     try {
       const token = await getToken();
       if (!token) throw new Error("Missing Clerk token");
-      await patchAutoUnsavePreference(token, nextValue);
+      // The server is authoritative: it may clamp or refuse the change (an
+      // entitlement re-check runs there), so take its answer rather than
+      // leaving the optimistic value standing.
+      const result = await patchAutoUnsavePreference(token, nextValue);
+      setIsEnabled(result.auto_unsave_started_sessions);
     } catch (error) {
       setIsEnabled(!nextValue);
       console.error("Error updating auto-unsave setting:", error);
@@ -107,12 +127,16 @@ export function AutoUnsaveSetting({
     <ProfileSwitchSetting
       colors={colors}
       label="Auto-remove Saved Sessions"
-      description="Remove sessions 2 hours after they start."
-      value={isEnabled && isSubscribed}
+      description={
+        loadFailed
+          ? "Couldn't load this setting. Check your connection and reopen this screen."
+          : "Remove sessions 2 hours after they start."
+      }
+      value={isEnabled && isSubscribed && !loadFailed}
       onPress={handleToggle}
       onValueChange={handleToggle}
       showPremiumBadge={!isSubscribed}
-      switchDisabled={!isSubscribed}
+      switchDisabled={!isSubscribed || loadFailed}
       isLoading={isLoading}
     />
   );

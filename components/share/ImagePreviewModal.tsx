@@ -55,17 +55,27 @@ export default function ImagePreviewModal({
 
   React.useEffect(() => {
     if (!selectedOption?.uri) return;
+    // `Image.getSize` is a native round trip with no cancellation of its own:
+    // switching White -> Transparent faster than it resolves lets the first
+    // callback land last and size the sheet for the other image, and closing
+    // the sheet mid-flight writes state after unmount.
+    let cancelled = false;
     Image.getSize(
       selectedOption.uri,
       (width, height) => {
+        if (cancelled) return;
         if (width > 0 && height > 0) {
           setImageAspectRatio(width / height);
         }
       },
       () => {
+        if (cancelled) return;
         setImageAspectRatio(850 / 1200);
       },
     );
+    return () => {
+      cancelled = true;
+    };
   }, [selectedOption?.uri]);
 
   const handleShare = async () => {

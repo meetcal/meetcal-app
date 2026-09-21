@@ -2,8 +2,8 @@ import { Redirect, Stack } from 'expo-router'
 import { useAuth } from '@clerk/expo'
 import { useEffect, useState } from 'react'
 import { getCachedAuthState } from '@/lib/authCache'
-import { isNetworkAvailable } from '@/lib/networkUtils'
-import NetInfo from '@react-native-community/netinfo'
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils'
+import { resolveAuthRouteTarget } from '@/utils/authGuard'
 
 export default function AuthRoutesLayout() {
   const { isSignedIn, isLoaded: isClerkLoaded } = useAuth()
@@ -14,85 +14,76 @@ export default function AuthRoutesLayout() {
 
   // Check network availability on mount and listen for changes
   useEffect(() => {
+    let cancelled = false
+
     async function recheckNetwork() {
       try {
         const hasNetwork = await isNetworkAvailable()
-        setIsOffline(!hasNetwork)
+        if (!cancelled) setIsOffline(!hasNetwork)
       } catch (err) {
         console.error('[AuthLayout] Error checking network availability:', err)
         // Assume offline on error
-        setIsOffline(true)
+        if (!cancelled) setIsOffline(true)
       }
     }
 
     // Check immediately on mount
     recheckNetwork()
 
-    // Listen for network status changes with NetInfo
-    const unsubscribe = NetInfo.addEventListener(state => {
-      setIsOffline(state.isConnected === false)
+    // Go through the shared subscription rather than NetInfo directly. A raw
+    // `state.isConnected === false` disagrees with `isNetworkAvailable()` (and
+    // with every other subscriber in the app), which keys off
+    // `isInternetReachable`: on a captive-portal or dead-router Wi-Fi the
+    // listener would report "online", cancel the offline branch below, and
+    // then wait forever on a Clerk handshake that cannot complete — a
+    // permanently blank auth screen.
+    const unsubscribe = subscribeToNetworkChanges(isConnected => {
+      if (!cancelled) setIsOffline(!isConnected)
     })
 
     return () => {
+      cancelled = true
       unsubscribe()
     }
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
     const checkAuthState = async () => {
       setIsCacheLoading(true)
       try {
         const cachedState = await getCachedAuthState()
+        if (cancelled) return
         setCachedIsSignedIn(cachedState?.isSignedIn ?? null)
         setError(null)
       } catch (e) {
         console.error('Error checking cached auth state:', e)
+        if (cancelled) return
         setError(e as Error)
         setCachedIsSignedIn(false)
       } finally {
-        setIsCacheLoading(false)
+        if (!cancelled) setIsCacheLoading(false)
       }
     }
 
     checkAuthState()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  // If offline, use cache as soon as it's loaded (don't wait for Clerk)
-  if (isOffline && !isCacheLoading) {
-    if (cachedIsSignedIn === true) {
-      console.log('[AuthLayout] Offline: cache valid, redirecting to app.')
-      return <Redirect href="/(tabs)/(index)" />
-    } else {
-      console.log('[AuthLayout] Offline: cache not valid, showing auth stack.')
-      return <Stack screenOptions={{ headerShown: false }} />
-    }
-  }
+  const target = resolveAuthRouteTarget({
+    isOffline,
+    isCacheLoading,
+    hasError: error !== null,
+    isClerkLoaded,
+    isSignedIn,
+    cachedIsSignedIn,
+  })
 
-  // If online, wait for both Clerk and cache to load
-  if (!isClerkLoaded || isCacheLoading) {
-    return null
-  }
-
-  if (error) {
-    console.log('[AuthLayout] Error fetching cached auth state. Displaying auth stack.')
-    return <Stack screenOptions={{ headerShown: false }} />
-  }
-
-  if (isClerkLoaded && isSignedIn) {
-    console.log('[AuthLayout] Clerk loaded and user is signed in. Redirecting to app.')
-    return <Redirect href="/(tabs)/(index)" />
-  }
-
-  if (isClerkLoaded && !isSignedIn) {
-    if (cachedIsSignedIn === true) {
-      console.log('[AuthLayout] Online: Clerk not signed in, but cache valid. Redirecting to app.')
-      return <Redirect href="/(tabs)/(index)" />
-    } else {
-      console.log('[AuthLayout] Online: Clerk not signed in, cache not valid. Showing auth stack.')
-      return <Stack screenOptions={{ headerShown: false }} />
-    }
-  }
-
-  console.log('[AuthLayout] Fallback: No definitive auth state. Displaying auth stack.')
+  if (target === 'loading') return null
+  if (target === 'app') return <Redirect href="/(tabs)/(index)" />
   return <Stack screenOptions={{ headerShown: false }} />
-} 
+}

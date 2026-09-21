@@ -64,11 +64,17 @@ function toComparableMinutes(parts: ZonedDateParts): number {
 export function parseClockTime(time: string): { hour: number; minute: number } {
   const input = time.trim();
 
-  const amPmMatch = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(input);
+  // Seconds are optional in both branches. The API emits `h:mm:ss AM/PM` for
+  // some rows — `formatTo12Hour` in `data/meets/config.ts` has an explicit
+  // "already 12-hour, just strip the seconds" branch for exactly that shape —
+  // and rejecting it here made `formatApiTime` return "" (blank start time on
+  // the schedule and start list) and made `lib/next-session` skip the session
+  // outright, so the Next Session card went blank.
+  const amPmMatch = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)$/i.exec(input);
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
     const minute = Number(amPmMatch[2]);
-    const period = amPmMatch[3].toUpperCase();
+    const period = amPmMatch[4].toUpperCase();
 
     if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59) {
       throw new Error(`Invalid time: ${time}`);

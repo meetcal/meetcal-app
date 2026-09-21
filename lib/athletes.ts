@@ -54,3 +54,25 @@ export function maxSuccessfulAttempt(
   if (successful.length === 0) return null;
   return Math.max(...successful);
 }
+
+/**
+ * Attempt-sheet convention, shared by every "make rate" in the app.
+ *
+ * Attempts are stored as kilos: positive when the lift was made, negative when
+ * it was missed, and `null`/`0` when it was never taken (bombed out early,
+ * declined, or simply absent from the row). So an attempt counts towards a
+ * denominator whenever it is a non-zero number, and towards a numerator only
+ * when it is positive.
+ */
+export function wasAttemptTaken(
+  attempt: number | null | undefined,
+): attempt is number {
+  return typeof attempt === 'number' && attempt !== 0;
+}
+
+/** True only for a taken attempt that was made. See {@link wasAttemptTaken}. */
+export function wasAttemptMade(
+  attempt: number | null | undefined,
+): attempt is number {
+  return typeof attempt === 'number' && attempt > 0;
+}

@@ -1,4 +1,6 @@
-const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})\s+(AM|PM)$/i;
+// Seconds are optional and the space before the period is too: the API emits
+// both "9:00 AM" and "9:00:00 AM", and stored sessions can carry "9:00AM".
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i;
 const TIME_24H_REGEX = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 
 function parseTo24Hour(startTime: string): { hour24: number; minutes: number } | null {
@@ -56,11 +58,22 @@ export const AUTO_UNSAVE_DELAY_MS = 2 * 60 * 60 * 1000;
 export const WEIGH_IN_LEAD_HOURS = 2;
 
 /**
- * Shown when `startTime` cannot be parsed. Callers that can have a missing
- * start time (API rows, schedule fallbacks) check for one first rather than
- * display this, so reaching it means a malformed *present* value.
+ * Returned when `startTime` cannot be parsed: an empty string, meaning "no
+ * weigh-in time known".
+ *
+ * This used to be a hard-coded `"6:00 AM"`. Two call sites were guarded with
+ * `startTime ? calculateWeighInTime(startTime) : ""`, but their siblings were
+ * not — `saveSessionsFromAthletes`' schedule branch and the notification
+ * payload in `saveSession`, plus `schedule-details` and `HeaderSection` — so a
+ * session whose `start_time` is null in the API (`formatApiTime` maps that to
+ * `""`) was *persisted* and pushed to the server carrying an invented 6am
+ * weigh-in, and shipped in the reminder notification's deep-link params.
+ *
+ * Every consumer already renders a missing weigh-in as blank, because the two
+ * guarded call sites have always been able to produce `""`. Failing to `""`
+ * here makes the whole family honest at one point instead of at each caller.
  */
-const WEIGH_IN_FALLBACK = "6:00 AM";
+const WEIGH_IN_UNKNOWN = "";
 
 /**
  * Returns true when a session started at least AUTO_UNSAVE_DELAY_MS (2 hours)
@@ -76,13 +89,17 @@ export function hasSessionPassedAutoUnsaveWindow(
 }
 
 export function calculateWeighInTime(startTime: string): string {
+  // A blank start time is an ordinary API state (`start_time: null`), not a
+  // malformed one; only warn about values that are present but unparseable.
+  if (!startTime || !startTime.trim()) return WEIGH_IN_UNKNOWN;
+
   const parsed = parseTo24Hour(startTime);
   if (!parsed) {
     console.warn(
       'calculateWeighInTime: invalid startTime format, expected "HH:MM AM/PM" or "HH:MM[:SS]"',
       { startTime },
     );
-    return WEIGH_IN_FALLBACK;
+    return WEIGH_IN_UNKNOWN;
   }
   const { minutes } = parsed;
   const { hour24 } = parsed;

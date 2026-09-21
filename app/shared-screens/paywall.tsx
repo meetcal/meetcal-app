@@ -1,17 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
+import { isInternalRoutePath } from '@/utils/authGuard';
 
-export default function PaywallScreen() {
+/**
+ * `from` / `feature` normally arrive as route params, but `SubscriptionGate`
+ * renders this screen *inside* the gated route rather than navigating to it.
+ * `useLocalSearchParams` would then read the host route's params, so the gate
+ * passes them explicitly and they take precedence.
+ */
+interface PaywallScreenProps {
+  from?: string;
+  feature?: string;
+}
+
+export default function PaywallScreen({
+  from: fromProp,
+  feature: featureProp,
+}: PaywallScreenProps = {}) {
   const screenInsets = useScreenHorizontalInsets();
   const router = useRouter();
   const { currentTheme } = useTheme();
-  const { from, feature } = useLocalSearchParams<{ from?: string; feature?: string }>();
+  const params = useLocalSearchParams<{ from?: string; feature?: string }>();
+  const from = fromProp ?? params.from;
+  const feature = featureProp ?? params.feature;
   const { user, isLoaded } = useUser();
   const [offering, setOffering] = useState<Purchases.PurchasesOffering | null>(null);
 
@@ -22,7 +39,7 @@ export default function PaywallScreen() {
       router.replace({
         pathname: '/(auth)/sign-in',
         params: {
-          from: from || '/(tabs)',
+          from: isInternalRoutePath(from) ? from : '/(tabs)',
           feature: feature || 'subscription',
         },
       });
@@ -61,8 +78,8 @@ export default function PaywallScreen() {
       return;
     }
 
-    if (from && typeof from === 'string') {
-      router.replace(from as any);
+    if (isInternalRoutePath(from)) {
+      router.replace(from as Href);
       return;
     }
 

@@ -145,7 +145,10 @@ export default function ScheduleScreen() {
       } else {
         router.push({
           pathname: "/(auth)/sign-in",
-          params: { from: "info" },
+          // A real route, not a label: sign-in hands this straight to
+          // `router.replace`, and the profile screen is where the tap was
+          // headed.
+          params: { from: "/schedule-toolbar/profile", feature: "profile" },
         });
       }
     };

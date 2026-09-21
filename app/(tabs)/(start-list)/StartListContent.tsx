@@ -1157,6 +1157,14 @@ export default function StartListScreen() {
         : [...starredClubs, club];
 
       setStarredClubs(newStarredClubs);
+      // The "Favorites" filter cannot outlive the set it filters on. The star
+      // toggle lives inside the club sheet, so unstarring the last club while
+      // Favorites was selected left every athlete filtered out, and the sheet
+      // stopped rendering the Favorites row (it is gated on
+      // `starredClubs.length > 0`), so nothing in it showed as selected.
+      if (newStarredClubs.length === 0 && clubFilter === STARRED_CLUBS_FILTER) {
+        setClubFilter("");
+      }
       await AsyncStorage.setItem(
         "starredClubs",
         JSON.stringify(newStarredClubs),
