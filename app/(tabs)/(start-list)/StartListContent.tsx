@@ -24,7 +24,6 @@ import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   getMeetData,
-  getMeetSchedule,
   saveMeetAthletes,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
@@ -271,13 +270,16 @@ export default function StartListScreen() {
   );
 
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
-    const [cachedMeetData, cachedSchedule] = await Promise.all([
-      getMeetData(meet).catch(() => null),
-      getMeetSchedule(meet).catch(() => []),
-    ]);
+    // `getMeetData` returns both halves of this snapshot. Asking for the
+    // schedule separately ran a second `getMeetData` inside `getMeetSchedule`,
+    // which re-read and re-parsed the meet's entire athlete roster — 457KB /
+    // 1562 athletes for a live national meet — to produce a schedule this call
+    // already had in hand. Both readers swallow their own errors into the same
+    // empty values, so collapsing them changes nothing but the work.
+    const cachedMeetData = await getMeetData(meet).catch(() => null);
     return {
       cachedAthletes: cachedMeetData?.athletes ?? [],
-      cachedSchedule,
+      cachedSchedule: cachedMeetData?.schedule ?? [],
     };
   }, []);
 
@@ -1568,16 +1570,16 @@ export default function StartListScreen() {
         <ExpandedIdProvider>
           <FlashList
             ref={listRef}
+            // No `extraData`: FlashList compares it by identity
+            // (`ViewHolder`'s memo does `prevProps.extraData === nextProps.extraData`),
+            // so an object literal here re-rendered every mounted cell on every
+            // render of this screen — and this screen re-renders for a lot of
+            // reasons that have nothing to do with the rows (auth guard, the
+            // four contexts it reads, modal state, `athleteBests` arriving).
+            // It was redundant anyway: all seven values were already
+            // dependencies of `filteredAthletes`, which allocates a new array,
+            // so `data` identity already changes whenever any of them does.
             data={filteredAthletes}
-            extraData={{
-              weightClassFilter,
-              clubFilter,
-              ageGroupFilter,
-              adaptiveAthleteFilter,
-              genderFilter,
-              wsoFilter,
-              searchQuery,
-            }}
             keyExtractor={keyExtractor}
             renderItem={renderListItem}
             removeClippedSubviews={false}

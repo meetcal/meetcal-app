@@ -819,18 +819,13 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
 
 export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   try {
+    // `getMeetData` has already read `scheduleKey` and parsed it into
+    // `MeetData.schedule`, applying the same "not an array / bad JSON means no
+    // cached schedule" rule this function used to apply itself. Re-reading the
+    // key here was a second AsyncStorage read and a second `JSON.parse` of the
+    // exact same payload.
     const meetData = await getMeetData(meetId as MeetName);
-    if (!meetData.scheduleKey) {
-      return [];
-    }
-
-    const schedulePayload = await AsyncStorage.getItem(meetData.scheduleKey);
-    if (!schedulePayload) {
-      return [];
-    }
-
-    const parsed = JSON.parse(schedulePayload);
-    return Array.isArray(parsed) ? (parsed as Schedule) : [];
+    return meetData.schedule ?? [];
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];

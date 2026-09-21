@@ -243,6 +243,47 @@ describe("offline-store corrupt payload handling", () => {
     await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
   });
 
+  // `getMeetSchedule` now returns `getMeetData`'s already-parsed schedule
+  // instead of re-reading and re-parsing the same key. These pin the three
+  // degraded payloads where the two readers had to agree for that to be safe.
+  it.each([
+    ["invalid JSON", "{\"not\": "],
+    ["valid JSON that is not an array", "{\"sessions\":[]}"],
+    ["an empty payload", ""],
+  ])("reads no cached schedule when the payload is %s", async (_label, payload) => {
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "Test Meet-1-Red",
+            number: 1,
+            startTime: "10:00 AM",
+            weighInTime: "8:00 AM",
+            platforms: [
+              {
+                platform: "Red",
+                weightClass: "71kg",
+                platformStartTime: "10:00 AM",
+              },
+            ],
+          },
+        ],
+      },
+    ] as never);
+    mockStorage.set("meetcal_schedule_Test Meet", payload);
+
+    await expect(getMeetSchedule("Test Meet")).resolves.toEqual([]);
+    await expect(
+      getMeetData("Test Meet" as never).then((data) => data.schedule),
+    ).resolves.toBeNull();
+  });
+
+  it("reads no cached schedule when the meet was never stored", async () => {
+    await expect(getMeetSchedule("Unknown Meet")).resolves.toEqual([]);
+  });
+
   it("survives a truncated store payload when clearing a meet", async () => {
     mockStorage.set("meetcal_offline_store", "{\"meets\":");
 

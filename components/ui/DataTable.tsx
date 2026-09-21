@@ -1,5 +1,6 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { FlashList } from "@shopify/flash-list";
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 
@@ -21,6 +22,17 @@ interface DataTableProps<T> {
   loadingContent?: React.ReactNode;
   scrollViewProps?: object;
   testID?: string;
+  /**
+   * Render rows through a virtualized list instead of mounting every row.
+   *
+   * Opt-in, because most comp-data tables are a fixed ~8-10 weight-class rows
+   * where the list machinery costs more than the mount it saves. Turn it on
+   * only where the row count is driven by how many athletes exist: a single
+   * national-rankings weight class is 732 rows today (Open Men's 88kg), and
+   * the plain `data.map()` path mounts all of them — roughly four native
+   * views each — in one synchronous pass.
+   */
+  virtualized?: boolean;
 }
 
 export function DataTable<T>({
@@ -34,8 +46,78 @@ export function DataTable<T>({
   loadingContent,
   scrollViewProps,
   testID = "data-table",
+  virtualized = false,
 }: DataTableProps<T>) {
   const colors = useAppColors();
+  const hasRows = !loading && !error && data.length > 0;
+
+  const header = (
+    <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
+      {columns.map((col, i) => (
+        <ThemedText
+          key={col.label + i}
+          style={[
+            styles.headerCell,
+            col.flex != null ? { flex: col.flex } : undefined,
+            col.width != null ? { width: col.width, flex: 0 } : undefined,
+            col.headerStyle,
+          ]}
+        >
+          {col.label}
+        </ThemedText>
+      ))}
+    </View>
+  );
+
+  const status = (
+    <>
+      {loading &&
+        (loadingContent || (
+          <ThemedText style={styles.loadingText}>Loading...</ThemedText>
+        ))}
+
+      {error && !loading && (
+        <ThemedText style={[styles.errorText, { color: colors.fail }]}>
+          {error}
+        </ThemedText>
+      )}
+
+      {!loading && !error && data.length === 0 && (
+        <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
+          {emptyMessage}
+        </ThemedText>
+      )}
+    </>
+  );
+
+  if (virtualized) {
+    return (
+      <View
+        style={[styles.scrollView, styles.scrollContent]}
+        testID={testID}
+      >
+        <View
+          style={[
+            styles.card,
+            hasRows ? styles.cardFill : undefined,
+            { backgroundColor: colors.card },
+          ]}
+        >
+          {header}
+          {status}
+          {hasRows ? (
+            <FlashList
+              data={data}
+              keyExtractor={keyExtractor}
+              renderItem={({ item, index }) => <>{renderRow(item, index)}</>}
+              contentInsetAdjustmentBehavior="automatic"
+              {...scrollViewProps}
+            />
+          ) : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -46,44 +128,10 @@ export function DataTable<T>({
       {...scrollViewProps}
     >
       <View style={[styles.card, { backgroundColor: colors.card }]}>
-        <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
-          {columns.map((col, i) => (
-            <ThemedText
-              key={col.label + i}
-              style={[
-                styles.headerCell,
-                col.flex != null ? { flex: col.flex } : undefined,
-                col.width != null
-                  ? { width: col.width, flex: 0 }
-                  : undefined,
-                col.headerStyle,
-              ]}
-            >
-              {col.label}
-            </ThemedText>
-          ))}
-        </View>
+        {header}
+        {status}
 
-        {loading &&
-          (loadingContent || (
-            <ThemedText style={styles.loadingText}>Loading...</ThemedText>
-          ))}
-
-        {error && !loading && (
-          <ThemedText style={[styles.errorText, { color: colors.fail }]}>{error}</ThemedText>
-        )}
-
-        {!loading && !error && data.length === 0 && (
-          <ThemedText
-            style={[styles.emptyText, { color: colors.secondaryText }]}
-          >
-            {emptyMessage}
-          </ThemedText>
-        )}
-
-        {!loading &&
-          !error &&
-          data.length > 0 &&
+        {hasRows &&
           data.map((item, index) => (
             <React.Fragment key={keyExtractor(item, index)}>
               {renderRow(item, index)}
@@ -113,6 +161,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  cardFill: {
+    flex: 1,
   },
   card: {
     borderRadius: 12,

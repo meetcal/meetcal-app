@@ -176,6 +176,10 @@ function NationalRankingsScreenContent() {
           { label: "Total", width: 80 },
         ]}
         data={rankings}
+        // A weight class is every ranked USAW athlete in it, not a fixed
+        // table: `Open Men's 88kg` is 732 rows today and several others are
+        // 400-650. Mounting them all is ~3k native views in one pass.
+        virtualized
         keyExtractor={(athlete, index) => `${athlete.id}-${index}`}
         loading={loading}
         error={fetchError}
