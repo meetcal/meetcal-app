@@ -8,6 +8,7 @@ import {
   getMeetConfig,
   getMeetVenueLocation,
 } from "@/data/meets/config";
+import { devLog } from "@/lib/logger";
 
 export async function requestCalendarPermissions(): Promise<boolean> {
   const currentPermissions = await Calendar.getCalendarPermissionsAsync();
@@ -345,7 +346,7 @@ export async function createCalendarEvents(
       throw new Error("no_preferred_android_calendar");
     }
 
-    console.log("Calendar: writing Android events to selected calendar", {
+    devLog("Calendar: writing Android events to selected calendar", {
       calendarId: resolvedCalendarId,
       sessionCount: sessions.length,
     });

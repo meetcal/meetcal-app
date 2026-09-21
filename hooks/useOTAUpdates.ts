@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import * as Updates from 'expo-updates';
 import { Alert, AppState, Platform } from 'react-native';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { devLog } from '@/lib/logger';
 
 /**
  * `UpdateNotification` is the only consumer and reads exactly these five
@@ -52,20 +53,20 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
   const checkForUpdate = useCallback(async () => {
     // Don't check for updates in development mode
     if (__DEV__) {
-      console.log('[OTA] Skipping update check in development mode');
+      devLog('[OTA] Skipping update check in development mode');
       return;
     }
 
     // Only check for updates if the app was loaded from a bundle
     if (!Updates.isEnabled) {
-      console.log('[OTA] Updates are not enabled');
+      devLog('[OTA] Updates are not enabled');
       return;
     }
 
     // Check network connectivity before attempting update check
     const hasNetwork = await isNetworkAvailable();
     if (!hasNetwork) {
-      console.log('[OTA] Skipping update check - no network available');
+      devLog('[OTA] Skipping update check - no network available');
       return; // Silently skip, don't show error to user
     }
 
@@ -74,10 +75,10 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
       if (!isMountedRef.current) return;
 
       if (update.isAvailable) {
-        console.log('[OTA] Update available');
+        devLog('[OTA] Update available');
         setState(prev => ({ ...prev, isUpdateAvailable: true }));
       } else {
-        console.log('[OTA] No update available');
+        devLog('[OTA] No update available');
         resetState();
       }
     } catch (error) {

@@ -4,7 +4,7 @@ import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { MeetSelectionModalProps } from "@/types/schedule";
-import * as Haptics from "expo-haptics";
+import { lightImpact } from "@/lib/haptics";
 import { useState } from "react";
 import {
   Modal,
@@ -29,9 +29,7 @@ export function MeetSelectionModal({
 
   const handleSelectMeet = async (meetName: string) => {
     if (isSelecting) return;
-    if (process.env.EXPO_OS === "ios") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    lightImpact();
     setIsSelecting(true);
     try {
       await onSelectMeet(meetName);

@@ -53,6 +53,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
 /**
  * How many saved meets' schedules are fetched at once.
@@ -230,7 +231,7 @@ export default function SavedScreen() {
     if (!user?.id || !selectedMeet) return;
 
     try {
-      console.log("Starting session migration");
+      devLog("Starting session migration");
       const STORAGE_KEYS = getAllSavedSessionsKeys(user.id);
       let needsMigration = false;
 
@@ -519,7 +520,7 @@ export default function SavedScreen() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      console.log("Force reloading sessions from source...");
+      devLog("Force reloading sessions from source...");
       await loadSavedSessions();
     } catch (error) {
       console.error("Error force reloading sessions:", error);

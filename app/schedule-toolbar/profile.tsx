@@ -34,6 +34,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
 export type EditableField = "firstName" | "lastName" | "email";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
@@ -96,13 +97,9 @@ export default function ProfileScreen() {
   const { forceSync, refreshAvailableMeets } = useSelectedMeet();
 
   useEffect(() => {
-    if (__DEV__) {
-      console.log("[Profile] Mounted", { pathname, userId: user?.id });
-    }
+    devLog("[Profile] Mounted", { pathname, userId: user?.id });
     return () => {
-      if (__DEV__) {
-        console.log("[Profile] Unmounted");
-      }
+      devLog("[Profile] Unmounted");
     };
   }, [pathname, user?.id]);
 

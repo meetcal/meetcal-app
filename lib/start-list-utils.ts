@@ -74,6 +74,24 @@ export function compareStartTimes(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+/**
+ * Order two meet calendar dates (`Schedule[n].fullDate`, an ISO `YYYY-MM-DD`
+ * from the API).
+ *
+ * The CSV export and the shareable schedule image each sorted these with
+ * `new Date(a.date).getTime() - new Date(b.date).getTime()` — the same policy
+ * written twice (PoT #9), allocating two `Date`s per comparison, and returning
+ * `NaN` for any date the API sends in a shape `Date` cannot parse, which makes
+ * the comparator inconsistent and the resulting order arbitrary.
+ *
+ * ISO calendar dates sort correctly as plain strings, which is also what
+ * TigerStyle "explicit vs implicit" asks for: a calendar date is not an
+ * instant, so it should never be routed through `Date` just to be compared.
+ */
+export function compareCalendarDates(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
 // Re-export from utils/calendar for backwards compatibility
 export { requestCalendarPermissions } from '@/utils/calendar';
 

@@ -1,6 +1,6 @@
 import { Radius, Spacing, Type } from "@/constants/Layout";
 import { useAppColors } from "@/hooks/useAppColors";
-import * as Haptics from "expo-haptics";
+import { lightImpact } from "@/lib/haptics";
 import React from "react";
 import {
   ActivityIndicator,
@@ -83,8 +83,8 @@ export function Button({
         disabled={isDisabled}
         onPressIn={(ev) => {
           scale.value = withSpring(0.96, { damping: 15, stiffness: 300 });
-          if (haptic && process.env.EXPO_OS === "ios") {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (haptic) {
+            lightImpact();
           }
           onPressIn?.(ev);
         }}

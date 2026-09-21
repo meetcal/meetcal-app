@@ -2,6 +2,7 @@ import {
   sortWeightClasses,
   parseStartTimeToMinutes,
   compareStartTimes,
+  compareCalendarDates,
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
@@ -52,6 +53,36 @@ describe("parseStartTimeToMinutes", () => {
     expect(parseStartTimeToMinutes("25:00")).toBeNull();
     expect(parseStartTimeToMinutes("noon")).toBeNull();
     expect(parseStartTimeToMinutes("")).toBeNull();
+  });
+});
+
+describe("compareCalendarDates", () => {
+  it("orders ISO calendar dates chronologically", () => {
+    expect(compareCalendarDates("2026-06-20", "2026-06-21")).toBeLessThan(0);
+    expect(compareCalendarDates("2026-07-01", "2026-06-30")).toBeGreaterThan(0);
+    expect(compareCalendarDates("2026-06-20", "2026-06-20")).toBe(0);
+  });
+
+  it("orders across month and year boundaries", () => {
+    expect(compareCalendarDates("2025-12-31", "2026-01-01")).toBeLessThan(0);
+    expect(compareCalendarDates("2026-09-09", "2026-09-10")).toBeLessThan(0);
+  });
+
+  it("sorts a realistic multi-day meet the same way Date did", () => {
+    const days = ["2026-06-22", "2026-06-20", "2026-06-21"];
+    expect([...days].sort(compareCalendarDates)).toEqual([
+      "2026-06-20",
+      "2026-06-21",
+      "2026-06-22",
+    ]);
+  });
+
+  it("stays a consistent comparator for values Date cannot parse", () => {
+    // `new Date("TBD").getTime()` is NaN, which made the old comparator
+    // return NaN and leave the order arbitrary.
+    expect(Number.isNaN(compareCalendarDates("TBD", "2026-06-20"))).toBe(false);
+    expect(compareCalendarDates("TBD", "2026-06-20")).toBeGreaterThan(0);
+    expect(compareCalendarDates("2026-06-20", "TBD")).toBeLessThan(0);
   });
 });
 

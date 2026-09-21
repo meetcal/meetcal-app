@@ -11,6 +11,7 @@ import {
   createQualifyingTotalsDeepLink,
   createStandardsDeepLink,
 } from "@/utils/deepLinks";
+import { devLog } from "@/lib/logger";
 
 export type WidgetKind = "qualifyingTotals" | "standards" | "intlRankings";
 
@@ -282,7 +283,7 @@ export function syncDataWidgets(payloads: {
 
   const module = NativeModules.SavedWidget;
   if (!module?.updateDataWidgets) {
-    console.log("[Widget] Data widget module method not available");
+    devLog("[Widget] Data widget module method not available");
     return;
   }
 

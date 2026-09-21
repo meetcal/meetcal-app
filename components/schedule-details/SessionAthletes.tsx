@@ -24,6 +24,7 @@ import {
     StyleSheet,
     View
 } from "react-native";
+import { devInfo } from "@/lib/logger";
 
 function toSessionAthletesByPlatform(
   platform: string,
@@ -87,7 +88,7 @@ export default function SessionAthletes({
 
     loggedLoadRef.current = true;
     const elapsedMs = Math.round(performance.now() - loadStartedAtRef.current);
-    console.info("[perf] session athletes ready", {
+    devInfo("[perf] session athletes ready", {
       elapsedMs,
       meetId,
       sessionNumber,
@@ -128,7 +129,7 @@ export default function SessionAthletes({
 
         if (__DEV__ && !loggedBestsLoadRef.current) {
           loggedBestsLoadRef.current = true;
-          console.info("[perf] session bests cache ready", {
+          devInfo("[perf] session bests cache ready", {
             elapsedMs: Math.round(
               performance.now() - bestsLoadStartedAtRef.current,
             ),
@@ -144,7 +145,7 @@ export default function SessionAthletes({
         setAthleteBests(bestsMap);
 
         if (__DEV__) {
-          console.info("[perf] session bests ready", {
+          devInfo("[perf] session bests ready", {
             elapsedMs: Math.round(
               performance.now() - bestsLoadStartedAtRef.current,
             ),

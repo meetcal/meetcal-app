@@ -1,5 +1,6 @@
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { isOfflineModeSimulated } from '@/config/development';
+import { devLog } from './logger';
 
 /**
  * NetInfo reports `isInternetReachable: null` while it is still probing, and
@@ -39,7 +40,7 @@ NetInfo.addEventListener(state => {
 export async function isNetworkAvailable(): Promise<boolean> {
   // Check if we're simulating offline mode in development
   if (isOfflineModeSimulated()) {
-    console.log('[DEV] Simulating offline mode');
+    devLog('[DEV] Simulating offline mode');
     return false;
   }
 

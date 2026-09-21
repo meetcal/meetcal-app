@@ -29,6 +29,7 @@ import {
   MeetCalApiError,
   MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
+import { devLog } from '@/lib/logger';
 
 export interface SavedSession {
   id: string;
@@ -195,14 +196,34 @@ export function useSavedSessions() {
 
       // Fetch from the API when Clerk can provide a fresh token.
       if (user?.id) {
-        const token = await getToken().catch(() => null);
-        if (!token) {
+        // PoT #7: "Clerk threw" and "Clerk has no token" are different
+        // failures, and neither is "the server says you have nothing saved".
+        // `.catch(() => null)` used to flatten all three into one falsy value.
+        // Both no-token paths return *before* the reconcile below, so an auth
+        // or network failure can never reach the branch that clears storage.
+        let token: string | null;
+        try {
+          token = await getToken();
+        } catch (tokenError) {
+          console.error(
+            'Saved sessions: Clerk getToken() failed; keeping local sessions',
+            tokenError,
+          );
           setSavedSessions(localSessions);
           return;
         }
+        if (!token) {
+          devLog('Saved sessions: no Clerk token; keeping local sessions');
+          setSavedSessions(localSessions);
+          return;
+        }
+
+        // `fetchSavedSessions` throws on timeout, HTTP error, and malformed
+        // body, so reaching here means the server answered authoritatively.
+        // Only an authoritative answer is allowed to shrink local state.
         const apiSessions = await fetchSavedSessions(token);
 
-        if (apiSessions && apiSessions.length > 0) {
+        if (apiSessions.length > 0) {
           const formattedSessions = apiSessions.map(s => ({
             id: s.session_id,
             meet: s.meet as MeetName,
@@ -216,15 +237,17 @@ export function useSavedSessions() {
             athleteNames: s.athlete_names,
           }));
           await commitSessions(formattedSessions);
+        } else if (localSessions.length === 0) {
+          // Server and device agree there is nothing saved: drop the empty
+          // key so a stale `[]` blob does not linger.
+          await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
+          sessionsRawRef.current = null;
+          sessionsRef.current = [];
+          setSavedSessions([]);
         } else {
-          if (localSessions.length === 0) {
-            await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
-            sessionsRawRef.current = null;
-            sessionsRef.current = [];
-            setSavedSessions([]);
-          } else {
-            setSavedSessions(localSessions);
-          }
+          // Server says empty but the device has rows. Offline saves reach the
+          // API later, so local wins rather than being deleted.
+          setSavedSessions(localSessions);
         }
       } else {
         setSavedSessions(localSessions);
@@ -627,7 +650,10 @@ export function useSavedSessions() {
     let token: string | null = null;
     try {
       token = await getToken();
-    } catch {
+    } catch (tokenError) {
+      // Pruning is destructive, so a token failure must skip it rather than
+      // guess at the preference (PoT #7).
+      console.error('pruneStartedSessions: Clerk getToken() failed', tokenError);
       return;
     }
     if (!token) return;

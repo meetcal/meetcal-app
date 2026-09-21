@@ -2,6 +2,7 @@ import { NativeModules } from 'react-native';
 import { SavedSession } from '@/hooks/useSavedSessions';
 import { MeetName } from '@/data/types/meet';
 import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
+import { devLog } from '@/lib/logger';
 
 let hasLoggedMissingWidgetModule = false;
 
@@ -53,7 +54,7 @@ export const syncSavedWidget = (
   const module = NativeModules.SavedWidget;
   if (!module?.updateSavedWidget) {
     if (!hasLoggedMissingWidgetModule) {
-      console.log('[Widget] Native module not available');
+      devLog('[Widget] Native module not available');
       hasLoggedMissingWidgetModule = true;
     }
     return;
@@ -88,11 +89,9 @@ export const syncSavedWidget = (
     }),
   }));
 
-  if (__DEV__) {
-    console.log(
-      `[Widget] Syncing: meet="${selectedMeet}", sessions=${widgetSessions.length}`,
-    );
-  }
+  devLog(
+    `[Widget] Syncing: meet="${selectedMeet}", sessions=${widgetSessions.length}`,
+  );
   
   try {
     module.updateSavedWidget(selectedMeet ?? '', JSON.stringify(widgetSessions));

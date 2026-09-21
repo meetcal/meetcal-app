@@ -39,6 +39,7 @@ import {
   openExternalLink,
 } from "@/utils/deepLinks";
 import * as Sentry from '@sentry/react-native';
+import { devLog } from "@/lib/logger";
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -369,7 +370,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         const initialUrl = await Linking.getInitialURL();
 
         if (initialUrl) {
-          console.log(
+          devLog(
             "[RootLayout] App launched with initial URL, letting router handle:",
             initialUrl,
           );

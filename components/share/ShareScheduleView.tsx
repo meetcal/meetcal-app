@@ -2,6 +2,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { LiftResult } from "@/data/types/athletes";
 import {
+  compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
 } from "@/lib/start-list-utils";
@@ -110,7 +111,7 @@ export default function ShareScheduleView({
           return a.athlete.name.localeCompare(b.athlete.name);
         }),
       }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => compareCalendarDates(a.date, b.date));
   }, [filteredAthletes, schedule, getSessionDetails]);
 
   return (

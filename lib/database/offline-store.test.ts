@@ -25,6 +25,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  clearAllAthleteHistory,
   clearMeetData,
   getAllCachedLiftingResultsForAthlete,
   getAllCachedLiftingResultsForAthletes,
@@ -120,6 +121,89 @@ describe("offline-store athlete lifting results", () => {
     });
   });
 
+  it("skips rewriting the roster blob when the payload is unchanged", async () => {
+    const roster = [
+      {
+        memberId: "123",
+        name: "Jane Doe",
+        age: 25,
+        club: "Club",
+        gender: "Women",
+        weightClass: "71kg",
+        entryTotal: 200,
+        adaptive: false,
+        session: {
+          number: 4,
+          platform: "Red",
+          date: "2026-06-20",
+          startTime: "10:00 AM",
+          weighInTime: "8:00 AM",
+        },
+      },
+    ];
+
+    await saveMeetAthletes("Test Meet", roster as any);
+
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    setItem.mockClear();
+    multiSet.mockClear();
+
+    await saveMeetAthletes("Test Meet", roster as any);
+
+    // Neither the roster key nor any session-scoped key is rewritten.
+    expect(
+      setItem.mock.calls.filter(([key]) =>
+        String(key).startsWith("meetcal_athletes_"),
+      ),
+    ).toHaveLength(0);
+    expect(multiSet).not.toHaveBeenCalled();
+    // The small store-metadata write still happens so lastSyncTime advances.
+    expect(
+      setItem.mock.calls.some(([key]) => String(key) === "meetcal_offline_store"),
+    ).toBe(true);
+
+    // The cached data is still readable and correct.
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.athletes).toHaveLength(1);
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("writes the roster blob again once the payload actually changes", async () => {
+    const base = {
+      memberId: "123",
+      name: "Jane Doe",
+      age: 25,
+      club: "Club",
+      gender: "Women",
+      weightClass: "71kg",
+      entryTotal: 200,
+      adaptive: false,
+      session: {
+        number: 4,
+        platform: "Red",
+        date: "2026-06-20",
+        startTime: "10:00 AM",
+        weighInTime: "8:00 AM",
+      },
+    };
+
+    await saveMeetAthletes("Test Meet", [base] as any);
+
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    multiSet.mockClear();
+
+    await saveMeetAthletes("Test Meet", [
+      { ...base, entryTotal: 205 },
+    ] as any);
+
+    expect(multiSet).toHaveBeenCalled();
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.athletes[0].entryTotal).toBe(205);
+  });
+
   it("hydrates schedules from the out-of-line schedule key", async () => {
     const schedule = [
       {
@@ -148,6 +232,58 @@ describe("offline-store athlete lifting results", () => {
     const meetData = await getMeetData("Test Meet" as any);
     expect(meetData.scheduleKey).toBe("meetcal_schedule_Test Meet");
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
+  });
+
+  it("does not rewrite an unchanged schedule payload", async () => {
+    const schedule = [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "Test Meet-1-Red",
+            number: 1,
+            startTime: "10:00 AM",
+            weighInTime: "8:00 AM",
+            platforms: [
+              {
+                platform: "Red",
+                weightClass: "71kg",
+                platformStartTime: "10:00 AM",
+              },
+            ],
+          },
+        ],
+      },
+    ] as any;
+
+    await saveMeetSchedule("Test Meet", schedule);
+
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    setItem.mockClear();
+    await saveMeetSchedule("Test Meet", schedule);
+
+    expect(
+      setItem.mock.calls.filter(([key]) =>
+        String(key).startsWith("meetcal_schedule_"),
+      ),
+    ).toHaveLength(0);
+    // lastSyncTime still advances.
+    expect(
+      setItem.mock.calls.some(([key]) => String(key) === "meetcal_offline_store"),
+    ).toBe(true);
+    await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
+
+    // A genuine change is still persisted.
+    const changed = [{ ...schedule[0], fullDate: "2026-06-21" }] as any;
+    setItem.mockClear();
+    await saveMeetSchedule("Test Meet", changed);
+    expect(
+      setItem.mock.calls.filter(([key]) =>
+        String(key).startsWith("meetcal_schedule_"),
+      ),
+    ).toHaveLength(1);
+    await expect(getMeetSchedule("Test Meet")).resolves.toEqual(changed);
   });
 
   it("writes and clears session-scoped athlete caches", async () => {
@@ -449,5 +585,80 @@ describe("getAllCachedLiftingResultsForAthletes", () => {
     jest.clearAllMocks();
     await expect(getAllCachedLiftingResultsForAthletes([])).resolves.toEqual({});
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("clearAllAthleteHistory", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const row = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: 1,
+      event_id: "evt",
+      meet: "Meet A",
+      date: "2025-01-01",
+      name: "Jane Doe",
+      age: 25,
+      body_weight: 65,
+      snatch1: 90,
+      snatch2: 95,
+      snatch3: null,
+      snatch_best: 95,
+      cj1: 110,
+      cj2: 115,
+      cj3: null,
+      cj_best: 115,
+      total: 210,
+      ...overrides,
+    }) as any;
+
+  it("removes every athlete history key without a read per athlete", async () => {
+    const names = Array.from({ length: 12 }, (_, i) => `Athlete ${i}`);
+    for (const name of names) {
+      await saveAthleteHistory(name, [row({ name })]);
+    }
+
+    jest.clearAllMocks();
+    await clearAllAthleteHistory();
+
+    // One key listing, no per-athlete manifest reads.
+    expect(AsyncStorage.getAllKeys).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledTimes(1);
+
+    const leftovers = (await AsyncStorage.getAllKeys()).filter((k) =>
+      k.startsWith("meetcal_athlete_history_"),
+    );
+    expect(leftovers).toEqual([]);
+  });
+
+  it("reaps chunk keys orphaned by an interrupted write", async () => {
+    await saveAthleteHistory("Jane Doe", [row()]);
+    mockStorage.set("meetcal_athlete_history_jane doe__chunk_7", "orphan");
+    mockStorage.delete("meetcal_athlete_history_jane doe");
+
+    await clearAllAthleteHistory();
+
+    expect(
+      (await AsyncStorage.getAllKeys()).filter((k) =>
+        k.startsWith("meetcal_athlete_history_"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("leaves meet-scoped lifting results alone", async () => {
+    await saveMeetLiftingResults("Meet A", [row()]);
+    await saveAthleteHistory("Jane Doe", [row()]);
+
+    await clearAllAthleteHistory();
+
+    expect(
+      (await AsyncStorage.getAllKeys()).some((k) =>
+        k.startsWith("meetcal_lifting_results_"),
+      ),
+    ).toBe(true);
   });
 });

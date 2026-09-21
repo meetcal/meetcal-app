@@ -15,6 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
+import { devLog } from "@/lib/logger";
 
 interface NotificationSettingsProps {
   subscriptionStatus: SubscriptionStatus;
@@ -57,7 +58,7 @@ export function NotificationSettings({
   // Automatically enable reminders if user becomes subscribed and reminders are currently off
   useEffect(() => {
     if (isSubscribed && !isEnabled && !isLoading && !autoEnableAttempted) {
-      console.log(
+      devLog(
         "Subscription active and reminders off, attempting to enable automatically.",
       );
       setAutoEnableAttempted(true);

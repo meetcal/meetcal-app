@@ -7,6 +7,7 @@ import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
 import { isInternalRoutePath } from '@/utils/authGuard';
+import { devLog } from '@/lib/logger';
 
 /**
  * `from` / `feature` normally arrive as route params, but `SubscriptionGate`
@@ -35,7 +36,7 @@ export default function PaywallScreen({
   // Redirect to sign-in if not authenticated
   useEffect(() => {
     if (isLoaded && !user) {
-      console.log('[Paywall] User not authenticated, redirecting to sign-in');
+      devLog('[Paywall] User not authenticated, redirecting to sign-in');
       router.replace({
         pathname: '/(auth)/sign-in',
         params: {

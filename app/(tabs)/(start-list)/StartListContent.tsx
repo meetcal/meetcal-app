@@ -32,6 +32,7 @@ import { isNetworkAvailable } from "@/lib/networkUtils";
 import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
+  compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
   getAgeCategory,
@@ -58,7 +59,7 @@ import { formatTo12Hour } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
-import * as Haptics from "expo-haptics";
+import { lightImpact, successNotification } from "@/lib/haptics";
 import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, {
@@ -81,6 +82,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devInfo } from "@/lib/logger";
 
 const REVIEW_COUNT_KEY = "startListFilterApplyCount";
 const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
@@ -405,7 +407,7 @@ export default function StartListScreen() {
     }
 
     loggedReadyRef.current = true;
-    console.info("[perf] start list ready", {
+    devInfo("[perf] start list ready", {
       elapsedMs: Math.round(performance.now() - loadStartedAtRef.current),
       meet: selectedMeet,
       athleteCount: athletes.length,
@@ -998,11 +1000,7 @@ export default function StartListScreen() {
                 scheduleData,
               );
               if (success) {
-                if (process.env.EXPO_OS === "ios") {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                }
+                successNotification();
                 Alert.alert(
                   "Success",
                   "Sessions have been saved to your list.",
@@ -1310,9 +1308,7 @@ export default function StartListScreen() {
       setGeneratedImageWhiteUri(whiteUri);
       setGeneratedImageTransparentUri(transparentUri);
       setSelectedImageIndex(0);
-      if (process.env.EXPO_OS === "ios") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
+      lightImpact();
       setShowImagePreview(true);
     } catch (error) {
       setShowShareViews(false);
@@ -1376,7 +1372,7 @@ export default function StartListScreen() {
           return a.athlete.name.localeCompare(b.athlete.name);
         }),
       }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => compareCalendarDates(a.date, b.date));
 
     const header = [
       "Group",

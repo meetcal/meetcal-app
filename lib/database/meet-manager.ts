@@ -33,6 +33,7 @@ import {
   calculateInitialPage,
   getHistoryCutoffDate,
 } from '@/utils/dateTime';
+import { devLog } from '../logger';
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
@@ -232,7 +233,7 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
     const actualMeet = await fetchApiMeetByName(name);
 
     if (!actualMeet) {
-      console.log('No meet found with name:', name);
+      devLog('No meet found with name:', name);
       return null;
     }
 

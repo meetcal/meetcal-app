@@ -4,15 +4,9 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon, getCloseIcon } from "@/lib/start-list-utils";
 import { ActionModalProps } from "@/types/start-list";
-import * as Haptics from "expo-haptics";
+import { lightImpact as selectionHaptic } from "@/lib/haptics";
 import React from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
-
-const selectionHaptic = () => {
-  if (process.env.EXPO_OS === "ios") {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }
-};
 
 const ActionModal: React.FC<ActionModalProps> = ({
   visible,

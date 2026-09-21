@@ -13,6 +13,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
 /**
  * A meet result date is a calendar date, not an instant. `new Date("2025-03-15")`
@@ -426,7 +427,7 @@ export default function AthleteResultsScreen() {
               setLoading(false);
             }
           } catch (cacheError) {
-            console.log(
+            devLog(
               `Cache miss for athlete results, fetching from API ${cacheError}`,
             );
           }

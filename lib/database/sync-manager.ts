@@ -2,6 +2,7 @@ import { saveMeetSchedule } from './offline-store';
 import { fetchSchedule } from './queries';
 import type { MeetName } from '@/data/types/meet';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { devLog } from '../logger';
 
 const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -45,7 +46,7 @@ export class SyncManager {
 
   public async syncIfNeeded(): Promise<void> {
     if (this.isSyncing) {
-      console.log('Already syncing, skipping...');
+      devLog('Already syncing, skipping...');
       return;
     }
 

@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { isNetworkAvailable } from './networkUtils';
+import { devLog } from './logger';
 
 const AUTH_CACHE_KEY = 'auth_state_cache';
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
@@ -80,7 +81,7 @@ export async function cacheAuthState(
       await SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(cacheData));
       lastPersistedSignature = signature;
       lastPersistedAt = cacheData.timestamp;
-      console.log('Auth state cached successfully');
+      devLog('Auth state cached successfully');
     } catch (error) {
       console.error('Error caching auth state:', error);
     }
@@ -115,7 +116,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
     const isExpired = now - parsed.timestamp > CACHE_EXPIRY_MS;
 
     if (isExpired) {
-      console.log('Auth cache expired (older than 7 days)');
+      devLog('Auth cache expired (older than 7 days)');
       // Check if network is available
       const hasNetwork = await isNetworkAvailable();
 
@@ -158,7 +159,7 @@ export async function clearAuthCache() {
       await SecureStore.deleteItemAsync(AUTH_CACHE_KEY);
       lastPersistedSignature = null;
       lastPersistedAt = 0;
-      console.log('Auth cache cleared');
+      devLog('Auth cache cleared');
     } catch (error) {
       console.error('Error clearing auth cache:', error);
     }

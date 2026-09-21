@@ -10,6 +10,7 @@ import * as Notifications from "expo-notifications";
 import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { devLog } from "@/lib/logger";
 
 const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
 
@@ -152,15 +153,11 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const requestCalendarAccess = async () => {
     try {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status === "granted") {
-        if (__DEV__) {
-          console.log("Calendar access granted");
-        }
-      } else {
-        if (__DEV__) {
-          console.log("Calendar access denied");
-        }
-      }
+      devLog(
+        status === "granted"
+          ? "Calendar access granted"
+          : "Calendar access denied",
+      );
     } catch (error) {
       if (__DEV__) {
         console.error("Calendar permission error:", error);
@@ -180,17 +177,14 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       }
 
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status === "granted") {
-        if (__DEV__) {
-          console.log("Notification access granted");
-        }
-        await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
-      } else {
-        if (__DEV__) {
-          console.log("Notification access denied");
-        }
-        await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
-      }
+      const granted = status === "granted";
+      devLog(
+        granted ? "Notification access granted" : "Notification access denied",
+      );
+      await AsyncStorage.setItem(
+        NOTIFICATION_ENABLED_KEY,
+        granted ? "true" : "false",
+      );
     } catch (error) {
       if (__DEV__) {
         console.error("Notification permission error:", error);

@@ -1,4 +1,5 @@
 import { NativeModules, Platform } from 'react-native';
+import { devLog } from '@/lib/logger';
 
 let hasLoggedMissingModule = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -11,7 +12,7 @@ const performReindex = () => {
   const module = NativeModules.AppIntentsBridge;
   if (!module?.reindexAppEntities) {
     if (!hasLoggedMissingModule) {
-      console.log('[AppIntents] Native module not available');
+      devLog('[AppIntents] Native module not available');
       hasLoggedMissingModule = true;
     }
     return;

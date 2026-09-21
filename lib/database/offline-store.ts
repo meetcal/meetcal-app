@@ -22,6 +22,13 @@ const ATHLETE_HISTORY_KEY_PREFIX = 'meetcal_athlete_history_';
 const ATHLETE_BESTS_KEY_PREFIX = 'meetcal_athlete_bests_';
 const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
+
+/**
+ * Keys removed per `multiRemove`. AsyncStorage forwards the whole list to a
+ * single native call, so a 4500-key delete would otherwise cross the bridge as
+ * one unbounded batch (PoT #4 "declare sizes").
+ */
+const STORAGE_REMOVE_BATCH_SIZE = 500;
 const LIFTING_RESULTS_FORMAT = 'deflate-base64-chunks-v1';
 
 export interface MeetData {
@@ -754,10 +761,17 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       });
     });
 
-    // Save schedule separately
+    // Save schedule separately. `SyncManager` re-saves the same schedule every
+    // 5 minutes for as long as a meet is selected, and a meet's schedule
+    // almost never changes mid-event, so compare before writing (PoT #2/#3).
+    // The `getStore()` read below means this path already pays for a read;
+    // one more avoids an unconditional multi-kilobyte write every tick.
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
     const scheduleString = JSON.stringify(schedule);
-    await AsyncStorage.setItem(scheduleKey, scheduleString);
+    const existingSchedule = await AsyncStorage.getItem(scheduleKey);
+    if (existingSchedule !== scheduleString) {
+      await AsyncStorage.setItem(scheduleKey, scheduleString);
+    }
 
     // Get current store state
     const store = await getStore();
@@ -865,9 +879,19 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
           }
         : athlete;
     });
-    await AsyncStorage.setItem(athletesKey, JSON.stringify(mergedAthletes));
-    await saveSessionAthleteCaches(meetId, mergedAthletes);
+    // PoT #2/#3 (bounded work): opening a meet re-saved the whole roster blob
+    // (~0.5MB) plus one key per session/platform on every visit, even when the
+    // API returned byte-identical rows. The previous payload is already in
+    // hand for the session merge above, so the comparison is free.
+    const mergedPayload = JSON.stringify(mergedAthletes);
+    const payloadUnchanged = mergedPayload === existingPayload;
+    if (!payloadUnchanged) {
+      await AsyncStorage.setItem(athletesKey, mergedPayload);
+      await saveSessionAthleteCaches(meetId, mergedAthletes);
+    }
 
+    // The store metadata write is small and `lastSyncTime` drives staleness,
+    // so it still happens on every call.
     const store = await getStore();
     if (!store.meets[meetId]) {
       const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
@@ -995,11 +1019,23 @@ export async function clearAllMeetData(): Promise<void> {
 export async function clearAllAthleteHistory(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const athleteHistoryKeys = keys.filter(
-      (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) && !k.includes('__chunk_'),
+    // Chunk keys are `<manifest key>__chunk_<n>`, so the prefix already covers
+    // manifests, chunks, and legacy raw payloads alike. Reading each manifest
+    // to rediscover its own chunk keys cost one `getItem` + one `multiRemove`
+    // per athlete — 1500-4500 serial round trips on "Delete all offline data"
+    // (PoT #2 bounded loops). One `getAllKeys` plus batched removes replaces
+    // them, and it also reaps chunks orphaned by an interrupted write.
+    const athleteHistoryKeys = keys.filter((k) =>
+      k.startsWith(ATHLETE_HISTORY_KEY_PREFIX),
     );
-    for (const key of athleteHistoryKeys) {
-      await clearStoredLiftingResultsValue(key);
+    for (
+      let offset = 0;
+      offset < athleteHistoryKeys.length;
+      offset += STORAGE_REMOVE_BATCH_SIZE
+    ) {
+      await AsyncStorage.multiRemove(
+        athleteHistoryKeys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE),
+      );
     }
   } catch (error) {
     console.error('Error clearing athlete history:', error);

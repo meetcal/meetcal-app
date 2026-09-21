@@ -7,6 +7,7 @@ import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from 
 import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { reindexAppEntities } from '@/utils/appIntents';
+import { devLog } from '@/lib/logger';
 
 type SelectedMeetContextType = {
   selectedMeet: MeetName | null;
@@ -322,7 +323,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         });
 
         if (freshMeets.length === 0) {
-          console.log('No meets available');
+          devLog('No meets available');
           setIsLoading(false);
           return;
         }
@@ -361,7 +362,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             );
             return;
           }
-          console.log('Selected meet no longer available, switching to first available meet');
+          devLog('Selected meet no longer available, switching to first available meet');
           await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
           if (isStale()) return;
           await initializeMeetData(freshMeets[0].name, freshMeets[0]);
