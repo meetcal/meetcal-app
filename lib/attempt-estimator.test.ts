@@ -123,6 +123,43 @@ describe("calculateEstimates", () => {
   });
 });
 
+describe("opener make rates", () => {
+  it("counts missed openers in the denominator", () => {
+    // Misses are stored as negative kilos. Two made openers out of four taken
+    // is 50%, not 100%.
+    const history = [
+      result({ snatch1: -100, cj1: -120 }),
+      result({ snatch1: 102, cj1: 122 }),
+      result({ snatch1: -105, cj1: -125 }),
+      result({ snatch1: 105, cj1: 125 }),
+    ];
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      history,
+    );
+    expect(estimate.snatchMakeRate).toBeCloseTo(0.5);
+    expect(estimate.cjMakeRate).toBeCloseTo(0.5);
+  });
+
+  it("reports 0 when every opener was missed", () => {
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      [result({ snatch1: -100, cj1: -120 })],
+    );
+    expect(estimate.snatchMakeRate).toBe(0);
+    expect(estimate.cjMakeRate).toBe(0);
+  });
+
+  it("ignores meets where the opener was never taken", () => {
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      [result({ snatch1: null, cj1: 0 }), result({ snatch1: 100, cj1: 120 })],
+    );
+    expect(estimate.snatchMakeRate).toBe(1);
+    expect(estimate.cjMakeRate).toBe(1);
+  });
+});
+
 describe("generateAthleteNotes", () => {
   it("flags athletes with no historical data", () => {
     const [estimate] = calculateEstimates(

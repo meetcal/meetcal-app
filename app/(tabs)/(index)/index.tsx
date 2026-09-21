@@ -42,7 +42,11 @@ import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
 import { DaySchedule } from "@/types/schedule";
-import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
+import {
+  formatDayTitle,
+  formatIsoDateTitle,
+  getTimeZoneAbbreviation,
+} from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -96,7 +100,7 @@ export default function ScheduleScreen() {
     isRefreshing,
     initialScrollIndex,
     refreshSchedule,
-  } = useScheduleData(selectedMeet);
+  } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
   const { savedSessions } = useSavedSessions();
@@ -258,13 +262,11 @@ export default function ScheduleScreen() {
   // Set title to start date when there's no schedule loaded
   useEffect(() => {
     if (!isLoading && schedule.length === 0 && meetDetails?.dates?.start) {
-      const startDate = new Date(meetDetails.dates.start);
-      if (!Number.isNaN(startDate.getTime())) {
-        const formattedDate = new Intl.DateTimeFormat("en-US", {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-        }).format(startDate);
+      // The meet start date is a calendar date in the meet's timezone. Format
+      // it through the shared UTC-safe helper; `new Date("2026-06-20")` is UTC
+      // midnight and renders as Jun 19 on any US device.
+      const formattedDate = formatIsoDateTitle(meetDetails.dates.start);
+      if (formattedDate) {
         navigation.setOptions({
           title: formattedDate,
           headerTitle: () => <HeaderDate>{formattedDate}</HeaderDate>,

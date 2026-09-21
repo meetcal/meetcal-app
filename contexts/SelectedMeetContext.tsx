@@ -51,7 +51,10 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
   // Mirror of meetDetails so loadMeets can read the latest value without
-  // taking it as a dependency (which would reset the 5-minute interval).
+  // taking it as a dependency. Note this does NOT keep `loadMeets` stable:
+  // it still closes over `selectedMeet` (directly and via `chooseMeet`), so
+  // selecting a meet rebuilds the 5-minute refresh interval below and runs one
+  // extra `loadMeets()`. That extra run is the refresh, so nothing goes stale.
   const meetDetailsRef = useRef<Meet | null>(null);
   useEffect(() => {
     meetDetailsRef.current = meetDetails;
@@ -74,6 +77,17 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         setIsSyncing(false);
       });
   }, []);
+
+  // A SyncManager starts a 5-minute interval in its constructor, so dropping
+  // the reference (the two `setSyncManager(null)` paths below, and provider
+  // unmount) would leave it re-fetching and re-writing the *old* meet's
+  // schedule for the rest of the session. Stop whichever instance we are
+  // replacing.
+  useEffect(() => {
+    return () => {
+      syncManager?.stopSync();
+    };
+  }, [syncManager]);
 
   const activateMeet = useCallback((meet: MeetName, meetData: Meet) => {
     setSelectedMeetState(meet);

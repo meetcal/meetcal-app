@@ -189,7 +189,15 @@ function mapCalendarError(error: unknown): Error {
     default: "Could not add events to calendar. Please try again.",
   });
 
-  return error instanceof Error ? new Error(error.message || errorMessage) : new Error(errorMessage);
+  // Every expo-calendar rejection is an Error with a non-empty message, so
+  // returning `error.message` here made the copy above unreachable and toasted
+  // raw SDK text ("Cannot find calendar with id 17") at the user. Callers show
+  // `error.message` verbatim, so hand them the mapped copy and keep the
+  // original for the log.
+  if (error instanceof Error) {
+    console.error("Calendar operation failed:", error);
+  }
+  return new Error(errorMessage ?? "Could not add events to calendar. Please try again.");
 }
 
 export async function getWritableCalendars(): Promise<CalendarDestination[]> {

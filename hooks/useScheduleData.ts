@@ -47,8 +47,14 @@ const scheduleResource = createMutableResource<Schedule, [MeetName]>({
   isEqual: defaultIsEqual,
 });
 
+/**
+ * @param timeZoneIdentifier The meet's IANA timezone, used to decide which day
+ * the schedule opens on. Optional because the meet details can still be
+ * loading; `calculateInitialPage` falls back to UTC in that case.
+ */
 export function useScheduleData(
   selectedMeet: MeetName | null,
+  timeZoneIdentifier?: string,
 ): UseScheduleDataReturn {
   const params = useMemo(
     () => (selectedMeet ? ([selectedMeet] as [MeetName]) : null),
@@ -69,8 +75,8 @@ export function useScheduleData(
 
   const initialScrollIndex = useMemo(() => {
     if (!schedule.length) return 0;
-    return calculateInitialPage(schedule);
-  }, [schedule]);
+    return calculateInitialPage(schedule, timeZoneIdentifier);
+  }, [schedule, timeZoneIdentifier]);
 
   return {
     schedule,

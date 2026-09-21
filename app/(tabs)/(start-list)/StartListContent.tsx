@@ -146,7 +146,6 @@ export default function StartListScreen() {
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
-  const loadInFlightRef = useRef<Promise<void> | null>(null);
   const latestLoadIdRef = useRef(0);
   const loadStartedAtRef = useRef(performance.now());
   const loggedReadyRef = useRef(false);
@@ -278,13 +277,13 @@ export default function StartListScreen() {
         return;
       }
 
-      if (loadInFlightRef.current) {
-        await loadInFlightRef.current;
-        return;
-      }
-
       const validMeet = selectedMeet;
+      // Each call supersedes the one before it. Deduplicating by "something is
+      // already in flight" instead would make a pull-to-refresh during the
+      // initial load a silent no-op, and would leave the previous meet's
+      // athletes on screen after a meet switch.
       const requestId = ++latestLoadIdRef.current;
+      const isStale = () => requestId !== latestLoadIdRef.current;
       if (!forceRefresh) {
         loadStartedAtRef.current = performance.now();
         loggedReadyRef.current = false;
@@ -293,6 +292,7 @@ export default function StartListScreen() {
 
       const requestPromise = (async () => {
         const snapshot = await loadMeetSnapshot(validMeet);
+        if (isStale()) return;
 
         if (!forceRefresh) {
           setAthletes(snapshot.cachedAthletes);
@@ -301,6 +301,7 @@ export default function StartListScreen() {
         }
 
         const hasNetwork = await isNetworkAvailable();
+        if (isStale()) return;
         if (!hasNetwork) {
           setLoading(false);
           if (forceRefresh) {
@@ -319,7 +320,7 @@ export default function StartListScreen() {
           fetchSchedule(validMeet),
         ]);
 
-        if (requestId !== latestLoadIdRef.current) return;
+        if (isStale()) return;
 
         let nextAthletes = snapshot.cachedAthletes;
         let nextSchedule = snapshot.cachedSchedule;
@@ -349,15 +350,12 @@ export default function StartListScreen() {
 
         setAthletes(nextAthletes);
         setScheduleData(nextSchedule);
-        if (!forceRefresh) setLoading(false);
+        // Unconditional: a forced refresh can supersede an initial load that
+        // set `loading` and then bailed out as stale.
+        setLoading(false);
       })();
 
-      loadInFlightRef.current = requestPromise;
-      try {
-        await requestPromise;
-      } finally {
-        loadInFlightRef.current = null;
-      }
+      await requestPromise;
     },
     [loadMeetSnapshot, selectedMeet],
   );

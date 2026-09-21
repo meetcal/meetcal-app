@@ -75,12 +75,13 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
         resetState();
       }
     } catch (error) {
+      // A background check the user never asked for must not surface anything:
+      // `error` renders a blocking full-screen "Update Error" modal with the
+      // raw SDK string, and this runs on launch plus every foreground. The
+      // no-network branch above already decided this is silent; a captive
+      // portal or a 5xx from the update server is the same situation.
       console.error('[OTA] Error checking for updates:', error);
-      setState(prev => ({ 
-        ...prev, 
-        isChecking: false, 
-        error: error instanceof Error ? error.message : 'Failed to check for updates'
-      }));
+      resetState();
     }
   }, [resetState]);
 

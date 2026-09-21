@@ -392,7 +392,14 @@ export default function WidgetSettingsScreen() {
       ? previous.qualifyingTotals.ageGroup
       : (totalAgeOptions[0] ?? previous.qualifyingTotals.ageGroup);
 
-    const nextMeet = previous.intlRankings.meet || meetOptions[0] || "";
+    // Heal a stored meet that is no longer offered, the same way `nextEvent`
+    // does above. Only defaulting when it is *empty* leaves last season's meet
+    // in place forever, and the auto-sync effect requires
+    // `meetOptions.includes(...)` — so the rankings widget silently stops
+    // updating with no way back except re-picking the filter by hand.
+    const nextMeet = meetOptions.includes(previous.intlRankings.meet)
+      ? previous.intlRankings.meet
+      : (meetOptions[0] ?? previous.intlRankings.meet);
     const rankingAgeOptions = getRankingAgeOptions(nextMeet);
     const nextRankingAge = rankingAgeOptions.includes(previous.intlRankings.ageCategory)
       ? previous.intlRankings.ageCategory

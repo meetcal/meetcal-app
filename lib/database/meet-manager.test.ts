@@ -91,14 +91,13 @@ import type { Schedule } from "@/types/schedule";
 const mockGetItem = AsyncStorage.getItem as jest.Mock;
 
 describe("validatePrefetchedLiftingResults", () => {
-  it("throws when athletes exist but lifting results are empty", () => {
+  it("does not throw when a meet has athletes but no results yet", () => {
+    // An upcoming meet has a full roster and zero results. The production
+    // caller skips the check entirely in that case; keep the function itself
+    // agreeing with it.
     expect(() =>
-      validatePrefetchedLiftingResults(
-        "Test Meet" as any,
-        ["Athlete A"],
-        [],
-      ),
-    ).toThrow("No lifting results fetched for meet: Test Meet");
+      validatePrefetchedLiftingResults("Test Meet" as any, ["Athlete A"], []),
+    ).not.toThrow();
   });
 
   it("does not throw when there are no athletes", () => {

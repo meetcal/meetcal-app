@@ -195,7 +195,11 @@ export default function SavedScreen() {
                 displayDate: day.date,
                 fullDate: day.fullDate,
                 startTime,
-                weighInTime: calculateWeighInTime(startTime),
+                // Guard the empty case: calculateWeighInTime returns a
+                // hard-coded "6:00 AM" for input it cannot parse, and a
+                // schedule row with no start time would surface that invented
+                // time on the card and in the calendar export.
+                weighInTime: startTime ? calculateWeighInTime(startTime) : "",
                 weightClass: platformInfo.weightClass,
               },
             );

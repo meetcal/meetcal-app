@@ -64,7 +64,9 @@ function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
     snatchMakeRate: row.snatch_make_rate ?? 0,
     cjMakeRate: row.cj_make_rate ?? 0,
     combinedMakeRate: row.combined_make_rate ?? 0,
-    athleteResults: row.athlete_results.map((result, index) => ({
+    // The API omits `athlete_results` for a club with nothing scored yet, and
+    // the response is an unvalidated `as T` cast, so don't assume it's there.
+    athleteResults: (row.athlete_results ?? []).map((result, index) => ({
       id: index,
       event_id: '',
       meet: '',

@@ -140,6 +140,23 @@ describe("formatSessionDisplayDate", () => {
     ).toBe("Thu, Jan 15");
   });
 
+  it("formats an ISO full date with no timezone without drifting a day", () => {
+    // Regression: the no-timezone branch used to format UTC midnight in the
+    // device zone, so a Los Angeles device read "2026-01-15" as Jan 14.
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      expect(formatSessionDisplayDate(undefined, "2026-01-15")).toBe(
+        "Thu, Jan 15",
+      );
+      expect(formatSessionDisplayDate(undefined, "2026-01-15T00:00:00")).toBe(
+        "Thu, Jan 15",
+      );
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
   });

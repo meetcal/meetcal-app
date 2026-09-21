@@ -13,6 +13,18 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+/**
+ * A meet result date is a calendar date, not an instant. `new Date("2025-03-15")`
+ * is UTC midnight, so formatting it in the device timezone shows 3/14/2025 on
+ * every US device. Format in UTC and it reads back as the date the meet held.
+ */
+function formatResultDate(date: string | null | undefined): string {
+  if (!date) return "";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString(undefined, { timeZone: "UTC" });
+}
+
 function getRateColor(rate: number, colors: AppColors) {
   if (rate >= 80) return colors.success;
   if (rate < 70) return colors.fail;
@@ -455,8 +467,7 @@ export default function AthleteResultsScreen() {
                   <ThemedText
                     style={[styles.meetDate, { color: colors.secondaryText }]}
                   >
-                    Date:{" "}
-                    {new Date(result.date).toLocaleDateString()}
+                    Date: {formatResultDate(result.date)}
                   </ThemedText>
                   <ThemedText
                     style={[

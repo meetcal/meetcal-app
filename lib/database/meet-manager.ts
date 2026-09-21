@@ -57,6 +57,15 @@ interface CacheInfo {
   meets: { [key: string]: MeetInfo };
 }
 
+/**
+ * Guards against a lifting-results payload that belongs to a different meet.
+ *
+ * An *empty* result set is not an error: an upcoming meet has a full athlete
+ * roster and no results at all until it is lifted. The only caller
+ * (`prefetchMeetDataUncached`) therefore skips this when there is nothing to
+ * check, and throwing on `liftingResults.length === 0` here would fail the
+ * offline download of every upcoming meet.
+ */
 export function validatePrefetchedLiftingResults(
   meet: MeetName,
   athleteNames: string[],
@@ -64,10 +73,6 @@ export function validatePrefetchedLiftingResults(
 ): void {
   const normalizeName = (value: string | null | undefined) =>
     (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-  if (athleteNames.length > 0 && liftingResults.length === 0) {
-    throw new Error(`No lifting results fetched for meet: ${meet}`);
-  }
 
   if (athleteNames.length > 0 && liftingResults.length > 0) {
     const athleteSet = new Set(athleteNames.map(normalizeName));
@@ -114,7 +119,24 @@ async function getCacheInfo(): Promise<CacheInfo> {
   try {
     const info = await AsyncStorage.getItem(MEET_CACHE_KEY);
     if (info) {
-      return JSON.parse(info);
+      // Callers do `Object.entries(cacheInfo.meets)`. A legacy or truncated
+      // entry that parses but has no `meets` object would throw there, inside
+      // `cleanupOldMeetData`, failing every meet open from then on.
+      const parsed: unknown = JSON.parse(info);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as CacheInfo).meets === 'object' &&
+        (parsed as CacheInfo).meets !== null
+      ) {
+        const candidate = parsed as CacheInfo;
+        return {
+          totalSize:
+            typeof candidate.totalSize === 'number' ? candidate.totalSize : 0,
+          meets: candidate.meets,
+        };
+      }
     }
     return {
       totalSize: 0,

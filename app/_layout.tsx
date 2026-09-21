@@ -118,9 +118,14 @@ const ONESIGNAL_APP_ID =
 export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  // A font that fails to load leaves `fontsLoaded` false forever. Since the
+  // splash is only hidden from inside the subtree gated below, that would
+  // freeze the app on the splash screen with no error and no timeout. Falling
+  // back to the system font is the lesser failure.
+  const fontsResolved = fontsLoaded || fontError != null;
 
   useEffect(() => {
     async function prepare() {
@@ -152,7 +157,7 @@ export default Sentry.wrap(function RootLayout() {
     prepare();
   }, []);
 
-  if (!appIsReady || !fontsLoaded) {
+  if (!appIsReady || !fontsResolved) {
     return null;
   }
 
@@ -169,7 +174,7 @@ export default Sentry.wrap(function RootLayout() {
           <SubscriptionProvider>
             <SelectedMeetProvider>
               <SavedSessionsProvider>
-                <RootLayoutContent fontsLoaded={fontsLoaded} />
+                <RootLayoutContent fontsLoaded={fontsResolved} />
               </SavedSessionsProvider>
             </SelectedMeetProvider>
           </SubscriptionProvider>
@@ -223,6 +228,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     let cancelled = false;
+    let listenerAdded = false;
 
     const syncOneSignalIdToRevenueCat = async (userState?: {
       current: { externalId?: string; onesignalId?: string };
@@ -259,7 +265,12 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
             await Purchases.setEmail(email);
           }
 
+          // The cleanup below already ran if the user signed out while the
+          // awaits above were pending; registering now would leak a listener
+          // that nothing removes.
+          if (cancelled) return;
           OneSignal.User.addEventListener("change", handleOneSignalUserChange);
+          listenerAdded = true;
           OneSignal.login(user.id);
           if (email) {
             OneSignal.User.addEmail(email);
@@ -279,7 +290,9 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     return () => {
       cancelled = true;
-      OneSignal.User.removeEventListener("change", handleOneSignalUserChange);
+      if (listenerAdded) {
+        OneSignal.User.removeEventListener("change", handleOneSignalUserChange);
+      }
     };
   }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
 

@@ -109,18 +109,24 @@ export function formatSessionDisplayDate(
   if (!displayDate && !fullDate) return '';
   const normalized = displayDate?.toLowerCase();
   if (normalized === 'today' || normalized === 'tomorrow') return displayDate || '';
-  if (fullDate && timeZoneId) {
+  if (fullDate) {
     const [datePart] = fullDate.split('T');
     const [year, month, day] = datePart.split('-').map(Number);
     const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
       ? new Date(fullDate)
       : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    return safeUtcDate.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      timeZone: timeZoneId
-    });
+    if (!Number.isNaN(safeUtcDate.getTime())) {
+      return safeUtcDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        // `meetDetails` can still be loading (or be missing offline), so the
+        // timezone is optional. Falling back to the *device* timezone would
+        // read the UTC-noon anchor a day early/late depending on the offset;
+        // UTC reads back the calendar date we put in.
+        timeZone: timeZoneId || 'UTC'
+      });
+    }
   }
   const source = fullDate || displayDate || '';
   const parsed = new Date(source);
@@ -128,7 +134,8 @@ export function formatSessionDisplayDate(
   return parsed.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'UTC'
   });
 }
 

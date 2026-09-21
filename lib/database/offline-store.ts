@@ -3,6 +3,7 @@ import type { Schedule } from '@/types/schedule';
 import type { LiftResult, Platform, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
 import type { Session, PlatformSession } from '@/data/types/schedule';
 import { MeetName } from '@/data/types/meet';
+import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { Buffer } from 'buffer';
 import pako from 'pako';
 import {
@@ -108,9 +109,22 @@ export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<bool
   return Boolean(downloads[meetId]);
 }
 
+// Pacific/Honolulu (UTC-10) is the westernmost timezone `USTimeZoneIdentifier`
+// allows, and the download entry does not record which zone the meet is in.
+// Treating the meet as ending at midnight in *that* zone means we may hold a
+// finished East-coast meet's data ~15 hours longer than necessary, which is
+// harmless — whereas `new Date(`${endDate}T23:59:59`)` uses the *device*
+// timezone and would delete a Los Angeles meet's offline data at 9pm local on
+// its final day for a user sitting in New York.
+const WESTERNMOST_MEET_OFFSET_MS = 10 * 60 * 60 * 1000;
+
 function hasMeetEnded(endDate: string): boolean {
-  const parsed = new Date(`${endDate}T23:59:59`);
-  return !Number.isNaN(parsed.getTime()) && parsed.getTime() < Date.now();
+  const anchor = meetCalendarDateAnchor(endDate);
+  if (!anchor) return false;
+  // Noon UTC on the end date + 12h = midnight UTC starting the next day.
+  const endOfMeetDay =
+    anchor.getTime() + 12 * 60 * 60 * 1000 + WESTERNMOST_MEET_OFFSET_MS;
+  return endOfMeetDay < Date.now();
 }
 
 export async function clearExpiredDownloadedMeets(): Promise<void> {
@@ -331,7 +345,17 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
     if (scheduleKey) {
       const scheduleString = await AsyncStorage.getItem(scheduleKey);
       if (scheduleString) {
-        schedule = JSON.parse(scheduleString);
+        // A truncated or legacy payload must degrade to "no cached schedule",
+        // not take the whole meet down: `MeetData.schedule` is typed
+        // `Schedule | null`, and the sibling reader `getMeetSchedule` already
+        // guards exactly this way.
+        try {
+          const parsed: unknown = JSON.parse(scheduleString);
+          schedule = Array.isArray(parsed) ? (parsed as Schedule) : null;
+        } catch (parseError) {
+          console.warn('Ignoring invalid cached schedule payload:', parseError);
+          schedule = null;
+        }
       }
     }
     
@@ -733,17 +757,18 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
         console.warn('Ignoring invalid cached athlete payload:', parseError);
       }
     }
+    // `name` crosses the API boundary unvalidated (`mapApiAthlete` copies
+    // `row.name` through), so `.trim()` on it can throw. normalizeAthleteName
+    // is null-safe and is the same key policy used everywhere else, including
+    // the session caches written just below.
+    const athleteKey = (athlete: LiftResult) =>
+      athlete.memberId || normalizeAthleteName(athlete.name);
     const existingByKey = new Map(
-      existingAthletes.map((athlete) => [
-        athlete.memberId || athlete.name.trim().toLowerCase(),
-        athlete,
-      ]),
+      existingAthletes.map((athlete) => [athleteKey(athlete), athlete]),
     );
     const mergedAthletes = athletes.map((athlete) => {
       if (athlete.session) return athlete;
-      const existing = existingByKey.get(
-        athlete.memberId || athlete.name.trim().toLowerCase(),
-      );
+      const existing = existingByKey.get(athleteKey(athlete));
       return existing?.session
         ? {
             ...athlete,

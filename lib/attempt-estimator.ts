@@ -82,6 +82,14 @@ function calculateAverageIncrease(
   return { first: avgFirstToSecond, second: avgSecondToThird };
 }
 
+/**
+ * Share of openers the athlete made.
+ *
+ * Attempts are stored as kilos, negative when the lift was missed, and
+ * null/0 when it was never taken. So an opener counts towards the denominator
+ * whenever it is a non-zero number, and towards the numerator only when it is
+ * positive — the same convention the athlete-results screen uses.
+ */
 function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj: number } {
   let snatchFirstAttempts = 0;
   let snatchFirstMakes = 0;
@@ -89,20 +97,14 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   let cjFirstMakes = 0;
 
   for (const result of results) {
-    if (result.snatch1 != null && result.snatch1 > 0) {
+    if (typeof result.snatch1 === 'number' && result.snatch1 !== 0) {
       snatchFirstAttempts++;
-      const snatchBest = getSnatchBest(result);
-      if (snatchBest != null && snatchBest >= result.snatch1) {
-        snatchFirstMakes++;
-      }
+      if (result.snatch1 > 0) snatchFirstMakes++;
     }
 
-    if (result.cj1 != null && result.cj1 > 0) {
+    if (typeof result.cj1 === 'number' && result.cj1 !== 0) {
       cjFirstAttempts++;
-      const cjBest = getCJBest(result);
-      if (cjBest != null && cjBest >= result.cj1) {
-        cjFirstMakes++;
-      }
+      if (result.cj1 > 0) cjFirstMakes++;
     }
   }
 

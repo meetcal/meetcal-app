@@ -239,7 +239,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (cached) {
         setIsSubscribed(cached.isSubscribed);
         setSubscriptionType(cached.subscriptionType);
-        setIsUsingStaleCache(false);
+        // Keep the stale flag honest: forcing it to false when the entry is
+        // past its 7-day expiry stops the reconnect effect from ever
+        // re-checking, so an expired entitlement stays "subscribed" for the
+        // rest of the session. The offline path already does this.
+        setIsUsingStaleCache(cached.isExpired);
       } else {
         console.warn('Error checking subscription and no cache available, setting unknown state');
         setIsSubscribed(null);
