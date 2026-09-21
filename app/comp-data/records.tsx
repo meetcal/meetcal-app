@@ -47,25 +47,28 @@ function RecordsScreenContent() {
     filterModalProps,
   } = useFilterState<Filters>({
     defaultFilters: { federation: "", gender: "Men", ageGroup: "" },
+    // Reset lands on a usable table rather than the empty initial state, which
+    // only exists until the federation defaults effect below runs.
+    onReset: () => ({
+      federation: "USAW",
+      gender: "Men" as Gender,
+      ageGroup: "Senior",
+    }),
   });
 
-  const recordsParams = useMemo(
-    () => (filters.federation ? ([filters.federation] as const) : null),
+  const recordsParams = useMemo<[string] | null>(
+    () => (filters.federation ? [filters.federation] : null),
     [filters.federation],
   );
   const {
     data: allRecords,
-    isInitialLoading: isRecordsLoading,
-    error: recordsError,
+    isInitialLoading: loading,
+    error: fetchError,
   } = useMutableResource({
     resource: federationRecordsResource,
-    params: (recordsParams ?? ([""] as const)) as [string],
+    params: recordsParams,
     initialData: EMPTY_RECORDS_DATA,
-    enabled: Boolean(recordsParams),
   });
-
-  const loading = Boolean(filters.federation) && isRecordsLoading;
-  const fetchError = recordsError;
 
   useEffect(() => {
     if (filters.federation) {
@@ -135,16 +138,6 @@ function RecordsScreenContent() {
     const gen = filters.gender === "Men" ? "Men" : "Women";
     const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
     return `${fed} • ${gen} • ${age}`;
-  };
-
-  const handleResetFilters = () => {
-    const reset = {
-      federation: "USAW",
-      gender: "Men" as Gender,
-      ageGroup: "Senior",
-    };
-    setFilters(reset);
-    setTempFilters(reset);
   };
 
   const fetchAgeGroupsForFederation = React.useCallback(
@@ -295,7 +288,6 @@ function RecordsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        onResetFilters={handleResetFilters}
       />
     </ThemedView>
   );

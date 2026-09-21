@@ -28,15 +28,15 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 const EMPTY_WSO_LIST: string[] = [];
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
-export default function RecordsScreen() {
+export default function WSORecordsScreen() {
   return (
     <SubscriptionGate>
-      <RecordsScreenContent />
+      <WSORecordsScreenContent />
     </SubscriptionGate>
   );
 }
 
-function RecordsScreenContent() {
+function WSORecordsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
@@ -65,8 +65,11 @@ function RecordsScreenContent() {
     initialData: EMPTY_WSO_LIST,
   });
 
-  const wsoParams = useMemo(
-    () => (filters.wso ? ([filters.wso, filters.ageGroup, filters.gender] as const) : null),
+  const wsoParams = useMemo<[string, string, Gender] | null>(
+    () =>
+      filters.wso
+        ? [filters.wso, filters.ageGroup, filters.gender as Gender]
+        : null,
     [filters.ageGroup, filters.gender, filters.wso],
   );
   const {
@@ -75,9 +78,8 @@ function RecordsScreenContent() {
     error: recordsError,
   } = useMutableResource({
     resource: wsoRecordsResource,
-    params: (wsoParams ?? (["", "Senior", "Men"] as const)) as [string, string, Gender],
+    params: wsoParams,
     initialData: EMPTY_RECORDS_DATA,
-    enabled: Boolean(wsoParams),
   });
 
   useEffect(() => {
@@ -128,12 +130,6 @@ function RecordsScreenContent() {
     const gen = filters.gender;
     const age = formatAgeGroupLabel(filters.ageGroup);
     return `${wso} • ${gen} • ${age}`;
-  };
-
-  const handleResetFilters = () => {
-    const reset = { wso: "", gender: "Men" as Gender, ageGroup: "Senior" };
-    setFilters(reset);
-    setTempFilters(reset);
   };
 
   const fetchAgeGroupsForWSO = React.useCallback(
@@ -282,7 +278,6 @@ function RecordsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={filterSections}
-        onResetFilters={handleResetFilters}
       />
     </ThemedView>
   );

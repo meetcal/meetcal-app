@@ -10,19 +10,12 @@ import React, { useEffect, useState } from "react";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 
 interface AutoUnsaveSettingProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    pressed: string;
-  };
   isSubscribed: boolean;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: ReturnType<typeof useRouter>;
 }
 
 export function AutoUnsaveSetting({
-  colors,
   isSubscribed,
   requireAuth,
   router,
@@ -125,7 +118,6 @@ export function AutoUnsaveSetting({
 
   return (
     <ProfileSwitchSetting
-      colors={colors}
       label="Auto-remove Saved Sessions"
       description={
         loadFailed
@@ -133,8 +125,7 @@ export function AutoUnsaveSetting({
           : "Remove sessions 2 hours after they start."
       }
       value={isEnabled && isSubscribed && !loadFailed}
-      onPress={handleToggle}
-      onValueChange={handleToggle}
+      onToggle={handleToggle}
       showPremiumBadge={!isSubscribed}
       switchDisabled={!isSubscribed || loadFailed}
       isLoading={isLoading}

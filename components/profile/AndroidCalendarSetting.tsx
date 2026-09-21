@@ -12,21 +12,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { ProfileActionSetting } from "./ProfileActionSetting";
 
-interface AndroidCalendarSettingProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    card: string;
-    pressed: string;
-    link: string;
-    fail: string;
-  };
-}
-
-export function AndroidCalendarSetting({
-  colors,
-}: AndroidCalendarSettingProps) {
+export function AndroidCalendarSetting() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPickerVisible, setIsPickerVisible] = useState(false);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
@@ -126,7 +112,6 @@ export function AndroidCalendarSetting({
   return (
     <React.Fragment>
       <ProfileActionSetting
-        colors={colors}
         label="Default Calendar"
         value={isLoading ? "Loading..." : selectedCalendar?.title || "Not set"}
         onPress={() => {

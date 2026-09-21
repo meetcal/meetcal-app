@@ -76,6 +76,34 @@ export const WEIGH_IN_LEAD_HOURS = 2;
 const WEIGH_IN_UNKNOWN = "";
 
 /**
+ * Render a clock string as 12-hour `h:mm AM/PM`.
+ *
+ * Accepts `HH:MM`, `HH:MM:SS`, `h:mm AM/PM` (space optional) and `h:mm:ss AM/PM`;
+ * seconds are dropped. Anything else is returned unchanged — a start time the
+ * API sent in an unexpected shape is more useful on screen than a blank cell.
+ *
+ * There were three copies of this: `data/meets/config.ts`, the share-schedule
+ * image and the start-list CSV export. They disagreed on whether seconds were
+ * stripped and on out-of-range hours, so the same session could render one way
+ * in the app and another in the image the user posts.
+ */
+export function formatTo12Hour(timeStr: string | null | undefined): string {
+  if (!timeStr) return "";
+  const trimmed = timeStr.trim();
+
+  const match12h = trimmed.match(TIME_12H_REGEX);
+  if (match12h) {
+    return `${Number(match12h[1])}:${match12h[2]} ${match12h[3].toUpperCase()}`;
+  }
+
+  const match24h = trimmed.match(TIME_24H_REGEX);
+  if (!match24h) return timeStr;
+
+  const hours = Number(match24h[1]);
+  return `${hours % 12 || 12}:${match24h[2]} ${hours >= 12 ? "PM" : "AM"}`;
+}
+
+/**
  * Returns true when a session started at least AUTO_UNSAVE_DELAY_MS (2 hours)
  * before `now`, meaning it qualifies for auto-removal.
  */

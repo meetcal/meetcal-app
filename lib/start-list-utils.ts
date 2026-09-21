@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
-import { MeetName } from '@/data/types/meet';
 
 const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
 
@@ -177,8 +176,4 @@ export function parseWeightClasses(weightClass: string): string[] {
     }
   });
   return Array.from(weightClasses);
-}
-
-export function isMeetName(meet: string | null): meet is MeetName {
-  return meet !== null;
 }

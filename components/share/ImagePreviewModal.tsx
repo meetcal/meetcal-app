@@ -1,9 +1,10 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
+import { shareImageFile } from "@/lib/share-image";
 import { useAppColors } from "@/hooks/useAppColors";
 import { ImagePreviewModalProps } from "@/types/start-list";
-import * as Sharing from "expo-sharing";
 import React from "react";
 import {
   Image,
@@ -82,19 +83,10 @@ export default function ImagePreviewModal({
     if (!selectedOption?.uri) return;
 
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        alert("Sharing is not available on this device");
-        return;
-      }
-
-      await Sharing.shareAsync(selectedOption.uri, {
-        mimeType: "image/png",
-        dialogTitle: "Share Schedule",
-      });
+      await shareImageFile(selectedOption.uri, "Share Schedule");
     } catch (error) {
       console.error("Error sharing image:", error);
-      alert("Failed to share image");
+      showToast({ type: "error", message: "Failed to share image" });
     }
   };
 

@@ -132,6 +132,43 @@ describe("useMutableResource", () => {
     expect(captured!.data).toEqual([{ id: "women" }]);
   });
 
+  it("stays idle until params arrive, then loads", async () => {
+    const fetchFresh = jest.fn(async () => [{ id: "fresh" }]);
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `gated:${param}`,
+      loadCached: async () => null,
+      fetchFresh,
+      persistFresh: async (data) => ({ data, lastUpdatedAt: Date.now() }),
+    });
+
+    function Harness({ param }: { param: string | null }) {
+      captured = useMutableResource({
+        resource,
+        params: param === null ? null : [param],
+        initialData: [],
+      });
+      return null;
+    }
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness param={null} />);
+    });
+    await flush();
+
+    // Nothing to fetch yet: no request, and no spinner that would never end.
+    expect(fetchFresh).not.toHaveBeenCalled();
+    expect(captured!.isInitialLoading).toBe(false);
+
+    act(() => {
+      tree.update(<Harness param="a" />);
+    });
+    await flush();
+
+    expect(fetchFresh).toHaveBeenCalledWith("a");
+    expect(captured!.data).toEqual([{ id: "fresh" }]);
+  });
+
   it("clears refreshError once a revalidate succeeds", async () => {
     let shouldFail = true;
     const resource = createMutableResource<Row[], [string]>({

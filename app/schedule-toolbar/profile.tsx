@@ -237,19 +237,16 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <NotificationSettings
-            colors={colors}
             subscriptionStatus={subscriptionType || "free"}
             requireAuth={requireAuth}
             router={router}
           />
           <AutoUnsaveSetting
-            colors={colors}
             isSubscribed={Boolean(isSubscribed)}
             requireAuth={requireAuth}
             router={router}
           />
           <ProfileActionSetting
-            colors={colors}
             label="Widget Settings"
             description={
               Platform.OS === "ios"
@@ -259,7 +256,7 @@ export default function ProfileScreen() {
             onPress={() => router.push("/schedule-toolbar/widget-settings")}
           />
           {Platform.OS === "android" && (
-            <AndroidCalendarSetting colors={colors} />
+            <AndroidCalendarSetting />
           )}
         </View>
 

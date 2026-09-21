@@ -21,15 +21,15 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_INTL_RANKINGS: IntlRanking[] = [];
 
-export default function RecordsScreen() {
+export default function IntlRankingsScreen() {
   return (
     <SubscriptionGate>
-      <RecordsScreenContent />
+      <IntlRankingsScreenContent />
     </SubscriptionGate>
   );
 }
 
-function RecordsScreenContent() {
+function IntlRankingsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
@@ -179,6 +179,9 @@ function RecordsScreenContent() {
     return `${meet} • ${age_category} • ${gender}`;
   };
 
+  // Unlike the sibling screens, reset cannot go through `useFilterState`'s
+  // `onReset`: the defaults here are derived from the fetched rankings, not
+  // from a literal known at mount.
   const handleResetFilters = () => {
     const defaultMeet =
       meetOptions[0] ||

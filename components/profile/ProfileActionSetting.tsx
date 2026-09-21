@@ -1,3 +1,4 @@
+import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -5,13 +6,6 @@ import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 
 interface ProfileActionSettingProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    pressed: string;
-    link: string;
-  };
   label: string;
   description?: string;
   value?: string;
@@ -20,13 +14,14 @@ interface ProfileActionSettingProps {
 }
 
 export function ProfileActionSetting({
-  colors,
   label,
   description,
   value,
   onPress,
   disabled = false,
 }: ProfileActionSettingProps) {
+  const colors = useAppColors();
+
   return (
     <Pressable
       style={({ pressed }) => [

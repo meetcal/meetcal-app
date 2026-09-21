@@ -20,7 +20,7 @@ import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult } from "@/data/types/athletes";
-import { MeetName } from "@/data/types/meet";
+import { isMeetName, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   getMeetData,
@@ -29,12 +29,13 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   compareStartTimes,
+  formatSessionDisplayDate,
   getAgeCategory,
   getSaveIcon,
-  isMeetName,
   parseWeightClasses,
   requestCalendarPermissions,
   sortAthletes,
@@ -53,6 +54,7 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
+import { formatTo12Hour } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
@@ -132,6 +134,12 @@ const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
 /** Let the list paint and settle before spending bandwidth on the warm. */
 const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
 
+/**
+ * Render width of the shareable schedule image, in points. Fixed so the PNG is
+ * the same size on every device; `ImagePreviewModal` assumes it too.
+ */
+const SHARE_IMAGE_WIDTH = 850;
+
 export default function StartListScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
@@ -172,10 +180,14 @@ export default function StartListScreen() {
   const shareScheduleRef = useRef<React.ComponentRef<typeof View>>(null);
   const shareScheduleTransparentRef =
     useRef<React.ComponentRef<typeof View>>(null);
-  const [filterApplyCount, setFilterApplyCount] = useState(0);
-  const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
-    [],
-  );
+  // The App Store review prompt's counters. Refs, not state: nothing renders
+  // them, and the write path is a side effect (AsyncStorage + requestReview)
+  // that must run exactly once per filter apply. It used to live inside a
+  // `setFilterApplyCount` updater, which React is free to invoke more than
+  // once per update — double-counting the threshold and re-prompting — and it
+  // re-rendered this whole screen for a number no one displays.
+  const filterApplyCountRef = useRef(0);
+  const reviewPromptedCountsRef = useRef<number[]>([]);
   const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
   const [calendarDestinations, setCalendarDestinations] = useState<
     CalendarDestination[]
@@ -214,8 +226,10 @@ export default function StartListScreen() {
         if (!isMounted) return;
         const count = Number(countRaw ?? 0);
         const prompted = promptedRaw ? JSON.parse(promptedRaw) : [];
-        setFilterApplyCount(Number.isFinite(count) ? count : 0);
-        setReviewPromptedCounts(Array.isArray(prompted) ? prompted : []);
+        filterApplyCountRef.current = Number.isFinite(count) ? count : 0;
+        reviewPromptedCountsRef.current = Array.isArray(prompted)
+          ? prompted
+          : [];
       } catch (error) {
         console.warn("StartList: Failed to load review state", error);
       }
@@ -249,15 +263,15 @@ export default function StartListScreen() {
   const requestReviewIfEligible = useCallback(
     async (nextCount: number) => {
       if (!REVIEW_COUNTS.includes(nextCount as 5 | 50 | 100)) return;
-      if (reviewPromptedCounts.includes(nextCount)) return;
+      if (reviewPromptedCountsRef.current.includes(nextCount)) return;
       try {
         const StoreReview = await loadStoreReview();
         if (!StoreReview) return;
         const isAvailable = await StoreReview.isAvailableAsync();
         if (!isAvailable) return;
         await StoreReview.requestReview();
-        const updated = [...reviewPromptedCounts, nextCount];
-        setReviewPromptedCounts(updated);
+        const updated = [...reviewPromptedCountsRef.current, nextCount];
+        reviewPromptedCountsRef.current = updated;
         await AsyncStorage.setItem(
           REVIEW_PROMPTED_KEY,
           JSON.stringify(updated),
@@ -266,7 +280,7 @@ export default function StartListScreen() {
         console.warn("StartList: requestReview failed", error);
       }
     },
-    [reviewPromptedCounts, loadStoreReview],
+    [loadStoreReview],
   );
 
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
@@ -689,19 +703,12 @@ export default function StartListScreen() {
   ]);
 
   const trackFilterApply = useCallback(() => {
-    setFilterApplyCount((prev) => {
-      const nextCount = prev + 1;
-      AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch(
-        (error) => {
-          console.warn(
-            "StartList: Failed to persist filter apply count",
-            error,
-          );
-        },
-      );
-      requestReviewIfEligible(nextCount);
-      return nextCount;
+    const nextCount = filterApplyCountRef.current + 1;
+    filterApplyCountRef.current = nextCount;
+    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch((error) => {
+      console.warn("StartList: Failed to persist filter apply count", error);
     });
+    void requestReviewIfEligible(nextCount);
   }, [requestReviewIfEligible]);
 
   const handlePillSelect = useCallback(
@@ -1277,8 +1284,6 @@ export default function StartListScreen() {
     }
 
     try {
-      // Dynamically import captureRef to avoid native module errors on startup
-      const { captureRef } = await import("react-native-view-shot");
       setShowShareViews(true);
       await new Promise((resolve) =>
         requestAnimationFrame(() => resolve(null)),
@@ -1297,19 +1302,9 @@ export default function StartListScreen() {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const [whiteUri, transparentUri] = await Promise.all([
-        captureRef(shareScheduleRef.current, {
-          format: "png",
-          quality: 1.0,
-          result: "tmpfile",
-          width: 850,
-          height: undefined,
-        }),
-        captureRef(shareScheduleTransparentRef.current, {
-          format: "png",
-          quality: 1.0,
-          result: "tmpfile",
-          width: 850,
-          height: undefined,
+        captureViewAsPng(shareScheduleRef.current, { width: SHARE_IMAGE_WIDTH }),
+        captureViewAsPng(shareScheduleTransparentRef.current, {
+          width: SHARE_IMAGE_WIDTH,
         }),
       ]);
       setGeneratedImageWhiteUri(whiteUri);
@@ -1346,46 +1341,6 @@ export default function StartListScreen() {
       });
       return;
     }
-
-    const formatTime = (time: string) => {
-      if (!time) return "";
-      if (time.includes("AM") || time.includes("PM")) {
-        return time;
-      }
-      const [hours, minutes] = time.split(":").map(Number);
-      if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-      const period = hours >= 12 ? "PM" : "AM";
-      const hour12 = hours % 12 || 12;
-      return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
-    };
-
-    const formatDate = (dateString: string) => {
-      if (!dateString) return "";
-      const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      const formatOptions: Intl.DateTimeFormatOptions = {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      };
-
-      if (isoDateMatch) {
-        const [, yearRaw, monthRaw, dayRaw] = isoDateMatch;
-        const year = Number(yearRaw);
-        const month = Number(monthRaw);
-        const day = Number(dayRaw);
-        if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-          return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(
-            "en-US",
-            formatOptions,
-          );
-        }
-      }
-
-      const parsed = new Date(dateString);
-      if (Number.isNaN(parsed.getTime())) return dateString;
-      return parsed.toLocaleDateString("en-US", formatOptions);
-    };
 
     const csvEscape = (value: string) => {
       const escaped = value.replace(/"/g, '""');
@@ -1447,8 +1402,8 @@ export default function StartListScreen() {
           athlete.weightClass || "",
           athlete.session?.number?.toString() || "",
           athlete.session?.platform || "",
-          formatDate(dateStr),
-          formatTime(startTime),
+          formatSessionDisplayDate(undefined, dateStr),
+          formatTo12Hour(startTime),
         ]);
       });
     });

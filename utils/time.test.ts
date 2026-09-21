@@ -1,8 +1,39 @@
 import {
   AUTO_UNSAVE_DELAY_MS,
   calculateWeighInTime,
+  formatTo12Hour,
   hasSessionPassedAutoUnsaveWindow,
 } from "@/utils/time";
+
+describe("formatTo12Hour", () => {
+  it("converts 24-hour clock strings", () => {
+    expect(formatTo12Hour("09:00")).toBe("9:00 AM");
+    expect(formatTo12Hour("13:05")).toBe("1:05 PM");
+    expect(formatTo12Hour("00:30")).toBe("12:30 AM");
+    expect(formatTo12Hour("12:00")).toBe("12:00 PM");
+    expect(formatTo12Hour("23:59")).toBe("11:59 PM");
+  });
+
+  it("drops seconds from both input formats", () => {
+    expect(formatTo12Hour("13:05:00")).toBe("1:05 PM");
+    // The API emits both "9:00 AM" and "9:00:00 AM"; the share image used to
+    // render the second one verbatim, seconds and all.
+    expect(formatTo12Hour("9:00:00 AM")).toBe("9:00 AM");
+    expect(formatTo12Hour("9:00AM")).toBe("9:00 AM");
+  });
+
+  it("returns a blank for a missing time rather than inventing one", () => {
+    expect(formatTo12Hour("")).toBe("");
+    expect(formatTo12Hour(null)).toBe("");
+    expect(formatTo12Hour(undefined)).toBe("");
+  });
+
+  it("passes through anything it cannot parse", () => {
+    expect(formatTo12Hour("TBD")).toBe("TBD");
+    expect(formatTo12Hour("24:00")).toBe("24:00");
+    expect(formatTo12Hour("9")).toBe("9");
+  });
+});
 
 describe("calculateWeighInTime", () => {
   beforeEach(() => {

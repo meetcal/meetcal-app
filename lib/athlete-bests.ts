@@ -1,3 +1,12 @@
+/**
+ * Athlete lifetime bests, resolved for a whole session at once.
+ *
+ * This is a data-access module — in-flight dedupe, a stored-bests cache layer,
+ * an offline fallback that derives bests from downloaded meet results, and the
+ * write-back that keeps the stored layer warm. It lives next to
+ * `lib/athlete-prs` rather than under `components/` because it imports
+ * `lib/database/*` and holds policy, not UI.
+ */
 import { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { maxSuccessfulAttempt } from "@/lib/athletes";
@@ -91,11 +100,43 @@ async function loadCachedBestsForNames(
   return bestsByName;
 }
 
-function hasStoredBests(
-  name: string,
-  cachedBests: Record<string, SupabaseBests | undefined>,
-) {
-  return Object.prototype.hasOwnProperty.call(cachedBests, name);
+/**
+ * The stored-bests layer, shared by both entry points: de-duplicate the
+ * names, seed every one with an empty record, then overwrite whatever
+ * `offline-store` already holds. `getCachedAthleteBestsBatch` stops here;
+ * `getAthleteBestsBatchUncached` continues with `namesMissingStoredBests`.
+ */
+async function loadStoredBests(names: string[]): Promise<{
+  bestsByName: Record<string, SupabaseBests>;
+  namesMissingStoredBests: string[];
+}> {
+  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
+  const bestsByName: Record<string, SupabaseBests> = {};
+
+  uniqueNames.forEach((name) => {
+    bestsByName[name] = createEmptyBests();
+  });
+
+  if (uniqueNames.length === 0) {
+    return { bestsByName, namesMissingStoredBests: [] };
+  }
+
+  const cachedStoredBests = await getCachedAthleteBestsForNames(uniqueNames);
+  uniqueNames.forEach((name) => {
+    const cached = cachedStoredBests[name];
+    if (cached) {
+      bestsByName[name] = cached;
+    }
+  });
+
+  return {
+    bestsByName,
+    // A name with a stored entry of all-nulls is still resolved: the athlete
+    // genuinely has no results. Only an absent key means "never looked up".
+    namesMissingStoredBests: uniqueNames.filter(
+      (name) => !Object.prototype.hasOwnProperty.call(cachedStoredBests, name),
+    ),
+  };
 }
 
 function createBatchKey(names: string[], meetId: MeetName): string {
@@ -120,56 +161,18 @@ export async function getAthleteBestsBatch(
   return request;
 }
 
+/** Stored bests only — never touches the network. */
 export async function getCachedAthleteBestsBatch(
   names: string[],
 ): Promise<Record<string, SupabaseBests>> {
-  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
-  const bestsByName: Record<string, SupabaseBests> = {};
-
-  uniqueNames.forEach((name) => {
-    bestsByName[name] = createEmptyBests();
-  });
-
-  if (uniqueNames.length === 0) {
-    return bestsByName;
-  }
-
-  const cachedStoredBests = await getCachedAthleteBestsForNames(uniqueNames);
-  uniqueNames.forEach((name) => {
-    const cached = cachedStoredBests[name];
-    if (cached) {
-      bestsByName[name] = cached;
-    }
-  });
-
+  const { bestsByName } = await loadStoredBests(names);
   return bestsByName;
 }
 
 async function getAthleteBestsBatchUncached(
   names: string[],
 ): Promise<Record<string, SupabaseBests>> {
-  const uniqueNames = Array.from(new Set(names.filter(Boolean)));
-  const bestsByName: Record<string, SupabaseBests> = {};
-
-  uniqueNames.forEach((name) => {
-    bestsByName[name] = createEmptyBests();
-  });
-
-  if (uniqueNames.length === 0) {
-    return bestsByName;
-  }
-
-  const cachedStoredBests = await getCachedAthleteBestsForNames(uniqueNames);
-  uniqueNames.forEach((name) => {
-    const cached = cachedStoredBests[name];
-    if (cached) {
-      bestsByName[name] = cached;
-    }
-  });
-
-  const namesMissingStoredBests = uniqueNames.filter(
-    (name) => !hasStoredBests(name, cachedStoredBests),
-  );
+  const { bestsByName, namesMissingStoredBests } = await loadStoredBests(names);
   if (namesMissingStoredBests.length === 0) {
     return bestsByName;
   }

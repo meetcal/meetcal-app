@@ -48,6 +48,13 @@ function NationalRankingsScreenContent() {
       ageGroup: "Senior",
       weightClass: "Open Men's 60kg",
     },
+    // Reset clears the weight class so the effect below re-picks the first
+    // class of the reset age group rather than keeping the initial default.
+    onReset: () => ({
+      gender: "Men" as Gender,
+      ageGroup: "Senior",
+      weightClass: "",
+    }),
   });
 
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -60,8 +67,8 @@ function NationalRankingsScreenContent() {
     }
   }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 
-  const resourceParams = useMemo(
-    () => (filters.weightClass ? ([filters.weightClass] as [string]) : null),
+  const resourceParams = useMemo<[string] | null>(
+    () => (filters.weightClass ? [filters.weightClass] : null),
     [filters.weightClass],
   );
   const {
@@ -70,9 +77,8 @@ function NationalRankingsScreenContent() {
     error,
   } = useMutableResource({
     resource: nationalRankingsResource,
-    params: resourceParams ?? ([] as unknown as [string]),
+    params: resourceParams,
     initialData: EMPTY_RANKINGS,
-    enabled: Boolean(resourceParams),
   });
   useEffect(() => {
     if (!error) {
@@ -99,15 +105,6 @@ function NationalRankingsScreenContent() {
       isCancelled = true;
     };
   }, [error, setIsOffline]);
-
-  const handleResetFilters = () => {
-    const reset = {
-      gender: "Men" as Gender,
-      ageGroup: "Senior",
-      weightClass: "",
-    };
-    setFilters(reset);
-  };
 
   // Build filter sections dynamically based on tempFilters
   const buildFilterSections = (
@@ -221,7 +218,6 @@ function NationalRankingsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        onResetFilters={handleResetFilters}
         resultCount={rankings.length}
         resultLabel="rankings"
       />

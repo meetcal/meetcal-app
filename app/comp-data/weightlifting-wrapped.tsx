@@ -3,16 +3,15 @@ import { useIsOffline } from "@/hooks/useIsOffline";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import type { SupabaseLiftResult } from "@/data/types/athletes";
+import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
 import { calculateWrappedStats } from "@/lib/wrapped-stats";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -40,7 +39,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ViewShot, { captureRef } from "react-native-view-shot";
+import ViewShot from "react-native-view-shot";
 
 const YEARS = Array.from(
   { length: 10 },
@@ -311,24 +310,8 @@ export default function WeightliftingWrappedScreen() {
   const shareWrapped = async () => {
     try {
       if (!viewShotRef.current) return;
-      const uri = await captureRef(viewShotRef, {
-        format: "png",
-        quality: 1,
-        result: "tmpfile",
-      });
-      if (Platform.OS === "ios") {
-        await Share.share({ url: uri });
-      } else {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(uri, {
-            mimeType: "image/png",
-            dialogTitle: `My ${selectedYear} Weightlifting Wrapped!`,
-          });
-        } else {
-          throw new Error("Sharing not available");
-        }
-      }
+      const uri = await captureViewAsPng(viewShotRef);
+      await shareImageFile(uri, `My ${selectedYear} Weightlifting Wrapped!`);
     } catch {
       if (!wrappedStats) return;
       const shareText = `My ${selectedYear} Weightlifting Wrapped!\n\nTotal Weight Lifted: ${wrappedStats.totalWeightLifted.toLocaleString()}kg\nMake Percentage: ${wrappedStats.makePercentage.toFixed(1)}%\nBest Total: ${wrappedStats.bestTotal}kg\nSnatch PR: ${wrappedStats.bestSnatch}kg\nClean & Jerk PR: ${wrappedStats.bestCleanJerk}kg\nCompeted in ${wrappedStats.totalMeets} meets\nStatus: ${wrappedStats.yearRank}\n\n#WeightliftingWrapped`;

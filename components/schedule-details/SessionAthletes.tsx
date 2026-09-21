@@ -1,7 +1,7 @@
 import {
   getAthleteBestsBatch,
   getCachedAthleteBestsBatch,
-} from "@/components/schedule-details/athleteBests";
+} from "@/lib/athlete-bests";
 import SessionSortControl from "@/components/schedule-details/sessionSort/SessionSortControl";
 import type {
   SortDirection,

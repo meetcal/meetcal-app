@@ -40,7 +40,7 @@ function ClubMeetsListScreenContent() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isOffline] = useIsOffline();
-  const params = useMemo(() => (club ? ([club] as const) : null), [club]);
+  const params = useMemo<[string] | null>(() => (club ? [club] : null), [club]);
   const {
     data: athletesInClub,
     isInitialLoading: isLoading,
@@ -48,9 +48,8 @@ function ClubMeetsListScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubAthletesResource,
-    params: (params ?? ([""] as const)) as [string],
+    params,
     initialData: [] as AthleteClub[],
-    enabled: Boolean(params),
   });
 
   // Track screen view on mount

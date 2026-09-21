@@ -17,20 +17,12 @@ import {
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 
 interface NotificationSettingsProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    card: string;
-    pressed: string;
-  };
   subscriptionStatus: SubscriptionStatus;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: ReturnType<typeof useRouter>;
 }
 
 export function NotificationSettings({
-  colors,
   subscriptionStatus,
   requireAuth,
   router,
@@ -206,12 +198,10 @@ export function NotificationSettings({
 
   return (
     <ProfileSwitchSetting
-      colors={colors}
       label="Session Reminders"
       description="Get notified 1 hour before your sessions"
       value={isEnabled && isSubscribed}
-      onPress={handleToggle}
-      onValueChange={handleToggle}
+      onToggle={handleToggle}
       showPremiumBadge={!isSubscribed}
       switchDisabled={!isSubscribed}
       isLoading={isLoading}

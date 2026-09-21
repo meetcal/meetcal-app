@@ -14,9 +14,6 @@ type SelectedMeetContextType = {
   availableMeets: Meet[];
   setSelectedMeet: (meet: MeetName) => Promise<void>;
   isLoading: boolean;
-  isSyncing: boolean;
-  lastSynced: number | null;
-  syncStatus: 'idle' | 'syncing' | 'error';
   forceSync: () => Promise<void>;
   refreshAvailableMeets: () => Promise<void>;
 };
@@ -65,9 +62,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [meetDetails, setMeetDetails] = useState<Meet | null>(null);
   const [availableMeets, setAvailableMeets] = useState<Meet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<number | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
   // Mirror of meetDetails so loadMeets can read the latest value without
@@ -81,21 +75,9 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   }, [meetDetails]);
 
   const beginMeetWarmup = useCallback((meet: MeetName, label: string) => {
-    setIsSyncing(true);
-    setSyncStatus('syncing');
-
-    warmMeetData(meet)
-      .then(() => {
-        setLastSynced(Date.now());
-        setSyncStatus('idle');
-      })
-      .catch((error) => {
-        console.error(`Error ${label}:`, error);
-        setSyncStatus('error');
-      })
-      .finally(() => {
-        setIsSyncing(false);
-      });
+    warmMeetData(meet).catch((error) => {
+      console.error(`Error ${label}:`, error);
+    });
   }, []);
 
   // A SyncManager starts a 5-minute interval in its constructor, so dropping
@@ -142,7 +124,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         // the previous valid selection and surface the error so the UI can
         // toast — do not clear storage or null the state.
         console.error('Error looking up selected meet:', error);
-        setSyncStatus('error');
         throw error;
       }
       if (fetched) {
@@ -154,7 +135,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     if (!meetData) {
       // Definitively invalid: the lookup returned no meet. Clear selection.
       console.error('Selected meet not found in available meets');
-      setSyncStatus('error');
       setSelectedMeetState(null);
       setMeetDetails(null);
       setSyncManager(null);
@@ -179,7 +159,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       // Persisting failed after activation; restore the prior selection rather
       // than leaving inconsistent state.
       console.error('Error saving selected meet:', error);
-      setSyncStatus('error');
       if (previousMeet && previousMeetDetails) {
         activateMeet(previousMeet, previousMeetDetails);
       } else {
@@ -196,30 +175,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     activateMeet(meet, meetData);
     beginMeetWarmup(meet, 'initializing meet data');
   }, [activateMeet, beginMeetWarmup]);
-
-  const syncAvailableMeets = useCallback(async (options?: { forceFresh?: boolean }) => {
-    await clearExpiredDownloadedMeets();
-
-    const cached = options?.forceFresh ? [] : await getCachedMeets();
-    if (cached.length > 0) {
-      setAvailableMeets(cached);
-    }
-
-    try {
-      const fresh = await fetchMeetsFresh();
-      setAvailableMeets((current) => {
-        const currentSerialized = JSON.stringify(current);
-        const nextSerialized = JSON.stringify(fresh);
-        return currentSerialized === nextSerialized ? current : fresh;
-      });
-      return fresh;
-    } catch (error) {
-      if (cached.length > 0) {
-        return cached;
-      }
-      throw error;
-    }
-  }, []);
 
   // Load available meets
   const chooseMeet = useCallback(
@@ -414,34 +369,26 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   // Force sync function
   const forceSync = async () => {
     if (!syncManager || !selectedMeet) return;
-    
+
     try {
-      setIsSyncing(true);
-      setSyncStatus('syncing');
       await prefetchMeetData(selectedMeet);
-      setLastSynced(Date.now());
-      setSyncStatus('idle');
     } catch (error) {
       console.error('Error forcing sync:', error);
-      setSyncStatus('error');
-    } finally {
-      setIsSyncing(false);
     }
   };
 
-  // Refresh available meets function
+  // Refresh available meets function. Always goes to the network: the one
+  // caller is the profile screen's "clear cached meet data", which has just
+  // emptied the cache this would otherwise read.
   const refreshAvailableMeets = async () => {
     try {
-      setIsSyncing(true);
-      setSyncStatus('syncing');
-      const meets = await syncAvailableMeets({ forceFresh: true });
-      setAvailableMeets(meets);
-      setSyncStatus('idle');
+      await clearExpiredDownloadedMeets();
+      const fresh = await fetchMeetsFresh();
+      setAvailableMeets((current) =>
+        JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh,
+      );
     } catch (error) {
       console.error('Error refreshing available meets:', error);
-      setSyncStatus('error');
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -453,9 +400,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         availableMeets,
         setSelectedMeet,
         isLoading,
-        isSyncing,
-        lastSynced,
-        syncStatus,
         forceSync,
         refreshAvailableMeets
       }}

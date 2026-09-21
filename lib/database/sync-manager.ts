@@ -1,6 +1,5 @@
-import { getMeetData, saveMeetSchedule } from './offline-store';
+import { saveMeetSchedule } from './offline-store';
 import { fetchSchedule } from './queries';
-import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
@@ -58,19 +57,6 @@ export class SyncManager {
     } finally {
       this.isSyncing = false;
     }
-  }
-
-  public async getMeetData(): Promise<MeetData> {
-    try {
-      // Always try to sync first
-      await this.syncIfNeeded();
-    } catch (error) {
-      console.log('Sync failed, using cached data:', error);
-    }
-
-    // Get data from cache (whether sync succeeded or failed)
-    const data = await getMeetData(this.meetId);
-    return data;
   }
 
   public stopSync() {

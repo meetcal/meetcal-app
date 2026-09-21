@@ -710,14 +710,6 @@ export async function fetchApiAthletesWithSession(
   return rows.map(mapApiAthlete);
 }
 
-export async function fetchApiLiftingResultsForMeet(meet: MeetName): Promise<SupabaseLiftResult[]> {
-  const rows = assertArray<ApiLiftingResult>(
-    await getJson('/lifting-results', { meet }),
-    '/lifting-results',
-  );
-  return rows.map(mapApiLiftingResult);
-}
-
 export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
   const rows: SupabaseLiftResult[] = [];

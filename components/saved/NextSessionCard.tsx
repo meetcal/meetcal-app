@@ -18,8 +18,8 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { ThemedText } from "@/components/ui/ThemedText";
 
+/** Only called with a positive remainder; the caller owns the "in progress" case. */
 function formatCountdown(msRemaining: number): string {
-  if (msRemaining <= 0) return "in progress";
   const totalMinutes = Math.floor(msRemaining / 60000);
   if (totalMinutes === 0) return "in <1m";
   const days = Math.floor(totalMinutes / 1440);

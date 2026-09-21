@@ -123,4 +123,16 @@ describe("subscribeToNetworkChanges", () => {
     expect(callback.mock.calls).toEqual([[true], [false], [true]]);
     expect(returned).toBe(unsubscribe);
   });
+
+  it("does not contradict simulated offline mode with a live listener", () => {
+    isOfflineModeSimulated.mockReturnValue(true);
+    const callsBefore = NetInfo.addEventListener.mock.calls.length;
+
+    const callback = jest.fn();
+    const unsubscribe = networkUtils.subscribeToNetworkChanges(callback);
+
+    expect(NetInfo.addEventListener.mock.calls.length).toBe(callsBefore);
+    expect(callback).not.toHaveBeenCalled();
+    expect(() => unsubscribe()).not.toThrow();
+  });
 });

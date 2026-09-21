@@ -56,8 +56,8 @@ export function useScheduleData(
   selectedMeet: MeetName | null,
   timeZoneIdentifier?: string,
 ): UseScheduleDataReturn {
-  const params = useMemo(
-    () => (selectedMeet ? ([selectedMeet] as [MeetName]) : null),
+  const params = useMemo<[MeetName] | null>(
+    () => (selectedMeet ? [selectedMeet] : null),
     [selectedMeet],
   );
   const [emptySchedule] = useState<Schedule>([]);
@@ -68,9 +68,8 @@ export function useScheduleData(
     refresh,
   } = useMutableResource({
     resource: scheduleResource,
-    params: params ?? ([] as unknown as [MeetName]),
+    params,
     initialData: emptySchedule,
-    enabled: Boolean(params),
   });
 
   const initialScrollIndex = useMemo(() => {

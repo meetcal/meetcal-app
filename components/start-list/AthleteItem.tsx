@@ -1,18 +1,15 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { ThemedText } from "@/components/ui/ThemedText";
-import {
-  recordExpandTapTime,
-  useExpandedId,
-} from "@/contexts/ExpandedIdContext";
+import { useExpandedId } from "@/contexts/ExpandedIdContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isMeetName } from "@/data/types/meet";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
   formatSessionDisplayDate,
   getChevronIcon,
-  isMeetName,
 } from "@/lib/start-list-utils";
 import { calculateWeighInTime } from "@/utils/time";
 import { AthleteItemProps } from "@/types/start-list";
@@ -21,7 +18,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -43,36 +39,13 @@ export const AthleteItem = React.memo(function AthleteItem({
   const { expandedId, setExpandedId } = useExpandedId();
   const expandKey = `${athlete.memberId}_${athlete.name}`;
   const isExpanded = expandedId === expandKey;
-  const tapTimeRef = useRef(0);
-  const expandRenderLogged = useRef(false);
-  const expandCommitLogged = useRef(false);
   const onPress = useCallback(() => {
-    tapTimeRef.current = performance.now();
-    if (__DEV__) recordExpandTapTime();
     const willExpand = expandedId !== expandKey;
     setExpandedId(willExpand ? expandKey : null);
     if (willExpand && onExpand && index != null) {
       setTimeout(() => onExpand(index), 50);
     }
-    if (__DEV__)
-      console.log(
-        "[StartList] 0. setExpandedId called",
-        Math.round(performance.now() - tapTimeRef.current),
-        "ms since tap",
-      );
   }, [expandKey, expandedId, setExpandedId, onExpand, index]);
-  if (__DEV__ && isExpanded && !expandRenderLogged.current) {
-    expandRenderLogged.current = true;
-    console.log(
-      "[StartList] 2. AthleteItem expanded render",
-      Math.round(performance.now() - tapTimeRef.current),
-      "ms since tap",
-    );
-  }
-  if (__DEV__ && !isExpanded) {
-    expandRenderLogged.current = false;
-    expandCommitLogged.current = false;
-  }
   const [yearBests, setYearBests] = useState({
     bestSnatch: 0,
     bestCJ: 0,
@@ -103,14 +76,6 @@ export const AthleteItem = React.memo(function AthleteItem({
 
   useEffect(() => {
     if (!isExpanded) return;
-    if (__DEV__ && !expandCommitLogged.current) {
-      expandCommitLogged.current = true;
-      console.log(
-        "[StartList] 3. AthleteItem expanded committed (after paint)",
-        Math.round(performance.now() - tapTimeRef.current),
-        "ms since tap",
-      );
-    }
     // RN 0.88 removed InteractionManager from core; idle callbacks are the
     // replacement for deferring work until after the expand animation paints.
     // The timeout is the safety net InteractionManager gave us for free: an

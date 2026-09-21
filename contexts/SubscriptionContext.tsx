@@ -5,13 +5,24 @@ import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 
+/**
+ * `setSubscribed` and `checkSubscriptionStatus` are provider internals, not
+ * part of this contract: entitlement is server truth (RevenueCat), so a screen
+ * that could write it locally is a bug waiting to happen. The provider keeps
+ * itself in sync via its own RevenueCat listener and reconnect effect.
+ */
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
   subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown' | null;
-  setSubscribed: (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => Promise<void>;
   isLoading: boolean;
+  /**
+   * Manual restore. No screen calls this today — the paywall uses
+   * RevenueCatUI's own restore button and only handles `onRestoreCompleted` —
+   * but a first-party "Restore Purchases" row is a store requirement the
+   * moment the app ships a non-RevenueCatUI purchase surface, so the working
+   * implementation stays exposed rather than being deleted and rewritten.
+   */
   restorePurchases: () => Promise<boolean>;
-  checkSubscriptionStatus: () => Promise<void>;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
 };
@@ -401,10 +412,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       value={{
         isSubscribed,
         subscriptionType,
-        setSubscribed,
         isLoading,
         restorePurchases,
-        checkSubscriptionStatus,
         isUsingStaleCache,
         lastSyncTimestamp,
       }}

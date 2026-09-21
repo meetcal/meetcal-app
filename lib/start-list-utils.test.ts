@@ -5,7 +5,6 @@ import {
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
-  isMeetName,
 } from "@/lib/start-list-utils";
 
 describe("sortWeightClasses", () => {
@@ -141,12 +140,5 @@ describe("formatSessionDisplayDate", () => {
 
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
-  });
-});
-
-describe("isMeetName", () => {
-  it("treats any non-null string as a meet name", () => {
-    expect(isMeetName("Worlds")).toBe(true);
-    expect(isMeetName(null)).toBe(false);
   });
 });

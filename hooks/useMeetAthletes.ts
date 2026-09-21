@@ -69,11 +69,8 @@ export function useSessionAthletes(
   sessionNumber: number,
   platform: string,
 ): UseMeetAthletesReturn {
-  const params = useMemo(
-    () =>
-      selectedMeet
-        ? ([selectedMeet, sessionNumber, platform] as [MeetName, number, string])
-        : null,
+  const params = useMemo<[MeetName, number, string] | null>(
+    () => (selectedMeet ? [selectedMeet, sessionNumber, platform] : null),
     [platform, selectedMeet, sessionNumber],
   );
   const [emptyAthletes] = useState<LiftResult[]>([]);
@@ -84,9 +81,8 @@ export function useSessionAthletes(
     refresh,
   } = useMutableResource({
     resource: sessionAthletesResource,
-    params: params ?? ([] as unknown as [MeetName, number, string]),
+    params,
     initialData: emptyAthletes,
-    enabled: Boolean(params),
   });
 
   return {

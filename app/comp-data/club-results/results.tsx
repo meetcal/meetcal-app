@@ -7,9 +7,10 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubMeetStatsResource } from "@/lib/database/fetch-club-stats";
 import { posthog } from "@/lib/posthog";
+import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
+import { showToast } from "@/components/ui/Toast";
 import type { ClubMeetStats } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,7 +25,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { captureRef } from "react-native-view-shot";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function MeetResultsByClubScreen() {
@@ -46,8 +46,8 @@ function MeetResultsByClubScreenContent() {
   const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isOffline] = useIsOffline();
-  const params = useMemo(
-    () => (club && meet ? ([club, meet] as const) : null),
+  const params = useMemo<[string, string] | null>(
+    () => (club && meet ? [club, meet] : null),
     [club, meet],
   );
   const {
@@ -57,9 +57,8 @@ function MeetResultsByClubScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubMeetStatsResource,
-    params: (params ?? (["", ""] as const)) as [string, string],
+    params,
     initialData: null as ClubMeetStats | null,
-    enabled: Boolean(params),
   });
 
   const shareableViewRef = useRef<React.ComponentRef<typeof View>>(null);
@@ -113,11 +112,7 @@ function MeetResultsByClubScreenContent() {
     setIsGeneratingImage(true);
 
     try {
-      const uri = await captureRef(shareableViewRef.current, {
-        format: "png",
-        quality: 1,
-        result: "tmpfile",
-      });
+      const uri = await captureViewAsPng(shareableViewRef.current);
 
       setGeneratedImageUri(uri);
       setShowPreview(true);
@@ -128,7 +123,7 @@ function MeetResultsByClubScreenContent() {
       });
     } catch (err) {
       console.error("Error generating image:", err);
-      alert("Failed to generate image");
+      showToast({ type: "error", message: "Failed to generate image" });
     } finally {
       setIsGeneratingImage(false);
     }
@@ -138,16 +133,7 @@ function MeetResultsByClubScreenContent() {
     if (!generatedImageUri) return;
 
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        alert("Sharing is not available on this device");
-        return;
-      }
-
-      await Sharing.shareAsync(generatedImageUri, {
-        mimeType: "image/png",
-        dialogTitle: "Share Meet Recap",
-      });
+      await shareImageFile(generatedImageUri, "Share Meet Recap");
 
       posthog.capture("club_meet_recap_shared", {
         club_name: club,
@@ -155,7 +141,7 @@ function MeetResultsByClubScreenContent() {
       });
     } catch (err) {
       console.error("Error sharing image:", err);
-      alert("Failed to share image");
+      showToast({ type: "error", message: "Failed to share image" });
     }
   };
 

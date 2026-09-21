@@ -5,8 +5,8 @@ import type { LiftResult } from '@/data/types/athletes';
  *
  * These four helpers were previously copy-pasted across `lib/attempt-estimator`,
  * `lib/database/offline-store`, `lib/database/meet-manager`,
- * `components/schedule-details/athleteBests`, `hooks/useMeetAthletes` and the
- * attempt-estimator screen. Keeping one copy means a cache key written by
+ * `lib/athlete-bests`, `hooks/useMeetAthletes` and the attempt-estimator
+ * screen. Keeping one copy means a cache key written by
  * `offline-store` and the lookup done by a screen can never drift apart.
  *
  * Types only at import time, so this module is safe to import from anywhere
