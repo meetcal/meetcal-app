@@ -1,5 +1,4 @@
 import { PlatformBadge } from "@/components/schedule-details/PlatformBadge";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { showToast } from "@/components/ui/Toast";
@@ -21,7 +20,7 @@ import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -51,15 +50,16 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
-  // FIXME: the "America/Denver" default silently mislabels a meet whose
-  // details have not loaded yet; kept as-is here, it is a behaviour question.
-  const timeZoneAbbr = useMemo(
-    () =>
-      getTimeZoneAbbreviation(
-        meetDetails?.time.timeZoneIdentifier || "America/Denver",
-      ),
-    [meetDetails?.time.timeZoneIdentifier],
-  );
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  // The old "America/Denver" default also meant a deep link opened before
+  // `SelectedMeetContext` had resolved `meetDetails` labelled a New York
+  // session's 9:00 AM start as "9:00 AM MDT". No abbreviation beats a
+  // confidently wrong one.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
@@ -299,8 +299,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           {" "}
           •{" "}
           {platformStartTime}
-          {" "}
-          {timeZoneAbbr}
+          {timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
         </ThemedText>
       </View>
 

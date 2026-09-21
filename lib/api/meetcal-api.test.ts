@@ -342,7 +342,12 @@ describe('meetcal API mappers', () => {
     });
     expect(summer.time.utcOffset).toBe(4);
     expect(winter.time.utcOffset).toBe(5);
-    expect(summer.time.abbreviation).toMatch(/E[SD]T/);
+    // `time.abbreviation` is the single source of truth every screen renders
+    // next to a session time, so it has to be resolved at the *meet's* date.
+    // `getTimeZoneAbbreviation(id)` with no instant formats today instead, and
+    // the screens that called it that way showed "EDT" on a December meet.
+    expect(summer.time.abbreviation).toBe('EDT');
+    expect(winter.time.abbreviation).toBe('EST');
   });
 
   it('falls unknown IANA zones back to America/New_York for identifier math', () => {

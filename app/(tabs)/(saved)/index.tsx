@@ -25,7 +25,6 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { migrateSessionsToMeetSpecific } from "@/utils/migration";
 import {
   getAllSavedSessionsKeys,
@@ -183,10 +182,12 @@ export default function SavedScreen() {
     );
   }, [requireAuth, user, resetAllSessions, selectedMeet]);
 
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return "";
-    return getTimeZoneAbbreviation(meetDetails.time.timeZoneIdentifier);
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   const sessionLookupByMeet = useMemo(() => {
     const lookupByMeet = new Map<

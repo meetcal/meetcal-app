@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -45,7 +44,6 @@ import { DaySchedule } from "@/types/schedule";
 import {
   formatDayTitle,
   formatIsoDateTitle,
-  getTimeZoneAbbreviation,
 } from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
@@ -129,11 +127,14 @@ export default function ScheduleScreen() {
     formatDayTitle,
   });
 
-  const timeZoneAbbreviation = useMemo(() => {
-    const timeZoneId =
-      meetDetails?.time.timeZoneIdentifier || "America/New_York";
-    return getTimeZoneAbbreviation(timeZoneId);
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  // The old "America/New_York" default also mislabelled every meet whose
+  // details had not loaded yet.
+  const timeZoneAbbreviation = meetDetails?.time.abbreviation ?? "";
 
   // Header configuration
   useLayoutEffect(() => {
@@ -187,7 +188,7 @@ export default function ScheduleScreen() {
             accessibilityRole="button"
             accessibilityLabel="Offline data"
           >
-            <IconSymbol name="download" size={24} color={colors.text} />
+            <IconSymbol name="square.and.arrow.down" size={24} color={colors.text} />
           </Pressable>
           <Pressable
             style={[styles.headerIconButton, { paddingTop: 8 }]}

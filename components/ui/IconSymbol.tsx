@@ -3,7 +3,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 
-// Map SF Symbols to Ionicons names
+// Map SF Symbols to Ionicons names.
+//
+// The iOS build resolves `@/components/ui/IconSymbol` to `IconSymbol.ios.tsx`,
+// which hands `name` straight to `SymbolView`. TypeScript only ever sees this
+// file's `name: string`, so a call site that passes an Ionicons name instead of
+// an SF Symbol type-checks and then renders *nothing at all* on iOS. Keys here
+// must be SF Symbol names; values are the Ionicons equivalent.
 const iconMap: Record<string, string> = {
   "chevron.down": "chevron-down",
   "chevron.left": "chevron-back",
@@ -30,6 +36,13 @@ const iconMap: Record<string, string> = {
   "square.and.arrow.down": "download",
   "square.and.arrow.up": "share-outline",
   "wifi.slash": "cloud-offline",
+  "chart.bar.fill": "stats-chart",
+  // Unmapped names fall through to Ionicons verbatim, which silently renders
+  // nothing for any dotted SF Symbol name. These four are in use.
+  bookmark: "bookmark",
+  trash: "trash",
+  "star.fill": "star",
+  "crown.fill": "diamond",
 };
 
 type IconSymbolProps = {

@@ -1,5 +1,4 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useExpandedId } from "@/contexts/ExpandedIdContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
@@ -58,10 +57,12 @@ export const AthleteItem = React.memo(function AthleteItem({
   const validMeet =
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
 
-  const timeZoneAbbr = useMemo(() => {
-    const timeZoneId = meetDetails?.time.timeZoneIdentifier;
-    return timeZoneId ? getTimeZoneAbbreviation(timeZoneId) : "";
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   const colors = useMemo(
     () => ({

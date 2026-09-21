@@ -61,7 +61,7 @@ export function CalendarDestinationPickerModal({
               style={({ pressed }) => [styles.closeButton, pressed && { opacity: 0.7 }]}
               onPress={onClose}
             >
-              <IconSymbol name="close" size={20} color={colors.secondaryText} />
+              <IconSymbol name="xmark" size={20} color={colors.secondaryText} />
             </Pressable>
           </View>
 

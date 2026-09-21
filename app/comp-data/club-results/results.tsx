@@ -616,7 +616,7 @@ function MakeRateCard({
         },
       ]}
     >
-      <IconSymbol name="stats-chart" size={20} color={accentColor} />
+      <IconSymbol name="chart.bar.fill" size={20} color={accentColor} />
       <ThemedText style={[styles.makeRateValue, { color: colors.text }]}>
         {value}
       </ThemedText>

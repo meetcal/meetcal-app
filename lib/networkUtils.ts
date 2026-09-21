@@ -7,8 +7,18 @@ import { isOfflineModeSimulated } from '@/config/development';
  * offline would make every consumer fall back to its cache on launch, so only
  * an explicit `false` counts as offline. One copy of that rule; it was
  * open-coded at all three read sites.
+ *
+ * `isConnected`, on the other hand, comes straight from the OS and is known
+ * before any reachability probe runs. In airplane mode the first state a cold
+ * start sees is `{ isConnected: false, isInternetReachable: null }` — the
+ * interface is already known to be down, the probe just has not reported yet.
+ * Reading only `isInternetReachable` answered "online" there, so every fetch
+ * on launch went out and blocked on `DEFAULT_TIMEOUT_MS` instead of the cached
+ * rows painting immediately. An explicit `isConnected: false` is offline;
+ * `null`/`undefined` stays optimistic exactly as before.
  */
 function isReachable(state: NetInfoState): boolean {
+  if (state.isConnected === false) return false;
   return state.isInternetReachable !== false;
 }
 

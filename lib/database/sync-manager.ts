@@ -12,6 +12,19 @@ export class SyncManager {
 
   constructor(meetId: MeetName) {
     this.meetId = meetId;
+  }
+
+  /**
+   * Starts the 5-minute refresh loop. Deliberately not done in the
+   * constructor: constructing a manager has to be free of side effects,
+   * because callers do construct them speculatively. `SelectedMeetContext`
+   * used to build one inside a `setState` updater, and React re-runs updaters
+   * (StrictMode double-invocation, and any render the update is replayed in)
+   * with the same pre-update `current` value — so the first instance's timer
+   * ran for the rest of the session with no reference left to stop it.
+   * Start/stop now belong to one effect.
+   */
+  public start() {
     this.startPeriodicSync();
   }
 

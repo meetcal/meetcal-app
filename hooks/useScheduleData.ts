@@ -33,9 +33,18 @@ const scheduleResource = createMutableResource<Schedule, [MeetName]>({
   },
   fetchFresh: async (meet) => fetchSchedule(meet),
   persistFresh: async (data, meet) => {
+    // An empty response is not a command to delete the offline copy. This used
+    // to call `clearMeetSchedule(meet)`, so one `200 []` from
+    // `/meets/schedule` — rows briefly unpublished, a re-import, a backend
+    // filter bug — permanently destroyed a schedule the user had explicitly
+    // downloaded for offline use, and the next launch in airplane mode had
+    // nothing to fall back on. Every other writer takes the opposite stance
+    // for the same payload: `saveMeetSchedule` rejects an empty schedule
+    // outright, and both prefetch paths in `meet-manager` guard on
+    // `schedule.length > 0`. Explicit invalidation still goes through
+    // `clearCached` below.
     if (data.length === 0) {
-      await clearMeetSchedule(meet);
-      return { data, lastUpdatedAt: Date.now() };
+      return null;
     }
 
     await saveMeetSchedule(meet, data);

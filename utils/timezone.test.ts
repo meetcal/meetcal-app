@@ -109,4 +109,73 @@ describe("timezone utilities", () => {
       expect(summerOffset).toBe(-420);
     });
   });
+
+  // Regression: `hour12: false` is not a promise of a 0-23 clock. Pre-2021
+  // ECMA-402 resolved it to `h24` for en-US, which prints midnight as hour 24
+  // on the same calendar day, and the app runs on whatever ICU the device
+  // ships rather than on V8. Node uses `h23`, so the only way to exercise the
+  // other branch is to stand in an h24 formatter.
+  describe("on an ICU build that resolves hour12:false to h24", () => {
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+
+    function loadWithH24Formatter(): typeof import("@/utils/timezone") {
+      function H24DateTimeFormat(
+        this: unknown,
+        locale?: string,
+        options?: Intl.DateTimeFormatOptions,
+      ) {
+        const real = new RealDateTimeFormat(locale, options);
+        if (!options || options.hour12 !== false) return real;
+        return {
+          formatToParts: (value?: Date) =>
+            real
+              .formatToParts(value)
+              .map((part) =>
+                part.type === "hour" && part.value === "00"
+                  ? { ...part, value: "24" }
+                  : part,
+              ),
+        } as unknown as Intl.DateTimeFormat;
+      }
+
+      (Intl as { DateTimeFormat: unknown }).DateTimeFormat =
+        H24DateTimeFormat as unknown as typeof Intl.DateTimeFormat;
+
+      let loaded!: typeof import("@/utils/timezone");
+      jest.isolateModules(() => {
+        loaded = require("@/utils/timezone");
+      });
+      return loaded;
+    }
+
+    afterEach(() => {
+      (Intl as { DateTimeFormat: unknown }).DateTimeFormat = RealDateTimeFormat;
+    });
+
+    it("still reports the real offset at meet-local midnight", () => {
+      const tz = loadWithH24Formatter();
+
+      // 2026-06-20T06:00Z is exactly 00:00 in Denver (MDT, UTC-6). Reading
+      // that as hour 24 makes the offset come back +1080 instead of -360.
+      expect(
+        tz.getOffsetMinutesAtInstant(
+          "America/Denver",
+          new Date("2026-06-20T06:00:00.000Z"),
+        ),
+      ).toBe(-360);
+    });
+
+    it("still resolves a midnight session on a DST fall-back day", () => {
+      const tz = loadWithH24Formatter();
+
+      // 2026-11-01 is New York's fall-back day, so midnight is still EDT
+      // (UTC-4). With hour 24 the correct candidate fails the exact-match
+      // check and the nearest-wall-clock fallback picks 01:00 EDT instead.
+      expect(
+        tz
+          .convertZonedLocalToUTC("2026-11-01", "12:00 AM", "America/New_York")
+          .toISOString(),
+      ).toBe("2026-11-01T04:00:00.000Z");
+    });
+  });
 });

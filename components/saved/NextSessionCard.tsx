@@ -4,7 +4,6 @@ import { Meet, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SavedSession } from "@/hooks/useSavedSessions";
 import { selectNextSession } from "@/lib/next-session";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -57,11 +56,12 @@ export function NextSessionCard({
     }, []),
   );
 
-  const timeZoneIdentifier = meetDetails?.time.timeZoneIdentifier ?? "";
-  const timeZoneAbbr = useMemo(
-    () => (timeZoneIdentifier ? getTimeZoneAbbreviation(timeZoneIdentifier) : ""),
-    [timeZoneIdentifier],
-  );
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   // Find the soonest saved session for this meet that is still upcoming (or
   // started within the grace window). Uses the shared convertToUTC timezone

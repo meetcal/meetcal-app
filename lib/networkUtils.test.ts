@@ -49,8 +49,23 @@ describe("isNetworkAvailable", () => {
   });
 
   it("treats unknown (null) reachability as available", async () => {
-    NetInfo.fetch.mockResolvedValue({ isInternetReachable: null });
+    NetInfo.fetch.mockResolvedValue({
+      isConnected: true,
+      isInternetReachable: null,
+    });
     await expect(networkUtils.isNetworkAvailable()).resolves.toBe(true);
+  });
+
+  // Regression: airplane mode on a cold start. The OS already knows the
+  // interface is down (`isConnected: false`) while the reachability probe has
+  // not reported yet (`isInternetReachable: null`). Reading only reachability
+  // answered "online" and every launch fetch blocked until its timeout.
+  it("returns false when the interface is down even if reachability is unknown", async () => {
+    NetInfo.fetch.mockResolvedValue({
+      isConnected: false,
+      isInternetReachable: null,
+    });
+    await expect(networkUtils.isNetworkAvailable()).resolves.toBe(false);
   });
 
   it("caches the result within the cache window", async () => {
