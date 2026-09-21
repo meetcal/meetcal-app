@@ -29,6 +29,13 @@ type SubscriptionCacheEntry = SubscriptionCacheData & {
 const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+/**
+ * How long the cache-first render holds before the first RevenueCat round
+ * trip. Long enough that the network check never competes with first paint or
+ * the paywall's own fetch.
+ */
+const INITIAL_REFRESH_DELAY_MS = 8000;
+
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
@@ -272,6 +279,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
 
         const cached = await getSubscriptionCache(false);
+        // `cancelled` guarded only the timeout below, so a provider that
+        // unmounted (or re-mounted on sign-out) during the SecureStore read
+        // still published the old user's entitlement.
+        if (cancelled) return;
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
@@ -289,10 +300,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           if (!cancelled) {
             void checkSubscriptionStatus();
           }
-        }, 8000);
+        }, INITIAL_REFRESH_DELAY_MS);
       } catch (error) {
         console.error('Failed to initialize subscription status:', error);
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 

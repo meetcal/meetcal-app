@@ -79,8 +79,10 @@ function NationalRankingsScreenContent() {
       setFetchError(null);
       return;
     }
+    let isCancelled = false;
     isNetworkAvailable()
       .then((hasNetwork) => {
+        if (isCancelled) return;
         setIsOffline(!hasNetwork);
         setFetchError(
           hasNetwork
@@ -89,8 +91,13 @@ function NationalRankingsScreenContent() {
         );
       })
       .catch(() => {
-        setFetchError(error);
+        if (!isCancelled) setFetchError(error);
       });
+    return () => {
+      // The probe re-runs on every `error` change; without this an older probe
+      // resolving late overwrites the newer error message.
+      isCancelled = true;
+    };
   }, [error, setIsOffline]);
 
   const handleResetFilters = () => {

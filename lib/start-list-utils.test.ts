@@ -2,7 +2,6 @@ import {
   sortWeightClasses,
   parseStartTimeToMinutes,
   compareStartTimes,
-  calculateWeighInTime,
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
@@ -70,23 +69,6 @@ describe("compareStartTimes", () => {
 
   it("falls back to string compare when neither parses", () => {
     expect(compareStartTimes("AAA", "BBB")).toBeLessThan(0);
-  });
-});
-
-describe("calculateWeighInTime", () => {
-  it("subtracts two hours and keeps AM/PM formatting", () => {
-    expect(calculateWeighInTime("10:00 AM")).toBe("8:00 AM");
-    expect(calculateWeighInTime("2:30 PM")).toBe("12:30 PM");
-  });
-
-  it("wraps around midnight", () => {
-    expect(calculateWeighInTime("1:00 AM")).toBe("11:00 PM");
-  });
-
-  it("returns null for invalid input", () => {
-    expect(calculateWeighInTime("nope")).toBeNull();
-    expect(calculateWeighInTime("25:00 AM")).toBeNull();
-    expect(calculateWeighInTime("10:00")).toBeNull(); // missing period
   });
 });
 

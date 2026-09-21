@@ -55,6 +55,19 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+/**
+ * How many saved meets' schedules are fetched at once.
+ *
+ * Every saved session can belong to a different meet, and `fetchSchedule`
+ * issues two requests per meet. A plain `Promise.all` over the whole set
+ * opened one connection per saved meet, so a user with a full season saved hit
+ * the API with dozens of concurrent 10s-timeout requests on the one screen
+ * most likely to be opened in a venue with bad signal, and every one of them
+ * timed out together. Batches keep the fan-out bounded without going fully
+ * sequential.
+ */
+const SCHEDULE_FETCH_BATCH_SIZE = 4;
+
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const { user } = useUser();
@@ -224,9 +237,14 @@ export default function SavedScreen() {
         const storedData = await AsyncStorage.getItem(key);
         if (storedData) {
           try {
-            const parsed = JSON.parse(storedData);
+            const parsed: unknown = JSON.parse(storedData);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              needsMigration = parsed.some((session) => !session.meet);
+              // A `null` entry in the stored array threw here and aborted the
+              // whole migration; only object entries can carry a `meet`.
+              needsMigration = parsed.some(
+                (session) =>
+                  !session || typeof session !== "object" || !session.meet,
+              );
               if (needsMigration) {
                 const migratedSessions = await migrateSessionsToMeetSpecific(
                   parsed,
@@ -587,34 +605,38 @@ export default function SavedScreen() {
       }
 
       setIsSchedulesLoading(true);
-      await Promise.all(
-        missingMeets.map(async (meetName) => {
-          try {
-            const schedule = await fetchSchedule(meetName);
-            if (!isCancelled) {
-              setSchedulesMap((prev) => {
-                const next = new Map(prev);
-                next.set(meetName, schedule);
-                schedulesMapRef.current = next;
-                return next;
-              });
+      const commitSchedule = (meetName: MeetName, schedule: ScheduleType) => {
+        if (isCancelled) return;
+        setSchedulesMap((prev) => {
+          const next = new Map(prev);
+          next.set(meetName, schedule);
+          schedulesMapRef.current = next;
+          return next;
+        });
+      };
+
+      for (
+        let index = 0;
+        index < missingMeets.length && !isCancelled;
+        index += SCHEDULE_FETCH_BATCH_SIZE
+      ) {
+        const batch = missingMeets.slice(index, index + SCHEDULE_FETCH_BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (meetName) => {
+            try {
+              commitSchedule(meetName, await fetchSchedule(meetName));
+            } catch (fetchError) {
+              console.error(
+                `Error fetching schedule for ${meetName}:`,
+                fetchError,
+              );
+              // An empty schedule is how this screen records "we tried"; it
+              // stops the effect re-requesting the same failing meet forever.
+              commitSchedule(meetName, []);
             }
-          } catch (fetchError) {
-            console.error(
-              `Error fetching schedule for ${meetName}:`,
-              fetchError,
-            );
-            if (!isCancelled) {
-              setSchedulesMap((prev) => {
-                const next = new Map(prev);
-                next.set(meetName, []);
-                schedulesMapRef.current = next;
-                return next;
-              });
-            }
-          }
-        }),
-      );
+          }),
+        );
+      }
       if (!isCancelled) {
         setIsSchedulesLoading(false);
       }

@@ -139,40 +139,17 @@ export function formatSessionDisplayDate(
   });
 }
 
-const TIME_PART_REGEX = /^\d{1,2}:\d{2}$/;
-const PERIOD_REGEX = /\s*(AM|PM)\s*$/i;
-
-export function calculateWeighInTime(startTime: string): string | null {
-  const trimmed = startTime.trim();
-  let timePart: string;
-  let periodPart: string | undefined;
-  const spaceSplit = trimmed.split(/\s+/);
-  if (spaceSplit.length >= 2) {
-    periodPart = spaceSplit.pop()?.toUpperCase();
-    timePart = spaceSplit.join(' ').trim();
-  } else {
-    const periodMatch = trimmed.match(PERIOD_REGEX);
-    periodPart = periodMatch ? periodMatch[1].toUpperCase() : undefined;
-    timePart = periodMatch ? trimmed.slice(0, periodMatch.index).trim() : trimmed;
-  }
-  if (!periodPart || (periodPart !== 'AM' && periodPart !== 'PM')) return null;
-  if (!TIME_PART_REGEX.test(timePart)) return null;
-  const [hours, minutes] = timePart.split(':').map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
-  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
-  let hour24 = hours;
-  if (periodPart === 'PM' && hours !== 12) hour24 += 12;
-  if (periodPart === 'AM' && hours === 12) hour24 = 0;
-  let weighInHour = hour24 - 2;
-  if (weighInHour < 0) weighInHour += 24;
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
+/**
+ * `calculateWeighInTime` deliberately does NOT live here.
+ *
+ * This module used to carry a line-by-line second copy of `utils/time.ts`'s
+ * version — same two-hour lead, same midnight wrap, same 12-hour conversion —
+ * differing only in that it rejected 24-hour start times and returned `null`
+ * instead of `""`. One weigh-in policy, one implementation: import
+ * `calculateWeighInTime` from `@/utils/time`, where `WEIGH_IN_LEAD_HOURS` is
+ * declared and the parser also accepts the `HH:MM[:SS]` form the API can
+ * return.
+ */
 
 export function getAgeCategory(age: number): string {
   if (!Number.isFinite(age) || age <= 0) return 'Unknown';

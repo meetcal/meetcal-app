@@ -24,6 +24,7 @@ import {
   mapApiAthlete,
   mapApiLiftingResult,
   mapPackageSchedule,
+  MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
 import type { Schedule } from '@/types/schedule';
@@ -199,8 +200,7 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
       await setCachedMeets(meets);
       return meets;
     } catch (error) {
-      const err = error as Error;
-      const isTimeout = err.message.includes('fetchMeets timed out');
+      const isTimeout = error instanceof MeetCalApiTimeoutError;
       const now = Date.now();
       if (!isTimeout || now - lastFetchMeetsTimeoutLogAt >= TIMEOUT_LOG_THROTTLE_MS) {
         if (isTimeout) {

@@ -22,6 +22,12 @@ type SelectedMeetContextType = {
 };
 
 const SELECTED_MEET_KEY = '@selected_meet';
+/**
+ * How often the meet list is re-checked while the app is foregrounded. Matches
+ * `SYNC_INTERVAL` in `lib/database/sync-manager.ts`, which is the per-meet
+ * schedule refresh this provider starts alongside it.
+ */
+const MEET_LIST_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -383,8 +389,10 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     loadMeets();
 
-    // Set up periodic refresh every 5 minutes
-    const refreshInterval = setInterval(loadMeets, 5 * 60 * 1000);
+    const refreshInterval = setInterval(
+      loadMeets,
+      MEET_LIST_REFRESH_INTERVAL_MS,
+    );
 
     // Cleanup interval on unmount
     return () => clearInterval(refreshInterval);

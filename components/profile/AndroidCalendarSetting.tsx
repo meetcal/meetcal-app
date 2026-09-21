@@ -34,20 +34,30 @@ export function AndroidCalendarSetting({
     useState<CalendarDestination | null>(null);
   const [destinations, setDestinations] = useState<CalendarDestination[]>([]);
 
-  const loadSelectedCalendar = useCallback(async () => {
-    try {
-      const resolvedCalendar = await resolvePreferredAndroidCalendar();
-      setSelectedCalendar(resolvedCalendar);
-    } catch (error) {
-      console.error("Profile: failed to load preferred Android calendar", error);
-      setSelectedCalendar(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const loadSelectedCalendar = useCallback(
+    async (isCancelled: () => boolean = () => false) => {
+      try {
+        const resolvedCalendar = await resolvePreferredAndroidCalendar();
+        if (!isCancelled()) setSelectedCalendar(resolvedCalendar);
+      } catch (error) {
+        console.error(
+          "Profile: failed to load preferred Android calendar",
+          error,
+        );
+        if (!isCancelled()) setSelectedCalendar(null);
+      } finally {
+        if (!isCancelled()) setIsLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    void loadSelectedCalendar();
+    let cancelled = false;
+    void loadSelectedCalendar(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [loadSelectedCalendar]);
 
   const loadDestinations = useCallback(async () => {

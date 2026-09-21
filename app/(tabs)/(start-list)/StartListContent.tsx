@@ -120,6 +120,19 @@ const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
   { value: "bestCJ", label: "Best CJ" },
 ];
 
+/**
+ * The start list opens on the "A" letter filter, so the names the user is
+ * about to see get their year bests warmed first. The cap bounds it: a
+ * federation-scale roster has hundreds of A-names and `preloadYearBests`
+ * chunks them into `NAMES_QUERY_CHUNK_SIZE` requests, so an uncapped warm
+ * would fire a dozen background requests against the screen the user is
+ * actively scrolling.
+ */
+const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
+
+/** Let the list paint and settle before spending bandwidth on the warm. */
+const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
+
 export default function StartListScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
@@ -362,6 +375,12 @@ export default function StartListScreen() {
 
   useEffect(() => {
     loadStartListData(false);
+    return () => {
+      // `isStale()` already supersedes an older load when a newer one starts,
+      // but nothing bumped the ref on unmount, so a tab switch mid-fetch still
+      // repainted a gone screen. Matches `attempt-estimator`.
+      latestLoadIdRef.current += 1;
+    };
   }, [loadStartListData]);
 
   useEffect(() => {
@@ -418,19 +437,29 @@ export default function StartListScreen() {
     [sessionIndex],
   );
 
-  // Add back useEffect for starred clubs
   useEffect(() => {
+    let isCancelled = false;
     const loadStarredClubs = async () => {
       try {
         const stored = await AsyncStorage.getItem("starredClubs");
-        if (stored) {
-          setStarredClubs(JSON.parse(stored));
-        }
+        if (isCancelled || !stored) return;
+        const parsed: unknown = JSON.parse(stored);
+        // `starredClubs` is consumed with `.includes` and `.filter`. A blob
+        // that is not a string array made `.filter` throw mid-render, and a
+        // *string* blob was worse: `.includes` silently matched substrings.
+        setStarredClubs(
+          Array.isArray(parsed)
+            ? parsed.filter((club): club is string => typeof club === "string")
+            : [],
+        );
       } catch (error) {
         console.error("Error loading starred clubs:", error);
       }
     };
-    loadStarredClubs();
+    void loadStarredClubs();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const renderListItem = useCallback(
@@ -899,7 +928,10 @@ export default function StartListScreen() {
         .startsWith("A");
     const aNames = athletes.filter(firstNameStartsWithA).map((a) => a.name);
     if (aNames.length === 0) return;
-    const t = setTimeout(() => preloadYearBests(aNames.slice(0, 80)), 500);
+    const t = setTimeout(
+      () => preloadYearBests(aNames.slice(0, YEAR_BESTS_PREFETCH_NAME_CAP)),
+      YEAR_BESTS_PREFETCH_DELAY_MS,
+    );
     return () => clearTimeout(t);
   }, [athletes]);
 

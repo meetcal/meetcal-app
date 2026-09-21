@@ -102,12 +102,26 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * NetInfo's default is 15s, long enough that a screen decides it is online and
+ * then stalls on a request that can never land. This is the same order as
+ * `NETWORK_CACHE_MS` in `lib/networkUtils.ts` on purpose: a reachability probe
+ * must resolve well inside the window its answer is cached for.
+ */
+const REACHABILITY_TIMEOUT_MS = 3000;
+
+/**
+ * Delay before the push-permission prompt, so it lands after first paint
+ * rather than on top of the splash screen.
+ */
+const PUSH_PERMISSION_PROMPT_DELAY_MS = 8000;
+
 // Configure NetInfo IMMEDIATELY with shorter timeout for faster offline detection
 // This MUST run synchronously before any NetInfo.fetch() calls
 NetInfo.configure({
   reachabilityUrl: "https://clients3.google.com/generate_204",
-  reachabilityRequestTimeout: 3000, // 3 seconds instead of default 15s
-  reachabilityShortTimeout: 3000,
+  reachabilityRequestTimeout: REACHABILITY_TIMEOUT_MS,
+  reachabilityShortTimeout: REACHABILITY_TIMEOUT_MS,
   useNativeReachability: true,
 });
 
@@ -301,7 +315,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       OneSignal.Notifications.requestPermission(false).catch((error) => {
         console.warn("OneSignal permission request failed:", error);
       });
-    }, 8000);
+    }, PUSH_PERMISSION_PROMPT_DELAY_MS);
 
     return () => {
       clearTimeout(requestPermissionAfterFirstPaint);

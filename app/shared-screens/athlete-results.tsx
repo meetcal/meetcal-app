@@ -356,6 +356,11 @@ export default function AthleteResultsScreen() {
     };
 
     fetchAthleteResults();
+    return () => {
+      // Supersede the in-flight request: leaving the screen (or opening a
+      // different athlete) must not repaint it with the previous results.
+      requestIdRef.current += 1;
+    };
   }, [name]);
 
   // For each lift, the index of the meet where the athlete's PR was set.

@@ -10,11 +10,11 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
-  calculateWeighInTime,
   formatSessionDisplayDate,
   getChevronIcon,
   isMeetName,
 } from "@/lib/start-list-utils";
+import { calculateWeighInTime } from "@/utils/time";
 import { AthleteItemProps } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
 import React, {
@@ -162,8 +162,10 @@ export const AthleteItem = React.memo(function AthleteItem({
         (p) => p.platform === athlete.session?.platform,
       );
       startTime = platform?.platformStartTime || details?.startTime || "";
+      // `calculateWeighInTime` returns "" (not null) when it cannot parse, so
+      // the fallback has to be `||`.
       weighInTime = startTime
-        ? (calculateWeighInTime(startTime) ?? details?.weighInTime ?? "")
+        ? calculateWeighInTime(startTime) || details?.weighInTime || ""
         : details?.weighInTime || "";
       dateStr = details?.date || "";
     }

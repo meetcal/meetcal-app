@@ -23,6 +23,16 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+/**
+ * Shorter queries match most of the federation, so `/search` comes back
+ * truncated and arbitrary-looking. The empty state quotes this same threshold,
+ * so both read it from here rather than each spelling out "3".
+ */
+const MIN_SEARCH_QUERY_LENGTH = 3;
+
+/** How long typing has to pause before a search request goes out. */
+const SEARCH_DEBOUNCE_MS = 500;
+
 export default function AllMeetResultsScreen() {
   return (
     <SubscriptionGate>
@@ -55,7 +65,7 @@ function AllMeetResultsScreenContent() {
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchText.trim().length >= 3) {
+      if (searchText.trim().length >= MIN_SEARCH_QUERY_LENGTH) {
         performSearch(searchText.trim());
       } else if (searchText.trim().length === 0) {
         searchRequestVersion.current += 1;
@@ -65,7 +75,7 @@ function AllMeetResultsScreenContent() {
         searchRequestVersion.current += 1;
         setIsLoading(false);
       }
-    }, 500); // 0.5 seconds debounce
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
   }, [searchText]);
@@ -189,7 +199,10 @@ function AllMeetResultsScreenContent() {
       );
     }
 
-    if (searchText.trim().length > 0 && searchText.trim().length < 3) {
+    if (
+      searchText.trim().length > 0 &&
+      searchText.trim().length < MIN_SEARCH_QUERY_LENGTH
+    ) {
       return (
         <View style={styles.centerContainer}>
           <IconSymbol
@@ -203,7 +216,7 @@ function AllMeetResultsScreenContent() {
               { color: colors.secondaryText, marginTop: 16 },
             ]}
           >
-            Type at least 3 characters to search
+            Type at least {MIN_SEARCH_QUERY_LENGTH} characters to search
           </ThemedText>
         </View>
       );

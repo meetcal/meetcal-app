@@ -18,6 +18,8 @@ import {
   mapApiSchedule,
   mapApiYearBests,
   mapPackageSchedule,
+  MeetCalApiError,
+  MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
   searchApi,
 } from './meetcal-api';
@@ -383,6 +385,43 @@ describe('meetcal API client error and auth boundaries', () => {
   it('rejects empty JSON bodies', async () => {
     mockFetch('');
     await expect(fetchApiMeets()).rejects.toThrow('returned an empty body');
+  });
+
+  it('reports a timeout as a distinct error type, not a bare Error', async () => {
+    // Callers throttle timeout logs and fall back to cache, but report every
+    // other failure. Telling them apart used to mean matching the message,
+    // which silently stopped matching.
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async (_url: unknown, init: unknown) => {
+        const { signal } = init as { signal: AbortSignal };
+        return await new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const abortError = new Error('Aborted');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          });
+        });
+      }) as unknown as typeof fetch;
+
+      const pending = fetchApiMeets().catch((error: unknown) => error);
+      jest.runOnlyPendingTimers();
+      const failure = await pending;
+      expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
+      expect(failure).not.toBeInstanceOf(MeetCalApiError);
+      expect((failure as MeetCalApiTimeoutError).path).toBe('/meets');
+      expect((failure as MeetCalApiTimeoutError).timeoutMs).toBeGreaterThan(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reports a non-2xx response as MeetCalApiError with its status', async () => {
+    mockFetch('{"error":"nope"}', 404);
+    const failure = await fetchApiMeets().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect(failure).not.toBeInstanceOf(MeetCalApiTimeoutError);
+    expect((failure as MeetCalApiError).status).toBe(404);
   });
 
   it('rejects invalid JSON bodies', async () => {

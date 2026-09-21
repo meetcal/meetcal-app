@@ -82,19 +82,28 @@ function AnimatedCounter({
   useEffect(() => {
     const end = value;
     const startTime = Date.now() + delay;
+    // Without this the frame loop outlives both the effect and the screen: a
+    // new `value` starts a second loop while the first keeps calling
+    // `setDisplay`, and after unmount every remaining frame sets state on a
+    // gone component. The Wrapped slides mount a dozen of these.
+    let frame: number | null = null;
 
     const tick = () => {
       const now = Date.now();
       if (now < startTime) {
-        requestAnimationFrame(tick);
+        frame = requestAnimationFrame(tick);
         return;
       }
       const progress = Math.min((now - startTime) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setDisplay(Math.round(eased * end * Math.pow(10, decimals)) / Math.pow(10, decimals));
-      if (progress < 1) requestAnimationFrame(tick);
+      frame = progress < 1 ? requestAnimationFrame(tick) : null;
     };
-    requestAnimationFrame(tick);
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [value, duration, delay, decimals]);
 
   const formatted = decimals > 0
@@ -165,6 +174,15 @@ function SlideContent({
   return <Animated.View style={[styles.slideContentInner, animStyle]}>{children}</Animated.View>;
 }
 
+/** Athlete names are long; shorter prefixes match too much of the federation. */
+const MIN_SUGGESTION_QUERY_LENGTH = 4;
+
+/** How long typing has to pause before a suggestion request goes out. */
+const SUGGESTION_DEBOUNCE_MS = 350;
+
+/** Suggestions render in a dropdown over the input, so the list is capped. */
+const MAX_NAME_SUGGESTIONS = 8;
+
 export default function WeightliftingWrappedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -185,7 +203,7 @@ export default function WeightliftingWrappedScreen() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchSuggestions = useCallback(async (query: string) => {
-    if (query.trim().length < 4) {
+    if (query.trim().length < MIN_SUGGESTION_QUERY_LENGTH) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -198,7 +216,7 @@ export default function WeightliftingWrappedScreen() {
         const lower = name.toLowerCase();
         return words.every((w) => lower.includes(w));
       });
-      setSuggestions(filtered.slice(0, 8));
+      setSuggestions(filtered.slice(0, MAX_NAME_SUGGESTIONS));
       setShowSuggestions(filtered.length > 0);
     } catch {
       setSuggestions([]);
@@ -211,12 +229,15 @@ export default function WeightliftingWrappedScreen() {
   const onSearchTextChange = useCallback((text: string) => {
     setSearchQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.trim().length < 4) {
+    if (text.trim().length < MIN_SUGGESTION_QUERY_LENGTH) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-    debounceRef.current = setTimeout(() => fetchSuggestions(text), 350);
+    debounceRef.current = setTimeout(
+      () => fetchSuggestions(text),
+      SUGGESTION_DEBOUNCE_MS,
+    );
   }, [fetchSuggestions]);
 
   const selectSuggestion = useCallback((name: string) => {

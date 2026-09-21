@@ -42,7 +42,24 @@ export function NotificationSettings({
   const isSubscribed = subscriptionStatus !== "free";
 
   useEffect(() => {
-    loadNotificationSettings();
+    let isCancelled = false;
+    const load = async () => {
+      try {
+        const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+        if (!isCancelled) setIsEnabled(enabled === "true");
+      } catch (error) {
+        console.error("Error loading notification settings:", error);
+        if (!isCancelled) setIsEnabled(false);
+      } finally {
+        // `isLoading` gates the auto-enable effect below, so landing it after
+        // unmount would start an OS permission prompt for a gone screen.
+        if (!isCancelled) setIsLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Automatically enable reminders if user becomes subscribed and reminders are currently off
@@ -56,18 +73,6 @@ export function NotificationSettings({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSubscribed, isEnabled, isLoading, autoEnableAttempted]);
-
-  const loadNotificationSettings = async () => {
-    try {
-      const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
-      setIsEnabled(enabled === "true");
-    } catch (error) {
-      console.error("Error loading notification settings:", error);
-      setIsEnabled(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const requestPermissions = async () => {
     if (Platform.OS === "android") {

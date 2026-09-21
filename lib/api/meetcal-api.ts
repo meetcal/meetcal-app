@@ -129,6 +129,29 @@ export class MeetCalApiError extends Error {
   }
 }
 
+/**
+ * The request did not finish inside its timeout.
+ *
+ * A distinct class rather than a plain `Error`, because "the request timed
+ * out" and "the request failed" get different treatment: the meets list falls
+ * back to cache and throttles the log for a timeout, while a real failure is
+ * always reported. Callers used to tell them apart with
+ * `error.message.includes('fetchMeets timed out')` — which never matched,
+ * since the thrown message is `GET /meets timed out after 10000ms`, so the
+ * timeout branch was dead and every timeout logged as an error.
+ */
+export class MeetCalApiTimeoutError extends Error {
+  path: string;
+  timeoutMs: number;
+
+  constructor(method: string, path: string, timeoutMs: number) {
+    super(`${method} ${path} timed out after ${timeoutMs}ms`);
+    this.name = 'MeetCalApiTimeoutError';
+    this.path = path;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 function assertObject(value: unknown, label: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} expected an object response`);
@@ -227,7 +250,7 @@ async function requestJson<T>(
   } catch (error) {
     if (error instanceof MeetCalApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`${method} ${path} timed out after ${timeoutMs}ms`);
+      throw new MeetCalApiTimeoutError(method, path, timeoutMs);
     }
     throw error;
   } finally {

@@ -26,6 +26,8 @@ import {
   fetchSavedSessions,
   fetchUserPreferences,
   putSavedSession,
+  MeetCalApiError,
+  MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
 
 export interface SavedSession {
@@ -234,9 +236,17 @@ export function useSavedSessions() {
     } catch (error) {
       console.error('Error loading saved sessions:', error);
       
-      // Check if it's a network/connection error
-      if (error instanceof Error && (error.message.includes('network') || error.message.includes('fetch'))) {
-        console.error('Network error detected, falling back to local storage');
+      // Keep the three failure modes distinct. Sniffing `error.message` for
+      // "network"/"fetch" matched nothing the API client actually throws, so
+      // every failure read as an unexplained one.
+      if (error instanceof MeetCalApiTimeoutError) {
+        console.error('Saved sessions request timed out, falling back to local storage');
+      } else if (error instanceof MeetCalApiError) {
+        console.error('Saved sessions request rejected, falling back to local storage', {
+          status: error.status,
+        });
+      } else {
+        console.error('Network or storage failure, falling back to local storage');
       }
       
       // Attempt to load from local storage as a final fallback

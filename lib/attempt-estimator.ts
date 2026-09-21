@@ -5,6 +5,11 @@ import {
   wasAttemptMade,
   wasAttemptTaken,
 } from '@/lib/athletes';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+  toMeetCalendarDate,
+} from '@/utils/dateTime';
 
 export interface AthleteAttemptEstimate {
   id: string;
@@ -217,20 +222,31 @@ function calculateAttemptsOutForEstimates(estimates: AthleteAttemptEstimate[]): 
   });
 }
 
+/**
+ * The `YYYY-MM-DD` a result belongs to, for string comparison against the
+ * history cutoff.
+ *
+ * Results carry calendar dates, so the date part is taken verbatim. Routing
+ * `"2026-06-20T00:00:00"` through `new Date(...)` instead parses it in the
+ * *device* timezone and `toISOString()` then hands back the previous day west
+ * of UTC, silently dropping the oldest day of every athlete's history window.
+ */
 function normalizeDate(raw: string | null | undefined): string {
   if (!raw) return "";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return raw;
-  return d.toISOString().split("T")[0];
+  const calendarDate = toMeetCalendarDate(raw);
+  if (calendarDate) return calendarDate;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toISOString().split("T")[0];
 }
 
 export function calculateEstimates(
   athletes: LiftResult[],
   athleteResults: SupabaseLiftResult[]
 ): AthleteAttemptEstimate[] {
-  const twoYearsAgo = new Date();
-  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-  const twoYearsAgoString = twoYearsAgo.toISOString().split('T')[0];
+  // Same window the screen fetched with, from the same helper — a second
+  // hand-rolled copy here would silently filter out rows the fetch paid for.
+  const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
 
   const tempEstimates: {
     athlete: LiftResult;
@@ -248,7 +264,7 @@ export function calculateEstimates(
     const athleteHistory = athleteResults.filter(
       result =>
         normalizeAthleteName(result.name) === normalizedAthleteName &&
-        normalizeDate(result.date) >= twoYearsAgoString
+        normalizeDate(result.date) >= historyCutoffDate
     );
 
     const bestSnatchCandidates = athleteHistory
