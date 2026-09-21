@@ -529,23 +529,35 @@ export default function SavedScreen() {
     }
   }, [refreshing, loadSavedSessions]);
 
+  // Built once for the whole list instead of once per row. `SessionCard` is
+  // `React.memo`, and every other prop it takes is already stable, so a
+  // per-row `onPress` closure was the single reason the memo never once
+  // short-circuited: each of this screen's re-renders (pull-to-refresh, the
+  // letter filter, the calendar picker, and one per session while
+  // `saveSessionsFromAthletes` commits a Save All) re-rendered every visible
+  // card instead of none of them.
+  const handleSessionPress = useCallback(
+    (session: LegacySavedSession) => {
+      router.push({
+        pathname: "/shared-screens/schedule-details",
+        params: {
+          ...session,
+          startTime: session.startTime,
+          weighInTime: session.weighInTime,
+          meet: session.meet || selectedMeet || "",
+        },
+      });
+    },
+    [router, selectedMeet],
+  );
+
   const renderSession = useCallback(
     ({ item }: { item: LegacySavedSession }) => {
       return (
         <SessionCard
           item={item}
           selectedMeet={selectedMeet}
-          onPress={() =>
-            router.push({
-              pathname: "/shared-screens/schedule-details",
-              params: {
-                ...item,
-                startTime: item.startTime,
-                weighInTime: item.weighInTime,
-                meet: item.meet || selectedMeet || "",
-              },
-            })
-          }
+          onPress={handleSessionPress}
           sessionLookupByMeet={sessionLookupByMeet}
           allowedMeetNames={allowedMeetNames}
           timeZoneIdentifier={meetDetails?.time.timeZoneIdentifier}
@@ -555,7 +567,7 @@ export default function SavedScreen() {
     },
     [
       selectedMeet,
-      router,
+      handleSessionPress,
       sessionLookupByMeet,
       allowedMeetNames,
       meetDetails?.time.timeZoneIdentifier,

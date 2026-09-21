@@ -26,6 +26,8 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   clearAllAthleteHistory,
+  clearAllMeetData,
+  clearExpiredDownloadedMeets,
   clearMeetData,
   getAllCachedLiftingResultsForAthlete,
   getAllCachedLiftingResultsForAthletes,
@@ -660,5 +662,89 @@ describe("clearAllAthleteHistory", () => {
         k.startsWith("meetcal_lifting_results_"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("clearing several meets", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  async function seedMeet(meet: string) {
+    await saveMeetAthletes(meet, [
+      {
+        memberId: `${meet}-1`,
+        name: `Athlete ${meet}`,
+        age: 25,
+        club: "Club",
+        gender: "Women",
+        weightClass: "71kg",
+        entryTotal: 200,
+        adaptive: false,
+        session: {
+          number: 4,
+          platform: "Red",
+          date: "2026-06-20",
+          startTime: "12:00 PM",
+          weighInTime: "10:00 AM",
+        },
+      },
+    ] as never);
+  }
+
+  it("lists storage keys once for the whole batch, not once per meet", async () => {
+    const meets = ["Meet A", "Meet B", "Meet C", "Meet D"];
+    for (const meet of meets) {
+      await seedMeet(meet);
+    }
+    jest.clearAllMocks();
+
+    await clearAllMeetData();
+
+    // `clearMeetData` has to enumerate every storage key to find a meet's
+    // session-athlete entries. One listing answers the question for all four.
+    expect(AsyncStorage.getAllKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("still removes every meet's session-athlete keys", async () => {
+    const meets = ["Meet A", "Meet B", "Meet C"];
+    for (const meet of meets) {
+      await seedMeet(meet);
+    }
+    expect(
+      Array.from(mockStorage.keys()).filter((k) =>
+        k.startsWith("meetcal_session_athletes_"),
+      ),
+    ).toHaveLength(3);
+
+    await clearAllMeetData();
+
+    expect(
+      Array.from(mockStorage.keys()).filter((k) =>
+        k.startsWith("meetcal_session_athletes_"),
+      ),
+    ).toEqual([]);
+    for (const meet of meets) {
+      await expect(getMeetData(meet as never)).resolves.toMatchObject({
+        athletes: [],
+        schedule: null,
+      });
+    }
+  });
+
+  it("does not list storage keys when nothing has expired", async () => {
+    await seedMeet("Meet A");
+    // Ends far in the future, so the expiry sweep has no work to do. This runs
+    // on every meets refresh — app start, every five minutes, on reconnect.
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, {
+      endDate: "2099-06-20",
+    });
+    jest.clearAllMocks();
+
+    await clearExpiredDownloadedMeets();
+
+    expect(AsyncStorage.getAllKeys).not.toHaveBeenCalled();
+    expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(true);
   });
 });

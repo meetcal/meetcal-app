@@ -3,7 +3,10 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSavedSessions } from "@/hooks/useSavedSessions";
 import { fetchSchedule } from "@/lib/database/queries";
-import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import {
+  NOTIFICATION_ENABLED_KEY,
+  scheduleNotification,
+} from "@/utils/notifications";
 import type { LiftResult } from "@/data/types/athletes";
 import type { Schedule } from "@/types/schedule";
 
@@ -98,6 +101,20 @@ const ATHLETES: LiftResult[] = [1, 2, 3].map((number) => ({
   session: { number, platform: "Red" },
 })) as unknown as LiftResult[];
 
+/**
+ * `AsyncStorage` is already a jest mock and `jest.clearAllMocks()` runs in
+ * `beforeEach`, so its own call log is the counter. Deliberately not a
+ * `jest.spyOn` + `mockRestore` pair: restoring a spy that wrapped an existing
+ * mock strips that mock's implementation for the rest of the file.
+ */
+function countNotificationFlagReads(): number {
+  const getItem = AsyncStorage.getItem as jest.MockedFunction<
+    typeof AsyncStorage.getItem
+  >;
+  return getItem.mock.calls.filter(([key]) => key === NOTIFICATION_ENABLED_KEY)
+    .length;
+}
+
 type Hook = ReturnType<typeof useSavedSessions>;
 
 async function mountHook(): Promise<{ current: Hook }> {
@@ -176,5 +193,47 @@ describe("saveSessionsFromAthletes", () => {
     });
 
     expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the notification preference once for the whole batch", async () => {
+    const hook = await mountHook();
+
+    await act(async () => {
+      await hook.current.saveSessionsFromAthletes(
+        ATHLETES,
+        "Test Meet" as never,
+        SCHEDULE,
+      );
+    });
+
+    // One user preference, read once — not once per saved session. The batch
+    // is sequential and the flag cannot change between iterations, so the
+    // per-session read was N-1 pure AsyncStorage round trips.
+    expect(countNotificationFlagReads()).toBe(1);
+    expect(hook.current.savedSessions).toHaveLength(3);
+  });
+
+  it("still reads the notification preference for a lone save", async () => {
+    const hook = await mountHook();
+
+    await act(async () => {
+      await hook.current.saveSession(
+        {
+          id: "Test Meet-1-Red",
+          meet: "Test Meet" as never,
+          sessionNumber: 1,
+          platform: "Red",
+          weightClass: "71kg",
+          startTime: "10:00 AM",
+          weighInTime: "8:00 AM",
+          date: "2099-06-20",
+        },
+        { schedule: SCHEDULE },
+      );
+    });
+
+    // A caller that did not already resolve the flag must still get it.
+    expect(countNotificationFlagReads()).toBe(1);
+    expect(scheduleNotification).toHaveBeenCalledTimes(1);
   });
 });

@@ -150,13 +150,17 @@ function hasMeetEnded(endDate: string): boolean {
 export async function clearExpiredDownloadedMeets(): Promise<void> {
   try {
     const downloads = await getExplicitMeetDownloads();
-    const downloadedMeetIds = Object.keys(downloads);
+    const expiredMeetIds = Object.keys(downloads).filter((meetId) => {
+      const endDate = downloads[meetId]?.endDate;
+      return endDate ? hasMeetEnded(endDate) : false;
+    });
+    // This runs on every meets refresh — app start, every five minutes, and
+    // every reconnect — and almost always finds nothing expired. Resolving
+    // the key listing from the expired count keeps that common case free.
+    const storageKeys = await readStorageKeysForMeetClear(expiredMeetIds.length);
 
-    for (const meetId of downloadedMeetIds) {
-      const entry = downloads[meetId];
-      if (!entry?.endDate) continue;
-      if (!hasMeetEnded(entry.endDate)) continue;
-      await clearMeetData(meetId as MeetName);
+    for (const meetId of expiredMeetIds) {
+      await clearMeetData(meetId as MeetName, { storageKeys });
     }
   } catch (error) {
     console.error('Error clearing expired downloaded meets:', error);
@@ -961,8 +965,34 @@ export async function saveMeetLiftingResults(meetId: string, liftingResults: Sup
   }
 }
 
+/**
+ * Read the storage key listing once for a batch of `clearMeetData` calls.
+ *
+ * `clearMeetData` has to enumerate every AsyncStorage key to find the meet's
+ * `SESSION_ATHLETES_KEY_PREFIX` entries, because the session numbers and
+ * platforms that make up those keys are not recorded anywhere else. Every
+ * caller that clears more than one meet paid for that listing once per meet,
+ * and the listing is not small: a device with a downloaded meet holds 1500 to
+ * 4500 athlete-history keys on its own (see `clearAllAthleteHistory`), and
+ * "Delete all offline data" walks every meet in the upcoming window — 20 of
+ * them today. One `getAllKeys` answers all 20 questions.
+ *
+ * Returns an empty listing for an empty batch so a sweep that finds nothing to
+ * clear — `clearExpiredDownloadedMeets` runs on every meets refresh — still
+ * costs nothing.
+ */
+export async function readStorageKeysForMeetClear(
+  meetCount: number,
+): Promise<readonly string[]> {
+  if (meetCount <= 0) return [];
+  return AsyncStorage.getAllKeys();
+}
+
 // Clear meet data from store
-export async function clearMeetData(meet: MeetName): Promise<void> {
+export async function clearMeetData(
+  meet: MeetName,
+  options?: { storageKeys?: readonly string[] },
+): Promise<void> {
   try {
     // `getStore()` is the one validated reader: a raw
     // `JSON.parse(store) as OfflineStore` here threw on `data.meets[...]` for a
@@ -978,7 +1008,11 @@ export async function clearMeetData(meet: MeetName): Promise<void> {
     if (liftingResultsKey) {
       await clearStoredLiftingResultsValue(liftingResultsKey);
     }
-    const keys = await AsyncStorage.getAllKeys();
+    // A caller clearing several meets hands over one shared listing. Meet
+    // keys are namespaced by meet id, so a snapshot taken before the batch
+    // holds exactly the same keys for this meet as a fresh listing would:
+    // no other iteration touches them.
+    const keys = options?.storageKeys ?? (await AsyncStorage.getAllKeys());
     const sessionAthleteKeys = keys.filter((key) =>
       key.startsWith(
         `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meet)}:`,
@@ -1007,9 +1041,10 @@ export async function clearAllMeetData(): Promise<void> {
   try {
     const store = await getStore();
     const meetIds = Object.keys(store.meets) as MeetName[];
+    const storageKeys = await readStorageKeysForMeetClear(meetIds.length);
 
     for (const meetId of meetIds) {
-      await clearMeetData(meetId);
+      await clearMeetData(meetId, { storageKeys });
     }
   } catch (error) {
     console.error('Error clearing all meet data:', error);
@@ -1049,12 +1084,17 @@ export async function clearImplicitMeetData(exceptMeet?: MeetName): Promise<void
     // One read of the downloads blob for the whole sweep instead of one per
     // meet.
     const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
-
-    for (const meetId of meetIds) {
+    const implicitMeetIds = meetIds.filter((meetId) => {
       const meetName = meetId as MeetName;
-      if (exceptMeet && meetName === exceptMeet) continue;
-      if (explicitlyDownloaded.has(meetName)) continue;
-      await clearMeetData(meetName);
+      if (exceptMeet && meetName === exceptMeet) return false;
+      return !explicitlyDownloaded.has(meetName);
+    });
+    const storageKeys = await readStorageKeysForMeetClear(
+      implicitMeetIds.length,
+    );
+
+    for (const meetId of implicitMeetIds) {
+      await clearMeetData(meetId as MeetName, { storageKeys });
     }
   } catch (error) {
     console.error('Error clearing implicit meet data:', error);

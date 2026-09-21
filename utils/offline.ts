@@ -21,6 +21,7 @@ import {
   getExplicitlyDownloadedMeetIds,
   getLastSyncTime,
   markMeetExplicitlyDownloaded,
+  readStorageKeysForMeetClear,
 } from "@/lib/database/offline-store";
 import {
   getCalendarDateInTimeZone,
@@ -407,8 +408,16 @@ export const useOfflineData = () => {
             clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords),
           ]);
     
+          // One key listing shared by every meet. Each `clearMeetData` has to
+          // scan all storage keys for that meet's session-athlete entries, and
+          // at this point the athlete-history keys — 1500 to 4500 of them for a
+          // downloaded meet — have not been removed yet, so the listing is at
+          // its largest exactly while it was being repeated once per meet.
+          const storageKeys = await readStorageKeysForMeetClear(
+            availableMeets.length,
+          );
           for (const meet of availableMeets) {
-            await clearMeetData(meet.name);
+            await clearMeetData(meet.name, { storageKeys });
           }
           if (!keepAthleteHistory) {
             await clearAllAthleteHistory();

@@ -71,7 +71,7 @@ const SessionCard = React.memo<SessionCardProps>(
           { backgroundColor: colors.card },
           pressed && { backgroundColor: colors.pressed },
         ]}
-        onPress={onPress}
+        onPress={() => onPress(item)}
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           {/* Use displayDate derived from schedule map */}

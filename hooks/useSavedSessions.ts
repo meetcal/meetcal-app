@@ -381,6 +381,13 @@ export function useSavedSessions() {
       // Use a temporary array to manage local state updates
       let updatedLocalSessions = [...savedSessions];
 
+      // One read for the whole batch. `saveSession` otherwise re-reads this
+      // single boolean preference from AsyncStorage once per session, and a
+      // full national-meet roster produces one session per platform-session
+      // on the schedule.
+      const notificationsEnabled =
+        (await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)) === 'true';
+
       // Loop through generated sessions and save each one (which handles local + Supabase)
       let allSavesSucceeded = true;
       for (const sessionToSave of uniqueSessionsToSave) {
@@ -402,7 +409,10 @@ export function useSavedSessions() {
         // Call saveSession for each session to handle upsert and local state.
         // `schedule` is the same meet's schedule for every iteration, so hand
         // it over rather than letting each save re-fetch it.
-        const success = await saveSession(sessionWithMergedData, { schedule });
+        const success = await saveSession(sessionWithMergedData, {
+          schedule,
+          notificationsEnabled,
+        });
         if (!success) {
           allSavesSucceeded = false;
           console.error(`Failed to save session ${sessionWithMergedData.id} from start list.`);
@@ -429,10 +439,17 @@ export function useSavedSessions() {
    * already-resolved schedule collapses those back to the one fetch the
    * caller made. Must be non-empty: an empty schedule is exactly the case
    * where the fetch below is still worth making.
+   *
+   * @param options.notificationsEnabled The already-read value of
+   * `NOTIFICATION_ENABLED_KEY`. The flag is a single user preference that
+   * cannot change while a batch save is running, so the per-session loop in
+   * `saveSessionsFromAthletes` — up to one iteration per session on a meet's
+   * full roster — reads it once instead of issuing one AsyncStorage round
+   * trip per saved session.
    */
   const saveSession = async (
     session: SavedSession,
-    options?: { schedule?: ScheduleType },
+    options?: { schedule?: ScheduleType; notificationsEnabled?: boolean },
   ) => {
     if (!activeUserId) return false;
 
@@ -491,10 +508,12 @@ export function useSavedSessions() {
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
       try {
-        const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+        const notificationsEnabled =
+          options?.notificationsEnabled ??
+          ((await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)) === 'true');
         logNotificationScheduling('enabled', notificationsEnabled);
 
-        if (notificationsEnabled === 'true') {
+        if (notificationsEnabled) {
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
