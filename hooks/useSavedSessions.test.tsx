@@ -1,0 +1,180 @@
+import React from "react";
+import { act, create } from "react-test-renderer";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSavedSessions } from "@/hooks/useSavedSessions";
+import { fetchSchedule } from "@/lib/database/queries";
+import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import type { LiftResult } from "@/data/types/athletes";
+import type { Schedule } from "@/types/schedule";
+
+jest.mock("@clerk/expo", () => ({
+  useUser: () => ({ user: null }),
+  useAuth: () => ({ getToken: jest.fn(async () => null) }),
+}));
+
+jest.mock("@/contexts/SelectedMeetContext", () => ({
+  useSelectedMeet: () => ({ selectedMeet: null }),
+}));
+
+jest.mock("@/lib/database/queries", () => ({
+  fetchSchedule: jest.fn(),
+}));
+
+jest.mock("@/lib/database/offline-store", () => ({
+  getMeetData: jest.fn(async () => ({ schedule: null })),
+}));
+
+jest.mock("@/lib/authCache", () => ({
+  getCachedAuthState: jest.fn(async () => ({
+    isSignedIn: true,
+    userId: "user_1",
+  })),
+}));
+
+jest.mock("@/lib/posthog", () => ({ posthog: { capture: jest.fn() } }));
+
+jest.mock("@/utils/savedWidget", () => ({
+  syncSavedWidget: jest.fn(),
+  clearSavedWidget: jest.fn(),
+}));
+
+jest.mock("@/utils/appIntents", () => ({ reindexAppEntities: jest.fn() }));
+
+jest.mock("@/utils/notifications", () => ({
+  NOTIFICATION_ENABLED_KEY: "notificationsEnabled",
+  scheduleNotification: jest.fn(async () => "notification-id"),
+  cancelNotification: jest.fn(async () => undefined),
+}));
+
+jest.mock("@/data/meets/config", () => ({
+  getMeetConfig: jest.fn(async () => ({
+    time: { timeZoneIdentifier: "America/New_York" },
+  })),
+  convertToUTC: jest.fn(() => new Date("2099-01-01T15:00:00.000Z")),
+}));
+
+jest.mock("@/lib/api/meetcal-api", () => ({
+  deleteSavedSession: jest.fn(),
+  deleteSavedSessions: jest.fn(),
+  fetchSavedSessions: jest.fn(),
+  fetchUserPreferences: jest.fn(),
+  putSavedSession: jest.fn(),
+}));
+
+const mockFetchSchedule = fetchSchedule as jest.MockedFunction<
+  typeof fetchSchedule
+>;
+
+/** Three sessions on one day, so "save all" produces three saved sessions. */
+const SCHEDULE: Schedule = [
+  {
+    date: "June 20, 2099",
+    fullDate: "2099-06-20",
+    sessions: [1, 2, 3].map((number) => ({
+      id: `Test Meet-${number}`,
+      number,
+      startTime: "10:00 AM",
+      weighInTime: "8:00 AM",
+      platforms: [
+        {
+          platform: "Red",
+          weightClass: "71kg",
+          platformStartTime: "10:00 AM",
+        },
+      ],
+    })),
+  },
+] as unknown as Schedule;
+
+const ATHLETES: LiftResult[] = [1, 2, 3].map((number) => ({
+  memberId: String(number),
+  name: `Athlete ${number}`,
+  age: 25,
+  club: "Club",
+  gender: "Women",
+  weightClass: "71kg",
+  entryTotal: 200,
+  adaptive: false,
+  session: { number, platform: "Red" },
+})) as unknown as LiftResult[];
+
+type Hook = ReturnType<typeof useSavedSessions>;
+
+async function mountHook(): Promise<{ current: Hook }> {
+  const ref: { current: Hook } = { current: null as unknown as Hook };
+  function Harness() {
+    ref.current = useSavedSessions();
+    return null;
+  }
+  await act(async () => {
+    create(<Harness />);
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return ref;
+}
+
+describe("saveSessionsFromAthletes", () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    // Notification scheduling is the only thing that needs the schedule, so it
+    // has to be on for this to measure anything.
+    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
+    mockFetchSchedule.mockResolvedValue(SCHEDULE);
+  });
+
+  it("fetches the meet schedule once for the whole batch", async () => {
+    const hook = await mountHook();
+
+    await act(async () => {
+      await hook.current.saveSessionsFromAthletes(
+        ATHLETES,
+        "Test Meet" as never,
+      );
+    });
+
+    // Once for the batch itself. Before this, every saved session re-fetched
+    // the same meet's schedule inside the notification step — and because the
+    // save loop is sequential, `fetchSchedule`'s in-flight de-duplication
+    // never applied.
+    expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+    expect(hook.current.savedSessions).toHaveLength(3);
+  });
+
+  it("does not fetch at all when the caller supplies the schedule", async () => {
+    const hook = await mountHook();
+
+    await act(async () => {
+      await hook.current.saveSessionsFromAthletes(
+        ATHLETES,
+        "Test Meet" as never,
+        SCHEDULE,
+      );
+    });
+
+    expect(mockFetchSchedule).not.toHaveBeenCalled();
+    expect(hook.current.savedSessions).toHaveLength(3);
+  });
+
+  it("still fetches for a single save that was given no schedule", async () => {
+    const hook = await mountHook();
+
+    await act(async () => {
+      await hook.current.saveSession({
+        id: "Test Meet-1-Red",
+        meet: "Test Meet" as never,
+        sessionNumber: 1,
+        platform: "Red",
+        weightClass: "71kg",
+        startTime: "10:00 AM",
+        weighInTime: "8:00 AM",
+        date: "2099-06-20",
+      });
+    });
+
+    expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+  });
+});

@@ -3,7 +3,7 @@ import {
   getCachedAthleteBestsBatch,
 } from "@/components/schedule-details/athleteBests";
 import {
-  getAllCachedLiftingResultsForAthlete,
+  getAllCachedLiftingResultsForAthletes,
   getCachedAthleteBestsForNames,
   saveAthleteBestsBatch,
 } from "@/lib/database/offline-store";
@@ -15,7 +15,7 @@ jest.mock("@/lib/networkUtils", () => ({
 }));
 
 jest.mock("@/lib/database/offline-store", () => ({
-  getAllCachedLiftingResultsForAthlete: jest.fn(),
+  getAllCachedLiftingResultsForAthletes: jest.fn(),
   getCachedAthleteBestsForNames: jest.fn(),
   saveAthleteBestsBatch: jest.fn(),
 }));
@@ -27,9 +27,9 @@ jest.mock("@/lib/database/queries", () => ({
 const mockIsNetworkAvailable = isNetworkAvailable as jest.MockedFunction<
   typeof isNetworkAvailable
 >;
-const mockGetAllCachedLiftingResultsForAthlete =
-  getAllCachedLiftingResultsForAthlete as jest.MockedFunction<
-    typeof getAllCachedLiftingResultsForAthlete
+const mockGetAllCachedLiftingResultsForAthletes =
+  getAllCachedLiftingResultsForAthletes as jest.MockedFunction<
+    typeof getAllCachedLiftingResultsForAthletes
   >;
 const mockGetCachedAthleteBestsForNames =
   getCachedAthleteBestsForNames as jest.MockedFunction<
@@ -86,11 +86,9 @@ describe("getAthleteBestsBatch", () => {
 
   it("uses cached lifting results when offline", async () => {
     mockIsNetworkAvailable.mockResolvedValue(false);
-    mockGetAllCachedLiftingResultsForAthlete.mockImplementation(async (name) => {
-      if (name === "Athlete A") {
-        return [{ snatch_best: 100, cj_best: 120, total: 220 } as any];
-      }
-      return [];
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({
+      "Athlete A": [{ snatch_best: 100, cj_best: 120, total: 220 } as any],
+      "Athlete B": [],
     });
 
     const result = await getAthleteBestsBatch(
@@ -99,7 +97,12 @@ describe("getAthleteBestsBatch", () => {
     );
 
     expect(mockFetchAthleteBestsForNames).not.toHaveBeenCalled();
-    expect(mockGetAllCachedLiftingResultsForAthlete).toHaveBeenCalledWith("Athlete A");
+    // One pass over the cached meets for the whole session, not one per athlete.
+    expect(mockGetAllCachedLiftingResultsForAthletes).toHaveBeenCalledTimes(1);
+    expect(mockGetAllCachedLiftingResultsForAthletes).toHaveBeenCalledWith([
+      "Athlete A",
+      "Athlete B",
+    ]);
     expect(result["Athlete A"]).toEqual({
       snatch_best: 100,
       cj_best: 120,
@@ -126,11 +129,8 @@ describe("getAthleteBestsBatch", () => {
         total: null,
       },
     });
-    mockGetAllCachedLiftingResultsForAthlete.mockImplementation(async (name) => {
-      if (name === "Athlete B") {
-        return [{ snatch_best: 95, cj_best: 115, total: 210 } as any];
-      }
-      return [];
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({
+      "Athlete B": [{ snatch_best: 95, cj_best: 115, total: 210 } as any],
     });
 
     const result = await getAthleteBestsBatch(
@@ -159,7 +159,7 @@ describe("getAthleteBestsBatch", () => {
         total: null,
       },
     });
-    mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([]);
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({});
 
     const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);
 
@@ -172,19 +172,21 @@ describe("getAthleteBestsBatch", () => {
 
   it("derives bests from attempts when *_best fields are null", async () => {
     mockIsNetworkAvailable.mockResolvedValue(false);
-    mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
-      {
-        snatch_best: null,
-        cj_best: null,
-        total: null,
-        snatch1: 90,
-        snatch2: -94,
-        snatch3: 96,
-        cj1: 110,
-        cj2: 114,
-        cj3: -117,
-      } as any,
-    ]);
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({
+      "Athlete A": [
+        {
+          snatch_best: null,
+          cj_best: null,
+          total: null,
+          snatch1: 90,
+          snatch2: -94,
+          snatch3: 96,
+          cj1: 110,
+          cj2: 114,
+          cj3: -117,
+        } as any,
+      ],
+    });
 
     const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);
 

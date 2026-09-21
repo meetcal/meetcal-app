@@ -1,8 +1,8 @@
-import { SupabaseBests } from "@/data/types/athletes";
+import { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { maxSuccessfulAttempt } from "@/lib/athletes";
 import {
-  getAllCachedLiftingResultsForAthlete,
+  getAllCachedLiftingResultsForAthletes,
   getCachedAthleteBestsForNames,
   saveAthleteBestsBatch,
 } from "@/lib/database/offline-store";
@@ -69,18 +69,22 @@ async function loadCachedBestsForNames(
 ): Promise<Record<string, SupabaseBests>> {
   const bestsByName: Record<string, SupabaseBests> = {};
 
-  // Resolve one athlete at a time. getAllCachedLiftingResultsForAthlete can fall
-  // through to scanning and pako-inflating every cached meet's results, so fanning
-  // all athletes out with Promise.all would run many large decompressions at once
-  // — a memory spike the iOS watchdog punishes. Sequential keeps peak memory flat.
+  // One pass over the cached meets for the whole batch. Resolving athletes one
+  // at a time re-inflated every cached meet's results blob per athlete, so a
+  // 15-athlete session against three downloaded meets did 45 decompressions
+  // instead of three. The scan inside is still sequential — it holds one
+  // inflated meet at a time — so peak memory is unchanged and there is still
+  // no Promise.all fan-out for the iOS watchdog to punish.
+  let cachedResultsByName: Record<string, SupabaseLiftResult[]> = {};
+  try {
+    cachedResultsByName = await getAllCachedLiftingResultsForAthletes(names);
+  } catch {}
+
   for (const name of names) {
     let bests = createEmptyBests();
-    try {
-      const cachedResults = await getAllCachedLiftingResultsForAthlete(name);
-      cachedResults.forEach((row) => {
-        bests = mergeIntoBests(bests, deriveRowBests(row));
-      });
-    } catch {}
+    for (const row of cachedResultsByName[name] ?? []) {
+      bests = mergeIntoBests(bests, deriveRowBests(row));
+    }
     bestsByName[name] = bests;
   }
 

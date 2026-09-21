@@ -1,6 +1,45 @@
 import { DaySchedule, Schedule } from "@/types/schedule";
 
 /**
+ * How many timezone formatters stay resident. US meets span a handful of
+ * zones, so this never fills in practice; it is the bound that keeps a
+ * malformed feed from growing the map without limit.
+ */
+const ABBREVIATION_FORMATTER_CACHE_LIMIT = 32;
+
+/**
+ * `new Intl.DateTimeFormat(...)` costs roughly ten times a `formatToParts`
+ * call on an existing instance, and `mapApiMeet` builds two per meet for the
+ * whole `/meets` list on every app start, every five-minute refresh and every
+ * reconnect. A formatter carries no per-call state, so one instance per zone
+ * is reused across instants — the abbreviation still varies with `instant`
+ * (EST vs EDT), because that is decided by `formatToParts`, not by the
+ * constructor.
+ */
+const abbreviationFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getAbbreviationFormatter(timeZoneIdentifier: string): Intl.DateTimeFormat {
+  const cached = abbreviationFormatterCache.get(timeZoneIdentifier);
+  if (cached) return cached;
+
+  // Throws for an unknown identifier. Deliberately not cached: the caller
+  // turns it into "Local" and a later valid id must still be able to resolve.
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timeZoneIdentifier,
+    timeZoneName: "short",
+  });
+
+  // Insertion-ordered eviction: `Map` keys iterate oldest-first.
+  while (abbreviationFormatterCache.size >= ABBREVIATION_FORMATTER_CACHE_LIMIT) {
+    const oldest = abbreviationFormatterCache.keys().next();
+    if (oldest.done) break;
+    abbreviationFormatterCache.delete(oldest.value);
+  }
+  abbreviationFormatterCache.set(timeZoneIdentifier, formatter);
+  return formatter;
+}
+
+/**
  * Gets the abbreviated timezone name for a given timezone identifier
  * @param timeZoneIdentifier - IANA timezone identifier (e.g., "America/New_York")
  * @returns Abbreviated timezone (e.g., "EST", "PST") or "Local" if unavailable
@@ -11,10 +50,7 @@ export function getTimeZoneAbbreviation(
 ): string {
   try {
     return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: timeZoneIdentifier,
-        timeZoneName: "short",
-      })
+      getAbbreviationFormatter(timeZoneIdentifier)
         .formatToParts(instant)
         .find((part) => part.type === "timeZoneName")?.value || "Local"
     );

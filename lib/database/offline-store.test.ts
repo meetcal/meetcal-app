@@ -23,8 +23,11 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   clearMeetData,
+  getAllCachedLiftingResultsForAthlete,
+  getAllCachedLiftingResultsForAthletes,
   getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
@@ -33,6 +36,7 @@ import {
   getSessionAthletesFromMeetCache,
   initStore,
   markMeetExplicitlyDownloaded,
+  saveAthleteHistory,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
@@ -264,5 +268,145 @@ describe("explicit meet downloads", () => {
     await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(
       new Set(["Meet A"]),
     );
+  });
+});
+
+describe("getAllCachedLiftingResultsForAthletes", () => {
+  const row = (overrides: Record<string, unknown>) =>
+    ({
+      id: 1,
+      event_id: "evt",
+      meet: "Meet A",
+      date: "2026-01-01",
+      name: "Jane Doe",
+      age: 25,
+      body_weight: 65,
+      snatch1: 90,
+      snatch2: null,
+      snatch3: null,
+      snatch_best: 90,
+      cj1: 110,
+      cj2: null,
+      cj3: null,
+      cj_best: 110,
+      total: 200,
+      ...overrides,
+    }) as any;
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    jest.clearAllMocks();
+    await initStore();
+  });
+
+  it("aggregates a name across every cached meet, newest date first", async () => {
+    await saveMeetLiftingResults("Meet A", [
+      row({ event_id: "a", meet: "Meet A", date: "2025-03-01" }),
+      row({ event_id: "a", meet: "Meet A", date: "2025-03-01", name: "Other Person" }),
+    ]);
+    await saveMeetLiftingResults("Meet B", [
+      row({ event_id: "b", meet: "Meet B", date: "2026-05-01" }),
+    ]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
+
+    expect(byName["Jane Doe"].map((r) => r.date)).toEqual([
+      "2026-05-01",
+      "2025-03-01",
+    ]);
+  });
+
+  it("matches names case-insensitively and with whitespace normalization", async () => {
+    await saveMeetLiftingResults("Meet A", [
+      row({ event_id: "a", name: "  JANE   DOE " }),
+      row({ event_id: "a", name: "jane doe" }),
+    ]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
+
+    // Both rows belong to the athlete. They are not duplicates of each other:
+    // the dedupe key carries the raw name, so the two spellings stay distinct.
+    expect(byName["Jane Doe"]).toHaveLength(2);
+  });
+
+  it("de-duplicates the same row cached under two meets", async () => {
+    const shared = row({ event_id: "shared", meet: "Meet A", date: "2025-03-01" });
+    await saveMeetLiftingResults("Meet A", [shared]);
+    await saveMeetLiftingResults("Meet B", [shared]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
+
+    expect(byName["Jane Doe"]).toHaveLength(1);
+  });
+
+  it("prefers the athlete's own history blob over the meet scan", async () => {
+    await saveMeetLiftingResults("Meet A", [row({ date: "2020-01-01" })]);
+    await saveAthleteHistory("Jane Doe", [
+      row({ event_id: "hist", meet: "History Meet", date: "2026-09-01" }),
+    ]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
+
+    expect(byName["Jane Doe"]).toHaveLength(1);
+    expect(byName["Jane Doe"][0].meet).toBe("History Meet");
+  });
+
+  it("returns the same rows as the single-athlete helper", async () => {
+    await saveMeetLiftingResults("Meet A", [
+      row({ event_id: "a", date: "2025-03-01" }),
+    ]);
+    await saveMeetLiftingResults("Meet B", [
+      row({ event_id: "b", meet: "Meet B", date: "2026-05-01" }),
+      row({ event_id: "b", meet: "Meet B", name: "John Doe" }),
+    ]);
+
+    const batch = await getAllCachedLiftingResultsForAthletes([
+      "Jane Doe",
+      "John Doe",
+      "Nobody At All",
+    ]);
+
+    await expect(
+      getAllCachedLiftingResultsForAthlete("Jane Doe"),
+    ).resolves.toEqual(batch["Jane Doe"]);
+    await expect(
+      getAllCachedLiftingResultsForAthlete("John Doe"),
+    ).resolves.toEqual(batch["John Doe"]);
+    expect(batch["Nobody At All"]).toEqual([]);
+  });
+
+  // The whole point of the batch: meets are the outer loop, so each meet's
+  // compressed results blob is read and inflated once no matter how many
+  // athletes are asked for.
+  it("reads each meet's results blob once for the whole batch", async () => {
+    await saveMeetLiftingResults("Meet A", [
+      row({ event_id: "a", name: "Jane Doe" }),
+      row({ event_id: "a", name: "John Doe" }),
+      row({ event_id: "a", name: "Jo Doe" }),
+    ]);
+    await saveMeetLiftingResults("Meet B", [
+      row({ event_id: "b", meet: "Meet B", name: "Jane Doe" }),
+    ]);
+
+    jest.clearAllMocks();
+    await getAllCachedLiftingResultsForAthletes([
+      "Jane Doe",
+      "John Doe",
+      "Jo Doe",
+    ]);
+
+    const manifestReads = (AsyncStorage.getItem as jest.Mock).mock.calls.filter(
+      ([key]: [string]) =>
+        typeof key === "string" &&
+        key.startsWith("meetcal_lifting_results_") &&
+        !key.includes("__chunk_"),
+    );
+    expect(manifestReads).toHaveLength(2);
+  });
+
+  it("returns an empty record for an empty name list without touching storage", async () => {
+    jest.clearAllMocks();
+    await expect(getAllCachedLiftingResultsForAthletes([])).resolves.toEqual({});
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
   });
 });

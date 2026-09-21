@@ -46,6 +46,29 @@ describe("getTimeZoneAbbreviation", () => {
   it("returns 'Local' for an invalid timezone", () => {
     expect(getTimeZoneAbbreviation("Not/AZone")).toBe("Local");
   });
+
+  // Formatters are cached per zone. These guard the two ways that can go
+  // wrong: leaking one zone's formatter to another, and letting a rejected
+  // identifier stick so a later valid call still reports "Local".
+  it("keeps zones independent when called repeatedly", () => {
+    const winter = new Date("2026-01-15T17:00:00.000Z");
+    for (let i = 0; i < 3; i++) {
+      expect(getTimeZoneAbbreviation("America/New_York", winter)).toBe("EST");
+      expect(getTimeZoneAbbreviation("America/Los_Angeles", winter)).toBe("PST");
+      expect(getTimeZoneAbbreviation("America/Chicago", winter)).toBe("CST");
+    }
+  });
+
+  it("still resolves a valid zone after an invalid one", () => {
+    expect(getTimeZoneAbbreviation("Not/AZone")).toBe("Local");
+    expect(
+      getTimeZoneAbbreviation(
+        "America/Denver",
+        new Date("2026-01-15T17:00:00.000Z"),
+      ),
+    ).toBe("MST");
+    expect(getTimeZoneAbbreviation("Not/AZone")).toBe("Local");
+  });
 });
 
 describe("formatDayTitle", () => {

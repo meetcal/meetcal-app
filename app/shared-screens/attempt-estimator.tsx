@@ -11,7 +11,7 @@ import {
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
 import {
-  getAllCachedLiftingResultsForAthlete,
+  getAllCachedLiftingResultsForAthletes,
   getMeetLiftingResults,
   getSessionAthletesFromMeetCache,
   saveMeetAthletes,
@@ -118,12 +118,19 @@ export default function AttemptEstimatorScreen() {
           );
         } else {
           const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+          const namedAthletes = cachedSessionAthletes.filter((athlete) =>
+            athlete.name?.trim(),
+          );
+          // One pass over the cached meets for the whole session. Asking per
+          // athlete re-inflated every cached meet's results blob once per
+          // athlete — a 15-lifter session against three downloaded meets did
+          // 45 decompressions instead of three.
+          const resultsByName = await getAllCachedLiftingResultsForAthletes(
+            namedAthletes.map((athlete) => athlete.name),
+          );
           const allResults: SupabaseLiftResult[] = [];
-          for (const athlete of cachedSessionAthletes) {
-            if (!athlete.name?.trim()) continue;
-            const athleteResults = await getAllCachedLiftingResultsForAthlete(
-              athlete.name,
-            );
+          for (const athlete of namedAthletes) {
+            const athleteResults = resultsByName[athlete.name] ?? [];
             const filtered = athleteResults.filter(
               (r) => (r.date ?? "") >= cutoffDate,
             );

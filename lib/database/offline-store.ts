@@ -481,41 +481,114 @@ export async function getCachedAthleteBestsForNames(
   }
 }
 
-export async function getAllCachedLiftingResultsForAthlete(
-  athleteName: string,
-): Promise<SupabaseLiftResult[]> {
-  const normalizedName = normalizeAthleteName(athleteName);
-  const historyKey = getAthleteHistoryKey(normalizedName);
-  try {
-    const fromHistory = await readStoredLiftingResults(historyKey);
-    if (fromHistory.length > 0) {
-      return fromHistory;
+/**
+ * Cached competition history for several athletes at once.
+ *
+ * Per athlete the rules are unchanged: the athlete's own history blob wins
+ * outright, and only athletes without one fall through to scanning the cached
+ * meets' results.
+ *
+ * What changes is the loop order. Resolving athletes one at a time meant every
+ * athlete re-read, base64-decoded, pako-inflated and `JSON.parse`d *every*
+ * cached meet's results blob (`getAthleteLiftingResults` also re-read the
+ * store, the meet schedule and the full roster on each call, and threw all
+ * three away). A 15-athlete session against three downloaded meets did 45 full
+ * meet decompressions to answer 15 questions. Meets are the outer loop here,
+ * so it does three.
+ *
+ * Peak memory is unchanged: the scan is still sequential and still holds one
+ * inflated meet blob at a time. Do NOT turn this into a `Promise.all` over
+ * meets — concurrent pako inflates of meet-sized payloads are what the iOS
+ * watchdog punishes.
+ */
+export async function getAllCachedLiftingResultsForAthletes(
+  athleteNames: string[],
+): Promise<Record<string, SupabaseLiftResult[]>> {
+  const uniqueNames = Array.from(new Set(athleteNames));
+  const byName: Record<string, SupabaseLiftResult[]> = {};
+  if (uniqueNames.length === 0) return byName;
+
+  const needsMeetScan: string[] = [];
+  for (const athleteName of uniqueNames) {
+    byName[athleteName] = [];
+    try {
+      const fromHistory = await readStoredLiftingResults(
+        getAthleteHistoryKey(normalizeAthleteName(athleteName)),
+      );
+      if (fromHistory.length > 0) {
+        byName[athleteName] = fromHistory;
+        continue;
+      }
+    } catch (error) {
+      console.error('Error getting cached lifting results for athlete:', error);
+      continue;
     }
+    needsMeetScan.push(athleteName);
+  }
+
+  if (needsMeetScan.length === 0) return byName;
+
+  try {
     const store = await getStore();
     const meetIds = Object.keys(store.meets);
-    const seen = new Set<string>();
-    const aggregated: SupabaseLiftResult[] = [];
-    let rowIndex = 0;
+
+    // Per-athlete dedupe state, mirroring the single-athlete scan exactly.
+    const seenByName = new Map<string, Set<string>>();
+    const rowIndexByName = new Map<string, number>();
+    // One normalized name can be requested under several spellings.
+    const namesByNormalized = new Map<string, string[]>();
+    for (const athleteName of needsMeetScan) {
+      seenByName.set(athleteName, new Set());
+      rowIndexByName.set(athleteName, 0);
+      const normalized = normalizeAthleteName(athleteName);
+      const bucket = namesByNormalized.get(normalized);
+      if (bucket) bucket.push(athleteName);
+      else namesByNormalized.set(normalized, [athleteName]);
+    }
+
     for (const meetId of meetIds) {
-      const meetResults = await getAthleteLiftingResults(meetId as MeetName, athleteName);
+      const liftingResultsKey = store.meets[meetId as MeetName]?.liftingResultsKey;
+      if (!liftingResultsKey) continue;
+
+      const meetResults = await readStoredLiftingResults(liftingResultsKey);
       for (const r of meetResults) {
+        const targets = namesByNormalized.get(normalizeAthleteName(r.name));
+        if (!targets) continue;
         const baseKey = `${r.event_id ?? r.meet}-${r.date}-${r.name}`;
-        const dedupeKey =
-          baseKey === 'undefined-undefined-undefined'
-            ? `${baseKey}-${rowIndex++}`
-            : baseKey;
-        if (!seen.has(dedupeKey)) {
+        const isSentinelKey = baseKey === 'undefined-undefined-undefined';
+        for (const athleteName of targets) {
+          const seen = seenByName.get(athleteName)!;
+          let dedupeKey = baseKey;
+          if (isSentinelKey) {
+            const rowIndex = rowIndexByName.get(athleteName)!;
+            dedupeKey = `${baseKey}-${rowIndex}`;
+            rowIndexByName.set(athleteName, rowIndex + 1);
+          }
+          if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
-          aggregated.push(r);
+          byName[athleteName].push(r);
         }
       }
     }
-    aggregated.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-    return aggregated;
+
+    for (const athleteName of needsMeetScan) {
+      byName[athleteName].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+    }
   } catch (error) {
     console.error('Error getting cached lifting results for athlete:', error);
-    return [];
+    for (const athleteName of needsMeetScan) {
+      byName[athleteName] = [];
+    }
   }
+
+  return byName;
+}
+
+export async function getAllCachedLiftingResultsForAthlete(
+  athleteName: string,
+): Promise<SupabaseLiftResult[]> {
+  const byName = await getAllCachedLiftingResultsForAthletes([athleteName]);
+  return byName[athleteName] ?? [];
 }
 
 export async function getAthleteLiftingResults(meetId: MeetName, athleteName: string): Promise<SupabaseLiftResult[]> {

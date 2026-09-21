@@ -370,8 +370,10 @@ export function useSavedSessions() {
           };
         }
 
-        // Call saveSession for each session to handle upsert and local state
-        const success = await saveSession(sessionWithMergedData);
+        // Call saveSession for each session to handle upsert and local state.
+        // `schedule` is the same meet's schedule for every iteration, so hand
+        // it over rather than letting each save re-fetch it.
+        const success = await saveSession(sessionWithMergedData, { schedule });
         if (!success) {
           allSavesSucceeded = false;
           console.error(`Failed to save session ${sessionWithMergedData.id} from start list.`);
@@ -389,9 +391,22 @@ export function useSavedSessions() {
     }
   };
 
-  const saveSession = async (session: SavedSession) => {
+  /**
+   * @param options.schedule The meet's schedule when the caller already has
+   * it. Notification scheduling (step 3 below) needs the session's day, and
+   * `fetchSchedule` only de-duplicates *concurrent* callers — so the
+   * sequential save loop in `saveSessionsFromAthletes` used to issue one full
+   * `GET /meets/schedule` per saved session for the same meet. Passing the
+   * already-resolved schedule collapses those back to the one fetch the
+   * caller made. Must be non-empty: an empty schedule is exactly the case
+   * where the fetch below is still worth making.
+   */
+  const saveSession = async (
+    session: SavedSession,
+    options?: { schedule?: ScheduleType },
+  ) => {
     if (!activeUserId) return false;
-    
+
     try {
       if (!session.meet) {
         console.error('Cannot save session without meet information');
@@ -454,12 +469,19 @@ export function useSavedSessions() {
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
-          logNotificationScheduling('fetching schedule', {
-            meetName,
-            sessionNumber,
-            platform,
-          });
-          const schedule = await fetchSchedule(meetName);
+          const providedSchedule =
+            options?.schedule && options.schedule.length > 0
+              ? options.schedule
+              : null;
+          logNotificationScheduling(
+            providedSchedule ? 'reusing caller schedule' : 'fetching schedule',
+            {
+              meetName,
+              sessionNumber,
+              platform,
+            },
+          );
+          const schedule = providedSchedule ?? (await fetchSchedule(meetName));
           logNotificationScheduling('schedule days', schedule?.length ?? 0);
 
           if (!schedule || schedule.length === 0) {
