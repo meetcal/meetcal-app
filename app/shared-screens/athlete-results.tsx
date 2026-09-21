@@ -268,7 +268,7 @@ function AthleteStats({
 export default function AthleteResultsScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { name } = useLocalSearchParams<{ name?: string; meet?: string }>();
+  const { name } = useLocalSearchParams<{ name?: string }>();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(

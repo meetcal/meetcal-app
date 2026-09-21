@@ -23,18 +23,6 @@ interface DataTableProps<T> {
   testID?: string;
 }
 
-function DataTableRow<T>({
-  item,
-  index,
-  renderRow,
-}: {
-  item: T;
-  index: number;
-  renderRow: (item: T, index: number) => React.ReactNode;
-}) {
-  return <>{renderRow(item, index)}</>;
-}
-
 export function DataTable<T>({
   columns,
   data,
@@ -97,12 +85,9 @@ export function DataTable<T>({
           !error &&
           data.length > 0 &&
           data.map((item, index) => (
-            <DataTableRow
-              key={keyExtractor(item, index)}
-              item={item}
-              index={index}
-              renderRow={renderRow}
-            />
+            <React.Fragment key={keyExtractor(item, index)}>
+              {renderRow(item, index)}
+            </React.Fragment>
           ))}
       </View>
     </ScrollView>

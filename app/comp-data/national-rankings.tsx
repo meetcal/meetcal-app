@@ -1,4 +1,5 @@
 import { DataTable } from "@/components/ui/DataTable";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -13,16 +14,15 @@ import {
   NationalRanking,
   nationalRankingsResource,
 } from "@/lib/database/fetch-national-rankings";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+const EMPTY_RANKINGS: NationalRanking[] = [];
 
 export default function NationalRankingsScreen() {
   return (
@@ -50,34 +50,8 @@ function NationalRankingsScreenContent() {
     },
   });
 
-  const [rankings, setRankings] = useState<NationalRanking[]>([]);
-  const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    isNetworkAvailable()
-      .then((hasNetwork) => {
-        if (mounted) {
-          setIsOffline(!hasNetwork);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setIsOffline(false);
-        }
-      });
-
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, []);
+  const [isOffline, setIsOffline] = useIsOffline();
 
   useEffect(() => {
     const classes = getWeightClasses(filters.gender as Gender, filters.ageGroup);
@@ -91,21 +65,15 @@ function NationalRankingsScreenContent() {
     [filters.weightClass],
   );
   const {
-    data,
-    isInitialLoading,
+    data: rankings,
+    isInitialLoading: loading,
     error,
   } = useMutableResource({
     resource: nationalRankingsResource,
     params: resourceParams ?? ([] as unknown as [string]),
-    initialData: [] as NationalRanking[],
+    initialData: EMPTY_RANKINGS,
     enabled: Boolean(resourceParams),
   });
-  useEffect(() => {
-    setRankings(data);
-  }, [data]);
-  useEffect(() => {
-    setLoading(isInitialLoading);
-  }, [isInitialLoading]);
   useEffect(() => {
     if (!error) {
       setFetchError(null);
@@ -123,9 +91,7 @@ function NationalRankingsScreenContent() {
       .catch(() => {
         setFetchError(error);
       });
-  }, [error]);
-
-  const rows = rankings;
+  }, [error, setIsOffline]);
 
   const handleResetFilters = () => {
     const reset = {
@@ -202,7 +168,7 @@ function NationalRankingsScreenContent() {
           { label: "Name", flex: 1 },
           { label: "Total", width: 80 },
         ]}
-        data={rows}
+        data={rankings}
         keyExtractor={(athlete, index) => `${athlete.id}-${index}`}
         loading={loading}
         error={fetchError}
@@ -223,7 +189,7 @@ function NationalRankingsScreenContent() {
           <View
             style={[
               styles.row,
-              index < rows.length - 1 && {
+              index < rankings.length - 1 && {
                 borderBottomWidth: StyleSheet.hairlineWidth,
                 borderBottomColor: colors.border,
               },

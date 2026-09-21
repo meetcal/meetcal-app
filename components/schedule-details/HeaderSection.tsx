@@ -1,4 +1,5 @@
 import { PlatformBadge } from "@/components/schedule-details/PlatformBadge";
+import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { showToast } from "@/components/ui/Toast";
@@ -50,19 +51,15 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
-  // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    const timeZoneId = meetDetails?.time.timeZoneIdentifier || "America/Denver";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: timeZoneId,
-        timeZoneName: "short",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // FIXME: the "America/Denver" default silently mislabels a meet whose
+  // details have not loaded yet; kept as-is here, it is a behaviour question.
+  const timeZoneAbbr = useMemo(
+    () =>
+      getTimeZoneAbbreviation(
+        meetDetails?.time.timeZoneIdentifier || "America/Denver",
+      ),
+    [meetDetails?.time.timeZoneIdentifier],
+  );
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);

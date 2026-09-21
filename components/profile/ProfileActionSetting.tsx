@@ -1,5 +1,6 @@
 import React from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { getChevronIcon } from "@/lib/start-list-utils";
+import { Pressable, StyleSheet, View } from "react-native";
 import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 
@@ -62,7 +63,7 @@ export function ProfileActionSetting({
         )}
         <View style={styles.chevronContainer}>
           <IconSymbol
-            name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+            name={getChevronIcon("right")}
             size={20}
             color={colors.link}
           />

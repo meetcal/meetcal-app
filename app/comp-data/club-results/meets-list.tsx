@@ -1,14 +1,12 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubAthletesResource } from "@/lib/database/fetch-club-stats";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import type { AthleteClub } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -41,7 +39,7 @@ function ClubMeetsListScreenContent() {
   const { club } = useLocalSearchParams<{ club: string }>();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline] = useIsOffline();
   const params = useMemo(() => (club ? ([club] as const) : null), [club]);
   const {
     data: athletesInClub,
@@ -62,22 +60,6 @@ function ClubMeetsListScreenContent() {
       club_name: club,
     });
   }, [club]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkNetwork = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (isMounted) setIsOffline(!hasNetwork);
-    };
-    checkNetwork();
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
 
   const loadAthletes = useCallback(async () => {
     await refresh();
@@ -187,7 +169,7 @@ function ClubMeetsListScreenContent() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+        name={getChevronIcon("right")}
         size={20}
         color={colors.link}
       />

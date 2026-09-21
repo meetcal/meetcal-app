@@ -62,7 +62,6 @@ export default function SessionAthletes({
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
-  const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const { isSubscribed } = useSubscription();
@@ -108,7 +107,6 @@ export default function SessionAthletes({
     async function loadBests() {
       if (!isSubscribed) {
         setAthleteBests({});
-        setLoadingBests({});
         return;
       }
 
@@ -116,7 +114,6 @@ export default function SessionAthletes({
 
       if (athleteNames.length === 0) {
         setAthleteBests({});
-        setLoadingBests({});
         return;
       }
 
@@ -128,7 +125,6 @@ export default function SessionAthletes({
         if (cancelled) return;
 
         setAthleteBests(cachedBestsMap);
-        setLoadingBests({});
 
         if (__DEV__ && !loggedBestsLoadRef.current) {
           loggedBestsLoadRef.current = true;
@@ -146,7 +142,6 @@ export default function SessionAthletes({
         const bestsMap = await getAthleteBestsBatch(athleteNames, meetId);
         if (cancelled) return;
         setAthleteBests(bestsMap);
-        setLoadingBests({});
 
         if (__DEV__) {
           console.info("[perf] session bests ready", {
@@ -163,7 +158,6 @@ export default function SessionAthletes({
         if (cancelled) return;
         console.error("Error loading athlete bests:", error);
         setAthleteBests({});
-        setLoadingBests({});
       }
     }
 
@@ -419,60 +413,53 @@ export default function SessionAthletes({
                     </ThemedText>
                   </View>
                   {isSubscribed ? (
-                    loadingBests[athlete.name] ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.secondaryText}
-                      />
-                    ) : (
-                      <>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best Sn
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.snatch_best == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.snatch_best}kg`}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best CJ
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.cj_best == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.cj_best}kg`}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best Total
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.total == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.total}kg`}
-                          </ThemedText>
-                        </View>
-                      </>
-                    )
+                    <>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best Sn
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.snatch_best == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.snatch_best}kg`}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best CJ
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.cj_best == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.cj_best}kg`}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best Total
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.total == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.total}kg`}
+                        </ThemedText>
+                      </View>
+                    </>
                   ) : (
                     <Pressable
                       style={({ pressed }) => [
@@ -558,7 +545,7 @@ export default function SessionAthletes({
                       }
                       router.push({
                         pathname: "/shared-screens/athlete-results",
-                        params: { name: athlete.name, meet: meetId },
+                        params: { name: athlete.name },
                       });
                     }}
                   >

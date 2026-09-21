@@ -1,13 +1,12 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getCloseIcon } from "@/lib/start-list-utils";
 import { CURRENT_VERSION, getAnnouncementForVersion, VERSION_ANNOUNCEMENT_KEY } from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
 import { isMaestroE2E } from "@/lib/e2e";
-import { VersionAnnouncementProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,15 +21,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // claim the announcement pops up once per mounted copy.
 let announcementClaimedThisSession = false;
 
-export function VersionAnnouncement({
-  announcement: propAnnouncement,
-}: VersionAnnouncementProps) {
+export function VersionAnnouncement() {
   const [isVisible, setIsVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
 
-  const announcement =
-    propAnnouncement || getAnnouncementForVersion(CURRENT_VERSION);
+  const announcement = getAnnouncementForVersion(CURRENT_VERSION);
 
   useEffect(() => {
     if (isMaestroE2E()) return;
@@ -121,7 +117,7 @@ export function VersionAnnouncement({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <IconSymbol
-                name={Platform.OS === "ios" ? "xmark" : "close"}
+                name={getCloseIcon()}
                 size={20}
                 color={colors.secondaryText}
               />

@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
@@ -32,7 +33,6 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -566,7 +566,7 @@ function WidgetSettingsRow({
       </View>
       <View style={styles.rowTrailing}>
         <IconSymbol
-          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+          name={getChevronIcon("right")}
           size={20}
           color={colors.link}
         />

@@ -1,4 +1,4 @@
-import { sortAgeGroups } from "@/lib/sortAgeGroups";
+import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 
 describe("sortAgeGroups", () => {
   it("orders known age groups by competitive progression", () => {
@@ -37,5 +37,25 @@ describe("sortAgeGroups", () => {
       "Adaptive",
       "Masters 35",
     ]);
+  });
+});
+
+describe("formatAgeGroupLabel", () => {
+  it("upper-cases numbered under-age groups", () => {
+    expect(formatAgeGroupLabel("u13")).toBe("U13");
+    expect(formatAgeGroupLabel("u15")).toBe("U15");
+    expect(formatAgeGroupLabel("u17")).toBe("U17");
+    expect(formatAgeGroupLabel("u23")).toBe("U23");
+  });
+
+  it("capitalises word groups, including ones starting with u", () => {
+    expect(formatAgeGroupLabel("senior")).toBe("Senior");
+    expect(formatAgeGroupLabel("youth")).toBe("Youth");
+    expect(formatAgeGroupLabel("university")).toBe("University");
+  });
+
+  it("returns an empty string for a missing age group", () => {
+    expect(formatAgeGroupLabel(undefined)).toBe("");
+    expect(formatAgeGroupLabel("")).toBe("");
   });
 });

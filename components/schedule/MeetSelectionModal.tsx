@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getCloseIcon } from "@/lib/start-list-utils";
 import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -7,7 +8,6 @@ import * as Haptics from "expo-haptics";
 import { useState } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -87,7 +87,7 @@ export function MeetSelectionModal({
               onPress={onClose}
             >
               <IconSymbol
-                name={Platform.OS === "ios" ? "xmark" : "close"}
+                name={getCloseIcon()}
                 size={20}
                 color={colors.secondaryText}
               />

@@ -1,7 +1,7 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 
 
 export type QualifyingTotalsData = {
@@ -76,13 +76,10 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
     throw new Error('Offline');
   }
 
-  const payload = await getJson<unknown>('/data/qualifying-totals');
-  if (!Array.isArray(payload)) {
-    throw new Error('/data/qualifying-totals expected an array response');
-  }
+  const rows = await getJsonArray<QualifyingTotalRow>('/data/qualifying-totals');
 
   const result: QualifyingTotalsData = {};
-  (payload as QualifyingTotalRow[]).forEach((row) => {
+  rows.forEach((row) => {
     if (!row || typeof row !== 'object') return;
     const e = row.event_name;
     const a = row.age_category;

@@ -1,14 +1,13 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { searchAthletesByName } from "@/lib/database/queries";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -43,7 +42,7 @@ function AllMeetResultsScreenContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useIsOffline();
   const searchRequestVersion = useRef(0);
 
   // Track screen view on mount
@@ -51,22 +50,6 @@ function AllMeetResultsScreenContent() {
     posthog.capture("screen_viewed", {
       screen_name: "All Meet Results",
     });
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkNetwork = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (isMounted) setIsOffline(!hasNetwork);
-    };
-    checkNetwork();
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
   }, []);
 
   // Debounced search effect
@@ -260,7 +243,7 @@ function AllMeetResultsScreenContent() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+        name={getChevronIcon("right")}
         size={20}
         color={colors.link}
       />

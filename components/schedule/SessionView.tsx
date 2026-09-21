@@ -1,6 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { getPlatformColors } from "@/constants/Colors";
 import { PLATFORM_SORT_ORDER } from "@/constants/platform-sort";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
@@ -11,7 +10,6 @@ import { PlatformBadge } from "../schedule-details/PlatformBadge";
 
 export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   const router = useRouter();
-  const platformColors = getPlatformColors();
   const colors = useAppColors();
 
   const sortedPlatforms = useMemo(

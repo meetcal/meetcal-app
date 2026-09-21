@@ -36,11 +36,6 @@ function cacheBests(name: string, bests: YearBests): void {
   }
 }
 
-/** Test seam: drops every memoized best. */
-export function clearYearBestsCache(): void {
-  cache.clear();
-}
-
 const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
 
 function maxPositive(values: (number | null | undefined)[]): number {

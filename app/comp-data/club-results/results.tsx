@@ -1,14 +1,11 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubMeetStatsResource } from "@/lib/database/fetch-club-stats";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import type { ClubMeetStats } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -48,7 +45,7 @@ function MeetResultsByClubScreenContent() {
   const [showPreview, setShowPreview] = useState(false);
   const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline] = useIsOffline();
   const params = useMemo(
     () => (club && meet ? ([club, meet] as const) : null),
     [club, meet],
@@ -99,22 +96,6 @@ function MeetResultsByClubScreenContent() {
       meet_name: meet,
     });
   }, [club, meet]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkNetwork = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (isMounted) setIsOffline(!hasNetwork);
-    };
-    checkNetwork();
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
 
   const loadStats = useCallback(async () => {
     await refresh();

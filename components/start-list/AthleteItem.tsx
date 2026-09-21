@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { ThemedText } from "@/components/ui/ThemedText";
 import {
   recordExpandTapTime,
@@ -85,16 +86,8 @@ export const AthleteItem = React.memo(function AthleteItem({
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
 
   const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return "";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: meetDetails.time.timeZoneIdentifier,
-        timeZoneName: "short",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
+    const timeZoneId = meetDetails?.time.timeZoneIdentifier;
+    return timeZoneId ? getTimeZoneAbbreviation(timeZoneId) : "";
   }, [meetDetails?.time.timeZoneIdentifier]);
 
   const colors = useMemo(
@@ -422,10 +415,7 @@ export const AthleteItem = React.memo(function AthleteItem({
               if (isSubscribed === true) {
                 router.push({
                   pathname: "/shared-screens/athlete-results",
-                  params: {
-                    name: athlete.name,
-                    ...(validMeet ? { meet: validMeet } : {}),
-                  },
+                  params: { name: athlete.name },
                 });
               } else if (isSubscribed === false) {
                 router.push({

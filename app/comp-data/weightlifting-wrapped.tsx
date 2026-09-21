@@ -1,11 +1,9 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
-import { LiftingResult, WrappedStats } from "@/types/wrapped";
+import type { SupabaseLiftResult } from "@/data/types/athletes";
+import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
@@ -17,6 +15,8 @@ import {
   Pressable,
   ScrollView,
   Share,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   StyleSheet,
   Text,
@@ -58,6 +58,9 @@ const SLIDE_GRADIENTS: [string, string, string][] = [
 
 const SLIDE_COUNT = 7;
 
+/** Upper bound on the rows one Wrapped run scores; a full year is far fewer. */
+const MAX_WRAPPED_RESULTS = 600;
+
 function AnimatedCounter({
   value,
   duration = 1500,
@@ -76,10 +79,8 @@ function AnimatedCounter({
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    let start = 0;
     const end = value;
     const startTime = Date.now() + delay;
-    const endTime = startTime + duration;
 
     const tick = () => {
       const now = Date.now();
@@ -177,28 +178,10 @@ export default function WeightliftingWrappedScreen() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline] = useIsOffline();
   const flatListRef = useRef<FlatList>(null);
-  const viewShotRef = useRef<any>(null);
+  const viewShotRef = useRef<React.ComponentRef<typeof ViewShot>>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    isNetworkAvailable()
-      .then((hasNetwork) => {
-        if (mounted) setIsOffline(!hasNetwork);
-      })
-      .catch(() => {
-        if (mounted) setIsOffline(false);
-      });
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, []);
 
   const fetchSuggestions = useCallback(async (query: string) => {
     if (query.trim().length < 4) {
@@ -256,31 +239,16 @@ export default function WeightliftingWrappedScreen() {
 
       const response = await searchApi(normalizedName, startDate, endDate);
       const words = normalizedName.toLowerCase().split(/\s+/);
-      const data: LiftingResult[] = response.results
+      // `searchApi` already returns rows mapped into `SupabaseLiftResult` by
+      // `mapApiLiftingResult`; re-mapping them field-for-field here was a second
+      // copy of the same mapper (AGENTS: "one mapper family").
+      const data: SupabaseLiftResult[] = response.results
         .filter((r) => {
           const lower = (r.name || "").toLowerCase();
           return words.every((w) => lower.includes(w));
         })
-        .map((r): LiftingResult => ({
-          id: r.id,
-          event_id: r.event_id,
-          meet: r.meet,
-          date: r.date,
-          name: r.name,
-          age: r.age,
-          body_weight: r.body_weight,
-          snatch1: r.snatch1,
-          snatch2: r.snatch2,
-          snatch3: r.snatch3,
-          snatch_best: r.snatch_best,
-          cj1: r.cj1,
-          cj2: r.cj2,
-          cj3: r.cj3,
-          cj_best: r.cj_best,
-          total: r.total,
-        }))
-        .sort((a: LiftingResult, b: LiftingResult) => a.date.localeCompare(b.date))
-        .slice(0, 600);
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(0, MAX_WRAPPED_RESULTS);
 
       if (!data || data.length === 0) {
         showToast({
@@ -303,7 +271,7 @@ export default function WeightliftingWrappedScreen() {
     }
   };
 
-  const calculateWrappedStats = (data: LiftingResult[]): WrappedStats => {
+  const calculateWrappedStats = (data: SupabaseLiftResult[]): WrappedStats => {
     let totalWeight = 0;
     let totalAttempts = 0;
     let successfulAttempts = 0;
@@ -420,17 +388,20 @@ export default function WeightliftingWrappedScreen() {
           throw new Error("Sharing not available");
         }
       }
-    } catch (error) {
+    } catch {
       if (!wrappedStats) return;
       const shareText = `My ${selectedYear} Weightlifting Wrapped!\n\nTotal Weight Lifted: ${wrappedStats.totalWeightLifted.toLocaleString()}kg\nMake Percentage: ${wrappedStats.makePercentage.toFixed(1)}%\nBest Total: ${wrappedStats.bestTotal}kg\nSnatch PR: ${wrappedStats.bestSnatch}kg\nClean & Jerk PR: ${wrappedStats.bestCleanJerk}kg\nCompeted in ${wrappedStats.totalMeets} meets\nStatus: ${wrappedStats.yearRank}\n\n#WeightliftingWrapped`;
       await Share.share({ message: shareText });
     }
   };
 
-  const onMomentumScrollEnd = useCallback((e: any) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
-    setCurrentSlide(index);
-  }, [screenWidth]);
+  const onMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+      setCurrentSlide(index);
+    },
+    [screenWidth],
+  );
 
   const renderSlide = useCallback(({ item, index }: { item: number; index: number }) => {
     if (!wrappedStats) return null;
@@ -460,15 +431,18 @@ export default function WeightliftingWrappedScreen() {
           onPress={(e) => handleTap(e.nativeEvent.locationX)}
         >
           <SlideContent active={isActive}>
-            {index === 0 && <TitleSlide
-              name={athleteName} year={selectedYear} stats={wrappedStats}
-              active={isActive}
-            />}
+            {index === 0 && (
+              <TitleSlide
+                name={athleteName}
+                year={selectedYear}
+                stats={wrappedStats}
+              />
+            )}
             {index === 1 && <TotalWeightSlide stats={wrappedStats} active={isActive} />}
             {index === 2 && <PersonalRecordsSlide stats={wrappedStats} active={isActive} />}
             {index === 3 && <ConsistencySlide stats={wrappedStats} active={isActive} />}
             {index === 4 && <MeetJourneySlide stats={wrappedStats} year={selectedYear} active={isActive} />}
-            {index === 5 && <FavoriteAttemptSlide stats={wrappedStats} active={isActive} />}
+            {index === 5 && <FavoriteAttemptSlide stats={wrappedStats} />}
             {index === 6 && (
               <ShareSlide
                 stats={wrappedStats}
@@ -480,7 +454,7 @@ export default function WeightliftingWrappedScreen() {
         </Pressable>
       </View>
     );
-  }, [wrappedStats, currentSlide, screenWidth, screenHeight, insets, athleteName, selectedYear, handleTap, shareWrapped]);
+  }, [wrappedStats, currentSlide, screenWidth, screenHeight, insets, athleteName, selectedYear, handleTap]);
 
   if (showStats && wrappedStats) {
     return (
@@ -713,7 +687,7 @@ See your stats in a shareable format.
   );
 }
 
-function TitleSlide({ name, year, stats, active }: { name: string; year: number; stats: WrappedStats; active: boolean }) {
+function TitleSlide({ name, year, stats }: { name: string; year: number; stats: WrappedStats }) {
   return (
     <View style={styles.slideInner}>
       <Text style={styles.slideTopLabel}>WEIGHTLIFTING WRAPPED</Text>
@@ -855,22 +829,6 @@ function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: 
 function ConsistencySlide({ stats, active }: { stats: WrappedStats; active: boolean }) {
   const percentage = stats.makePercentage;
   const ringSize = 220;
-  const strokeWidth = 10;
-  const radius = (ringSize - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    if (active) {
-      progress.value = withDelay(
-        500,
-        withTiming(percentage / 100, { duration: 1500, easing: Easing.out(Easing.cubic) }),
-      );
-    } else {
-      progress.value = 0;
-    }
-  }, [active, percentage, progress]);
 
   return (
     <View style={styles.slideInner}>
@@ -975,7 +933,7 @@ kg
   );
 }
 
-function FavoriteAttemptSlide({ stats, active }: { stats: WrappedStats; active: boolean }) {
+function FavoriteAttemptSlide({ stats }: { stats: WrappedStats }) {
   const attemptDescriptions: Record<string, string> = {
     "1st": "You're an opener specialist.\nConfident and locked in from the start.",
     "2nd": "The second attempt is your sweet spot.\nBuild, then strike.",

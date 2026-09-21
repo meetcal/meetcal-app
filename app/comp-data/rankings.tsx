@@ -19,6 +19,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+const EMPTY_INTL_RANKINGS: IntlRanking[] = [];
+
 export default function RecordsScreen() {
   return (
     <SubscriptionGate>
@@ -57,19 +59,15 @@ function RecordsScreenContent() {
     defaultFilters,
   });
 
-  const [intlRankings, setIntlRankings] = useState<IntlRanking[]>([]);
   const {
-    data,
+    data: intlRankings,
     isInitialLoading: loading,
     error: fetchError,
   } = useMutableResource({
     resource: intlRankingsResource,
     params: [] as const,
-    initialData: [] as IntlRanking[],
+    initialData: EMPTY_INTL_RANKINGS,
   });
-  useEffect(() => {
-    setIntlRankings(data);
-  }, [data]);
 
   // Only set default filters the first time rankings are loaded
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(hasRouteFilters);

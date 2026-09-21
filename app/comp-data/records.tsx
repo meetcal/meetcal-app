@@ -12,8 +12,8 @@ import {
   federationRecordsResource,
   fetchAgeGroups,
 } from "@/lib/database/fetch-records";
-import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { AgeGroup, Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
+import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
+import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -130,22 +130,10 @@ function RecordsScreenContent() {
     return allRecords[displayAgeGroup]?.[filters.gender as "Men" | "Women"] ?? [];
   }, [allRecords, displayAgeGroup, filters.gender]);
 
-  const getAgeGroupDisplayText = (ageGroup: AgeGroup | undefined) => {
-    if (!ageGroup) return "";
-    if (
-      ageGroup.startsWith("u") &&
-      ageGroup.length > 1 &&
-      !isNaN(Number(ageGroup.substring(1, 3)))
-    ) {
-      return ageGroup.toUpperCase();
-    }
-    return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
-  };
-
   const getFilterDisplayText = () => {
     const fed = filters.federation || "USAW";
     const gen = filters.gender === "Men" ? "Men" : "Women";
-    const age = getAgeGroupDisplayText(displayAgeGroup) || "Senior";
+    const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
     return `${fed} • ${gen} • ${age}`;
   };
 
@@ -218,7 +206,7 @@ function RecordsScreenContent() {
           title: "Age Group",
           options: modalAgeGroups.map((ageGroup) => ({
             value: ageGroup,
-            label: getAgeGroupDisplayText(ageGroup),
+            label: formatAgeGroupLabel(ageGroup),
           })),
           dependsOn: ["federation"],
         },
@@ -274,7 +262,7 @@ function RecordsScreenContent() {
         }
         loading={loading}
         error={fetchError}
-        emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${getAgeGroupDisplayText(displayAgeGroup) || "selected"} age group.`}
+        emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${formatAgeGroupLabel(displayAgeGroup) || "selected"} age group.`}
         renderRow={(record, index) => (
           <View
             style={[
