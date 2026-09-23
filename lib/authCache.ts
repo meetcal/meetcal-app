@@ -15,13 +15,15 @@ interface AuthCacheData {
 }
 
 // Runtime validator for cached auth data
-function isAuthCacheData(obj: any): obj is AuthCacheData {
+function isAuthCacheData(obj: unknown): obj is AuthCacheData {
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    return false;
+  }
+  const record = obj as Record<string, unknown>;
   return (
-    obj !== null &&
-    typeof obj === 'object' &&
-    typeof obj.isSignedIn === 'boolean' &&
-    typeof obj.timestamp === 'number' &&
-    (obj.userId === undefined || typeof obj.userId === 'string')
+    typeof record.isSignedIn === 'boolean' &&
+    typeof record.timestamp === 'number' &&
+    (record.userId === undefined || typeof record.userId === 'string')
   );
 }
 

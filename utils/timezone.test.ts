@@ -12,9 +12,15 @@ describe("timezone utilities", () => {
       expect(parseClockTime("12:00 PM")).toEqual({ hour: 12, minute: 0 });
     });
 
-    it("parses 24-hour times", () => {
-      expect(parseClockTime("13:30")).toEqual({ hour: 13, minute: 30 });
-    });
+  it("parses 24-hour times", () => {
+    expect(parseClockTime("13:30")).toEqual({ hour: 13, minute: 30 });
+    expect(parseClockTime("08:00:00")).toEqual({ hour: 8, minute: 0 });
+  });
+
+  it("rejects invalid clock strings", () => {
+    expect(() => parseClockTime("25:00")).toThrow("Invalid time");
+    expect(() => parseClockTime("not-a-time")).toThrow("Invalid time");
+  });
   });
 
   describe("convertZonedLocalToUTC", () => {

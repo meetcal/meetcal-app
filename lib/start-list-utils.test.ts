@@ -106,6 +106,12 @@ describe("getAgeCategory", () => {
     expect(getAgeCategory(88)).toBe("Masters 85");
     expect(getAgeCategory(95)).toBe("Masters 90+");
   });
+
+  it("does not invent a masters bucket for missing or non-finite ages", () => {
+    expect(getAgeCategory(Number.NaN)).toBe("Unknown");
+    expect(getAgeCategory(-1)).toBe("Unknown");
+    expect(getAgeCategory(0)).toBe("Unknown");
+  });
 });
 
 describe("parseWeightClasses", () => {

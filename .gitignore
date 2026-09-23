@@ -1,8 +1,3 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-
 # dependencies
 node_modules/
 bun.lock
@@ -48,6 +43,9 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# jest
+coverage/
 
 app-example
 
