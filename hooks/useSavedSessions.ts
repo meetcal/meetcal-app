@@ -279,8 +279,13 @@ export function useSavedSessions() {
 
   const refreshPendingCount = useCallback(async () => {
     if (!activeUserId) return;
-    const count = countPendingWrites(await readOutbox(activeUserId));
-    if (activeUserIdRef.current === activeUserId) pendingWriteCountRef.current = count;
+    try {
+      const count = countPendingWrites(await readOutbox(activeUserId));
+      if (activeUserIdRef.current === activeUserId) pendingWriteCountRef.current = count;
+    } catch (error) {
+      // Only a hint for the reconnect trigger; keep the last known count.
+      console.error('Saved sessions: could not read the outbox', error);
+    }
   }, [activeUserId]);
 
   /**
@@ -680,12 +685,14 @@ export function useSavedSessions() {
       }
 
       // 1. Update local state and AsyncStorage, and record the pending PUT.
-      const { updatedSession, isUpdate, rev } = await mutationQueue.run(async () => {
+      const { updatedSession, previousSession, isUpdate, rev } = await mutationQueue.run(async () => {
         const currentSessions = await readStoredSessions();
         const nextSessions = [...currentSessions];
 
         const existingSessionIndex = nextSessions.findIndex(s => s.id === session.id);
         let updatedSession: SavedSession;
+        const previousSession =
+          existingSessionIndex >= 0 ? nextSessions[existingSessionIndex] : undefined;
         if (existingSessionIndex >= 0) {
           const existingSession = nextSessions[existingSessionIndex];
           updatedSession = { ...existingSession, ...session }; // Merge new data over existing
@@ -707,7 +714,7 @@ export function useSavedSessions() {
         // (with its body) queued, and the next reconcile restores the row.
         const rev = await markSessionPut(activeUserId, updatedSession);
         await commitSessions(nextSessions);
-        return { updatedSession, isUpdate: existingSessionIndex >= 0, rev };
+        return { updatedSession, previousSession, isUpdate: existingSessionIndex >= 0, rev };
       });
 
       if (!options?.silent) {
@@ -723,11 +730,25 @@ export function useSavedSessions() {
 
       // 2. Upsert to the API when online/authenticated. The outbox entry
       // survives a network failure and is sent on the next load or reconnect.
-      // A refusal (e.g. the server's per-user cap) is reported, not hidden:
-      // the next reconcile brings the server's view back.
+      // A refusal (e.g. the server's per-user cap) is reported and undone
+      // locally, so the row does not show as saved and then vanish.
       const flush = await syncOutbox();
       if (flush?.rejected.get(updatedSession.id) === rev) {
         console.error(`Saved sessions: server refused ${updatedSession.id}`);
+        await mutationQueue.run(async () => {
+          // A newer save or removal of this session is queued: it owns the
+          // row now, so leave it alone.
+          if ((await readOutbox(activeUserId)).sessions[updatedSession.id]) return;
+          const current = await readStoredSessions();
+          const index = current.findIndex(s => s.id === updatedSession.id);
+          if (index < 0 || JSON.stringify(current[index]) !== JSON.stringify(updatedSession)) {
+            return;
+          }
+          const next = [...current];
+          if (previousSession) next[index] = previousSession;
+          else next.splice(index, 1);
+          await commitSessions(next);
+        });
         return false;
       }
       if (options?.silent) return true;

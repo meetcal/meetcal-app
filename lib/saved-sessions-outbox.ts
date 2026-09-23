@@ -165,13 +165,15 @@ export function isOutboxEmpty(outbox: SavedSessionsOutbox): boolean {
   return countPendingWrites(outbox) === 0;
 }
 
+/**
+ * The stored outbox. Throws when storage cannot be read: an unreadable
+ * outbox is not an empty one, and treating it as empty would let the next
+ * mark write "empty + one entry" over every queued write, and let a
+ * reconcile drop the rows those writes protect. (A stored value that parses
+ * badly is corruption, not unavailability, and reads as empty.)
+ */
 export async function readOutbox(userId: string): Promise<SavedSessionsOutbox> {
-  try {
-    return parseOutbox(await AsyncStorage.getItem(getSavedSessionsOutboxKey(userId)));
-  } catch (error) {
-    console.error('Saved sessions outbox: read failed', error);
-    return emptyOutbox();
-  }
+  return parseOutbox(await AsyncStorage.getItem(getSavedSessionsOutboxKey(userId)));
 }
 
 async function writeOutbox(userId: string, outbox: SavedSessionsOutbox): Promise<void> {
@@ -639,6 +641,12 @@ export function flushOutbox(
         // so a caller that sets `rerun` after it starts a new flush instead
         // of joining one that will not send its entry.
       } while (outcome === 'done' && state.rerun && passes < MAX_FLUSH_PASSES);
+      return result;
+    } catch (error) {
+      // Storage unavailable: nothing was cleared that was not sent, and the
+      // queue is intact on disk. Report it as still pending.
+      console.error('Saved sessions outbox: storage unavailable; writes stay queued', error);
+      result.remaining = Math.max(result.remaining, 1);
       return result;
     } finally {
       inFlight.delete(userId);

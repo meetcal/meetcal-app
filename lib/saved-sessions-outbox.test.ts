@@ -150,6 +150,38 @@ describe("outbox bookkeeping", () => {
   });
 });
 
+describe("unreadable storage", () => {
+  const getItem = AsyncStorage.getItem as jest.Mock;
+  let original: ((...args: unknown[]) => unknown) | undefined;
+  beforeEach(() => {
+    original = getItem.getMockImplementation();
+  });
+  afterEach(() => {
+    getItem.mockImplementation(original);
+  });
+
+  it("fails a mark instead of overwriting the queue with an empty one", async () => {
+    await markSessionPut(USER, session("queued"));
+    getItem.mockRejectedValueOnce(new Error("io"));
+
+    await expect(markSessionPut(USER, session("new"))).rejects.toThrow("io");
+
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["queued"]);
+  });
+
+  it("stops a flush with the queue intact", async () => {
+    await markSessionPut(USER, session("queued"));
+    getItem.mockRejectedValue(new Error("io"));
+
+    const result = await flushOutbox(USER, getToken);
+    getItem.mockImplementation(original);
+
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(result.remaining).toBeGreaterThan(0);
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["queued"]);
+  });
+});
+
 describe("mergeServerSessions", () => {
   it("keeps a pending PUT the server does not have yet, from the outbox body", async () => {
     await markSessionPut(USER, session("local-only"));

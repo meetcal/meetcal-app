@@ -570,6 +570,25 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(saved).toBe(false);
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
     expect(scheduleNotification).not.toHaveBeenCalled();
+    // Rolled back locally: not shown as saved, so it cannot vanish later.
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(hook.current.isSessionSaved("Test-Meet-1-Red")).toBe(false);
+  });
+
+  it("restores the previous version when the server refuses an edit", async () => {
+    const hook = await mountHook();
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red", { notes: "kept" }));
+    });
+    mockPutSavedSession.mockRejectedValueOnce(new MeetCalApiError("notes too long", 400, ""));
+
+    let saved = true;
+    await act(async () => {
+      saved = await hook.current.saveSession(makeSession("Test-Meet-1-Red", { notes: "x".repeat(5000) }));
+    });
+
+    expect(saved).toBe(false);
+    expect(hook.current.savedSessions.map((s) => s.notes)).toEqual(["kept"]);
   });
 
   it("drops a clean local row the server no longer has, even when the list is empty", async () => {
