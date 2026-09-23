@@ -30,7 +30,7 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
         },
         "/atlas" => PageMetadata {
             title: "Atlas — Weightlifting Coaching Platform | MeetCal",
-            description: "Write weightlifting programs, review training logs, share lift videos, and plan meets with Atlas. Available on the web for coaches and on iPhone for athletes.",
+            description: "Get full MeetCal meet history in Atlas. Analyze readiness before and after lifting alongside sleep, nutrition, and training data for a complete view of your athlete.",
             indexable: true,
         },
         "/privacy" => PageMetadata {

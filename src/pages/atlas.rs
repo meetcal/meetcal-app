@@ -10,10 +10,23 @@ pub fn AtlasPage() -> impl IntoView {
         <Header />
         <section class="hero-section atlas-hero" aria-labelledby="atlas-title">
             <p class="hero-eyebrow">"Atlas by MeetCal"</p>
-            <h1 id="atlas-title">"Weightlifting programs and coaching"</h1>
+            <h1 id="atlas-title">"Meet history and athlete data, connected"</h1>
             <p class="hero-copy">
-                "Write programs for your athletes, review their training, and talk through their lifts. Atlas gives coaches a web console and athletes an app for their daily sessions."
+                "Atlas brings all MeetCal data into your coaching. See an athlete’s full meet history alongside their readiness, sleep, nutrition, and training data."
             </p>
+        </section>
+
+        <section class="atlas-integrations" aria-label="Atlas data integrations">
+            <article class="feature-card">
+                <p class="section-eyebrow">"MeetCal integration"</p>
+                <h2>"Their full meet history, already there"</h2>
+                <p>"All MeetCal data integrates with Atlas, giving you immediate access to your athlete’s full meet history. Review their competition results alongside the training you’re planning."</p>
+            </article>
+            <article class="feature-card">
+                <p class="section-eyebrow">"Athlete data"</p>
+                <h2>"Readiness, recovery, and training in one view"</h2>
+                <p>"Analyze readiness before and after lifting alongside sleep, nutrition, and training data. See how an athlete is feeling and recovering as well as what they’re lifting."</p>
+            </article>
         </section>
 
         <section class="download-section" aria-labelledby="atlas-download-title">
@@ -47,8 +60,8 @@ pub fn AtlasPage() -> impl IntoView {
                 </article>
                 <article class="feature-card">
                     <span class="feature-number">"03"</span>
-                    <h3>"Review progress"</h3>
-                    <p>"See training history, athlete check-ins, and personal records before planning the next block."</p>
+                    <h3>"Review the whole picture"</h3>
+                    <p>"Look at training progress alongside meet results, readiness, sleep, and nutrition before planning the next block."</p>
                 </article>
                 <article class="feature-card">
                     <span class="feature-number">"04"</span>

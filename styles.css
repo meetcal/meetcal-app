@@ -1640,6 +1640,21 @@ main > div:has(> h4) > p {
     text-align: left;
 }
 
+.atlas-integrations {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto 40px;
+    text-align: left;
+}
+
+.atlas-integrations .section-eyebrow {
+    margin-bottom: 24px;
+    color: var(--accent);
+    font-size: 0.78rem;
+}
+
 .atlas-closing {
     width: min(1120px, calc(100% - 40px));
     margin: 0 auto clamp(80px, 12vh, 130px);
@@ -1794,8 +1809,13 @@ main main:not(.features-page) a:hover {
     .hero-section,
     .download-section,
     .interaction-section,
+    .atlas-integrations,
     .atlas-closing {
         width: 100%;
+    }
+
+    .atlas-integrations {
+        grid-template-columns: 1fr;
     }
 
     .hero-section {

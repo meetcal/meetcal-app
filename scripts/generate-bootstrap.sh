@@ -57,7 +57,7 @@ render_page() {
 
 render_page "atlas" "/atlas" \
   "Atlas — Weightlifting Coaching Platform | MeetCal" \
-  "Write weightlifting programs, review training logs, share lift videos, and plan meets with Atlas. Available on the web for coaches and on iPhone for athletes." \
+  "Get full MeetCal meet history in Atlas. Analyze readiness before and after lifting alongside sleep, nutrition, and training data for a complete view of your athlete." \
   "index, follow"
 render_page "features" "/features" \
   "MeetCal Features — Schedules, Start Lists &amp; Rankings" \
