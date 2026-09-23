@@ -438,6 +438,54 @@ export function classifySyncError(error: unknown): SyncErrorKind {
   return error.status >= 400 && error.status < 500 ? 'rejected' : 'retry';
 }
 
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** base64url → UTF-8 text, or null when the input is not valid base64url. */
+function decodeBase64Url(input: string): string | null {
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+  for (const char of base64) {
+    const index = BASE64_ALPHABET.indexOf(char);
+    if (index < 0) return null;
+    value = (value << 6) | index;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((value >> bits) & 0xff);
+    }
+  }
+  try {
+    return decodeURIComponent(bytes.map((b) => `%${b.toString(16).padStart(2, '0')}`).join(''));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a Clerk session JWT was issued for `userId` (its `sub` claim).
+ *
+ * The outbox is per user, but Clerk's `getToken()` returns a token for
+ * whoever is signed in *now*. A flush that outlives a sign-out or account
+ * switch must not send one user's queued writes under another user's token,
+ * which would upsert them onto (or reset) the wrong account. The signature is
+ * the server's to verify; this only refuses a token that is plainly someone
+ * else's, and treats anything unreadable as not matching.
+ */
+export function tokenBelongsTo(token: string, userId: string): boolean {
+  const payload = token.split('.')[1];
+  if (!payload) return false;
+  const json = decodeBase64Url(payload);
+  if (!json) return false;
+  try {
+    const claims: unknown = JSON.parse(json);
+    return isRecord(claims) && claims.sub === userId;
+  } catch {
+    return false;
+  }
+}
+
 /** A failure that says the network or server is unreachable right now. */
 function isConnectivityFailure(error: unknown): boolean {
   return error instanceof MeetCalApiTimeoutError || !(error instanceof MeetCalApiError);
@@ -497,6 +545,12 @@ async function runPass(
       console.error('Saved sessions outbox: Clerk getToken() failed; writes stay queued', error);
     }
     if (!token) return 'stopped';
+    // Checked before every send, not once per flush: the signed-in user can
+    // change between two sends of the same flush.
+    if (!tokenBelongsTo(token, userId)) {
+      devWarn('Saved sessions outbox: token is not for the outbox owner; writes stay queued');
+      return 'stopped';
+    }
 
     const meet = next.kind === 'reset' ? (next.key === RESET_ALL_MEETS ? null : next.key) : null;
     const clear = () =>

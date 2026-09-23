@@ -30,6 +30,13 @@ import type { Schedule } from "@/types/schedule";
 let mockClerkUser: { id: string } | null = null;
 const mockGetToken = jest.fn<Promise<string | null>, []>(async () => null);
 
+/** An unsigned JWT with `sub`; the outbox checks the subject before sending. */
+function jwtFor(sub: string): string {
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${part({ alg: "RS256" })}.${part({ sub })}.sig`;
+}
+const TOKEN = jwtFor("user_1");
+
 jest.mock("@clerk/expo", () => ({
   useUser: () => ({ user: mockClerkUser }),
   useAuth: () => ({ getToken: mockGetToken }),
@@ -445,7 +452,7 @@ describe("server reconcile with the pending-writes outbox", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "warn").mockImplementation(() => {});
     mockClerkUser = { id: "user_1" };
-    mockGetToken.mockResolvedValue("token");
+    mockGetToken.mockResolvedValue(TOKEN);
     // `clearAllMocks` keeps implementations, so a test's permanent rejection
     // would otherwise leak into the next one.
     mockPutSavedSession.mockReset();
@@ -498,7 +505,7 @@ describe("server reconcile with the pending-writes outbox", () => {
       "Test-Meet-2-Red",
     ]);
     expect(mockPutSavedSession).toHaveBeenCalledWith(
-      "token",
+      TOKEN,
       "Test-Meet-2-Red",
       expect.objectContaining({ session_number: 2 }),
     );
@@ -589,7 +596,7 @@ describe("server reconcile with the pending-writes outbox", () => {
     const hook = await mountHook();
 
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
-    expect(mockPutSavedSession).toHaveBeenCalledWith("token", "Test-Meet-1-Red", expect.anything());
+    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything());
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 
@@ -648,7 +655,7 @@ describe("server reconcile with the pending-writes outbox", () => {
     });
     await flush();
 
-    expect(mockPutSavedSession).toHaveBeenCalledWith("token", "Test-Meet-1-Red", expect.anything());
+    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything());
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 

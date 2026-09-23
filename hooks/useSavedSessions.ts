@@ -295,7 +295,14 @@ export function useSavedSessions() {
       await refreshPendingCount();
       return null;
     }
-    const result = await flushOutbox(clerkUserId, async () => (await getTokenRef.current()) ?? null);
+    // Only hand the flush a token while the user it is flushing for is still
+    // the signed-in one; `flushOutbox` also checks the token's subject.
+    const flushingUserId = clerkUserId;
+    const result = await flushOutbox(flushingUserId, async () => {
+      if (activeUserIdRef.current !== flushingUserId) return null;
+      const token = (await getTokenRef.current()) ?? null;
+      return activeUserIdRef.current === flushingUserId ? token : null;
+    });
     if (activeUserIdRef.current === clerkUserId) {
       pendingWriteCountRef.current = result.remaining;
       if (result.authExpired) setAuthExpired(true);

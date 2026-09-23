@@ -21,6 +21,7 @@ import {
   mergeServerSessions,
   readOutbox,
   RESET_ALL_MEETS,
+  tokenBelongsTo,
   toSavedSessionBody,
 } from "@/lib/saved-sessions-outbox";
 
@@ -80,7 +81,14 @@ afterEach(() => {
 });
 
 const OTHER = "Other Meet";
-const getToken = async () => "token";
+
+/** An unsigned JWT with `sub`; the outbox only reads the subject. */
+function jwtFor(sub: string): string {
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${part({ alg: "RS256" })}.${part({ sub })}.sig`;
+}
+const TOKEN = jwtFor(USER);
+const getToken = async () => TOKEN;
 
 function ids(sessions: SavedSession[]): string[] {
   return sessions.map((s) => s.id);
@@ -218,6 +226,16 @@ describe("classifySyncError", () => {
   });
 });
 
+describe("tokenBelongsTo", () => {
+  it("matches only the token's own subject and rejects unreadable tokens", () => {
+    expect(tokenBelongsTo(jwtFor(USER), USER)).toBe(true);
+    expect(tokenBelongsTo(jwtFor("user_2"), USER)).toBe(false);
+    expect(tokenBelongsTo("token", USER)).toBe(false);
+    expect(tokenBelongsTo("a.!!!.c", USER)).toBe(false);
+    expect(tokenBelongsTo(`x.${Buffer.from("not json").toString("base64url")}.y`, USER)).toBe(false);
+  });
+});
+
 describe("flushOutbox", () => {
   it("sends every entry in rev order and clears each on 2xx", async () => {
     await markSessionPut(USER, session("put-me"));
@@ -234,7 +252,7 @@ describe("flushOutbox", () => {
       mockDelete.mock.invocationCallOrder[0],
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(mockDeleteAll).toHaveBeenCalledWith("token", OTHER);
+    expect(mockDeleteAll).toHaveBeenCalledWith(TOKEN, OTHER);
   });
 
   it("holds later writes for a meet whose reset failed, so the reset cannot delete them", async () => {
@@ -247,7 +265,7 @@ describe("flushOutbox", () => {
 
     // The other meet is independent and goes through; the held PUT waits.
     expect(mockPut).toHaveBeenCalledTimes(1);
-    expect(mockPut).toHaveBeenCalledWith("token", "other-meet", expect.anything());
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "other-meet", expect.anything());
     expect(result.remaining).toBe(2);
 
     // Next flush: reset first, then the PUT, which therefore survives.
@@ -299,7 +317,7 @@ describe("flushOutbox", () => {
     await Promise.all([flushing, joined]);
 
     expect(mockDelete).not.toHaveBeenCalled();
-    expect(mockPut).toHaveBeenCalledWith("token", "resaved", expect.anything());
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "resaved", expect.anything());
   });
 
   it("keeps an entry the network could not deliver and stops", async () => {
@@ -333,6 +351,27 @@ describe("flushOutbox", () => {
     expect(result.authExpired).toBe(true);
     expect(mockPut).toHaveBeenCalledTimes(1);
     expect(countPendingWrites(await readOutbox(USER))).toBe(2);
+  });
+
+  it("sends nothing when the token is for a different user (account switched mid-flush)", async () => {
+    await markSessionPut(USER, session("a", { meet: OTHER as never }));
+    await markResetPending(USER, "Test Meet");
+
+    const result = await flushOutbox(USER, async () => jwtFor("someone_else"));
+
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(mockDeleteAll).not.toHaveBeenCalled();
+    expect(result.remaining).toBe(2);
+  });
+
+  it("re-checks the token before every send, not once per flush", async () => {
+    await markSessionPut(USER, session("a"));
+    await markSessionPut(USER, session("b"));
+    const tokens = [TOKEN, jwtFor("someone_else")];
+    const result = await flushOutbox(USER, async () => tokens.shift() ?? null);
+
+    expect(mockPut).toHaveBeenCalledTimes(1);
+    expect(result.remaining).toBe(1);
   });
 
   it("sends nothing without a token", async () => {
