@@ -2,6 +2,7 @@ import {
   cacheAuthState,
   clearAuthCache,
   getCachedAuthState,
+  refreshAuthCacheForVerifiedUser,
 } from "@/lib/authCache";
 
 const mockStore = new Map<string, string>();
@@ -109,7 +110,7 @@ describe("auth cache", () => {
     });
   });
 
-  it.each(["1e400", "-1", String(Date.now() + 86400000)])(
+  it.each(["1e400", "-1", String(Date.now() + 8 * 24 * 60 * 60 * 1000)])(
     "rejects an invalid cache timestamp %s",
     async (timestamp) => {
       mockStore.set("auth_state_cache", `{"isSignedIn":true,"timestamp":${timestamp}}`);
@@ -117,6 +118,40 @@ describe("auth cache", () => {
       expect(mockStore.has("auth_state_cache")).toBe(false);
     },
   );
+
+  it("keeps an entry whose timestamp is slightly in the future", async () => {
+    // A write made while the clock ran fast, read after it was corrected.
+    const timestamp = Date.now() + 60 * 60 * 1000;
+    mockStore.set(
+      "auth_state_cache",
+      JSON.stringify({ isSignedIn: true, timestamp, userId: "user-1" }),
+    );
+    await expect(getCachedAuthState()).resolves.toMatchObject({
+      isSignedIn: true,
+      userId: "user-1",
+    });
+    expect(mockStore.has("auth_state_cache")).toBe(true);
+  });
+
+  it("slides the expiry for a verified user only while online", async () => {
+    const stale = Date.now() - 6 * 24 * 60 * 60 * 1000;
+    mockStore.set(
+      "auth_state_cache",
+      JSON.stringify({ isSignedIn: true, timestamp: stale, userId: "user-1" }),
+    );
+    await getCachedAuthState();
+
+    await refreshAuthCacheForVerifiedUser("user-1", async () => false);
+    expect(JSON.parse(mockStore.get("auth_state_cache")!).timestamp).toBe(stale);
+
+    await refreshAuthCacheForVerifiedUser("user-1", async () => {
+      throw new Error("probe failed");
+    });
+    expect(JSON.parse(mockStore.get("auth_state_cache")!).timestamp).toBe(stale);
+
+    await refreshAuthCacheForVerifiedUser("user-1", async () => true);
+    expect(JSON.parse(mockStore.get("auth_state_cache")!).timestamp).toBeGreaterThan(stale);
+  });
 
   it("discards a read that resolves after sign-out clears the cache", async () => {
     await cacheAuthState(true, "user-1");

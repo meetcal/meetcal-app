@@ -7,7 +7,7 @@ import { Buffer } from 'buffer';
 import pako from 'pako';
 import {
   filterSessionAthletes,
-  isLiftResult,
+  normalizeLiftResults,
   normalizeAthleteName,
   normalizePlatformKey,
 } from '@/lib/athletes';
@@ -312,7 +312,7 @@ async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): 
       return fallback;
     }
     const parsed: unknown = JSON.parse(athletesString);
-    return Array.isArray(parsed) ? parsed.filter(isLiftResult) : fallback;
+    return Array.isArray(parsed) ? normalizeLiftResults(parsed) : fallback;
   } catch (error) {
     console.error('Error reading stored athletes:', error);
     return fallback;
@@ -382,7 +382,7 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
     const athletesKey = store.meets[meetId].athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
     const athletes = await readStoredAthletes(
       athletesKey,
-      Array.isArray(store.meets[meetId].athletes) ? store.meets[meetId].athletes.filter(isLiftResult) : [],
+      Array.isArray(store.meets[meetId].athletes) ? normalizeLiftResults(store.meets[meetId].athletes) : [],
     );
 
     return {
@@ -698,8 +698,9 @@ export async function getSessionAthletesFromMeetCache(
     );
     if (sessionPayload) {
       const parsed: unknown = JSON.parse(sessionPayload);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(isLiftResult)) {
-        const athletes = filterSessionAthletes(parsed, sessionNumber, platform);
+      const normalized = Array.isArray(parsed) ? normalizeLiftResults(parsed) : [];
+      if (Array.isArray(parsed) && parsed.length > 0 && normalized.length === parsed.length) {
+        const athletes = filterSessionAthletes(normalized, sessionNumber, platform);
         if (athletes.length > 0) return athletes;
       }
     }
@@ -843,7 +844,7 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
     if (existingPayload) {
       try {
         const parsed: unknown = JSON.parse(existingPayload);
-        existingAthletes = Array.isArray(parsed) ? parsed.filter(isLiftResult) : [];
+        existingAthletes = Array.isArray(parsed) ? normalizeLiftResults(parsed) : [];
       } catch (parseError) {
         console.warn('Ignoring invalid cached athlete payload:', parseError);
       }

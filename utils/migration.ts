@@ -11,13 +11,20 @@ export type PreMeetSavedSession = Omit<SavedSession, "meet"> & {
 };
 
 /**
- * Migrate legacy sessions to meet-specific format with proper IDs
+ * Migrate legacy sessions to meet-specific format with proper IDs.
+ *
+ * Takes the raw parsed array: a `null` or non-object entry is skipped rather
+ * than dereferenced, which used to throw and abort the whole migration.
  */
 export function migrateSessionsToMeetSpecific(
-  sessions: PreMeetSavedSession[],
+  sessions: readonly unknown[],
   currentMeet: MeetName,
 ): SavedSession[] {
-  return sessions.map((session) => ({
+  const candidates = sessions.filter(
+    (session): session is PreMeetSavedSession =>
+      !!session && typeof session === "object" && !Array.isArray(session),
+  );
+  return candidates.map((session) => ({
     ...session,
     // If the session has a meet, keep it, otherwise assign to current meet
     meet: session.meet || currentMeet,

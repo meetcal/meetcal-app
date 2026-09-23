@@ -241,8 +241,9 @@ export default function SavedScreen() {
           try {
             const parsed: unknown = JSON.parse(storedData);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              // A `null` entry in the stored array threw here and aborted the
-              // whole migration; only object entries can carry a `meet`.
+              // Only object entries can carry a `meet`. `null` entries are
+              // skipped by `migrateSessionsToMeetSpecific` rather than
+              // aborting the migration for this key.
               needsMigration = parsed.some(
                 (session) =>
                   !session || typeof session !== "object" || !session.meet,

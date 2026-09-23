@@ -35,12 +35,14 @@ export function captureViewAsPng(
   // is the module worth having a test for.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { captureRef } = require("react-native-view-shot") as typeof ViewShot;
+  // Include `width` only when set. view-shot validates with `"width" in
+  // options`, so an explicit `undefined` key (or `height: undefined`) logs a
+  // "bad options" warning on every capture, in release builds too.
   return captureRef(view, {
     format: "png",
     quality: 1,
     result: "tmpfile",
-    width: options?.width,
-    height: undefined,
+    ...(options?.width !== undefined && { width: options.width }),
   });
 }
 

@@ -13,6 +13,7 @@ import {
   getJsonArray,
   getJsonObject,
   mapApiAthlete,
+  mapApiAthletes,
   mapApiLiftingResult,
   mapApiMeet,
   mapApiSchedule,
@@ -295,8 +296,13 @@ describe('meetcal API mappers', () => {
     }).age).toBe('Open Men 73kg');
   });
 
-  it.each([null, { name: 123 }, { name: 'Athlete A', entry_total: '250' }])(
-    'rejects malformed athlete fields at the API mapper: %p', (invalid) => {
+  it.each([
+    null,
+    { name: 123 },
+    { name: '   ' },
+    { name: 'Athlete A', session_number: 0, session_platform: 'Red' },
+  ])(
+    'rejects unsalvageable athlete fields at the API mapper: %p', (invalid) => {
       const row = invalid === null ? null : {
         member_id: '123', adaptive: false, age: 24, club: 'Club',
         entry_total: 250, gender: 'Men', weight_class: '73kg',
@@ -305,6 +311,40 @@ describe('meetcal API mappers', () => {
       expect(() => mapApiAthlete(row as never)).toThrow(/athlete/);
     },
   );
+
+  it('defaults nullable club and entry total instead of failing the row', () => {
+    const athlete = mapApiAthlete({
+      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
+      club: null, entry_total: null, gender: 'Men', weight_class: '73kg',
+    } as never);
+    expect(athlete.club).toBe('');
+    expect(athlete.entryTotal).toBe(0);
+    expect(mapApiAthlete({
+      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
+      club: 'Club', entry_total: '250', gender: 'Men', weight_class: '73kg',
+    } as never).entryTotal).toBe(250);
+  });
+
+  it('drops only the unsalvageable rows from a roster', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const base = {
+      member_id: '1', adaptive: false, age: 24, club: 'Club',
+      entry_total: 250, gender: 'Men', weight_class: '73kg',
+    };
+    const athletes = mapApiAthletes(
+      [
+        { ...base, name: 'Athlete A' },
+        { ...base, name: '' },
+        { ...base, name: 'Athlete B', club: null },
+      ] as never,
+      '/meets/athletes',
+    );
+    expect(athletes.map((athlete) => athlete.name)).toEqual(['Athlete A', 'Athlete B']);
+    expect(warn).toHaveBeenCalledWith(
+      '[api] /meets/athletes: dropped 1 of 3 malformed athlete rows',
+    );
+    warn.mockRestore();
+  });
 
   it('coerces missing athlete ages to 0 rather than NaN', () => {
     expect(mapApiAthlete({

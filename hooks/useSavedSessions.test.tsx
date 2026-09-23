@@ -256,29 +256,57 @@ describe("saved-session cache validation", () => {
     await AsyncStorage.clear();
   });
 
-  it("rejects malformed rows while retaining valid and legacy sessions", async () => {
+  it("drops only rows with no usable identity, keeping valid and legacy sessions", async () => {
     const legacy = { ...validSession, id: "legacy", athleteName: "Athlete One" };
-    const current = { ...validSession, athleteNames: ["Athlete Two"] };
-    const invalidRows = [
+    const current = { ...validSession, id: "current", athleteNames: ["Athlete Two"] };
+    const unidentifiable = [
       { id: "partial", meet: "Test Meet" },
       { ...validSession, id: 123 },
+      { ...validSession, id: "" },
       { ...validSession, meet: {} },
-      { ...validSession, sessionNumber: "1" },
       { ...validSession, sessionNumber: 1.5 },
+      { ...validSession, sessionNumber: -1 },
       { ...validSession, platform: null },
-      { ...validSession, date: {} },
-      { ...validSession, athleteNames: "Athlete" },
-      { ...validSession, athleteNames: [123] },
-      { ...validSession, athleteName: {} },
-      { ...validSession, notes: [] },
       null,
+      "row",
     ];
     await AsyncStorage.setItem(
       "@saved_sessions_user_1",
-      JSON.stringify([...invalidRows, legacy, current]),
+      JSON.stringify([...unidentifiable, legacy, current]),
     );
     const hook = await mountHook();
     expect(hook.current.savedSessions).toEqual([legacy, current]);
+  });
+
+  it("normalises nullable fields instead of dropping the session", async () => {
+    // `weightClass: null` is what the app itself used to write from a schedule
+    // row with a null weight class; dropping it lost the user's save.
+    const written = {
+      ...validSession,
+      id: "nullable",
+      sessionNumber: "2",
+      weightClass: null,
+      startTime: undefined,
+      date: {},
+      notes: null,
+      athleteName: {},
+      athleteNames: ["Athlete", 123],
+    };
+    await AsyncStorage.setItem("@saved_sessions_user_1", JSON.stringify([written]));
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toEqual([
+      {
+        id: "nullable",
+        meet: "Test Meet",
+        sessionNumber: 2,
+        platform: "Red",
+        weightClass: "",
+        startTime: "",
+        weighInTime: "8:00 AM",
+        date: "",
+        athleteNames: ["Athlete"],
+      },
+    ]);
   });
 
   it.each(["{", "null", '{}', '"sessions"'])("ignores malformed cache %s", async (raw) => {

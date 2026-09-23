@@ -14,7 +14,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Platform } from "react-native";
+import { AppState, Linking, Platform } from "react-native";
 import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
@@ -40,6 +40,8 @@ import {
 } from "@/utils/deepLinks";
 import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
+import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -207,6 +209,22 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     isLoaded: isUserLoaded,
     user,
   } = useUser();
+
+  // Keep the offline auth hint's seven-day window sliding for every verified
+  // session, not only on screens that happen to mount `useAuthGuard`.
+  // Resuming from the background counts too: the root never remounts, so an
+  // app kept alive for a week would otherwise refresh only once.
+  useEffect(() => {
+    if (!isUserLoaded || !user?.id) return;
+    const userId = user.id;
+    void refreshAuthCacheForVerifiedUser(userId, isNetworkAvailable);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void refreshAuthCacheForVerifiedUser(userId, isNetworkAvailable);
+      }
+    });
+    return () => subscription.remove();
+  }, [isUserLoaded, user?.id]);
 
   const openDeepLink = useCallback((value: string | null) => {
     if (!value) return;

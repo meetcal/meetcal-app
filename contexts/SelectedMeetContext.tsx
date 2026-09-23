@@ -128,15 +128,22 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
   // Enhanced setSelectedMeet function with optimistic updates
   const setSelectedMeet = async (meet: MeetName) => {
-    // An explicit selection outranks any refresh already in flight: bump the
-    // run token so a `loadMeets` that is mid-await cannot commit its older
-    // choice on top of this one.
-    loadRunRef.current += 1;
-
     // Capture the current selection so a transient lookup failure can restore
     // it instead of discarding a previously valid meet.
     const previousMeet = selectedMeet;
     const previousMeetDetails = meetDetails;
+
+    // An explicit selection outranks any refresh already in flight: bump the
+    // run token so a `loadMeets` that is mid-await cannot commit its older
+    // choice on top of this one. Only when the selection actually changes and
+    // only once it is about to be committed — the change is what re-creates
+    // `loadMeets` and starts the run that replaces the one aborted here. A
+    // bump on a failed lookup or a re-selection of the same meet aborted the
+    // in-flight refresh with nothing to take over, losing its commit (and,
+    // before first paint, leaving `isLoading` stuck).
+    const supersedeInFlightLoad = (next: MeetName | null) => {
+      if (next !== previousMeet) loadRunRef.current += 1;
+    };
 
     // Find meet details from available meets; fall back to fetching by name so
     // programmatic selection (deep links, dev tools) works for meets outside
@@ -163,6 +170,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     if (!meetData) {
       // Definitively invalid: the lookup returned no meet. Clear selection.
       console.error('Selected meet not found in available meets');
+      supersedeInFlightLoad(null);
       setSelectedMeetState(null);
       setMeetDetails(null);
       await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
@@ -170,6 +178,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     }
 
     try {
+      supersedeInFlightLoad(meet);
       activateMeet(meet, meetData);
 
       // Save to storage. Persist the resolved Meet object for out-of-window

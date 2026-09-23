@@ -58,33 +58,72 @@ function logNotificationScheduling(step: string, detail?: unknown): void {
   console.log(`[notifications] ${step}`, detail);
 }
 
+/**
+ * Read one persisted session, normalising rather than rejecting fields that
+ * older builds (or the app itself) wrote as `null`/missing.
+ *
+ * A row is dropped only when it has no identity: no `id`, `meet`, session
+ * number or platform. Everything else defaults, the same way the API branch
+ * of the reconcile does. Rejecting on e.g. `weightClass: null` used to drop
+ * sessions the app had just written from an unvalidated schedule row — and if
+ * the server then answered `[]`, the reconcile removed the key for good.
+ */
+function normalizeStoredSession(value: unknown): SavedSession | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const text = (field: unknown): string => (typeof field === 'string' ? field : '');
+
+  const sessionNumber =
+    typeof row.sessionNumber === 'number'
+      ? row.sessionNumber
+      : typeof row.sessionNumber === 'string' && row.sessionNumber.trim() !== ''
+        ? Number(row.sessionNumber)
+        : NaN;
+  if (
+    typeof row.id !== 'string' || row.id.trim().length === 0 ||
+    typeof row.meet !== 'string' || row.meet.trim().length === 0 ||
+    !Number.isInteger(sessionNumber) || sessionNumber < 0 ||
+    typeof row.platform !== 'string' || row.platform.trim().length === 0
+  ) {
+    return null;
+  }
+
+  const session: SavedSession = {
+    ...(row as unknown as SavedSession),
+    id: row.id,
+    meet: row.meet,
+    sessionNumber,
+    platform: row.platform,
+    weightClass: text(row.weightClass),
+    startTime: text(row.startTime),
+    weighInTime: text(row.weighInTime),
+    date: text(row.date),
+  };
+  if (typeof row.notes === 'string') session.notes = row.notes;
+  else delete session.notes;
+  if (typeof row.athleteName === 'string') session.athleteName = row.athleteName;
+  else delete session.athleteName;
+  if (Array.isArray(row.athleteNames)) {
+    session.athleteNames = row.athleteNames.filter(
+      (name: unknown): name is string => typeof name === 'string',
+    );
+  } else {
+    delete session.athleteNames;
+  }
+  return session;
+}
+
 function parseStoredSessions(raw: string | null): SavedSession[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((session: unknown): session is SavedSession => {
-      if (!session || typeof session !== 'object' || Array.isArray(session)) {
-        return false;
-      }
-      const row = session as Record<string, unknown>;
-      return (
-        typeof row.id === 'string' && row.id.trim().length > 0 &&
-        typeof row.meet === 'string' && row.meet.trim().length > 0 &&
-        typeof row.sessionNumber === 'number' &&
-        Number.isInteger(row.sessionNumber) && row.sessionNumber >= 0 &&
-        typeof row.platform === 'string' && row.platform.trim().length > 0 &&
-        typeof row.weightClass === 'string' &&
-        typeof row.startTime === 'string' &&
-        typeof row.weighInTime === 'string' &&
-        typeof row.date === 'string' &&
-        (row.notes === undefined || typeof row.notes === 'string') &&
-        (row.athleteName === undefined || typeof row.athleteName === 'string') &&
-        (row.athleteNames === undefined ||
-          (Array.isArray(row.athleteNames) &&
-            row.athleteNames.every((name: unknown) => typeof name === 'string')))
-      );
-    });
+    const sessions: SavedSession[] = [];
+    for (const value of parsed) {
+      const session = normalizeStoredSession(value);
+      if (session) sessions.push(session);
+    }
+    return sessions;
   } catch {
     return [];
   }

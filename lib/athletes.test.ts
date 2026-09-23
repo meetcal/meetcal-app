@@ -4,6 +4,8 @@ import {
   isLiftResult,
   maxSuccessfulAttempt,
   normalizeAthleteName,
+  normalizeLiftResult,
+  normalizeLiftResults,
   normalizePlatformKey,
 } from "@/lib/athletes";
 
@@ -96,5 +98,50 @@ describe("isLiftResult", () => {
     { ...athlete("Jane"), session: { number: 1, platform: "Red", date: {} } },
   ])("rejects malformed rows %p", (row) => {
     expect(isLiftResult(row)).toBe(false);
+  });
+});
+
+describe("normalizeLiftResult", () => {
+  it("defaults nullable columns that older caches stored", () => {
+    // Written by builds whose API mapper passed `club`/`entry_total` through
+    // raw; these must survive the stricter guard rather than vanish offline.
+    const legacy = {
+      ...athlete("Jane", { number: 1, platform: "Red" }),
+      memberId: null,
+      club: null,
+      entryTotal: null,
+      gender: null,
+      weightClass: undefined,
+      wso: null,
+      adaptive: null,
+    };
+    expect(normalizeLiftResult(legacy)).toEqual({
+      ...athlete("Jane", { number: 1, platform: "Red" }),
+      memberId: "",
+      club: "",
+      entryTotal: 0,
+      gender: "",
+      weightClass: "",
+      adaptive: false,
+    });
+  });
+
+  it("coerces numeric strings and passes valid rows through unchanged", () => {
+    expect(normalizeLiftResult({ ...athlete("Jane"), entryTotal: "250" })?.entryTotal).toBe(250);
+    expect(normalizeLiftResult(athlete("Jane"))).toEqual(athlete("Jane"));
+  });
+
+  it.each([
+    null,
+    "Jane",
+    { ...athlete("Jane"), name: " " },
+    { ...athlete("Jane"), session: { number: 1, platform: "Purple" } },
+  ])("still rejects unsalvageable rows %p", (row) => {
+    expect(normalizeLiftResult(row)).toBeNull();
+  });
+
+  it("drops only unsalvageable rows from a list", () => {
+    const rows = [athlete("Jane"), { ...athlete("Jo"), club: null }, { name: "" }];
+    expect(normalizeLiftResults(rows).map((row) => row.name)).toEqual(["Jane", "Jo"]);
   });
 });

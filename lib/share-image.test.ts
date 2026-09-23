@@ -35,9 +35,12 @@ describe("captureViewAsPng", () => {
       format: "png",
       quality: 1,
       result: "tmpfile",
-      width: undefined,
-      height: undefined,
     });
+    // view-shot checks `"width" in options`; an explicit undefined key makes
+    // it warn "bad options" on every capture.
+    const options = mockCaptureRef.mock.calls[0][1] as object;
+    expect("width" in options).toBe(false);
+    expect("height" in options).toBe(false);
   });
 
   it("passes a fixed render width through when one is given", async () => {
@@ -47,8 +50,9 @@ describe("captureViewAsPng", () => {
 
     expect(mockCaptureRef).toHaveBeenCalledWith(
       null,
-      expect.objectContaining({ width: 850, height: undefined }),
+      expect.objectContaining({ width: 850 }),
     );
+    expect("height" in (mockCaptureRef.mock.calls[0][1] as object)).toBe(false);
   });
 });
 

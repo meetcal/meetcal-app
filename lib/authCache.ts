@@ -38,6 +38,17 @@ interface AuthCacheData {
   userId?: string;
 }
 
+/**
+ * How far in the future a stored timestamp may sit and still be trusted.
+ *
+ * A timestamp ahead of `Date.now()` is not corruption: it is what a write made
+ * while the device clock ran fast looks like after the clock is corrected
+ * backwards. Deleting it on read wiped a valid sign-in, which offline is a
+ * lockout. Anything further out than one full expiry window is implausible and
+ * is still treated as invalid, so a bogus timestamp cannot pin the entry alive.
+ */
+const MAX_CLOCK_SKEW_MS = CACHE_EXPIRY_MS;
+
 // Runtime validator for cached auth data
 function isAuthCacheData(obj: unknown): obj is AuthCacheData {
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
@@ -49,7 +60,7 @@ function isAuthCacheData(obj: unknown): obj is AuthCacheData {
     typeof record.timestamp === 'number' &&
     Number.isFinite(record.timestamp) &&
     record.timestamp >= 0 &&
-    record.timestamp <= Date.now() &&
+    record.timestamp <= Date.now() + MAX_CLOCK_SKEW_MS &&
     (record.userId === undefined || typeof record.userId === 'string')
   );
 }
@@ -94,6 +105,26 @@ export async function cacheAuthState(
 
   writeChain = write;
   await write;
+}
+
+/**
+ * Slide the cache's seven-day window for a user Clerk has just verified.
+ *
+ * `useAuthGuard` also does this, but only screens with a gated action mount
+ * it — the schedule tab does not — so a user who spent a week on the schedule
+ * aged out on day 7 and opened the app offline to an empty Saved tab and
+ * widget. The root layout calls this on every verified session instead.
+ * Online only: the write means "verified against Clerk", and
+ * `cacheAuthState` already limits it to one SecureStore write a day.
+ */
+export async function refreshAuthCacheForVerifiedUser(
+  userId: string,
+  isOnline: () => Promise<boolean>,
+): Promise<void> {
+  if (!userId) return;
+  const online = await isOnline().catch(() => false);
+  if (!online) return;
+  await cacheAuthState(true, userId);
 }
 
 export async function getCachedAuthState(): Promise<AuthCacheData | null> {

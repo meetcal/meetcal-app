@@ -21,7 +21,7 @@ import {
   fetchApiMeetPackage,
   fetchApiMeets,
   fetchApiResultsByNames,
-  mapApiAthlete,
+  mapApiAthletes,
   mapApiLiftingResult,
   mapPackageSchedule,
   MeetCalApiTimeoutError,
@@ -351,7 +351,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
   try {
     const pkg = await fetchApiMeetPackage(meet, historyCutoffDate);
     const schedule = mapPackageSchedule(pkg);
-    const athletes = pkg.athletes.map(mapApiAthlete);
+    const athletes = mapApiAthletes(pkg.athletes, '/meets/package');
     const athleteNames = Array.from(
       new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
     );

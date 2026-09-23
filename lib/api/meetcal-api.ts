@@ -565,7 +565,7 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
     const session = dayData.sessions.get(row.session_id)!;
     session.platforms.push({
       platform: normalizePlatform(row.platform),
-      weightClass: row.weight_class,
+      weightClass: row.weight_class ?? '',
       platformStartTime: formatApiTime(row.start_time),
     });
   });
@@ -607,11 +607,14 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
     memberId: row.member_id || '',
     name: row.name,
     age: toFiniteNumber(row.age, 0),
-    club: row.club,
+    // Nullable in practice even though the row type says otherwise; the
+    // screens already render '' and 0 for these, so default rather than
+    // failing the row.
+    club: row.club ?? '',
     wso: row.wso || undefined,
     gender: row.gender || '',
     weightClass: row.weight_class || '',
-    entryTotal: row.entry_total,
+    entryTotal: toFiniteNumber(row.entry_total, 0),
     adaptive: row.adaptive || false,
     session: sessionNumber != null && sessionPlatform
       ? {
@@ -625,6 +628,27 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
   };
   if (!isLiftResult(athlete)) throw new Error('athlete contains invalid fields');
   return athlete;
+}
+
+/**
+ * Map a roster, dropping (and reporting) only rows that cannot be salvaged —
+ * no name, or a malformed session. One bad row must not fail an entire start
+ * list or an offline download.
+ */
+export function mapApiAthletes(rows: readonly ApiAthleteWithSession[], source: string): LiftResult[] {
+  const athletes: LiftResult[] = [];
+  let dropped = 0;
+  for (const row of rows) {
+    try {
+      athletes.push(mapApiAthlete(row));
+    } catch {
+      dropped += 1;
+    }
+  }
+  if (dropped > 0) {
+    console.warn(`[api] ${source}: dropped ${dropped} of ${rows.length} malformed athlete rows`);
+  }
+  return athletes;
 }
 
 export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
@@ -695,7 +719,7 @@ export async function fetchApiSchedule(meet: MeetName): Promise<Schedule> {
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   const rows = assertArray<ApiAthlete>(await getJson('/meets/athletes', { meet }), '/meets/athletes');
-  return rows.map(mapApiAthlete);
+  return mapApiAthletes(rows, '/meets/athletes');
 }
 
 export async function fetchApiAthletesWithSession(
@@ -711,7 +735,7 @@ export async function fetchApiAthletesWithSession(
     }),
     '/meets/athletes-sessions',
   );
-  return rows.map(mapApiAthlete);
+  return mapApiAthletes(rows, '/meets/athletes-sessions');
 }
 
 export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseLiftResult[]> {

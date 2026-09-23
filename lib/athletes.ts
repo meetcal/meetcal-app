@@ -45,6 +45,57 @@ export function isLiftResult(value: unknown): value is LiftResult {
 }
 
 /**
+ * Coerce a persisted or API-mapped athlete row into a valid `LiftResult`, or
+ * `null` when it cannot be salvaged.
+ *
+ * Nullable source columns (`club`, `entry_total`, `member_id`, ...) are
+ * defaulted rather than rejected. Rows like that were rendered before the
+ * strict guard existed and are already sitting in users' offline caches, so
+ * rejecting them would silently drop athletes from a downloaded start list.
+ * Only rows with no usable name or a malformed session are discarded.
+ */
+export function normalizeLiftResult(value: unknown): LiftResult | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const toNumber = (field: unknown): number => {
+    if (typeof field === 'number' && Number.isFinite(field)) return field;
+    if (typeof field === 'string' && field.trim() !== '') {
+      const parsed = Number(field);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
+  };
+  const toText = (field: unknown): string => (typeof field === 'string' ? field : '');
+  const candidate: Record<string, unknown> = {
+    ...row,
+    memberId: toText(row.memberId),
+    age: toNumber(row.age),
+    club: toText(row.club),
+    gender: toText(row.gender),
+    weightClass: toText(row.weightClass),
+    entryTotal: toNumber(row.entryTotal),
+    adaptive: row.adaptive === true,
+  };
+  if (typeof row.wso === 'string' && row.wso.length > 0) {
+    candidate.wso = row.wso;
+  } else {
+    delete candidate.wso;
+  }
+  if (row.session === null) delete candidate.session;
+  return isLiftResult(candidate) ? candidate : null;
+}
+
+/** {@link normalizeLiftResult} over a list, dropping only unsalvageable rows. */
+export function normalizeLiftResults(values: readonly unknown[]): LiftResult[] {
+  const athletes: LiftResult[] = [];
+  for (const value of values) {
+    const athlete = normalizeLiftResult(value);
+    if (athlete) athletes.push(athlete);
+  }
+  return athletes;
+}
+
+/**
  * Canonical form of an athlete name used for cache keys and cross-source
  * matching: trimmed, lowercased, inner whitespace collapsed.
  */
