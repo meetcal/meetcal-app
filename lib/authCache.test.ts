@@ -91,6 +91,60 @@ describe("auth cache", () => {
     await expect(getCachedAuthState()).resolves.toBeNull();
   });
 
+  it("preserves the latest sign-in after a queued sign-out", async () => {
+    await cacheAuthState(true, "user-1");
+    await Promise.all([cacheAuthState(false), cacheAuthState(true, "user-1")]);
+    await expect(getCachedAuthState()).resolves.toMatchObject({
+      isSignedIn: true,
+      userId: "user-1",
+    });
+  });
+
+  it("preserves a sign-in queued after clearing the same user", async () => {
+    await cacheAuthState(true, "user-1");
+    await Promise.all([clearAuthCache(), cacheAuthState(true, "user-1")]);
+    await expect(getCachedAuthState()).resolves.toMatchObject({
+      isSignedIn: true,
+      userId: "user-1",
+    });
+  });
+
+  it.each(["1e400", "-1", String(Date.now() + 86400000)])(
+    "rejects an invalid cache timestamp %s",
+    async (timestamp) => {
+      mockStore.set("auth_state_cache", `{"isSignedIn":true,"timestamp":${timestamp}}`);
+      await expect(getCachedAuthState()).resolves.toBeNull();
+      expect(mockStore.has("auth_state_cache")).toBe(false);
+    },
+  );
+
+  it("discards a read that resolves after sign-out clears the cache", async () => {
+    await cacheAuthState(true, "user-1");
+    const staleValue = mockStore.get("auth_state_cache");
+    let resolveRead!: (value: string | undefined) => void;
+    jest.requireMock("expo-secure-store").getItemAsync.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRead = resolve; }),
+    );
+    const reading = getCachedAuthState();
+    await Promise.resolve();
+    await clearAuthCache();
+    resolveRead(staleValue);
+    await expect(reading).resolves.toBeNull();
+    await cacheAuthState(true, "user-1");
+    expect(mockStore.has("auth_state_cache")).toBe(true);
+  });
+
+  it("expires signed-in hints after seven days even while offline", async () => {
+    jest.requireMock("@/lib/networkUtils").isNetworkAvailable.mockResolvedValue(false);
+    mockStore.set("auth_state_cache", JSON.stringify({
+      isSignedIn: true,
+      userId: "user-1",
+      timestamp: Date.now() - 8 * 24 * 60 * 60 * 1000,
+    }));
+    await expect(getCachedAuthState()).resolves.toBeNull();
+    expect(mockStore.has("auth_state_cache")).toBe(false);
+  });
+
   it("slides the expiry when the same state is re-verified a day later", async () => {
     // Regression: `getCachedAuthState` seeds the dedupe signature from what it
     // read, so a re-verification with an unchanged signature early-returned

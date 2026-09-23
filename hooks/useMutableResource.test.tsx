@@ -26,12 +26,12 @@ describe("useMutableResource", () => {
 
   function harness(
     resource: ReturnType<typeof createMutableResource<Row[], [string]>>,
-    initialParam: string,
+    initialParam: string | null,
   ) {
-    function Harness({ param }: { param: string }) {
+    function Harness({ param }: { param: string | null }) {
       captured = useMutableResource({
         resource,
-        params: [param] as [string],
+        params: param === null ? null : [param],
         initialData: [],
       });
       return null;
@@ -42,7 +42,7 @@ describe("useMutableResource", () => {
     });
     return {
       tree,
-      update: (param: string) =>
+      update: (param: string | null) =>
         act(() => {
           tree.update(<Harness param={param} />);
         }),
@@ -195,4 +195,48 @@ describe("useMutableResource", () => {
     expect(captured!.refreshError).toBeNull();
     expect(captured!.error).toBeNull();
   });
+  it("clears previous rows and metadata when selection becomes unavailable", async () => {
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `disabled:${param}`,
+      loadCached: async () => null,
+      fetchFresh: async (param) => [{ id: param }],
+      persistFresh: async (data) => ({ data, lastUpdatedAt: 1 }),
+    });
+    const { update } = harness(resource, "a");
+    await flush();
+    expect(captured!.data).toEqual([{ id: "a" }]);
+
+    update(null);
+    await flush();
+    expect(captured!.data).toEqual([]);
+    expect(captured!.source).toBeNull();
+    expect(captured!.lastUpdatedAt).toBeNull();
+    expect(captured!.isInitialLoading).toBe(false);
+    expect(captured!.isRefreshing).toBe(false);
+  });
+
+  it("does not clear a new selection when an old invalidation finishes", async () => {
+    let finishInvalidation!: () => void;
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `invalidate-switch:${param}`,
+      loadCached: async () => null,
+      fetchFresh: async (param) => [{ id: param }],
+      persistFresh: async (data) => ({ data, lastUpdatedAt: 1 }),
+      clearCached: () => new Promise<void>((resolve) => {
+        finishInvalidation = resolve;
+      }),
+    });
+    const { update } = harness(resource, "a");
+    await flush();
+    const invalidation = captured!.invalidate();
+    update("b");
+    await flush();
+    await act(async () => {
+      finishInvalidation();
+      await invalidation;
+    });
+    expect(captured!.data).toEqual([{ id: "b" }]);
+    expect(captured!.isInitialLoading).toBe(false);
+  });
+
 });

@@ -76,6 +76,8 @@ export default function WidgetSettingsScreen() {
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isSaving, setIsSaving] = useState(false);
   const lastCommittedSignature = useRef<string | null>(null);
+  const commitQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingInteractiveCommits = useRef(0);
 
   const {
     data: totalsData,
@@ -156,32 +158,45 @@ export default function WidgetSettingsScreen() {
   const commitWidgets = useCallback(
     async (next: WidgetSettings, options: CommitOptions = {}) => {
       const payloads = buildPayloads(next);
-      const signature = JSON.stringify(payloads);
-      if (options.dedupe && lastCommittedSignature.current === signature) return;
-      lastCommittedSignature.current = signature;
+      const signature = JSON.stringify({ settings: next, payloads });
+      if (options.interactive) {
+        pendingInteractiveCommits.current += 1;
+        setIsSaving(true);
+      }
 
-      if (options.interactive) setIsSaving(true);
+      // Storage and native writes must finish in request order. Otherwise a
+      // slow auto-sync can overwrite filters applied while it was saving.
+      const commit = commitQueue.current.then(async () => {
+        if (options.dedupe && lastCommittedSignature.current === signature) return;
+        try {
+          await saveWidgetSettings(next);
+          syncDataWidgets(payloads);
+          lastCommittedSignature.current = signature;
+          if (options.announceSuccess) {
+            showToast({
+              type: "success",
+              message: "Widget settings saved. Your widgets will update shortly.",
+            });
+          }
+        } catch (commitError) {
+          console.error("Failed to save widget settings", commitError);
+          lastCommittedSignature.current = null;
+          if (options.interactive) {
+            showToast({
+              type: "error",
+              message: "Failed to save widget settings. Please try again.",
+            });
+          }
+        }
+      });
+      commitQueue.current = commit;
       try {
-        await saveWidgetSettings(next);
-        syncDataWidgets(payloads);
-        if (options.announceSuccess) {
-          showToast({
-            type: "success",
-            message: "Widget settings saved. Your widgets will update shortly.",
-          });
-        }
-      } catch (commitError) {
-        console.error("Failed to save widget settings", commitError);
-        // Nothing landed, so the next commit must not dedupe against it.
-        lastCommittedSignature.current = null;
-        if (options.interactive) {
-          showToast({
-            type: "error",
-            message: "Failed to save widget settings. Please try again.",
-          });
-        }
+        await commit;
       } finally {
-        if (options.interactive) setIsSaving(false);
+        if (options.interactive) {
+          pendingInteractiveCommits.current -= 1;
+          setIsSaving(pendingInteractiveCommits.current > 0);
+        }
       }
     },
     [buildPayloads],

@@ -144,7 +144,14 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const invalidate = useCallback(async () => {
     const activeParams = paramsRef.current;
     if (activeParams === null) return;
+    const requestKey = resource.getKey(...activeParams);
     await resource.invalidate(...activeParams);
+    const currentParams = paramsRef.current;
+    if (
+      !mountedRef.current ||
+      currentParams === null ||
+      resource.getKey(...currentParams) !== requestKey
+    ) return;
     setData(initialDataRef.current);
     setError(null);
     setRefreshError(null);
@@ -167,6 +174,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     async function loadResource() {
       const activeParams = paramsRef.current;
       if (activeParams === null) {
+        previousKeyRef.current = null;
+        sourceRef.current = null;
+        setData(initialDataRef.current);
+        setError(null);
+        setRefreshError(null);
+        setLastUpdatedAt(null);
+        setSource(null);
         setIsInitialLoading(false);
         setIsRefreshing(false);
         return;

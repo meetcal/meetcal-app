@@ -1,5 +1,4 @@
 import * as SecureStore from 'expo-secure-store';
-import { isNetworkAvailable } from './networkUtils';
 import { devLog } from './logger';
 
 const AUTH_CACHE_KEY = 'auth_state_cache';
@@ -22,6 +21,7 @@ const CACHE_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let inFlightRead: Promise<AuthCacheData | null> | null = null;
 let lastPersistedSignature: string | null = null;
 let lastPersistedAt = 0;
+let mutationRevision = 0;
 /**
  * Tail of the serialized write chain. Writes and the clear share it so they
  * can never interleave: two overlapping writes with *different* signatures
@@ -47,6 +47,9 @@ function isAuthCacheData(obj: unknown): obj is AuthCacheData {
   return (
     typeof record.isSignedIn === 'boolean' &&
     typeof record.timestamp === 'number' &&
+    Number.isFinite(record.timestamp) &&
+    record.timestamp >= 0 &&
+    record.timestamp <= Date.now() &&
     (record.userId === undefined || typeof record.userId === 'string')
   );
 }
@@ -66,12 +69,14 @@ export async function cacheAuthState(
   userId?: string
 ) {
   const signature = getAuthSignature(isSignedIn, userId);
-  const isWindowFresh = Date.now() - lastPersistedAt < CACHE_REFRESH_INTERVAL_MS;
-  if (signature === lastPersistedSignature && isWindowFresh) {
-    return;
-  }
-
   const write = writeChain.then(async () => {
+    // Compare after earlier writes/clears settle, otherwise a later sign-in
+    // can be discarded because it matches the state before a queued sign-out.
+    const age = Date.now() - lastPersistedAt;
+    if (signature === lastPersistedSignature && age >= 0 && age < CACHE_REFRESH_INTERVAL_MS) {
+      return;
+    }
+    mutationRevision += 1;
     try {
       const cacheData: AuthCacheData = {
         isSignedIn,
@@ -98,10 +103,14 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
   inFlightRead = (async () => {
   try {
+    await writeChain;
+    const readRevision = mutationRevision;
     const cachedData = await SecureStore.getItemAsync(AUTH_CACHE_KEY);
+    // A read started before sign-out must not restore its old signed-in hint.
+    if (readRevision !== mutationRevision) return null;
     if (!cachedData) return null;
 
-    const parsed = JSON.parse(cachedData);
+    const parsed: unknown = JSON.parse(cachedData);
 
     // Validate the parsed data structure
     if (!isAuthCacheData(parsed)) {
@@ -117,23 +126,8 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
     if (isExpired) {
       devLog('Auth cache expired (older than 7 days)');
-      // Check if network is available
-      const hasNetwork = await isNetworkAvailable();
-
-      if (hasNetwork) {
-        // Network available, clear expired cache
-        await clearAuthCache();
-        return null;
-      } else {
-        // Network unavailable, use stale cache with warning
-        console.warn('Using stale auth cache due to network unavailability');
-        lastPersistedSignature = getAuthSignature(
-          parsed.isSignedIn,
-          parsed.userId
-        );
-        lastPersistedAt = parsed.timestamp;
-        return parsed;
-      }
+      await clearAuthCache();
+      return null;
     }
 
     lastPersistedSignature = getAuthSignature(
@@ -155,6 +149,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
 export async function clearAuthCache() {
   const clear = writeChain.then(async () => {
+    mutationRevision += 1;
     try {
       await SecureStore.deleteItemAsync(AUTH_CACHE_KEY);
       lastPersistedSignature = null;

@@ -288,7 +288,8 @@ describe("offline-store athlete lifting results", () => {
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(changed);
   });
 
-  it("writes and clears session-scoped athlete caches", async () => {
+  it.each([null, "[]", "{invalid-json"])(
+    "reads and clears session athletes with session cache %s", async (sessionPayload) => {
     await saveMeetAthletes("Test Meet", [
       {
         memberId: "123",
@@ -325,6 +326,12 @@ describe("offline-store athlete lifting results", () => {
         },
       },
     ]);
+
+    if (sessionPayload !== null) {
+      const sessionKey = Array.from(mockStorage.keys()).find((key) => key.includes("session_athletes") && key.endsWith(":4:red"));
+      expect(sessionKey).toBeDefined();
+      mockStorage.set(sessionKey!, sessionPayload);
+    }
 
     const redSession = await getSessionAthletesFromMeetCache(
       "Test Meet" as any,

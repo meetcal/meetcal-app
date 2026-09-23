@@ -5,6 +5,11 @@ import {
   type AuthGuardInputs,
 } from '@/utils/authGuard';
 
+// These tests exercise pure policy. Loading the real Clerk SDK starts a
+// MessageChannel that keeps Jest workers alive after the suite finishes.
+jest.mock('@clerk/expo', () => ({ useUser: jest.fn() }));
+jest.mock('expo-router', () => ({ useRouter: jest.fn() }));
+
 function inputs(overrides: Partial<AuthGuardInputs> = {}): AuthGuardInputs {
   return {
     userId: null,

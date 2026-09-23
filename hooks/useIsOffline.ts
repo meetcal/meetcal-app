@@ -25,17 +25,19 @@ export function useIsOffline(): [boolean, (isOffline: boolean) => void] {
 
   useEffect(() => {
     let mounted = true;
+    let receivedNetworkEvent = false;
 
     isNetworkAvailable()
       .then((hasNetwork) => {
-        if (mounted) setIsOffline(!hasNetwork);
+        if (mounted && !receivedNetworkEvent) setIsOffline(!hasNetwork);
       })
       .catch(() => {
-        if (mounted) setIsOffline(false);
+        if (mounted && !receivedNetworkEvent) setIsOffline(false);
       });
 
     const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
+      receivedNetworkEvent = true;
+      if (mounted) setIsOffline(!isConnected);
     });
 
     return () => {

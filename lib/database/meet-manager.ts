@@ -149,19 +149,27 @@ async function getCacheInfo(): Promise<CacheInfo> {
       // entry that parses but has no `meets` object would throw there, inside
       // `cleanupOldMeetData`, failing every meet open from then on.
       const parsed: unknown = JSON.parse(info);
-      if (
-        parsed &&
-        typeof parsed === 'object' &&
-        !Array.isArray(parsed) &&
-        typeof (parsed as CacheInfo).meets === 'object' &&
-        (parsed as CacheInfo).meets !== null
-      ) {
-        const candidate = parsed as CacheInfo;
-        return {
-          totalSize:
-            typeof candidate.totalSize === 'number' ? candidate.totalSize : 0,
-          meets: candidate.meets,
-        };
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const candidate = parsed as Record<string, unknown>;
+        if (candidate.meets && typeof candidate.meets === 'object' && !Array.isArray(candidate.meets)) {
+          const meets: Record<string, MeetInfo> = {};
+          let totalSize = 0;
+          for (const [name, value] of Object.entries(candidate.meets)) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+            const entry = value as Record<string, unknown>;
+            if (
+              typeof entry.lastAccessed !== 'number' || !Number.isFinite(entry.lastAccessed) || entry.lastAccessed < 0 ||
+              typeof entry.size !== 'number' || !Number.isFinite(entry.size) || entry.size < 0
+            ) continue;
+            // Only validated entries can participate in eviction/accounting.
+            Object.defineProperty(meets, name, {
+              value: { lastAccessed: entry.lastAccessed, size: entry.size },
+              enumerable: true, configurable: true, writable: true,
+            });
+            totalSize += entry.size;
+          }
+          return { totalSize, meets };
+        }
       }
     }
     return {

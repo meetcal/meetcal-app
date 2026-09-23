@@ -90,6 +90,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   prefetchCriticalMeetData,
   prefetchMeetData,
+  touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
 } from "@/lib/database/meet-manager";
@@ -498,6 +499,32 @@ describe("cache eviction during prefetch", () => {
 
   afterEach(() => {
     mockGetItem.mockImplementation(async () => null);
+  });
+
+  it("drops malformed cache entries before eviction and recomputes size", async () => {
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === MEET_CACHE_KEY ? JSON.stringify({
+        totalSize: "broken",
+        meets: {
+          "Valid Meet": { lastAccessed: 1, size: 10 },
+          "Null Meet": null,
+          "Invalid Size": { lastAccessed: 2, size: "huge" },
+          "Invalid Access": { lastAccessed: null, size: 10 },
+        },
+      }) : null,
+    );
+    await touchMeetAccess("New Meet");
+    const calls = (AsyncStorage.setItem as jest.Mock).mock.calls;
+    const [key, value] = calls[calls.length - 1];
+    expect(key).toBe(MEET_CACHE_KEY);
+    expect(JSON.parse(value)).toEqual({
+      totalSize: 10,
+      meets: {
+        "Valid Meet": { lastAccessed: 1, size: 10 },
+        "New Meet": { lastAccessed: expect.any(Number), size: 0 },
+      },
+    });
+    await expect(prefetchCriticalMeetData("New Meet")).resolves.toBeUndefined();
   });
 
   it("evicts the least-recently-used implicit meets but keeps explicitly downloaded ones", async () => {

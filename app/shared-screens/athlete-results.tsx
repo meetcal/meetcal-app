@@ -405,6 +405,7 @@ export default function AthleteResultsScreen() {
         setAthleteResults(cachedResults);
         setLoading(false);
       } else {
+        setAthleteResults([]);
         setLoading(true);
       }
 

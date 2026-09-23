@@ -6,7 +6,6 @@ import { useMutableResource } from "@/hooks/useMutableResource";
 import { filterSessionAthletes } from "@/lib/athletes";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
 import {
-  getMeetData,
   getSessionAthletesFromMeetCache,
   saveSessionAthletes,
 } from "@/lib/database/offline-store";
@@ -31,24 +30,10 @@ const sessionAthletesResource = createMutableResource<
       sessionNumber,
       platform,
     );
-    if (athletes.length > 0) {
-      return {
-        data: athletes,
-        lastUpdatedAt: Date.now(),
-      };
-    }
-
-    const meetData = await getMeetData(meet);
-    const sessionAthletes = filterSessionAthletes(
-      meetData.athletes,
-      sessionNumber,
-      platform,
-    );
-    return sessionAthletes.length > 0
-      ? {
-          data: sessionAthletes,
-          lastUpdatedAt: meetData.lastSyncTime || null,
-        }
+    // The cache reader already falls back to the full meet roster. An empty
+    // result must not trigger a second read/decode of that same roster here.
+    return athletes.length > 0
+      ? { data: athletes, lastUpdatedAt: Date.now() }
       : null;
   },
   fetchFresh: async (meet, sessionNumber, platform) =>

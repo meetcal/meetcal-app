@@ -709,16 +709,23 @@ export async function getSessionAthletesFromMeetCache(
       getSessionAthletesKey(meetId, sessionNumber, platform),
     );
     if (sessionPayload) {
-      const parsed = JSON.parse(sessionPayload);
-      if (Array.isArray(parsed)) {
+      const parsed: unknown = JSON.parse(sessionPayload);
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed as LiftResult[];
       }
     }
 
+  } catch (error) {
+    console.error('Error getting session athletes from cache:', error);
+  }
+
+  // Empty or corrupt session entries can lag behind the full roster. Keep
+  // the one full-meet fallback here so callers do not decode it twice.
+  try {
     const meetData = await getMeetData(meetId);
     return filterSessionAthletes(meetData.athletes, sessionNumber, platform);
   } catch (error) {
-    console.error('Error getting session athletes from cache:', error);
+    console.error('Error getting session athletes from meet cache:', error);
     return [];
   }
 }
