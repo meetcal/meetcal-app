@@ -1,8 +1,12 @@
 import {
+  APP_VERSION,
   buildApiUrl,
+  defaultCutoffDate,
   fetchApiClubNames,
+  fetchApiMeetPackageConditional,
   fetchApiMeets,
   fetchApiMeetPackage,
+  fetchApiRecentResultsByNames,
   fetchApiResultsByNames,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
@@ -24,6 +28,12 @@ import {
   NAMES_QUERY_CHUNK_SIZE,
   searchApi,
 } from './meetcal-api';
+
+// Hoisted by jest above the imports; placed here to satisfy import/first.
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { version: '6.2.0' } },
+}));
 
 describe('meetcal API client', () => {
   const originalFetch = global.fetch;
@@ -77,7 +87,7 @@ describe('meetcal API client', () => {
     await expect(fetchApiClubNames()).resolves.toEqual(['Carolina', 'Ohio']);
   });
 
-  it('reads wrapped WSO list responses from deployed API versions', async () => {
+  it('rejects the retired wrapped WSO list shape', async () => {
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
@@ -85,10 +95,105 @@ describe('meetcal API client', () => {
     }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(fetchApiWsoList()).resolves.toEqual(['Carolina', 'Ohio']);
+    await expect(fetchApiWsoList()).rejects.toThrow('/data/wso/ expected an array response');
   });
 
-  it('fetches batch year bests with encoded names', async () => {
+  it('declares the app version on every request', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(APP_VERSION).toBe('6.2.0');
+    await fetchApiClubNames();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.meetcal.app/clubs',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-MeetCal-App': '6.2.0' }),
+      }),
+    );
+  });
+
+  it('posts name lists so a comma inside a name stays one name', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiResultsByNames(['Nordstrom, Alexander', 'Athlete B']);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.meetcal.app/lifting-results/by-names',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ names: ['Nordstrom, Alexander', 'Athlete B'] }),
+      }),
+    );
+  });
+
+  it('always sends a cutoff for recent results, defaulting to two years', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiRecentResultsByNames(['Athlete A']);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    const body = JSON.parse(init.body) as { names: string[]; cutoff_date: string };
+    expect(body.names).toEqual(['Athlete A']);
+    expect(body.cutoff_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(body.cutoff_date).toBe(defaultCutoffDate(2));
+  });
+
+  it('computes default cutoffs as ISO dates N years back', () => {
+    expect(defaultCutoffDate(1, new Date('2026-09-23T12:00:00Z'))).toBe('2025-09-23');
+    expect(defaultCutoffDate(2, new Date('2026-09-23T12:00:00Z'))).toBe('2024-09-23');
+  });
+
+  it('revalidates the meet package with If-None-Match and honours 304', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: false,
+      status: 304,
+      headers: { get: (name: string) => (name === 'etag' ? '"abc"' : null) },
+      text: async () => '',
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
+    ).resolves.toEqual({ status: 'not_modified' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.meetcal.app/meets/package?meet=Test+Meet&history_cutoff_date=2024-01-01',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'If-None-Match': '"abc"' }),
+      }),
+    );
+  });
+
+  it('returns the package and its etag on a fresh response', async () => {
+    const pkg = { meet: {}, schedule: [], athletes: [], meet_results: [] };
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => (name === 'etag' ? '"def"' : null) },
+      text: async () => JSON.stringify(pkg),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', null),
+    ).resolves.toEqual({ status: 'fresh', etag: '"def"', package: pkg });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
+    expect(init.headers['If-None-Match']).toBeUndefined();
+  });
+
+  it('posts batch year bests with the cutoff', async () => {
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
@@ -116,8 +221,11 @@ describe('meetcal API client', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/lifting-results/bests?names=Athlete+A%2CAthlete+B&cutoff_date=2025-06-19',
-      expect.any(Object),
+      'https://api.meetcal.app/lifting-results/bests',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ names: ['Athlete A', 'Athlete B'], cutoff_date: '2025-06-19' }),
+      }),
     );
   });
 

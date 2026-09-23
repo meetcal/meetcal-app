@@ -19,6 +19,7 @@ import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   fetchApiMeetByName,
   fetchApiMeetPackage,
+  fetchApiMeetPackageConditional,
   fetchApiMeets,
   fetchApiResultsByNames,
   mapApiAthletes,
@@ -37,6 +38,9 @@ import { devLog } from '../logger';
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
+// `/meets/package` ETag per meet, written only after a prefetch fully succeeds
+// so a partial download can never be short-circuited by a `304`.
+const PACKAGE_ETAG_KEY = '@meet_package_etag_v1';
 const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
@@ -254,6 +258,82 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
 }
 
 // Calculate meet size
+async function readPackageEtags(): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(PACKAGE_ETAG_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch (error) {
+    console.error('Error reading package etags:', error);
+  }
+  return {};
+}
+
+async function writePackageEtags(etags: Record<string, string>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PACKAGE_ETAG_KEY, JSON.stringify(etags));
+  } catch (error) {
+    console.error('Error saving package etags:', error);
+  }
+}
+
+export async function getStoredPackageEtag(meet: MeetName): Promise<string | null> {
+  const etags = await readPackageEtags();
+  const etag = etags[meet];
+  return typeof etag === 'string' && etag.length > 0 ? etag : null;
+}
+
+export async function savePackageEtag(meet: MeetName, etag: string | null): Promise<void> {
+  const etags = await readPackageEtags();
+  if (etag) {
+    etags[meet] = etag;
+  } else {
+    delete etags[meet];
+  }
+  await writePackageEtags(etags);
+}
+
+export async function clearPackageEtag(meet: MeetName): Promise<void> {
+  await savePackageEtag(meet, null);
+}
+
+// A `304` is only trustworthy while the copy it refers to is still on disk.
+// Meet data is cleared from several places (eviction, SQLITE_FULL recovery,
+// user deletion), so the validator is checked against local state rather than
+// assumed to have been cleared alongside it.
+async function hasLocalMeetData(meet: MeetName): Promise<boolean> {
+  try {
+    const data = await getMeetData(meet);
+    return (data.athletes?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetches the package for a prefetch, revalidating against the stored ETag.
+ * Resolves `null` when the API confirms the local copy is current.
+ */
+async function fetchPackageForPrefetch(meet: MeetName, historyCutoffDate: string) {
+  const storedEtag = await getStoredPackageEtag(meet);
+  const fetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate, storedEtag);
+  if (fetched.status === 'fresh') {
+    return fetched;
+  }
+  if (await hasLocalMeetData(meet)) {
+    return null;
+  }
+  // The validator outlived the data it described; drop it and fetch in full.
+  await clearPackageEtag(meet);
+  const refetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate, null);
+  if (refetched.status !== 'fresh') {
+    throw new Error(`Unexpected 304 for ${meet} without a validator`);
+  }
+  return refetched;
+}
+
 async function calculateMeetSize(meet: MeetName): Promise<number> {
   try {
     const data = await getMeetData(meet);
@@ -326,6 +406,7 @@ async function cleanupOldMeetData() {
       continue;
     }
     await clearMeetData(meet);
+    await clearPackageEtag(meet);
     delete info.meets[meet];
   }
 
@@ -347,9 +428,19 @@ export async function prefetchMeetData(meet: MeetName) {
 async function prefetchMeetDataUncached(meet: MeetName) {
   const errors: string[] = [];
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+  let freshEtag: string | null = null;
 
   try {
-    const pkg = await fetchApiMeetPackage(meet, historyCutoffDate);
+    const fetched = await fetchPackageForPrefetch(meet, historyCutoffDate);
+    if (!fetched) {
+      // Byte-identical to what we already decomposed into storage: nothing to
+      // rewrite, and the roster history below is derived from the same data.
+      await updateMeetAccess(meet);
+      await cleanupOldMeetData();
+      return;
+    }
+    const pkg = fetched.package;
+    freshEtag = fetched.etag;
     const schedule = mapPackageSchedule(pkg);
     const athletes = mapApiAthletes(pkg.athletes, '/meets/package');
     const athleteNames = Array.from(
@@ -444,6 +535,10 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       errors.push('meet_package');
     }
   }
+
+  // Only a complete prefetch may be short-circuited next time; anything
+  // partial must refetch in full.
+  await savePackageEtag(meet, errors.length === 0 ? freshEtag : null);
 
   await updateMeetAccess(meet);
   await cleanupOldMeetData();
