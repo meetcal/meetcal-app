@@ -70,8 +70,6 @@ jest.mock("@/lib/api/meetcal-api", () => {
   const actual = jest.requireActual("@/lib/api/meetcal-api");
   return {
     ...actual,
-    fetchApiMeetPackage: (...args: unknown[]) =>
-      mockFetchApiMeetPackage(...args),
     fetchApiMeetPackageConditional: (...args: unknown[]) =>
       mockFetchApiMeetPackageConditional(
         ...(args as [string, string | undefined, string | null | undefined]),
@@ -113,6 +111,7 @@ jest.mock("@/lib/database/offline-store", () => ({
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   prefetchCriticalMeetData,
+  HISTORY_REFRESH_TTL_MS,
   prefetchMeetData,
   touchMeetAccess,
   validatePrefetchedLiftingResults,
@@ -596,10 +595,19 @@ describe("package revalidation with ETag", () => {
     year_bests_by_name: {},
   };
 
-  const storedEtags = (etags: Record<string, string>) => {
-    mockGetItem.mockImplementation(async (key: string) =>
-      key === PACKAGE_ETAG_KEY ? JSON.stringify(etags) : null,
-    );
+  // By default each meet's history was synced just now, so a 304 only fills
+  // gaps; pass `historySyncedAt` to model an older download.
+  const storedEtags = (
+    etags: Record<string, string>,
+    historySyncedAt: Record<string, number> = Object.fromEntries(
+      Object.keys(etags).map((meet) => [meet, Date.now()]),
+    ),
+  ) => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify(etags);
+      if (key === "@meet_history_synced_at_v1") return JSON.stringify(historySyncedAt);
+      return null;
+    });
   };
   const savedEtags = (): Record<string, string>[] =>
     mockSetItem.mock.calls
@@ -656,6 +664,25 @@ describe("package revalidation with ETag", () => {
     // The package itself is unchanged, so its validator stays.
     expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
     expect(savedEtags()).toEqual([]);
+  });
+
+  it("refreshes every athlete's history on a 304 once the last full sync is older than the TTL", async () => {
+    storedEtags(
+      { "Etag Meet Stale": '"abc"' },
+      { "Etag Meet Stale": Date.now() - HISTORY_REFRESH_TTL_MS - 1 },
+    );
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet Stale" as any);
+
+    expect(mockFindAthleteNamesWithoutHistory).not.toHaveBeenCalled();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
+    expect(stampWrites).toHaveLength(1);
   });
 
   it("reports an incomplete download when the missing history cannot be fetched on a 304", async () => {

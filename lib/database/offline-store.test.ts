@@ -365,6 +365,32 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("roster freshness stamp", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("is set by roster writes and left alone by schedule writes", async () => {
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy.mockReturnValue(1_000);
+    await saveMeetAthletes("Test Meet", [{ name: "A", meet: "Test Meet" }] as any);
+    nowSpy.mockReturnValue(9_000);
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "s1", number: 1, startTime: "10:00 AM", weighInTime: "8:00 AM", platforms: [] }],
+      },
+    ] as any);
+    nowSpy.mockRestore();
+
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.lastSyncTime).toBe(9_000);
+    expect(meetData.athletesSyncedAt).toBe(1_000);
+  });
+});
+
 describe("offline-store corrupt payload handling", () => {
   beforeEach(async () => {
     mockStorage.clear();

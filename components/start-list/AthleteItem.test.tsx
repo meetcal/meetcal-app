@@ -3,10 +3,12 @@ import { act, create, type ReactTestInstance } from "react-test-renderer";
 
 import type { LiftResult } from "@/data/types/athletes";
 import { getChevronIcon } from "@/lib/start-list-utils";
+import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
+import { AthleteItem, type AthleteRowProps } from "./AthleteItem";
 
 jest.mock("react-native-reanimated", () => ({
   __esModule: true,
-  default: { View: require("react-native").View },
+  default: { View: jest.requireActual("react-native").View },
   FadeIn: { duration: () => ({}) },
 }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
@@ -24,21 +26,28 @@ jest.mock("@/lib/start-list-utils", () => {
   return { ...actual, getChevronIcon: jest.fn(actual.getChevronIcon) };
 });
 // Regression guard for H3: the row must not read these itself. A row that
-// imports any of them would call the throwing hook on mount.
-const contextRead = () => {
-  throw new Error("AthleteItem must not read app contexts");
-};
-jest.mock("@/utils/authGuard", () => ({ useAuthGuard: contextRead }));
+// imports any of them would call the throwing hook on mount. (Each factory
+// builds its own thrower: `jest.mock` is hoisted above module scope.)
+jest.mock("@/utils/authGuard", () => ({
+  useAuthGuard: () => {
+    throw new Error("AthleteItem must not read app contexts");
+  },
+}));
 jest.mock("@/contexts/SelectedMeetContext", () => ({
-  useSelectedMeet: contextRead,
+  useSelectedMeet: () => {
+    throw new Error("AthleteItem must not read app contexts");
+  },
 }));
 jest.mock("@/contexts/SubscriptionContext", () => ({
-  useSubscription: contextRead,
+  useSubscription: () => {
+    throw new Error("AthleteItem must not read app contexts");
+  },
 }));
-jest.mock("@/contexts/ThemeContext", () => ({ useTheme: contextRead }));
-
-import { AthleteItem, type AthleteRowProps } from "./AthleteItem";
-import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
+jest.mock("@/contexts/ThemeContext", () => ({
+  useTheme: () => {
+    throw new Error("AthleteItem must not read app contexts");
+  },
+}));
 
 const ATHLETE: LiftResult = {
   memberId: "123",

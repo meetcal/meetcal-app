@@ -4,6 +4,7 @@ import {
   deleteSavedSession,
   deleteSavedSessions,
   MeetCalApiError,
+  MeetCalApiTimeoutError,
   putSavedSession,
 } from '@/lib/api/meetcal-api';
 import { devWarn } from '@/lib/logger';
@@ -11,27 +12,37 @@ import { devWarn } from '@/lib/logger';
 /**
  * Pending-writes outbox for saved sessions.
  *
- * `saveSession` / `removeSession` / `resetAllSessions` write locally first and
- * then call the API. When that call fails (offline, timeout, 5xx, no token)
- * the local row used to be the only record of the change, and the next
- * successful reconcile replaced local state with the server's list — so a
- * session saved on the train was deleted the moment the user got signal.
+ * Every local mutation records here what still has to reach the server,
+ * *before* the local list is written, so a crash between the two cannot
+ * leave a local change with no record that it is unsynced. A pending PUT
+ * carries the session body it will send, so the sync always sends the latest
+ * edit and a reconcile can restore a dirty row even if the local list lost it.
  *
- * Every local mutation now records what still has to reach the server here,
- * keyed by session id. `mergeServerSessions` keeps dirty rows through a
- * reconcile and `replayOutbox` re-issues them; a flag is cleared only on a
- * 2xx. The backend upsert is idempotent, so replaying twice is harmless.
+ * Ordering rules:
+ * - Every entry has a rev from one per-user counter. `flushOutbox` sends
+ *   entries in rev order, re-reading the outbox before each send, and it is
+ *   single-flight per user: immediate writes and replays share one runner,
+ *   so a stale replay can never overtake a newer write.
+ * - A reset (bulk delete of a meet, or of every meet) covers only writes
+ *   made *before* it. Marking a reset drops the per-session entries it
+ *   supersedes; a session saved after the reset keeps its own, later entry.
+ * - While a reset for a meet is still unsent, later writes for that meet are
+ *   held back, so the reset can never land after them and delete them.
+ * - A flag is cleared only on a 2xx, and only if the entry still has the rev
+ *   that was sent.
  */
 
 /**
  * Mirrors `MAX_SAVED_SESSION_ATHLETE_NAMES` in the backend
- * (`app/src/common/query.rs`). A PUT with more names is a 400, which the
- * client used to swallow and then report as a successful save.
+ * (`app/src/common/query.rs`). A PUT with more names is a 400.
  */
 export const MAX_SAVED_SESSION_ATHLETE_NAMES = 64;
 
 /** `resets` key meaning "delete every meet", as `DELETE /users/me/saved-sessions` without `meet`. */
 export const RESET_ALL_MEETS = '*';
+
+/** Upper bound on back-to-back passes one flush runs when writes keep arriving. */
+const MAX_FLUSH_PASSES = 5;
 
 export type PendingSessionOp = 'put' | 'delete';
 
@@ -39,6 +50,10 @@ export interface PendingSessionEntry {
   op: PendingSessionOp;
   /** Monotonic per outbox; a clear only lands when the rev still matches. */
   rev: number;
+  /** Meet the session belongs to, so resets can supersede and hold it. */
+  meet: string;
+  /** Body to send for a PUT. Always the latest local version. */
+  session?: SavedSession;
 }
 
 export interface SavedSessionsOutbox {
@@ -48,25 +63,32 @@ export interface SavedSessionsOutbox {
   nextRev: number;
 }
 
-export interface ReplayOutboxResult {
+export interface FlushResult {
   /** The server answered 401: the Clerk session no longer authorises writes. */
   authExpired: boolean;
-  /** Entries still pending after this pass (network / server failures). */
+  /** At least one write reached the server this flush. */
+  delivered: number;
+  /** Entries still pending after the flush. */
   remaining: number;
-  /** Entries the server refused with a non-retryable 4xx; dropped from the outbox. */
-  rejected: number;
+  /** Session id → rev of each write the server refused with a non-retryable 4xx. */
+  rejected: Map<string, number>;
 }
 
-const EMPTY_OUTBOX: SavedSessionsOutbox = { sessions: {}, resets: {}, nextRev: 1 };
+function emptyOutbox(): SavedSessionsOutbox {
+  return { sessions: {}, resets: {}, nextRev: 1 };
+}
 
 export function getSavedSessionsOutboxKey(userId: string): string {
   return `@saved_sessions_outbox_${userId}`;
 }
 
+function getOutboxSeededKey(userId: string): string {
+  return `@saved_sessions_outbox_seeded_${userId}`;
+}
+
 /**
- * Tail of the serialized read-modify-write chain. Two overlapping marks
- * (a save racing an auto-unsave) must not each read the same snapshot and
- * have the loser overwrite the winner's entry.
+ * Tail of the serialized read-modify-write chain, so two overlapping marks
+ * cannot each read the same snapshot and have one overwrite the other.
  */
 let writeChain: Promise<unknown> = Promise.resolve();
 
@@ -76,46 +98,71 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseSessionBody(value: unknown): SavedSession | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.meet !== 'string' ||
+    typeof value.sessionNumber !== 'number' ||
+    typeof value.platform !== 'string'
+  ) {
+    return undefined;
+  }
+  return value as unknown as SavedSession;
+}
+
 function parseOutbox(raw: string | null): SavedSessionsOutbox {
-  if (!raw) return { ...EMPTY_OUTBOX, sessions: {}, resets: {} };
+  if (!raw) return emptyOutbox();
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ...EMPTY_OUTBOX, sessions: {}, resets: {} };
-    }
-    const record = parsed as Record<string, unknown>;
+    if (!isRecord(parsed)) return emptyOutbox();
     const sessions: Record<string, PendingSessionEntry> = {};
-    if (record.sessions && typeof record.sessions === 'object' && !Array.isArray(record.sessions)) {
-      for (const [id, entry] of Object.entries(record.sessions as Record<string, unknown>)) {
-        if (!entry || typeof entry !== 'object') continue;
-        const { op, rev } = entry as Record<string, unknown>;
-        if ((op === 'put' || op === 'delete') && typeof rev === 'number' && Number.isInteger(rev)) {
-          sessions[id] = { op, rev };
+    if (isRecord(parsed.sessions)) {
+      for (const [id, entry] of Object.entries(parsed.sessions)) {
+        if (!isRecord(entry)) continue;
+        const { op, rev, meet } = entry;
+        if ((op !== 'put' && op !== 'delete') || typeof rev !== 'number' || !Number.isInteger(rev)) {
+          continue;
         }
+        const body = parseSessionBody(entry.session);
+        const entryMeet = typeof meet === 'string' ? meet : body?.meet;
+        // A PUT without a body, or any entry without a meet, cannot be
+        // replayed or ordered against resets; drop it rather than guess.
+        if (!entryMeet || (op === 'put' && !body)) continue;
+        sessions[id] = { op, rev, meet: entryMeet, ...(body ? { session: body } : {}) };
       }
     }
     const resets: Record<string, number> = {};
-    if (record.resets && typeof record.resets === 'object' && !Array.isArray(record.resets)) {
-      for (const [meet, rev] of Object.entries(record.resets as Record<string, unknown>)) {
+    if (isRecord(parsed.resets)) {
+      for (const [meet, rev] of Object.entries(parsed.resets)) {
         if (typeof rev === 'number' && Number.isInteger(rev)) resets[meet] = rev;
       }
     }
+    const maxRev = Math.max(
+      0,
+      ...Object.values(sessions).map((entry) => entry.rev),
+      ...Object.values(resets),
+    );
     const nextRev =
-      typeof record.nextRev === 'number' && Number.isInteger(record.nextRev) && record.nextRev > 0
-        ? record.nextRev
-        : 1;
+      typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev)
+        ? Math.max(parsed.nextRev, maxRev + 1)
+        : maxRev + 1;
     return { sessions, resets, nextRev };
   } catch {
-    return { ...EMPTY_OUTBOX, sessions: {}, resets: {} };
+    return emptyOutbox();
   }
-}
-
-export function isOutboxEmpty(outbox: SavedSessionsOutbox): boolean {
-  return countPendingWrites(outbox) === 0;
 }
 
 export function countPendingWrites(outbox: SavedSessionsOutbox): number {
   return Object.keys(outbox.sessions).length + Object.keys(outbox.resets).length;
+}
+
+export function isOutboxEmpty(outbox: SavedSessionsOutbox): boolean {
+  return countPendingWrites(outbox) === 0;
 }
 
 export async function readOutbox(userId: string): Promise<SavedSessionsOutbox> {
@@ -123,20 +170,17 @@ export async function readOutbox(userId: string): Promise<SavedSessionsOutbox> {
     return parseOutbox(await AsyncStorage.getItem(getSavedSessionsOutboxKey(userId)));
   } catch (error) {
     console.error('Saved sessions outbox: read failed', error);
-    return { ...EMPTY_OUTBOX, sessions: {}, resets: {} };
+    return emptyOutbox();
   }
 }
 
 async function writeOutbox(userId: string, outbox: SavedSessionsOutbox): Promise<void> {
-  const key = getSavedSessionsOutboxKey(userId);
-  if (isOutboxEmpty(outbox)) {
-    await AsyncStorage.removeItem(key);
-    return;
-  }
-  await AsyncStorage.setItem(key, JSON.stringify(outbox));
+  // Written even when empty so `nextRev` never restarts: a rev must never be
+  // reused while a send that carries an older copy of it may still clear it.
+  await AsyncStorage.setItem(getSavedSessionsOutboxKey(userId), JSON.stringify(outbox));
 }
 
-async function updateOutbox<T>(
+function updateOutbox<T>(
   userId: string,
   mutate: (outbox: SavedSessionsOutbox) => T,
 ): Promise<T> {
@@ -148,39 +192,48 @@ async function updateOutbox<T>(
   });
 }
 
-/** Record that `sessionId` needs `op` on the server. Returns the entry's rev. */
-export function markSessionPending(
-  userId: string,
-  sessionId: string,
-  op: PendingSessionOp,
-): Promise<number> {
+/** Record that `session` must be upserted on the server. Returns the entry's rev. */
+export function markSessionPut(userId: string, session: SavedSession): Promise<number> {
   return updateOutbox(userId, (outbox) => {
     const rev = outbox.nextRev++;
-    outbox.sessions[sessionId] = { op, rev };
+    outbox.sessions[session.id] = { op: 'put', rev, meet: session.meet, session };
+    return rev;
+  });
+}
+
+/** Record that session `sessionId` (in `meet`) must be deleted on the server. */
+export function markSessionDelete(userId: string, sessionId: string, meet: string): Promise<number> {
+  return updateOutbox(userId, (outbox) => {
+    const rev = outbox.nextRev++;
+    outbox.sessions[sessionId] = { op: 'delete', rev, meet };
     return rev;
   });
 }
 
 /**
- * Record a pending bulk delete. A reset supersedes every per-session entry it
- * covers: a queued PUT for a session in that meet must not resurrect it.
+ * Record a pending bulk delete of `meet` (or every meet). Per-session entries
+ * it covers are superseded: a queued PUT or DELETE for a session in that
+ * meet has nothing left to do once the whole meet is deleted.
  */
 export function markResetPending(userId: string, meet: string | null): Promise<number> {
   return updateOutbox(userId, (outbox) => {
     const rev = outbox.nextRev++;
-    const key = meet ?? RESET_ALL_MEETS;
-    outbox.resets[key] = rev;
     if (meet === null) {
       outbox.sessions = {};
       outbox.resets = { [RESET_ALL_MEETS]: rev };
+      return rev;
     }
+    for (const [id, entry] of Object.entries(outbox.sessions)) {
+      if (entry.meet === meet) delete outbox.sessions[id];
+    }
+    outbox.resets[meet] = rev;
     return rev;
   });
 }
 
 /**
- * Drop the entry for `sessionId` — but only if it is still the one that was
- * marked with `rev`. A PUT that succeeds after the user has since removed the
+ * Drop the entry for `sessionId`, but only if it is still the one marked
+ * with `rev`. A PUT that succeeds after the user has since removed the
  * session must not erase the newer pending DELETE.
  */
 export function clearSessionPending(userId: string, sessionId: string, rev: number): Promise<void> {
@@ -200,8 +253,37 @@ export function clearResetPending(userId: string, meet: string | null, rev: numb
   });
 }
 
-export async function clearOutbox(userId: string): Promise<void> {
-  await enqueue(() => AsyncStorage.removeItem(getSavedSessionsOutboxKey(userId)));
+/**
+ * One-time adoption of rows written before the outbox existed.
+ *
+ * Old builds kept local-only rows when the server list was empty and never
+ * uploaded them. The first reconcile on this build marks those rows as
+ * pending PUTs (only when the server has nothing, matching what old builds
+ * showed the user), so from then on "not pending" really means "the server
+ * has it" and an empty server list can be trusted like any other.
+ *
+ * @returns how many rows were queued (0 on every call after the first).
+ */
+export async function adoptPreOutboxSessions(
+  userId: string,
+  serverIsEmpty: boolean,
+  localSessions: SavedSession[],
+): Promise<number> {
+  const seededKey = getOutboxSeededKey(userId);
+  if ((await AsyncStorage.getItem(seededKey)) === '1') return 0;
+  let adopted = 0;
+  if (serverIsEmpty && localSessions.length > 0) {
+    await updateOutbox(userId, (outbox) => {
+      for (const session of localSessions) {
+        if (outbox.sessions[session.id]) continue;
+        const rev = outbox.nextRev++;
+        outbox.sessions[session.id] = { op: 'put', rev, meet: session.meet, session };
+        adopted += 1;
+      }
+    });
+  }
+  await AsyncStorage.setItem(seededKey, '1');
+  return adopted;
 }
 
 /** First `MAX_SAVED_SESSION_ATHLETE_NAMES` names; `undefined` stays `undefined`. */
@@ -228,40 +310,113 @@ export function toSavedSessionBody(session: SavedSession): Parameters<typeof put
   };
 }
 
-function isCoveredByReset(session: SavedSession, outbox: SavedSessionsOutbox): boolean {
-  return outbox.resets[RESET_ALL_MEETS] !== undefined || outbox.resets[session.meet] !== undefined;
+/**
+ * Writes the server accepted, newest last, kept briefly in memory.
+ *
+ * A reconcile fetches the server's list and then merges it with the outbox.
+ * A write delivered *while* that fetch was in flight is already cleared from
+ * the outbox, yet the fetched list may predate it. The merge replays the
+ * deliveries made since the fetch started on top of the server's list, so
+ * such a save is not dropped (or a delete undone) by a stale read.
+ */
+export type Delivery =
+  | { seq: number; kind: 'put'; id: string; session: SavedSession }
+  | { seq: number; kind: 'delete'; id: string }
+  | { seq: number; kind: 'reset'; meet: string | null };
+
+type DeliveryInput =
+  | { kind: 'put'; id: string; session: SavedSession }
+  | { kind: 'delete'; id: string }
+  | { kind: 'reset'; meet: string | null };
+
+/** Cap on remembered deliveries per user; a reconcile only needs the last few. */
+const MAX_DELIVERY_LOG = 200;
+let deliverySeq = 0;
+const deliveryLogs = new Map<string, Delivery[]>();
+
+function recordDelivery(userId: string, delivery: DeliveryInput): void {
+  const log = deliveryLogs.get(userId) ?? [];
+  deliverySeq += 1;
+  log.push({ ...delivery, seq: deliverySeq } as Delivery);
+  if (log.length > MAX_DELIVERY_LOG) log.splice(0, log.length - MAX_DELIVERY_LOG);
+  deliveryLogs.set(userId, log);
+}
+
+/** A marker to pass to `deliveriesSince` once the matching fetch returns. */
+export function currentDeliverySeq(): number {
+  return deliverySeq;
+}
+
+export function deliveriesSince(userId: string, seq: number): Delivery[] {
+  return (deliveryLogs.get(userId) ?? []).filter((delivery) => delivery.seq > seq);
+}
+
+function applyDeliveries(serverSessions: SavedSession[], deliveries: Delivery[]): SavedSession[] {
+  let rows = serverSessions;
+  for (const delivery of deliveries) {
+    if (delivery.kind === 'reset') {
+      rows = delivery.meet === null ? [] : rows.filter((row) => row.meet !== delivery.meet);
+    } else if (delivery.kind === 'delete') {
+      rows = rows.filter((row) => row.id !== delivery.id);
+    } else {
+      const index = rows.findIndex((row) => row.id === delivery.id);
+      rows =
+        index >= 0
+          ? rows.map((row, i) => (i === index ? delivery.session : row))
+          : [...rows, delivery.session];
+    }
+  }
+  return rows;
+}
+
+/** Revs of the pending resets that apply to `meet`. */
+function resetRevsFor(meet: string, outbox: SavedSessionsOutbox): number[] {
+  const revs: number[] = [];
+  const all = outbox.resets[RESET_ALL_MEETS];
+  if (all !== undefined) revs.push(all);
+  const own = outbox.resets[meet];
+  if (own !== undefined) revs.push(own);
+  return revs;
 }
 
 /**
- * Reconcile the server's list with local rows that still have unsent writes.
+ * Whether a pending reset deletes a row in `meet` whose own pending write
+ * (if any) has `rev`. A reset covers only what was written before it.
+ */
+function isCoveredByReset(meet: string, rev: number | undefined, outbox: SavedSessionsOutbox): boolean {
+  return resetRevsFor(meet, outbox).some((resetRev) => rev === undefined || rev < resetRev);
+}
+
+/**
+ * Reconcile the server's list with the writes this device still owes it.
  *
- * Server rows are the base. A row the outbox says is pending DELETE (or that
- * a pending reset covers) is dropped; a local row pending PUT replaces its
- * server twin or is appended. Everything else is the server's word, so a
- * session removed on another device disappears here too.
+ * Server rows are the base. A row pending DELETE, or covered by an earlier
+ * pending reset, is dropped. A pending PUT replaces its server twin or is
+ * appended, using the body stored in the outbox. Everything else is the
+ * server's word, including an empty list: a session removed on another
+ * device disappears here too.
  */
 export function mergeServerSessions(
   serverSessions: SavedSession[],
-  localSessions: SavedSession[],
   outbox: SavedSessionsOutbox,
+  deliveredDuringFetch: Delivery[] = [],
 ): SavedSession[] {
-  const dirtyPuts = new Map<string, SavedSession>();
-  for (const session of localSessions) {
-    if (outbox.sessions[session.id]?.op === 'put' && !isCoveredByReset(session, outbox)) {
-      dirtyPuts.set(session.id, session);
-    }
-  }
-
+  const base = applyDeliveries(serverSessions, deliveredDuringFetch);
   const merged: SavedSession[] = [];
   const seen = new Set<string>();
-  for (const session of serverSessions) {
+  for (const session of base) {
     const entry = outbox.sessions[session.id];
-    if (entry?.op === 'delete' || isCoveredByReset(session, outbox)) continue;
+    if (entry?.op === 'delete') continue;
+    if (isCoveredByReset(session.meet, entry?.rev, outbox)) continue;
     seen.add(session.id);
-    merged.push(dirtyPuts.get(session.id) ?? session);
+    merged.push(entry?.op === 'put' && entry.session ? entry.session : session);
   }
-  for (const [id, session] of dirtyPuts) {
-    if (!seen.has(id)) merged.push(session);
+  const pendingPuts = Object.entries(outbox.sessions)
+    .filter(([id, entry]) => entry.op === 'put' && entry.session && !seen.has(id))
+    .sort(([, a], [, b]) => a.rev - b.rev);
+  for (const [, entry] of pendingPuts) {
+    if (isCoveredByReset(entry.meet, entry.rev, outbox)) continue;
+    merged.push(entry.session as SavedSession);
   }
   return merged;
 }
@@ -271,19 +426,21 @@ export type SyncErrorKind = 'auth' | 'rejected' | 'retry';
 /**
  * How a failed write should be treated.
  *
- * - `auth`: 401. The Clerk session no longer authorises writes; keep the
- *   entry and tell the user.
- * - `rejected`: any other 4xx except 408/429. The server understood the
- *   request and refused it, so sending the identical payload again can never
- *   succeed; the entry is dropped and the server's view wins on the next
- *   reconcile.
- * - `retry`: timeout, network, 5xx, missing token. Keep the entry.
+ * - `auth`: 401. The Clerk session no longer authorises writes.
+ * - `rejected`: any other 4xx except 429. The server refused the payload, so
+ *   sending it again can never succeed; the entry is dropped.
+ * - `retry`: timeout (including the server's 408), network, 5xx, 429.
  */
 export function classifySyncError(error: unknown): SyncErrorKind {
   if (!(error instanceof MeetCalApiError)) return 'retry';
   if (error.status === 401) return 'auth';
-  if (error.status === 408 || error.status === 429) return 'retry';
+  if (error.status === 429) return 'retry';
   return error.status >= 400 && error.status < 500 ? 'rejected' : 'retry';
+}
+
+/** A failure that says the network or server is unreachable right now. */
+function isConnectivityFailure(error: unknown): boolean {
+  return error instanceof MeetCalApiTimeoutError || !(error instanceof MeetCalApiError);
 }
 
 /** `DELETE` one session, treating 404 as done: already gone is the outcome wanted. */
@@ -295,82 +452,144 @@ export async function deletePendingSession(token: string, sessionId: string): Pr
   }
 }
 
-/**
- * Re-issue every pending write. Resets go first (a PUT for a session in a
- * meet that is being reset would otherwise be undone by the reset); then
- * per-session PUT/DELETE in rev order. Stops at the first 401: the token is
- * dead, so every later call would fail the same way.
- */
-export async function replayOutbox(
+type Candidate =
+  | { kind: 'reset'; key: string; rev: number }
+  | { kind: 'session'; key: string; rev: number; entry: PendingSessionEntry };
+
+function candidatesInRevOrder(outbox: SavedSessionsOutbox): Candidate[] {
+  const candidates: Candidate[] = [
+    ...Object.entries(outbox.resets).map(
+      ([key, rev]): Candidate => ({ kind: 'reset', key, rev }),
+    ),
+    ...Object.entries(outbox.sessions).map(
+      ([key, entry]): Candidate => ({ kind: 'session', key, rev: entry.rev, entry }),
+    ),
+  ];
+  return candidates.sort((a, b) => a.rev - b.rev);
+}
+
+async function runPass(
   userId: string,
-  token: string,
-  localSessions: SavedSession[],
-): Promise<ReplayOutboxResult> {
-  const outbox = await readOutbox(userId);
-  const result: ReplayOutboxResult = { authExpired: false, remaining: 0, rejected: 0 };
-  if (isOutboxEmpty(outbox)) return result;
+  getToken: () => Promise<string | null>,
+  result: FlushResult,
+): Promise<'done' | 'stopped'> {
+  const attempted = new Set<string>();
+  // Meets whose reset could not be sent this pass: later writes for them
+  // wait, so the reset cannot land after them and delete them.
+  const heldMeets = new Set<string>();
+  let holdAll = false;
 
-  const localById = new Map(localSessions.map((session) => [session.id, session]));
-
-  const settle = async (
-    label: string,
-    request: () => Promise<unknown>,
-    clear: () => Promise<void>,
-  ): Promise<boolean> => {
-    try {
-      await request();
-      await clear();
+  for (;;) {
+    const outbox = await readOutbox(userId);
+    const next = candidatesInRevOrder(outbox).find((candidate) => {
+      if (attempted.has(`${candidate.kind}:${candidate.key}:${candidate.rev}`)) return false;
+      if (holdAll) return false;
+      if (candidate.kind === 'session') return !heldMeets.has(candidate.entry.meet);
       return true;
+    });
+    if (!next) return 'done';
+    attempted.add(`${next.kind}:${next.key}:${next.rev}`);
+
+    let token: string | null = null;
+    try {
+      token = await getToken();
+    } catch (error) {
+      console.error('Saved sessions outbox: Clerk getToken() failed; writes stay queued', error);
+    }
+    if (!token) return 'stopped';
+
+    const meet = next.kind === 'reset' ? (next.key === RESET_ALL_MEETS ? null : next.key) : null;
+    const clear = () =>
+      next.kind === 'reset'
+        ? clearResetPending(userId, meet, next.rev)
+        : clearSessionPending(userId, next.key, next.rev);
+
+    try {
+      if (next.kind === 'reset') {
+        await deleteSavedSessions(token, meet ?? undefined);
+        recordDelivery(userId, { kind: 'reset', meet });
+      } else if (next.entry.op === 'delete') {
+        await deletePendingSession(token, next.key);
+        recordDelivery(userId, { kind: 'delete', id: next.key });
+      } else {
+        const body = next.entry.session as SavedSession;
+        await putSavedSession(token, next.key, toSavedSessionBody(body));
+        recordDelivery(userId, { kind: 'put', id: next.key, session: body });
+      }
+      await clear();
+      result.delivered += 1;
     } catch (error) {
       const kind = classifySyncError(error);
       if (kind === 'auth') {
         result.authExpired = true;
-        return false;
+        return 'stopped';
       }
       if (kind === 'rejected') {
-        console.error(`Saved sessions outbox: server rejected ${label}; dropping`, error);
-        result.rejected += 1;
+        console.error(`Saved sessions outbox: server rejected ${next.kind} ${next.key}; dropping`, error);
+        if (next.kind === 'session') result.rejected.set(next.key, next.rev);
         await clear();
-        return true;
-      }
-      devWarn(`Saved sessions outbox: ${label} still pending`, error);
-      result.remaining += 1;
-      return true;
-    }
-  };
-
-  const resets = Object.entries(outbox.resets).sort(([, a], [, b]) => a - b);
-  for (const [key, rev] of resets) {
-    const meet = key === RESET_ALL_MEETS ? null : key;
-    const ok = await settle(
-      `reset ${key}`,
-      () => deleteSavedSessions(token, meet ?? undefined),
-      () => clearResetPending(userId, meet, rev),
-    );
-    if (!ok) return result;
-  }
-
-  const sessions = Object.entries(outbox.sessions).sort(([, a], [, b]) => a.rev - b.rev);
-  for (const [sessionId, entry] of sessions) {
-    let request: () => Promise<unknown>;
-    if (entry.op === 'delete') {
-      request = () => deletePendingSession(token, sessionId);
-    } else {
-      const session = localById.get(sessionId);
-      if (!session) {
-        // Marked PUT but no longer stored locally: nothing to send.
-        await clearSessionPending(userId, sessionId, entry.rev);
         continue;
       }
-      request = () => putSavedSession(token, sessionId, toSavedSessionBody(session));
+      devWarn(`Saved sessions outbox: ${next.kind} ${next.key} still pending`, error);
+      if (isConnectivityFailure(error)) return 'stopped';
+      if (next.kind === 'reset') {
+        if (meet === null) holdAll = true;
+        else heldMeets.add(meet);
+      }
     }
-    const ok = await settle(
-      `${entry.op} ${sessionId}`,
-      request,
-      () => clearSessionPending(userId, sessionId, entry.rev),
-    );
-    if (!ok) return result;
+  }
+}
+
+interface FlushState {
+  promise: Promise<FlushResult>;
+  rerun: boolean;
+}
+
+const inFlight = new Map<string, FlushState>();
+
+/**
+ * Send every pending write for `userId`, in rev order.
+ *
+ * Single-flight per user: a call while a flush is running asks it for one
+ * more pass (so the caller's new entry is sent) and shares its result.
+ * Stops early on a 401, a missing token, or a connectivity failure; those
+ * entries stay queued for the next flush.
+ */
+export function flushOutbox(
+  userId: string,
+  getToken: () => Promise<string | null>,
+): Promise<FlushResult> {
+  const running = inFlight.get(userId);
+  if (running) {
+    running.rerun = true;
+    return running.promise;
   }
 
-  return result;
+  const state = { rerun: false } as FlushState;
+  state.promise = (async () => {
+    const result: FlushResult = {
+      authExpired: false,
+      delivered: 0,
+      remaining: 0,
+      rejected: new Map(),
+    };
+    try {
+      let passes = 0;
+      let outcome: 'done' | 'stopped';
+      do {
+        state.rerun = false;
+        passes += 1;
+        outcome = await runPass(userId, getToken, result);
+        result.remaining = countPendingWrites(await readOutbox(userId));
+        // No await between this check and releasing the slot in `finally`,
+        // so a caller that sets `rerun` after it starts a new flush instead
+        // of joining one that will not send its entry.
+      } while (outcome === 'done' && state.rerun && passes < MAX_FLUSH_PASSES);
+      return result;
+    } finally {
+      inFlight.delete(userId);
+    }
+  })();
+  inFlight.set(userId, state);
+  return state.promise;
 }

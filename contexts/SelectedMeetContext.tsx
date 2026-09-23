@@ -6,6 +6,7 @@ import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
 import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { RECONNECT_REFETCH_JITTER_MAX_MS, reconnectRefetchDelayMs } from '@/lib/data/mutable-resource';
 import { reindexAppEntities } from '@/utils/appIntents';
 import { devLog } from '@/lib/logger';
 
@@ -33,7 +34,7 @@ const MEET_LIST_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
  * The refetch now waits a random slice of this window, and further edges
  * while one is pending or in flight are dropped.
  */
-export const RECONNECT_REFETCH_JITTER_MAX_MS = 2000;
+export { RECONNECT_REFETCH_JITTER_MAX_MS };
 const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -439,7 +440,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         loadMeets().finally(() => {
           pending.inFlight = false;
         });
-      }, Math.random() * RECONNECT_REFETCH_JITTER_MAX_MS);
+      }, reconnectRefetchDelayMs());
     });
     return () => {
       unsubscribe();

@@ -133,7 +133,7 @@ describe("SubscriptionProvider", () => {
   it("renders from the SecureStore cache first, before any RevenueCat call", async () => {
     mockSecureStore.set(
       SECURE_KEY,
-      JSON.stringify({ isSubscribed: true, subscriptionType: "quarterly", timestamp: Date.now() }),
+      JSON.stringify({ appUserId: "rc_user", isSubscribed: true, subscriptionType: "quarterly", timestamp: Date.now() }),
     );
 
     const value = await mountProvider();
@@ -143,6 +143,18 @@ describe("SubscriptionProvider", () => {
     expect(value.current.subscriptionType).toBe("quarterly");
     expect(value.current.isUsingStaleCache).toBe(false);
     expect(mockGetCustomerInfo).not.toHaveBeenCalled();
+  });
+
+  it("ignores a cached entitlement written for another RevenueCat user", async () => {
+    // Keychain entries survive a reinstall and are not per account.
+    mockSecureStore.set(
+      SECURE_KEY,
+      JSON.stringify({ appUserId: "someone_else", isSubscribed: true, subscriptionType: "lifetime", timestamp: Date.now() }),
+    );
+
+    const value = await mountProvider();
+
+    expect(value.current.isSubscribed).not.toBe(true);
   });
 
   it("migrates a pre-SecureStore AsyncStorage entry and removes it", async () => {
@@ -177,6 +189,7 @@ describe("SubscriptionProvider", () => {
     mockSecureStore.set(
       SECURE_KEY,
       JSON.stringify({
+        appUserId: "rc_user",
         isSubscribed: true,
         subscriptionType: "quarterly",
         timestamp: Date.now() - 8 * DAY_MS,
@@ -219,6 +232,7 @@ describe("SubscriptionProvider", () => {
     mockSecureStore.set(
       SECURE_KEY,
       JSON.stringify({
+        appUserId: "rc_user",
         isSubscribed: true,
         subscriptionType: "quarterly",
         timestamp: Date.now() - 8 * DAY_MS,
@@ -240,6 +254,7 @@ describe("SubscriptionProvider", () => {
     mockSecureStore.set(
       SECURE_KEY,
       JSON.stringify({
+        appUserId: "rc_user",
         isSubscribed: true,
         subscriptionType: "quarterly",
         timestamp: Date.now() - 8 * DAY_MS,
@@ -271,6 +286,7 @@ describe("SubscriptionProvider", () => {
     mockSecureStore.set(
       SECURE_KEY,
       JSON.stringify({
+        appUserId: "rc_user",
         isSubscribed: true,
         subscriptionType: "quarterly",
         timestamp: Date.now() - 8 * DAY_MS,

@@ -194,8 +194,9 @@ export class MeetCalApiTimeoutError extends Error {
 
 /**
  * The *server* gave up before we did. The API's request ceiling answers with
- * `408` and an empty body, so without this it surfaced as a `MeetCalApiError`
- * ("failed with 408") and skipped every caller's timeout branch. A subclass so
+ * `408 {"error":"timeout"}` (a gateway may send `504`), so without this it
+ * surfaced as a `MeetCalApiError` ("failed with 408") and skipped every
+ * caller's timeout branch. A subclass so
  * `instanceof MeetCalApiTimeoutError` keeps matching; `status` is kept for
  * logs.
  */
@@ -995,17 +996,6 @@ export async function fetchApiMeetPackageConditional(
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   return { status: 'fresh', etag: raw.etag, package: pkg as ApiMeetPackage };
-}
-
-export async function fetchApiMeetPackage(
-  meet: MeetName,
-  historyCutoffDate?: string,
-): Promise<ApiMeetPackage> {
-  const fetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate);
-  if (fetched.status !== 'fresh') {
-    throw new Error('/meets/package answered 304 without a validator');
-  }
-  return fetched.package;
 }
 
 export async function fetchApiWsoList(): Promise<string[]> {

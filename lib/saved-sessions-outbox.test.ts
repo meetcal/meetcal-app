@@ -7,17 +7,19 @@ import {
   putSavedSession,
 } from "@/lib/api/meetcal-api";
 import {
+  adoptPreOutboxSessions,
   capAthleteNames,
   classifySyncError,
   clearSessionPending,
   countPendingWrites,
+  flushOutbox,
   getSavedSessionsOutboxKey,
   markResetPending,
-  markSessionPending,
+  markSessionDelete,
+  markSessionPut,
   MAX_SAVED_SESSION_ATHLETE_NAMES,
   mergeServerSessions,
   readOutbox,
-  replayOutbox,
   RESET_ALL_MEETS,
   toSavedSessionBody,
 } from "@/lib/saved-sessions-outbox";
@@ -33,8 +35,10 @@ jest.mock("@/lib/api/meetcal-api", () => {
       this.body = body;
     }
   }
+  class MeetCalApiTimeoutError extends Error {}
   return {
     MeetCalApiError,
+    MeetCalApiTimeoutError,
     deleteSavedSession: jest.fn(async () => ({ deleted: true })),
     deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
     putSavedSession: jest.fn(async (_t: string, id: string) => ({
@@ -75,87 +79,119 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+const OTHER = "Other Meet";
+const getToken = async () => "token";
+
+function ids(sessions: SavedSession[]): string[] {
+  return sessions.map((s) => s.id);
+}
+
 describe("outbox bookkeeping", () => {
   it("marks, counts and clears by rev", async () => {
-    const rev = await markSessionPending(USER, "a", "put");
+    const rev = await markSessionPut(USER, session("a"));
     expect(countPendingWrites(await readOutbox(USER))).toBe(1);
 
     // A newer op on the same id supersedes; the old rev can no longer clear it.
-    const newer = await markSessionPending(USER, "a", "delete");
+    const newer = await markSessionDelete(USER, "a", "Test Meet");
     await clearSessionPending(USER, "a", rev);
-    expect((await readOutbox(USER)).sessions.a).toEqual({ op: "delete", rev: newer });
+    expect((await readOutbox(USER)).sessions.a).toEqual({ op: "delete", rev: newer, meet: "Test Meet" });
 
     await clearSessionPending(USER, "a", newer);
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
-    // An empty outbox leaves no key behind.
-    await expect(AsyncStorage.getItem(getSavedSessionsOutboxKey(USER))).resolves.toBeNull();
+  });
+
+  it("never reuses a rev after the outbox empties", async () => {
+    const first = await markSessionPut(USER, session("a"));
+    await clearSessionPending(USER, "a", first);
+    const second = await markSessionPut(USER, session("b"));
+    expect(second).toBeGreaterThan(first);
   });
 
   it("serialises concurrent marks so none is lost", async () => {
-    await Promise.all(["a", "b", "c", "d"].map((id) => markSessionPending(USER, id, "put")));
+    await Promise.all(["a", "b", "c", "d"].map((id) => markSessionPut(USER, session(id))));
     expect(Object.keys((await readOutbox(USER)).sessions).sort()).toEqual(["a", "b", "c", "d"]);
   });
 
+  it("a meet reset supersedes that meet's earlier entries only", async () => {
+    await markSessionPut(USER, session("in-meet"));
+    await markSessionPut(USER, session("elsewhere", { meet: OTHER as never }));
+    await markResetPending(USER, "Test Meet");
+    const outbox = await readOutbox(USER);
+    expect(Object.keys(outbox.sessions)).toEqual(["elsewhere"]);
+    expect(Object.keys(outbox.resets)).toEqual(["Test Meet"]);
+  });
+
   it("a reset-all wipes per-session entries and earlier resets", async () => {
-    await markSessionPending(USER, "a", "put");
-    await markResetPending(USER, "Other Meet");
+    await markSessionPut(USER, session("a"));
+    await markResetPending(USER, OTHER);
     await markResetPending(USER, null);
     const outbox = await readOutbox(USER);
     expect(outbox.sessions).toEqual({});
     expect(Object.keys(outbox.resets)).toEqual([RESET_ALL_MEETS]);
   });
 
-  it.each(["{", "[]", '{"sessions":[1],"resets":"x","nextRev":-1}', '{"sessions":{"a":{"op":"nope","rev":1}}}'])(
-    "treats malformed storage %s as empty",
-    async (raw) => {
-      await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), raw);
-      expect(countPendingWrites(await readOutbox(USER))).toBe(0);
-    },
-  );
+  it.each([
+    "{",
+    "[]",
+    '{"sessions":[1],"resets":"x","nextRev":-1}',
+    '{"sessions":{"a":{"op":"nope","rev":1}}}',
+    '{"sessions":{"a":{"op":"put","rev":1,"meet":"M"}}}',
+  ])("treats malformed storage %s as empty", async (raw) => {
+    await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), raw);
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
 });
 
 describe("mergeServerSessions", () => {
-  it("keeps a dirty local row when the server has a non-empty list without it", async () => {
-    await markSessionPending(USER, "local-only", "put");
-    const outbox = await readOutbox(USER);
-    const merged = mergeServerSessions(
-      [session("server-1")],
-      [session("server-1"), session("local-only")],
-      outbox,
-    );
-    expect(merged.map((s) => s.id)).toEqual(["server-1", "local-only"]);
+  it("keeps a pending PUT the server does not have yet, from the outbox body", async () => {
+    await markSessionPut(USER, session("local-only"));
+    const merged = mergeServerSessions([session("server-1")], await readOutbox(USER));
+    expect(ids(merged)).toEqual(["server-1", "local-only"]);
   });
 
-  it("prefers the dirty local version of a row the server also has", async () => {
-    await markSessionPending(USER, "shared", "put");
-    const outbox = await readOutbox(USER);
-    const merged = mergeServerSessions(
-      [session("shared", { notes: "server" })],
-      [session("shared", { notes: "local" })],
-      outbox,
-    );
+  it("prefers the pending version of a row the server also has", async () => {
+    await markSessionPut(USER, session("shared", { notes: "local" }));
+    const merged = mergeServerSessions([session("shared", { notes: "server" })], await readOutbox(USER));
     expect(merged[0].notes).toBe("local");
   });
 
   it("drops server rows pending delete or covered by a pending reset", async () => {
-    await markSessionPending(USER, "gone", "delete");
+    await markSessionDelete(USER, "gone", "Test Meet");
     await markResetPending(USER, "Reset Meet");
-    const outbox = await readOutbox(USER);
     const merged = mergeServerSessions(
       [session("gone"), session("kept"), session("reset-me", { meet: "Reset Meet" as never })],
-      [],
-      outbox,
+      await readOutbox(USER),
     );
-    expect(merged.map((s) => s.id)).toEqual(["kept"]);
+    expect(ids(merged)).toEqual(["kept"]);
   });
 
-  it("lets the server win for a clean local-only row", () => {
+  it("keeps a session saved after a still-pending reset of its meet", async () => {
+    await markResetPending(USER, "Test Meet");
+    await markSessionPut(USER, session("saved-after"));
     const merged = mergeServerSessions(
-      [session("server-1")],
-      [session("server-1"), session("removed-elsewhere")],
-      { sessions: {}, resets: {}, nextRev: 1 },
+      [session("old-row"), session("saved-after")],
+      await readOutbox(USER),
     );
-    expect(merged.map((s) => s.id)).toEqual(["server-1"]);
+    expect(ids(merged)).toEqual(["saved-after"]);
+  });
+
+  it("trusts an empty server list: a clean row removed elsewhere goes", () => {
+    expect(mergeServerSessions([], { sessions: {}, resets: {}, nextRev: 1 })).toEqual([]);
+  });
+});
+
+describe("adoptPreOutboxSessions", () => {
+  it("queues pre-outbox local rows once, only when the server is empty", async () => {
+    expect(await adoptPreOutboxSessions(USER, true, [session("old")])).toBe(1);
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
+
+    expect(await adoptPreOutboxSessions(USER, true, [session("again")])).toBe(0);
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
+  });
+
+  it("adopts nothing when the server already has rows", async () => {
+    expect(await adoptPreOutboxSessions(USER, false, [session("local")])).toBe(0);
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 });
 
@@ -176,82 +212,143 @@ describe("classifySyncError", () => {
     expect(classifySyncError(new MeetCalApiError("x", 401, ""))).toBe("auth");
     expect(classifySyncError(new MeetCalApiError("x", 400, ""))).toBe("rejected");
     expect(classifySyncError(new MeetCalApiError("x", 422, ""))).toBe("rejected");
-    expect(classifySyncError(new MeetCalApiError("x", 408, ""))).toBe("retry");
     expect(classifySyncError(new MeetCalApiError("x", 429, ""))).toBe("retry");
     expect(classifySyncError(new MeetCalApiError("x", 503, ""))).toBe("retry");
     expect(classifySyncError(new Error("network"))).toBe("retry");
   });
 });
 
-describe("replayOutbox", () => {
-  it("replays resets first, then PUT/DELETE in rev order, clearing on 2xx", async () => {
-    await markSessionPending(USER, "put-me", "put");
-    await markSessionPending(USER, "delete-me", "delete");
-    await markResetPending(USER, "Old Meet");
+describe("flushOutbox", () => {
+  it("sends every entry in rev order and clears each on 2xx", async () => {
+    await markSessionPut(USER, session("put-me"));
+    await markResetPending(USER, OTHER);
+    await markSessionDelete(USER, "delete-me", "Test Meet");
 
-    const result = await replayOutbox(USER, "token", [session("put-me")]);
+    const result = await flushOutbox(USER, getToken);
 
-    expect(result).toEqual({ authExpired: false, remaining: 0, rejected: 0 });
-    expect(mockDeleteAll).toHaveBeenCalledWith("token", "Old Meet");
-    expect(mockPut).toHaveBeenCalledWith("token", "put-me", expect.objectContaining({ meet: "Test Meet" }));
-    expect(mockDelete).toHaveBeenCalledWith("token", "delete-me");
+    expect(result.delivered).toBe(3);
+    expect(result.remaining).toBe(0);
     const order = [
-      mockDeleteAll.mock.invocationCallOrder[0],
       mockPut.mock.invocationCallOrder[0],
+      mockDeleteAll.mock.invocationCallOrder[0],
       mockDelete.mock.invocationCallOrder[0],
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(mockDeleteAll).toHaveBeenCalledWith("token", OTHER);
+  });
+
+  it("holds later writes for a meet whose reset failed, so the reset cannot delete them", async () => {
+    await markResetPending(USER, "Test Meet");
+    await markSessionPut(USER, session("saved-after"));
+    await markSessionPut(USER, session("other-meet", { meet: OTHER as never }));
+    mockDeleteAll.mockRejectedValueOnce(new MeetCalApiError("down", 503, ""));
+
+    const result = await flushOutbox(USER, getToken);
+
+    // The other meet is independent and goes through; the held PUT waits.
+    expect(mockPut).toHaveBeenCalledTimes(1);
+    expect(mockPut).toHaveBeenCalledWith("token", "other-meet", expect.anything());
+    expect(result.remaining).toBe(2);
+
+    // Next flush: reset first, then the PUT, which therefore survives.
+    await flushOutbox(USER, getToken);
+    expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(
+      mockPut.mock.invocationCallOrder[1],
+    );
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
-  it("keeps an entry the network could not deliver", async () => {
-    await markSessionPending(USER, "put-me", "put");
-    mockPut.mockRejectedValueOnce(new Error("offline"));
+  it("sends the latest body when the session is edited while a flush is running", async () => {
+    await markSessionPut(USER, session("first"));
+    await markSessionPut(USER, session("edited", { notes: "v1" }));
+    let releaseFirst: () => void = () => {};
+    mockPut.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseFirst = () => resolve({ session_id: "first", updated_at: 1 });
+      }),
+    );
 
-    const result = await replayOutbox(USER, "token", [session("put-me")]);
+    const flushing = flushOutbox(USER, getToken);
+    await new Promise((r) => setTimeout(r, 0));
+    await markSessionPut(USER, session("edited", { notes: "v2" }));
+    releaseFirst();
+    await flushing;
 
-    expect(result.remaining).toBe(1);
-    expect((await readOutbox(USER)).sessions["put-me"]).toBeDefined();
+    const editedCalls = mockPut.mock.calls.filter(([, id]) => id === "edited");
+    expect(editedCalls).toHaveLength(1);
+    expect(editedCalls[0][2]).toEqual(expect.objectContaining({ notes: "v2" }));
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
-  it("drops an entry the server refused with 400", async () => {
-    await markSessionPending(USER, "bad", "put");
+  it("never sends a stale DELETE for a session re-saved during the flush", async () => {
+    await markSessionPut(USER, session("slow"));
+    await markSessionDelete(USER, "resaved", "Test Meet");
+    let release: () => void = () => {};
+    mockPut.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        release = () => resolve({ session_id: "slow", updated_at: 1 });
+      }),
+    );
+
+    const flushing = flushOutbox(USER, getToken);
+    await new Promise((r) => setTimeout(r, 0));
+    await markSessionPut(USER, session("resaved"));
+    // A save during the flush joins it rather than racing it.
+    const joined = flushOutbox(USER, getToken);
+    release();
+    await Promise.all([flushing, joined]);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockPut).toHaveBeenCalledWith("token", "resaved", expect.anything());
+  });
+
+  it("keeps an entry the network could not deliver and stops", async () => {
+    await markSessionPut(USER, session("a"));
+    await markSessionPut(USER, session("b"));
+    mockPut.mockRejectedValueOnce(new Error("offline"));
+
+    const result = await flushOutbox(USER, getToken);
+
+    expect(mockPut).toHaveBeenCalledTimes(1);
+    expect(result.remaining).toBe(2);
+  });
+
+  it("drops and reports an entry the server refused with 400", async () => {
+    const rev = await markSessionPut(USER, session("bad"));
     mockPut.mockRejectedValueOnce(new MeetCalApiError("bad", 400, ""));
 
-    const result = await replayOutbox(USER, "token", [session("bad")]);
+    const result = await flushOutbox(USER, getToken);
 
-    expect(result.rejected).toBe(1);
+    expect(result.rejected.get("bad")).toBe(rev);
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
   it("stops at the first 401 and keeps everything", async () => {
-    await markSessionPending(USER, "a", "put");
-    await markSessionPending(USER, "b", "put");
+    await markSessionPut(USER, session("a"));
+    await markSessionPut(USER, session("b"));
     mockPut.mockRejectedValueOnce(new MeetCalApiError("expired", 401, ""));
 
-    const result = await replayOutbox(USER, "token", [session("a"), session("b")]);
+    const result = await flushOutbox(USER, getToken);
 
     expect(result.authExpired).toBe(true);
     expect(mockPut).toHaveBeenCalledTimes(1);
     expect(countPendingWrites(await readOutbox(USER))).toBe(2);
   });
 
-  it("treats a 404 on delete as done", async () => {
-    await markSessionPending(USER, "already-gone", "delete");
-    mockDelete.mockRejectedValueOnce(new MeetCalApiError("missing", 404, ""));
-
-    const result = await replayOutbox(USER, "token", []);
-
-    expect(result).toEqual({ authExpired: false, remaining: 0, rejected: 0 });
-    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  it("sends nothing without a token", async () => {
+    await markSessionPut(USER, session("a"));
+    const result = await flushOutbox(USER, async () => null);
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(result.remaining).toBe(1);
   });
 
-  it("clears a PUT whose row is no longer stored locally", async () => {
-    await markSessionPending(USER, "vanished", "put");
+  it("treats a 404 on delete as done", async () => {
+    await markSessionDelete(USER, "already-gone", "Test Meet");
+    mockDelete.mockRejectedValueOnce(new MeetCalApiError("missing", 404, ""));
 
-    await replayOutbox(USER, "token", []);
+    const result = await flushOutbox(USER, getToken);
 
-    expect(mockPut).not.toHaveBeenCalled();
-    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+    expect(result.remaining).toBe(0);
+    expect(result.rejected.size).toBe(0);
   });
 });

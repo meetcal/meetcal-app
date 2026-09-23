@@ -58,6 +58,38 @@ const HISTORY_DOWNLOAD_BATCH_SIZE = NAMES_QUERY_CHUNK_SIZE;
 
 const FULL_PREFETCH_DELAY_MS = 5000;
 
+// When each downloaded meet's athlete history was last fetched in full. The
+// package ETag only covers roster, schedule, results and year bests, so a new
+// result that is not a best leaves it unchanged; on a `304` the history is
+// refreshed once it is older than this instead of never.
+const HISTORY_SYNCED_AT_KEY = '@meet_history_synced_at_v1';
+export const HISTORY_REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function readHistorySyncedAt(): Promise<Record<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(HISTORY_SYNCED_AT_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [meet, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value)) out[meet] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+async function markHistorySynced(meet: MeetName): Promise<void> {
+  try {
+    const stamps = await readHistorySyncedAt();
+    stamps[meet] = Date.now();
+    await AsyncStorage.setItem(HISTORY_SYNCED_AT_KEY, JSON.stringify(stamps));
+  } catch (error) {
+    console.warn('Could not record athlete history sync time:', error);
+  }
+}
+
 interface MeetInfo {
   lastAccessed: number;
   size: number;
@@ -540,14 +572,24 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       // every athlete's history survived: "Delete all offline data" and the
       // SQLITE_FULL cleanup remove history without touching the roster. Fill
       // in whatever is missing rather than trusting the validator for it.
-      const missing = await findAthleteNamesWithoutHistory(fetched.athleteNames);
-      if (missing.length > 0 && !(await downloadAthleteHistory(meet, missing))) {
-        errors.push('athlete_history');
+      const syncedAt = (await readHistorySyncedAt())[meet] ?? 0;
+      const historyIsStale = Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
+      const toFetch = historyIsStale
+        ? fetched.athleteNames
+        : await findAthleteNamesWithoutHistory(fetched.athleteNames);
+      if (toFetch.length > 0) {
+        if (await downloadAthleteHistory(meet, toFetch)) {
+          if (historyIsStale) await markHistorySynced(meet);
+        } else {
+          errors.push('athlete_history');
+        }
       }
     } else {
       freshEtag = fetched.etag;
       const { historyComplete } = await ingestMeetPackage(meet, fetched.package);
-      if (!historyComplete) {
+      if (historyComplete) {
+        await markHistorySynced(meet);
+      } else {
         errors.push('athlete_history');
       }
     }
@@ -568,6 +610,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
         const { historyComplete } = await ingestMeetPackage(meet, refetched.package);
         if (historyComplete) {
           freshEtag = refetched.etag;
+          await markHistorySynced(meet);
         } else {
           errors.push('athlete_history');
         }

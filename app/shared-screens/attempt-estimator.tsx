@@ -4,17 +4,15 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { filterSessionAthletes, normalizeAthleteName } from "@/lib/athletes";
+import { filterSessionAthletes } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
 import {
-  findAthleteNamesWithoutHistory,
   getAllCachedLiftingResultsForAthletes,
   getSessionAthletesFromMeetCache,
-  saveAthleteHistory,
   saveMeetAthletes,
 } from "@/lib/database/offline-store";
 import {
@@ -61,35 +59,6 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
       </View>
     </Animated.View>
   );
-}
-
-/**
- * Writes each athlete's recent history under their own history key, for the
- * athletes that have none yet. Best effort: a storage failure must not undo
- * estimates that are already on screen.
- */
-async function persistSessionHistory(
-  names: readonly string[],
-  results: readonly SupabaseLiftResult[],
-  isStale: () => boolean,
-): Promise<void> {
-  try {
-    const missing = await findAthleteNamesWithoutHistory(names);
-    if (missing.length === 0) return;
-    const rowsByName = new Map<string, SupabaseLiftResult[]>();
-    for (const row of results) {
-      const key = normalizeAthleteName(row.name);
-      const rows = rowsByName.get(key);
-      if (rows) rows.push(row);
-      else rowsByName.set(key, [row]);
-    }
-    for (const name of missing) {
-      if (isStale()) return;
-      await saveAthleteHistory(name, rowsByName.get(normalizeAthleteName(name)) ?? []);
-    }
-  } catch (error) {
-    console.warn("Attempt estimator: could not persist session history", error);
-  }
 }
 
 export default function AttemptEstimatorScreen() {
@@ -148,8 +117,7 @@ export default function AttemptEstimatorScreen() {
         // athlete re-inflated every cached meet's results blob once per
         // athlete — a 15-lifter session against three downloaded meets did
         // 45 decompressions instead of three. Per-athlete history blobs win
-        // outright inside, so this serves both the downloaded-meet case and
-        // the history this screen itself persisted on an earlier visit.
+        // outright inside, so a downloaded meet's full history is used.
         const resultsByName = await getAllCachedLiftingResultsForAthletes(
           namedAthletes.map((athlete) => athlete.name),
         );
@@ -205,11 +173,10 @@ export default function AttemptEstimatorScreen() {
       );
       if (isStale()) return;
       setEstimates(calculateEstimates(freshSessionAthletes, freshSessionResults));
-
-      // Keep the estimator usable offline next time, per athlete, without
-      // disturbing an athlete whose full history an explicit download already
-      // wrote: that blob is the complete record and this window is not.
-      await persistSessionHistory(freshSessionNames, freshSessionResults, isStale);
+      // Not persisted: the per-athlete history keys are the explicit
+      // download's complete record (and what marks a download as complete),
+      // and they are never evicted. One session's two-year window is cheap to
+      // refetch; offline, downloaded meets still cover it.
     } catch (error) {
       if (isStale()) return;
       console.error("Error loading data:", error);

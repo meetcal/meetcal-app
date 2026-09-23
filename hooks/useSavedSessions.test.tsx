@@ -45,6 +45,11 @@ jest.mock("@/lib/networkUtils", () => ({
   },
 }));
 
+// Reconnect replays are jittered in production; no delay in tests.
+jest.mock("@/lib/data/mutable-resource", () => ({
+  reconnectRefetchDelayMs: () => 0,
+}));
+
 jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({ selectedMeet: null }),
 }));
@@ -459,23 +464,35 @@ describe("server reconcile with the pending-writes outbox", () => {
     jest.restoreAllMocks();
   });
 
-  it("keeps a dirty local row through a non-empty server list and replays its PUT", async () => {
-    // Saved while the PUT was failing: the row is local and flagged dirty.
+  it("keeps a dirty local row through a non-empty server list while its PUT still fails", async () => {
+    // Saved while the PUT was failing: the row is local and queued.
     await AsyncStorage.setItem(
       SESSION_KEY,
       JSON.stringify([makeSession("Test-Meet-1-Red"), makeSession("Test-Meet-2-Red", { sessionNumber: 2 })]),
     );
     await AsyncStorage.setItem(
       "@saved_sessions_outbox_user_1",
-      JSON.stringify({ sessions: { "Test-Meet-2-Red": { op: "put", rev: 1 } }, resets: {}, nextRev: 2 }),
+      JSON.stringify({
+        sessions: {
+          "Test-Meet-2-Red": {
+            op: "put",
+            rev: 1,
+            meet: "Test Meet",
+            session: makeSession("Test-Meet-2-Red", { sessionNumber: 2 }),
+          },
+        },
+        resets: {},
+        nextRev: 2,
+      }),
     );
-    // The server only knows about the first one.
+    // The replay on load fails again; the server only knows the first row.
+    mockPutSavedSession.mockRejectedValueOnce(new MeetCalApiError("down", 503, ""));
     mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
 
     const hook = await mountHook();
 
-    // Before this the reconcile replaced local state with the server's list
-    // and the offline save was gone for good.
+    // Before the outbox the reconcile replaced local state with the server's
+    // list and the offline save was gone for good.
     expect(hook.current.savedSessions.map((s) => s.id).sort()).toEqual([
       "Test-Meet-1-Red",
       "Test-Meet-2-Red",
@@ -485,9 +502,37 @@ describe("server reconcile with the pending-writes outbox", () => {
       "Test-Meet-2-Red",
       expect.objectContaining({ session_number: 2 }),
     );
-    // Cleared on the 2xx.
-    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
-    expect(hook.current.pendingWriteCount).toBe(0);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
+  });
+
+  it("keeps a session saved while the reconcile's fetch was in flight", async () => {
+    const hook = await mountHook();
+    let resolveFetch: (rows: ReturnType<typeof apiRow>[]) => void = () => {};
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    let loading: Promise<void> = Promise.resolve();
+    await act(async () => {
+      loading = hook.current.loadSavedSessions();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // The save's PUT lands (and its outbox entry clears) before the older
+    // list the fetch is about to return.
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-2-Red", { sessionNumber: 2 }));
+    });
+    await act(async () => {
+      resolveFetch([apiRow("Test-Meet-1-Red")]);
+      await loading;
+    });
+
+    expect(hook.current.savedSessions.map((s) => s.id).sort()).toEqual([
+      "Test-Meet-1-Red",
+      "Test-Meet-2-Red",
+    ]);
   });
 
   it("leaves the outbox entry in place when the PUT fails and still reports the local save", async () => {
@@ -501,7 +546,83 @@ describe("server reconcile with the pending-writes outbox", () => {
 
     expect(saved).toBe(true);
     expect((await readOutbox("user_1")).sessions["Test-Meet-1-Red"]).toMatchObject({ op: "put" });
-    expect(hook.current.pendingWriteCount).toBe(1);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
+  });
+
+  it("reports a save the server refuses instead of claiming success", async () => {
+    const hook = await mountHook();
+    mockPutSavedSession.mockRejectedValueOnce(
+      new MeetCalApiError("too many saved sessions", 400, '{"error":"too many saved sessions","max":500}'),
+    );
+
+    let saved = true;
+    await act(async () => {
+      saved = await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+
+    expect(saved).toBe(false);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+    expect(scheduleNotification).not.toHaveBeenCalled();
+  });
+
+  it("drops a clean local row the server no longer has, even when the list is empty", async () => {
+    // First reconcile on this build: server already has the row, so nothing
+    // is adopted and the device is in step.
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toHaveLength(1);
+
+    // Deleted on another device.
+    mockFetchSavedSessions.mockResolvedValue([]);
+    await act(async () => {
+      await hook.current.loadSavedSessions();
+    });
+
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(mockPutSavedSession).not.toHaveBeenCalled();
+  });
+
+  it("uploads rows from a pre-outbox build once when the server has none", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchSavedSessions.mockResolvedValue([]);
+
+    const hook = await mountHook();
+
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(mockPutSavedSession).toHaveBeenCalledWith("token", "Test-Meet-1-Red", expect.anything());
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
+  it("shares one in-flight load between concurrent callers", async () => {
+    const hook = await mountHook();
+    mockFetchSavedSessions.mockClear();
+
+    await act(async () => {
+      await Promise.all([hook.current.loadSavedSessions(), hook.current.loadSavedSessions()]);
+    });
+
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repaint the previous user's sessions after sign-out mid-load", async () => {
+    let resolveFetch: (rows: ReturnType<typeof apiRow>[]) => void = () => {};
+    mockFetchSavedSessions.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    const hook = await mountHook();
+
+    mockClerkUser = null;
+    const { getCachedAuthState } = jest.requireMock("@/lib/authCache");
+    getCachedAuthState.mockResolvedValueOnce({ isSignedIn: false, userId: null });
+    await hook.rerender();
+    await act(async () => {
+      resolveFetch([apiRow("Test-Meet-1-Red")]);
+    });
+    await flush();
+
+    expect(hook.current.savedSessions).toEqual([]);
   });
 
   it("replays the outbox when the network comes back", async () => {
@@ -510,16 +631,25 @@ describe("server reconcile with the pending-writes outbox", () => {
     await act(async () => {
       await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
     });
-    expect(hook.current.pendingWriteCount).toBe(1);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
     mockPutSavedSession.mockClear();
 
+    // A connected report that is not an offline → online edge (NetInfo sends
+    // the current state on subscribe) does not trigger a replay.
     await act(async () => {
+      mockNetworkListener?.(true);
+    });
+    await flush();
+    expect(mockPutSavedSession).not.toHaveBeenCalled();
+
+    await act(async () => {
+      mockNetworkListener?.(false);
       mockNetworkListener?.(true);
     });
     await flush();
 
     expect(mockPutSavedSession).toHaveBeenCalledWith("token", "Test-Meet-1-Red", expect.anything());
-    expect(hook.current.pendingWriteCount).toBe(0);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 
   it("caps athlete_names at the backend limit locally and on the wire", async () => {

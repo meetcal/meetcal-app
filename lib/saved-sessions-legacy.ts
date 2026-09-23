@@ -65,7 +65,11 @@ export async function findLegacySessionsNeedingMigration(
       continue;
     }
     if (rows.length === 0 || !rows.some(rowNeedsMeet)) continue;
-    const sessions = migrateSessionsToMeetSpecific(rows, currentMeet).filter(
+    // The primary key is the live list: only its meetless rows need
+    // re-homing, and re-saving the rest would re-PUT every session the user
+    // has. A legacy key is removed after migration, so all its rows move.
+    const toMigrate = key === getSavedSessionsKey(userId) ? rows.filter(rowNeedsMeet) : rows;
+    const sessions = migrateSessionsToMeetSpecific(toMigrate, currentMeet).filter(
       (session) =>
         typeof session.sessionNumber === 'number' &&
         typeof session.platform === 'string' &&

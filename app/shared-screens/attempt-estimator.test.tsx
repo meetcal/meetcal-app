@@ -6,7 +6,6 @@ import {
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import {
-  findAthleteNamesWithoutHistory,
   saveAthleteHistory,
   saveMeetAthletes,
 } from "@/lib/database/offline-store";
@@ -25,7 +24,6 @@ jest.mock("@/lib/database/offline-store", () => ({
   getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveMeetAthletes: jest.fn(async () => {}),
   saveAthleteHistory: jest.fn(async () => {}),
-  findAthleteNamesWithoutHistory: jest.fn(async () => []),
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchAthletesWithSession: jest.fn(),
@@ -56,7 +54,7 @@ describe("attempt estimator history fetch", () => {
     jest.clearAllMocks();
   });
 
-  it("fetches history for the session's athletes only and persists it per athlete", async () => {
+  it("fetches history for the session's athletes only and never writes the full-history keys", async () => {
     jest.mocked(fetchAthletesWithSession).mockResolvedValue([
       athlete("Session Lifter A", 1, "Red"),
       athlete("Session Lifter B", 1, "Red"),
@@ -65,7 +63,6 @@ describe("attempt estimator history fetch", () => {
     ]);
     const historyRow = { name: "Session Lifter A", date: "2025-06-01" };
     jest.mocked(fetchRecentAthleteHistoryForNames).mockResolvedValue([historyRow as never]);
-    jest.mocked(findAthleteNamesWithoutHistory).mockResolvedValue(["Session Lifter A"]);
 
     let tree!: ReturnType<typeof create>;
     await act(async () => {
@@ -83,14 +80,9 @@ describe("attempt estimator history fetch", () => {
       getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
     );
 
-    // Persisted under the athlete's own history key, and only for athletes
-    // that have no (fuller) history blob already.
-    expect(findAthleteNamesWithoutHistory).toHaveBeenCalledWith([
-      "Session Lifter A",
-      "Session Lifter B",
-    ]);
-    expect(saveAthleteHistory).toHaveBeenCalledTimes(1);
-    expect(saveAthleteHistory).toHaveBeenCalledWith("Session Lifter A", [historyRow]);
+    // The per-athlete history keys belong to explicit downloads (they mark a
+    // download complete and are never evicted); a session window is not one.
+    expect(saveAthleteHistory).not.toHaveBeenCalled();
 
     await act(async () => {
       tree.unmount();

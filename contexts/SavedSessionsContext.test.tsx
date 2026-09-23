@@ -11,7 +11,6 @@ const mockHookValue = {
   savedSessions: [],
   isLoading: false,
   authExpired: false,
-  pendingWriteCount: 0,
   loadSavedSessions: jest.fn(async () => {}),
   saveSessionsFromAthletes: jest.fn(async () => true),
   saveSession: jest.fn(async () => true),

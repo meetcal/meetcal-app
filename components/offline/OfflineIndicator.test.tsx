@@ -5,6 +5,7 @@ import {
   isNetworkAvailable,
   subscribeToNetworkChanges,
 } from "@/lib/networkUtils";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(),
@@ -17,8 +18,6 @@ jest.mock("react-native-safe-area-context", () => ({
 jest.mock("@/contexts/SubscriptionContext", () => ({
   useSubscription: () => ({ isUsingStaleCache: false, lastSyncTimestamp: null }),
 }));
-
-import { OfflineIndicator } from "./OfflineIndicator";
 
 /** Longer than the banner's own minimum delay, so it is allowed to render. */
 const WELL_PAST_BANNER_DELAY_MS = 60 * 1000;

@@ -22,27 +22,26 @@ import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { posthog } from '@/lib/posthog';
 import { generateSessionId, getSavedSessionsKey } from '@/utils/session';
 import {
-  deleteSavedSessions as deleteSavedSessionsFromApi,
   fetchSavedSessions,
   fetchUserPreferences,
-  putSavedSession,
   MeetCalApiError,
   MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
+import { reconnectRefetchDelayMs } from '@/lib/data/mutable-resource';
 import { devLog } from '@/lib/logger';
 import {
+  adoptPreOutboxSessions,
   capAthleteNames,
-  classifySyncError,
-  clearResetPending,
-  clearSessionPending,
   countPendingWrites,
-  deletePendingSession,
+  currentDeliverySeq,
+  deliveriesSince,
+  flushOutbox,
+  type FlushResult,
   markResetPending,
-  markSessionPending,
+  markSessionDelete,
+  markSessionPut,
   mergeServerSessions,
   readOutbox,
-  replayOutbox,
-  toSavedSessionBody,
 } from '@/lib/saved-sessions-outbox';
 import {
   findLegacySessionsNeedingMigration,
@@ -164,10 +163,12 @@ export function useSavedSessions() {
    * living only in the console.
    */
   const [authExpired, setAuthExpired] = useState(false);
-  /** Writes recorded in the outbox that have not yet reached the server. */
-  const [pendingWriteCount, setPendingWriteCount] = useState(0);
   const sessionsRawRef = useRef<string | null>(null);
   const sessionsRef = useRef<SavedSession[]>([]);
+  // Which user `sessionsRef` / `sessionsRawRef` were read for. A cached list
+  // must never be handed to a different user's write.
+  const sessionsOwnerRef = useRef<string | null>(null);
+  /** Writes recorded in the outbox that have not yet reached the server. */
   const pendingWriteCountRef = useRef(0);
   // Clerk's `getToken` identity is not something the effects below should
   // re-run on; they read the latest one through this ref instead.
@@ -179,6 +180,11 @@ export function useSavedSessions() {
   const mutationQueue = useRef(createSerialQueue()).current;
   const clerkUserId = user?.id;
   const activeUserId = clerkUserId ?? storageUserId;
+  // Async work started for one user checks this before touching state, so a
+  // load still in flight at sign-out or an account switch cannot repaint the
+  // previous user's sessions.
+  const activeUserIdRef = useRef(activeUserId);
+  activeUserIdRef.current = activeUserId;
 
   useEffect(() => {
     let cancelled = false;
@@ -214,11 +220,11 @@ export function useSavedSessions() {
     setSavedSessions([]);
     setIsLoading(false);
     setAuthExpired(false);
-    setPendingWriteCount(0);
     pendingWriteCountRef.current = 0;
     clearSavedWidget();
     sessionsRawRef.current = null;
     sessionsRef.current = [];
+    sessionsOwnerRef.current = null;
   }, [hasResolvedUser, activeUserId]);
 
   useEffect(() => {
@@ -238,79 +244,65 @@ export function useSavedSessions() {
   }, [selectedMeet, savedSessions]);
 
   const commitSessions = useCallback(async (nextSessions: SavedSession[]) => {
-    if (!activeUserId) return;
+    if (!activeUserId || activeUserIdRef.current !== activeUserId) return;
     const serialized = JSON.stringify(nextSessions);
-    if (sessionsRawRef.current !== serialized) {
+    const sameOwner = sessionsOwnerRef.current === activeUserId;
+    if (!sameOwner || sessionsRawRef.current !== serialized) {
       await AsyncStorage.setItem(getSavedSessionsKey(activeUserId), serialized);
+      if (activeUserIdRef.current !== activeUserId) return;
       sessionsRawRef.current = serialized;
     }
+    sessionsOwnerRef.current = activeUserId;
     sessionsRef.current = nextSessions;
     setSavedSessions(nextSessions);
   }, [activeUserId]);
 
   const readStoredSessions = useCallback(async (forceStorageRead = false): Promise<SavedSession[]> => {
     if (!activeUserId) return [];
-    if (!forceStorageRead && sessionsRawRef.current !== null) {
+    const sameOwner = sessionsOwnerRef.current === activeUserId;
+    if (!forceStorageRead && sameOwner && sessionsRawRef.current !== null) {
       return sessionsRef.current;
     }
     const raw = await AsyncStorage.getItem(getSavedSessionsKey(activeUserId));
-    if (raw && raw === sessionsRawRef.current) {
+    if (sameOwner && raw && raw === sessionsRawRef.current) {
       return sessionsRef.current;
     }
 
     const parsedSessions = parseStoredSessions(raw).filter((session) => session.meet);
-    sessionsRawRef.current = raw;
-    sessionsRef.current = parsedSessions;
+    if (activeUserIdRef.current === activeUserId) {
+      sessionsOwnerRef.current = activeUserId;
+      sessionsRawRef.current = raw;
+      sessionsRef.current = parsedSessions;
+    }
     return parsedSessions;
   }, [activeUserId]);
 
   const refreshPendingCount = useCallback(async () => {
     if (!activeUserId) return;
     const count = countPendingWrites(await readOutbox(activeUserId));
-    pendingWriteCountRef.current = count;
-    setPendingWriteCount(count);
+    if (activeUserIdRef.current === activeUserId) pendingWriteCountRef.current = count;
   }, [activeUserId]);
 
   /**
-   * Send one queued write now. The outbox entry is cleared only on a 2xx;
-   * offline, timeout, 5xx and a missing token leave it for `replayOutbox` on
-   * the next load or reconnect. A 401 flips `authExpired`; any other 4xx is
-   * a payload the server will never accept, so the entry is dropped.
+   * Send everything the outbox holds, through the one per-user sync runner.
+   * Immediate writes and replays share it, so requests reach the server in
+   * the order the user made them. Entries are cleared only on a 2xx;
+   * offline, timeout, 5xx and a missing token leave them queued for the next
+   * load or reconnect. A 401 flips `authExpired`.
    */
-  const pushPendingWrite = useCallback(async (
-    label: string,
-    request: (token: string) => Promise<unknown>,
-    clear: () => Promise<void>,
-  ) => {
-    if (!clerkUserId) {
+  const syncOutbox = useCallback(async (): Promise<FlushResult | null> => {
+    if (!clerkUserId || activeUserId !== clerkUserId) {
       await refreshPendingCount();
-      return;
+      return null;
     }
-    let token: string | null = null;
-    try {
-      token = await getTokenRef.current();
-    } catch (tokenError) {
-      console.error(`Saved sessions: Clerk getToken() failed; ${label} queued`, tokenError);
+    const result = await flushOutbox(clerkUserId, async () => (await getTokenRef.current()) ?? null);
+    if (activeUserIdRef.current === clerkUserId) {
+      pendingWriteCountRef.current = result.remaining;
+      if (result.authExpired) setAuthExpired(true);
+      else if (result.delivered > 0) setAuthExpired(false);
     }
-    if (token) {
-      try {
-        await request(token);
-        await clear();
-        setAuthExpired(false);
-      } catch (error) {
-        const kind = classifySyncError(error);
-        if (kind === 'auth') {
-          setAuthExpired(true);
-        } else if (kind === 'rejected') {
-          console.error(`Saved sessions: server rejected ${label}; dropping`, error);
-          await clear();
-        } else {
-          console.error(`Saved sessions: ${label} failed; queued for retry`, error);
-        }
-      }
-    }
-    await refreshPendingCount();
-  }, [clerkUserId, refreshPendingCount]);
+    return result;
+  }, [activeUserId, clerkUserId, refreshPendingCount]);
 
   const removeSession = useCallback(async (sessionId: string) => {
     if (!activeUserId) return false;
@@ -321,20 +313,19 @@ export function useSavedSessions() {
       // `pruneStartedSessions` runs from the load effect, whose closure over
       // state is the empty initial array, so the session was never found and
       // its reminder fired for a session the user no longer had.
-      const { sessionToRemove, rev } = await mutationQueue.run(async () => {
+      // The outbox entry is recorded before the local write, so a crash in
+      // between cannot leave a local removal with no pending DELETE.
+      const sessionToRemove = await mutationQueue.run(async () => {
         const currentSessions = await readStoredSessions();
         const found = currentSessions.find(session => session.id === sessionId);
+        const meet = found?.meet ?? (await readOutbox(activeUserId)).sessions[sessionId]?.meet;
+        if (meet) await markSessionDelete(activeUserId, sessionId, meet);
         await commitSessions(currentSessions.filter(session => session.id !== sessionId));
-        const rev = await markSessionPending(activeUserId, sessionId, 'delete');
-        return { sessionToRemove: found, rev };
+        return found;
       });
 
       // 2. Delete from the API when online/authenticated.
-      await pushPendingWrite(
-        `delete ${sessionId}`,
-        (token) => deletePendingSession(token, sessionId),
-        () => clearSessionPending(activeUserId, sessionId, rev),
-      );
+      await syncOutbox();
 
       // *** Cancel notification ***
       if (sessionToRemove) {
@@ -358,7 +349,7 @@ export function useSavedSessions() {
       console.error('Error removing session:', error);
       return false;
     }
-  }, [activeUserId, commitSessions, mutationQueue, pushPendingWrite, readStoredSessions]);
+  }, [activeUserId, commitSessions, mutationQueue, readStoredSessions, syncOutbox]);
 
   // Removes saved sessions that started more than 2 hours ago, but only when the
   // user has the "auto-remove started sessions" preference enabled. Runs on load.
@@ -424,17 +415,22 @@ export function useSavedSessions() {
     }
   }, [clerkUserId, readStoredSessions, removeSession]);
 
-  const loadSavedSessions = useCallback(async () => {
-    if (!activeUserId) {
+  const runLoad = useCallback(async () => {
+    const userId = activeUserId;
+    if (!userId) {
       setSavedSessions([]);
       setIsLoading(false);
       return;
     }
+    // Every await below re-checks this: a load for a user who has since
+    // signed out, or been replaced by another account, must not touch state.
+    const isCurrent = () => activeUserIdRef.current === userId;
 
-    setIsLoading(true); // Set loading true at the start
+    setIsLoading(true);
     try {
       // Hydrate from local storage first so navigation to Saved shows data immediately.
       const localSessions = await readStoredSessions(true);
+      if (!isCurrent()) return;
       setSavedSessions(localSessions);
       await refreshPendingCount();
 
@@ -442,9 +438,8 @@ export function useSavedSessions() {
       if (clerkUserId) {
         // PoT #7: "Clerk threw" and "Clerk has no token" are different
         // failures, and neither is "the server says you have nothing saved".
-        // `.catch(() => null)` used to flatten all three into one falsy value.
         // Both no-token paths return *before* the reconcile below, so an auth
-        // or network failure can never reach the branch that clears storage.
+        // or network failure can never reach the branch that shrinks storage.
         let token: string | null;
         try {
           token = await getTokenRef.current();
@@ -455,28 +450,23 @@ export function useSavedSessions() {
           );
           return;
         }
+        if (!isCurrent()) return;
         if (!token) {
           devLog('Saved sessions: no Clerk token; keeping local sessions');
           return;
         }
 
-        // Replay writes the device still owes the server before asking it
-        // what it has, so an offline save is on the list the reconcile reads.
-        // The snapshot from before the replay still counts as dirty for the
-        // merge below: a read that lags the PUT it just accepted must not
-        // drop the row the replay has only just delivered.
-        const outboxBeforeReplay = await readOutbox(activeUserId);
-        const replay = await replayOutbox(activeUserId, token, sessionsRef.current);
-        if (replay.authExpired) {
-          setAuthExpired(true);
-          await refreshPendingCount();
-          return;
-        }
+        // Send what the device still owes the server before asking it what
+        // it has, so an offline save is on the list the reconcile reads.
+        const flush = await syncOutbox();
+        if (!isCurrent() || flush?.authExpired) return;
 
         // `fetchSavedSessions` throws on timeout, HTTP error, and malformed
         // body, so reaching here means the server answered authoritatively.
         // Only an authoritative answer is allowed to shrink local state.
+        const fetchStartedAt = currentDeliverySeq();
         const apiSessions = await fetchSavedSessions(token);
+        if (!isCurrent()) return;
         setAuthExpired(false);
 
         const serverSessions: SavedSession[] = apiSessions.map(s => ({
@@ -492,46 +482,51 @@ export function useSavedSessions() {
           athleteNames: s.athlete_names,
         }));
 
-        // The merge runs on the mutation queue and re-reads local state and
-        // the outbox there: a save that landed while the fetch was in flight
-        // is still dirty, so it survives the reconcile instead of being
-        // overwritten by the pre-fetch snapshot.
-        await mutationQueue.run(async () => {
+        // The merge runs on the mutation queue and reads the outbox there: a
+        // save that landed while the fetch was in flight is still pending,
+        // so it survives the reconcile. Every local write records its outbox
+        // entry first, so a row that is neither on the server nor pending was
+        // removed elsewhere and goes here too, whether or not the list is empty.
+        const adopted = await mutationQueue.run(async () => {
+          if (!isCurrent()) return 0;
           const currentLocal = await readStoredSessions(true);
-          if (serverSessions.length > 0) {
-            const outboxNow = await readOutbox(activeUserId);
-            const outbox = {
-              sessions: { ...outboxBeforeReplay.sessions, ...outboxNow.sessions },
-              resets: { ...outboxBeforeReplay.resets, ...outboxNow.resets },
-              nextRev: outboxNow.nextRev,
-            };
-            await commitSessions(mergeServerSessions(serverSessions, currentLocal, outbox));
-          } else if (currentLocal.length === 0) {
-            // Server and device agree there is nothing saved: drop the empty
-            // key so a stale `[]` blob does not linger.
-            await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
+          const adoptedCount = await adoptPreOutboxSessions(
+            userId,
+            serverSessions.length === 0,
+            currentLocal,
+          );
+          const merged = mergeServerSessions(
+            serverSessions,
+            await readOutbox(userId),
+            deliveriesSince(userId, fetchStartedAt),
+          );
+          if (!isCurrent()) return adoptedCount;
+          if (merged.length === 0) {
+            await AsyncStorage.removeItem(getSavedSessionsKey(userId));
+            if (!isCurrent()) return adoptedCount;
+            sessionsOwnerRef.current = userId;
             sessionsRawRef.current = null;
             sessionsRef.current = [];
             setSavedSessions([]);
           } else {
-            // Server says empty but the device has rows. Rows written before
-            // the outbox existed never had a pending flag, so local wins
-            // rather than being deleted.
-            setSavedSessions(currentLocal);
+            await commitSessions(merged);
           }
+          return adoptedCount;
         });
+        if (!isCurrent()) return;
+        // Rows adopted from a pre-outbox build are queued now; send them.
+        if (adopted > 0) await syncOutbox();
         await refreshPendingCount();
       }
 
       // Enforce the "auto-remove saved sessions 2 hours after they start"
       // preference. The backend stores the flag; the client applies it on load.
-      await pruneStartedSessions();
+      if (isCurrent()) await pruneStartedSessions();
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Error loading saved sessions:', error);
 
-      // Keep the three failure modes distinct. Sniffing `error.message` for
-      // "network"/"fetch" matched nothing the API client actually throws, so
-      // every failure read as an unexplained one.
+      // Keep the three failure modes distinct.
       if (error instanceof MeetCalApiTimeoutError) {
         console.error('Saved sessions request timed out, falling back to local storage');
       } else if (error instanceof MeetCalApiError) {
@@ -545,8 +540,10 @@ export function useSavedSessions() {
 
       // Attempt to load from local storage as a final fallback
       try {
-        const saved = await AsyncStorage.getItem(getSavedSessionsKey(activeUserId));
+        const saved = await AsyncStorage.getItem(getSavedSessionsKey(userId));
+        if (!isCurrent()) return;
         const validSessions = parseStoredSessions(saved).filter((session) => session.meet);
+        sessionsOwnerRef.current = userId;
         sessionsRawRef.current = saved;
         sessionsRef.current = validSessions;
         setSavedSessions(validSessions);
@@ -555,7 +552,7 @@ export function useSavedSessions() {
         setSavedSessions([]);
       }
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }, [
     activeUserId,
@@ -565,7 +562,30 @@ export function useSavedSessions() {
     pruneStartedSessions,
     readStoredSessions,
     refreshPendingCount,
+    syncOutbox,
   ]);
+
+  /**
+   * Single-flight per load mode: a focus refresh while a load for the same
+   * user and auth state is running shares it instead of running a second
+   * replay, fetch and prune in parallel. A load for a new mode (Clerk
+   * confirming the cached user) queues behind the running one.
+   */
+  const loadChainRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const loadSavedSessions = useCallback((): Promise<void> => {
+    const key = `${activeUserId ?? ''}:${clerkUserId ? 'verified' : 'cached'}`;
+    const running = loadChainRef.current;
+    if (running && running.key === key) return running.promise;
+    const previous = running?.promise ?? Promise.resolve();
+    const promise = previous.catch(() => undefined).then(() => runLoad());
+    const entry = { key, promise };
+    loadChainRef.current = entry;
+    const release = () => {
+      if (loadChainRef.current === entry) loadChainRef.current = null;
+    };
+    promise.then(release, release);
+    return promise;
+  }, [activeUserId, clerkUserId, runLoad]);
 
   // Load on every step of user resolution that changes what a load can do:
   // the cached id (local only) and then Clerk's id (server reconcile). Keyed
@@ -589,18 +609,31 @@ export function useSavedSessions() {
     void loadSavedSessions();
   }, [activeUserId, clerkUserId, hasResolvedUser, loadSavedSessions]);
 
-  // Outbox replay on reconnect: a load does the replay, and only a device
-  // with something queued and a Clerk session that can sign the calls needs one.
-  const loadSavedSessionsRef = useRef(loadSavedSessions);
-  loadSavedSessionsRef.current = loadSavedSessions;
+  // Send queued writes when the device comes back online: only on a real
+  // offline → online edge (NetInfo also reports the current state on
+  // subscribe, and on every Wi-Fi/cellular change), only when something is
+  // queued, and after a small jitter so a venue-wide flap does not arrive at
+  // the API all at once.
+  const syncOutboxRef = useRef(syncOutbox);
+  syncOutboxRef.current = syncOutbox;
   useEffect(() => {
     if (!clerkUserId) return;
+    let lastConnected: boolean | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      if (isConnected && pendingWriteCountRef.current > 0) {
-        void loadSavedSessionsRef.current();
-      }
+      const previous = lastConnected;
+      lastConnected = isConnected;
+      if (!isConnected || previous !== false || timer !== null) return;
+      if (pendingWriteCountRef.current === 0) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void syncOutboxRef.current();
+      }, reconnectRefetchDelayMs());
     });
-    return unsubscribe;
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      unsubscribe();
+    };
   }, [clerkUserId]);
 
   /**
@@ -619,10 +652,17 @@ export function useSavedSessions() {
    * `saveSessionsFromAthletes` — up to one iteration per session on a meet's
    * full roster — reads it once instead of issuing one AsyncStorage round
    * trip per saved session.
+   *
+   * @param options.silent Skip the analytics event and the reminder; used when
+   * re-homing rows the user saved long ago (legacy migration).
+   *
+   * @returns false when the save failed locally or the server refused it
+   * (e.g. the per-user session cap); true once it is stored and either sent
+   * or queued for the next sync.
    */
   const saveSession = useCallback(async (
     session: SavedSession,
-    options?: { schedule?: ScheduleType; notificationsEnabled?: boolean },
+    options?: { schedule?: ScheduleType; notificationsEnabled?: boolean; silent?: boolean },
   ) => {
     if (!activeUserId) return false;
 
@@ -656,28 +696,34 @@ export function useSavedSessions() {
           nextSessions.push(updatedSession);
         }
 
+        // Outbox first: a crash before the local write still leaves the PUT
+        // (with its body) queued, and the next reconcile restores the row.
+        const rev = await markSessionPut(activeUserId, updatedSession);
         await commitSessions(nextSessions);
-        const rev = await markSessionPending(activeUserId, updatedSession.id, 'put');
         return { updatedSession, isUpdate: existingSessionIndex >= 0, rev };
       });
 
-      posthog.capture('session_saved', {
-        meet: updatedSession.meet,
-        session_number: updatedSession.sessionNumber,
-        platform: updatedSession.platform,
-        weight_class: updatedSession.weightClass,
-        is_update: isUpdate,
-        athlete_count: updatedSession.athleteNames?.length ?? 0,
-      });
+      if (!options?.silent) {
+        posthog.capture('session_saved', {
+          meet: updatedSession.meet,
+          session_number: updatedSession.sessionNumber,
+          platform: updatedSession.platform,
+          weight_class: updatedSession.weightClass,
+          is_update: isUpdate,
+          athlete_count: updatedSession.athleteNames?.length ?? 0,
+        });
+      }
 
-      // 2. Upsert to the API when online/authenticated. The local save is the
-      // source of truth until the PUT lands; the outbox entry survives a
-      // failure and is replayed on the next load or reconnect.
-      await pushPendingWrite(
-        `put ${updatedSession.id}`,
-        (token) => putSavedSession(token, updatedSession.id, toSavedSessionBody(updatedSession)),
-        () => clearSessionPending(activeUserId, updatedSession.id, rev),
-      );
+      // 2. Upsert to the API when online/authenticated. The outbox entry
+      // survives a network failure and is sent on the next load or reconnect.
+      // A refusal (e.g. the server's per-user cap) is reported, not hidden:
+      // the next reconcile brings the server's view back.
+      const flush = await syncOutbox();
+      if (flush?.rejected.get(updatedSession.id) === rev) {
+        console.error(`Saved sessions: server refused ${updatedSession.id}`);
+        return false;
+      }
+      if (options?.silent) return true;
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
       try {
@@ -780,7 +826,7 @@ export function useSavedSessions() {
       console.error('Error saving session:', error);
       return false;
     }
-  }, [activeUserId, commitSessions, mutationQueue, pushPendingWrite, readStoredSessions]);
+  }, [activeUserId, commitSessions, mutationQueue, readStoredSessions, syncOutbox]);
 
   const saveSessionsFromAthletes = useCallback(async (
     athletes: LiftResult[],
@@ -937,23 +983,19 @@ export function useSavedSessions() {
     if (!activeUserId) return false;
     const target = meet ?? null;
     try {
-      const rev = await mutationQueue.run(async () => {
+      await mutationQueue.run(async () => {
         const currentSessions = await readStoredSessions();
+        await markResetPending(activeUserId, target);
         await commitSessions(target ? currentSessions.filter(s => s.meet !== target) : []);
         await resetLegacySavedSessions(activeUserId, target);
-        return markResetPending(activeUserId, target);
       });
-      await pushPendingWrite(
-        target ? `reset ${target}` : 'reset all',
-        (token) => deleteSavedSessionsFromApi(token, target ?? undefined),
-        () => clearResetPending(activeUserId, target, rev),
-      );
+      await syncOutbox();
       return true;
     } catch (error) {
       console.error('Error resetting sessions:', error);
       return false;
     }
-  }, [activeUserId, commitSessions, mutationQueue, pushPendingWrite, readStoredSessions]);
+  }, [activeUserId, commitSessions, mutationQueue, readStoredSessions, syncOutbox]);
 
   /**
    * Fold sessions stored before they were namespaced by meet into the
@@ -967,25 +1009,35 @@ export function useSavedSessions() {
       const batches = await findLegacySessionsNeedingMigration(activeUserId, currentMeet);
       if (batches.length === 0) return true;
       devLog('Saved sessions: migrating legacy rows', batches.map(b => [b.key, b.sessions.length]));
+      const stored = await readStoredSessions();
+      const storedIds = new Set(stored.map((session) => session.id));
       let allSaved = true;
       for (const batch of batches) {
+        let batchSaved = true;
         for (const session of batch.sessions) {
-          if (!(await saveSession(session))) allSaved = false;
+          // A row already on the current list is newer than its legacy copy;
+          // merging the legacy row over it would roll back notes and names.
+          if (storedIds.has(session.id)) continue;
+          if (await saveSession(session, { silent: true })) {
+            storedIds.add(session.id);
+          } else {
+            batchSaved = false;
+          }
         }
-        if (allSaved) await removeLegacySavedSessionsKey(activeUserId, batch.key);
+        if (batchSaved) await removeLegacySavedSessionsKey(activeUserId, batch.key);
+        else allSaved = false;
       }
       return allSaved;
     } catch (error) {
       console.error('Error during session migration:', error);
       return false;
     }
-  }, [activeUserId, saveSession]);
+  }, [activeUserId, readStoredSessions, saveSession]);
 
   return useMemo(() => ({
     savedSessions,
     isLoading,
     authExpired,
-    pendingWriteCount,
     loadSavedSessions,
     saveSessionsFromAthletes,
     saveSession,
@@ -997,7 +1049,6 @@ export function useSavedSessions() {
     savedSessions,
     isLoading,
     authExpired,
-    pendingWriteCount,
     loadSavedSessions,
     saveSessionsFromAthletes,
     saveSession,

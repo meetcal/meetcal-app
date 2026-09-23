@@ -142,15 +142,16 @@ const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
  * the initial (non pull-to-refresh) load. Selecting a meet already runs
  * `prefetchCriticalMeetData`, which fetches and saves exactly these two
  * payloads; this tab then mounted and fetched both again, so a single meet
- * open cost two roster downloads. `MeetData.lastSyncTime` is stamped by the
- * same `saveMeetAthletes` / `saveMeetSchedule` writes the prefetch makes.
+ * open cost two roster downloads. The check uses the roster's own write
+ * time (`MeetData.athletesSyncedAt`): `lastSyncTime` is also bumped by every
+ * 5-minute schedule sync, which would make a days-old roster look fresh.
  * Well inside the 5-minute SyncManager cadence, so nothing goes staler than
  * it already could.
  */
 const FRESH_SNAPSHOT_TTL_MS = 60 * 1000;
 
-function isSnapshotFresh(lastSyncTime: number, now: number): boolean {
-  return lastSyncTime > 0 && now - lastSyncTime < FRESH_SNAPSHOT_TTL_MS;
+function isSnapshotFresh(athletesSyncedAt: number, now: number): boolean {
+  return athletesSyncedAt > 0 && now - athletesSyncedAt < FRESH_SNAPSHOT_TTL_MS;
 }
 
 /**
@@ -323,7 +324,7 @@ export default function StartListScreen() {
     return {
       cachedAthletes: cachedMeetData?.athletes ?? [],
       cachedSchedule: cachedMeetData?.schedule ?? [],
-      lastSyncTime: cachedMeetData?.lastSyncTime ?? 0,
+      athletesSyncedAt: cachedMeetData?.athletesSyncedAt ?? 0,
     };
   }, []);
 
@@ -363,7 +364,7 @@ export default function StartListScreen() {
           if (
             snapshot.cachedAthletes.length > 0 &&
             snapshot.cachedSchedule.length > 0 &&
-            isSnapshotFresh(snapshot.lastSyncTime, Date.now())
+            isSnapshotFresh(snapshot.athletesSyncedAt, Date.now())
           ) {
             return;
           }

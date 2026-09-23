@@ -33,6 +33,13 @@ interface SubscriptionCacheData {
   isSubscribed: boolean;
   subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown';
   timestamp: number;
+  /**
+   * RevenueCat app user id the entry was written for. Keychain items survive
+   * an uninstall and are not per account, while RevenueCat's id lives in app
+   * storage; an entry for a different id is someone else's (or a previous
+   * install's) entitlement and is ignored.
+   */
+  appUserId?: string;
 }
 
 type SubscriptionCacheEntry = SubscriptionCacheData & {
@@ -68,7 +75,22 @@ function parseSubscriptionCache(raw: string | null): SubscriptionCacheData | nul
     type === 'free' || type === 'quarterly' || type === 'lifetime' || type === 'unknown'
       ? type
       : 'unknown';
-  return { isSubscribed: record.isSubscribed, subscriptionType, timestamp: record.timestamp };
+  return {
+    isSubscribed: record.isSubscribed,
+    subscriptionType,
+    timestamp: record.timestamp,
+    ...(typeof record.appUserId === 'string' ? { appUserId: record.appUserId } : {}),
+  };
+}
+
+/** The current RevenueCat app user id, or null when the SDK cannot say. */
+async function currentAppUserId(): Promise<string | null> {
+  try {
+    const id = await Purchases.getAppUserID();
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -77,12 +99,23 @@ function parseSubscriptionCache(raw: string | null): SubscriptionCacheData | nul
  * paywall after updating.
  */
 export async function readSubscriptionCache(): Promise<SubscriptionCacheData | null> {
+  const appUserId = await currentAppUserId();
   const secure = parseSubscriptionCache(await SecureStore.getItemAsync(SUBSCRIPTION_CACHE_KEY));
-  if (secure) return secure;
+  if (secure) {
+    // Written for another RevenueCat user, or unstamped: a previous install's
+    // or another account's entitlement. The next online check replaces it.
+    if (appUserId !== null && secure.appUserId !== appUserId) return null;
+    return secure;
+  }
 
+  // AsyncStorage does not survive a reinstall, so a legacy entry belongs to
+  // this install; stamp it with the current user as it moves across.
   const legacyRaw = await AsyncStorage.getItem(LEGACY_SUBSCRIPTION_CACHE_KEY).catch(() => null);
   if (legacyRaw === null) return null;
-  const legacy = parseSubscriptionCache(legacyRaw);
+  const parsedLegacy = parseSubscriptionCache(legacyRaw);
+  const legacy = parsedLegacy
+    ? { ...parsedLegacy, ...(appUserId ? { appUserId } : {}) }
+    : null;
   if (legacy) {
     await SecureStore.setItemAsync(SUBSCRIPTION_CACHE_KEY, JSON.stringify(legacy));
   }
@@ -91,7 +124,11 @@ export async function readSubscriptionCache(): Promise<SubscriptionCacheData | n
 }
 
 export async function writeSubscriptionCache(data: SubscriptionCacheData): Promise<void> {
-  await SecureStore.setItemAsync(SUBSCRIPTION_CACHE_KEY, JSON.stringify(data));
+  const appUserId = data.appUserId ?? (await currentAppUserId());
+  await SecureStore.setItemAsync(
+    SUBSCRIPTION_CACHE_KEY,
+    JSON.stringify(appUserId ? { ...data, appUserId } : data),
+  );
 }
 
 /**

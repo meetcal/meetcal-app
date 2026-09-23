@@ -46,6 +46,12 @@ export interface MeetData {
   athletes: LiftResult[];
   liftingResultsKey: string;
   lastSyncTime: number;
+  /**
+   * When the roster alone was last written. `lastSyncTime` is also bumped by
+   * schedule and results writes, so it cannot tell a fresh roster apart from
+   * an old roster next to a fresh schedule.
+   */
+  athletesSyncedAt?: number;
 }
 
 type ExplicitMeetDownloadEntry = {
@@ -424,7 +430,8 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
       athletesKey,
       athletes,
       liftingResultsKey: store.meets[meetId].liftingResultsKey,
-      lastSyncTime: store.meets[meetId].lastSyncTime
+      lastSyncTime: store.meets[meetId].lastSyncTime,
+      athletesSyncedAt: store.meets[meetId].athletesSyncedAt ?? 0,
     };
   } catch (error) {
     console.error('Error getting meet data:', error);
@@ -837,7 +844,8 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       athletesKey: currentAthletesKey,
       athletes: [],
       liftingResultsKey: currentLiftingResultsKey,
-      lastSyncTime: Date.now()
+      lastSyncTime: Date.now(),
+      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
     };
     
     // Save the updated store metadata (now much smaller)
@@ -874,6 +882,7 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
       athletes: [],
       liftingResultsKey: currentLiftingResultsKey,
       lastSyncTime: Date.now(),
+      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
     };
 
     await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
@@ -957,6 +966,7 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
     store.meets[meetId].athletesKey = athletesKey;
     store.meets[meetId].athletes = [];
     store.meets[meetId].lastSyncTime = Date.now();
+    store.meets[meetId].athletesSyncedAt = Date.now();
     try {
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
     } catch (metadataError) {
@@ -1186,6 +1196,10 @@ function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
     lastSyncTime:
       typeof entry.lastSyncTime === 'number' && Number.isFinite(entry.lastSyncTime)
         ? entry.lastSyncTime
+        : 0,
+    athletesSyncedAt:
+      typeof entry.athletesSyncedAt === 'number' && Number.isFinite(entry.athletesSyncedAt)
+        ? entry.athletesSyncedAt
         : 0,
   };
 }

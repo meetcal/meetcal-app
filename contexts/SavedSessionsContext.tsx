@@ -9,8 +9,6 @@ interface SavedSessionsContextType {
   isLoading: boolean;
   /** A `/users/me/*` call answered 401: saved sessions are not syncing. */
   authExpired: boolean;
-  /** Local writes still queued for the server. */
-  pendingWriteCount: number;
   loadSavedSessions: () => Promise<void>;
   saveSessionsFromAthletes: (athletes: LiftResult[], meet: MeetName, scheduleOverride?: ScheduleType) => Promise<boolean>;
   saveSession: (session: SavedSession) => Promise<boolean>;
@@ -27,7 +25,6 @@ const fallbackContext: SavedSessionsContextType = {
   savedSessions: [],
   isLoading: false,
   authExpired: false,
-  pendingWriteCount: 0,
   loadSavedSessions: async () => {},
   saveSessionsFromAthletes: async () => false,
   saveSession: async () => false,

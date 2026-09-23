@@ -4,7 +4,6 @@ import {
   fetchApiClubNames,
   fetchApiMeetPackageConditional,
   fetchApiMeets,
-  fetchApiMeetPackage,
   fetchApiRecentResultsByNames,
   fetchApiResultsByNames,
   fetchApiSchedule,
@@ -862,7 +861,7 @@ describe('meetcal API client error and auth boundaries', () => {
       athletes: { nope: true },
       meet_results: [],
     }));
-    await expect(fetchApiMeetPackage('Test Meet')).rejects.toThrow(
+    await expect(fetchApiMeetPackageConditional('Test Meet')).rejects.toThrow(
       '/meets/package.athletes expected an array response',
     );
   });
