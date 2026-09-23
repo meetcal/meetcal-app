@@ -39,7 +39,10 @@ const mockFetchApiResultsByNames = jest.fn(
 const mockSaveAthleteHistory = jest.fn(async () => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
-const mockSaveSessionAthletes = jest.fn(async () => undefined);
+// Every roster name has a history blob unless a test says otherwise.
+const mockFindAthleteNamesWithoutHistory = jest.fn(
+  async (_names: readonly string[]): Promise<string[]> => [],
+);
 // Single source of truth for "did the user download this meet for offline
 // use". Both accessors read it so a test can set it once regardless of whether
 // production code asks per meet or asks for the whole set.
@@ -102,8 +105,9 @@ jest.mock("@/lib/database/offline-store", () => ({
   saveMeetLiftingResults: jest.fn(async () => undefined),
   saveMeetSchedule: (...args: unknown[]) =>
     mockSaveMeetSchedule.apply(null, args),
-  saveSessionAthletes: (...args: unknown[]) =>
-    mockSaveSessionAthletes.apply(null, args),
+  findAthleteNamesWithoutHistory: (names: readonly string[]) =>
+    mockFindAthleteNamesWithoutHistory(names),
+  PACKAGE_ETAG_STORAGE_KEY: "@meet_package_etag_v1",
 }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -166,14 +170,15 @@ describe("validatePrefetchedLiftingResults", () => {
 });
 
 describe("prefetchCriticalMeetData", () => {
+  const MEETS_LIST_CACHE_KEY = "@meets_list_cache_v1";
+  const roster = [
+    { name: "1-Red", session: { number: 1, platform: "Red" } },
+    { name: "2-Blue", session: { number: 2, platform: "Blue" } },
+  ];
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockFetchAthletesWithSession.mockImplementation(
-      async (_meet: string, sessionNumber?: number, platform?: string) =>
-        sessionNumber && platform
-          ? [{ name: `${sessionNumber}-${platform}`, session: { number: sessionNumber, platform } }]
-          : [],
-    );
+    mockFetchAthletesWithSession.mockResolvedValue(roster);
     mockFetchApiMeetPackage.mockResolvedValue({
       meet: {},
       schedule: [],
@@ -184,7 +189,11 @@ describe("prefetchCriticalMeetData", () => {
     });
   });
 
-  it("warms first visible session athlete caches while full athlete warmup runs", async () => {
+  afterEach(() => {
+    mockGetItem.mockImplementation(async () => null);
+  });
+
+  it("issues one roster request and no per-session duplicates of it", async () => {
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -204,107 +213,36 @@ describe("prefetchCriticalMeetData", () => {
     mockFetchSchedule.mockResolvedValue(schedule);
 
     await prefetchCriticalMeetData("Test Meet" as any);
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet");
-    expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Test Meet");
+    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet", null);
     expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Test Meet", schedule);
-    expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", []);
-
-    const filteredCalls = mockFetchAthletesWithSession.mock.calls.filter(
-      ([, sessionNumber, platform]) => sessionNumber != null && platform != null,
-    );
-    expect(filteredCalls).toHaveLength(8);
-    expect(filteredCalls.slice(0, 3)).toEqual([
-      ["Test Meet", 1, "Red"],
-      ["Test Meet", 1, "White"],
-      ["Test Meet", 1, "Blue"],
-    ]);
-    expect(mockSaveSessionAthletes).toHaveBeenCalledTimes(8);
+    // The per-session caches are derived from this single roster write
+    // (`saveMeetAthletes` -> `saveSessionAthleteCaches`); the eight
+    // `/meets/athletes-sessions` calls that used to "warm" them only
+    // repeated the same rows.
+    expect(mockFetchAthletesWithSession).toHaveBeenCalledTimes(1);
+    expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Test Meet");
+    expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
   });
 
-  it("prioritizes current and future meet days before backfilling earlier days in reverse", async () => {
-    const schedule: Schedule = [-3, -2, -1, 0, 1, 2].map((dayOffset, index) => ({
-      date: `Day ${index + 1}`,
-      fullDate: isoDateOffset(dayOffset),
-      sessions: [
-        {
-          id: `session-${index + 1}`,
-          number: index + 1,
-          startTime: "8:00 AM",
-          weighInTime: "6:00 AM",
-          platforms: [
-            { platform: "Red", weightClass: `Day ${index + 1}` },
-          ],
-        },
-      ],
-    }));
-    mockFetchSchedule.mockResolvedValue(schedule);
+  it("hands the cached meet to the schedule fetch so no details request rides along", async () => {
+    const cachedMeet = {
+      id: "m1",
+      name: "Test Meet",
+      dates: { start: "2099-01-01", end: "2099-01-02" },
+      time: { timeZoneIdentifier: "America/Chicago" },
+    };
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === MEETS_LIST_CACHE_KEY ? JSON.stringify([cachedMeet]) : null,
+    );
+    mockFetchSchedule.mockResolvedValue([]);
 
     await prefetchCriticalMeetData("Test Meet" as any);
 
-    const filteredCalls = mockFetchAthletesWithSession.mock.calls.filter(
-      ([, sessionNumber, platform]) => sessionNumber != null && platform != null,
+    expect(mockFetchSchedule).toHaveBeenCalledWith(
+      "Test Meet",
+      expect.objectContaining({ name: "Test Meet" }),
     );
-    expect(filteredCalls).toEqual([
-      ["Test Meet", 4, "Red"],
-      ["Test Meet", 5, "Red"],
-      ["Test Meet", 6, "Red"],
-      ["Test Meet", 3, "Red"],
-      ["Test Meet", 2, "Red"],
-      ["Test Meet", 1, "Red"],
-    ]);
-  });
-
-  it("waits for each priority day batch before loading the next day", async () => {
-    const schedule: Schedule = [0, 1, 2].map((dayOffset, index) => ({
-      date: `Day ${index + 1}`,
-      fullDate: isoDateOffset(dayOffset),
-      sessions: [
-        {
-          id: `session-${index + 1}`,
-          number: index + 1,
-          startTime: "8:00 AM",
-          weighInTime: "6:00 AM",
-          platforms: [
-            { platform: "Red", weightClass: `Day ${index + 1}` },
-          ],
-        },
-      ],
-    }));
-    mockFetchSchedule.mockResolvedValue(schedule);
-    let resolveFirstDay: (() => void) | undefined;
-    mockFetchAthletesWithSession.mockImplementation(
-      async (_meet: string, sessionNumber?: number, platform?: string) => {
-        if (!sessionNumber || !platform) return [];
-        if (sessionNumber === 1) {
-          await new Promise<void>((resolve) => {
-            resolveFirstDay = resolve;
-          });
-        }
-        return [{ name: `${sessionNumber}-${platform}`, session: { number: sessionNumber, platform } }];
-      },
-    );
-
-    const prefetch = prefetchCriticalMeetData("Test Meet" as any);
-    await new Promise((resolve) => setImmediate(resolve));
-
-    let filteredCalls = mockFetchAthletesWithSession.mock.calls.filter(
-      ([, sessionNumber, platform]) => sessionNumber != null && platform != null,
-    );
-    expect(filteredCalls).toEqual([["Test Meet", 1, "Red"]]);
-
-    resolveFirstDay?.();
-    await prefetch;
-
-    filteredCalls = mockFetchAthletesWithSession.mock.calls.filter(
-      ([, sessionNumber, platform]) => sessionNumber != null && platform != null,
-    );
-    expect(filteredCalls).toEqual([
-      ["Test Meet", 1, "Red"],
-      ["Test Meet", 2, "Red"],
-      ["Test Meet", 3, "Red"],
-    ]);
   });
 
   it("defers full meet package prefetch for explicitly downloaded meets", async () => {
@@ -332,12 +270,7 @@ describe("prefetchCriticalMeetData", () => {
     try {
       await warmMeetData("Test Meet" as any);
 
-      expect(mockSaveSessionAthletes).toHaveBeenCalledWith(
-        "Test Meet",
-        1,
-        "Red",
-        [{ name: "1-Red", session: { number: 1, platform: "Red" } }],
-      );
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
       expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
 
       await jest.advanceTimersByTimeAsync(4999);
@@ -375,13 +308,9 @@ describe("prefetchCriticalMeetData", () => {
     try {
       await warmMeetData("Test Meet" as any);
 
-      // Critical session caches still warm, but the heavy history package never runs.
-      expect(mockSaveSessionAthletes).toHaveBeenCalledWith(
-        "Test Meet",
-        1,
-        "Red",
-        [{ name: "1-Red", session: { number: 1, platform: "Red" } }],
-      );
+      // The roster (and with it the session caches) still warms, but the
+      // heavy history package never runs.
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
 
       await jest.advanceTimersByTimeAsync(10000);
       expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
@@ -452,7 +381,7 @@ describe("full athlete history download", () => {
   });
 
   it("fetches history in sequential batches to keep peak memory bounded", async () => {
-    const athleteNames = Array.from({ length: 30 }, (_, i) => `Athlete ${i + 1}`);
+    const athleteNames = Array.from({ length: 50 }, (_, i) => `Athlete ${i + 1}`);
     mockFetchApiMeetPackage.mockResolvedValue({
       meet: {},
       schedule: [],
@@ -464,11 +393,65 @@ describe("full athlete history download", () => {
 
     await prefetchMeetData("History Meet B" as any);
 
-    // 30 athletes / batch size 25 => 2 batches.
+    // 50 athletes / batch size 40 (one `/by-names` request) => 2 batches.
     expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
-    expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(25);
-    expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(5);
-    expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(30);
+    expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(40);
+    expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(10);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(50);
+  });
+
+  it("re-runs the whole ingest, history included, after a SQLITE_FULL cleanup", async () => {
+    const pkg = {
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A")],
+      meet_results: [{ name: "Athlete A" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    };
+    mockFetchApiMeetPackageConditional
+      .mockResolvedValueOnce({ status: "fresh", etag: '"first"', package: pkg })
+      .mockResolvedValueOnce({ status: "fresh", etag: '"retry"', package: pkg });
+    mockSaveMeetAthletes.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+    mockFetchApiResultsByNames.mockResolvedValue([{ name: "Athlete A", date: "2025-01-01" }]);
+
+    await prefetchMeetData("Recovery Meet A" as any);
+
+    expect(mockSaveMeetAthletes).toHaveBeenCalledTimes(2);
+    // The recovery used to restore only `meet_results`; the athlete history
+    // must be downloaded on the retry too.
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete A", [
+      { name: "Athlete A", date: "2025-01-01" },
+    ]);
+    const etagWrites = (AsyncStorage.setItem as jest.Mock).mock.calls
+      .filter(([key]) => key === "@meet_package_etag_v1")
+      .map(([, value]) => JSON.parse(value as string));
+    expect(etagWrites[etagWrites.length - 1]).toEqual({ "Recovery Meet A": '"retry"' });
+  });
+
+  it("does not pin an ETag or report success when history fails after SQLITE_FULL recovery", async () => {
+    const pkg = {
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A")],
+      meet_results: [{ name: "Athlete A" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    };
+    mockFetchApiMeetPackageConditional
+      .mockResolvedValueOnce({ status: "fresh", etag: '"first"', package: pkg })
+      .mockResolvedValueOnce({ status: "fresh", etag: '"retry"', package: pkg });
+    mockSaveMeetAthletes.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+    mockSaveAthleteHistory.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(prefetchMeetData("Recovery Meet B" as any)).rejects.toThrow(
+      /athlete_history/,
+    );
+
+    const etagWrites = (AsyncStorage.setItem as jest.Mock).mock.calls
+      .filter(([key]) => key === "@meet_package_etag_v1")
+      .map(([, value]) => JSON.parse(value as string));
+    expect(etagWrites[etagWrites.length - 1]).toEqual({});
   });
 
   it("reports failure instead of silently succeeding when a history write fails", async () => {
@@ -647,6 +630,42 @@ describe("package revalidation with ETag", () => {
     expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
     expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
     expect(mockSaveAthleteHistory).not.toHaveBeenCalled();
+  });
+
+  it("still downloads history for roster athletes whose blob is missing on a 304", async () => {
+    // "Delete all offline data" and SQLITE_FULL recovery remove the history
+    // but not the roster, so athletes on disk are not proof the download is.
+    storedEtags({ "Etag Meet A2": '"abc"' });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+    mockFindAthleteNamesWithoutHistory.mockResolvedValueOnce(["Athlete B"]);
+    mockFetchApiResultsByNames.mockResolvedValue([{ name: "Athlete B", date: "2025-01-01" }]);
+
+    await prefetchMeetData("Etag Meet A2" as any);
+
+    expect(mockFindAthleteNamesWithoutHistory).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete B"]);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(1);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete B", [
+      { name: "Athlete B", date: "2025-01-01" },
+    ]);
+    // The package itself is unchanged, so its validator stays.
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(savedEtags()).toEqual([]);
+  });
+
+  it("reports an incomplete download when the missing history cannot be fetched on a 304", async () => {
+    storedEtags({ "Etag Meet A3": '"abc"' });
+    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+    mockFindAthleteNamesWithoutHistory.mockResolvedValueOnce(["Athlete A"]);
+    mockFetchApiResultsByNames.mockRejectedValueOnce(new Error("network"));
+
+    await expect(prefetchMeetData("Etag Meet A3" as any)).rejects.toThrow(/athlete_history/);
   });
 
   it("does not trust a 304 when the local copy is gone; refetches without the validator", async () => {

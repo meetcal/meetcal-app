@@ -7,6 +7,7 @@ type FlashListCall = {
   data: unknown[];
   keyExtractor: (item: unknown, index: number) => string;
   renderItem: (info: { item: unknown; index: number }) => React.ReactNode;
+  extraData?: unknown;
 };
 
 const flashListCalls: FlashListCall[] = [];
@@ -80,6 +81,38 @@ describe("DataTable", () => {
     // unchanged, or virtualizing would silently reorder or blank the table.
     expect(keyExtractor(data[7], 7)).toBe("7");
     expect(renderItem({ item: data[7], index: 7 })).toBeTruthy();
+  });
+
+  // Regression: the virtualized path passed an inline `renderItem` and no
+  // `extraData`, so FlashList's recycled cells had no reason to repaint on a
+  // theme flip, and every parent render handed the list a new renderer.
+  it("keeps the row renderer stable and keys recycled cells on the theme", () => {
+    const renderRow = jest.fn((item: Row) => <Text>{item.name}</Text>);
+    const keyExtractor = (item: Row) => String(item.id);
+    const rows = makeRows(50);
+    // A fresh element each time (the same element object would make React
+    // bail out of the update), with the same prop identities.
+    const build = () => (
+      <DataTable
+        columns={COLUMNS}
+        data={rows}
+        renderRow={renderRow}
+        keyExtractor={keyExtractor}
+        virtualized
+      />
+    );
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(build());
+    });
+    act(() => {
+      tree.update(build());
+    });
+
+    expect(flashListCalls).toHaveLength(2);
+    expect(flashListCalls[1].renderItem).toBe(flashListCalls[0].renderItem);
+    expect(flashListCalls[0].extraData).toBeDefined();
+    expect(flashListCalls[1].extraData).toBe(flashListCalls[0].extraData);
   });
 
   it("shows the empty message instead of a list when there are no rows", () => {

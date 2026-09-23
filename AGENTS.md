@@ -41,6 +41,8 @@ Package manager is **bun**. Do not use npm.
 | iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bunx expo run:ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
 | Prod OTA | `bun run update:prod` (production only) |
 
+`runtimeVersion` in `app.config.js` is pinned to the native app version, so an OTA update must be built from the same Expo / React Native preview the shipped binary uses; a bundle built against a different native runtime will not load.
+
 ## Verify
 
 Run this table before opening or updating a PR. Do not merge. Do not push to `master`.
@@ -61,7 +63,7 @@ Maestro is optional in CI. Run it when a change touches navigation, auth gates, 
 - Prefer indexes and batch endpoints over per-row HTTP. Name-list calls must chunk.
 - No unbounded `Promise.all` over meet-sized collections that inflate/deflate offline blobs.
 - `unknown` at parse sites, then narrow. Do not `as T` past a `JSON.parse`.
-- Auth and subscription gates are server-checked via Clerk JWT + RevenueCat; the client cache is a hint, never a source of truth for writes.
+- Auth for `/users/me/*` is server-checked via Clerk JWT; every other API endpoint (competition data) is public. The subscription paywall is a client-side soft gate backed by the RevenueCat SDK, and the cached auth/subscription state (SecureStore) is a hint, never a source of truth for writes.
 - Time and dates go through `utils/timezone.ts` / `utils/dateTime.ts`. Do not use the device timezone for meet-local instants.
 - Scrapers, native widget binaries, and generated `ios/` `android/` trees are not part of the JS reliability gate.
 

@@ -11,11 +11,11 @@ import {
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
 import {
+  findAthleteNamesWithoutHistory,
   getAllCachedLiftingResultsForAthletes,
-  getMeetLiftingResults,
   getSessionAthletesFromMeetCache,
+  saveAthleteHistory,
   saveMeetAthletes,
-  saveMeetLiftingResults,
 } from "@/lib/database/offline-store";
 import {
   fetchAthletesWithSession,
@@ -61,6 +61,35 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
       </View>
     </Animated.View>
   );
+}
+
+/**
+ * Writes each athlete's recent history under their own history key, for the
+ * athletes that have none yet. Best effort: a storage failure must not undo
+ * estimates that are already on screen.
+ */
+async function persistSessionHistory(
+  names: readonly string[],
+  results: readonly SupabaseLiftResult[],
+  isStale: () => boolean,
+): Promise<void> {
+  try {
+    const missing = await findAthleteNamesWithoutHistory(names);
+    if (missing.length === 0) return;
+    const rowsByName = new Map<string, SupabaseLiftResult[]>();
+    for (const row of results) {
+      const key = normalizeAthleteName(row.name);
+      const rows = rowsByName.get(key);
+      if (rows) rows.push(row);
+      else rowsByName.set(key, [row]);
+    }
+    for (const name of missing) {
+      if (isStale()) return;
+      await saveAthleteHistory(name, rowsByName.get(normalizeAthleteName(name)) ?? []);
+    }
+  } catch (error) {
+    console.warn("Attempt estimator: could not persist session history", error);
+  }
 }
 
 export default function AttemptEstimatorScreen() {
@@ -110,37 +139,26 @@ export default function AttemptEstimatorScreen() {
 
       if (isStale()) return;
 
-      let cachedSessionResults: SupabaseLiftResult[] = [];
+      const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
       if (cachedSessionAthletes.length > 0) {
-        const athleteNameSet = new Set(
-          cachedSessionAthletes.map((athlete) => normalizeAthleteName(athlete.name)),
+        const namedAthletes = cachedSessionAthletes.filter((athlete) =>
+          athlete.name?.trim(),
         );
-        if (hasNetwork) {
-          const cachedMeetResults = await getMeetLiftingResults(meetId);
-          cachedSessionResults = cachedMeetResults.filter((result) =>
-            athleteNameSet.has(normalizeAthleteName(result.name)),
+        // One pass over the cached meets for the whole session. Asking per
+        // athlete re-inflated every cached meet's results blob once per
+        // athlete — a 15-lifter session against three downloaded meets did
+        // 45 decompressions instead of three. Per-athlete history blobs win
+        // outright inside, so this serves both the downloaded-meet case and
+        // the history this screen itself persisted on an earlier visit.
+        const resultsByName = await getAllCachedLiftingResultsForAthletes(
+          namedAthletes.map((athlete) => athlete.name),
+        );
+        const cachedSessionResults: SupabaseLiftResult[] = [];
+        for (const athlete of namedAthletes) {
+          const athleteResults = resultsByName[athlete.name] ?? [];
+          cachedSessionResults.push(
+            ...athleteResults.filter((r) => (r.date ?? "") >= cutoffDate),
           );
-        } else {
-          const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
-          const namedAthletes = cachedSessionAthletes.filter((athlete) =>
-            athlete.name?.trim(),
-          );
-          // One pass over the cached meets for the whole session. Asking per
-          // athlete re-inflated every cached meet's results blob once per
-          // athlete — a 15-lifter session against three downloaded meets did
-          // 45 decompressions instead of three.
-          const resultsByName = await getAllCachedLiftingResultsForAthletes(
-            namedAthletes.map((athlete) => athlete.name),
-          );
-          const allResults: SupabaseLiftResult[] = [];
-          for (const athlete of namedAthletes) {
-            const athleteResults = resultsByName[athlete.name] ?? [];
-            const filtered = athleteResults.filter(
-              (r) => (r.date ?? "") >= cutoffDate,
-            );
-            allResults.push(...filtered);
-          }
-          cachedSessionResults = allResults;
         }
         if (isStale()) return;
         setEstimates(
@@ -165,33 +183,33 @@ export default function AttemptEstimatorScreen() {
         sessionNumber,
         params.platform,
       );
-      const freshSessionNameSet = new Set(
-        freshSessionAthletes.map((athlete) => normalizeAthleteName(athlete.name)),
-      );
-      const freshAllNames = Array.from(
-        new Set(freshMeetAthletes.map((athlete) => athlete.name)),
-      );
-
-      let freshResults: SupabaseLiftResult[] = [];
-      if (freshAllNames.length > 0) {
-        const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
-        freshResults = await fetchRecentAthleteHistoryForNames(freshAllNames, cutoffDate);
-      }
-      if (isStale()) return;
-      await saveMeetLiftingResults(meetId, freshResults);
-
-      const freshSessionResults = freshResults.filter((result) =>
-        freshSessionNameSet.has(normalizeAthleteName(result.name)),
-      );
-
-      if (isStale()) return;
-      if (freshSessionAthletes.length > 0) {
-        setEstimates(
-          calculateEstimates(freshSessionAthletes, freshSessionResults),
-        );
-      } else {
+      if (freshSessionAthletes.length === 0) {
         setEstimates([]);
+        return;
       }
+
+      // History for *this session's* athletes only. This used to pull the
+      // two-year history of the entire roster (~40 sequential requests at a
+      // national meet) to render one session, then overwrite the meet's own
+      // results blob with it.
+      const freshSessionNames = Array.from(
+        new Set(
+          freshSessionAthletes
+            .map((athlete) => athlete.name)
+            .filter((name) => name?.trim()),
+        ),
+      );
+      const freshSessionResults = await fetchRecentAthleteHistoryForNames(
+        freshSessionNames,
+        cutoffDate,
+      );
+      if (isStale()) return;
+      setEstimates(calculateEstimates(freshSessionAthletes, freshSessionResults));
+
+      // Keep the estimator usable offline next time, per athlete, without
+      // disturbing an athlete whose full history an explicit download already
+      // wrote: that blob is the complete record and this window is not.
+      await persistSessionHistory(freshSessionNames, freshSessionResults, isStale);
     } catch (error) {
       if (isStale()) return;
       console.error("Error loading data:", error);

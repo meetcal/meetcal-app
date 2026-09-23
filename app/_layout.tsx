@@ -50,9 +50,14 @@ const SENTRY_TRACES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
+// A DSN is a public client identifier, not a secret, but it belongs with the
+// other per-environment identifiers in `.env` rather than in source. Sentry
+// disables itself when the DSN is undefined, so a build without one runs
+// without error reporting instead of crashing.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN || undefined;
 
 Sentry.init({
-  dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
+  dsn: SENTRY_DSN,
   environment: SENTRY_ENVIRONMENT,
   sendDefaultPii: false,
   enableLogs: false,

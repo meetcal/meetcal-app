@@ -1,13 +1,13 @@
 import {
   APP_VERSION,
   buildApiUrl,
-  defaultCutoffDate,
   fetchApiClubNames,
   fetchApiMeetPackageConditional,
   fetchApiMeets,
   fetchApiMeetPackage,
   fetchApiRecentResultsByNames,
   fetchApiResultsByNames,
+  fetchApiSchedule,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
@@ -23,17 +23,32 @@ import {
   mapApiSchedule,
   mapApiYearBests,
   mapPackageSchedule,
+  MEET_PACKAGE_TIMEOUT_MS,
   MeetCalApiError,
+  MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
+  resolveAppVersion,
   searchApi,
 } from './meetcal-api';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+  YEAR_BESTS_YEARS,
+} from '@/utils/dateTime';
 
 // Hoisted by jest above the imports; placed here to satisfy import/first.
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: { expoConfig: { version: '6.2.0' } },
 }));
+jest.mock('expo-application', () => ({
+  __esModule: true,
+  nativeApplicationVersion: '6.1.9',
+}));
+
+/** The API's request ceiling; a client timeout above it can never fire first. */
+const BACKEND_REQUEST_CEILING_MS = 15000;
 
 describe('meetcal API client', () => {
   const originalFetch = global.fetch;
@@ -135,7 +150,7 @@ describe('meetcal API client', () => {
     );
   });
 
-  it('always sends a cutoff for recent results, defaulting to two years', async () => {
+  it('always sends a cutoff for recent results, defaulting to the shared history window', async () => {
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
@@ -148,12 +163,85 @@ describe('meetcal API client', () => {
     const body = JSON.parse(init.body) as { names: string[]; cutoff_date: string };
     expect(body.names).toEqual(['Athlete A']);
     expect(body.cutoff_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(body.cutoff_date).toBe(defaultCutoffDate(2));
+    // One cutoff policy: the UTC-only `getHistoryCutoffDate`, not a second
+    // device-local copy of the same arithmetic.
+    expect(body.cutoff_date).toBe(getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS));
   });
 
-  it('computes default cutoffs as ISO dates N years back', () => {
-    expect(defaultCutoffDate(1, new Date('2026-09-23T12:00:00Z'))).toBe('2025-09-23');
-    expect(defaultCutoffDate(2, new Date('2026-09-23T12:00:00Z'))).toBe('2024-09-23');
+  it('defaults the year-bests cutoff to the shared one-year window', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({}),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiYearBestsByNames(['Athlete A']);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body).cutoff_date).toBe(getHistoryCutoffDate(YEAR_BESTS_YEARS));
+  });
+
+  it('prefers the Expo version and falls back to the native bundle version', () => {
+    expect(resolveAppVersion('6.2.0', '6.1.9')).toBe('6.2.0');
+    expect(resolveAppVersion('', '6.1.9')).toBe('6.1.9');
+    expect(resolveAppVersion(undefined, '6.1.9')).toBe('6.1.9');
+    expect(resolveAppVersion('  ', null)).toBe('');
+  });
+
+  it('skips the details request when the caller already has the meet', async () => {
+    const fetchMock = jest.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        url.includes('/meets/schedule')
+          ? JSON.stringify([
+              {
+                date: '2026-06-20',
+                platform: 'Red',
+                session_id: 1,
+                start_time: '09:00:00',
+                weigh_in_time: '07:00:00',
+                weight_class: '60kg',
+              },
+            ])
+          : JSON.stringify({
+              name: 'Test Meet',
+              start_date: '2026-06-20',
+              end_date: '2026-06-21',
+              time_zone: 'America/Los_Angeles',
+              venue_name: 'Venue',
+              venue_street: '1 Main',
+              venue_city: 'LA',
+              venue_state: 'CA',
+              venue_zip: '90001',
+              status: 'upcoming',
+            }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const meet = mapApiMeet({
+      name: 'Test Meet',
+      status: 'upcoming',
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'America/Los_Angeles',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'LA',
+      venue_state: 'CA',
+      venue_zip: '90001',
+    });
+
+    const schedule = await fetchApiSchedule('Test Meet', meet);
+
+    const urls = fetchMock.mock.calls.map(([url]) => url);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain('/meets/schedule');
+    expect(schedule[0].date).toBe('June 20, 2026');
+
+    // Without the meet the details request still rides alongside.
+    fetchMock.mockClear();
+    await fetchApiSchedule('Test Meet');
+    expect(fetchMock.mock.calls.map(([url]) => url).some((url) => url.includes('/meets/details'))).toBe(true);
   });
 
   it('revalidates the meet package with If-None-Match and honours 304', async () => {
@@ -169,11 +257,36 @@ describe('meetcal API client', () => {
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
     ).resolves.toEqual({ status: 'not_modified' });
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/meets/package?meet=Test+Meet&history_cutoff_date=2024-01-01',
+      'https://api.meetcal.app/meets/package?meet=Test+Meet&history_cutoff_date=2024-01-01&include=year_bests',
       expect.objectContaining({
         headers: expect.objectContaining({ 'If-None-Match': '"abc"' }),
       }),
     );
+  });
+
+  it('asks the package for the year-bests section only and tolerates the rest being absent', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () =>
+        JSON.stringify({ meet: {}, schedule: [], athletes: [], meet_results: [] }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const fetched = await fetchApiMeetPackageConditional('Test Meet', '2024-01-01', null);
+    expect(fetched.status).toBe('fresh');
+    if (fetched.status === 'fresh') {
+      expect(fetched.package.recent_results_by_name).toBeUndefined();
+      expect(fetched.package.attempt_estimates).toBeUndefined();
+      expect(fetched.package.year_bests_by_name).toBeUndefined();
+    }
+    const [url] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(new URL(url).searchParams.get('include')).toBe('year_bests');
+  });
+
+  it('keeps the package timeout under the backend request ceiling', () => {
+    expect(MEET_PACKAGE_TIMEOUT_MS).toBeLessThan(BACKEND_REQUEST_CEILING_MS);
   });
 
   it('returns the package and its etag on a fresh response', async () => {
@@ -510,6 +623,7 @@ describe('meetcal API mappers', () => {
   });
 
   it('falls unknown IANA zones back to America/New_York for identifier math', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const meet = mapApiMeet({
       name: 'Mystery Meet',
       federation: 'USAW',
@@ -525,6 +639,68 @@ describe('meetcal API mappers', () => {
     });
     expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
     expect(meet.status).toBe('upcoming');
+    expect(meet.timeZoneUnknown).toBe(true);
+    // Not only in __DEV__: this is the one signal that the meet's times are
+    // being shown in the wrong zone.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown meet time zone'));
+    warn.mockRestore();
+  });
+
+  it('keeps offset, abbreviation and identifier consistent when the zone is unknown', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // A real IANA zone the app does not support. `utcOffset` used to come
+    // from the raw zone (Europe/London: -1) while every conversion used the
+    // New York fallback (+4).
+    const meet = mapApiMeet({
+      name: 'Abroad Meet',
+      status: 'upcoming',
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'Europe/London',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'London',
+      venue_state: '',
+      venue_zip: '',
+    });
+    expect(meet.timeZoneUnknown).toBe(true);
+    expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
+    expect(meet.time.utcOffset).toBe(4);
+    expect(meet.time.abbreviation).toBe('EDT');
+    expect(meet.time.timeZone).toBe('Europe/London');
+
+    const known = mapApiMeet({
+      name: 'Home Meet',
+      status: 'upcoming',
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'America/Chicago',
+      venue_name: 'Venue',
+      venue_street: '1 Main',
+      venue_city: 'Chicago',
+      venue_state: 'IL',
+      venue_zip: '60601',
+    });
+    expect(known.timeZoneUnknown).toBe(false);
+    expect(known.time.utcOffset).toBe(5);
+    expect(known.time.abbreviation).toBe('CDT');
+  });
+
+  it('gives an id-less lifting result a stable composite event id instead of ""', () => {
+    const base = {
+      meet: 'Test Meet',
+      date: '2026-06-20',
+      name: 'Athlete A',
+      age: 'Open',
+      body_weight: 70,
+      snatch1: 0, snatch2: 0, snatch3: 0, snatch_best: 0,
+      cj1: 0, cj2: 0, cj3: 0, cj_best: 0, total: 0,
+    };
+    expect(mapApiLiftingResult({ ...base, event_id: 'evt-1' }).event_id).toBe('evt-1');
+    const derived = mapApiLiftingResult({ ...base }).event_id;
+    expect(derived).not.toBe('');
+    expect(derived).toBe(mapApiLiftingResult({ ...base, event_id: '' }).event_id);
+    expect(derived).not.toBe(mapApiLiftingResult({ ...base, date: '2026-06-21' }).event_id);
   });
 });
 
@@ -578,6 +754,18 @@ describe('meetcal API client error and auth boundaries', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('treats the server-side 408 (empty body) as a timeout, not a plain API error', async () => {
+    mockFetch('', 408);
+    const failure = await fetchApiMeets().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiServerTimeoutError);
+    // Callers already branch on the timeout class; the server's timeout must
+    // land in that branch too.
+    expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
+    expect(failure).not.toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiServerTimeoutError).status).toBe(408);
+    expect((failure as MeetCalApiServerTimeoutError).path).toBe('/meets');
   });
 
   it('reports a non-2xx response as MeetCalApiError with its status', async () => {

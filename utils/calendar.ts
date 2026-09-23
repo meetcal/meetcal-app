@@ -9,6 +9,7 @@ import {
   getMeetVenueLocation,
 } from "@/data/meets/config";
 import { devLog } from "@/lib/logger";
+import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
 
 export async function requestCalendarPermissions(): Promise<boolean> {
   const currentPermissions = await Calendar.getCalendarPermissionsAsync();
@@ -140,7 +141,14 @@ async function buildCalendarEventInput(session: CalendarSession) {
     meetConfig.time.timeZoneIdentifier,
   );
   const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-  const deepLinkUrl = `meetcal://schedule-details?meet=${encodeURIComponent(session.meet)}&sessionNumber=${encodeURIComponent(session.sessionNumber)}&platform=${encodeURIComponent(session.platform)}`;
+  // The one builder for this route. A hand-built `meetcal://schedule-details`
+  // pointed at a route that does not exist, so tapping the event opened the
+  // app on nothing.
+  const deepLinkUrl = createSessionDetailsDeepLink({
+    meet: session.meet,
+    sessionNumber: session.sessionNumber,
+    platform: session.platform,
+  });
 
   return {
     title: `Session ${session.sessionNumber} - Platform ${session.platform}`,

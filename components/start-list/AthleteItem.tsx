@@ -1,10 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useExpandedId } from "@/contexts/ExpandedIdContext";
-import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
-import { useTheme } from "@/contexts/ThemeContext";
-import { isMeetName } from "@/data/types/meet";
+import type { MeetName } from "@/data/types/meet";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
   formatSessionDisplayDate,
@@ -12,7 +9,6 @@ import {
 } from "@/lib/start-list-utils";
 import { calculateWeighInTime } from "@/utils/time";
 import { AthleteItemProps } from "@/types/start-list";
-import { useAuthGuard } from "@/utils/authGuard";
 import React, {
   useCallback,
   useEffect,
@@ -27,14 +23,42 @@ import {
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
+/**
+ * Everything a row needs from the app's contexts, resolved once by the screen.
+ *
+ * This is the FlashList row for a roster that runs to 1,500 athletes. It used
+ * to call `useAuthGuard()` (a SecureStore read, a NetInfo probe and a
+ * SecureStore write, in effects) and subscribe to `useSelectedMeet`,
+ * `useSubscription` and `useTheme` itself — per mounted row, on every recycle.
+ * `requireAuth` is needed for exactly one press, so the screen resolves the
+ * guard and the context values once and hands them down. Keep this component
+ * free of context reads so `React.memo` decides its re-renders on props alone.
+ */
+export interface AthleteRowProps extends AthleteItemProps {
+  currentTheme: "light" | "dark";
+  /** The selected meet, or null when none / not a known meet name. */
+  validMeet: MeetName | null;
+  /** `meetDetails.time.abbreviation`, resolved at the meet's own start date. */
+  timeZoneAbbr: string;
+  timeZoneIdentifier: string | undefined;
+  isSubscribed: boolean | null;
+  /** Runs the auth + subscription gate and navigates; owned by the screen. */
+  onSeeAllResults: (athleteName: string) => void;
+}
+
 export const AthleteItem = React.memo(function AthleteItem({
   athlete,
   router,
   getSessionDetails,
   onExpand,
   index,
-}: AthleteItemProps) {
-  const { currentTheme } = useTheme();
+  currentTheme,
+  validMeet,
+  timeZoneAbbr,
+  timeZoneIdentifier,
+  isSubscribed,
+  onSeeAllResults,
+}: AthleteRowProps) {
   const { expandedId, setExpandedId } = useExpandedId();
   const expandKey = `${athlete.memberId}_${athlete.name}`;
   const isExpanded = expandedId === expandKey;
@@ -51,18 +75,6 @@ export const AthleteItem = React.memo(function AthleteItem({
     bestTotal: 0,
   });
   const [loadingBests, setLoadingBests] = useState(true);
-  const { selectedMeet, meetDetails } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
-  const validMeet =
-    selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
-
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   const colors = useMemo(
     () => ({
@@ -160,6 +172,10 @@ export const AthleteItem = React.memo(function AthleteItem({
     [validMeet, timeZoneAbbr],
   );
 
+  const handleSeeAllResults = useCallback(() => {
+    onSeeAllResults(athlete.name);
+  }, [onSeeAllResults, athlete.name]);
+
   return (
     <View style={[styles.athleteCard, { backgroundColor: colors.card }]}>
       <Pressable
@@ -232,7 +248,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                         getSessionDetails(athlete.session.number)?.displayDate,
                       athlete.session.date ??
                         getSessionDetails(athlete.session.number)?.date,
-                      meetDetails?.time.timeZoneIdentifier,
+                      timeZoneIdentifier,
                     )}
 {" "}
                     •
@@ -364,37 +380,7 @@ export const AthleteItem = React.memo(function AthleteItem({
               styles.meetResultsButton,
               pressed && { opacity: 0.8 },
             ]}
-            onPress={() => {
-              // 1. Check auth
-              const authResult = requireAuth({
-                feature: "athlete-results",
-                message: "Sign in to access premium features.",
-                returnPath: "/(tabs)/(start-list)",
-              });
-              if (authResult === null) {
-                // Still loading auth state
-                return;
-              }
-              if (authResult === false) {
-                // User not authenticated, alert already shown
-                return;
-              }
-              // 2. Check subscription
-              if (isSubscribed === true) {
-                router.push({
-                  pathname: "/shared-screens/athlete-results",
-                  params: { name: athlete.name },
-                });
-              } else if (isSubscribed === false) {
-                router.push({
-                  pathname: "/shared-screens/paywall",
-                  params: {
-                    from: "/(tabs)/(start-list)",
-                    feature: "athlete-results",
-                  },
-                });
-              }
-            }}
+            onPress={handleSeeAllResults}
           >
             <ThemedText style={styles.meetResultsText}>
               See All Meet Results

@@ -9,7 +9,11 @@ import {
   getCachedAthleteBestsForNames,
   saveAthleteBestsBatch,
 } from '@/lib/database/offline-store';
-import { getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
+import {
+  getHistoryCutoffDate,
+  toMeetCalendarDate,
+  YEAR_BESTS_YEARS,
+} from '@/utils/dateTime';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
@@ -133,11 +137,12 @@ async function getOfflineFallback(athleteName: string): Promise<YearBests> {
     const results = await getAllCachedLiftingResultsForAthlete(athleteName);
     if (results.length === 0) return ZERO_BESTS;
     const cutoff = getHistoryCutoffDate(YEAR_BESTS_YEARS);
+    // Result dates are calendar dates. `new Date("2025-06-01")` is UTC
+    // midnight, and a date-only string is compared as a string.
     const recent = results.filter(r => {
-      if (!r.date) return true;
-      const d = new Date(r.date);
-      if (isNaN(d.getTime())) return true;
-      return d.toISOString().split('T')[0] >= cutoff;
+      const day = toMeetCalendarDate(r.date);
+      if (!day) return true;
+      return day >= cutoff;
     });
     if (recent.length === 0) return deriveMostRecentMeetBests(results);
     return deriveBestsFromResults(recent);

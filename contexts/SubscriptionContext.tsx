@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
 import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
@@ -38,8 +39,60 @@ type SubscriptionCacheEntry = SubscriptionCacheData & {
   isExpired: boolean;
 };
 
-const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
+/**
+ * The entitlement hint lives in SecureStore (keychain / keystore), like the
+ * auth cache. In plain AsyncStorage it was a world-readable JSON file that a
+ * rooted device could flip to `isSubscribed: true`; gating is client-only,
+ * so that flag was the whole gate. This does not make the client a source of
+ * truth — RevenueCat is — it just stops the cache being a trivial edit.
+ */
+const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v3';
+/** Pre-SecureStore AsyncStorage key; read once, migrated, then removed. */
+const LEGACY_SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function parseSubscriptionCache(raw: string | null): SubscriptionCacheData | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.isSubscribed !== 'boolean') return null;
+  if (typeof record.timestamp !== 'number' || !Number.isFinite(record.timestamp)) return null;
+  const type = record.subscriptionType;
+  const subscriptionType: SubscriptionCacheData['subscriptionType'] =
+    type === 'free' || type === 'quarterly' || type === 'lifetime' || type === 'unknown'
+      ? type
+      : 'unknown';
+  return { isSubscribed: record.isSubscribed, subscriptionType, timestamp: record.timestamp };
+}
+
+/**
+ * Read the cached entitlement, moving a pre-SecureStore entry across on
+ * first sight so an existing subscriber does not open the app offline to a
+ * paywall after updating.
+ */
+export async function readSubscriptionCache(): Promise<SubscriptionCacheData | null> {
+  const secure = parseSubscriptionCache(await SecureStore.getItemAsync(SUBSCRIPTION_CACHE_KEY));
+  if (secure) return secure;
+
+  const legacyRaw = await AsyncStorage.getItem(LEGACY_SUBSCRIPTION_CACHE_KEY).catch(() => null);
+  if (legacyRaw === null) return null;
+  const legacy = parseSubscriptionCache(legacyRaw);
+  if (legacy) {
+    await SecureStore.setItemAsync(SUBSCRIPTION_CACHE_KEY, JSON.stringify(legacy));
+  }
+  await AsyncStorage.removeItem(LEGACY_SUBSCRIPTION_CACHE_KEY).catch(() => undefined);
+  return legacy;
+}
+
+export async function writeSubscriptionCache(data: SubscriptionCacheData): Promise<void> {
+  await SecureStore.setItemAsync(SUBSCRIPTION_CACHE_KEY, JSON.stringify(data));
+}
 
 /**
  * How long the cache-first render holds before the first RevenueCat round
@@ -127,7 +180,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         subscriptionType: type,
         timestamp: Date.now(),
       };
-      await AsyncStorage.setItem(SUBSCRIPTION_CACHE_KEY, JSON.stringify(cacheData));
+      await writeSubscriptionCache(cacheData);
       setLastSyncTimestamp(cacheData.timestamp);
       setIsUsingStaleCache(false);
       devLog('Subscription cache saved:', cacheData);
@@ -141,20 +194,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     markStaleCache = false
   ): Promise<SubscriptionCacheEntry | null> => {
     try {
-      const cached = await AsyncStorage.getItem(SUBSCRIPTION_CACHE_KEY);
-      if (!cached) return null;
-
-      const parsed: unknown = JSON.parse(cached);
-      if (
-        !parsed ||
-        typeof parsed !== 'object' ||
-        Array.isArray(parsed) ||
-        typeof (parsed as SubscriptionCacheData).isSubscribed !== 'boolean' ||
-        typeof (parsed as SubscriptionCacheData).timestamp !== 'number'
-      ) {
-        return null;
-      }
-      const cacheData = parsed as SubscriptionCacheData;
+      const cacheData = await readSubscriptionCache();
+      if (!cacheData) return null;
       const now = Date.now();
       const isExpired = now - cacheData.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 

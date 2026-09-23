@@ -19,6 +19,7 @@ import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { LiftResult } from "@/data/types/athletes";
 import { isMeetName, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -137,6 +138,22 @@ const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
 const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
 
 /**
+ * A cached roster + schedule written within this window is served as-is on
+ * the initial (non pull-to-refresh) load. Selecting a meet already runs
+ * `prefetchCriticalMeetData`, which fetches and saves exactly these two
+ * payloads; this tab then mounted and fetched both again, so a single meet
+ * open cost two roster downloads. `MeetData.lastSyncTime` is stamped by the
+ * same `saveMeetAthletes` / `saveMeetSchedule` writes the prefetch makes.
+ * Well inside the 5-minute SyncManager cadence, so nothing goes staler than
+ * it already could.
+ */
+const FRESH_SNAPSHOT_TTL_MS = 60 * 1000;
+
+function isSnapshotFresh(lastSyncTime: number, now: number): boolean {
+  return lastSyncTime > 0 && now - lastSyncTime < FRESH_SNAPSHOT_TTL_MS;
+}
+
+/**
  * Render width of the shareable schedule image, in points. Fixed so the PNG is
  * the same size on every device; `ImagePreviewModal` assumes it too.
  */
@@ -161,9 +178,19 @@ export default function StartListScreen() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  const { selectedMeet } = useSelectedMeet();
+  const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
+  const { currentTheme } = useTheme();
+  // Row inputs, resolved once here instead of once per mounted row (see
+  // `AthleteRowProps`). `meetDetails.time.abbreviation` is resolved in
+  // `mapApiMeet` at the meet's own start date; re-deriving it per row with
+  // `getTimeZoneAbbreviation(id)` would format *today* — a December New York
+  // meet opened in September would read "EDT" against EST session times.
+  const selectedMeetName =
+    selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
+  const timeZoneIdentifier = meetDetails?.time.timeZoneIdentifier;
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -296,6 +323,7 @@ export default function StartListScreen() {
     return {
       cachedAthletes: cachedMeetData?.athletes ?? [],
       cachedSchedule: cachedMeetData?.schedule ?? [],
+      lastSyncTime: cachedMeetData?.lastSyncTime ?? 0,
     };
   }, []);
 
@@ -329,6 +357,16 @@ export default function StartListScreen() {
           setAthletes(snapshot.cachedAthletes);
           setScheduleData(snapshot.cachedSchedule);
           setLoading(false);
+          // Both halves present and just written (by the meet-open prefetch
+          // or a previous visit): the network round trip would return the
+          // same bytes. Pull-to-refresh (`forceRefresh`) always goes out.
+          if (
+            snapshot.cachedAthletes.length > 0 &&
+            snapshot.cachedSchedule.length > 0 &&
+            isSnapshotFresh(snapshot.lastSyncTime, Date.now())
+          ) {
+            return;
+          }
         }
 
         const hasNetwork = await isNetworkAvailable();
@@ -480,6 +518,36 @@ export default function StartListScreen() {
     };
   }, []);
 
+  const handleSeeAllResults = useCallback(
+    (athleteName: string) => {
+      // 1. Check auth. `null` is "still loading"; `false` means the sign-in
+      // alert has already been shown.
+      const authResult = requireAuth({
+        feature: "athlete-results",
+        message: "Sign in to access premium features.",
+        returnPath: "/(tabs)/(start-list)",
+      });
+      if (authResult !== true) return;
+      // 2. Check subscription. `null` is "unknown yet": do nothing rather
+      // than bounce a paying user to the paywall.
+      if (isSubscribed === true) {
+        router.push({
+          pathname: "/shared-screens/athlete-results",
+          params: { name: athleteName },
+        });
+      } else if (isSubscribed === false) {
+        router.push({
+          pathname: "/shared-screens/paywall",
+          params: {
+            from: "/(tabs)/(start-list)",
+            feature: "athlete-results",
+          },
+        });
+      }
+    },
+    [requireAuth, isSubscribed, router],
+  );
+
   const renderListItem = useCallback(
     ({ item, index }: { item: LiftResult; index: number }) => (
       <AthleteItem
@@ -488,9 +556,25 @@ export default function StartListScreen() {
         getSessionDetails={getSessionDetails}
         onExpand={handleItemExpand}
         index={index}
+        currentTheme={currentTheme}
+        validMeet={selectedMeetName}
+        timeZoneAbbr={timeZoneAbbr}
+        timeZoneIdentifier={timeZoneIdentifier}
+        isSubscribed={isSubscribed}
+        onSeeAllResults={handleSeeAllResults}
       />
     ),
-    [router, getSessionDetails, handleItemExpand],
+    [
+      router,
+      getSessionDetails,
+      handleItemExpand,
+      currentTheme,
+      selectedMeetName,
+      timeZoneAbbr,
+      timeZoneIdentifier,
+      isSubscribed,
+      handleSeeAllResults,
+    ],
   );
 
   const keyExtractor = useCallback(
