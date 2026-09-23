@@ -2,6 +2,10 @@
 # No args auto runs CLI list of options
 default: choose
 
+# Enter the Nix development shell without direnv.
+nix:
+    nix develop
+
 # Interactively choose which project task to execute right now
 choose:
     @just --choose

@@ -17,6 +17,22 @@ jest.mock("@/lib/networkUtils", () => ({
 const mockFetchSchedule = jest.fn();
 const mockFetchAthletesWithSession = jest.fn();
 const mockFetchApiMeetPackage = jest.fn();
+// Wraps the package mock as a fresh conditional response by default, so tests
+// that only care about the package body keep driving `mockFetchApiMeetPackage`.
+type MockPackageFetch =
+  | { status: "fresh"; etag: string | null; package: unknown }
+  | { status: "not_modified" };
+const mockFetchApiMeetPackageConditional = jest.fn(
+  async (
+    meet: string,
+    cutoff?: string,
+    _ifNoneMatch?: string | null,
+  ): Promise<MockPackageFetch> => ({
+    status: "fresh",
+    etag: null,
+    package: await mockFetchApiMeetPackage(meet, cutoff),
+  }),
+);
 const mockFetchApiResultsByNames = jest.fn(
   async (_names: string[]): Promise<any[]> => [],
 );
@@ -49,6 +65,10 @@ jest.mock("@/lib/api/meetcal-api", () => {
     ...actual,
     fetchApiMeetPackage: (...args: unknown[]) =>
       mockFetchApiMeetPackage(...args),
+    fetchApiMeetPackageConditional: (...args: unknown[]) =>
+      mockFetchApiMeetPackageConditional(
+        ...(args as [string, string | undefined, string | null | undefined]),
+      ),
     fetchApiResultsByNames: (...args: unknown[]) =>
       mockFetchApiResultsByNames(...(args as [string[]])),
   };
@@ -525,5 +545,123 @@ describe("cache eviction during prefetch", () => {
     expect(clearedMeets).not.toContain("Meet E");
     expect(clearedMeets).not.toContain("Meet D");
     expect(clearedMeets).not.toContain("Meet C");
+  });
+});
+
+describe("package revalidation with ETag", () => {
+  const PACKAGE_ETAG_KEY = "@meet_package_etag_v1";
+  const offlineStore = jest.requireMock("@/lib/database/offline-store");
+  const mockGetMeetData = offlineStore.getMeetData as jest.Mock;
+  const mockSetItem = AsyncStorage.setItem as jest.Mock;
+  const emptyMeetData = {
+    schedule: null,
+    scheduleKey: "",
+    athletesKey: "",
+    athletes: [],
+    liftingResultsKey: "",
+    lastSyncTime: 0,
+  };
+  const athlete = (name: string) => ({
+    member_id: name,
+    name,
+    age: 25,
+    club: "Club",
+    wso: null,
+    gender: "Male",
+    weight_class: "81",
+    entry_total: 0,
+    adaptive: false,
+    session: null,
+  });
+  const freshPackage = {
+    meet: {},
+    schedule: [],
+    athletes: [athlete("Athlete A")],
+    meet_results: [{ name: "Athlete A" }],
+    recent_results_by_name: {},
+    year_bests_by_name: {},
+  };
+
+  const storedEtags = (etags: Record<string, string>) => {
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === PACKAGE_ETAG_KEY ? JSON.stringify(etags) : null,
+    );
+  };
+  const savedEtags = (): Record<string, string>[] =>
+    mockSetItem.mock.calls
+      .filter(([key]) => key === PACKAGE_ETAG_KEY)
+      .map(([, value]) => JSON.parse(value as string));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchApiResultsByNames.mockResolvedValue([]);
+    mockIsMeetExplicitlyDownloaded.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    mockGetItem.mockImplementation(async () => null);
+    mockGetMeetData.mockResolvedValue(emptyMeetData);
+  });
+
+  it("sends the stored ETag and skips every write on a trusted 304", async () => {
+    storedEtags({ "Etag Meet A": '"abc"' });
+    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet A" as any);
+
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
+    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
+    expect(mockSaveAthleteHistory).not.toHaveBeenCalled();
+  });
+
+  it("does not trust a 304 when the local copy is gone; refetches without the validator", async () => {
+    storedEtags({ "Etag Meet B": '"abc"' });
+    mockGetMeetData.mockResolvedValue(emptyMeetData);
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+    mockFetchApiMeetPackage.mockResolvedValue(freshPackage);
+
+    await prefetchMeetData("Etag Meet B" as any);
+
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(mockFetchApiMeetPackageConditional.mock.calls[1][2]).toBeNull();
+    expect(mockSaveMeetAthletes).toHaveBeenCalledTimes(1);
+    // The stale validator is dropped before the full refetch.
+    expect(savedEtags()[0]).toEqual({});
+  });
+
+  it("persists the ETag only after a fully successful prefetch", async () => {
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"fresh-tag"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet C" as any);
+
+    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBeNull();
+    const saved = savedEtags();
+    expect(saved[saved.length - 1]).toEqual({ "Etag Meet C": '"fresh-tag"' });
+  });
+
+  it("drops the ETag when any part of the prefetch fails", async () => {
+    storedEtags({ "Etag Meet D": '"old-tag"' });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new-tag"',
+      package: freshPackage,
+    });
+    mockSaveAthleteHistory.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(prefetchMeetData("Etag Meet D" as any)).rejects.toThrow(
+      "Offline prefetch incomplete",
+    );
+
+    const saved = savedEtags();
+    expect(saved[saved.length - 1]).toEqual({});
   });
 });
