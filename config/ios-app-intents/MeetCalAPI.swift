@@ -145,6 +145,9 @@ actor MeetCalAPI {
     static let shared = MeetCalAPI()
 
     private let baseURL = URL(string: "https://api.meetcal.app")!
+    // Same signal the RN app sends; the API gates stricter validation on it.
+    private let appVersion =
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     private let session: URLSession
     private let ttl: TimeInterval = 300 // ~5 minutes
 
@@ -187,10 +190,26 @@ actor MeetCalAPI {
 
     func bests(names: [String]) async throws -> [String: APIYearBests] {
         guard !names.isEmpty else { return [:] }
+        // 6.2.0+ clients must send the window; one year matches the old default.
         return try await getDecoded(
             "/lifting-results/bests",
-            query: ["names": names.joined(separator: ",")]
+            query: [
+                "names": names.joined(separator: ","),
+                "cutoff_date": Self.cutoffDate(yearsAgo: 1),
+            ]
         )
+    }
+
+    private static func cutoffDate(yearsAgo: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let date = calendar.date(byAdding: .year, value: -yearsAgo, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     func qualifyingTotals() async throws -> [APIQualifyingTotalRow] {
@@ -236,6 +255,9 @@ actor MeetCalAPI {
 
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !appVersion.isEmpty {
+            request.setValue(appVersion, forHTTPHeaderField: "X-MeetCal-App")
+        }
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {

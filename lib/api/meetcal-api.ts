@@ -6,9 +6,16 @@ import {
   USTimeZoneIdentifier,
 } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
+import Constants from 'expo-constants';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
 const DEFAULT_TIMEOUT_MS = 10000;
+
+// Sent on every request so the API can gate stricter validation on the app
+// version instead of flipping behaviour for builds already in the field. The
+// backend threshold lives in meetcal-backend `app/src/common/client.rs`.
+export const CLIENT_VERSION_HEADER = 'X-MeetCal-App';
+export const APP_VERSION: string = Constants.expoConfig?.version ?? '';
 const SLOW_API_LOG_THRESHOLD_MS = 500;
 
 export const MEETCAL_API_BASE_URL =
@@ -25,6 +32,14 @@ type QueryValue =
 type RequestOptions = {
   token?: string | null;
   timeoutMs?: number;
+  /** Sent as `If-None-Match`; a `304` then resolves instead of throwing. */
+  ifNoneMatch?: string | null;
+};
+
+type RawResponse = {
+  status: number;
+  text: string;
+  etag: string | null;
 };
 
 export class MeetCalApiError extends Error {
@@ -90,13 +105,13 @@ export function buildApiUrl(
   return `${base}${normalizedPath}${qs ? `?${qs}` : ''}`;
 }
 
-async function requestJson<T>(
+async function requestRaw(
   method: string,
   path: string,
   query?: Record<string, QueryValue>,
   body?: unknown,
   options?: RequestOptions,
-): Promise<T> {
+): Promise<RawResponse> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -108,11 +123,17 @@ async function requestJson<T>(
   const headers: Record<string, string> = {
     Accept: 'application/json',
   };
+  if (APP_VERSION) {
+    headers[CLIENT_VERSION_HEADER] = APP_VERSION;
+  }
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
   if (options?.token) {
     headers.Authorization = `Bearer ${options.token}`;
+  }
+  if (options?.ifNoneMatch) {
+    headers['If-None-Match'] = options.ifNoneMatch;
   }
 
   try {
@@ -123,6 +144,12 @@ async function requestJson<T>(
       signal: controller.signal,
     });
     status = response.status;
+    const etag = response.headers?.get?.('etag') ?? null;
+
+    if (status === 304 && options?.ifNoneMatch) {
+      return { status, text: '', etag };
+    }
+
     const text = await response.text();
 
     if (!response.ok) {
@@ -133,8 +160,7 @@ async function requestJson<T>(
       );
     }
 
-    if (!text) return undefined as T;
-    return JSON.parse(text) as T;
+    return { status, text, etag };
   } catch (error) {
     if (error instanceof MeetCalApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
@@ -161,12 +187,32 @@ async function requestJson<T>(
   }
 }
 
+async function requestJson<T>(
+  method: string,
+  path: string,
+  query?: Record<string, QueryValue>,
+  body?: unknown,
+  options?: RequestOptions,
+): Promise<T> {
+  const { text } = await requestRaw(method, path, query, body, options);
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
 export function getJson<T>(
   path: string,
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
 ): Promise<T> {
   return requestJson<T>('GET', path, query, undefined, options);
+}
+
+export function postJson<T>(
+  path: string,
+  body: unknown,
+  options?: RequestOptions,
+): Promise<T> {
+  return requestJson<T>('POST', path, undefined, body, options);
 }
 
 export function putJson<T>(
@@ -591,27 +637,41 @@ export async function fetchApiLiftingResultsForMeet(meet: MeetName): Promise<Sup
   return rows.map(mapApiLiftingResult);
 }
 
+/**
+ * `YYYY-MM-DD` for `yearsAgo` years before `now`, the window the API used to
+ * fall back to server-side. Clients on 6.2.0+ must send it explicitly so one
+ * party owns the date.
+ */
+export function defaultCutoffDate(yearsAgo: number, now: Date = new Date()): string {
+  const cutoff = new Date(now);
+  cutoff.setFullYear(cutoff.getFullYear() - yearsAgo);
+  return cutoff.toISOString().split('T')[0];
+}
+
+// Name lists go in a JSON body: a name containing a comma stays one name, and
+// the list is not bounded by URL length.
 export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
-  const rows = assertArray<ApiLiftingResult>(await getJson('/lifting-results/by-names', {
-    names,
-  }), '/lifting-results/by-names');
+  const rows = assertArray<ApiLiftingResult>(
+    await postJson('/lifting-results/by-names', { names }),
+    '/lifting-results/by-names',
+  );
   return rows.map(mapApiLiftingResult);
 }
 
 export async function fetchApiRecentResultsByNames(
   names: string[],
-  cutoffDate?: string,
+  cutoffDate: string = defaultCutoffDate(2),
 ): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
-  const rows = assertArray<ApiLiftingResult>(await getJson('/lifting-results/recent', {
-    names,
-    cutoff_date: cutoffDate,
-  }), '/lifting-results/recent');
+  const rows = assertArray<ApiLiftingResult>(
+    await postJson('/lifting-results/recent', { names, cutoff_date: cutoffDate }),
+    '/lifting-results/recent',
+  );
   return rows.map(mapApiLiftingResult);
 }
 
-export async function fetchApiYearBests(name: string, cutoffDate?: string) {
+export async function fetchApiYearBests(name: string, cutoffDate: string = defaultCutoffDate(1)) {
   const row = assertHasFields(await getJson('/lifting-results/year', {
     name,
     cutoff_date: cutoffDate,
@@ -621,10 +681,10 @@ export async function fetchApiYearBests(name: string, cutoffDate?: string) {
 
 export async function fetchApiYearBestsByNames(
   names: string[],
-  cutoffDate?: string,
+  cutoffDate: string = defaultCutoffDate(1),
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
-  const response = await getJson('/lifting-results/bests', {
+  const response = await postJson('/lifting-results/bests', {
     names,
     cutoff_date: cutoffDate,
   });
@@ -656,23 +716,51 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
   };
 }
 
+const MEET_PACKAGE_TIMEOUT_MS = 20000;
+const MEET_PACKAGE_FIELDS = ['meet', 'schedule', 'athletes', 'meet_results'];
+
+export type MeetPackageFetch =
+  | { status: 'fresh'; etag: string | null; package: ApiMeetPackage }
+  | { status: 'not_modified' };
+
+/**
+ * Fetches the meet package, revalidating with `If-None-Match` when the caller
+ * still holds the previous `ETag`. A `304` means the package the caller already
+ * decomposed into local storage is byte-identical to what the API would send.
+ */
+export async function fetchApiMeetPackageConditional(
+  meet: MeetName,
+  historyCutoffDate?: string,
+  ifNoneMatch?: string | null,
+): Promise<MeetPackageFetch> {
+  const raw = await requestRaw(
+    'GET',
+    '/meets/package',
+    { meet, history_cutoff_date: historyCutoffDate },
+    undefined,
+    { timeoutMs: MEET_PACKAGE_TIMEOUT_MS, ifNoneMatch },
+  );
+  if (raw.status === 304) {
+    return { status: 'not_modified' };
+  }
+  const parsed: unknown = raw.text ? JSON.parse(raw.text) : undefined;
+  const pkg = assertHasFields(parsed, '/meets/package', MEET_PACKAGE_FIELDS) as ApiMeetPackage;
+  return { status: 'fresh', etag: raw.etag, package: pkg };
+}
+
 export async function fetchApiMeetPackage(
   meet: MeetName,
   historyCutoffDate?: string,
 ): Promise<ApiMeetPackage> {
-  return assertHasFields(await getJson('/meets/package', {
-    meet,
-    history_cutoff_date: historyCutoffDate,
-  }, { timeoutMs: 20000 }), '/meets/package', ['meet', 'schedule', 'athletes', 'meet_results']) as ApiMeetPackage;
+  const fetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate);
+  if (fetched.status !== 'fresh') {
+    throw new Error('/meets/package answered 304 without a validator');
+  }
+  return fetched.package;
 }
 
 export async function fetchApiWsoList(): Promise<string[]> {
-  const response = await getJson('/data/wso/');
-  if (Array.isArray(response)) {
-    return assertStringArray(response, '/data/wso/');
-  }
-  assertObject(response, '/data/wso/');
-  return assertStringArray(response.wsos, '/data/wso/.wsos');
+  return assertStringArray(await getJson('/data/wso/'), '/data/wso/');
 }
 
 export async function fetchApiWsoAgeGroups(wso: string): Promise<string[]> {

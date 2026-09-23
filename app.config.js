@@ -1,7 +1,7 @@
 export default ({ config }) => ({
   name: 'MeetCal',
   slug: 'meetcal',
-  version: '6.1.0',
+  version: '6.2.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   splash: {
