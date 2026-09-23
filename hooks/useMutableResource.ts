@@ -193,6 +193,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       setRefreshError(null);
       setIsRefreshing(false);
       if (keyChanged) {
+        sourceRef.current = null;
         setData(initialDataRef.current);
         setLastUpdatedAt(null);
         setSource(null);

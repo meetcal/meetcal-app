@@ -1,6 +1,7 @@
 import type { LiftResult } from "@/data/types/athletes";
 import {
   filterSessionAthletes,
+  isLiftResult,
   maxSuccessfulAttempt,
   normalizeAthleteName,
   normalizePlatformKey,
@@ -75,5 +76,25 @@ describe("maxSuccessfulAttempt", () => {
   it("returns null when nothing was made", () => {
     expect(maxSuccessfulAttempt([-100, null, undefined])).toBeNull();
     expect(maxSuccessfulAttempt([])).toBeNull();
+  });
+});
+
+describe("isLiftResult", () => {
+  it("accepts athletes with and without session metadata", () => {
+    expect(isLiftResult(athlete("Jane"))).toBe(true);
+    expect(isLiftResult(athlete("Jane", { number: 1, platform: "Red" }))).toBe(true);
+  });
+
+  it.each([
+    null,
+    "Jane",
+    { ...athlete("Jane"), name: 12 },
+    { ...athlete("Jane"), name: " " },
+    { ...athlete("Jane"), entryTotal: Infinity },
+    { ...athlete("Jane"), session: { number: "1", platform: "Red" } },
+    { ...athlete("Jane"), session: { number: 1, platform: 12 } },
+    { ...athlete("Jane"), session: { number: 1, platform: "Red", date: {} } },
+  ])("rejects malformed rows %p", (row) => {
+    expect(isLiftResult(row)).toBe(false);
   });
 });

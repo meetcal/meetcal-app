@@ -38,3 +38,21 @@ it("does not display the previous athlete's history when the next athlete fails 
   await act(async () => { tree.unmount(); });
   errorLog.mockRestore();
 });
+
+it("ignores a previous athlete's response after changing the route", async () => {
+  mockName = "Slow Athlete";
+  let resolveFirst!: (value: Awaited<ReturnType<typeof fetchAllResultsForName>>) => void;
+  jest.mocked(fetchAllResultsForName)
+    .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+    .mockResolvedValueOnce([]);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<AthleteResultsScreen />); });
+  mockName = "Current Athlete";
+  await act(async () => { tree.update(<AthleteResultsScreen />); });
+  await act(async () => {
+    resolveFirst([{ name: "Slow Athlete", date: "2026-06-20", total: 100 }] as Awaited<ReturnType<typeof fetchAllResultsForName>>);
+  });
+  expect(JSON.stringify(tree.toJSON())).toContain("No meet results found for");
+  expect(JSON.stringify(tree.toJSON())).toContain("Current Athlete");
+  await act(async () => { tree.unmount(); });
+});

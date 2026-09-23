@@ -295,6 +295,17 @@ describe('meetcal API mappers', () => {
     }).age).toBe('Open Men 73kg');
   });
 
+  it.each([null, { name: 123 }, { name: 'Athlete A', entry_total: '250' }])(
+    'rejects malformed athlete fields at the API mapper: %p', (invalid) => {
+      const row = invalid === null ? null : {
+        member_id: '123', adaptive: false, age: 24, club: 'Club',
+        entry_total: 250, gender: 'Men', weight_class: '73kg',
+        ...invalid,
+      };
+      expect(() => mapApiAthlete(row as never)).toThrow(/athlete/);
+    },
+  );
+
   it('coerces missing athlete ages to 0 rather than NaN', () => {
     expect(mapApiAthlete({
       member_id: '123',

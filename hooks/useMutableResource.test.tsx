@@ -239,4 +239,26 @@ describe("useMutableResource", () => {
     expect(captured!.isInitialLoading).toBe(false);
   });
 
+  it("reports a new key failure as an initial error after a warm previous key", async () => {
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `warm-switch:${param}`,
+      loadCached: async (param) => param === "a"
+        ? { data: [{ id: "a" }], lastUpdatedAt: 1 }
+        : null,
+      fetchFresh: async (param) => {
+        if (param === "b") throw new Error("New key unavailable");
+        return [{ id: "a" }];
+      },
+      persistFresh: async (data) => ({ data, lastUpdatedAt: 1 }),
+    });
+    const { update } = harness(resource, "a");
+    await flush();
+    expect(captured!.source).not.toBeNull();
+    update("b");
+    await flush();
+    expect(captured!.data).toEqual([]);
+    expect(captured!.error).toBe("New key unavailable");
+    expect(captured!.refreshError).toBeNull();
+  });
+
 });

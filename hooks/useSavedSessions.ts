@@ -63,12 +63,26 @@ function parseStoredSessions(raw: string | null): SavedSession[] {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((session): session is SavedSession => {
-      return Boolean(
-        session &&
-          typeof session === 'object' &&
-          'id' in session &&
-          'meet' in session
+    return parsed.filter((session: unknown): session is SavedSession => {
+      if (!session || typeof session !== 'object' || Array.isArray(session)) {
+        return false;
+      }
+      const row = session as Record<string, unknown>;
+      return (
+        typeof row.id === 'string' && row.id.trim().length > 0 &&
+        typeof row.meet === 'string' && row.meet.trim().length > 0 &&
+        typeof row.sessionNumber === 'number' &&
+        Number.isInteger(row.sessionNumber) && row.sessionNumber >= 0 &&
+        typeof row.platform === 'string' && row.platform.trim().length > 0 &&
+        typeof row.weightClass === 'string' &&
+        typeof row.startTime === 'string' &&
+        typeof row.weighInTime === 'string' &&
+        typeof row.date === 'string' &&
+        (row.notes === undefined || typeof row.notes === 'string') &&
+        (row.athleteName === undefined || typeof row.athleteName === 'string') &&
+        (row.athleteNames === undefined ||
+          (Array.isArray(row.athleteNames) &&
+            row.athleteNames.every((name: unknown) => typeof name === 'string')))
       );
     });
   } catch {

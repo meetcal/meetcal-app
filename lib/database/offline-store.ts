@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
-import type { LiftResult, Platform, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
-import type { Session, PlatformSession } from '@/data/types/schedule';
+import type { LiftResult, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { Buffer } from 'buffer';
 import pako from 'pako';
 import {
   filterSessionAthletes,
+  isLiftResult,
   normalizeAthleteName,
   normalizePlatformKey,
 } from '@/lib/athletes';
@@ -173,16 +173,6 @@ interface OfflineStore {
   };
 }
 
-interface DbSession {
-  id: number;
-  session_id: number;
-  platform: string;
-  weight_class: string;
-  start_time: string;
-  weigh_in_time: string;
-  meet: string;
-}
-
 interface LiftingResultsManifest {
   format: typeof LIFTING_RESULTS_FORMAT;
   chunks: number;
@@ -303,11 +293,9 @@ async function writeStoredLiftingResults(
     chunks: chunks.length,
   };
 
-  const chunkSizes: number[] = [];
   for (let i = 0; i < chunks.length; i++) {
     const chunkKey = getLiftingResultsChunkKey(liftingResultsKey, i);
     await AsyncStorage.setItem(chunkKey, chunks[i]);
-    chunkSizes.push(chunks[i].length);
     const verify = await AsyncStorage.getItem(chunkKey);
     if (!verify || verify.length === 0) {
       throw new Error(`Chunk ${i} failed to persist for ${liftingResultsKey}`);
@@ -323,8 +311,8 @@ async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): 
     if (!athletesString) {
       return fallback;
     }
-    const parsed = JSON.parse(athletesString);
-    return Array.isArray(parsed) ? (parsed as LiftResult[]) : fallback;
+    const parsed: unknown = JSON.parse(athletesString);
+    return Array.isArray(parsed) ? parsed.filter(isLiftResult) : fallback;
   } catch (error) {
     console.error('Error reading stored athletes:', error);
     return fallback;
@@ -394,7 +382,7 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
     const athletesKey = store.meets[meetId].athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
     const athletes = await readStoredAthletes(
       athletesKey,
-      Array.isArray(store.meets[meetId].athletes) ? store.meets[meetId].athletes : [],
+      Array.isArray(store.meets[meetId].athletes) ? store.meets[meetId].athletes.filter(isLiftResult) : [],
     );
 
     return {
@@ -710,8 +698,9 @@ export async function getSessionAthletesFromMeetCache(
     );
     if (sessionPayload) {
       const parsed: unknown = JSON.parse(sessionPayload);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed as LiftResult[];
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(isLiftResult)) {
+        const athletes = filterSessionAthletes(parsed, sessionNumber, platform);
+        if (athletes.length > 0) return athletes;
       }
     }
 
@@ -728,18 +717,6 @@ export async function getSessionAthletesFromMeetCache(
     console.error('Error getting session athletes from meet cache:', error);
     return [];
   }
-}
-
-// Validate and convert platform string to Platform type
-function validatePlatform(platform: string): Platform {
-  const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
-  
-  if (validPlatforms.includes(normalizedPlatform as Platform)) {
-    return normalizedPlatform as Platform;
-  }
-  console.warn(`Invalid platform "${platform}", defaulting to "Blue"`);
-  return 'Blue';
 }
 
 // Save meet schedule to store
@@ -865,16 +842,13 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
     let existingAthletes: LiftResult[] = [];
     if (existingPayload) {
       try {
-        const parsed = JSON.parse(existingPayload);
-        existingAthletes = Array.isArray(parsed) ? (parsed as LiftResult[]) : [];
+        const parsed: unknown = JSON.parse(existingPayload);
+        existingAthletes = Array.isArray(parsed) ? parsed.filter(isLiftResult) : [];
       } catch (parseError) {
         console.warn('Ignoring invalid cached athlete payload:', parseError);
       }
     }
-    // `name` crosses the API boundary unvalidated (`mapApiAthlete` copies
-    // `row.name` through), so `.trim()` on it can throw. normalizeAthleteName
-    // is null-safe and is the same key policy used everywhere else, including
-    // the session caches written just below.
+    // Use the same identity policy as the session/history caches.
     const athleteKey = (athlete: LiftResult) =>
       athlete.memberId || normalizeAthleteName(athlete.name);
     const existingByKey = new Map(

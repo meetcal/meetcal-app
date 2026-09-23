@@ -173,6 +173,20 @@ describe("offline-store athlete lifting results", () => {
     ).resolves.toHaveLength(1);
   });
 
+  it("repairs malformed cached roster rows before merging fresh athletes", async () => {
+    const athlete = {
+      memberId: "123", name: "Jane Doe", age: 25, club: "Club",
+      gender: "Women", weightClass: "71kg", entryTotal: 200, adaptive: false,
+    };
+    await saveMeetAthletes("Test Meet", [athlete]);
+    mockStorage.set("meetcal_athletes_Test Meet", JSON.stringify([
+      null, { ...athlete, name: 123 }, athlete,
+    ]));
+    expect((await getMeetData("Test Meet")).athletes).toEqual([athlete]);
+    await expect(saveMeetAthletes("Test Meet", [athlete])).resolves.toBeUndefined();
+    expect(JSON.parse(mockStorage.get("meetcal_athletes_Test Meet")!)).toEqual([athlete]);
+  });
+
   it("writes the roster blob again once the payload actually changes", async () => {
     const base = {
       memberId: "123",
@@ -288,7 +302,7 @@ describe("offline-store athlete lifting results", () => {
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(changed);
   });
 
-  it.each([null, "[]", "{invalid-json"])(
+  it.each([null, "[]", "{invalid-json", "[null]", '[{"name":123,"session":{"platform":42}}]'])(
     "reads and clears session athletes with session cache %s", async (sessionPayload) => {
     await saveMeetAthletes("Test Meet", [
       {

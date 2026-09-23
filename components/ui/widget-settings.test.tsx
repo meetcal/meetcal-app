@@ -28,6 +28,22 @@ jest.mock("@/utils/dataWidgets", () => {
 });
 
 describe("widget settings commits", () => {
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  it("continues saving after an earlier storage write rejects", async () => {
+    const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.mocked(saveWidgetSettings).mockRejectedValueOnce(new Error("Storage failed"));
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<WidgetSettingsScreen />); });
+    const apply = () => tree.root.findAllByType(GenericFilterModal)[1].props.onApplyFilters;
+    await act(async () => { apply()({ gender: "women", ageGroup: "senior" }); });
+    expect(syncDataWidgets).not.toHaveBeenCalled();
+    await act(async () => { apply()({ gender: "men", ageGroup: "junior" }); });
+    expect(saveWidgetSettings).toHaveBeenCalledTimes(2);
+    expect(syncDataWidgets).toHaveBeenCalledTimes(1);
+    await act(async () => { tree.unmount(); });
+    errorLog.mockRestore();
+  });
   it("serializes overlapping filter changes before updating the native widgets", async () => {
     let releaseFirst!: () => void;
     jest.mocked(saveWidgetSettings).mockImplementationOnce(

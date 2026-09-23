@@ -39,7 +39,8 @@ export function usePaginatedSchedule({
   // The screen container is padded by the horizontal safe-area insets, so a
   // page is narrower than the window on devices that reserve a side band
   // (iPhone Duo). Paging off the raw window width lands between days.
-  const pageWidth = windowWidth - insets.left - insets.right;
+  const pageWidth = Math.max(1, windowWidth - insets.left - insets.right);
+  const lastPage = Math.max(0, schedule.length - 1);
   const [currentPage, setCurrentPage] = useState(0);
   const flatListRef = useRef<FlatListInstance>(null);
   const previousHeaderTitleRef = useRef<string>("");
@@ -60,7 +61,7 @@ export function usePaginatedSchedule({
         // Keep `currentPage` honest even when the user never swiped: the list
         // can open on `initialScrollIndex` (today's day), and the re-anchor
         // effect below would otherwise snap back to day 0 on the first fold.
-        if (typeof first.index === "number") {
+        if (typeof first.index === "number" && first.index >= 0 && first.index <= lastPage) {
           setCurrentPage(first.index);
         }
         const currentItem = first.item as DaySchedule;
@@ -70,17 +71,31 @@ export function usePaginatedSchedule({
         onTitleChange(formattedTitle);
       }
     },
-    [formatDayTitle, onTitleChange],
+    [formatDayTitle, onTitleChange, lastPage],
   );
 
   const handlePageChange = useCallback(
     (index: number) => {
-      if (index === currentPage) return;
+      if (
+        !Number.isInteger(index) || index < 0 || index > lastPage ||
+        schedule.length === 0 || index === currentPage
+      ) return;
       setCurrentPage(index);
       flatListRef.current?.scrollToIndex({ index, animated: true });
     },
-    [currentPage],
+    [currentPage, lastPage, schedule.length],
   );
+
+  // Refreshing a schedule can remove days while the user is on its final
+  // page. Keep later width changes from re-anchoring beyond the new data.
+  useEffect(() => {
+    if (currentPage <= lastPage) return;
+    setCurrentPage(lastPage);
+    flatListRef.current?.scrollToOffset({
+      offset: lastPage * pageWidth,
+      animated: false,
+    });
+  }, [currentPage, lastPage, pageWidth]);
 
   // Folding/unfolding (iPhone Duo) or entering Split View changes the page
   // width and leaves the horizontal offset pointing between pages. Re-anchor
@@ -90,19 +105,21 @@ export function usePaginatedSchedule({
     if (lastPageWidthRef.current === pageWidth) return;
     lastPageWidthRef.current = pageWidth;
     flatListRef.current?.scrollToOffset({
-      offset: currentPage * pageWidth,
+      offset: Math.min(currentPage, lastPage) * pageWidth,
       animated: false,
     });
-  }, [pageWidth, currentPage]);
+  }, [pageWidth, currentPage, lastPage]);
 
   const onMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const newPage = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
+      const offset = event.nativeEvent.contentOffset.x;
+      if (!Number.isFinite(offset)) return;
+      const newPage = Math.max(0, Math.min(lastPage, Math.round(offset / pageWidth)));
       if (newPage !== currentPage) {
         setCurrentPage(newPage);
       }
     },
-    [currentPage, pageWidth],
+    [currentPage, pageWidth, lastPage],
   );
 
   return {

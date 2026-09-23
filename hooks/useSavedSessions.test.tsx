@@ -237,3 +237,53 @@ describe("saveSessionsFromAthletes", () => {
     expect(scheduleNotification).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("saved-session cache validation", () => {
+  const validSession = {
+    id: "Test Meet-1-Red",
+    meet: "Test Meet",
+    sessionNumber: 1,
+    platform: "Red",
+    weightClass: "71kg",
+    startTime: "10:00 AM",
+    weighInTime: "8:00 AM",
+    date: "2099-06-20",
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+  });
+
+  it("rejects malformed rows while retaining valid and legacy sessions", async () => {
+    const legacy = { ...validSession, id: "legacy", athleteName: "Athlete One" };
+    const current = { ...validSession, athleteNames: ["Athlete Two"] };
+    const invalidRows = [
+      { id: "partial", meet: "Test Meet" },
+      { ...validSession, id: 123 },
+      { ...validSession, meet: {} },
+      { ...validSession, sessionNumber: "1" },
+      { ...validSession, sessionNumber: 1.5 },
+      { ...validSession, platform: null },
+      { ...validSession, date: {} },
+      { ...validSession, athleteNames: "Athlete" },
+      { ...validSession, athleteNames: [123] },
+      { ...validSession, athleteName: {} },
+      { ...validSession, notes: [] },
+      null,
+    ];
+    await AsyncStorage.setItem(
+      "@saved_sessions_user_1",
+      JSON.stringify([...invalidRows, legacy, current]),
+    );
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toEqual([legacy, current]);
+  });
+
+  it.each(["{", "null", '{}', '"sessions"'])("ignores malformed cache %s", async (raw) => {
+    await AsyncStorage.setItem("@saved_sessions_user_1", raw);
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toEqual([]);
+  });
+});

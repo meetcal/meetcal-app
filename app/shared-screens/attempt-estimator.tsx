@@ -96,15 +96,19 @@ export default function AttemptEstimatorScreen() {
     const requestId = ++requestIdRef.current;
     const isStale = () => requestId !== requestIdRef.current;
     setLoading(true);
+    setEstimates([]);
     try {
       const meetId = params.meet as MeetName;
 
       const hasNetwork = await isNetworkAvailable();
+      if (isStale()) return;
       const cachedSessionAthletes = await getSessionAthletesFromMeetCache(
         meetId,
         sessionNumber,
         params.platform,
       );
+
+      if (isStale()) return;
 
       let cachedSessionResults: SupabaseLiftResult[] = [];
       if (cachedSessionAthletes.length > 0) {
@@ -152,7 +156,9 @@ export default function AttemptEstimatorScreen() {
       }
 
       const freshMeetAthletes = await fetchAthletesWithSession(meetId);
+      if (isStale()) return;
       await saveMeetAthletes(meetId, freshMeetAthletes);
+      if (isStale()) return;
 
       const freshSessionAthletes = filterSessionAthletes(
         freshMeetAthletes,
@@ -171,6 +177,7 @@ export default function AttemptEstimatorScreen() {
         const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
         freshResults = await fetchRecentAthleteHistoryForNames(freshAllNames, cutoffDate);
       }
+      if (isStale()) return;
       await saveMeetLiftingResults(meetId, freshResults);
 
       const freshSessionResults = freshResults.filter((result) =>

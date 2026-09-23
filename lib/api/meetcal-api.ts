@@ -1,3 +1,4 @@
+import { isLiftResult } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import {
   Meet,
@@ -595,13 +596,14 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
 }
 
 export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
+  assertObject(row, 'athlete');
   const sessionNumber = row.session_number ?? row.session?.session_number;
   const sessionPlatform = row.session_platform ?? row.session?.session_platform;
   const date = row.date ?? row.schedule_row?.date ?? row.session?.date ?? undefined;
   const startTime = row.start_time ?? row.schedule_row?.start_time ?? row.session?.start_time ?? undefined;
   const weighInTime = row.weigh_in_time ?? row.schedule_row?.weigh_in_time ?? row.session?.weigh_in_time ?? undefined;
 
-  return {
+  const athlete = {
     memberId: row.member_id || '',
     name: row.name,
     age: toFiniteNumber(row.age, 0),
@@ -621,6 +623,8 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
         }
       : undefined,
   };
+  if (!isLiftResult(athlete)) throw new Error('athlete contains invalid fields');
+  return athlete;
 }
 
 export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {

@@ -56,9 +56,9 @@ describe("usePaginatedSchedule width changes", () => {
   const scrollToOffset = jest.fn();
   const scrollToIndex = jest.fn();
 
-  function Harness() {
+  function Harness({ days = schedule }: { days?: Schedule }) {
     captured = usePaginatedSchedule({
-      schedule,
+      schedule: days,
       onTitleChange: jest.fn(),
       formatDayTitle: (d) => d.date,
     });
@@ -204,4 +204,30 @@ describe("usePaginatedSchedule width changes", () => {
       animated: false,
     });
   });
+  it("clamps the current page when a refresh removes days, then unfolds safely", () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(<Harness />); });
+    act(() => { captured!.handlePageChange(2); });
+    act(() => { tree.update(<Harness days={schedule.slice(0, 1)} />); });
+    expect(captured!.currentPage).toBe(0);
+    expect(scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+    setWidth(1000);
+    act(() => { tree.update(<Harness days={schedule.slice(0, 1)} />); });
+    expect(scrollToOffset).toHaveBeenLastCalledWith({ offset: 0, animated: false });
+  });
+
+  it("ignores invalid page targets and clamps scroll overshoot", () => {
+    act(() => { create(<Harness />); });
+    act(() => {
+      captured!.handlePageChange(-1);
+      captured!.handlePageChange(3);
+      captured!.handlePageChange(Number.NaN);
+    });
+    expect(scrollToIndex).not.toHaveBeenCalled();
+    act(() => { captured!.onMomentumScrollEnd(momentumEvent(-400)); });
+    expect(captured!.currentPage).toBe(0);
+    act(() => { captured!.onMomentumScrollEnd(momentumEvent(4000)); });
+    expect(captured!.currentPage).toBe(2);
+  });
+
 });
