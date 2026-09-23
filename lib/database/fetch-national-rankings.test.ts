@@ -8,7 +8,7 @@ import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
 const mockGetJson = jest.fn();
 
 jest.mock("@/lib/api/meetcal-api", () => ({
-  getJson: (...args: any[]) => mockGetJson(...args),
+  getJsonArray: (...args: any[]) => mockGetJson(...args),
 }));
 
 jest.mock("@/lib/database/offline-cache", () => ({

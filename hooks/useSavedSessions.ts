@@ -4,7 +4,11 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { calculateWeighInTime, hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 import { useAuth, useUser } from '@clerk/expo';
-import { scheduleNotification, cancelNotification } from '@/utils/notifications';
+import {
+  cancelNotification,
+  NOTIFICATION_ENABLED_KEY,
+  scheduleNotification,
+} from '@/utils/notifications';
 import { getPlatformStartTime } from '@/data/types/schedule';
 import { fetchSchedule } from '@/lib/database/queries'; // Import fetchSchedule
 import { convertToUTC, getMeetConfig } from '@/data/meets/config'; // Import convertToUTC and getMeetConfig for proper timezone handling
@@ -15,23 +19,17 @@ import type { Schedule as ScheduleType } from '@/types/schedule';
 import { getMeetData } from '@/lib/database/offline-store';
 import { getCachedAuthState } from '@/lib/authCache';
 import { posthog } from '@/lib/posthog';
+import { generateSessionId, getSavedSessionsKey } from '@/utils/session';
 import {
   deleteSavedSession as deleteSavedSessionFromApi,
   deleteSavedSessions as deleteSavedSessionsFromApi,
   fetchSavedSessions,
   fetchUserPreferences,
   putSavedSession,
+  MeetCalApiError,
+  MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
-
-// Function to generate unique session IDs
-function generateSessionId(meet: MeetName, sessionNumber: number | string, platform: string): string {
-  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, '-');
-}
-
-// Function to get user-specific storage key
-const getSavedSessionsKey = (userId: string) => `@saved_sessions_${userId}`;
-
-const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
+import { devLog } from '@/lib/logger';
 
 export interface SavedSession {
   id: string;
@@ -47,19 +45,85 @@ export interface SavedSession {
   athleteName?: string; // For backward compatibility
 }
 
+/** A session reminder fires this long before the session's start time. */
+const NOTIFICATION_LEAD_MS = 60 * 60 * 1000;
+
+/**
+ * Saving a session used to emit ~15 `console.log` lines — including the same
+ * instant formatted in three timezones — on every save, in production. Keep
+ * the trace, keep it out of release builds.
+ */
+function logNotificationScheduling(step: string, detail?: unknown): void {
+  if (!__DEV__) return;
+  console.log(`[notifications] ${step}`, detail);
+}
+
+/**
+ * Read one persisted session, normalising rather than rejecting fields that
+ * older builds (or the app itself) wrote as `null`/missing.
+ *
+ * A row is dropped only when it has no identity: no `id`, `meet`, session
+ * number or platform. Everything else defaults, the same way the API branch
+ * of the reconcile does. Rejecting on e.g. `weightClass: null` used to drop
+ * sessions the app had just written from an unvalidated schedule row — and if
+ * the server then answered `[]`, the reconcile removed the key for good.
+ */
+function normalizeStoredSession(value: unknown): SavedSession | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const text = (field: unknown): string => (typeof field === 'string' ? field : '');
+
+  const sessionNumber =
+    typeof row.sessionNumber === 'number'
+      ? row.sessionNumber
+      : typeof row.sessionNumber === 'string' && row.sessionNumber.trim() !== ''
+        ? Number(row.sessionNumber)
+        : NaN;
+  if (
+    typeof row.id !== 'string' || row.id.trim().length === 0 ||
+    typeof row.meet !== 'string' || row.meet.trim().length === 0 ||
+    !Number.isInteger(sessionNumber) || sessionNumber < 0 ||
+    typeof row.platform !== 'string' || row.platform.trim().length === 0
+  ) {
+    return null;
+  }
+
+  const session: SavedSession = {
+    ...(row as unknown as SavedSession),
+    id: row.id,
+    meet: row.meet,
+    sessionNumber,
+    platform: row.platform,
+    weightClass: text(row.weightClass),
+    startTime: text(row.startTime),
+    weighInTime: text(row.weighInTime),
+    date: text(row.date),
+  };
+  if (typeof row.notes === 'string') session.notes = row.notes;
+  else delete session.notes;
+  if (typeof row.athleteName === 'string') session.athleteName = row.athleteName;
+  else delete session.athleteName;
+  if (Array.isArray(row.athleteNames)) {
+    session.athleteNames = row.athleteNames.filter(
+      (name: unknown): name is string => typeof name === 'string',
+    );
+  } else {
+    delete session.athleteNames;
+  }
+  return session;
+}
+
 function parseStoredSessions(raw: string | null): SavedSession[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((session): session is SavedSession => {
-      return Boolean(
-        session &&
-          typeof session === 'object' &&
-          'id' in session &&
-          'meet' in session
-      );
-    });
+    const sessions: SavedSession[] = [];
+    for (const value of parsed) {
+      const session = normalizeStoredSession(value);
+      if (session) sessions.push(session);
+    }
+    return sessions;
   } catch {
     return [];
   }
@@ -185,14 +249,34 @@ export function useSavedSessions() {
 
       // Fetch from the API when Clerk can provide a fresh token.
       if (user?.id) {
-        const token = await getToken().catch(() => null);
-        if (!token) {
+        // PoT #7: "Clerk threw" and "Clerk has no token" are different
+        // failures, and neither is "the server says you have nothing saved".
+        // `.catch(() => null)` used to flatten all three into one falsy value.
+        // Both no-token paths return *before* the reconcile below, so an auth
+        // or network failure can never reach the branch that clears storage.
+        let token: string | null;
+        try {
+          token = await getToken();
+        } catch (tokenError) {
+          console.error(
+            'Saved sessions: Clerk getToken() failed; keeping local sessions',
+            tokenError,
+          );
           setSavedSessions(localSessions);
           return;
         }
+        if (!token) {
+          devLog('Saved sessions: no Clerk token; keeping local sessions');
+          setSavedSessions(localSessions);
+          return;
+        }
+
+        // `fetchSavedSessions` throws on timeout, HTTP error, and malformed
+        // body, so reaching here means the server answered authoritatively.
+        // Only an authoritative answer is allowed to shrink local state.
         const apiSessions = await fetchSavedSessions(token);
 
-        if (apiSessions && apiSessions.length > 0) {
+        if (apiSessions.length > 0) {
           const formattedSessions = apiSessions.map(s => ({
             id: s.session_id,
             meet: s.meet as MeetName,
@@ -206,15 +290,17 @@ export function useSavedSessions() {
             athleteNames: s.athlete_names,
           }));
           await commitSessions(formattedSessions);
+        } else if (localSessions.length === 0) {
+          // Server and device agree there is nothing saved: drop the empty
+          // key so a stale `[]` blob does not linger.
+          await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
+          sessionsRawRef.current = null;
+          sessionsRef.current = [];
+          setSavedSessions([]);
         } else {
-          if (localSessions.length === 0) {
-            await AsyncStorage.removeItem(getSavedSessionsKey(activeUserId));
-            sessionsRawRef.current = null;
-            sessionsRef.current = [];
-            setSavedSessions([]);
-          } else {
-            setSavedSessions(localSessions);
-          }
+          // Server says empty but the device has rows. Offline saves reach the
+          // API later, so local wins rather than being deleted.
+          setSavedSessions(localSessions);
         }
       } else {
         setSavedSessions(localSessions);
@@ -226,9 +312,17 @@ export function useSavedSessions() {
     } catch (error) {
       console.error('Error loading saved sessions:', error);
       
-      // Check if it's a network/connection error
-      if (error instanceof Error && (error.message.includes('network') || error.message.includes('fetch'))) {
-        console.error('Network error detected, falling back to local storage');
+      // Keep the three failure modes distinct. Sniffing `error.message` for
+      // "network"/"fetch" matched nothing the API client actually throws, so
+      // every failure read as an unexplained one.
+      if (error instanceof MeetCalApiTimeoutError) {
+        console.error('Saved sessions request timed out, falling back to local storage');
+      } else if (error instanceof MeetCalApiError) {
+        console.error('Saved sessions request rejected, falling back to local storage', {
+          status: error.status,
+        });
+      } else {
+        console.error('Network or storage failure, falling back to local storage');
       }
       
       // Attempt to load from local storage as a final fallback
@@ -314,7 +408,7 @@ export function useSavedSessions() {
                   platform: athlete.session!.platform,
                   weightClass: athlete.weightClass ?? '',
                   startTime: fallbackStartTime,
-                  weighInTime: fallbackStartTime ? calculateWeighInTime(fallbackStartTime) : '',
+                  weighInTime: calculateWeighInTime(fallbackStartTime),
                   date: athlete.session?.date ?? '',
                   athleteNames: []
                 },
@@ -340,6 +434,13 @@ export function useSavedSessions() {
       // Use a temporary array to manage local state updates
       let updatedLocalSessions = [...savedSessions];
 
+      // One read for the whole batch. `saveSession` otherwise re-reads this
+      // single boolean preference from AsyncStorage once per session, and a
+      // full national-meet roster produces one session per platform-session
+      // on the schedule.
+      const notificationsEnabled =
+        (await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)) === 'true';
+
       // Loop through generated sessions and save each one (which handles local + Supabase)
       let allSavesSucceeded = true;
       for (const sessionToSave of uniqueSessionsToSave) {
@@ -358,8 +459,13 @@ export function useSavedSessions() {
           };
         }
 
-        // Call saveSession for each session to handle upsert and local state
-        const success = await saveSession(sessionWithMergedData);
+        // Call saveSession for each session to handle upsert and local state.
+        // `schedule` is the same meet's schedule for every iteration, so hand
+        // it over rather than letting each save re-fetch it.
+        const success = await saveSession(sessionWithMergedData, {
+          schedule,
+          notificationsEnabled,
+        });
         if (!success) {
           allSavesSucceeded = false;
           console.error(`Failed to save session ${sessionWithMergedData.id} from start list.`);
@@ -377,9 +483,29 @@ export function useSavedSessions() {
     }
   };
 
-  const saveSession = async (session: SavedSession) => {
+  /**
+   * @param options.schedule The meet's schedule when the caller already has
+   * it. Notification scheduling (step 3 below) needs the session's day, and
+   * `fetchSchedule` only de-duplicates *concurrent* callers — so the
+   * sequential save loop in `saveSessionsFromAthletes` used to issue one full
+   * `GET /meets/schedule` per saved session for the same meet. Passing the
+   * already-resolved schedule collapses those back to the one fetch the
+   * caller made. Must be non-empty: an empty schedule is exactly the case
+   * where the fetch below is still worth making.
+   *
+   * @param options.notificationsEnabled The already-read value of
+   * `NOTIFICATION_ENABLED_KEY`. The flag is a single user preference that
+   * cannot change while a batch save is running, so the per-session loop in
+   * `saveSessionsFromAthletes` — up to one iteration per session on a meet's
+   * full roster — reads it once instead of issuing one AsyncStorage round
+   * trip per saved session.
+   */
+  const saveSession = async (
+    session: SavedSession,
+    options?: { schedule?: ScheduleType; notificationsEnabled?: boolean },
+  ) => {
     if (!activeUserId) return false;
-    
+
     try {
       if (!session.meet) {
         console.error('Cannot save session without meet information');
@@ -435,16 +561,29 @@ export function useSavedSessions() {
 
       // 3. Schedule local notification 1 hour before session start time if notifications are enabled
       try {
-        const notificationsEnabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
-        console.log('Notification Scheduling Check - Enabled:', notificationsEnabled);
+        const notificationsEnabled =
+          options?.notificationsEnabled ??
+          ((await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)) === 'true');
+        logNotificationScheduling('enabled', notificationsEnabled);
 
-        if (notificationsEnabled === 'true') {
+        if (notificationsEnabled) {
           const meetName = updatedSession.meet;
           const sessionNumber = updatedSession.sessionNumber;
           const platform = updatedSession.platform;
-          console.log(`Notification Scheduling - Fetching schedule for: ${meetName}, Session ${sessionNumber}, Platform ${platform}`);
-          const schedule = await fetchSchedule(meetName);
-          console.log('Notification Scheduling - Schedule fetched:', schedule ? `${schedule.length} days` : 'null or empty');
+          const providedSchedule =
+            options?.schedule && options.schedule.length > 0
+              ? options.schedule
+              : null;
+          logNotificationScheduling(
+            providedSchedule ? 'reusing caller schedule' : 'fetching schedule',
+            {
+              meetName,
+              sessionNumber,
+              platform,
+            },
+          );
+          const schedule = providedSchedule ?? (await fetchSchedule(meetName));
+          logNotificationScheduling('schedule days', schedule?.length ?? 0);
 
           if (!schedule || schedule.length === 0) {
              console.error(`Notification Scheduling - Could not fetch or schedule is empty for meet: ${meetName}`);
@@ -461,11 +600,13 @@ export function useSavedSessions() {
               break;
             }
           }
-          console.log('Notification Scheduling - Session found:', foundSession ? `Yes (Date: ${sessionDayDate})` : 'No');
+          logNotificationScheduling(
+            'session found',
+            foundSession ? sessionDayDate : false,
+          );
 
           if (foundSession && sessionDayDate) {
             const startTime = getPlatformStartTime(foundSession, platform);
-            console.log(`Notification Scheduling - Start time found: ${startTime}`);
             
             // Get meet config for timezone information
             const meetConfig = await getMeetConfig(meetName);
@@ -477,56 +618,19 @@ export function useSavedSessions() {
               meetConfig.time.timeZoneIdentifier,
             );
             
-            // Format times for clearer logging
-            const sessionDateEastern = sessionDate.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const sessionDateMeetLocal = sessionDate.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-
-            const triggerDate = new Date(sessionDate.getTime() - 60 * 60 * 1000);
+            const triggerDate = new Date(
+              sessionDate.getTime() - NOTIFICATION_LEAD_MS,
+            );
             const now = new Date();
-            
-            const triggerDateEastern = triggerDate.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const triggerDateMeetLocal = triggerDate.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const nowEastern = now.toLocaleString('en-US', {
-              timeZone: 'America/New_York',
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
-            
-            const nowMeetLocal = now.toLocaleString('en-US', {
-              timeZone: meetConfig.time.timeZoneIdentifier,
-              dateStyle: 'short',
-              timeStyle: 'short'
-            });
 
-            console.log(`Notification Scheduling - Session Date (UTC): ${sessionDate.toISOString()}`);
-            console.log(`Notification Scheduling - Session Date (Eastern): ${sessionDateEastern}`);
-            console.log(`Notification Scheduling - Session Date (${meetConfig.time.abbreviation}): ${sessionDateMeetLocal}`);
-            console.log(`Notification Scheduling - Trigger Date (UTC): ${triggerDate.toISOString()}`);
-            console.log(`Notification Scheduling - Trigger Date (Eastern): ${triggerDateEastern}`);
-            console.log(`Notification Scheduling - Trigger Date (${meetConfig.time.abbreviation}): ${triggerDateMeetLocal}`);
-            console.log(`Notification Scheduling - triggerDate > now: ${triggerDate > now}`);
+            logNotificationScheduling('trigger', {
+              sessionUtc: sessionDate.toISOString(),
+              triggerUtc: triggerDate.toISOString(),
+              meetZone: meetConfig.time.timeZoneIdentifier,
+              willSchedule: triggerDate > now,
+            });
 
             if (triggerDate > now) {
-              console.log('Notification Scheduling - Condition met, attempting to schedule...');
               const notificationId = await scheduleNotification(
                 `Session Reminder`,
                 `Session ${updatedSession.sessionNumber} ${updatedSession.platform} starts in 1 hour.`,
@@ -543,17 +647,9 @@ export function useSavedSessions() {
                   date: sessionDayDate,
                 },
               );
-              if (notificationId) {
-                console.log('Notification Scheduling - scheduleNotification called successfully.', notificationId);
-              }
-            } else {
-              console.log('Notification Scheduling - Trigger date is in the past, not scheduling.');
+              logNotificationScheduling('scheduled', notificationId);
             }
-          } else {
-            console.log('Notification Scheduling - Session not found or date missing, cannot schedule.');
           }
-        } else {
-          console.log('Notification Scheduling - Notifications are disabled in settings.');
         }
       } catch (notifError) {
         console.error('Notification Scheduling - Error caught during scheduling block:', notifError);
@@ -602,8 +698,6 @@ export function useSavedSessions() {
           if (notificationsEnabled === 'true') {
              // Only cancel if notifications were potentially scheduled
             await cancelNotification(sessionToRemove.id);
-          } else {
-            console.log(`removeSession: Notifications disabled, skipping cancellation for ${sessionToRemove.id}`);
           }
         } catch (cancelError) {
           console.error(`removeSession: Failed to cancel notification for ${sessionToRemove.id}:`, cancelError);
@@ -628,7 +722,10 @@ export function useSavedSessions() {
     let token: string | null = null;
     try {
       token = await getToken();
-    } catch {
+    } catch (tokenError) {
+      // Pruning is destructive, so a token failure must skip it rather than
+      // guess at the preference (PoT #7).
+      console.error('pruneStartedSessions: Clerk getToken() failed', tokenError);
       return;
     }
     if (!token) return;

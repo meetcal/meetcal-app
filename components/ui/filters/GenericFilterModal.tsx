@@ -1,7 +1,7 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { getChevronIcon } from "@/lib/start-list-utils";
-import * as Haptics from "expo-haptics";
+import { lightImpact } from "@/lib/haptics";
 import React, { useCallback, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
@@ -73,7 +73,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const [tempFilters, setTempFilters] = useState<Record<string, string>>({});
   const prevTempFiltersRef = useRef<Record<string, string>>({});
   const pendingDependencyResetRef = useRef<Record<string, boolean>>({});
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const sectionLayoutsRef = useRef<Record<string, number>>({});
 
   const { height: windowHeight } = useWindowDimensions();
@@ -169,18 +169,14 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   );
 
   const handleApply = () => {
-    if (process.env.EXPO_OS === "ios") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    lightImpact();
     onApplyFilters(tempFilters);
     setExpandedSection(null);
     onClose();
   };
 
   const handleReset = () => {
-    if (process.env.EXPO_OS === "ios") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    lightImpact();
     const resetFilters = Object.keys(filters).reduce<Record<string, string>>(
       (acc, key) => {
         acc[key] = "";

@@ -19,6 +19,20 @@ export function generateSessionId(
 }
 
 /**
+ * Every AsyncStorage key a user's saved sessions have lived under, current key
+ * first. Reset and migration have to sweep the legacy keys too, so the list is
+ * kept here rather than inlined at each call site.
+ */
+export function getAllSavedSessionsKeys(userId: string): string[] {
+  return [
+    getSavedSessionsKey(userId),
+    `savedSessions_${userId}`,
+    `@savedSessions_${userId}`,
+    `sessions_${userId}`,
+  ];
+}
+
+/**
  * Create lookup key for session-platform combinations
  */
 export function makeLookupKey(

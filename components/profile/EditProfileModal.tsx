@@ -1,4 +1,5 @@
 import { EditableField } from "@/app/schedule-toolbar/profile";
+import { getCloseIcon } from "@/lib/start-list-utils";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useUser } from "@clerk/expo";
 import React from "react";
@@ -146,7 +147,7 @@ const EditProfileModal = ({
                 }}
               >
                 <IconSymbol
-                  name={Platform.OS === "ios" ? "xmark" : "close"}
+                  name={getCloseIcon()}
                   size={20}
                   color={colors.secondaryText}
                 />

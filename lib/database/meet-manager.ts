@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import type { SupabaseLiftResult } from '@/data/types/athletes';
+import { normalizeAthleteName } from '@/lib/athletes';
 import {
   clearImplicitMeetData,
   clearMeetData,
+  getExplicitlyDownloadedMeetIds,
   getMeetData,
   isMeetExplicitlyDownloaded,
   saveAthleteBestsBatch,
@@ -20,13 +22,19 @@ import {
   fetchApiMeetPackageConditional,
   fetchApiMeets,
   fetchApiResultsByNames,
-  mapApiAthlete,
+  mapApiAthletes,
   mapApiLiftingResult,
   mapPackageSchedule,
+  MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
 import type { Schedule } from '@/types/schedule';
-import { calculateInitialPage } from '@/utils/dateTime';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  calculateInitialPage,
+  getHistoryCutoffDate,
+} from '@/utils/dateTime';
+import { devLog } from '../logger';
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
@@ -48,9 +56,6 @@ const PRIORITY_SESSION_PREFETCH_LIMIT = 8;
 // history is now larger than the old 2-year window.
 const HISTORY_DOWNLOAD_BATCH_SIZE = 25;
 
-function normalizeAthleteNameForHistory(value: string | null | undefined): string {
-  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
 const FULL_PREFETCH_DELAY_MS = 5000;
 
 interface MeetInfo {
@@ -63,22 +68,24 @@ interface CacheInfo {
   meets: { [key: string]: MeetInfo };
 }
 
+/**
+ * Guards against a lifting-results payload that belongs to a different meet.
+ *
+ * An *empty* result set is not an error: an upcoming meet has a full athlete
+ * roster and no results at all until it is lifted. The only caller
+ * (`prefetchMeetDataUncached`) therefore skips this when there is nothing to
+ * check, and throwing on `liftingResults.length === 0` here would fail the
+ * offline download of every upcoming meet.
+ */
 export function validatePrefetchedLiftingResults(
   meet: MeetName,
   athleteNames: string[],
   liftingResults: { name?: string | null }[],
 ): void {
-  const normalizeName = (value: string | null | undefined) =>
-    (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-  if (athleteNames.length > 0 && liftingResults.length === 0) {
-    throw new Error(`No lifting results fetched for meet: ${meet}`);
-  }
-
   if (athleteNames.length > 0 && liftingResults.length > 0) {
-    const athleteSet = new Set(athleteNames.map(normalizeName));
+    const athleteSet = new Set(athleteNames.map(normalizeAthleteName));
     const matchedCount = liftingResults.reduce((count, result) => {
-      return athleteSet.has(normalizeName(result.name)) ? count + 1 : count;
+      return athleteSet.has(normalizeAthleteName(result.name)) ? count + 1 : count;
     }, 0);
 
     if (matchedCount === 0) {
@@ -87,12 +94,34 @@ export function validatePrefetchedLiftingResults(
   }
 }
 
+/**
+ * The cached meets list is the offline source for the meet picker, the schedule
+ * header and every meet-local time conversion, so a row without `name`,
+ * `dates` or `time` is not a meet we can render — it would surface as
+ * `Cannot read property 'timeZoneIdentifier' of undefined` in a screen rather
+ * than as a missing row here.
+ */
+function isCachedMeet(value: unknown): value is Meet {
+  if (!value || typeof value !== 'object') return false;
+  const meet = value as Partial<Meet>;
+  return (
+    typeof meet.name === 'string' &&
+    meet.name.length > 0 &&
+    typeof meet.dates === 'object' &&
+    meet.dates !== null &&
+    typeof meet.time === 'object' &&
+    meet.time !== null &&
+    typeof meet.time.timeZoneIdentifier === 'string'
+  );
+}
+
 export async function getCachedMeets(): Promise<Meet[]> {
   try {
     const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
     if (!cached) return [];
-    const parsed = JSON.parse(cached);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(cached);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isCachedMeet);
   } catch (error) {
     console.error('Error reading cached meets list:', error);
     return [];
@@ -120,7 +149,32 @@ async function getCacheInfo(): Promise<CacheInfo> {
   try {
     const info = await AsyncStorage.getItem(MEET_CACHE_KEY);
     if (info) {
-      return JSON.parse(info);
+      // Callers do `Object.entries(cacheInfo.meets)`. A legacy or truncated
+      // entry that parses but has no `meets` object would throw there, inside
+      // `cleanupOldMeetData`, failing every meet open from then on.
+      const parsed: unknown = JSON.parse(info);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const candidate = parsed as Record<string, unknown>;
+        if (candidate.meets && typeof candidate.meets === 'object' && !Array.isArray(candidate.meets)) {
+          const meets: Record<string, MeetInfo> = {};
+          let totalSize = 0;
+          for (const [name, value] of Object.entries(candidate.meets)) {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+            const entry = value as Record<string, unknown>;
+            if (
+              typeof entry.lastAccessed !== 'number' || !Number.isFinite(entry.lastAccessed) || entry.lastAccessed < 0 ||
+              typeof entry.size !== 'number' || !Number.isFinite(entry.size) || entry.size < 0
+            ) continue;
+            // Only validated entries can participate in eviction/accounting.
+            Object.defineProperty(meets, name, {
+              value: { lastAccessed: entry.lastAccessed, size: entry.size },
+              enumerable: true, configurable: true, writable: true,
+            });
+            totalSize += entry.size;
+          }
+          return { totalSize, meets };
+        }
+      }
     }
     return {
       totalSize: 0,
@@ -159,8 +213,7 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
       await setCachedMeets(meets);
       return meets;
     } catch (error) {
-      const err = error as Error;
-      const isTimeout = err.message.includes('fetchMeets timed out');
+      const isTimeout = error instanceof MeetCalApiTimeoutError;
       const now = Date.now();
       if (!isTimeout || now - lastFetchMeetsTimeoutLogAt >= TIMEOUT_LOG_THROTTLE_MS) {
         if (isTimeout) {
@@ -192,7 +245,7 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
     const actualMeet = await fetchApiMeetByName(name);
 
     if (!actualMeet) {
-      console.log('No meet found with name:', name);
+      devLog('No meet found with name:', name);
       return null;
     }
 
@@ -338,9 +391,14 @@ async function cleanupOldMeetData() {
   // Most-recently-accessed first so the active meet is never a candidate.
   meets.sort(([, a], [, b]) => b.lastAccessed - a.lastAccessed);
 
+  // One read of the downloads blob for the whole sweep: this runs on every
+  // meet open, and the per-meet `isMeetExplicitlyDownloaded` call re-read and
+  // re-parsed the same AsyncStorage value once per cached meet.
+  const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
+
   let implicitKept = 0;
   for (const [meet] of meets) {
-    if (await isMeetExplicitlyDownloaded(meet)) {
+    if (explicitlyDownloaded.has(meet)) {
       continue;
     }
     implicitKept += 1;
@@ -369,9 +427,7 @@ export async function prefetchMeetData(meet: MeetName) {
 
 async function prefetchMeetDataUncached(meet: MeetName) {
   const errors: string[] = [];
-  const twoYearsAgo = new Date();
-  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-  const historyCutoffDate = twoYearsAgo.toISOString().split('T')[0];
+  const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
   let freshEtag: string | null = null;
 
   try {
@@ -386,7 +442,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
     const pkg = fetched.package;
     freshEtag = fetched.etag;
     const schedule = mapPackageSchedule(pkg);
-    const athletes = pkg.athletes.map(mapApiAthlete);
+    const athletes = mapApiAthletes(pkg.athletes, '/meets/package');
     const athleteNames = Array.from(
       new Set(athletes.map((athlete) => athlete.name).filter(Boolean)),
     );
@@ -436,7 +492,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
 
         const resultsByName = new Map<string, SupabaseLiftResult[]>();
         for (const row of batchResults) {
-          const key = normalizeAthleteNameForHistory(row.name);
+          const key = normalizeAthleteName(row.name);
           const existing = resultsByName.get(key);
           if (existing) {
             existing.push(row);
@@ -447,7 +503,7 @@ async function prefetchMeetDataUncached(meet: MeetName) {
 
         for (const name of batch) {
           const rows =
-            resultsByName.get(normalizeAthleteNameForHistory(name)) ?? [];
+            resultsByName.get(normalizeAthleteName(name)) ?? [];
           await saveAthleteHistory(name, rows);
         }
       } catch (historyError) {

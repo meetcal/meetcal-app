@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -41,11 +40,38 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
-import { formatDayTitle, getTimeZoneAbbreviation } from "@/utils/dateTime";
+import { DaySchedule } from "@/types/schedule";
+import {
+  formatDayTitle,
+  formatIsoDateTitle,
+} from "@/utils/dateTime";
 import { useUser } from "@clerk/expo";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/**
+ * iOS 27.1 leading-aligns the native nav title on iPhone Duo's reorganised bar,
+ * and `headerTitleAlign` is ignored by the iOS native stack. Rendering the date
+ * as a custom title view puts it back in the centre, as on every other iPhone.
+ * The explicit width keeps it inside the safe area rather than under the band.
+ */
+function HeaderDate({ children }: { children: string }) {
+  const colors = useAppColors();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  return (
+    <View
+      style={[styles.headerDate, { width: width - insets.left - insets.right }]}
+    >
+      <ThemedText style={[styles.headerDateText, { color: colors.text }]}>
+        {children}
+      </ThemedText>
+    </View>
+  );
+}
 
 export default function ScheduleScreen() {
-  const { width } = useWindowDimensions();
+  const screenInsets = useScreenHorizontalInsets();
   const navigation = useNavigation();
   const {
     selectedMeet,
@@ -72,20 +98,24 @@ export default function ScheduleScreen() {
     isRefreshing,
     initialScrollIndex,
     refreshSchedule,
-  } = useScheduleData(selectedMeet);
+  } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
   const { savedSessions } = useSavedSessions();
 
   const handleTitleChange = useCallback(
     (title: string) => {
-      navigation.setOptions({ title });
+      navigation.setOptions({
+        title,
+        headerTitle: () => <HeaderDate>{title}</HeaderDate>,
+      });
     },
     [navigation],
   );
 
   const {
     currentPage,
+    pageWidth,
     flatListRef,
     handlePageChange,
     onViewableItemsChanged,
@@ -97,69 +127,79 @@ export default function ScheduleScreen() {
     formatDayTitle,
   });
 
-  const timeZoneAbbreviation = useMemo(() => {
-    const timeZoneId =
-      meetDetails?.time.timeZoneIdentifier || "America/New_York";
-    return getTimeZoneAbbreviation(timeZoneId);
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  // The old "America/New_York" default also mislabelled every meet whose
+  // details had not loaded yet.
+  const timeZoneAbbreviation = meetDetails?.time.abbreviation ?? "";
 
   // Header configuration
   useLayoutEffect(() => {
-    const offlineDataIcon =
-      Platform.OS === "ios" ? "square.and.arrow.down" : "download";
+    const openOfflineData = () => router.push("/schedule-toolbar/offline-data");
+    const openProfile = () => {
+      if (!isUserLoaded) return;
+      if (isSignedIn) {
+        router.push("/schedule-toolbar/profile");
+      } else {
+        router.push({
+          pathname: "/(auth)/sign-in",
+          // A real route, not a label: sign-in hands this straight to
+          // `router.replace`, and the profile screen is where the tap was
+          // headed.
+          params: { from: "/schedule-toolbar/profile", feature: "profile" },
+        });
+      }
+    };
+
+    // Native UIBarButtonItems on iOS. Custom React views stay pinned to the
+    // horizontal bar, so only native items get relocated into iPhone Duo's
+    // vertical bar alongside the tab rail the way system apps do.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerLeftItems: () => [
+          {
+            type: "button",
+            label: "Offline data",
+            icon: { type: "sfSymbol", name: "square.and.arrow.down" },
+            onPress: openOfflineData,
+          },
+        ],
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: isSignedIn ? "My profile and settings" : "Sign in",
+            icon: { type: "sfSymbol", name: "person.circle.fill" },
+            onPress: openProfile,
+          },
+        ],
+      });
+      return;
+    }
+
     navigation.setOptions({
-      ...(Platform.OS === "ios" && {
-        headerLeft: () => (
+      headerRight: () => (
+        <View style={styles.headerActions}>
           <Pressable
             style={styles.headerIconButton}
-            onPress={() => router.push("/schedule-toolbar/offline-data")}
+            onPress={openOfflineData}
             accessibilityRole="button"
             accessibilityLabel="Offline data"
           >
-            <IconSymbol name={offlineDataIcon} size={24} color={colors.text} />
+            <IconSymbol name="square.and.arrow.down" size={24} color={colors.text} />
           </Pressable>
-        ),
-      }),
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          {Platform.OS === "android" && (
-            <Pressable
-              style={styles.headerIconButton}
-              onPress={() => router.push("/schedule-toolbar/offline-data")}
-              accessibilityRole="button"
-              accessibilityLabel="Offline data"
-            >
-              <IconSymbol
-                name={offlineDataIcon}
-                size={24}
-                color={colors.text}
-              />
-            </Pressable>
-          )}
           <Pressable
             style={[styles.headerIconButton, { paddingTop: 8 }]}
-            onPress={() => {
-              if (!isUserLoaded) return;
-              if (isSignedIn) {
-                router.push("/schedule-toolbar/profile");
-              } else {
-                router.push({
-                  pathname: "/(auth)/sign-in",
-                  params: { from: "info" },
-                });
-              }
-            }}
+            onPress={openProfile}
             accessibilityRole="button"
             accessibilityLabel={
               isSignedIn ? "My profile and settings" : "Sign in"
             }
           >
             <IconSymbol
-              name={
-                Platform.OS === "ios"
-                  ? "person.circle.fill"
-                  : "person-circle-sharp"
-              }
+              name="person-circle-sharp"
               size={24}
               color={colors.text}
             />
@@ -226,15 +266,14 @@ export default function ScheduleScreen() {
   // Set title to start date when there's no schedule loaded
   useEffect(() => {
     if (!isLoading && schedule.length === 0 && meetDetails?.dates?.start) {
-      const startDate = new Date(meetDetails.dates.start);
-      if (!Number.isNaN(startDate.getTime())) {
-        const formattedDate = new Intl.DateTimeFormat("en-US", {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-        }).format(startDate);
+      // The meet start date is a calendar date in the meet's timezone. Format
+      // it through the shared UTC-safe helper; `new Date("2026-06-20")` is UTC
+      // midnight and renders as Jun 19 on any US device.
+      const formattedDate = formatIsoDateTitle(meetDetails.dates.start);
+      if (formattedDate) {
         navigation.setOptions({
           title: formattedDate,
+          headerTitle: () => <HeaderDate>{formattedDate}</HeaderDate>,
         });
       }
     }
@@ -272,8 +311,8 @@ export default function ScheduleScreen() {
 
   // Render day view
   const renderDayView = useCallback(
-    ({ item }: { item: any }) => (
-      <View style={[styles.pageContainer, { width }]}>
+    ({ item }: { item: DaySchedule }) => (
+      <View style={[styles.pageContainer, { width: pageWidth }]}>
         <DayView
           day={item}
           timeZone={timeZoneAbbreviation}
@@ -283,7 +322,7 @@ export default function ScheduleScreen() {
         />
       </View>
     ),
-    [width, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
+    [pageWidth, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
   );
 
   if (isMeetLoading) {
@@ -293,7 +332,7 @@ export default function ScheduleScreen() {
   if (!selectedMeet || !meetDetails) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <View style={styles.loadingContainer}>
           <ThemedText style={[styles.loadingText, { color: colors.text }]}>
@@ -311,7 +350,7 @@ export default function ScheduleScreen() {
   return (
     <ThemedView
       testID="schedule-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <OnboardingView
         visible={showOnboarding}
@@ -407,8 +446,8 @@ export default function ScheduleScreen() {
             renderItem={renderDayView}
             initialScrollIndex={initialScrollIndex}
             getItemLayout={(data, index) => ({
-              length: width,
-              offset: width * index,
+              length: pageWidth,
+              offset: pageWidth * index,
               index,
             })}
             onViewableItemsChanged={onViewableItemsChanged}
@@ -504,6 +543,13 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     textAlign: "center",
+  },
+  headerDate: {
+    alignItems: "center",
+  },
+  headerDateText: {
+    fontSize: 17,
+    fontWeight: "600",
   },
   headerActions: {
     flexDirection: "row",

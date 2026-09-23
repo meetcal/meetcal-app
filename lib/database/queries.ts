@@ -9,7 +9,6 @@ import {
 import {
   fetchApiAthletes,
   fetchApiAthletesWithSession,
-  fetchApiLiftingResultsForMeet,
   fetchApiRecentResultsByNames,
   fetchApiResultsByNames,
   fetchApiYearBestsByNames,
@@ -110,16 +109,4 @@ export async function fetchAthleteBestsForNames(
     };
   });
   return byName;
-}
-
-export async function fetchLiftingResultsForMeet(
-  meet: MeetName,
-  _athleteNames: string[] = [],
-): Promise<SupabaseLiftResult[]> {
-  try {
-    return await fetchApiLiftingResultsForMeet(meet);
-  } catch (error) {
-    console.error('Error in fetchLiftingResultsForMeet:', error);
-    throw error;
-  }
 }

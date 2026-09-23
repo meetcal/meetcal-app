@@ -1,4 +1,5 @@
 import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
+import { getChevronIcon } from "@/lib/start-list-utils";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
@@ -32,6 +33,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
 export type EditableField = "firstName" | "lastName" | "email";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
@@ -67,7 +70,7 @@ function ProfileField({
           </ThemedText>
         </View>
         <IconSymbol
-          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+          name={getChevronIcon("right")}
           size={20}
           color={colors.link}
         />
@@ -77,6 +80,7 @@ function ProfileField({
 }
 
 export default function ProfileScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -93,13 +97,9 @@ export default function ProfileScreen() {
   const { forceSync, refreshAvailableMeets } = useSelectedMeet();
 
   useEffect(() => {
-    if (__DEV__) {
-      console.log("[Profile] Mounted", { pathname, userId: user?.id });
-    }
+    devLog("[Profile] Mounted", { pathname, userId: user?.id });
     return () => {
-      if (__DEV__) {
-        console.log("[Profile] Unmounted");
-      }
+      devLog("[Profile] Unmounted");
     };
   }, [pathname, user?.id]);
 
@@ -132,23 +132,9 @@ export default function ProfileScreen() {
     setIsEditing(true);
   };
 
-  const sendEmailFeedback = async () => {
+  const sendEmailFeedback = () => {
     const email = "maddisen@meetcal.app";
     const subject = "MeetCal App Feedback";
-
-    let manufacturer = "";
-    let device = "";
-    let deviceType = "";
-    try {
-      const { getManufacturer, getDevice, getDeviceType } = await import(
-        "react-native-device-info"
-      );
-      manufacturer = await getManufacturer();
-      device = await getDevice();
-      deviceType = getDeviceType();
-    } catch (err) {
-      console.error("Error getting device info:", err);
-    }
 
     const body = [
       "---- Device Info ----",
@@ -195,7 +181,7 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{
@@ -248,19 +234,16 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <NotificationSettings
-            colors={colors}
             subscriptionStatus={subscriptionType || "free"}
             requireAuth={requireAuth}
             router={router}
           />
           <AutoUnsaveSetting
-            colors={colors}
             isSubscribed={Boolean(isSubscribed)}
             requireAuth={requireAuth}
             router={router}
           />
           <ProfileActionSetting
-            colors={colors}
             label="Widget Settings"
             description={
               Platform.OS === "ios"
@@ -270,7 +253,7 @@ export default function ProfileScreen() {
             onPress={() => router.push("/schedule-toolbar/widget-settings")}
           />
           {Platform.OS === "android" && (
-            <AndroidCalendarSetting colors={colors} />
+            <AndroidCalendarSetting />
           )}
         </View>
 
@@ -304,7 +287,7 @@ export default function ProfileScreen() {
                 Customer Support
               </ThemedText>
               <IconSymbol
-                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                name={getChevronIcon("right")}
                 size={20}
                 color={colors.link}
               />
@@ -327,7 +310,7 @@ export default function ProfileScreen() {
                 Submit Feedback
               </ThemedText>
               <IconSymbol
-                name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                name={getChevronIcon("right")}
                 size={20}
                 color={colors.link}
               />
@@ -367,7 +350,7 @@ export default function ProfileScreen() {
                 <ActivityIndicator size="small" color={colors.link} />
               ) : (
                 <IconSymbol
-                  name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+                  name={getChevronIcon("right")}
                   size={20}
                   color={colors.link}
                 />

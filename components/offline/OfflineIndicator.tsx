@@ -5,6 +5,15 @@ import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+/** How often the banner re-checks reachability while mounted. */
+const NETWORK_POLL_INTERVAL_MS = 5000;
+/**
+ * Cold start has Clerk, RevenueCat and the meets list all in flight, and
+ * `isInternetReachable` is briefly null. Waiting this long before the banner
+ * may appear keeps it from flashing on a perfectly healthy launch.
+ */
+const BANNER_MIN_DELAY_MS = 8000;
+
 export function OfflineIndicator() {
   const insets = useSafeAreaInsets();
   const { isUsingStaleCache, lastSyncTimestamp } = useSubscription();
@@ -15,20 +24,26 @@ export function OfflineIndicator() {
 
   // Check network status
   useEffect(() => {
+    let cancelled = false;
+
     async function checkNetwork() {
       const hasNetwork = await isNetworkAvailable();
+      if (cancelled) return;
       setIsOffline(!hasNetwork);
       setHasCheckedNetwork(true);
     }
     checkNetwork();
 
     // Check periodically
-    const interval = setInterval(checkNetwork, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(checkNetwork, NETWORK_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setMinDelayPassed(true), 8000);
+    const timer = setTimeout(() => setMinDelayPassed(true), BANNER_MIN_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -87,6 +102,8 @@ export function OfflineIndicator() {
           backgroundColor: colors.background,
           transform: [{ translateY: slideAnim }],
           paddingTop: insets.top - 10,
+          left: insets.left,
+          right: insets.right,
         },
       ]}
     >

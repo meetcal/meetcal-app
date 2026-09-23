@@ -9,11 +9,32 @@ import {
   getCachedAthleteBestsForNames,
   saveAthleteBestsBatch,
 } from '@/lib/database/offline-store';
+import { getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
+/**
+ * The in-memory bests cache is keyed by athlete name and was never evicted, so
+ * it grew with every roster the session ever touched — browsing a dozen large
+ * meets left thousands of entries pinned for the life of the process. Bounded
+ * to the most recent `YEAR_BESTS_CACHE_LIMIT` names (a couple of full start
+ * lists' worth); a miss just re-reads AsyncStorage.
+ */
+export const YEAR_BESTS_CACHE_LIMIT = 2000;
+
 const cache = new Map<string, YearBests>();
 const inFlight = new Map<string, Promise<YearBests>>();
+
+/** Insertion-ordered eviction: `Map` keys iterate oldest-first. */
+function cacheBests(name: string, bests: YearBests): void {
+  cache.delete(name);
+  cache.set(name, bests);
+  while (cache.size > YEAR_BESTS_CACHE_LIMIT) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
 
 const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
 
@@ -111,9 +132,7 @@ async function getOfflineFallback(athleteName: string): Promise<YearBests> {
   try {
     const results = await getAllCachedLiftingResultsForAthlete(athleteName);
     if (results.length === 0) return ZERO_BESTS;
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const cutoff = oneYearAgo.toISOString().split('T')[0];
+    const cutoff = getHistoryCutoffDate(YEAR_BESTS_YEARS);
     const recent = results.filter(r => {
       if (!r.date) return true;
       const d = new Date(r.date);
@@ -148,15 +167,13 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
     // Stored all-null rows (athletes cached before the most-recent-meet
     // fallback existed) fall through so they get another chance to resolve.
     if (hasRealBests(result)) {
-      cache.set(athleteName, result);
+      cacheBests(athleteName, result);
       return result;
     }
   }
 
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   try {
-    const cutoffDate = oneYearAgo.toISOString().split('T')[0];
+    const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
     const results = await fetchApiYearBests(athleteName, cutoffDate);
     const result: YearBests =
       results.length === 0
@@ -171,19 +188,19 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
       // athlete ever competed at.
       const fallbackByName = await getMostRecentMeetBestsBatch([athleteName]);
       const fallback = fallbackByName[athleteName] ?? ZERO_BESTS;
-      cache.set(athleteName, fallback);
+      cacheBests(athleteName, fallback);
       if (hasRealBests(fallback)) {
         await saveAthleteBestsBatch({ [athleteName]: toStoredBests(fallback) });
       }
       return fallback;
     }
-    cache.set(athleteName, result);
+    cacheBests(athleteName, result);
     await saveAthleteBestsBatch({ [athleteName]: toStoredBests(result) });
     return result;
   } catch {
     const fallback = await getOfflineFallback(athleteName);
     if (hasRealBests(fallback)) {
-      cache.set(athleteName, fallback);
+      cacheBests(athleteName, fallback);
       await saveAthleteBestsBatch({ [athleteName]: toStoredBests(fallback) });
     }
     return fallback;
@@ -214,7 +231,7 @@ export async function getLastYearBestsBatch(
       // Skip stored all-null rows so athletes cached before the
       // most-recent-meet fallback existed get another chance to resolve.
       if (!hasRealBests(result)) return;
-      cache.set(name, result);
+      cacheBests(name, result);
       byName[name] = result;
     });
   }
@@ -228,9 +245,7 @@ export async function getLastYearBestsBatch(
   }
 
   if (missing.length > 0) {
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const cutoffDate = oneYearAgo.toISOString().split('T')[0];
+    const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
     const fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
     const persisted: Record<string, ReturnType<typeof toStoredBests>> = {};
 
@@ -249,7 +264,7 @@ export async function getLastYearBestsBatch(
         return;
       }
       byName[name] = bests;
-      cache.set(name, bests);
+      cacheBests(name, bests);
       persisted[name] = toStoredBests(bests);
     });
 
@@ -260,7 +275,7 @@ export async function getLastYearBestsBatch(
       emptyNames.forEach((name) => {
         const bests = fallbacks[name] ?? ZERO_BESTS;
         byName[name] = bests;
-        cache.set(name, bests);
+        cacheBests(name, bests);
         if (hasRealBests(bests)) {
           persisted[name] = toStoredBests(bests);
         }

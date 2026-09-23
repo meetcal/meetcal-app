@@ -1,10 +1,11 @@
 import { useAuth } from "@clerk/expo";
 import { AuthView } from "@clerk/expo/native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
 
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { cacheAuthState } from "@/lib/authCache";
+import { isInternalRoutePath } from "@/utils/authGuard";
 
 export default function SignInScreen() {
   const { isSignedIn, isLoaded, userId } = useAuth({
@@ -27,15 +28,15 @@ export default function SignInScreen() {
         router.replace({
           pathname: "/shared-screens/paywall",
           params: {
-            from: from || "/(tabs)/(index)",
+            from: isInternalRoutePath(from) ? from : "/(tabs)/(index)",
             feature,
           },
-        } as any);
+        });
         return;
       }
 
-      if (from && from !== "feature") {
-        router.replace(from as any);
+      if (isInternalRoutePath(from)) {
+        router.replace(from as Href);
         return;
       }
 

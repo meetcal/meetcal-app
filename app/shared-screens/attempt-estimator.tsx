@@ -1,16 +1,17 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import { SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { filterSessionAthletes, normalizeAthleteName } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
   generateAthleteNotes,
 } from "@/lib/attempt-estimator";
 import {
-  getAllCachedLiftingResultsForAthlete,
+  getAllCachedLiftingResultsForAthletes,
   getMeetLiftingResults,
   getSessionAthletesFromMeetCache,
   saveMeetAthletes,
@@ -21,6 +22,10 @@ import {
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+} from "@/utils/dateTime";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -30,6 +35,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   const opacity = useRef(new Animated.Value(0.4)).current;
@@ -57,29 +63,8 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   );
 }
 
-function normalizePlatformKey(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function normalizeAthleteName(name: string | null | undefined) {
-  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function filterSessionAthletes(
-  athletes: LiftResult[],
-  sessionNumber: number,
-  platform: string,
-) {
-  const normalizedPlatform = normalizePlatformKey(platform);
-  return athletes.filter((athlete) => {
-    const athleteSession = athlete.session;
-    if (!athleteSession) return false;
-    if (athleteSession.number !== sessionNumber) return false;
-    return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
-  });
-}
-
 export default function AttemptEstimatorScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const params = useLocalSearchParams<{
     sessionNumber: string;
@@ -99,18 +84,31 @@ export default function AttemptEstimatorScreen() {
     new Set(),
   );
 
+  // The screen is reachable straight from a start list, so the user can move
+  // between sessions while a load is still running. Without this guard the
+  // previous session's estimates land in state after the new session's, and
+  // the table shows session A's athletes under session B's header — the same
+  // defect the start list carries a request id for.
+  const requestIdRef = useRef(0);
+
   const loadData = useCallback(async () => {
     if (!hasValidParams) return;
+    const requestId = ++requestIdRef.current;
+    const isStale = () => requestId !== requestIdRef.current;
     setLoading(true);
+    setEstimates([]);
     try {
       const meetId = params.meet as MeetName;
 
       const hasNetwork = await isNetworkAvailable();
+      if (isStale()) return;
       const cachedSessionAthletes = await getSessionAthletesFromMeetCache(
         meetId,
         sessionNumber,
         params.platform,
       );
+
+      if (isStale()) return;
 
       let cachedSessionResults: SupabaseLiftResult[] = [];
       if (cachedSessionAthletes.length > 0) {
@@ -123,15 +121,20 @@ export default function AttemptEstimatorScreen() {
             athleteNameSet.has(normalizeAthleteName(result.name)),
           );
         } else {
-          const twoYearsAgo = new Date();
-          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-          const cutoffDate = twoYearsAgo.toISOString().split("T")[0];
+          const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+          const namedAthletes = cachedSessionAthletes.filter((athlete) =>
+            athlete.name?.trim(),
+          );
+          // One pass over the cached meets for the whole session. Asking per
+          // athlete re-inflated every cached meet's results blob once per
+          // athlete — a 15-lifter session against three downloaded meets did
+          // 45 decompressions instead of three.
+          const resultsByName = await getAllCachedLiftingResultsForAthletes(
+            namedAthletes.map((athlete) => athlete.name),
+          );
           const allResults: SupabaseLiftResult[] = [];
-          for (const athlete of cachedSessionAthletes) {
-            if (!athlete.name?.trim()) continue;
-            const athleteResults = await getAllCachedLiftingResultsForAthlete(
-              athlete.name,
-            );
+          for (const athlete of namedAthletes) {
+            const athleteResults = resultsByName[athlete.name] ?? [];
             const filtered = athleteResults.filter(
               (r) => (r.date ?? "") >= cutoffDate,
             );
@@ -139,10 +142,12 @@ export default function AttemptEstimatorScreen() {
           }
           cachedSessionResults = allResults;
         }
+        if (isStale()) return;
         setEstimates(
           calculateEstimates(cachedSessionAthletes, cachedSessionResults),
         );
       } else {
+        if (isStale()) return;
         setEstimates([]);
       }
 
@@ -151,7 +156,9 @@ export default function AttemptEstimatorScreen() {
       }
 
       const freshMeetAthletes = await fetchAthletesWithSession(meetId);
+      if (isStale()) return;
       await saveMeetAthletes(meetId, freshMeetAthletes);
+      if (isStale()) return;
 
       const freshSessionAthletes = filterSessionAthletes(
         freshMeetAthletes,
@@ -167,17 +174,17 @@ export default function AttemptEstimatorScreen() {
 
       let freshResults: SupabaseLiftResult[] = [];
       if (freshAllNames.length > 0) {
-        const twoYearsAgo = new Date();
-        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-        const cutoffDate = twoYearsAgo.toISOString().split('T')[0];
+        const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
         freshResults = await fetchRecentAthleteHistoryForNames(freshAllNames, cutoffDate);
       }
+      if (isStale()) return;
       await saveMeetLiftingResults(meetId, freshResults);
 
       const freshSessionResults = freshResults.filter((result) =>
         freshSessionNameSet.has(normalizeAthleteName(result.name)),
       );
 
+      if (isStale()) return;
       if (freshSessionAthletes.length > 0) {
         setEstimates(
           calculateEstimates(freshSessionAthletes, freshSessionResults),
@@ -186,14 +193,22 @@ export default function AttemptEstimatorScreen() {
         setEstimates([]);
       }
     } catch (error) {
+      if (isStale()) return;
       console.error("Error loading data:", error);
     } finally {
-      setLoading(false);
+      if (!isStale()) {
+        setLoading(false);
+      }
     }
   }, [hasValidParams, sessionNumber, params.platform, params.meet]);
 
   useEffect(() => {
     loadData();
+    return () => {
+      // Invalidate whatever is in flight: an unmount or a parameter change
+      // must not repaint this screen with the old session's estimates.
+      requestIdRef.current += 1;
+    };
   }, [loadData]);
 
   const toggleAthlete = (athleteId: string) => {
@@ -213,7 +228,7 @@ export default function AttemptEstimatorScreen() {
   if (!hasValidParams) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <Stack.Screen
           options={{
@@ -245,7 +260,7 @@ export default function AttemptEstimatorScreen() {
   if (loading) {
     return (
       <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
+        style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
         <Stack.Screen
           options={{
@@ -272,7 +287,7 @@ export default function AttemptEstimatorScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

@@ -1,18 +1,16 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubMeetStatsResource } from "@/lib/database/fetch-club-stats";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
+import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
+import { showToast } from "@/components/ui/Toast";
 import type { ClubMeetStats } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -27,7 +25,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { captureRef } from "react-native-view-shot";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function MeetResultsByClubScreen() {
   return (
@@ -38,6 +36,7 @@ export default function MeetResultsByClubScreen() {
 }
 
 function MeetResultsByClubScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -46,9 +45,9 @@ function MeetResultsByClubScreenContent() {
   const [showPreview, setShowPreview] = useState(false);
   const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
-  const params = useMemo(
-    () => (club && meet ? ([club, meet] as const) : null),
+  const [isOffline] = useIsOffline();
+  const params = useMemo<[string, string] | null>(
+    () => (club && meet ? [club, meet] : null),
     [club, meet],
   );
   const {
@@ -58,12 +57,11 @@ function MeetResultsByClubScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubMeetStatsResource,
-    params: (params ?? (["", ""] as const)) as [string, string],
+    params,
     initialData: null as ClubMeetStats | null,
-    enabled: Boolean(params),
   });
 
-  const shareableViewRef = useRef<View>(null);
+  const shareableViewRef = useRef<React.ComponentRef<typeof View>>(null);
 
   // Animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -98,22 +96,6 @@ function MeetResultsByClubScreenContent() {
     });
   }, [club, meet]);
 
-  useEffect(() => {
-    let isMounted = true;
-    const checkNetwork = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (isMounted) setIsOffline(!hasNetwork);
-    };
-    checkNetwork();
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
-
   const loadStats = useCallback(async () => {
     await refresh();
   }, [refresh]);
@@ -130,11 +112,7 @@ function MeetResultsByClubScreenContent() {
     setIsGeneratingImage(true);
 
     try {
-      const uri = await captureRef(shareableViewRef.current, {
-        format: "png",
-        quality: 1,
-        result: "tmpfile",
-      });
+      const uri = await captureViewAsPng(shareableViewRef.current);
 
       setGeneratedImageUri(uri);
       setShowPreview(true);
@@ -145,7 +123,7 @@ function MeetResultsByClubScreenContent() {
       });
     } catch (err) {
       console.error("Error generating image:", err);
-      alert("Failed to generate image");
+      showToast({ type: "error", message: "Failed to generate image" });
     } finally {
       setIsGeneratingImage(false);
     }
@@ -155,16 +133,7 @@ function MeetResultsByClubScreenContent() {
     if (!generatedImageUri) return;
 
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        alert("Sharing is not available on this device");
-        return;
-      }
-
-      await Sharing.shareAsync(generatedImageUri, {
-        mimeType: "image/png",
-        dialogTitle: "Share Meet Recap",
-      });
+      await shareImageFile(generatedImageUri, "Share Meet Recap");
 
       posthog.capture("club_meet_recap_shared", {
         club_name: club,
@@ -172,7 +141,7 @@ function MeetResultsByClubScreenContent() {
       });
     } catch (err) {
       console.error("Error sharing image:", err);
-      alert("Failed to share image");
+      showToast({ type: "error", message: "Failed to share image" });
     }
   };
 
@@ -213,7 +182,7 @@ function MeetResultsByClubScreenContent() {
 
   if (isLoading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
@@ -228,7 +197,7 @@ function MeetResultsByClubScreenContent() {
 
   if (error || !clubStats) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
         <Stack.Screen options={{ headerShown: false }} />
         {topBar}
         <View style={styles.centerContainer}>
@@ -256,7 +225,7 @@ function MeetResultsByClubScreenContent() {
   const totalMedals = clubStats.goldMedals + clubStats.silverMedals + clubStats.bronzeMedals;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen options={{ headerShown: false }} />
       {topBar}
       <ScrollView
@@ -472,7 +441,7 @@ function PremiumStatCard({
 
 // Shareable Recap View (800x1000, dark premium)
 const ShareableRecapView = React.forwardRef<
-  View,
+  React.ComponentRef<typeof View>,
   { club: string; meet: string; stats: ClubMeetStats }
 >(({ club, meet, stats }, ref) => {
   return (
@@ -647,7 +616,7 @@ function MakeRateCard({
         },
       ]}
     >
-      <IconSymbol name="stats-chart" size={20} color={accentColor} />
+      <IconSymbol name="chart.bar.fill" size={20} color={accentColor} />
       <ThemedText style={[styles.makeRateValue, { color: colors.text }]}>
         {value}
       </ThemedText>

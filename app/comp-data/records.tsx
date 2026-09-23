@@ -12,11 +12,12 @@ import {
   federationRecordsResource,
   fetchAgeGroups,
 } from "@/lib/database/fetch-records";
-import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { AgeGroup, Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
+import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
+import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
@@ -30,6 +31,7 @@ export default function RecordsScreen() {
 }
 
 function RecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = useState<Record<string, string[]>>(
@@ -45,25 +47,28 @@ function RecordsScreenContent() {
     filterModalProps,
   } = useFilterState<Filters>({
     defaultFilters: { federation: "", gender: "Men", ageGroup: "" },
+    // Reset lands on a usable table rather than the empty initial state, which
+    // only exists until the federation defaults effect below runs.
+    onReset: () => ({
+      federation: "USAW",
+      gender: "Men" as Gender,
+      ageGroup: "Senior",
+    }),
   });
 
-  const recordsParams = useMemo(
-    () => (filters.federation ? ([filters.federation] as const) : null),
+  const recordsParams = useMemo<[string] | null>(
+    () => (filters.federation ? [filters.federation] : null),
     [filters.federation],
   );
   const {
     data: allRecords,
-    isInitialLoading: isRecordsLoading,
-    error: recordsError,
+    isInitialLoading: loading,
+    error: fetchError,
   } = useMutableResource({
     resource: federationRecordsResource,
-    params: (recordsParams ?? ([""] as const)) as [string],
+    params: recordsParams,
     initialData: EMPTY_RECORDS_DATA,
-    enabled: Boolean(recordsParams),
   });
-
-  const loading = Boolean(filters.federation) && isRecordsLoading;
-  const fetchError = recordsError;
 
   useEffect(() => {
     if (filters.federation) {
@@ -128,33 +133,11 @@ function RecordsScreenContent() {
     return allRecords[displayAgeGroup]?.[filters.gender as "Men" | "Women"] ?? [];
   }, [allRecords, displayAgeGroup, filters.gender]);
 
-  const getAgeGroupDisplayText = (ageGroup: AgeGroup | undefined) => {
-    if (!ageGroup) return "";
-    if (
-      ageGroup.startsWith("u") &&
-      ageGroup.length > 1 &&
-      !isNaN(Number(ageGroup.substring(1, 3)))
-    ) {
-      return ageGroup.toUpperCase();
-    }
-    return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
-  };
-
   const getFilterDisplayText = () => {
     const fed = filters.federation || "USAW";
     const gen = filters.gender === "Men" ? "Men" : "Women";
-    const age = getAgeGroupDisplayText(displayAgeGroup) || "Senior";
+    const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
     return `${fed} • ${gen} • ${age}`;
-  };
-
-  const handleResetFilters = () => {
-    const reset = {
-      federation: "USAW",
-      gender: "Men" as Gender,
-      ageGroup: "Senior",
-    };
-    setFilters(reset);
-    setTempFilters(reset);
   };
 
   const fetchAgeGroupsForFederation = React.useCallback(
@@ -216,7 +199,7 @@ function RecordsScreenContent() {
           title: "Age Group",
           options: modalAgeGroups.map((ageGroup) => ({
             value: ageGroup,
-            label: getAgeGroupDisplayText(ageGroup),
+            label: formatAgeGroupLabel(ageGroup),
           })),
           dependsOn: ["federation"],
         },
@@ -232,7 +215,7 @@ function RecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{
@@ -272,7 +255,7 @@ function RecordsScreenContent() {
         }
         loading={loading}
         error={fetchError}
-        emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${getAgeGroupDisplayText(displayAgeGroup) || "selected"} age group.`}
+        emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${formatAgeGroupLabel(displayAgeGroup) || "selected"} age group.`}
         renderRow={(record, index) => (
           <View
             style={[
@@ -305,7 +288,6 @@ function RecordsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        onResetFilters={handleResetFilters}
       />
     </ThemedView>
   );

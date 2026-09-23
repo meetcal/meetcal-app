@@ -20,7 +20,7 @@ import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -50,19 +50,16 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
-  // Get time zone abbreviation
-  const timeZoneAbbr = useMemo(() => {
-    const timeZoneId = meetDetails?.time.timeZoneIdentifier || "America/Denver";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: timeZoneId,
-        timeZoneName: "short",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  // The old "America/Denver" default also meant a deep link opened before
+  // `SelectedMeetContext` had resolved `meetDetails` labelled a New York
+  // session's 9:00 AM start as "9:00 AM MDT". No abbreviation beats a
+  // confidently wrong one.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
@@ -302,8 +299,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           {" "}
           •{" "}
           {platformStartTime}
-          {" "}
-          {timeZoneAbbr}
+          {timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
         </ThemedText>
       </View>
 
@@ -384,7 +380,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     from: "/shared-screens/schedule-details",
                     feature: "qualifying-totals",
                   },
-                } as any);
+                });
               }
             }}
           >
@@ -438,7 +434,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                     from: "/shared-screens/schedule-details",
                     feature: "attempt-estimator",
                   },
-                } as any);
+                });
               }
             }}
           >

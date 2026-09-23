@@ -4,7 +4,6 @@ import { Meet, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SavedSession } from "@/hooks/useSavedSessions";
 import { selectNextSession } from "@/lib/next-session";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -18,8 +17,8 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { ThemedText } from "@/components/ui/ThemedText";
 
+/** Only called with a positive remainder; the caller owns the "in progress" case. */
 function formatCountdown(msRemaining: number): string {
-  if (msRemaining <= 0) return "in progress";
   const totalMinutes = Math.floor(msRemaining / 60000);
   if (totalMinutes === 0) return "in <1m";
   const days = Math.floor(totalMinutes / 1440);
@@ -57,11 +56,12 @@ export function NextSessionCard({
     }, []),
   );
 
-  const timeZoneIdentifier = meetDetails?.time.timeZoneIdentifier ?? "";
-  const timeZoneAbbr = useMemo(
-    () => (timeZoneIdentifier ? getTimeZoneAbbreviation(timeZoneIdentifier) : ""),
-    [timeZoneIdentifier],
-  );
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   // Find the soonest saved session for this meet that is still upcoming (or
   // started within the grace window). Uses the shared convertToUTC timezone

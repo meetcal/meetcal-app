@@ -14,12 +14,17 @@ import {
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
+  getJsonArray,
+  getJsonObject,
   mapApiAthlete,
+  mapApiAthletes,
   mapApiLiftingResult,
   mapApiMeet,
   mapApiSchedule,
   mapApiYearBests,
   mapPackageSchedule,
+  MeetCalApiError,
+  MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
   searchApi,
 } from './meetcal-api';
@@ -399,6 +404,56 @@ describe('meetcal API mappers', () => {
     }).age).toBe('Open Men 73kg');
   });
 
+  it.each([
+    null,
+    { name: 123 },
+    { name: '   ' },
+    { name: 'Athlete A', session_number: 0, session_platform: 'Red' },
+  ])(
+    'rejects unsalvageable athlete fields at the API mapper: %p', (invalid) => {
+      const row = invalid === null ? null : {
+        member_id: '123', adaptive: false, age: 24, club: 'Club',
+        entry_total: 250, gender: 'Men', weight_class: '73kg',
+        ...invalid,
+      };
+      expect(() => mapApiAthlete(row as never)).toThrow(/athlete/);
+    },
+  );
+
+  it('defaults nullable club and entry total instead of failing the row', () => {
+    const athlete = mapApiAthlete({
+      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
+      club: null, entry_total: null, gender: 'Men', weight_class: '73kg',
+    } as never);
+    expect(athlete.club).toBe('');
+    expect(athlete.entryTotal).toBe(0);
+    expect(mapApiAthlete({
+      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
+      club: 'Club', entry_total: '250', gender: 'Men', weight_class: '73kg',
+    } as never).entryTotal).toBe(250);
+  });
+
+  it('drops only the unsalvageable rows from a roster', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const base = {
+      member_id: '1', adaptive: false, age: 24, club: 'Club',
+      entry_total: 250, gender: 'Men', weight_class: '73kg',
+    };
+    const athletes = mapApiAthletes(
+      [
+        { ...base, name: 'Athlete A' },
+        { ...base, name: '' },
+        { ...base, name: 'Athlete B', club: null },
+      ] as never,
+      '/meets/athletes',
+    );
+    expect(athletes.map((athlete) => athlete.name)).toEqual(['Athlete A', 'Athlete B']);
+    expect(warn).toHaveBeenCalledWith(
+      '[api] /meets/athletes: dropped 1 of 3 malformed athlete rows',
+    );
+    warn.mockRestore();
+  });
+
   it('coerces missing athlete ages to 0 rather than NaN', () => {
     expect(mapApiAthlete({
       member_id: '123',
@@ -446,7 +501,12 @@ describe('meetcal API mappers', () => {
     });
     expect(summer.time.utcOffset).toBe(4);
     expect(winter.time.utcOffset).toBe(5);
-    expect(summer.time.abbreviation).toMatch(/E[SD]T/);
+    // `time.abbreviation` is the single source of truth every screen renders
+    // next to a session time, so it has to be resolved at the *meet's* date.
+    // `getTimeZoneAbbreviation(id)` with no instant formats today instead, and
+    // the screens that called it that way showed "EDT" on a December meet.
+    expect(summer.time.abbreviation).toBe('EDT');
+    expect(winter.time.abbreviation).toBe('EST');
   });
 
   it('falls unknown IANA zones back to America/New_York for identifier math', () => {
@@ -489,6 +549,43 @@ describe('meetcal API client error and auth boundaries', () => {
   it('rejects empty JSON bodies', async () => {
     mockFetch('');
     await expect(fetchApiMeets()).rejects.toThrow('returned an empty body');
+  });
+
+  it('reports a timeout as a distinct error type, not a bare Error', async () => {
+    // Callers throttle timeout logs and fall back to cache, but report every
+    // other failure. Telling them apart used to mean matching the message,
+    // which silently stopped matching.
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async (_url: unknown, init: unknown) => {
+        const { signal } = init as { signal: AbortSignal };
+        return await new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const abortError = new Error('Aborted');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          });
+        });
+      }) as unknown as typeof fetch;
+
+      const pending = fetchApiMeets().catch((error: unknown) => error);
+      jest.runOnlyPendingTimers();
+      const failure = await pending;
+      expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
+      expect(failure).not.toBeInstanceOf(MeetCalApiError);
+      expect((failure as MeetCalApiTimeoutError).path).toBe('/meets');
+      expect((failure as MeetCalApiTimeoutError).timeoutMs).toBeGreaterThan(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reports a non-2xx response as MeetCalApiError with its status', async () => {
+    mockFetch('{"error":"nope"}', 404);
+    const failure = await fetchApiMeets().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect(failure).not.toBeInstanceOf(MeetCalApiTimeoutError);
+    expect((failure as MeetCalApiError).status).toBe(404);
   });
 
   it('rejects invalid JSON bodies', async () => {
@@ -579,6 +676,28 @@ describe('meetcal API client error and auth boundaries', () => {
     }));
     await expect(fetchApiMeetPackage('Test Meet')).rejects.toThrow(
       '/meets/package.athletes expected an array response',
+    );
+  });
+
+  it('rejects an object where a row array endpoint is expected', async () => {
+    // Callers go straight to `.filter`/`.map`, so an envelope response used to
+    // surface as "rows.filter is not a function" inside a fetcher rather than
+    // naming the endpoint.
+    mockFetch(JSON.stringify({ rows: [] }));
+    await expect(getJsonArray('/data/records')).rejects.toThrow(
+      '/data/records expected an array response',
+    );
+  });
+
+  it('accepts an empty row array', async () => {
+    mockFetch('[]');
+    await expect(getJsonArray('/data/records')).resolves.toEqual([]);
+  });
+
+  it('rejects an array where a single object is expected', async () => {
+    mockFetch('[]');
+    await expect(getJsonObject('/clubs/meet-stats')).rejects.toThrow(
+      '/clubs/meet-stats expected an object response',
     );
   });
 });

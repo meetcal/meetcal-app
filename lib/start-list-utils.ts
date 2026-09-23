@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
-import { MeetName } from '@/data/types/meet';
 
 const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
 
@@ -75,6 +74,24 @@ export function compareStartTimes(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+/**
+ * Order two meet calendar dates (`Schedule[n].fullDate`, an ISO `YYYY-MM-DD`
+ * from the API).
+ *
+ * The CSV export and the shareable schedule image each sorted these with
+ * `new Date(a.date).getTime() - new Date(b.date).getTime()` — the same policy
+ * written twice (PoT #9), allocating two `Date`s per comparison, and returning
+ * `NaN` for any date the API sends in a shape `Date` cannot parse, which makes
+ * the comparator inconsistent and the resulting order arbitrary.
+ *
+ * ISO calendar dates sort correctly as plain strings, which is also what
+ * TigerStyle "explicit vs implicit" asks for: a calendar date is not an
+ * instant, so it should never be routed through `Date` just to be compared.
+ */
+export function compareCalendarDates(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
 // Re-export from utils/calendar for backwards compatibility
 export { requestCalendarPermissions } from '@/utils/calendar';
 
@@ -109,18 +126,24 @@ export function formatSessionDisplayDate(
   if (!displayDate && !fullDate) return '';
   const normalized = displayDate?.toLowerCase();
   if (normalized === 'today' || normalized === 'tomorrow') return displayDate || '';
-  if (fullDate && timeZoneId) {
+  if (fullDate) {
     const [datePart] = fullDate.split('T');
     const [year, month, day] = datePart.split('-').map(Number);
     const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
       ? new Date(fullDate)
       : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    return safeUtcDate.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      timeZone: timeZoneId
-    });
+    if (!Number.isNaN(safeUtcDate.getTime())) {
+      return safeUtcDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        // `meetDetails` can still be loading (or be missing offline), so the
+        // timezone is optional. Falling back to the *device* timezone would
+        // read the UTC-noon anchor a day early/late depending on the offset;
+        // UTC reads back the calendar date we put in.
+        timeZone: timeZoneId || 'UTC'
+      });
+    }
   }
   const source = fullDate || displayDate || '';
   const parsed = new Date(source);
@@ -128,44 +151,22 @@ export function formatSessionDisplayDate(
   return parsed.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'UTC'
   });
 }
 
-const TIME_PART_REGEX = /^\d{1,2}:\d{2}$/;
-const PERIOD_REGEX = /\s*(AM|PM)\s*$/i;
-
-export function calculateWeighInTime(startTime: string): string | null {
-  const trimmed = startTime.trim();
-  let timePart: string;
-  let periodPart: string | undefined;
-  const spaceSplit = trimmed.split(/\s+/);
-  if (spaceSplit.length >= 2) {
-    periodPart = spaceSplit.pop()?.toUpperCase();
-    timePart = spaceSplit.join(' ').trim();
-  } else {
-    const periodMatch = trimmed.match(PERIOD_REGEX);
-    periodPart = periodMatch ? periodMatch[1].toUpperCase() : undefined;
-    timePart = periodMatch ? trimmed.slice(0, periodMatch.index).trim() : trimmed;
-  }
-  if (!periodPart || (periodPart !== 'AM' && periodPart !== 'PM')) return null;
-  if (!TIME_PART_REGEX.test(timePart)) return null;
-  const [hours, minutes] = timePart.split(':').map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
-  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null;
-  let hour24 = hours;
-  if (periodPart === 'PM' && hours !== 12) hour24 += 12;
-  if (periodPart === 'AM' && hours === 12) hour24 = 0;
-  let weighInHour = hour24 - 2;
-  if (weighInHour < 0) weighInHour += 24;
-  let weighInPeriod = 'AM';
-  if (weighInHour >= 12) {
-    weighInPeriod = 'PM';
-    if (weighInHour > 12) weighInHour -= 12;
-  }
-  if (weighInHour === 0) weighInHour = 12;
-  return `${weighInHour}:${minutes.toString().padStart(2, '0')} ${weighInPeriod}`;
-}
+/**
+ * `calculateWeighInTime` deliberately does NOT live here.
+ *
+ * This module used to carry a line-by-line second copy of `utils/time.ts`'s
+ * version — same two-hour lead, same midnight wrap, same 12-hour conversion —
+ * differing only in that it rejected 24-hour start times and returned `null`
+ * instead of `""`. One weigh-in policy, one implementation: import
+ * `calculateWeighInTime` from `@/utils/time`, where `WEIGH_IN_LEAD_HOURS` is
+ * declared and the parser also accepts the `HH:MM[:SS]` form the API can
+ * return.
+ */
 
 export function getAgeCategory(age: number): string {
   if (!Number.isFinite(age) || age <= 0) return 'Unknown';
@@ -193,8 +194,4 @@ export function parseWeightClasses(weightClass: string): string[] {
     }
   });
   return Array.from(weightClasses);
-}
-
-export function isMeetName(meet: string | null): meet is MeetName {
-  return meet !== null;
 }

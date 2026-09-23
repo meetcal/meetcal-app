@@ -9,10 +9,12 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { standardsResource } from "@/lib/database/fetch-standards";
+import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 
 export default function NewStandardsScreen() {
@@ -24,6 +26,7 @@ export default function NewStandardsScreen() {
 }
 
 function NewStandardsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
@@ -59,11 +62,7 @@ function NewStandardsScreenContent() {
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
-    const ageGroupText =
-      filters.ageGroup === "u15"
-        ? "U15"
-        : filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1);
-    return `${genderText} • ${ageGroupText}`;
+    return `${genderText} • ${formatAgeGroupLabel(filters.ageGroup)}`;
   };
 
   const genderOptions: { id: Gender; label: string }[] = [
@@ -93,7 +92,7 @@ function NewStandardsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

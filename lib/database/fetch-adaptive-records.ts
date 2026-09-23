@@ -2,12 +2,13 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
+import { weightClassSort } from './weight-class-sort';
 
 type Gender = 'Men' | 'Women';
 
 type AdaptiveRecordRow = {
-  weight_class: string;
+  weight_class: string | null;
   snatch: number | null;
   cj: number | null;
   total: number | null;
@@ -15,32 +16,26 @@ type AdaptiveRecordRow = {
 
 const AGE_GROUP_KEY = 'Adaptive';
 
-// Custom sort: lowest to highest, '+' always last
-function weightClassSort(a: string, b: string): number {
-  const parse = (w: string) => {
-    if (w.includes('+')) return Infinity;
-    const num = parseInt(w.replace(/[^\d]/g, ''), 10);
-    return Number.isNaN(num) ? Infinity : num;
-  };
-  const aVal = parse(a);
-  const bVal = parse(b);
-  if (aVal === bVal) return 0;
-  if (aVal === Infinity) return 1;
-  if (bVal === Infinity) return -1;
-  return aVal - bVal;
-}
-
 async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
-  const rows = await getJson<AdaptiveRecordRow[]>('/data/adaptive', {
+  const rows = await getJsonArray<AdaptiveRecordRow>('/data/adaptive', {
     exclude_federation: 'BWL',
     gender,
   });
-  const records = rows.map((row) => ({
-    weightClass: row.weight_class.endsWith('kg') ? row.weight_class : `${row.weight_class}kg`,
-    snatchRecord: row.snatch ?? 0,
-    cjRecord: row.cj ?? 0,
-    totalRecord: row.total ?? 0,
-  }));
+  // `weight_class` is nullable in the source table and it is this row's only
+  // identity; `.endsWith` on a null one threw and lost the whole gender's
+  // records rather than the single bad row.
+  const records = rows
+    .filter((row): row is AdaptiveRecordRow & { weight_class: string } =>
+      Boolean(row?.weight_class),
+    )
+    .map((row) => ({
+      weightClass: row.weight_class.endsWith('kg')
+        ? row.weight_class
+        : `${row.weight_class}kg`,
+      snatchRecord: row.snatch ?? 0,
+      cjRecord: row.cj ?? 0,
+      totalRecord: row.total ?? 0,
+    }));
 
   records.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
   return records;

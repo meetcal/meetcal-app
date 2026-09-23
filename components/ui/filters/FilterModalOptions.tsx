@@ -4,12 +4,13 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { IconSymbol } from "../IconSymbol";
 import { ThemedText } from "../ThemedText";
 
+// Structurally the same option `GenericFilterModal` exports; declared here so
+// this file does not import from its own parent.
 interface FilterOption {
   value: string;
   label: string;
   icon?: string;
   iconColor?: string;
-  rightContent?: React.ReactNode;
 }
 
 interface FilterModalOptionsProps {
@@ -18,7 +19,6 @@ interface FilterModalOptionsProps {
   onSelect: (value: string) => void;
   maxHeight: number;
   allOptionLabel?: string;
-  renderCustomContent?: (option: FilterOption) => React.ReactNode;
 }
 
 const FilterModalOptions = ({
@@ -27,7 +27,6 @@ const FilterModalOptions = ({
   onSelect,
   maxHeight,
   allOptionLabel,
-  renderCustomContent,
 }: FilterModalOptionsProps) => {
   const colors = useAppColors();
 
@@ -79,49 +78,42 @@ const FilterModalOptions = ({
           ]}
           onPress={() => onSelect(option.value)}
         >
-          {renderCustomContent ? (
-            renderCustomContent(option)
+          {option.icon ? (
+            <View style={styles.filterOptionContent}>
+              <ThemedText
+                style={[
+                  styles.filterOptionText,
+                  { color: colors.text },
+                  selectedValue === option.value && {
+                    color: colors.link,
+                  },
+                ]}
+                numberOfLines={2}
+              >
+                {option.label}
+              </ThemedText>
+              <IconSymbol
+                name={option.icon}
+                size={22}
+                color={option.iconColor || colors.secondaryText}
+              />
+            </View>
           ) : (
-            <>
-              {option.icon ? (
-                <View style={styles.filterOptionContent}>
-                  <ThemedText
-                    style={[
-                      styles.filterOptionText,
-                      { color: colors.text },
-                      selectedValue === option.value && {
-                        color: colors.link,
-                      },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {option.label}
-                  </ThemedText>
-                  <IconSymbol
-                    name={option.icon}
-                    size={22}
-                    color={option.iconColor || colors.secondaryText}
-                  />
-                </View>
-              ) : (
-                <ThemedText
-                  style={[
-                    styles.filterOptionText,
-                    { color: colors.text },
-                    selectedValue === option.value && {
-                      color: colors.link,
-                    },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {option.label}
-                </ThemedText>
-              )}
-              {option.rightContent}
-              {selectedValue === option.value && !option.rightContent && (
-                <IconSymbol name="checkmark" size={16} color={colors.link} />
-              )}
-            </>
+            <ThemedText
+              style={[
+                styles.filterOptionText,
+                { color: colors.text },
+                selectedValue === option.value && {
+                  color: colors.link,
+                },
+              ]}
+              numberOfLines={2}
+            >
+              {option.label}
+            </ThemedText>
+          )}
+          {selectedValue === option.value && (
+            <IconSymbol name="checkmark" size={16} color={colors.link} />
           )}
         </Pressable>
       ))}

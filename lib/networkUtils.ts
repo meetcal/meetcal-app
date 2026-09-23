@@ -1,5 +1,27 @@
-import NetInfo from '@react-native-community/netinfo';
+import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { isOfflineModeSimulated } from '@/config/development';
+import { devLog } from './logger';
+
+/**
+ * NetInfo reports `isInternetReachable: null` while it is still probing, and
+ * on a cold start that is the value everything sees first. Treating unknown as
+ * offline would make every consumer fall back to its cache on launch, so only
+ * an explicit `false` counts as offline. One copy of that rule; it was
+ * open-coded at all three read sites.
+ *
+ * `isConnected`, on the other hand, comes straight from the OS and is known
+ * before any reachability probe runs. In airplane mode the first state a cold
+ * start sees is `{ isConnected: false, isInternetReachable: null }` — the
+ * interface is already known to be down, the probe just has not reported yet.
+ * Reading only `isInternetReachable` answered "online" there, so every fetch
+ * on launch went out and blocked on `DEFAULT_TIMEOUT_MS` instead of the cached
+ * rows painting immediately. An explicit `isConnected: false` is offline;
+ * `null`/`undefined` stays optimistic exactly as before.
+ */
+function isReachable(state: NetInfoState): boolean {
+  if (state.isConnected === false) return false;
+  return state.isInternetReachable !== false;
+}
 
 let lastKnownNetwork: boolean | null = null;
 let lastCheckedAt = 0;
@@ -7,9 +29,7 @@ let inFlightCheck: Promise<boolean> | null = null;
 const NETWORK_CACHE_MS = 3000;
 
 NetInfo.addEventListener(state => {
-  const isReachable = state.isInternetReachable;
-  // Only mark offline when reachability is explicitly false.
-  lastKnownNetwork = isReachable === false ? false : true;
+  lastKnownNetwork = isReachable(state);
   lastCheckedAt = Date.now();
 });
 
@@ -20,7 +40,7 @@ NetInfo.addEventListener(state => {
 export async function isNetworkAvailable(): Promise<boolean> {
   // Check if we're simulating offline mode in development
   if (isOfflineModeSimulated()) {
-    console.log('[DEV] Simulating offline mode');
+    devLog('[DEV] Simulating offline mode');
     return false;
   }
 
@@ -36,8 +56,7 @@ export async function isNetworkAvailable(): Promise<boolean> {
 
     inFlightCheck = NetInfo.fetch()
       .then(state => {
-        const isReachable = state.isInternetReachable;
-        const isConnectedAndReachable = isReachable === false ? false : true;
+        const isConnectedAndReachable = isReachable(state);
         lastKnownNetwork = isConnectedAndReachable;
         lastCheckedAt = Date.now();
         return isConnectedAndReachable;
@@ -65,10 +84,16 @@ export async function isNetworkAvailable(): Promise<boolean> {
 export function subscribeToNetworkChanges(
   callback: (isConnected: boolean) => void
 ): () => void {
-  const unsubscribe = NetInfo.addEventListener(state => {
-    const isConnected = state.isInternetReachable === false ? false : true;
-    callback(isConnected);
-  });
+  // Honour the same dev flag `isNetworkAvailable` does. Without this the five
+  // subscribers (useIsOffline, useMutableResource, both providers, the auth
+  // layout) were told "online" by the live listener while every
+  // `isNetworkAvailable()` in the same session answered false — and a
+  // "reconnected" edge fires exactly the refetches the flag exists to stop.
+  if (isOfflineModeSimulated()) {
+    return () => {};
+  }
 
-  return unsubscribe;
+  return NetInfo.addEventListener(state => {
+    callback(isReachable(state));
+  });
 }

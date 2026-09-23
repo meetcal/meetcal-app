@@ -1,5 +1,5 @@
 import { MenuView, type MenuAction } from "@react-native-menu/menu";
-import * as Haptics from "expo-haptics";
+import { lightImpact as lightHaptic } from "@/lib/haptics";
 import React, { useCallback } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import {
@@ -10,12 +10,6 @@ import {
 import type { FilterPillBarProps, PillFilterConfig } from "./FilterPillTypes";
 
 const ALL_ACTION_ID = "__all__";
-
-const lightHaptic = () => {
-  if (process.env.EXPO_OS === "ios") {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }
-};
 
 /**
  * iOS filter pill bar. Renders the native UIMenu, which automatically adopts

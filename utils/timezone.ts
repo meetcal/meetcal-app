@@ -26,6 +26,29 @@ function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
+/**
+ * `hour12: false` does not guarantee a 0-23 clock. Pre-2021 ECMA-402 resolved
+ * `hour12: false` to `h24` for any locale whose default hour cycle is `h12` —
+ * en-US is one — and `h24` renders midnight as hour **24** on the same
+ * calendar day rather than hour 0. Node/V8 implement the later normative
+ * change (always `h23`), but this bundle does not run on V8: React Native
+ * builds Intl on whatever ICU/Foundation the device ships, and we do not get
+ * to pick which devices those are.
+ *
+ * Forcing `hourCycle: "h23"` is not the fix. The spec discards `hourCycle`
+ * whenever `hour12` is also present, and dropping `hour12` on an engine
+ * without `hourCycle` support falls back to a 12-hour clock, which is far
+ * worse. So normalise the one value that can differ.
+ *
+ * Left unhandled, an h24 build reads local midnight as 24:00 and
+ * `getOffsetMinutesAtInstant` returns an offset 1440 minutes (a full day) too
+ * large, which pushes every session time for a meet in that timezone a day
+ * off.
+ */
+function normalizeHour(hour: number): number {
+  return hour === 24 ? 0 : hour;
+}
+
 function getZonedParts(timeZone: string, instant: Date): ZonedDateParts {
   const parts = getPartsFormatter(timeZone).formatToParts(instant);
 
@@ -36,7 +59,7 @@ function getZonedParts(timeZone: string, instant: Date): ZonedDateParts {
     year: read("year"),
     month: read("month"),
     day: read("day"),
-    hour: read("hour"),
+    hour: normalizeHour(read("hour")),
     minute: read("minute"),
   };
 }
@@ -64,11 +87,17 @@ function toComparableMinutes(parts: ZonedDateParts): number {
 export function parseClockTime(time: string): { hour: number; minute: number } {
   const input = time.trim();
 
-  const amPmMatch = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(input);
+  // Seconds are optional in both branches. The API emits `h:mm:ss AM/PM` for
+  // some rows — `formatTo12Hour` in `data/meets/config.ts` has an explicit
+  // "already 12-hour, just strip the seconds" branch for exactly that shape —
+  // and rejecting it here made `formatApiTime` return "" (blank start time on
+  // the schedule and start list) and made `lib/next-session` skip the session
+  // outright, so the Next Session card went blank.
+  const amPmMatch = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)$/i.exec(input);
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
     const minute = Number(amPmMatch[2]);
-    const period = amPmMatch[3].toUpperCase();
+    const period = amPmMatch[4].toUpperCase();
 
     if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59) {
       throw new Error(`Invalid time: ${time}`);

@@ -14,7 +14,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Platform } from "react-native";
+import { AppState, Linking, Platform } from "react-native";
 import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
@@ -39,6 +39,9 @@ import {
   openExternalLink,
 } from "@/utils/deepLinks";
 import * as Sentry from '@sentry/react-native';
+import { devLog } from "@/lib/logger";
+import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -102,12 +105,26 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * NetInfo's default is 15s, long enough that a screen decides it is online and
+ * then stalls on a request that can never land. This is the same order as
+ * `NETWORK_CACHE_MS` in `lib/networkUtils.ts` on purpose: a reachability probe
+ * must resolve well inside the window its answer is cached for.
+ */
+const REACHABILITY_TIMEOUT_MS = 3000;
+
+/**
+ * Delay before the push-permission prompt, so it lands after first paint
+ * rather than on top of the splash screen.
+ */
+const PUSH_PERMISSION_PROMPT_DELAY_MS = 8000;
+
 // Configure NetInfo IMMEDIATELY with shorter timeout for faster offline detection
 // This MUST run synchronously before any NetInfo.fetch() calls
 NetInfo.configure({
   reachabilityUrl: "https://clients3.google.com/generate_204",
-  reachabilityRequestTimeout: 3000, // 3 seconds instead of default 15s
-  reachabilityShortTimeout: 3000,
+  reachabilityRequestTimeout: REACHABILITY_TIMEOUT_MS,
+  reachabilityShortTimeout: REACHABILITY_TIMEOUT_MS,
   useNativeReachability: true,
 });
 
@@ -118,9 +135,14 @@ const ONESIGNAL_APP_ID =
 export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  // A font that fails to load leaves `fontsLoaded` false forever. Since the
+  // splash is only hidden from inside the subtree gated below, that would
+  // freeze the app on the splash screen with no error and no timeout. Falling
+  // back to the system font is the lesser failure.
+  const fontsResolved = fontsLoaded || fontError != null;
 
   useEffect(() => {
     async function prepare() {
@@ -152,7 +174,7 @@ export default Sentry.wrap(function RootLayout() {
     prepare();
   }, []);
 
-  if (!appIsReady || !fontsLoaded) {
+  if (!appIsReady || !fontsResolved) {
     return null;
   }
 
@@ -169,7 +191,7 @@ export default Sentry.wrap(function RootLayout() {
           <SubscriptionProvider>
             <SelectedMeetProvider>
               <SavedSessionsProvider>
-                <RootLayoutContent fontsLoaded={fontsLoaded} />
+                <RootLayoutContent fontsLoaded={fontsResolved} />
               </SavedSessionsProvider>
             </SelectedMeetProvider>
           </SubscriptionProvider>
@@ -187,6 +209,22 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     isLoaded: isUserLoaded,
     user,
   } = useUser();
+
+  // Keep the offline auth hint's seven-day window sliding for every verified
+  // session, not only on screens that happen to mount `useAuthGuard`.
+  // Resuming from the background counts too: the root never remounts, so an
+  // app kept alive for a week would otherwise refresh only once.
+  useEffect(() => {
+    if (!isUserLoaded || !user?.id) return;
+    const userId = user.id;
+    void refreshAuthCacheForVerifiedUser(userId, isNetworkAvailable);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void refreshAuthCacheForVerifiedUser(userId, isNetworkAvailable);
+      }
+    });
+    return () => subscription.remove();
+  }, [isUserLoaded, user?.id]);
 
   const openDeepLink = useCallback((value: string | null) => {
     if (!value) return;
@@ -223,6 +261,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     }
 
     let cancelled = false;
+    let listenerAdded = false;
 
     const syncOneSignalIdToRevenueCat = async (userState?: {
       current: { externalId?: string; onesignalId?: string };
@@ -259,7 +298,12 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
             await Purchases.setEmail(email);
           }
 
+          // The cleanup below already ran if the user signed out while the
+          // awaits above were pending; registering now would leak a listener
+          // that nothing removes.
+          if (cancelled) return;
           OneSignal.User.addEventListener("change", handleOneSignalUserChange);
+          listenerAdded = true;
           OneSignal.login(user.id);
           if (email) {
             OneSignal.User.addEmail(email);
@@ -279,7 +323,9 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     return () => {
       cancelled = true;
-      OneSignal.User.removeEventListener("change", handleOneSignalUserChange);
+      if (listenerAdded) {
+        OneSignal.User.removeEventListener("change", handleOneSignalUserChange);
+      }
     };
   }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
 
@@ -288,7 +334,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       OneSignal.Notifications.requestPermission(false).catch((error) => {
         console.warn("OneSignal permission request failed:", error);
       });
-    }, 8000);
+    }, PUSH_PERMISSION_PROMPT_DELAY_MS);
 
     return () => {
       clearTimeout(requestPermissionAfterFirstPaint);
@@ -342,7 +388,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
         const initialUrl = await Linking.getInitialURL();
 
         if (initialUrl) {
-          console.log(
+          devLog(
             "[RootLayout] App launched with initial URL, letting router handle:",
             initialUrl,
           );

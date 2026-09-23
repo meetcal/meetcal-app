@@ -56,3 +56,27 @@ export function sortAgeGroups(
     return a.localeCompare(b, undefined, { sensitivity: "base" });
   });
 }
+
+/**
+ * Display label for an age group key.
+ *
+ * "u13"/"u23" read as "U13"/"U23"; everything else is capitalised
+ * ("senior" -> "Senior", "university" -> "University"). `records`,
+ * `wso-records` and `new-standards` each carried their own version of this —
+ * one testing `u` + digits, one a `u13`/`u15`/`u17` switch, one a single
+ * `u15` ternary — all three producing the same string for every key in
+ * `BASE_ORDER`/`EXTENDED_ORDER`.
+ *
+ * Not the same policy as `formatAgeGroup` in `utils/dataWidgets.ts`, which
+ * upper-cases any key starting with "u" (so "university" renders
+ * "UNIVERSITY"). That one is the widget's, and changing it is user-visible.
+ */
+export function formatAgeGroupLabel(ageGroup: string | undefined): string {
+  if (!ageGroup) return "";
+  const isNumberedUnderGroup =
+    ageGroup.startsWith("u") &&
+    ageGroup.length > 1 &&
+    !Number.isNaN(Number(ageGroup.substring(1, 3)));
+  if (isNumberedUnderGroup) return ageGroup.toUpperCase();
+  return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
+}

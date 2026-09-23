@@ -1,7 +1,7 @@
 import {
   getAthleteBestsBatch,
   getCachedAthleteBestsBatch,
-} from "@/components/schedule-details/athleteBests";
+} from "@/lib/athlete-bests";
 import SessionSortControl from "@/components/schedule-details/sessionSort/SessionSortControl";
 import type {
   SortDirection,
@@ -24,6 +24,7 @@ import {
     StyleSheet,
     View
 } from "react-native";
+import { devInfo } from "@/lib/logger";
 
 function toSessionAthletesByPlatform(
   platform: string,
@@ -62,7 +63,6 @@ export default function SessionAthletes({
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
-  const [loadingBests, setLoadingBests] = useState<Record<string, boolean>>({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const { isSubscribed } = useSubscription();
@@ -88,7 +88,7 @@ export default function SessionAthletes({
 
     loggedLoadRef.current = true;
     const elapsedMs = Math.round(performance.now() - loadStartedAtRef.current);
-    console.info("[perf] session athletes ready", {
+    devInfo("[perf] session athletes ready", {
       elapsedMs,
       meetId,
       sessionNumber,
@@ -108,7 +108,6 @@ export default function SessionAthletes({
     async function loadBests() {
       if (!isSubscribed) {
         setAthleteBests({});
-        setLoadingBests({});
         return;
       }
 
@@ -116,7 +115,6 @@ export default function SessionAthletes({
 
       if (athleteNames.length === 0) {
         setAthleteBests({});
-        setLoadingBests({});
         return;
       }
 
@@ -128,11 +126,10 @@ export default function SessionAthletes({
         if (cancelled) return;
 
         setAthleteBests(cachedBestsMap);
-        setLoadingBests({});
 
         if (__DEV__ && !loggedBestsLoadRef.current) {
           loggedBestsLoadRef.current = true;
-          console.info("[perf] session bests cache ready", {
+          devInfo("[perf] session bests cache ready", {
             elapsedMs: Math.round(
               performance.now() - bestsLoadStartedAtRef.current,
             ),
@@ -146,10 +143,9 @@ export default function SessionAthletes({
         const bestsMap = await getAthleteBestsBatch(athleteNames, meetId);
         if (cancelled) return;
         setAthleteBests(bestsMap);
-        setLoadingBests({});
 
         if (__DEV__) {
-          console.info("[perf] session bests ready", {
+          devInfo("[perf] session bests ready", {
             elapsedMs: Math.round(
               performance.now() - bestsLoadStartedAtRef.current,
             ),
@@ -163,7 +159,6 @@ export default function SessionAthletes({
         if (cancelled) return;
         console.error("Error loading athlete bests:", error);
         setAthleteBests({});
-        setLoadingBests({});
       }
     }
 
@@ -293,7 +288,7 @@ export default function SessionAthletes({
         from: "/shared-screens/schedule-details",
         feature: "sort-athletes",
       },
-    } as any);
+    });
   }, [requireAuth, router]);
 
    
@@ -419,60 +414,53 @@ export default function SessionAthletes({
                     </ThemedText>
                   </View>
                   {isSubscribed ? (
-                    loadingBests[athlete.name] ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.secondaryText}
-                      />
-                    ) : (
-                      <>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best Sn
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.snatch_best == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.snatch_best}kg`}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best CJ
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.cj_best == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.cj_best}kg`}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.statItem}>
-                          <ThemedText
-                            style={[
-                              styles.statLabel,
-                              { color: colors.secondaryText },
-                            ]}
-                          >
-                            Best Total
-                          </ThemedText>
-                          <ThemedText style={styles.statValue}>
-                            {athleteBests[athlete.name]?.total == null
-                              ? "—"
-                              : `${athleteBests[athlete.name]?.total}kg`}
-                          </ThemedText>
-                        </View>
-                      </>
-                    )
+                    <>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best Sn
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.snatch_best == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.snatch_best}kg`}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best CJ
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.cj_best == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.cj_best}kg`}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statItem}>
+                        <ThemedText
+                          style={[
+                            styles.statLabel,
+                            { color: colors.secondaryText },
+                          ]}
+                        >
+                          Best Total
+                        </ThemedText>
+                        <ThemedText style={styles.statValue}>
+                          {athleteBests[athlete.name]?.total == null
+                            ? "—"
+                            : `${athleteBests[athlete.name]?.total}kg`}
+                        </ThemedText>
+                      </View>
+                    </>
                   ) : (
                     <Pressable
                       style={({ pressed }) => [
@@ -494,7 +482,7 @@ export default function SessionAthletes({
                             from: "/shared-screens/schedule-details",
                             feature: "athlete-bests",
                           },
-                        } as any);
+                        });
                       }}
                     >
                       <View style={styles.premiumLabelsRow}>
@@ -558,7 +546,7 @@ export default function SessionAthletes({
                       }
                       router.push({
                         pathname: "/shared-screens/athlete-results",
-                        params: { name: athlete.name, meet: meetId },
+                        params: { name: athlete.name },
                       });
                     }}
                   >

@@ -1,22 +1,15 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { getPlatformColors } from "@/constants/Colors";
 import { PLATFORM_SORT_ORDER } from "@/constants/platform-sort";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
 import { PlatformBadge } from "../schedule-details/PlatformBadge";
 
 export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   const router = useRouter();
-  const platformColors = getPlatformColors();
   const colors = useAppColors();
 
   const sortedPlatforms = useMemo(
@@ -96,59 +89,46 @@ function PlatformRow({
   isLast,
   onPress,
 }: PlatformRowProps) {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        testID={`schedule-session-${session.number}-${platform.platform}`}
-        accessibilityRole="button"
-        accessibilityLabel={`Open session ${session.number} platform ${platform.platform}`}
-        style={({ pressed }) => [
-          styles.platformCard,
-          { backgroundColor: colors.card },
-          !isLast && [
-            styles.platformCardBorder,
-            { borderBottomColor: colors.border },
-          ],
-          pressed && { backgroundColor: colors.pressed },
-        ]}
-        onPressIn={() => {
-          scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 15, stiffness: 300 });
-        }}
-        onPress={onPress}
-      >
-        <View style={styles.platformContent}>
-          <PlatformBadge platform={platform.platform} />
-          <View style={styles.platformInfo}>
-            <ThemedText
-              style={[styles.weightClassText, { color: colors.secondaryText }]}
-            >
-              {platform.weightClass}
-            </ThemedText>
-            <ThemedText
-              style={[styles.platformTimeText, { color: colors.secondaryText }]}
-            >
-              Start:{" "}
-              {platform.platformStartTime || session.startTime}
-              {" "}
-              {timeZone}
-            </ThemedText>
-          </View>
+    <Pressable
+      testID={`schedule-session-${session.number}-${platform.platform}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Open session ${session.number} platform ${platform.platform}`}
+      style={({ pressed }) => [
+        styles.platformCard,
+        { backgroundColor: colors.card },
+        !isLast && [
+          styles.platformCardBorder,
+          { borderBottomColor: colors.border },
+        ],
+        pressed && { backgroundColor: colors.pressed },
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.platformContent}>
+        <PlatformBadge platform={platform.platform} />
+        <View style={styles.platformInfo}>
+          <ThemedText
+            style={[styles.weightClassText, { color: colors.secondaryText }]}
+          >
+            {platform.weightClass}
+          </ThemedText>
+          <ThemedText
+            style={[styles.platformTimeText, { color: colors.secondaryText }]}
+          >
+            Start:{" "}
+            {platform.platformStartTime || session.startTime}
+            {" "}
+            {timeZone}
+          </ThemedText>
         </View>
-        <IconSymbol
-          name="chevron.right"
-          size={20}
-          color={colors.secondaryText}
-        />
-      </Pressable>
-    </Animated.View>
+      </View>
+      <IconSymbol
+        name="chevron.right"
+        size={20}
+        color={colors.secondaryText}
+      />
+    </Pressable>
   );
 }
 

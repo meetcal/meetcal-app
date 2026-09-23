@@ -1,15 +1,8 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { Radius, Shadows, Spacing, Type } from "@/constants/Layout";
 import { useAppColors } from "@/hooks/useAppColors";
-import * as Haptics from "expo-haptics";
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { errorNotification, successNotification } from "@/lib/haptics";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PanResponder, Pressable, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -52,18 +45,16 @@ export function showToast(options: ToastOptions) {
   }
 }
 
-const ToastContext = createContext<(options: ToastOptions) => void>(showToast);
-
-export function useToast() {
-  return useContext(ToastContext);
-}
-
+/**
+ * Mounts the single toast host. Callers reach the toast imperatively through
+ * `showToast`, so there is no context value to provide.
+ */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
-    <ToastContext.Provider value={showToast}>
+    <>
       {children}
       <ToastHost />
-    </ToastContext.Provider>
+    </>
   );
 }
 
@@ -126,12 +117,10 @@ function ToastHost() {
   useEffect(() => {
     if (!toast) return;
 
-    if (process.env.EXPO_OS === "ios") {
-      if (toast.type === "success") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else if (toast.type === "error") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
+    if (toast.type === "success") {
+      successNotification();
+    } else if (toast.type === "error") {
+      errorNotification();
     }
 
     translateY.value = withTiming(0, {
@@ -182,7 +171,15 @@ function ToastHost() {
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrapper, { paddingTop: insets.top + Spacing.xs }, animatedStyle]}
+      style={[
+        styles.wrapper,
+        {
+          paddingTop: insets.top + Spacing.xs,
+          left: insets.left,
+          right: insets.right,
+        },
+        animatedStyle,
+      ]}
     >
       <Pressable
         {...panResponder.panHandlers}

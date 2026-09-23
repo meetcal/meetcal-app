@@ -1,31 +1,26 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import {
-  recordExpandTapTime,
-  useExpandedId,
-} from "@/contexts/ExpandedIdContext";
+import { useExpandedId } from "@/contexts/ExpandedIdContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { isMeetName } from "@/data/types/meet";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
-  calculateWeighInTime,
   formatSessionDisplayDate,
   getChevronIcon,
-  isMeetName,
 } from "@/lib/start-list-utils";
+import { calculateWeighInTime } from "@/utils/time";
 import { AthleteItemProps } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
 import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   StyleSheet,
   View,
@@ -43,36 +38,13 @@ export const AthleteItem = React.memo(function AthleteItem({
   const { expandedId, setExpandedId } = useExpandedId();
   const expandKey = `${athlete.memberId}_${athlete.name}`;
   const isExpanded = expandedId === expandKey;
-  const tapTimeRef = useRef(0);
-  const expandRenderLogged = useRef(false);
-  const expandCommitLogged = useRef(false);
   const onPress = useCallback(() => {
-    tapTimeRef.current = performance.now();
-    if (__DEV__) recordExpandTapTime();
     const willExpand = expandedId !== expandKey;
     setExpandedId(willExpand ? expandKey : null);
     if (willExpand && onExpand && index != null) {
       setTimeout(() => onExpand(index), 50);
     }
-    if (__DEV__)
-      console.log(
-        "[StartList] 0. setExpandedId called",
-        Math.round(performance.now() - tapTimeRef.current),
-        "ms since tap",
-      );
   }, [expandKey, expandedId, setExpandedId, onExpand, index]);
-  if (__DEV__ && isExpanded && !expandRenderLogged.current) {
-    expandRenderLogged.current = true;
-    console.log(
-      "[StartList] 2. AthleteItem expanded render",
-      Math.round(performance.now() - tapTimeRef.current),
-      "ms since tap",
-    );
-  }
-  if (__DEV__ && !isExpanded) {
-    expandRenderLogged.current = false;
-    expandCommitLogged.current = false;
-  }
   const [yearBests, setYearBests] = useState({
     bestSnatch: 0,
     bestCJ: 0,
@@ -85,18 +57,12 @@ export const AthleteItem = React.memo(function AthleteItem({
   const validMeet =
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
 
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return "";
-    const date = new Date();
-    return (
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: meetDetails.time.timeZoneIdentifier,
-        timeZoneName: "short",
-      })
-        .formatToParts(date)
-        .find((part) => part.type === "timeZoneName")?.value || ""
-    );
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   const colors = useMemo(
     () => ({
@@ -111,29 +77,36 @@ export const AthleteItem = React.memo(function AthleteItem({
 
   useEffect(() => {
     if (!isExpanded) return;
-    if (__DEV__ && !expandCommitLogged.current) {
-      expandCommitLogged.current = true;
-      console.log(
-        "[StartList] 3. AthleteItem expanded committed (after paint)",
-        Math.round(performance.now() - tapTimeRef.current),
-        "ms since tap",
-      );
-    }
-    const task = InteractionManager.runAfterInteractions(() => {
-      setLoadingBests(true);
-      getLastYearBests(athlete.name)
-        .then((bests) => {
-          setYearBests(bests);
-          setLoadingBests(false);
-        })
-        .catch((err) => {
-          if (__DEV__)
-            console.warn("[AthleteItem] getLastYearBests failed", err);
-          setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-          setLoadingBests(false);
-        });
-    });
-    return () => task.cancel();
+    // RN 0.88 removed InteractionManager from core; idle callbacks are the
+    // replacement for deferring work until after the expand animation paints.
+    // The timeout is the safety net InteractionManager gave us for free: an
+    // idle period is never guaranteed (a list that is scrolled continuously
+    // never yields one), and without it the row would spin forever.
+    let cancelled = false;
+    const handle = requestIdleCallback(
+      () => {
+        if (cancelled) return;
+        setLoadingBests(true);
+        getLastYearBests(athlete.name)
+          .then((bests) => {
+            if (cancelled) return;
+            setYearBests(bests);
+            setLoadingBests(false);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            if (__DEV__)
+              console.warn("[AthleteItem] getLastYearBests failed", err);
+            setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+            setLoadingBests(false);
+          });
+      },
+      { timeout: 500 },
+    );
+    return () => {
+      cancelled = true;
+      cancelIdleCallback(handle);
+    };
   }, [isExpanded, athlete.name]);
 
   const handleSessionPress = useCallback(() => {
@@ -155,8 +128,10 @@ export const AthleteItem = React.memo(function AthleteItem({
         (p) => p.platform === athlete.session?.platform,
       );
       startTime = platform?.platformStartTime || details?.startTime || "";
+      // `calculateWeighInTime` returns "" (not null) when it cannot parse, so
+      // the fallback has to be `||`.
       weighInTime = startTime
-        ? (calculateWeighInTime(startTime) ?? details?.weighInTime ?? "")
+        ? calculateWeighInTime(startTime) || details?.weighInTime || ""
         : details?.weighInTime || "";
       dateStr = details?.date || "";
     }
@@ -408,10 +383,7 @@ export const AthleteItem = React.memo(function AthleteItem({
               if (isSubscribed === true) {
                 router.push({
                   pathname: "/shared-screens/athlete-results",
-                  params: {
-                    name: athlete.name,
-                    ...(validMeet ? { meet: validMeet } : {}),
-                  },
+                  params: { name: athlete.name },
                 });
               } else if (isSubscribed === false) {
                 router.push({
@@ -420,7 +392,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                     from: "/(tabs)/(start-list)",
                     feature: "athlete-results",
                   },
-                } as any);
+                });
               }
             }}
           >

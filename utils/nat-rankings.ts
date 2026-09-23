@@ -1,8 +1,9 @@
 import { Gender } from "@/types/nat-rankings";
 
 export function getWeightClasses(gender: Gender, ageGroup: string): string[] {
-    let prefix = `Open ${gender}`;
-  
+    // Assigned on every arm below, `default` included.
+    let prefix: string;
+
     switch (ageGroup) {
       case "U11":
         prefix = `${gender}'s 11 Under Age Group`;
@@ -18,9 +19,6 @@ export function getWeightClasses(gender: Gender, ageGroup: string): string[] {
         break;
       case "Junior":
         prefix = `Junior ${gender}`;
-        break;
-      case "Senior":
-        prefix = `Open ${gender}`;
         break;
       case "Masters 35":
         prefix = `${gender}'s Masters (35-39)`;
@@ -58,6 +56,7 @@ export function getWeightClasses(gender: Gender, ageGroup: string): string[] {
       case "Masters 90+":
         prefix = `${gender}'s Masters (90+)`;
         break;
+      // "Senior" lands here too: open class is the unprefixed default.
       default:
         prefix = `Open ${gender}`;
     }

@@ -2,33 +2,21 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { fetchApiWsoAgeGroups, fetchApiWsoList, getJson } from '@/lib/api/meetcal-api';
+import { fetchApiWsoAgeGroups, fetchApiWsoList, getJsonArray } from '@/lib/api/meetcal-api';
+import { filterRecordsData } from './records-filter';
+import { weightClassSort } from './weight-class-sort';
 
 type WSORecordsCache = Record<string, RecordsData>;
 type FilteredWSORecordsCache = Record<string, RecordsData>;
 type WSORecordRow = {
-  age_category: string;
-  gender: string;
-  weight_class: string;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
   snatch_record: number | null;
   cj_record: number | null;
   total_record: number | null;
   wso: string;
 };
-
-function weightClassSort(a: string, b: string): number {
-  const parse = (w: string) => {
-    if (w.startsWith('+')) return Infinity;
-    const num = parseInt(w);
-    return isNaN(num) ? Infinity : num;
-  };
-  const aVal = parse(a);
-  const bVal = parse(b);
-  if (aVal === bVal) return 0;
-  if (aVal === Infinity) return 1;
-  if (bVal === Infinity) return -1;
-  return aVal - bVal;
-}
 
 async function readWSOCache() {
   return await getOfflineCache<WSORecordsCache>(OFFLINE_CACHE_KEYS.wsoRecords);
@@ -48,26 +36,6 @@ async function readWSORecordsCache(wso: string) {
   const cached = await readWSOCache();
   const data = cached?.data?.[wso];
   return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
-}
-
-function filterRecordsData(
-  data: RecordsData,
-  ageGroup?: string,
-  gender?: 'Men' | 'Women',
-): RecordsData {
-  if (!ageGroup && !gender) return data;
-
-  const result: RecordsData = {};
-  Object.entries(data).forEach(([group, records]) => {
-    if (ageGroup && group !== ageGroup) return;
-
-    result[group] = {
-      Men: gender && gender !== 'Men' ? [] : records.Men,
-      Women: gender && gender !== 'Women' ? [] : records.Women,
-    };
-  });
-
-  return result;
 }
 
 async function readFilteredWSORecordsCache(
@@ -100,20 +68,27 @@ async function fetchWSORecordsFresh(
     throw new Error('Offline');
   }
 
-  const rows = await getJson<WSORecordRow[]>('/data/wso/records', {
+  const rows = await getJsonArray<WSORecordRow>('/data/wso/records', {
     wso,
     age_category: ageGroup,
     gender,
   });
 
-  const ageGroups = Array.from(new Set(rows.map((row) => row.age_category)));
+  // `age_category`/`weight_class` are nullable in the source table. A null
+  // age category used to create a literal "null" bucket in the records map,
+  // which then rendered as an age group the user could select.
+  const completeRows = rows.filter(
+    (row): row is WSORecordRow & { age_category: string; weight_class: string } =>
+      Boolean(row?.age_category && row.weight_class),
+  );
+  const ageGroups = Array.from(new Set(completeRows.map((row) => row.age_category)));
 
   const result: RecordsData = {};
   ageGroups.forEach((g) => {
     result[g] = { Men: [], Women: [] };
   });
 
-  rows.forEach((row) => {
+  completeRows.forEach((row) => {
     const ageKey = row.age_category;
     const genderKey = row.gender as 'Men' | 'Women';
     if (!result[ageKey]) return;

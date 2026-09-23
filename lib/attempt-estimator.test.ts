@@ -1,5 +1,9 @@
 import { calculateEstimates, generateAthleteNotes } from "@/lib/attempt-estimator";
 import type { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+} from "@/utils/dateTime";
 
 const athlete = (overrides: Partial<LiftResult>): LiftResult => ({
   memberId: "1",
@@ -123,6 +127,43 @@ describe("calculateEstimates", () => {
   });
 });
 
+describe("opener make rates", () => {
+  it("counts missed openers in the denominator", () => {
+    // Misses are stored as negative kilos. Two made openers out of four taken
+    // is 50%, not 100%.
+    const history = [
+      result({ snatch1: -100, cj1: -120 }),
+      result({ snatch1: 102, cj1: 122 }),
+      result({ snatch1: -105, cj1: -125 }),
+      result({ snatch1: 105, cj1: 125 }),
+    ];
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      history,
+    );
+    expect(estimate.snatchMakeRate).toBeCloseTo(0.5);
+    expect(estimate.cjMakeRate).toBeCloseTo(0.5);
+  });
+
+  it("reports 0 when every opener was missed", () => {
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      [result({ snatch1: -100, cj1: -120 })],
+    );
+    expect(estimate.snatchMakeRate).toBe(0);
+    expect(estimate.cjMakeRate).toBe(0);
+  });
+
+  it("ignores meets where the opener was never taken", () => {
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      [result({ snatch1: null, cj1: 0 }), result({ snatch1: 100, cj1: 120 })],
+    );
+    expect(estimate.snatchMakeRate).toBe(1);
+    expect(estimate.cjMakeRate).toBe(1);
+  });
+});
+
 describe("generateAthleteNotes", () => {
   it("flags athletes with no historical data", () => {
     const [estimate] = calculateEstimates(
@@ -155,5 +196,47 @@ describe("generateAthleteNotes", () => {
     expect(notes).toContain("Snatch");
     expect(notes).toContain("Clean & Jerk");
     expect(notes).toContain("%");
+  });
+});
+
+describe("history window", () => {
+  const lifted = (date: string): SupabaseLiftResult =>
+    result({
+      date,
+      snatch1: 100,
+      snatch_best: 100,
+      cj1: 120,
+      cj_best: 120,
+    });
+
+  const bestsFor = (history: SupabaseLiftResult[]) => {
+    const [estimate] = calculateEstimates(
+      [athlete({ name: "Test Athlete" })],
+      history,
+    );
+    return estimate;
+  };
+
+  it("drops results older than the shared two-year cutoff", () => {
+    const old = new Date();
+    old.setUTCFullYear(old.getUTCFullYear() - 3);
+    const estimate = bestsFor([lifted(old.toISOString().split("T")[0])]);
+    expect(estimate.snatchEstimates).toEqual([]);
+    expect(estimate.cjEstimates).toEqual([]);
+  });
+
+  it("keeps a result dated exactly on the cutoff", () => {
+    const cutoff = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+    expect(bestsFor([lifted(cutoff)]).snatchEstimates.length).toBeGreaterThan(0);
+  });
+
+  it("reads a timestamped date as its own calendar day, not the device's", () => {
+    // A bare `new Date("...T00:00:00")` parses device-local, so west of UTC
+    // `toISOString()` would hand back the previous day and push a result that
+    // lands exactly on the cutoff out of the window.
+    const cutoff = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+    expect(
+      bestsFor([lifted(`${cutoff}T00:00:00`)]).snatchEstimates.length,
+    ).toBeGreaterThan(0);
   });
 });

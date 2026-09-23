@@ -6,7 +6,7 @@ import {
 } from '@/types/club';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchApiClubNames, getJson } from '@/lib/api/meetcal-api';
+import { fetchApiClubNames, getJsonArray, getJsonObject } from '@/lib/api/meetcal-api';
 
 type ClubAthletesCache = Record<string, AthleteClub[]>;
 type ClubMeetStatsCache = Record<string, ClubMeetStats>;
@@ -64,7 +64,9 @@ function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
     snatchMakeRate: row.snatch_make_rate ?? 0,
     cjMakeRate: row.cj_make_rate ?? 0,
     combinedMakeRate: row.combined_make_rate ?? 0,
-    athleteResults: row.athlete_results.map((result, index) => ({
+    // The API omits `athlete_results` for a club with nothing scored yet, so
+    // don't assume it's there even though the envelope itself is validated.
+    athleteResults: (row.athlete_results ?? []).map((result, index) => ({
       id: index,
       event_id: '',
       meet: '',
@@ -118,7 +120,7 @@ async function fetchAllClubsFresh(): Promise<string[]> {
 async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const rows = await getJson<ApiClubAthlete[]>('/clubs/athletes', { club });
+  const rows = await getJsonArray<ApiClubAthlete>('/clubs/athletes', { club });
   return rows.map((row) => ({
     member_id: row.member_id,
     name: row.name,
@@ -130,7 +132,10 @@ async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
 async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<ClubMeetStats> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const response = await getJson<ApiClubMeetStats>('/clubs/meet-stats', { club, meet });
+  const response = await getJsonObject<ApiClubMeetStats>('/clubs/meet-stats', {
+    club,
+    meet,
+  });
   return mapClubMeetStats(response);
 }
 

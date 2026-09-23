@@ -1,13 +1,17 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { CURRENT_VERSION, getAnnouncementForVersion, VERSION_ANNOUNCEMENT_KEY } from "@/config/version-announcements";
+import { getCloseIcon } from "@/lib/start-list-utils";
+import {
+  CURRENT_VERSION,
+  getAnnouncementForVersion,
+  parseSeenVersions,
+  VERSION_ANNOUNCEMENT_KEY,
+} from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
 import { isMaestroE2E } from "@/lib/e2e";
-import { VersionAnnouncementProps } from "@/types/schedule";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,57 +26,52 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // claim the announcement pops up once per mounted copy.
 let announcementClaimedThisSession = false;
 
-export function VersionAnnouncement({
-  announcement: propAnnouncement,
-}: VersionAnnouncementProps) {
+export function VersionAnnouncement() {
   const [isVisible, setIsVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
 
-  const announcement =
-    propAnnouncement || getAnnouncementForVersion(CURRENT_VERSION);
+  const announcement = getAnnouncementForVersion(CURRENT_VERSION);
 
   useEffect(() => {
-    if (isMaestroE2E()) return;
+    if (isMaestroE2E() || !announcement) return;
 
-    if (announcement) {
-      checkIfShouldShow();
-    }
-  }, [announcement]);
-
-  const checkIfShouldShow = async () => {
-    try {
-      const seenVersions = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
-      const seenVersionsArray = seenVersions ? JSON.parse(seenVersions) : [];
-
-      if (
-        !seenVersionsArray.includes(CURRENT_VERSION) &&
-        !announcementClaimedThisSession
-      ) {
-        announcementClaimedThisSession = true;
-        setIsVisible(true);
+    let isCancelled = false;
+    const checkIfShouldShow = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
+        if (isCancelled) return;
+        if (
+          !parseSeenVersions(stored).includes(CURRENT_VERSION) &&
+          !announcementClaimedThisSession
+        ) {
+          announcementClaimedThisSession = true;
+          setIsVisible(true);
+        }
+      } catch (error) {
+        console.error("Error checking version announcement:", error);
       }
-    } catch (error) {
-      console.error("Error checking version announcement:", error);
-    }
-  };
+    };
+    void checkIfShouldShow();
+    return () => {
+      isCancelled = true;
+    };
+  }, [announcement]);
 
   const handleDismiss = async () => {
     try {
-      const seenVersions = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
-      const seenVersionsArray = seenVersions ? JSON.parse(seenVersions) : [];
+      const stored = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
+      const seenVersions = parseSeenVersions(stored);
 
-      if (!seenVersionsArray.includes(CURRENT_VERSION)) {
-        seenVersionsArray.push(CURRENT_VERSION);
+      if (!seenVersions.includes(CURRENT_VERSION)) {
         await AsyncStorage.setItem(
           VERSION_ANNOUNCEMENT_KEY,
-          JSON.stringify(seenVersionsArray),
+          JSON.stringify([...seenVersions, CURRENT_VERSION]),
         );
       }
-
-      setIsVisible(false);
     } catch (error) {
       console.error("Error dismissing version announcement:", error);
+    } finally {
       setIsVisible(false);
     }
   };
@@ -121,7 +120,7 @@ export function VersionAnnouncement({
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <IconSymbol
-                name={Platform.OS === "ios" ? "xmark" : "close"}
+                name={getCloseIcon()}
                 size={20}
                 color={colors.secondaryText}
               />

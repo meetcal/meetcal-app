@@ -1,3 +1,4 @@
+import { isLiftResult } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import {
   Meet,
@@ -20,6 +21,18 @@ export const CLIENT_VERSION_HEADER = 'X-MeetCal-App';
 export const APP_VERSION: string = Constants.expoConfig?.version ?? '';
 const SLOW_API_LOG_THRESHOLD_MS = 500;
 export const NAMES_QUERY_CHUNK_SIZE = 40;
+
+/**
+ * Meet dates are calendar dates with no time. 16:00 UTC is inside the same
+ * calendar day for every `USTimeZoneIdentifier` (UTC-10 .. UTC-4), so reading
+ * the zone offset at this instant gives the meet's own offset on that date.
+ */
+const MEET_DATE_OFFSET_PROBE_HOUR_UTC = 16;
+/**
+ * Noon UTC is inside the same calendar day in every US meet timezone, so a
+ * meet date rendered from this instant never slips to the previous/next day.
+ */
+const MEET_DATE_DISPLAY_HOUR_UTC = 12;
 
 function chunkValues<T>(values: T[], size: number): T[][] {
   if (values.length === 0) return [];
@@ -66,12 +79,27 @@ function instantForMeetDate(dateIso: string | null | undefined): Date {
   if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
     return new Date();
   }
-  return new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+  return new Date(
+    Date.UTC(year, month - 1, day, MEET_DATE_OFFSET_PROBE_HOUR_UTC, 0, 0),
+  );
 }
 
+/**
+ * Deliberately falls back rather than throwing: a meet with an unrecognised
+ * `time_zone` still has a name, a venue and a schedule, and rejecting it here
+ * would drop the whole `/meets` list over one bad row. The fallback is not
+ * silent though — every displayed time for that meet will be an hour or three
+ * off, and this is the only place that can say why.
+ */
 function resolveTimeZoneIdentifier(value: string): USTimeZoneIdentifier {
   if (Object.prototype.hasOwnProperty.call(timezoneOffsets, value)) {
     return value as USTimeZoneIdentifier;
+  }
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.warn(
+      '[api] unknown meet time zone, falling back to America/New_York',
+      value,
+    );
   }
   return 'America/New_York';
 }
@@ -109,6 +137,29 @@ export class MeetCalApiError extends Error {
     this.name = 'MeetCalApiError';
     this.status = status;
     this.body = body;
+  }
+}
+
+/**
+ * The request did not finish inside its timeout.
+ *
+ * A distinct class rather than a plain `Error`, because "the request timed
+ * out" and "the request failed" get different treatment: the meets list falls
+ * back to cache and throttles the log for a timeout, while a real failure is
+ * always reported. Callers used to tell them apart with
+ * `error.message.includes('fetchMeets timed out')` — which never matched,
+ * since the thrown message is `GET /meets timed out after 10000ms`, so the
+ * timeout branch was dead and every timeout logged as an error.
+ */
+export class MeetCalApiTimeoutError extends Error {
+  path: string;
+  timeoutMs: number;
+
+  constructor(method: string, path: string, timeoutMs: number) {
+    super(`${method} ${path} timed out after ${timeoutMs}ms`);
+    this.name = 'MeetCalApiTimeoutError';
+    this.path = path;
+    this.timeoutMs = timeoutMs;
   }
 }
 
@@ -222,7 +273,7 @@ async function requestRaw(
   } catch (error) {
     if (error instanceof MeetCalApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`${method} ${path} timed out after ${timeoutMs}ms`);
+      throw new MeetCalApiTimeoutError(method, path, timeoutMs);
     }
     throw error;
   } finally {
@@ -262,6 +313,34 @@ export function getJson<T>(
   options?: RequestOptions,
 ): Promise<T> {
   return requestJson<T>('GET', path, query, undefined, options);
+}
+
+/**
+ * `getJson` for the endpoints that return a bare row array.
+ *
+ * `getJson<Row[]>(...)` is an unchecked `as T` past a `JSON.parse`: the callers
+ * then go straight to `.filter`/`.map`, so an object response (an error
+ * envelope, a paging wrapper) fails as `rows.filter is not a function` deep
+ * inside a fetcher. Asserting here names the endpoint that misbehaved and keeps
+ * boundary validation in one place.
+ */
+export async function getJsonArray<T>(
+  path: string,
+  query?: Record<string, QueryValue>,
+  options?: RequestOptions,
+): Promise<T[]> {
+  return assertArray<T>(await getJson<unknown>(path, query, options), path);
+}
+
+/** `getJson` for the endpoints that return a single JSON object. */
+export async function getJsonObject<T>(
+  path: string,
+  query?: Record<string, QueryValue>,
+  options?: RequestOptions,
+): Promise<T> {
+  const response = await getJson<unknown>(path, query, options);
+  assertObject(response, path);
+  return response as T;
 }
 
 export function postJson<T>(
@@ -447,7 +526,9 @@ function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentif
   const [year, month, day] = datePart.split('-').map(Number);
   const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
     ? new Date(date)
-    : new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    : new Date(
+        Date.UTC(year, month - 1, day, MEET_DATE_DISPLAY_HOUR_UTC, 0, 0),
+      );
 
   return safeUtcDate.toLocaleDateString('en-US', {
     month: 'long',
@@ -525,7 +606,7 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
     const session = dayData.sessions.get(row.session_id)!;
     session.platforms.push({
       platform: normalizePlatform(row.platform),
-      weightClass: row.weight_class,
+      weightClass: row.weight_class ?? '',
       platformStartTime: formatApiTime(row.start_time),
     });
   });
@@ -556,21 +637,25 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
 }
 
 export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
+  assertObject(row, 'athlete');
   const sessionNumber = row.session_number ?? row.session?.session_number;
   const sessionPlatform = row.session_platform ?? row.session?.session_platform;
   const date = row.date ?? row.schedule_row?.date ?? row.session?.date ?? undefined;
   const startTime = row.start_time ?? row.schedule_row?.start_time ?? row.session?.start_time ?? undefined;
   const weighInTime = row.weigh_in_time ?? row.schedule_row?.weigh_in_time ?? row.session?.weigh_in_time ?? undefined;
 
-  return {
+  const athlete = {
     memberId: row.member_id || '',
     name: row.name,
     age: toFiniteNumber(row.age, 0),
-    club: row.club,
+    // Nullable in practice even though the row type says otherwise; the
+    // screens already render '' and 0 for these, so default rather than
+    // failing the row.
+    club: row.club ?? '',
     wso: row.wso || undefined,
     gender: row.gender || '',
     weightClass: row.weight_class || '',
-    entryTotal: row.entry_total,
+    entryTotal: toFiniteNumber(row.entry_total, 0),
     adaptive: row.adaptive || false,
     session: sessionNumber != null && sessionPlatform
       ? {
@@ -582,6 +667,29 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
         }
       : undefined,
   };
+  if (!isLiftResult(athlete)) throw new Error('athlete contains invalid fields');
+  return athlete;
+}
+
+/**
+ * Map a roster, dropping (and reporting) only rows that cannot be salvaged —
+ * no name, or a malformed session. One bad row must not fail an entire start
+ * list or an offline download.
+ */
+export function mapApiAthletes(rows: readonly ApiAthleteWithSession[], source: string): LiftResult[] {
+  const athletes: LiftResult[] = [];
+  let dropped = 0;
+  for (const row of rows) {
+    try {
+      athletes.push(mapApiAthlete(row));
+    } catch {
+      dropped += 1;
+    }
+  }
+  if (dropped > 0) {
+    console.warn(`[api] ${source}: dropped ${dropped} of ${rows.length} malformed athlete rows`);
+  }
+  return athletes;
 }
 
 export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
@@ -652,7 +760,7 @@ export async function fetchApiSchedule(meet: MeetName): Promise<Schedule> {
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   const rows = assertArray<ApiAthlete>(await getJson('/meets/athletes', { meet }), '/meets/athletes');
-  return rows.map(mapApiAthlete);
+  return mapApiAthletes(rows, '/meets/athletes');
 }
 
 export async function fetchApiAthletesWithSession(
@@ -668,15 +776,7 @@ export async function fetchApiAthletesWithSession(
     }),
     '/meets/athletes-sessions',
   );
-  return rows.map(mapApiAthlete);
-}
-
-export async function fetchApiLiftingResultsForMeet(meet: MeetName): Promise<SupabaseLiftResult[]> {
-  const rows = assertArray<ApiLiftingResult>(
-    await getJson('/lifting-results', { meet }),
-    '/lifting-results',
-  );
-  return rows.map(mapApiLiftingResult);
+  return mapApiAthletes(rows, '/meets/athletes-sessions');
 }
 
 /**
