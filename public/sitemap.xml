@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://meetcal.app/</loc></url>
+  <url><loc>https://meetcal.app/atlas</loc></url>
   <url><loc>https://meetcal.app/features</loc></url>
   <url><loc>https://meetcal.app/privacy</loc></url>
   <url><loc>https://meetcal.app/terms</loc></url>

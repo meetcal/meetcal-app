@@ -17,6 +17,13 @@ pub fn Header() -> impl IntoView {
             </A>
             <nav class="site-nav" aria-label="Primary navigation">
                 <div class="nav-menu">
+                    <button class="nav-menu-trigger" type="button" aria-haspopup="true">"Products"</button>
+                    <div class="nav-menu-panel">
+                        <a href="https://wargames.meetcal.app">"War Games"</a>
+                        <A href="/atlas">"Atlas"</A>
+                    </div>
+                </div>
+                <div class="nav-menu">
                     <A href="/comp-data" attr:class="nav-menu-trigger">"Competition Data"</A>
                     <div class="nav-menu-panel">
                         {DATA_PAGES
@@ -35,6 +42,9 @@ pub fn Header() -> impl IntoView {
                     <span class="mobile-nav-icon" aria-hidden="true"></span>
                 </summary>
                 <nav class="mobile-nav-panel" aria-label="Mobile navigation">
+                    <span class="mobile-nav-heading">"Products"</span>
+                    <a href="https://wargames.meetcal.app">"War Games"</a>
+                    <A href="/atlas">"Atlas"</A>
                     <A href="/comp-data">"Competition Data"</A>
                     <A href="/features">"Features"</A>
                     <A href="/privacy">"Privacy"</A>

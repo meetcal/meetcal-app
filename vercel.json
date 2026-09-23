@@ -33,6 +33,10 @@
       "destination": "https://api.meetcal.app/:path*"
     },
     {
+      "source": "/atlas",
+      "destination": "/seo/atlas.html"
+    },
+    {
       "source": "/features",
       "destination": "/seo/features.html"
     },

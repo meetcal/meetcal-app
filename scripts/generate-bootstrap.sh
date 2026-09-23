@@ -55,6 +55,10 @@ render_page() {
     ' "${dist_dir}/index.html" > "${seo_dir}/${output_name}.html"
 }
 
+render_page "atlas" "/atlas" \
+  "Atlas — Weightlifting Coaching Platform | MeetCal" \
+  "Write weightlifting programs, review training logs, share lift videos, and plan meets with Atlas. Available on the web for coaches and on iPhone for athletes." \
+  "index, follow"
 render_page "features" "/features" \
   "MeetCal Features — Schedules, Start Lists &amp; Rankings" \
   "See how MeetCal helps athletes, coaches, and fans navigate weightlifting schedules, start lists, rankings, reminders, and meet-day details." \

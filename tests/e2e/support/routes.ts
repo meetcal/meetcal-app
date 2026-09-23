@@ -1,5 +1,6 @@
 export const publicRoutes = [
   ["/", "Your Competition Schedule, Simplified"],
+  ["/atlas", "Weightlifting programs and coaching"],
   ["/features", "Everything you need before the bar is loaded"],
   ["/privacy", "Privacy Policy"],
   ["/terms", "Terms of Use"],

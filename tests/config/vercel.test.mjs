@@ -65,6 +65,13 @@ test("the source document uses an external Wasm bootstrap", async () => {
 });
 
 test("production rewrites serve route-specific metadata shells", async () => {
+  const atlasRewrite = config.rewrites.find(({ source }) => source === "/atlas");
+  assert.equal(atlasRewrite.destination, "/seo/atlas.html");
+
+  const atlasHtml = await readFile(new URL("../../dist/seo/atlas.html", import.meta.url), "utf8");
+  assert.match(atlasHtml, /<title>Atlas — Weightlifting Coaching Platform/);
+  assert.match(atlasHtml, /href="https:\/\/meetcal\.app\/atlas"/);
+
   const featureRewrite = config.rewrites.find(({ source }) => source === "/features");
   assert.equal(featureRewrite.destination, "/seo/features.html");
 

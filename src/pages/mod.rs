@@ -1,3 +1,4 @@
+pub mod atlas;
 pub mod comp_data;
 pub mod features;
 pub mod home;

@@ -35,6 +35,13 @@ test("subscription page only offers mobile-store handoffs", async ({ page }) => 
   await expect(page.getByText(/secure checkout/i)).toHaveCount(0);
 });
 
+test("Atlas page links to its coach console and iOS app", async ({ page }) => {
+  await page.goto("/atlas");
+  await expect(page.getByRole("link", { name: "Open coach console" }).first()).toHaveAttribute("href", "https://atlas.meetcal.app");
+  await expect(page.getByRole("link", { name: "Get the iOS app" })).toHaveAttribute("href", "https://apps.apple.com/us/app/atlas-oly-training-journal/id6804845585");
+  await expect(page.getByText(/Athletes need an invitation from their coach/i)).toBeVisible();
+});
+
 test("legal pages expose the declared privacy services and cross-link", async ({ page }) => {
   await page.goto("/privacy");
   await expect(page.getByText("Clerk, for authentication and account management.", { exact: true })).toBeVisible();
@@ -51,6 +58,7 @@ test("legal pages expose the declared privacy services and cross-link", async ({
 test("routes expose specific titles, descriptions, canonicals, and indexing rules", async ({ page }) => {
   const expectations = [
     ["/", /Weightlifting Meet Schedules/, "index, follow"],
+    ["/atlas", /Atlas — Weightlifting Coaching Platform/, "index, follow"],
     ["/features", /MeetCal Features/, "index, follow"],
     ["/privacy", /Privacy Policy/, "index, follow"],
     ["/terms", /Terms of Use/, "index, follow"],

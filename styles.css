@@ -143,7 +143,8 @@ a {
     gap: 6px;
 }
 
-.site-nav a {
+.site-nav a,
+.site-nav .nav-menu-trigger {
     padding: 10px 9px;
     color: var(--text-secondary);
     font-size: 15px;
@@ -151,7 +152,9 @@ a {
     transition: color 0.15s ease;
 }
 
-.site-nav a:hover {
+.site-nav a:hover,
+.site-nav .nav-menu-trigger:hover,
+.site-nav .nav-menu-trigger:focus-visible {
     color: var(--text);
 }
 
@@ -232,6 +235,15 @@ a {
     font-weight: 650;
 }
 
+.mobile-nav-heading {
+    padding: 11px 12px 2px;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .mobile-nav-panel > a:hover,
 .mobile-nav-panel > a:focus-visible,
 .mobile-nav-socials a:hover,
@@ -276,6 +288,10 @@ a {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
+}
+
+.nav-menu-trigger {
+    white-space: nowrap;
 }
 
 .nav-menu-panel a {
@@ -1606,13 +1622,49 @@ main > div:has(> h4) > p {
     font-weight: 800;
 }
 
-.feature-card h2 {
+.feature-card h2,
+.feature-card h3 {
     margin: 0 0 12px;
     color: var(--text);
     font-size: 1.24rem;
     font-weight: 800;
     letter-spacing: -0.025em;
     line-height: 1.15;
+}
+
+.atlas-hero h1 {
+    max-width: 18ch;
+}
+
+.atlas-feature-grid {
+    text-align: left;
+}
+
+.atlas-closing {
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto clamp(80px, 12vh, 130px);
+    padding: clamp(40px, 7vw, 72px) 24px;
+    border-radius: 24px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 10%, var(--card)), var(--card) 65%);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+}
+
+.atlas-closing h2 {
+    margin: 0 0 12px;
+    font-size: clamp(2rem, 4.5vw, 3.35rem);
+    letter-spacing: -0.045em;
+    line-height: 1.08;
+}
+
+.atlas-closing > p:not(.section-eyebrow) {
+    margin: 0 0 28px;
+    color: var(--text-secondary);
+}
+
+.atlas-closing .store-links {
+    justify-content: center;
 }
 
 .feature-card p {
@@ -1741,7 +1793,8 @@ main main:not(.features-page) a:hover {
 
     .hero-section,
     .download-section,
-    .interaction-section {
+    .interaction-section,
+    .atlas-closing {
         width: 100%;
     }
 

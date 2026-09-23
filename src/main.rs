@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_router::components::*;
 use leptos_router::path;
 use meetcal_web::pages::{
+    atlas::AtlasPage,
     comp_data::{
         adaptive_records::AdaptiveRecords, club_dashboard::ClubDashboard, data_home::CompData,
         meet_center::MeetCenter, national_rankings::NationalRankings,
@@ -37,6 +38,7 @@ fn App() -> impl IntoView {
             <main>
                 <Routes fallback=|| view! { <NotFound /> }>
                     <Route path=path!("/") view=Home />
+                    <Route path=path!("/atlas") view=AtlasPage />
                     <Route path=path!("/comp-data") view=|| view! { <SubscriptionGate><CompData /></SubscriptionGate> } />
                     <Route path=path!("/qualifying-totals") view=|| view! { <SubscriptionGate><QualifyingTotals /></SubscriptionGate> } />
                     <Route path=path!("/standards") view=|| view! { <SubscriptionGate><Standards /></SubscriptionGate> } />

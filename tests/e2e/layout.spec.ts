@@ -8,6 +8,9 @@ test("desktop navigation remains visible and complete", async ({ page, isMobile 
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
   await expect(page.locator("details.mobile-nav")).toBeHidden();
   await expect(page.getByRole("link", { name: "Competition Data" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Products" }).focus();
+  await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "War Games" })).toHaveAttribute("href", "https://wargames.meetcal.app");
+  await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Atlas" })).toBeVisible();
 });
 
 test("mobile navigation opens and supports internal navigation", async ({ page, isMobile }) => {
@@ -17,6 +20,8 @@ test("mobile navigation opens and supports internal navigation", async ({ page, 
   const menu = page.locator("details.mobile-nav");
   await menu.locator("summary").click();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "War Games" })).toHaveAttribute("href", "https://wargames.meetcal.app");
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/atlas");
   await page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Features" }).click();
   await expect(page).toHaveURL(/\/features$/);
   await expect(page.getByRole("heading", { level: 1, name: "Everything you need before the bar is loaded" })).toBeVisible();
