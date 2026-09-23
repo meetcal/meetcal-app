@@ -42,6 +42,7 @@ import {
   markSessionPut,
   mergeServerSessions,
   readOutbox,
+  tokenBelongsTo,
 } from '@/lib/saved-sessions-outbox';
 import {
   findLegacySessionsNeedingMigration,
@@ -367,6 +368,12 @@ export function useSavedSessions() {
   // user has the "auto-remove started sessions" preference enabled. Runs on load.
   const pruneStartedSessions = useCallback(async () => {
     if (!clerkUserId) return;
+    // Destructive, and it spans several awaits: every step re-checks that the
+    // signed-in user is still the one whose sessions and preference these
+    // are. Otherwise an account switch mid-prune could apply user B's
+    // preference to user A's list and queue deletions in A's outbox.
+    const userId = clerkUserId;
+    const stillThisUser = () => activeUserIdRef.current === userId;
 
     let token: string | null = null;
     try {
@@ -377,7 +384,7 @@ export function useSavedSessions() {
       console.error('pruneStartedSessions: Clerk getToken() failed', tokenError);
       return;
     }
-    if (!token) return;
+    if (!token || !stillThisUser() || !tokenBelongsTo(token, userId)) return;
 
     let autoUnsaveEnabled = false;
     try {
@@ -387,10 +394,10 @@ export function useSavedSessions() {
       console.error('pruneStartedSessions: failed to fetch preferences', error);
       return;
     }
-    if (!autoUnsaveEnabled) return;
+    if (!autoUnsaveEnabled || !stillThisUser()) return;
 
     const sessions = await readStoredSessions();
-    if (sessions.length === 0) return;
+    if (sessions.length === 0 || !stillThisUser()) return;
 
     const now = new Date();
     const timeZoneByMeet = new Map<MeetName, string>();
@@ -423,6 +430,7 @@ export function useSavedSessions() {
     }
 
     for (const id of expiredIds) {
+      if (!stillThisUser()) return;
       await removeSession(id);
     }
   }, [clerkUserId, readStoredSessions, removeSession]);

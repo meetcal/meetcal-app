@@ -752,6 +752,23 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
+  it("does not prune with a token issued for a different user", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
+    mockConvertToUTC.mockReturnValue(new Date("2000-01-01T15:00:00.000Z"));
+    // Clerk already hands out the next account's token.
+    mockGetToken.mockResolvedValue(jwtFor("user_2"));
+
+    const hook = await mountHook();
+
+    expect(mockFetchUserPreferences).not.toHaveBeenCalled();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    // Nothing was queued for deletion. (The row's one-time upload stays
+    // queued too: the token is not user_1's, so it is not sent under it.)
+    expect((await readOutbox("user_1")).sessions["Test-Meet-1-Red"]?.op).not.toBe("delete");
+    expect(mockPutSavedSession).not.toHaveBeenCalled();
+  });
+
   it("serialises concurrent saves so neither row is lost", async () => {
     const hook = await mountHook();
 
