@@ -500,9 +500,10 @@ async function downloadAthleteHistory(
         await saveAthleteHistory(name, rows);
       }
     } catch (historyError) {
+      // Count, not names: athlete names stay out of logs and crash reports.
       console.error('Prefetch athlete history batch failed:', {
         meet,
-        names: batch,
+        batchSize: batch.length,
         error: historyError,
       });
       complete = false;
