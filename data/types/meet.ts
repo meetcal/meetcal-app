@@ -37,6 +37,12 @@ export interface TimeConfig {
   timeZoneIdentifier: USTimeZoneIdentifier;
   abbreviation: string;
   utcOffset: number; // Current offset (either standard or DST)
+  /**
+   * True when the API sent a time zone the app does not recognise and the
+   * mapper fell back to a default. Times for this meet may be off; UI can
+   * surface it. Set by `mapApiMeet`.
+   */
+  timeZoneUnknown?: boolean;
 }
 
 export interface DateRange {
