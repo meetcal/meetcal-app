@@ -17,16 +17,20 @@ import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
-export default function RecordsScreen() {
+const EMPTY_INTL_RANKINGS: IntlRanking[] = [];
+
+export default function IntlRankingsScreen() {
   return (
     <SubscriptionGate>
-      <RecordsScreenContent />
+      <IntlRankingsScreenContent />
     </SubscriptionGate>
   );
 }
 
-function RecordsScreenContent() {
+function IntlRankingsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
@@ -55,19 +59,15 @@ function RecordsScreenContent() {
     defaultFilters,
   });
 
-  const [intlRankings, setIntlRankings] = useState<IntlRanking[]>([]);
   const {
-    data,
+    data: intlRankings,
     isInitialLoading: loading,
     error: fetchError,
   } = useMutableResource({
     resource: intlRankingsResource,
     params: [] as const,
-    initialData: [] as IntlRanking[],
+    initialData: EMPTY_INTL_RANKINGS,
   });
-  useEffect(() => {
-    setIntlRankings(data);
-  }, [data]);
 
   // Only set default filters the first time rankings are loaded
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(hasRouteFilters);
@@ -179,6 +179,9 @@ function RecordsScreenContent() {
     return `${meet} • ${age_category} • ${gender}`;
   };
 
+  // Unlike the sibling screens, reset cannot go through `useFilterState`'s
+  // `onReset`: the defaults here are derived from the fetched rankings, not
+  // from a literal known at mount.
   const handleResetFilters = () => {
     const defaultMeet =
       meetOptions[0] ||
@@ -250,7 +253,7 @@ function RecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

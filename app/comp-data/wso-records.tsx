@@ -13,7 +13,7 @@ import {
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
-import { sortAgeGroups } from "@/lib/sortAgeGroups";
+import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
   AgeGroupRecords,
   RecordsData,
@@ -23,19 +23,21 @@ import { Filters, Gender } from "@/types/wso-records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_WSO_LIST: string[] = [];
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
-export default function RecordsScreen() {
+export default function WSORecordsScreen() {
   return (
     <SubscriptionGate>
-      <RecordsScreenContent />
+      <WSORecordsScreenContent />
     </SubscriptionGate>
   );
 }
 
-function RecordsScreenContent() {
+function WSORecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = React.useState<
@@ -63,8 +65,11 @@ function RecordsScreenContent() {
     initialData: EMPTY_WSO_LIST,
   });
 
-  const wsoParams = useMemo(
-    () => (filters.wso ? ([filters.wso, filters.ageGroup, filters.gender] as const) : null),
+  const wsoParams = useMemo<[string, string, Gender] | null>(
+    () =>
+      filters.wso
+        ? [filters.wso, filters.ageGroup, filters.gender as Gender]
+        : null,
     [filters.ageGroup, filters.gender, filters.wso],
   );
   const {
@@ -73,9 +78,8 @@ function RecordsScreenContent() {
     error: recordsError,
   } = useMutableResource({
     resource: wsoRecordsResource,
-    params: (wsoParams ?? (["", "Senior", "Men"] as const)) as [string, string, Gender],
+    params: wsoParams,
     initialData: EMPTY_RECORDS_DATA,
-    enabled: Boolean(wsoParams),
   });
 
   useEffect(() => {
@@ -121,38 +125,12 @@ function RecordsScreenContent() {
     );
   }, [records, filters.ageGroup, filters.gender]);
 
-  const getAgeGroupDisplayText = (ageGroup: string) => {
-    if (!ageGroup) return "";
-    switch (ageGroup) {
-      case "u13":
-        return "U13";
-      case "u15":
-        return "U15";
-      case "u17":
-        return "U17";
-      default:
-        return ageGroup.charAt(0).toUpperCase() + ageGroup.slice(1);
-    }
-  };
-
   const getFilterDisplayText = () => {
     const wso = filters.wso;
     const gen = filters.gender;
-    const age = getAgeGroupDisplayText(filters.ageGroup);
+    const age = formatAgeGroupLabel(filters.ageGroup);
     return `${wso} • ${gen} • ${age}`;
   };
-
-  const handleResetFilters = () => {
-    const reset = { wso: "", gender: "Men" as Gender, ageGroup: "Senior" };
-    setFilters(reset);
-    setTempFilters(reset);
-  };
-
-  const genderOptions = useMemo(
-    () =>
-      (["Men", "Women"] as Gender[]).sort((a, b) => a.localeCompare(b)),
-    [],
-  );
 
   const fetchAgeGroupsForWSO = React.useCallback(
     (wso: string) => {
@@ -199,14 +177,17 @@ function RecordsScreenContent() {
         {
           id: "gender",
           title: "Gender",
-          options: genderOptions.map((gender) => ({ value: gender, label: gender })),
+          options: [
+            { value: "Men", label: "Men" },
+            { value: "Women", label: "Women" },
+          ],
         },
         {
           id: "ageGroup",
           title: "Age Group",
           options: modalAgeGroups.map((ageGroup: string) => ({
             value: ageGroup,
-            label: getAgeGroupDisplayText(ageGroup),
+            label: formatAgeGroupLabel(ageGroup),
           })),
           dependsOn: ["wso"],
         },
@@ -218,13 +199,12 @@ function RecordsScreenContent() {
       availableWSOs,
       fetchAgeGroupsForWSO,
       filters.wso,
-      genderOptions,
     ],
   );
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{
@@ -264,7 +244,7 @@ function RecordsScreenContent() {
         }
         loading={isWSOLoading || (Boolean(filters.wso) && isRecordsLoading)}
         error={wsoListError || recordsError}
-        emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${getAgeGroupDisplayText(filters.ageGroup)} age group.`}
+        emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${formatAgeGroupLabel(filters.ageGroup)} age group.`}
         renderRow={(record, index) => (
           <View
             style={[
@@ -298,7 +278,6 @@ function RecordsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={filterSections}
-        onResetFilters={handleResetFilters}
       />
     </ThemedView>
   );

@@ -1,5 +1,6 @@
 import React, { createContext, useContext } from 'react';
 import { useSavedSessions as useHook, SavedSession } from '@/hooks/useSavedSessions';
+import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 
@@ -7,7 +8,7 @@ interface SavedSessionsContextType {
   savedSessions: SavedSession[];
   isLoading: boolean;
   loadSavedSessions: () => Promise<void>;
-  saveSessionsFromAthletes: (athletes: any[], meet: MeetName, scheduleOverride?: ScheduleType) => Promise<boolean>;
+  saveSessionsFromAthletes: (athletes: LiftResult[], meet: MeetName, scheduleOverride?: ScheduleType) => Promise<boolean>;
   saveSession: (session: SavedSession) => Promise<boolean>;
   removeSession: (sessionId: string) => Promise<boolean>;
   isSessionSaved: (sessionId: string) => boolean;

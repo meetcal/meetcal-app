@@ -1,9 +1,10 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
+import { showToast } from "@/components/ui/Toast";
+import { shareImageFile } from "@/lib/share-image";
 import { useAppColors } from "@/hooks/useAppColors";
 import { ImagePreviewModalProps } from "@/types/start-list";
-import * as Sharing from "expo-sharing";
 import React from "react";
 import {
   Image,
@@ -55,36 +56,37 @@ export default function ImagePreviewModal({
 
   React.useEffect(() => {
     if (!selectedOption?.uri) return;
+    // `Image.getSize` is a native round trip with no cancellation of its own:
+    // switching White -> Transparent faster than it resolves lets the first
+    // callback land last and size the sheet for the other image, and closing
+    // the sheet mid-flight writes state after unmount.
+    let cancelled = false;
     Image.getSize(
       selectedOption.uri,
       (width, height) => {
+        if (cancelled) return;
         if (width > 0 && height > 0) {
           setImageAspectRatio(width / height);
         }
       },
       () => {
+        if (cancelled) return;
         setImageAspectRatio(850 / 1200);
       },
     );
+    return () => {
+      cancelled = true;
+    };
   }, [selectedOption?.uri]);
 
   const handleShare = async () => {
     if (!selectedOption?.uri) return;
 
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        alert("Sharing is not available on this device");
-        return;
-      }
-
-      await Sharing.shareAsync(selectedOption.uri, {
-        mimeType: "image/png",
-        dialogTitle: "Share Schedule",
-      });
+      await shareImageFile(selectedOption.uri, "Share Schedule");
     } catch (error) {
       console.error("Error sharing image:", error);
-      alert("Failed to share image");
+      showToast({ type: "error", message: "Failed to share image" });
     }
   };
 

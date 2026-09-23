@@ -1,4 +1,6 @@
-const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})\s+(AM|PM)$/i;
+// Seconds are optional and the space before the period is too: the API emits
+// both "9:00 AM" and "9:00:00 AM", and stored sessions can carry "9:00AM".
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i;
 const TIME_24H_REGEX = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 
 function parseTo24Hour(startTime: string): { hour24: number; minutes: number } | null {
@@ -52,6 +54,55 @@ function parseTo24Hour(startTime: string): { hour24: number; minutes: number } |
 // Saved sessions are auto-removed once this much time has elapsed since their start.
 export const AUTO_UNSAVE_DELAY_MS = 2 * 60 * 60 * 1000;
 
+/** USAW weigh-in opens this many hours before the session's start time. */
+export const WEIGH_IN_LEAD_HOURS = 2;
+
+/**
+ * Returned when `startTime` cannot be parsed: an empty string, meaning "no
+ * weigh-in time known".
+ *
+ * This used to be a hard-coded `"6:00 AM"`. Two call sites were guarded with
+ * `startTime ? calculateWeighInTime(startTime) : ""`, but their siblings were
+ * not — `saveSessionsFromAthletes`' schedule branch and the notification
+ * payload in `saveSession`, plus `schedule-details` and `HeaderSection` — so a
+ * session whose `start_time` is null in the API (`formatApiTime` maps that to
+ * `""`) was *persisted* and pushed to the server carrying an invented 6am
+ * weigh-in, and shipped in the reminder notification's deep-link params.
+ *
+ * Every consumer already renders a missing weigh-in as blank, because the two
+ * guarded call sites have always been able to produce `""`. Failing to `""`
+ * here makes the whole family honest at one point instead of at each caller.
+ */
+const WEIGH_IN_UNKNOWN = "";
+
+/**
+ * Render a clock string as 12-hour `h:mm AM/PM`.
+ *
+ * Accepts `HH:MM`, `HH:MM:SS`, `h:mm AM/PM` (space optional) and `h:mm:ss AM/PM`;
+ * seconds are dropped. Anything else is returned unchanged — a start time the
+ * API sent in an unexpected shape is more useful on screen than a blank cell.
+ *
+ * There were three copies of this: `data/meets/config.ts`, the share-schedule
+ * image and the start-list CSV export. They disagreed on whether seconds were
+ * stripped and on out-of-range hours, so the same session could render one way
+ * in the app and another in the image the user posts.
+ */
+export function formatTo12Hour(timeStr: string | null | undefined): string {
+  if (!timeStr) return "";
+  const trimmed = timeStr.trim();
+
+  const match12h = trimmed.match(TIME_12H_REGEX);
+  if (match12h) {
+    return `${Number(match12h[1])}:${match12h[2]} ${match12h[3].toUpperCase()}`;
+  }
+
+  const match24h = trimmed.match(TIME_24H_REGEX);
+  if (!match24h) return timeStr;
+
+  const hours = Number(match24h[1]);
+  return `${hours % 12 || 12}:${match24h[2]} ${hours >= 12 ? "PM" : "AM"}`;
+}
+
 /**
  * Returns true when a session started at least AUTO_UNSAVE_DELAY_MS (2 hours)
  * before `now`, meaning it qualifies for auto-removal.
@@ -66,19 +117,22 @@ export function hasSessionPassedAutoUnsaveWindow(
 }
 
 export function calculateWeighInTime(startTime: string): string {
+  // A blank start time is an ordinary API state (`start_time: null`), not a
+  // malformed one; only warn about values that are present but unparseable.
+  if (!startTime || !startTime.trim()) return WEIGH_IN_UNKNOWN;
+
   const parsed = parseTo24Hour(startTime);
   if (!parsed) {
     console.warn(
       'calculateWeighInTime: invalid startTime format, expected "HH:MM AM/PM" or "HH:MM[:SS]"',
       { startTime },
     );
-    return "6:00 AM";
+    return WEIGH_IN_UNKNOWN;
   }
   const { minutes } = parsed;
-  let { hour24 } = parsed;
+  const { hour24 } = parsed;
 
-  // Subtract 2 hours
-  let weighInHour = hour24 - 2;
+  let weighInHour = hour24 - WEIGH_IN_LEAD_HOURS;
 
   // Handle day wrap
   if (weighInHour < 0) weighInHour += 24;

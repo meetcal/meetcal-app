@@ -1,14 +1,12 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubsResource } from "@/lib/database/fetch-club-stats";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function ShareResultsByClubScreen() {
   return (
@@ -32,12 +31,13 @@ export default function ShareResultsByClubScreen() {
 }
 
 function ShareResultsByClubScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [searchText, setSearchText] = useState("");
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline] = useIsOffline();
   const {
     data: allClubs,
     isInitialLoading: isLoading,
@@ -54,30 +54,6 @@ function ShareResultsByClubScreenContent() {
     posthog.capture("screen_viewed", {
       screen_name: "Share Results By Club",
     });
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    isNetworkAvailable()
-      .then((hasNetwork) => {
-        if (mounted) {
-          setIsOffline(!hasNetwork);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setIsOffline(false);
-        }
-      });
-
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
   }, []);
 
   const loadClubs = useCallback(async () => {
@@ -193,7 +169,7 @@ function ShareResultsByClubScreenContent() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+        name={getChevronIcon("right")}
         size={20}
         color={colors.link}
       />
@@ -202,7 +178,7 @@ function ShareResultsByClubScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

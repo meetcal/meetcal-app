@@ -18,10 +18,15 @@ import {
 import {
   clearAllAthleteHistory,
   clearMeetData,
+  getExplicitlyDownloadedMeetIds,
   getLastSyncTime,
-  isMeetExplicitlyDownloaded,
   markMeetExplicitlyDownloaded,
+  readStorageKeysForMeetClear,
 } from "@/lib/database/offline-store";
+import {
+  getCalendarDateInTimeZone,
+  toMeetCalendarDate,
+} from "@/utils/dateTime";
 import { formatDistanceToNow } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert } from "react-native";
@@ -39,6 +44,52 @@ type DownloadItem = {
   status: DownloadStatus | undefined;
   isDownloading: boolean;
 };
+
+/**
+ * How far ahead a meet may start and still be offered for offline download.
+ */
+const DOWNLOADABLE_MEET_WINDOW_DAYS = 21;
+
+/**
+ * The timezone the download window is anchored in. Meet dates are calendar
+ * dates with no zone of their own, and Pacific is the latest US zone, so a
+ * meet stays offered until it has finished everywhere in the country.
+ */
+const DOWNLOAD_WINDOW_TIME_ZONE = "America/Los_Angeles";
+
+/** `YYYY-MM-DD`, `days` after `from`. */
+function shiftCalendarDate(from: string, days: number): string {
+  const [year, month, day] = from.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return shifted.toISOString().split("T")[0];
+}
+
+/**
+ * The meets the offline screen offers: starting within the next
+ * `DOWNLOADABLE_MEET_WINDOW_DAYS`, or already under way.
+ *
+ * Compared as `YYYY-MM-DD` strings. `new Date(`${startDate}T00:00:00`)` parses
+ * a meet calendar date in the *device* timezone, which is not the meet's, and
+ * is the pattern the recurring-lessons list calls out.
+ */
+export function selectDownloadableMeets<
+  T extends { dates?: { start?: string; end?: string } | null },
+>(meets: T[], today: string): T[] {
+  const windowEnd = shiftCalendarDate(today, DOWNLOADABLE_MEET_WINDOW_DAYS);
+
+  return meets.filter((meet) => {
+    const start = toMeetCalendarDate(meet?.dates?.start);
+    if (!start) return false;
+    const end = toMeetCalendarDate(meet?.dates?.end);
+    if (!end) return false;
+
+    const isUpcoming = start >= today && start <= windowEnd;
+    // Without the end-date check a multi-day meet that began before today
+    // would be filtered out even though it is happening right now.
+    const isOngoing = start < today && end >= today;
+    return isUpcoming || isOngoing;
+  });
+}
 
 const getMeetDownloadId = (meetName: string) => `meet:${meetName}`;
 
@@ -68,33 +119,14 @@ export const useOfflineData = () => {
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
 
-  const filteredMeets = useMemo(() => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endDate = new Date(startOfToday);
-    endDate.setDate(endDate.getDate() + 21);
-
-    return availableMeets.filter((meet) => {
-      const startDateValue = meet?.dates?.start;
-      if (!startDateValue) return false;
-      const start = new Date(`${startDateValue}T00:00:00`);
-      if (Number.isNaN(start.getTime())) return false;
-
-      const endDateValue = meet?.dates?.end;
-      if (!endDateValue) return false;
-      const end = new Date(`${endDateValue}T00:00:00`);
-      if (Number.isNaN(end.getTime())) return false;
-
-      // Show a meet if it starts within the next 21 days, OR if it is currently
-      // ongoing (started in the past but hasn't ended yet). Without the
-      // end-date check, a multi-day meet that began before today would be
-      // filtered out even though it's happening right now.
-      const isUpcoming = start >= startOfToday && start <= endDate;
-      const isOngoing = start < startOfToday && end >= startOfToday;
-
-      return isUpcoming || isOngoing;
-    });
-  }, [availableMeets]);
+  const filteredMeets = useMemo(
+    () =>
+      selectDownloadableMeets(
+        availableMeets,
+        getCalendarDateInTimeZone(DOWNLOAD_WINDOW_TIME_ZONE),
+      ),
+    [availableMeets],
+  );
 
   const formatLastSynced = useCallback(
     (lastSynced: number | null | undefined) => {
@@ -233,26 +265,36 @@ export const useOfflineData = () => {
           lastSynced: adaptiveCache?.lastSynced ?? null,
         };
     
-        await Promise.all(
-          availableMeets.map(async (meet) => {
-            const explicitlyDownloaded = await isMeetExplicitlyDownloaded(
-              meet.name,
-            );
-            const lastSynced = explicitlyDownloaded
-              ? await getLastSyncTime(meet.name)
-              : null;
-            nextStatuses[getMeetDownloadId(meet.name)] = {
-              isDownloaded: explicitlyDownloaded,
-              lastSynced: lastSynced ?? null,
-            };
-          }),
-        );
+        // One read of the downloads blob instead of a `Promise.all` fan-out
+        // that re-read and re-parsed the same AsyncStorage value once per meet.
+        const downloadedMeetIds = await getExplicitlyDownloadedMeetIds();
+        for (const meet of availableMeets) {
+          const explicitlyDownloaded = downloadedMeetIds.has(meet.name);
+          const lastSynced = explicitlyDownloaded
+            ? await getLastSyncTime(meet.name)
+            : null;
+          nextStatuses[getMeetDownloadId(meet.name)] = {
+            isDownloaded: explicitlyDownloaded,
+            lastSynced: lastSynced ?? null,
+          };
+        }
     
-        setDownloadStatuses(nextStatuses);
+        return nextStatuses;
       }, [availableMeets]);
     
       useEffect(() => {
-        loadStatuses();
+        let cancelled = false;
+        loadStatuses()
+          .then((nextStatuses) => {
+            if (cancelled) return;
+            setDownloadStatuses(nextStatuses);
+          })
+          .catch((error) => {
+            console.error("Failed to load offline download statuses:", error);
+          });
+        return () => {
+          cancelled = true;
+        };
       }, [loadStatuses, refreshCounter]);
     
       const handleDownload = async (id: string, action: () => Promise<void>) => {
@@ -366,8 +408,16 @@ export const useOfflineData = () => {
             clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords),
           ]);
     
+          // One key listing shared by every meet. Each `clearMeetData` has to
+          // scan all storage keys for that meet's session-athlete entries, and
+          // at this point the athlete-history keys — 1500 to 4500 of them for a
+          // downloaded meet — have not been removed yet, so the listing is at
+          // its largest exactly while it was being repeated once per meet.
+          const storageKeys = await readStorageKeysForMeetClear(
+            availableMeets.length,
+          );
           for (const meet of availableMeets) {
-            await clearMeetData(meet.name);
+            await clearMeetData(meet.name, { storageKeys });
           }
           if (!keepAthleteHistory) {
             await clearAllAthleteHistory();

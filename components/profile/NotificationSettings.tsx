@@ -1,8 +1,12 @@
 import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
 import { AuthGuardOptions } from "@/utils/authGuard";
+import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
+// Named import: eslint-plugin-import cannot see enums re-exported through
+// expo-notifications' nested `export *` chain on the namespace object.
+import { AndroidImportance } from "expo-notifications";
 import type { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -11,24 +15,15 @@ import {
   Platform,
 } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
+import { devLog } from "@/lib/logger";
 
 interface NotificationSettingsProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    card: string;
-    pressed: string;
-  };
   subscriptionStatus: SubscriptionStatus;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: ReturnType<typeof useRouter>;
 }
 
-const NOTIFICATION_ENABLED_KEY = "@notification_enabled";
-
 export function NotificationSettings({
-  colors,
   subscriptionStatus,
   requireAuth,
   router,
@@ -40,13 +35,30 @@ export function NotificationSettings({
   const isSubscribed = subscriptionStatus !== "free";
 
   useEffect(() => {
-    loadNotificationSettings();
+    let isCancelled = false;
+    const load = async () => {
+      try {
+        const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
+        if (!isCancelled) setIsEnabled(enabled === "true");
+      } catch (error) {
+        console.error("Error loading notification settings:", error);
+        if (!isCancelled) setIsEnabled(false);
+      } finally {
+        // `isLoading` gates the auto-enable effect below, so landing it after
+        // unmount would start an OS permission prompt for a gone screen.
+        if (!isCancelled) setIsLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   // Automatically enable reminders if user becomes subscribed and reminders are currently off
   useEffect(() => {
     if (isSubscribed && !isEnabled && !isLoading && !autoEnableAttempted) {
-      console.log(
+      devLog(
         "Subscription active and reminders off, attempting to enable automatically.",
       );
       setAutoEnableAttempted(true);
@@ -55,23 +67,11 @@ export function NotificationSettings({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSubscribed, isEnabled, isLoading, autoEnableAttempted]);
 
-  const loadNotificationSettings = async () => {
-    try {
-      const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
-      setIsEnabled(enabled === "true");
-    } catch (error) {
-      console.error("Error loading notification settings:", error);
-      setIsEnabled(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const requestPermissions = async () => {
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
         name: "default",
-        importance: Notifications.AndroidImportance.MAX,
+        importance: AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#FF231F7C",
       });
@@ -116,7 +116,7 @@ export function NotificationSettings({
                   from: "/(tabs)/(index)/profile",
                   feature: "session-reminders",
                 },
-              } as any);
+              });
             },
           },
         ],
@@ -162,7 +162,7 @@ export function NotificationSettings({
         if (Platform.OS === "android") {
           await Notifications.setNotificationChannelAsync("default", {
             name: "default",
-            importance: Notifications.AndroidImportance.MAX,
+            importance: AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
             lightColor: "#FF231F7C",
           });
@@ -199,12 +199,10 @@ export function NotificationSettings({
 
   return (
     <ProfileSwitchSetting
-      colors={colors}
       label="Session Reminders"
       description="Get notified 1 hour before your sessions"
       value={isEnabled && isSubscribed}
-      onPress={handleToggle}
-      onValueChange={handleToggle}
+      onToggle={handleToggle}
       showPremiumBadge={!isSubscribed}
       switchDisabled={!isSubscribed}
       isLoading={isLoading}

@@ -1,7 +1,7 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 
 export type IntlRanking = {
   meet: string;
@@ -58,7 +58,7 @@ async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
     throw new Error('Offline');
   }
 
-  const rows = await getJson<ApiIntlRanking[]>('/data/intl-rankings');
+  const rows = await getJsonArray<ApiIntlRanking>('/data/intl-rankings');
   return rows.filter(isCompleteIntlRanking).map((row) => ({
     meet: row.meet,
     ranking: row.ranking,

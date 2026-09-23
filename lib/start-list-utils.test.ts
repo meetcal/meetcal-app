@@ -2,11 +2,10 @@ import {
   sortWeightClasses,
   parseStartTimeToMinutes,
   compareStartTimes,
-  calculateWeighInTime,
+  compareCalendarDates,
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
-  isMeetName,
 } from "@/lib/start-list-utils";
 
 describe("sortWeightClasses", () => {
@@ -57,6 +56,36 @@ describe("parseStartTimeToMinutes", () => {
   });
 });
 
+describe("compareCalendarDates", () => {
+  it("orders ISO calendar dates chronologically", () => {
+    expect(compareCalendarDates("2026-06-20", "2026-06-21")).toBeLessThan(0);
+    expect(compareCalendarDates("2026-07-01", "2026-06-30")).toBeGreaterThan(0);
+    expect(compareCalendarDates("2026-06-20", "2026-06-20")).toBe(0);
+  });
+
+  it("orders across month and year boundaries", () => {
+    expect(compareCalendarDates("2025-12-31", "2026-01-01")).toBeLessThan(0);
+    expect(compareCalendarDates("2026-09-09", "2026-09-10")).toBeLessThan(0);
+  });
+
+  it("sorts a realistic multi-day meet the same way Date did", () => {
+    const days = ["2026-06-22", "2026-06-20", "2026-06-21"];
+    expect([...days].sort(compareCalendarDates)).toEqual([
+      "2026-06-20",
+      "2026-06-21",
+      "2026-06-22",
+    ]);
+  });
+
+  it("stays a consistent comparator for values Date cannot parse", () => {
+    // `new Date("TBD").getTime()` is NaN, which made the old comparator
+    // return NaN and leave the order arbitrary.
+    expect(Number.isNaN(compareCalendarDates("TBD", "2026-06-20"))).toBe(false);
+    expect(compareCalendarDates("TBD", "2026-06-20")).toBeGreaterThan(0);
+    expect(compareCalendarDates("2026-06-20", "TBD")).toBeLessThan(0);
+  });
+});
+
 describe("compareStartTimes", () => {
   it("orders parseable times chronologically", () => {
     expect(compareStartTimes("9:00 AM", "10:00 AM")).toBeLessThan(0);
@@ -70,23 +99,6 @@ describe("compareStartTimes", () => {
 
   it("falls back to string compare when neither parses", () => {
     expect(compareStartTimes("AAA", "BBB")).toBeLessThan(0);
-  });
-});
-
-describe("calculateWeighInTime", () => {
-  it("subtracts two hours and keeps AM/PM formatting", () => {
-    expect(calculateWeighInTime("10:00 AM")).toBe("8:00 AM");
-    expect(calculateWeighInTime("2:30 PM")).toBe("12:30 PM");
-  });
-
-  it("wraps around midnight", () => {
-    expect(calculateWeighInTime("1:00 AM")).toBe("11:00 PM");
-  });
-
-  it("returns null for invalid input", () => {
-    expect(calculateWeighInTime("nope")).toBeNull();
-    expect(calculateWeighInTime("25:00 AM")).toBeNull();
-    expect(calculateWeighInTime("10:00")).toBeNull(); // missing period
   });
 });
 
@@ -140,14 +152,24 @@ describe("formatSessionDisplayDate", () => {
     ).toBe("Thu, Jan 15");
   });
 
+  it("formats an ISO full date with no timezone without drifting a day", () => {
+    // Regression: the no-timezone branch used to format UTC midnight in the
+    // device zone, so a Los Angeles device read "2026-01-15" as Jan 14.
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      expect(formatSessionDisplayDate(undefined, "2026-01-15")).toBe(
+        "Thu, Jan 15",
+      );
+      expect(formatSessionDisplayDate(undefined, "2026-01-15T00:00:00")).toBe(
+        "Thu, Jan 15",
+      );
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
-  });
-});
-
-describe("isMeetName", () => {
-  it("treats any non-null string as a meet name", () => {
-    expect(isMeetName("Worlds")).toBe(true);
-    expect(isMeetName(null)).toBe(false);
   });
 });

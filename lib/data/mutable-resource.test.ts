@@ -68,4 +68,52 @@ describe("createMutableResource", () => {
     expect(second.data).toEqual({ value: 3 });
     expect(fetchFresh).toHaveBeenCalledTimes(1);
   });
+  // Regression: `invalidate` drops the in-flight entry for a key, so a request
+  // started afterwards owns it. When the older request settled, its `.finally`
+  // deleted whatever was registered under the key — the *newer* request — and
+  // the map was empty while a fetch was still running, so the next caller
+  // issued a duplicate request instead of joining the live one.
+  it("does not let a superseded request unregister a newer one", async () => {
+    const resolvers: ((value: { value: number }) => void)[] = [];
+    const fetchFresh = jest.fn(
+      () =>
+        new Promise<{ value: number }>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const resource = createMutableResource({
+      getKey: () => "shared",
+      loadCached: async () => null,
+      fetchFresh,
+      persistFresh: async (data: { value: number }) => ({
+        data,
+        lastUpdatedAt: 1,
+      }),
+    });
+
+    const tick = async () => {
+      for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    };
+
+    const first = resource.revalidate();
+    await tick();
+    await resource.invalidate();
+    const second = resource.revalidate();
+    await tick();
+    expect(fetchFresh).toHaveBeenCalledTimes(2);
+
+    // The superseded request settles first.
+    resolvers[0]({ value: 1 });
+    await first;
+    await tick();
+
+    // The live second request must still be joinable.
+    const joined = resource.revalidate();
+    await tick();
+    expect(fetchFresh).toHaveBeenCalledTimes(2);
+
+    resolvers[1]({ value: 2 });
+    await expect(second).resolves.toMatchObject({ data: { value: 2 } });
+    await expect(joined).resolves.toMatchObject({ data: { value: 2 } });
+  });
 });

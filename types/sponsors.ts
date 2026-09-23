@@ -1,3 +1,5 @@
+import type { ImageSourcePropType } from "react-native";
+
 // Update the sponsor type
 export interface Sponsor {
     id: string; 
@@ -5,5 +7,5 @@ export interface Sponsor {
     description: string;
     website: string;
     discount?: string;
-    image: any; // Add image property
+    image: ImageSourcePropType;
   };

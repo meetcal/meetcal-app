@@ -106,6 +106,29 @@ describe("useAuthGuard offline behavior", () => {
     expect(mockCacheAuthState).toHaveBeenCalledWith(true, "123");
   });
 
+  it("prompts sign in when Clerk is loaded and online, even with a cached sign-in", async () => {
+    // Session revoked elsewhere: Clerk has loaded and says "no user", and the
+    // device is online, so the SecureStore hint must not open the gate.
+    mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
+    mockGetCachedAuthState.mockResolvedValue({
+      isSignedIn: true,
+      timestamp: Date.now(),
+      userId: "123",
+    });
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockCacheAuthState.mockResolvedValue(undefined);
+
+    await act(async () => {
+      create(<Harness />);
+    });
+    await flushEffects();
+
+    const result = captured?.requireAuth({ feature: "saved-sessions" });
+
+    expect(result).toBe(false);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("prompts sign in when unauthenticated and no cache", async () => {
     mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
     mockGetCachedAuthState.mockResolvedValue(null);

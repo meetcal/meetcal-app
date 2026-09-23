@@ -6,12 +6,8 @@ import { Platform, View, type ViewProps } from "react-native";
 export interface MaterialSurfaceProps extends ViewProps {
   /** Solid color rendered when a native material effect is unavailable. */
   fallbackColor: string;
-  /** Overrides the auto-resolved light/dark appearance. */
-  tint?: "light" | "dark";
   /** Android blur intensity (1-100). Ignored on iOS. */
   intensity?: number;
-  /** iOS glass style. Ignored on Android. */
-  glassStyle?: "regular" | "clear";
 }
 
 /**
@@ -22,15 +18,12 @@ export interface MaterialSurfaceProps extends ViewProps {
  */
 export function MaterialSurface({
   fallbackColor,
-  tint,
   intensity = 40,
-  glassStyle: _glassStyle,
   style,
   children,
   ...rest
 }: MaterialSurfaceProps) {
   const scheme = useColorScheme();
-  const resolvedTint = tint ?? (scheme === "dark" ? "dark" : "light");
 
   // BlurView's real blur is Android-only in this setup; everything else (web,
   // unexpected platforms) renders the solid fallback.
@@ -45,7 +38,7 @@ export function MaterialSurface({
   return (
     <BlurView
       style={style}
-      tint={resolvedTint}
+      tint={scheme === "dark" ? "dark" : "light"}
       intensity={intensity}
       blurMethod="dimezisBlurView"
       {...rest}

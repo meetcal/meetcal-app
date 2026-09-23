@@ -84,7 +84,25 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       }>;
     }
 
-    const request = (async () => {
+    // `inFlightRequests` is keyed by resource key, and `invalidate` drops the
+    // entry while the request is still running. A plain `delete(key)` in the
+    // settle handler therefore deletes whatever is registered *now*, which
+    // after an invalidate + restart is the newer request — leaving the map
+    // empty while a request is live, so the next caller issues a duplicate
+    // fetch instead of joining. Only the owner clears its own entry.
+    let request: Promise<{
+      data: T;
+      changed: boolean;
+      lastUpdatedAt: number | null;
+      source: "network";
+    }>;
+    const releaseKey = () => {
+      if (inFlightRequests.get(key) === request) {
+        inFlightRequests.delete(key);
+      }
+    };
+
+    request = (async () => {
       const cacheEntry = cached === undefined
         ? await config.loadCached(...params)
         : cached;
@@ -101,9 +119,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
           persisted?.lastUpdatedAt ?? cacheEntry?.lastUpdatedAt ?? Date.now(),
         source: "network" as const,
       };
-    })().finally(() => {
-      inFlightRequests.delete(key);
-    });
+    })().finally(releaseKey);
 
     inFlightRequests.set(key, request);
     return request;

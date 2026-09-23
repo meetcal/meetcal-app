@@ -67,11 +67,3 @@ export interface SessionViewProps {
   timeZone: string;
   meet: string;
 }
-
-export interface VersionAnnouncementProps {
-  announcement?: {
-    title: string;
-    message: string;
-    features?: string[];
-  };
-}

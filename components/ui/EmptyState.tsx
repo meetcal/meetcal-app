@@ -1,4 +1,4 @@
-import { Button, type ButtonProps } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Spacing, Type } from "@/constants/Layout";
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
@@ -19,13 +19,9 @@ export type EmptyStateProps = {
   /** An image source, e.g. the MeetCal logo. Takes precedence over `icon`. */
   image?: ImageSourcePropType;
   imageSize?: number;
-  /** Convenience: renders a primary Button below the message. */
+  /** Renders a primary Button below the message. Both or neither. */
   actionLabel?: string;
   onActionPress?: () => void;
-  actionVariant?: ButtonProps["variant"];
-  actionLoading?: boolean;
-  /** Full control over the action area. Overrides actionLabel/onActionPress. */
-  action?: React.ReactNode;
   style?: ViewStyle;
 };
 
@@ -37,26 +33,14 @@ export function EmptyState({
   imageSize = 96,
   actionLabel,
   onActionPress,
-  actionVariant = "primary",
-  actionLoading,
-  action,
   style,
 }: EmptyStateProps) {
   const colors = useAppColors();
 
-  let actionNode: React.ReactNode = null;
-  if (action) {
-    actionNode = action;
-  } else if (actionLabel && onActionPress) {
-    actionNode = (
-      <Button
-        title={actionLabel}
-        onPress={onActionPress}
-        variant={actionVariant}
-        loading={actionLoading}
-      />
-    );
-  }
+  const actionNode =
+    actionLabel && onActionPress ? (
+      <Button title={actionLabel} onPress={onActionPress} />
+    ) : null;
 
   return (
     <View style={[styles.container, style]}>

@@ -1,36 +1,31 @@
+import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 
 interface ProfileSwitchSettingProps {
-  colors: {
-    text: string;
-    secondaryText: string;
-    border: string;
-    pressed: string;
-  };
   label: string;
   description: string;
   value: boolean;
-  onPress: () => void;
-  onValueChange: () => void;
+  /** Fired by both the row press and the switch itself. */
+  onToggle: () => void;
   showPremiumBadge?: boolean;
   switchDisabled?: boolean;
   isLoading?: boolean;
 }
 
 export function ProfileSwitchSetting({
-  colors,
   label,
   description,
   value,
-  onPress,
-  onValueChange,
+  onToggle,
   showPremiumBadge = false,
   switchDisabled = false,
   isLoading = false,
 }: ProfileSwitchSettingProps) {
+  const colors = useAppColors();
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -38,7 +33,7 @@ export function ProfileSwitchSetting({
         { borderBottomColor: colors.border },
         pressed && { backgroundColor: colors.pressed },
       ]}
-      onPress={onPress}
+      onPress={onToggle}
       disabled={isLoading}
     >
       <View style={styles.row}>
@@ -60,7 +55,7 @@ export function ProfileSwitchSetting({
           trackColor={{ false: "#767577", true: "#81b0ff" }}
           thumbColor={"#f4f3f4"}
           ios_backgroundColor="#3e3e3e"
-          onValueChange={onValueChange}
+          onValueChange={onToggle}
           value={value}
           disabled={switchDisabled || isLoading}
         />

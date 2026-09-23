@@ -14,12 +14,15 @@ export function DayView({
 }: DayViewProps) {
   const colors = useAppColors();
 
+  // RefreshControl never awaits this, so a re-throw here becomes an unhandled
+  // promise rejection — the same trap `SyncManager`'s periodic timer guards
+  // against. Nothing upstream can act on the failure; the pull-to-refresh
+  // spinner ends either way.
   const onRefresh = useCallback(async () => {
     try {
       await onRefreshComplete?.();
     } catch (error) {
       console.error("Refresh failed:", error);
-      throw error;
     }
   }, [onRefreshComplete]);
 

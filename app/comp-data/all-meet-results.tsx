@@ -1,14 +1,13 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { searchAthletesByName } from "@/lib/database/queries";
-import {
-  isNetworkAvailable,
-  subscribeToNetworkChanges,
-} from "@/lib/networkUtils";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,6 +21,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+/**
+ * Shorter queries match most of the federation, so `/search` comes back
+ * truncated and arbitrary-looking. The empty state quotes this same threshold,
+ * so both read it from here rather than each spelling out "3".
+ */
+const MIN_SEARCH_QUERY_LENGTH = 3;
+
+/** How long typing has to pause before a search request goes out. */
+const SEARCH_DEBOUNCE_MS = 500;
 
 export default function AllMeetResultsScreen() {
   return (
@@ -32,6 +42,7 @@ export default function AllMeetResultsScreen() {
 }
 
 function AllMeetResultsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const router = useRouter();
@@ -41,7 +52,7 @@ function AllMeetResultsScreenContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useIsOffline();
   const searchRequestVersion = useRef(0);
 
   // Track screen view on mount
@@ -51,26 +62,10 @@ function AllMeetResultsScreenContent() {
     });
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const checkNetwork = async () => {
-      const hasNetwork = await isNetworkAvailable();
-      if (isMounted) setIsOffline(!hasNetwork);
-    };
-    checkNetwork();
-    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
-      setIsOffline(!isConnected);
-    });
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
-
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchText.trim().length >= 3) {
+      if (searchText.trim().length >= MIN_SEARCH_QUERY_LENGTH) {
         performSearch(searchText.trim());
       } else if (searchText.trim().length === 0) {
         searchRequestVersion.current += 1;
@@ -80,7 +75,7 @@ function AllMeetResultsScreenContent() {
         searchRequestVersion.current += 1;
         setIsLoading(false);
       }
-    }, 500); // 0.5 seconds debounce
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
   }, [searchText]);
@@ -204,7 +199,10 @@ function AllMeetResultsScreenContent() {
       );
     }
 
-    if (searchText.trim().length > 0 && searchText.trim().length < 3) {
+    if (
+      searchText.trim().length > 0 &&
+      searchText.trim().length < MIN_SEARCH_QUERY_LENGTH
+    ) {
       return (
         <View style={styles.centerContainer}>
           <IconSymbol
@@ -218,7 +216,7 @@ function AllMeetResultsScreenContent() {
               { color: colors.secondaryText, marginTop: 16 },
             ]}
           >
-            Type at least 3 characters to search
+            Type at least {MIN_SEARCH_QUERY_LENGTH} characters to search
           </ThemedText>
         </View>
       );
@@ -258,7 +256,7 @@ function AllMeetResultsScreenContent() {
         {item}
       </ThemedText>
       <IconSymbol
-        name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+        name={getChevronIcon("right")}
         size={20}
         color={colors.link}
       />
@@ -267,7 +265,7 @@ function AllMeetResultsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

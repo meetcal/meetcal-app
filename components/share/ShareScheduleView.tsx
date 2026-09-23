@@ -1,7 +1,12 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { getPlatformColors } from "@/constants/Colors";
 import { LiftResult } from "@/data/types/athletes";
-import { compareStartTimes } from "@/lib/start-list-utils";
+import {
+  compareCalendarDates,
+  compareStartTimes,
+  formatSessionDisplayDate,
+} from "@/lib/start-list-utils";
+import { formatTo12Hour } from "@/utils/time";
 import {
   ShareBackgroundPresetId,
   ShareScheduleViewProps,
@@ -17,50 +22,6 @@ const getPlatformColor = (platform: string): string => {
     platformColors[normalizedPlatform as keyof typeof platformColors] ||
     platformColors.Blue
   );
-};
-
-const formatTime = (time: string): string => {
-  if (!time || typeof time !== "string") return "";
-  if (time.includes("AM") || time.includes("PM")) return time;
-  if (!time.includes(":")) return time;
-
-  const parts = time.split(":");
-  const hours = Number(parts[0]);
-  const minutes = Number(parts[1]);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-
-  const period = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
-};
-
-const formatDate = (dateString: string): string => {
-  if (!dateString) return "";
-
-  const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const formatOptions: Intl.DateTimeFormatOptions = {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  };
-
-  if (isoDateMatch) {
-    const [, yearRaw, monthRaw, dayRaw] = isoDateMatch;
-    const year = Number(yearRaw);
-    const month = Number(monthRaw);
-    const day = Number(dayRaw);
-    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-      return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(
-        "en-US",
-        formatOptions,
-      );
-    }
-  }
-
-  const parsed = new Date(dateString);
-  if (Number.isNaN(parsed.getTime())) return dateString;
-  return parsed.toLocaleDateString("en-US", formatOptions);
 };
 
 type PresetVisual = {
@@ -150,7 +111,7 @@ export default function ShareScheduleView({
           return a.athlete.name.localeCompare(b.athlete.name);
         }),
       }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => compareCalendarDates(a.date, b.date));
   }, [filteredAthletes, schedule, getSessionDetails]);
 
   return (
@@ -198,9 +159,6 @@ export default function ShareScheduleView({
         {athletesByDate.map((dateGroup, groupIndex) =>
           dateGroup.athletes.map((item, athleteIndex) => {
             const { athlete, startTime } = item;
-            const sessionDay = schedule.find((day) =>
-              day.sessions.some((s) => s.number === athlete.session?.number),
-            );
 
             const isLastInGroup =
               athleteIndex === dateGroup.athletes.length - 1;
@@ -249,12 +207,12 @@ export default function ShareScheduleView({
                   </View>
                   <View style={[styles.cell, styles.dateColumn]}>
                     <ThemedText style={[styles.cellText, { color: presetVisual.text }]}>
-                      {formatDate(sessionDay?.fullDate || "")}
+                      {formatSessionDisplayDate(undefined, dateGroup.date)}
                     </ThemedText>
                   </View>
                   <View style={[styles.cell, styles.timeColumn]}>
                     <ThemedText style={[styles.cellText, { color: presetVisual.text }]}>
-                      {formatTime(startTime)}
+                      {formatTo12Hour(startTime)}
                     </ThemedText>
                   </View>
                 </View>

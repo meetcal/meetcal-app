@@ -40,9 +40,13 @@ const mockSaveAthleteHistory = jest.fn(async () => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
 const mockSaveSessionAthletes = jest.fn(async () => undefined);
-const mockIsMeetExplicitlyDownloaded = jest.fn(
-  async (_meet: string): Promise<boolean> => true,
-);
+// Single source of truth for "did the user download this meet for offline
+// use". Both accessors read it so a test can set it once regardless of whether
+// production code asks per meet or asks for the whole set.
+let mockIsExplicitlyDownloaded: (meet: string) => boolean = () => true;
+const setExplicitlyDownloaded = (predicate: (meet: string) => boolean) => {
+  mockIsExplicitlyDownloaded = predicate;
+};
 const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
@@ -85,8 +89,11 @@ jest.mock("@/lib/database/offline-store", () => ({
     liftingResultsKey: "",
     lastSyncTime: 0,
   })),
-  isMeetExplicitlyDownloaded: (...args: unknown[]) =>
-    mockIsMeetExplicitlyDownloaded.apply(null, args),
+  isMeetExplicitlyDownloaded: async (meet: string) =>
+    mockIsExplicitlyDownloaded(meet),
+  getExplicitlyDownloadedMeetIds: async () => ({
+    has: (meet: string) => mockIsExplicitlyDownloaded(meet),
+  }),
   saveAthleteHistory: (...args: unknown[]) =>
     mockSaveAthleteHistory.apply(null, args),
   saveAthleteBestsBatch: jest.fn(async () => undefined),
@@ -103,6 +110,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   prefetchCriticalMeetData,
   prefetchMeetData,
+  touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
 } from "@/lib/database/meet-manager";
@@ -111,14 +119,13 @@ import type { Schedule } from "@/types/schedule";
 const mockGetItem = AsyncStorage.getItem as jest.Mock;
 
 describe("validatePrefetchedLiftingResults", () => {
-  it("throws when athletes exist but lifting results are empty", () => {
+  it("does not throw when a meet has athletes but no results yet", () => {
+    // An upcoming meet has a full roster and zero results. The production
+    // caller skips the check entirely in that case; keep the function itself
+    // agreeing with it.
     expect(() =>
-      validatePrefetchedLiftingResults(
-        "Test Meet" as any,
-        ["Athlete A"],
-        [],
-      ),
-    ).toThrow("No lifting results fetched for meet: Test Meet");
+      validatePrefetchedLiftingResults("Test Meet" as any, ["Athlete A"], []),
+    ).not.toThrow();
   });
 
   it("does not throw when there are no athletes", () => {
@@ -302,7 +309,7 @@ describe("prefetchCriticalMeetData", () => {
 
   it("defers full meet package prefetch for explicitly downloaded meets", async () => {
     jest.useFakeTimers();
-    mockIsMeetExplicitlyDownloaded.mockResolvedValue(true);
+    setExplicitlyDownloaded(() => true);
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -345,7 +352,7 @@ describe("prefetchCriticalMeetData", () => {
 
   it("skips the full meet package prefetch when the meet is not explicitly downloaded", async () => {
     jest.useFakeTimers();
-    mockIsMeetExplicitlyDownloaded.mockResolvedValue(false);
+    setExplicitlyDownloaded(() => false);
     const schedule: Schedule = [
       {
         date: "Future Day 1",
@@ -514,6 +521,32 @@ describe("cache eviction during prefetch", () => {
     mockGetItem.mockImplementation(async () => null);
   });
 
+  it("drops malformed cache entries before eviction and recomputes size", async () => {
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === MEET_CACHE_KEY ? JSON.stringify({
+        totalSize: "broken",
+        meets: {
+          "Valid Meet": { lastAccessed: 1, size: 10 },
+          "Null Meet": null,
+          "Invalid Size": { lastAccessed: 2, size: "huge" },
+          "Invalid Access": { lastAccessed: null, size: 10 },
+        },
+      }) : null,
+    );
+    await touchMeetAccess("New Meet");
+    const calls = (AsyncStorage.setItem as jest.Mock).mock.calls;
+    const [key, value] = calls[calls.length - 1];
+    expect(key).toBe(MEET_CACHE_KEY);
+    expect(JSON.parse(value)).toEqual({
+      totalSize: 10,
+      meets: {
+        "Valid Meet": { lastAccessed: 1, size: 10 },
+        "New Meet": { lastAccessed: expect.any(Number), size: 0 },
+      },
+    });
+    await expect(prefetchCriticalMeetData("New Meet")).resolves.toBeUndefined();
+  });
+
   it("evicts the least-recently-used implicit meets but keeps explicitly downloaded ones", async () => {
     const cacheInfo = {
       totalSize: 0,
@@ -530,9 +563,7 @@ describe("cache eviction during prefetch", () => {
     mockGetItem.mockImplementation(async (key: string) =>
       key === MEET_CACHE_KEY ? JSON.stringify(cacheInfo) : null,
     );
-    mockIsMeetExplicitlyDownloaded.mockImplementation(
-      async (meet: string) => meet === "Downloaded Meet",
-    );
+    setExplicitlyDownloaded((meet) => meet === "Downloaded Meet");
 
     await prefetchCriticalMeetData("Meet F" as any);
 
@@ -595,7 +626,7 @@ describe("package revalidation with ETag", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchApiResultsByNames.mockResolvedValue([]);
-    mockIsMeetExplicitlyDownloaded.mockResolvedValue(true);
+    setExplicitlyDownloaded(() => true);
   });
 
   afterEach(() => {

@@ -1,5 +1,5 @@
 import { useAppColors } from "@/hooks/useAppColors";
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   Animated,
   StyleSheet,
@@ -46,43 +46,21 @@ export type SkeletonBlockProps = {
   /** Fill color of the block. Defaults to the themed card color. */
   color?: string;
   /**
-   * Optional externally-owned pulse value. When omitted, the block creates and
-   * owns its own pulse loop.
+   * The pulse value to share. Required so every block in one skeleton pulses
+   * in sync off a single `useSkeletonPulse()` loop; a per-block fallback loop
+   * used to exist here but no call site ever omitted `pulse`.
    */
-  pulse?: Animated.Value;
+  pulse: Animated.Value;
 };
 
 export function SkeletonBlock({ style, color, pulse }: SkeletonBlockProps) {
   const colors = useAppColors();
-  const ownPulse = useRef(new Animated.Value(PULSE_MIN)).current;
-  const activePulse = pulse ?? ownPulse;
-
-  useEffect(() => {
-    // Only run an internal loop when no external pulse is supplied.
-    if (pulse) return;
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ownPulse, {
-          toValue: PULSE_MAX,
-          duration: PULSE_DURATION,
-          useNativeDriver: true,
-        }),
-        Animated.timing(ownPulse, {
-          toValue: PULSE_MIN,
-          duration: PULSE_DURATION,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [pulse, ownPulse]);
 
   return (
     <Animated.View
       style={[
         styles.block,
-        { backgroundColor: color ?? colors.card, opacity: activePulse },
+        { backgroundColor: color ?? colors.card, opacity: pulse },
         style,
       ]}
     />

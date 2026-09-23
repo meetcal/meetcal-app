@@ -9,12 +9,8 @@ import { View, type ViewProps } from "react-native";
 export interface MaterialSurfaceProps extends ViewProps {
   /** Solid color rendered when Liquid Glass is unavailable. */
   fallbackColor: string;
-  /** Overrides the auto-resolved appearance. Maps to GlassView colorScheme. */
-  tint?: "light" | "dark";
   /** Android blur intensity. Ignored on iOS. */
   intensity?: number;
-  /** iOS glass style. */
-  glassStyle?: "regular" | "clear";
 }
 
 /**
@@ -26,9 +22,7 @@ export interface MaterialSurfaceProps extends ViewProps {
  */
 export function MaterialSurface({
   fallbackColor,
-  tint,
   intensity: _intensity,
-  glassStyle = "regular",
   style,
   children,
   ...rest
@@ -44,8 +38,8 @@ export function MaterialSurface({
   return (
     <GlassView
       style={style}
-      glassEffectStyle={glassStyle}
-      colorScheme={tint ?? "auto"}
+      glassEffectStyle="regular"
+      colorScheme="auto"
       {...rest}
     >
       {children}

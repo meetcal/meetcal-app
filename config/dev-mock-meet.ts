@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LiftResult, Platform } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
+import { meetCalendarDateAnchor } from '@/utils/dateTime';
 
 /**
  * Dev-only client-side mock data for the selected meet. When enabled for a
@@ -91,10 +92,18 @@ function toDateString(date: Date): string {
 }
 
 function displayDate(fullDate: string): string {
-  return new Date(`${fullDate}T12:00:00`).toLocaleDateString('en-US', {
+  // TigerStyle "explicit vs implicit": `new Date(`${d}T12:00:00`)` is *device*
+  // local noon, so formatting it renders the wrong weekday once the device and
+  // the meet are far enough apart. `meetCalendarDateAnchor` pins noon UTC and
+  // the formatter reads it back in UTC, which is what every shipped screen
+  // does. Dev-only, but the mock should not teach the pattern the app bans.
+  const anchor = meetCalendarDateAnchor(fullDate);
+  if (!anchor) return fullDate;
+  return anchor.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
+    timeZone: 'UTC',
   });
 }
 

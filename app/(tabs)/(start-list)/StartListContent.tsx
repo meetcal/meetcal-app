@@ -20,22 +20,23 @@ import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult } from "@/data/types/athletes";
-import { MeetName } from "@/data/types/meet";
+import { isMeetName, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   getMeetData,
-  getMeetSchedule,
   saveMeetAthletes,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
+  compareCalendarDates,
   compareStartTimes,
+  formatSessionDisplayDate,
   getAgeCategory,
   getSaveIcon,
-  isMeetName,
   parseWeightClasses,
   requestCalendarPermissions,
   sortAthletes,
@@ -54,10 +55,11 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
+import { formatTo12Hour } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as FileSystem from "expo-file-system";
-import * as Haptics from "expo-haptics";
+import { lightImpact, successNotification } from "@/lib/haptics";
 import { useNavigation, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, {
@@ -79,6 +81,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devInfo } from "@/lib/logger";
 
 const REVIEW_COUNT_KEY = "startListFilterApplyCount";
 const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
@@ -119,7 +123,27 @@ const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
   { value: "bestCJ", label: "Best CJ" },
 ];
 
+/**
+ * The start list opens on the "A" letter filter, so the names the user is
+ * about to see get their year bests warmed first. The cap bounds it: a
+ * federation-scale roster has hundreds of A-names and `preloadYearBests`
+ * chunks them into `NAMES_QUERY_CHUNK_SIZE` requests, so an uncapped warm
+ * would fire a dozen background requests against the screen the user is
+ * actively scrolling.
+ */
+const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
+
+/** Let the list paint and settle before spending bandwidth on the warm. */
+const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
+
+/**
+ * Render width of the shareable schedule image, in points. Fixed so the PNG is
+ * the same size on every device; `ImagePreviewModal` assumes it too.
+ */
+const SHARE_IMAGE_WIDTH = 850;
+
 export default function StartListScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
   const [weightClassFilter, setWeightClassFilter] = useState("");
   const [clubFilter, setClubFilter] = useState("");
@@ -144,7 +168,6 @@ export default function StartListScreen() {
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
-  const loadInFlightRef = useRef<Promise<void> | null>(null);
   const latestLoadIdRef = useRef(0);
   const loadStartedAtRef = useRef(performance.now());
   const loggedReadyRef = useRef(false);
@@ -156,12 +179,17 @@ export default function StartListScreen() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showShareViews, setShowShareViews] = useState(false);
-  const shareScheduleRef = useRef<View>(null);
-  const shareScheduleTransparentRef = useRef<View>(null);
-  const [filterApplyCount, setFilterApplyCount] = useState(0);
-  const [reviewPromptedCounts, setReviewPromptedCounts] = useState<number[]>(
-    [],
-  );
+  const shareScheduleRef = useRef<React.ComponentRef<typeof View>>(null);
+  const shareScheduleTransparentRef =
+    useRef<React.ComponentRef<typeof View>>(null);
+  // The App Store review prompt's counters. Refs, not state: nothing renders
+  // them, and the write path is a side effect (AsyncStorage + requestReview)
+  // that must run exactly once per filter apply. It used to live inside a
+  // `setFilterApplyCount` updater, which React is free to invoke more than
+  // once per update — double-counting the threshold and re-prompting — and it
+  // re-rendered this whole screen for a number no one displays.
+  const filterApplyCountRef = useRef(0);
+  const reviewPromptedCountsRef = useRef<number[]>([]);
   const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
   const [calendarDestinations, setCalendarDestinations] = useState<
     CalendarDestination[]
@@ -200,8 +228,10 @@ export default function StartListScreen() {
         if (!isMounted) return;
         const count = Number(countRaw ?? 0);
         const prompted = promptedRaw ? JSON.parse(promptedRaw) : [];
-        setFilterApplyCount(Number.isFinite(count) ? count : 0);
-        setReviewPromptedCounts(Array.isArray(prompted) ? prompted : []);
+        filterApplyCountRef.current = Number.isFinite(count) ? count : 0;
+        reviewPromptedCountsRef.current = Array.isArray(prompted)
+          ? prompted
+          : [];
       } catch (error) {
         console.warn("StartList: Failed to load review state", error);
       }
@@ -235,15 +265,15 @@ export default function StartListScreen() {
   const requestReviewIfEligible = useCallback(
     async (nextCount: number) => {
       if (!REVIEW_COUNTS.includes(nextCount as 5 | 50 | 100)) return;
-      if (reviewPromptedCounts.includes(nextCount)) return;
+      if (reviewPromptedCountsRef.current.includes(nextCount)) return;
       try {
         const StoreReview = await loadStoreReview();
         if (!StoreReview) return;
         const isAvailable = await StoreReview.isAvailableAsync();
         if (!isAvailable) return;
         await StoreReview.requestReview();
-        const updated = [...reviewPromptedCounts, nextCount];
-        setReviewPromptedCounts(updated);
+        const updated = [...reviewPromptedCountsRef.current, nextCount];
+        reviewPromptedCountsRef.current = updated;
         await AsyncStorage.setItem(
           REVIEW_PROMPTED_KEY,
           JSON.stringify(updated),
@@ -252,17 +282,20 @@ export default function StartListScreen() {
         console.warn("StartList: requestReview failed", error);
       }
     },
-    [reviewPromptedCounts, loadStoreReview],
+    [loadStoreReview],
   );
 
   const loadMeetSnapshot = useCallback(async (meet: MeetName) => {
-    const [cachedMeetData, cachedSchedule] = await Promise.all([
-      getMeetData(meet).catch(() => null),
-      getMeetSchedule(meet).catch(() => []),
-    ]);
+    // `getMeetData` returns both halves of this snapshot. Asking for the
+    // schedule separately ran a second `getMeetData` inside `getMeetSchedule`,
+    // which re-read and re-parsed the meet's entire athlete roster — 457KB /
+    // 1562 athletes for a live national meet — to produce a schedule this call
+    // already had in hand. Both readers swallow their own errors into the same
+    // empty values, so collapsing them changes nothing but the work.
+    const cachedMeetData = await getMeetData(meet).catch(() => null);
     return {
       cachedAthletes: cachedMeetData?.athletes ?? [],
-      cachedSchedule,
+      cachedSchedule: cachedMeetData?.schedule ?? [],
     };
   }, []);
 
@@ -275,13 +308,13 @@ export default function StartListScreen() {
         return;
       }
 
-      if (loadInFlightRef.current) {
-        await loadInFlightRef.current;
-        return;
-      }
-
       const validMeet = selectedMeet;
+      // Each call supersedes the one before it. Deduplicating by "something is
+      // already in flight" instead would make a pull-to-refresh during the
+      // initial load a silent no-op, and would leave the previous meet's
+      // athletes on screen after a meet switch.
       const requestId = ++latestLoadIdRef.current;
+      const isStale = () => requestId !== latestLoadIdRef.current;
       if (!forceRefresh) {
         loadStartedAtRef.current = performance.now();
         loggedReadyRef.current = false;
@@ -290,6 +323,7 @@ export default function StartListScreen() {
 
       const requestPromise = (async () => {
         const snapshot = await loadMeetSnapshot(validMeet);
+        if (isStale()) return;
 
         if (!forceRefresh) {
           setAthletes(snapshot.cachedAthletes);
@@ -298,6 +332,7 @@ export default function StartListScreen() {
         }
 
         const hasNetwork = await isNetworkAvailable();
+        if (isStale()) return;
         if (!hasNetwork) {
           setLoading(false);
           if (forceRefresh) {
@@ -316,7 +351,7 @@ export default function StartListScreen() {
           fetchSchedule(validMeet),
         ]);
 
-        if (requestId !== latestLoadIdRef.current) return;
+        if (isStale()) return;
 
         let nextAthletes = snapshot.cachedAthletes;
         let nextSchedule = snapshot.cachedSchedule;
@@ -346,21 +381,24 @@ export default function StartListScreen() {
 
         setAthletes(nextAthletes);
         setScheduleData(nextSchedule);
-        if (!forceRefresh) setLoading(false);
+        // Unconditional: a forced refresh can supersede an initial load that
+        // set `loading` and then bailed out as stale.
+        setLoading(false);
       })();
 
-      loadInFlightRef.current = requestPromise;
-      try {
-        await requestPromise;
-      } finally {
-        loadInFlightRef.current = null;
-      }
+      await requestPromise;
     },
     [loadMeetSnapshot, selectedMeet],
   );
 
   useEffect(() => {
     loadStartListData(false);
+    return () => {
+      // `isStale()` already supersedes an older load when a newer one starts,
+      // but nothing bumped the ref on unmount, so a tab switch mid-fetch still
+      // repainted a gone screen. Matches `attempt-estimator`.
+      latestLoadIdRef.current += 1;
+    };
   }, [loadStartListData]);
 
   useEffect(() => {
@@ -369,7 +407,7 @@ export default function StartListScreen() {
     }
 
     loggedReadyRef.current = true;
-    console.info("[perf] start list ready", {
+    devInfo("[perf] start list ready", {
       elapsedMs: Math.round(performance.now() - loadStartedAtRef.current),
       meet: selectedMeet,
       athleteCount: athletes.length,
@@ -417,19 +455,29 @@ export default function StartListScreen() {
     [sessionIndex],
   );
 
-  // Add back useEffect for starred clubs
   useEffect(() => {
+    let isCancelled = false;
     const loadStarredClubs = async () => {
       try {
         const stored = await AsyncStorage.getItem("starredClubs");
-        if (stored) {
-          setStarredClubs(JSON.parse(stored));
-        }
+        if (isCancelled || !stored) return;
+        const parsed: unknown = JSON.parse(stored);
+        // `starredClubs` is consumed with `.includes` and `.filter`. A blob
+        // that is not a string array made `.filter` throw mid-render, and a
+        // *string* blob was worse: `.includes` silently matched substrings.
+        setStarredClubs(
+          Array.isArray(parsed)
+            ? parsed.filter((club): club is string => typeof club === "string")
+            : [],
+        );
       } catch (error) {
         console.error("Error loading starred clubs:", error);
       }
     };
-    loadStarredClubs();
+    void loadStarredClubs();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const renderListItem = useCallback(
@@ -657,19 +705,12 @@ export default function StartListScreen() {
   ]);
 
   const trackFilterApply = useCallback(() => {
-    setFilterApplyCount((prev) => {
-      const nextCount = prev + 1;
-      AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch(
-        (error) => {
-          console.warn(
-            "StartList: Failed to persist filter apply count",
-            error,
-          );
-        },
-      );
-      requestReviewIfEligible(nextCount);
-      return nextCount;
+    const nextCount = filterApplyCountRef.current + 1;
+    filterApplyCountRef.current = nextCount;
+    AsyncStorage.setItem(REVIEW_COUNT_KEY, String(nextCount)).catch((error) => {
+      console.warn("StartList: Failed to persist filter apply count", error);
     });
+    void requestReviewIfEligible(nextCount);
   }, [requestReviewIfEligible]);
 
   const handlePillSelect = useCallback(
@@ -711,6 +752,21 @@ export default function StartListScreen() {
   );
 
   useLayoutEffect(() => {
+    // Native UIBarButtonItem on iOS so it moves into iPhone Duo's vertical bar.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: "Open download options",
+            icon: { type: "sfSymbol", name: "square.and.arrow.down" },
+            onPress: () => setShowSaveModal(true),
+          },
+        ],
+      });
+      return;
+    }
+
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>
@@ -883,7 +939,10 @@ export default function StartListScreen() {
         .startsWith("A");
     const aNames = athletes.filter(firstNameStartsWithA).map((a) => a.name);
     if (aNames.length === 0) return;
-    const t = setTimeout(() => preloadYearBests(aNames.slice(0, 80)), 500);
+    const t = setTimeout(
+      () => preloadYearBests(aNames.slice(0, YEAR_BESTS_PREFETCH_NAME_CAP)),
+      YEAR_BESTS_PREFETCH_DELAY_MS,
+    );
     return () => clearTimeout(t);
   }, [athletes]);
 
@@ -941,11 +1000,7 @@ export default function StartListScreen() {
                 scheduleData,
               );
               if (success) {
-                if (process.env.EXPO_OS === "ios") {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                }
+                successNotification();
                 Alert.alert(
                   "Success",
                   "Sessions have been saved to your list.",
@@ -1141,6 +1196,14 @@ export default function StartListScreen() {
         : [...starredClubs, club];
 
       setStarredClubs(newStarredClubs);
+      // The "Favorites" filter cannot outlive the set it filters on. The star
+      // toggle lives inside the club sheet, so unstarring the last club while
+      // Favorites was selected left every athlete filtered out, and the sheet
+      // stopped rendering the Favorites row (it is gated on
+      // `starredClubs.length > 0`), so nothing in it showed as selected.
+      if (newStarredClubs.length === 0 && clubFilter === STARRED_CLUBS_FILTER) {
+        setClubFilter("");
+      }
       await AsyncStorage.setItem(
         "starredClubs",
         JSON.stringify(newStarredClubs),
@@ -1170,7 +1233,7 @@ export default function StartListScreen() {
           from: "/(tabs)/(start-list)",
           feature: "share-schedule-image",
         },
-      } as any);
+      });
     }
   };
 
@@ -1194,7 +1257,7 @@ export default function StartListScreen() {
           from: "/(tabs)/(start-list)",
           feature: "export-csv",
         },
-      } as any);
+      });
     }
   };
 
@@ -1219,8 +1282,6 @@ export default function StartListScreen() {
     }
 
     try {
-      // Dynamically import captureRef to avoid native module errors on startup
-      const { captureRef } = await import("react-native-view-shot");
       setShowShareViews(true);
       await new Promise((resolve) =>
         requestAnimationFrame(() => resolve(null)),
@@ -1239,27 +1300,15 @@ export default function StartListScreen() {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const [whiteUri, transparentUri] = await Promise.all([
-        captureRef(shareScheduleRef.current, {
-          format: "png",
-          quality: 1.0,
-          result: "tmpfile",
-          width: 850,
-          height: undefined,
-        }),
-        captureRef(shareScheduleTransparentRef.current, {
-          format: "png",
-          quality: 1.0,
-          result: "tmpfile",
-          width: 850,
-          height: undefined,
+        captureViewAsPng(shareScheduleRef.current, { width: SHARE_IMAGE_WIDTH }),
+        captureViewAsPng(shareScheduleTransparentRef.current, {
+          width: SHARE_IMAGE_WIDTH,
         }),
       ]);
       setGeneratedImageWhiteUri(whiteUri);
       setGeneratedImageTransparentUri(transparentUri);
       setSelectedImageIndex(0);
-      if (process.env.EXPO_OS === "ios") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
+      lightImpact();
       setShowImagePreview(true);
     } catch (error) {
       setShowShareViews(false);
@@ -1288,46 +1337,6 @@ export default function StartListScreen() {
       });
       return;
     }
-
-    const formatTime = (time: string) => {
-      if (!time) return "";
-      if (time.includes("AM") || time.includes("PM")) {
-        return time;
-      }
-      const [hours, minutes] = time.split(":").map(Number);
-      if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
-      const period = hours >= 12 ? "PM" : "AM";
-      const hour12 = hours % 12 || 12;
-      return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
-    };
-
-    const formatDate = (dateString: string) => {
-      if (!dateString) return "";
-      const isoDateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      const formatOptions: Intl.DateTimeFormatOptions = {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      };
-
-      if (isoDateMatch) {
-        const [, yearRaw, monthRaw, dayRaw] = isoDateMatch;
-        const year = Number(yearRaw);
-        const month = Number(monthRaw);
-        const day = Number(dayRaw);
-        if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-          return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(
-            "en-US",
-            formatOptions,
-          );
-        }
-      }
-
-      const parsed = new Date(dateString);
-      if (Number.isNaN(parsed.getTime())) return dateString;
-      return parsed.toLocaleDateString("en-US", formatOptions);
-    };
 
     const csvEscape = (value: string) => {
       const escaped = value.replace(/"/g, '""');
@@ -1363,7 +1372,7 @@ export default function StartListScreen() {
           return a.athlete.name.localeCompare(b.athlete.name);
         }),
       }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => compareCalendarDates(a.date, b.date));
 
     const header = [
       "Group",
@@ -1389,8 +1398,8 @@ export default function StartListScreen() {
           athlete.weightClass || "",
           athlete.session?.number?.toString() || "",
           athlete.session?.platform || "",
-          formatDate(dateStr),
-          formatTime(startTime),
+          formatSessionDisplayDate(undefined, dateStr),
+          formatTo12Hour(startTime),
         ]);
       });
     });
@@ -1411,7 +1420,8 @@ export default function StartListScreen() {
 
       const fileName = `meetcal-schedule-${sanitizeFileName(selectedShareGroup)}-${Date.now()}.csv`;
       const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
-      file.write(csvContent, { encoding: "utf8" });
+      // expo-file-system 58: File.write() is async; share only after it lands.
+      await file.write(csvContent, { encoding: "utf8" });
 
       await Sharing.shareAsync(file.uri, {
         mimeType: "text/csv",
@@ -1431,7 +1441,7 @@ export default function StartListScreen() {
   return (
     <ThemedView
       testID="start-list-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       key={selectedMeet}
     >
       <View
@@ -1511,16 +1521,16 @@ export default function StartListScreen() {
         <ExpandedIdProvider>
           <FlashList
             ref={listRef}
+            // No `extraData`: FlashList compares it by identity
+            // (`ViewHolder`'s memo does `prevProps.extraData === nextProps.extraData`),
+            // so an object literal here re-rendered every mounted cell on every
+            // render of this screen — and this screen re-renders for a lot of
+            // reasons that have nothing to do with the rows (auth guard, the
+            // four contexts it reads, modal state, `athleteBests` arriving).
+            // It was redundant anyway: all seven values were already
+            // dependencies of `filteredAthletes`, which allocates a new array,
+            // so `data` identity already changes whenever any of them does.
             data={filteredAthletes}
-            extraData={{
-              weightClassFilter,
-              clubFilter,
-              ageGroupFilter,
-              adaptiveAthleteFilter,
-              genderFilter,
-              wsoFilter,
-              searchQuery,
-            }}
             keyExtractor={keyExtractor}
             renderItem={renderListItem}
             removeClippedSubviews={false}

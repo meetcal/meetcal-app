@@ -25,9 +25,12 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
-import { getTimeZoneAbbreviation } from "@/utils/dateTime";
 import { migrateSessionsToMeetSpecific } from "@/utils/migration";
-import { getSavedSessionsKey, makeLookupKey } from "@/utils/session";
+import {
+  getAllSavedSessionsKeys,
+  getSavedSessionsKey,
+  makeLookupKey,
+} from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -49,16 +52,24 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
-// Update SavedSession type to include meet
-declare module "@/hooks/useSavedSessions" {
-  interface SavedSession {
-    meet: MeetName;
-    id: string; // Now we ensure ID is always present
-  }
-}
+/**
+ * How many saved meets' schedules are fetched at once.
+ *
+ * Every saved session can belong to a different meet, and `fetchSchedule`
+ * issues two requests per meet. A plain `Promise.all` over the whole set
+ * opened one connection per saved meet, so a user with a full season saved hit
+ * the API with dozens of concurrent 10s-timeout requests on the one screen
+ * most likely to be opened in a venue with bad signal, and every one of them
+ * timed out together. Batches keep the fan-out bounded without going fully
+ * sequential.
+ */
+const SCHEDULE_FETCH_BATCH_SIZE = 4;
 
 export default function SavedScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const { user } = useUser();
   const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } =
     useSavedSessions();
@@ -130,15 +141,8 @@ export default function SavedScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              if (typeof resetAllSessions === "function") {
-                await resetAllSessions(selectedMeet ?? undefined);
-              }
-              const STORAGE_KEYS = [
-                getSavedSessionsKey(user!.id),
-                `savedSessions_${user!.id}`,
-                `@savedSessions_${user!.id}`,
-                `sessions_${user!.id}`,
-              ];
+              await resetAllSessions(selectedMeet ?? undefined);
+              const STORAGE_KEYS = getAllSavedSessionsKeys(user!.id);
               for (const key of STORAGE_KEYS) {
                 const stored = await AsyncStorage.getItem(key);
                 if (stored) {
@@ -179,10 +183,12 @@ export default function SavedScreen() {
     );
   }, [requireAuth, user, resetAllSessions, selectedMeet]);
 
-  const timeZoneAbbr = useMemo(() => {
-    if (!meetDetails?.time.timeZoneIdentifier) return "";
-    return getTimeZoneAbbreviation(meetDetails.time.timeZoneIdentifier);
-  }, [meetDetails?.time.timeZoneIdentifier]);
+  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
+  // meet's own start date. Re-deriving it here with
+  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
+  // York meet in September and every row reads "EDT" when the sessions are
+  // actually EST, which looks to the user like the times are an hour wrong.
+  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
   const sessionLookupByMeet = useMemo(() => {
     const lookupByMeet = new Map<
@@ -204,6 +210,8 @@ export default function SavedScreen() {
                 displayDate: day.date,
                 fullDate: day.fullDate,
                 startTime,
+                // "" when the schedule row has no start time, which the card
+                // and the calendar export both read as "unknown".
                 weighInTime: calculateWeighInTime(startTime),
                 weightClass: platformInfo.weightClass,
               },
@@ -223,22 +231,23 @@ export default function SavedScreen() {
     if (!user?.id || !selectedMeet) return;
 
     try {
-      console.log("Starting session migration");
-      const STORAGE_KEYS = [
-        getSavedSessionsKey(user.id), // Changed from getSavedWarmupsKey
-        `savedSessions_${user.id}`,
-        `@savedSessions_${user.id}`,
-        `sessions_${user.id}`,
-      ];
+      devLog("Starting session migration");
+      const STORAGE_KEYS = getAllSavedSessionsKeys(user.id);
       let needsMigration = false;
 
       for (const key of STORAGE_KEYS) {
         const storedData = await AsyncStorage.getItem(key);
         if (storedData) {
           try {
-            const parsed = JSON.parse(storedData);
+            const parsed: unknown = JSON.parse(storedData);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              needsMigration = parsed.some((session) => !session.meet);
+              // Only object entries can carry a `meet`. `null` entries are
+              // skipped by `migrateSessionsToMeetSpecific` rather than
+              // aborting the migration for this key.
+              needsMigration = parsed.some(
+                (session) =>
+                  !session || typeof session !== "object" || !session.meet,
+              );
               if (needsMigration) {
                 const migratedSessions = await migrateSessionsToMeetSpecific(
                   parsed,
@@ -323,7 +332,7 @@ export default function SavedScreen() {
           from: "/(tabs)/(saved)",
           feature: "add-to-calendar",
         },
-      } as any);
+      });
       return;
     }
 
@@ -390,9 +399,8 @@ export default function SavedScreen() {
                   const startTime = lookup?.startTime || session.startTime;
                   const weighInTime =
                     lookup?.weighInTime ||
-                    (startTime
-                      ? calculateWeighInTime(startTime)
-                      : session.weighInTime);
+                    calculateWeighInTime(startTime) ||
+                    session.weighInTime;
 
                   return {
                     date: lookup?.fullDate || "",
@@ -509,22 +517,40 @@ export default function SavedScreen() {
     [pendingCalendarSessions],
   );
 
-  // Update forceLoadSessions to use loadSavedSessions from the context
   const forceLoadSessions = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      console.log("Force reloading sessions from source...");
-      // REMOVE: Old implementation reading from AsyncStorage and calling saveSession
-      // ADD: Call loadSavedSessions from the hook
+      devLog("Force reloading sessions from source...");
       await loadSavedSessions();
     } catch (error) {
       console.error("Error force reloading sessions:", error);
     } finally {
       setRefreshing(false);
     }
-    // ADD: loadSavedSessions to dependency array
   }, [refreshing, loadSavedSessions]);
+
+  // Built once for the whole list instead of once per row. `SessionCard` is
+  // `React.memo`, and every other prop it takes is already stable, so a
+  // per-row `onPress` closure was the single reason the memo never once
+  // short-circuited: each of this screen's re-renders (pull-to-refresh, the
+  // letter filter, the calendar picker, and one per session while
+  // `saveSessionsFromAthletes` commits a Save All) re-rendered every visible
+  // card instead of none of them.
+  const handleSessionPress = useCallback(
+    (session: LegacySavedSession) => {
+      router.push({
+        pathname: "/shared-screens/schedule-details",
+        params: {
+          ...session,
+          startTime: session.startTime,
+          weighInTime: session.weighInTime,
+          meet: session.meet || selectedMeet || "",
+        },
+      });
+    },
+    [router, selectedMeet],
+  );
 
   const renderSession = useCallback(
     ({ item }: { item: LegacySavedSession }) => {
@@ -532,17 +558,7 @@ export default function SavedScreen() {
         <SessionCard
           item={item}
           selectedMeet={selectedMeet}
-          onPress={() =>
-            router.push({
-              pathname: "/shared-screens/schedule-details",
-              params: {
-                ...item,
-                startTime: item.startTime,
-                weighInTime: item.weighInTime,
-                meet: item.meet || selectedMeet || "",
-              },
-            })
-          }
+          onPress={handleSessionPress}
           sessionLookupByMeet={sessionLookupByMeet}
           allowedMeetNames={allowedMeetNames}
           timeZoneIdentifier={meetDetails?.time.timeZoneIdentifier}
@@ -552,7 +568,7 @@ export default function SavedScreen() {
     },
     [
       selectedMeet,
-      router,
+      handleSessionPress,
       sessionLookupByMeet,
       allowedMeetNames,
       meetDetails?.time.timeZoneIdentifier,
@@ -604,34 +620,38 @@ export default function SavedScreen() {
       }
 
       setIsSchedulesLoading(true);
-      await Promise.all(
-        missingMeets.map(async (meetName) => {
-          try {
-            const schedule = await fetchSchedule(meetName);
-            if (!isCancelled) {
-              setSchedulesMap((prev) => {
-                const next = new Map(prev);
-                next.set(meetName, schedule);
-                schedulesMapRef.current = next;
-                return next;
-              });
+      const commitSchedule = (meetName: MeetName, schedule: ScheduleType) => {
+        if (isCancelled) return;
+        setSchedulesMap((prev) => {
+          const next = new Map(prev);
+          next.set(meetName, schedule);
+          schedulesMapRef.current = next;
+          return next;
+        });
+      };
+
+      for (
+        let index = 0;
+        index < missingMeets.length && !isCancelled;
+        index += SCHEDULE_FETCH_BATCH_SIZE
+      ) {
+        const batch = missingMeets.slice(index, index + SCHEDULE_FETCH_BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (meetName) => {
+            try {
+              commitSchedule(meetName, await fetchSchedule(meetName));
+            } catch (fetchError) {
+              console.error(
+                `Error fetching schedule for ${meetName}:`,
+                fetchError,
+              );
+              // An empty schedule is how this screen records "we tried"; it
+              // stops the effect re-requesting the same failing meet forever.
+              commitSchedule(meetName, []);
             }
-          } catch (fetchError) {
-            console.error(
-              `Error fetching schedule for ${meetName}:`,
-              fetchError,
-            );
-            if (!isCancelled) {
-              setSchedulesMap((prev) => {
-                const next = new Map(prev);
-                next.set(meetName, []);
-                schedulesMapRef.current = next;
-                return next;
-              });
-            }
-          }
-        }),
-      );
+          }),
+        );
+      }
       if (!isCancelled) {
         setIsSchedulesLoading(false);
       }
@@ -656,6 +676,30 @@ export default function SavedScreen() {
       : isSubscribed
         ? colors.text
         : colors.secondaryText;
+
+    // Native UIBarButtonItems on iOS so they move into iPhone Duo's vertical bar.
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: "Add to calendar",
+            icon: { type: "sfSymbol", name: "calendar" },
+            tintColor: calendarIconColor,
+            disabled: isSchedulesLoading,
+            onPress: handleSaveToCalendar,
+          },
+          {
+            type: "button",
+            label: "Delete all saved sessions",
+            icon: { type: "sfSymbol", name: "trash" },
+            tintColor: colors.danger,
+            onPress: handleResetSessions,
+          },
+        ],
+      });
+      return;
+    }
 
     navigation.setOptions({
       headerRight: () => (
@@ -695,7 +739,7 @@ export default function SavedScreen() {
   return (
     <ThemedView
       testID="saved-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <FlatList
         data={filteredSessions}

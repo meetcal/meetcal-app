@@ -1,0 +1,24 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 5bfb88b1578773e0acee63aa0b0ae4d6d5f927c2..5a09242ee6050c481b9a52bf47ac0970a0c8b1d6 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1,5 +1,5 @@
+ import { t as OneSignalPluginProps } from "./types-A2mAFlHd.js";
+-import { ConfigPlugin } from "expo/config-plugins.js";
++import { ConfigPlugin } from "expo/config-plugins";
+ 
+ //#region src/onesignal/withOneSignal.d.ts
+ declare const withOneSignal: ConfigPlugin<OneSignalPluginProps>;
+diff --git a/dist/index.js b/dist/index.js
+index fc127f8004bca144b2980d8cf50f23c5267eaf66..d48bc6454b09e6f01d790bf55fc9aa5b728a8429 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -25,7 +25,7 @@ path = __toESM(path);
+ let fs = require("fs");
+ fs = __toESM(fs);
+ let _expo_image_utils = require("@expo/image-utils");
+-let expo_config_plugins_js = require("expo/config-plugins.js");
++let expo_config_plugins_js = require("expo/config-plugins");
+ let fs_promises = require("fs/promises");
+ fs_promises = __toESM(fs_promises);
+ const TARGETED_DEVICE_FAMILY = `"1,2"`;

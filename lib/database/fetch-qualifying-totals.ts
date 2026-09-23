@@ -1,7 +1,7 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJson } from '@/lib/api/meetcal-api';
+import { getJsonArray } from '@/lib/api/meetcal-api';
 
 
 export type QualifyingTotalsData = {
@@ -76,14 +76,21 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
     throw new Error('Offline');
   }
 
-  const rows = await getJson<QualifyingTotalRow[]>('/data/qualifying-totals');
+  const rows = await getJsonArray<QualifyingTotalRow>('/data/qualifying-totals');
 
   const result: QualifyingTotalsData = {};
   rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
     const e = row.event_name;
     const a = row.age_category;
     const g = row.gender;
     const w = row.weight_class;
+    if (typeof e !== 'string' || typeof a !== 'string' || typeof w !== 'string') return;
+    // Only 'Men' and 'Women' buckets exist. Indexing with anything else
+    // ("M", null, "Mixed") would blow up the whole payload on one bad row —
+    // the same guard `fetch-wso-records` already applies.
+    if (g !== 'Men' && g !== 'Women') return;
+    if (typeof row.qualifying_total !== 'number') return;
     if (!result[e]) result[e] = {};
     if (!result[e][a]) result[e][a] = { Men: {}, Women: {} };
     result[e][a][g][w] = row.qualifying_total;

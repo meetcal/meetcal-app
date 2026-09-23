@@ -41,7 +41,9 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [activeMenu, setActiveMenu] = useState<AnchoredMenu | null>(null);
-  const pillRefs = useRef<Record<string, View | null>>({});
+  const pillRefs = useRef<
+    Record<string, React.ComponentRef<typeof View> | null>
+  >({});
 
   const handlePillPress = useCallback((config: PillFilterConfig) => {
     if (config.onPress) {
@@ -69,11 +71,13 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
     if (!activeMenu) return null;
     const { anchor } = activeMenu;
     const top = anchor.y + anchor.height + 6;
+    // Clamp inside the safe area, not the raw window: on iPhone Duo the system
+    // band on one edge would otherwise swallow the menu.
+    const maxLeft = windowWidth - insets.right - 12 - MENU_WIDTH;
+    const minLeft = insets.left + 12;
     let left = anchor.x;
-    if (left + MENU_WIDTH > windowWidth - 12) {
-      left = windowWidth - 12 - MENU_WIDTH;
-    }
-    if (left < 12) left = 12;
+    if (left > maxLeft) left = maxLeft;
+    if (left < minLeft) left = minLeft;
     const maxHeight = Math.min(
       windowHeight * MENU_MAX_HEIGHT_RATIO,
       windowHeight - top - insets.bottom - 16,

@@ -1,26 +1,20 @@
 import { convertToUTC } from "@/data/meets/config";
 import { Meet, MeetName } from "@/data/types/meet";
 import { SavedSession } from "@/hooks/useSavedSessions";
-import { getDateInTimeZone } from "@/utils/dateTime";
+import { getCalendarDateInTimeZone } from "@/utils/dateTime";
 
 // Show the card for sessions starting in the future, and keep it visible for a
 // short grace window (30 min) after a session starts so an in-progress session
 // still surfaces.
 export const STARTED_GRACE_MS = 30 * 60 * 1000;
 
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
 /**
- * Today's calendar date (YYYY-MM-DD) in the meet's timezone. Reuses
- * getDateInTimeZone so we don't duplicate timezone math.
+ * Today's calendar date (YYYY-MM-DD) in the meet's timezone. Thin alias over
+ * the shared helper so this module and `calculateInitialPage` can never
+ * disagree about what "today at the meet" means.
  */
 export function getTodayInMeetTimeZone(timeZone: string): string {
-  const localMidnight = getDateInTimeZone(timeZone);
-  return `${localMidnight.getFullYear()}-${pad(localMidnight.getMonth() + 1)}-${pad(
-    localMidnight.getDate(),
-  )}`;
+  return getCalendarDateInTimeZone(timeZone);
 }
 
 /**

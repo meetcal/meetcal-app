@@ -21,8 +21,8 @@ All live data goes through the MeetCal backend API (PostgreSQL via the Rust serv
 
 | Category | Technology |
 |---|---|
-| **Framework** | React Native 0.83, React 19 |
-| **Platform** | Expo SDK ~55, Expo Router |
+| **Framework** | React Native 0.88, React 19 |
+| **Platform** | Expo SDK 58 (preview), Expo Router |
 | **Language** | TypeScript |
 | **Backend** | Self-hosted Rust API, PostgreSQL |
 | **Authentication** | Clerk (JWT, secure token storage) |
@@ -65,3 +65,8 @@ The app leverages several native device capabilities through Expo modules:
 - **expo-notifications** — Local and scheduled notification handling
 - **expo-updates** — Over-the-air updates via EAS
 - **expo-blur / expo-glass-effect** — Native blur and liquid glass UI effects
+
+## iPhone Duo
+
+The app targets the iOS 27.1 SDK so it runs in full compatibility mode on iPhone Duo's
+inner display. Building it requires Xcode 27.1 locally — see [docs/iphone-duo.md](docs/iphone-duo.md).

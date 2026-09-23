@@ -2,17 +2,21 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import * as Updates from 'expo-updates';
 import { Alert, AppState, Platform } from 'react-native';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { devLog } from '@/lib/logger';
 
+/**
+ * `UpdateNotification` is the only consumer and reads exactly these five
+ * values. An `isChecking` flag and a `progress` number were also published:
+ * both were written and never read, and `progress` could only ever be 0 or
+ * 100 because expo-updates has no download-progress callback to drive it.
+ */
 export interface OTAUpdateState {
-  isChecking: boolean;
   isDownloading: boolean;
   isUpdateAvailable: boolean;
   error: string | null;
-  progress: number;
 }
 
 export interface OTAUpdateActions {
-  checkForUpdate: () => Promise<void>;
   downloadAndRestart: () => Promise<void>;
   dismissUpdate: () => void;
 }
@@ -21,66 +25,70 @@ const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
 
 export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
   const [state, setState] = useState<OTAUpdateState>({
-    isChecking: false,
     isDownloading: false,
     isUpdateAvailable: false,
     error: null,
-    progress: 0,
   });
 
+  // The launch check and every foreground check await the network probe and
+  // then expo-updates. Without this the resolution lands on an unmounted
+  // provider during a sign-out remount.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const resetState = useCallback(() => {
+    if (!isMountedRef.current) return;
     setState(prev => ({
       ...prev,
-      isChecking: false,
       isDownloading: false,
       error: null,
-      progress: 0,
     }));
   }, []);
 
   const checkForUpdate = useCallback(async () => {
     // Don't check for updates in development mode
     if (__DEV__) {
-      console.log('[OTA] Skipping update check in development mode');
+      devLog('[OTA] Skipping update check in development mode');
       return;
     }
 
     // Only check for updates if the app was loaded from a bundle
     if (!Updates.isEnabled) {
-      console.log('[OTA] Updates are not enabled');
+      devLog('[OTA] Updates are not enabled');
       return;
     }
 
     // Check network connectivity before attempting update check
     const hasNetwork = await isNetworkAvailable();
     if (!hasNetwork) {
-      console.log('[OTA] Skipping update check - no network available');
+      devLog('[OTA] Skipping update check - no network available');
       return; // Silently skip, don't show error to user
     }
 
     try {
-      setState(prev => ({ ...prev, isChecking: true, error: null }));
-
       const update = await Updates.checkForUpdateAsync();
-      
+      if (!isMountedRef.current) return;
+
       if (update.isAvailable) {
-        console.log('[OTA] Update available');
-        setState(prev => ({ 
-          ...prev, 
-          isChecking: false, 
-          isUpdateAvailable: true 
-        }));
+        devLog('[OTA] Update available');
+        setState(prev => ({ ...prev, isUpdateAvailable: true }));
       } else {
-        console.log('[OTA] No update available');
+        devLog('[OTA] No update available');
         resetState();
       }
     } catch (error) {
+      // A background check the user never asked for must not surface anything:
+      // `error` renders a blocking full-screen "Update Error" modal with the
+      // raw SDK string, and this runs on launch plus every foreground. The
+      // no-network branch above already decided this is silent; a captive
+      // portal or a 5xx from the update server is the same situation.
       console.error('[OTA] Error checking for updates:', error);
-      setState(prev => ({ 
-        ...prev, 
-        isChecking: false, 
-        error: error instanceof Error ? error.message : 'Failed to check for updates'
-      }));
+      resetState();
     }
   }, [resetState]);
 
@@ -90,14 +98,7 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
     try {
       setState(prev => ({ ...prev, isDownloading: true, error: null }));
 
-      // Download the update with progress tracking
-      const downloadResumable = Updates.fetchUpdateAsync();
-      
-      // Note: expo-updates doesn't currently support progress callbacks
-      // This is a placeholder for future implementation
-      await downloadResumable;
-
-      setState(prev => ({ ...prev, progress: 100 }));
+      await Updates.fetchUpdateAsync();
 
       // Show confirmation before restarting
       Alert.alert(
@@ -168,7 +169,6 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
 
   return {
     ...state,
-    checkForUpdate,
     downloadAndRestart,
     dismissUpdate,
   };

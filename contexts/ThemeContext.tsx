@@ -3,9 +3,13 @@ import { useColorScheme } from 'react-native';
 
 type ThemeType = 'light' | 'dark';
 
+/**
+ * The theme follows the system scheme; there is deliberately no setter. One
+ * used to be exposed as a no-op "to preserve API shape", but no consumer ever
+ * called it.
+ */
 type ThemeContextType = {
   currentTheme: ThemeType;
-  setTheme: (theme: ThemeType) => void;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -14,12 +18,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme();
   const currentTheme: ThemeType = colorScheme === 'dark' ? 'dark' : 'light';
 
-  const setTheme = () => {
-    // Theme is locked to system; setter is a no-op to preserve API shape.
-  };
-
   return (
-    <ThemeContext.Provider value={{ currentTheme, setTheme }}>
+    <ThemeContext.Provider value={{ currentTheme }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -17,6 +17,7 @@ import { Filters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function QualifyingTotalsScreen() {
   return (
@@ -27,6 +28,7 @@ export default function QualifyingTotalsScreen() {
 }
 
 function QualifyingTotalsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
@@ -173,7 +175,7 @@ function QualifyingTotalsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

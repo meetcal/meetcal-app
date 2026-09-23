@@ -1,6 +1,14 @@
 import * as Notifications from 'expo-notifications';
 
 import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
+import { devLog } from '@/lib/logger';
+
+/**
+ * AsyncStorage key for the "notify me about saved sessions" preference.
+ * Onboarding, profile settings and `useSavedSessions` all read/write it, so it
+ * lives here rather than as a literal in each of them.
+ */
+export const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -33,7 +41,7 @@ export async function scheduleNotification(
   const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000));
 
   if (seconds <= 0) {
-    console.log(`scheduleNotification: Calculated trigger time is in the past or now (${seconds}s). Not scheduling.`);
+    devLog(`scheduleNotification: Calculated trigger time is in the past or now (${seconds}s). Not scheduling.`);
     return undefined;
   }
 

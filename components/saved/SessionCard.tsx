@@ -3,6 +3,7 @@ import { getPlatformColors } from "@/constants/Colors";
 import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SessionCardProps } from "@/types/saved";
+import { meetCalendarDateAnchor } from "@/utils/dateTime";
 import { makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import React from "react";
@@ -37,13 +38,18 @@ const SessionCard = React.memo<SessionCardProps>(
       ?.get(makeLookupKey(sessionNumber, platform));
     const weightClass = lookup?.weightClass || item.weightClass || "";
     const startTime = lookup?.startTime || item.startTime || "";
+    // `calculateWeighInTime` returns "" for a missing or unparseable start
+    // time, so keep falling through to whatever the session was saved with.
     const weighInTime =
-      lookup?.weighInTime ||
-      (startTime ? calculateWeighInTime(startTime) : item.weighInTime || "");
+      lookup?.weighInTime || calculateWeighInTime(startTime) || item.weighInTime || "";
+    // `new Date(`${date}T12:00:00`)` is *device*-local noon; rendering that in
+    // the meet's timezone flips the calendar day whenever the two zones are
+    // more than 12 hours apart. Anchor at noon UTC instead.
+    const dateAnchor = meetCalendarDateAnchor(item.date);
     const displayDate =
       lookup?.displayDate ||
-      (item.date
-        ? new Date(`${item.date}T12:00:00`).toLocaleDateString("en-US", {
+      (dateAnchor
+        ? dateAnchor.toLocaleDateString("en-US", {
             month: "long",
             day: "numeric",
             year: "numeric",
@@ -65,7 +71,7 @@ const SessionCard = React.memo<SessionCardProps>(
           { backgroundColor: colors.card },
           pressed && { backgroundColor: colors.pressed },
         ]}
-        onPress={onPress}
+        onPress={() => onPress(item)}
       >
         <ThemedText style={[styles.sessionTitle, { color: colors.text }]}>
           {/* Use displayDate derived from schedule map */}

@@ -1,7 +1,8 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { getChevronIcon } from "@/lib/start-list-utils";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
+import { GenericFilterModal } from "@/components/ui/filters";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -14,25 +15,28 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
-import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { StandardsData } from "@/types/standards";
 import {
+  buildIntlRankingsFilterSections,
   buildIntlRankingsWidgetPayload,
+  buildQualifyingTotalsFilterSections,
   buildQualifyingTotalsWidgetPayload,
   buildStandardsWidgetPayload,
+  DataWidgetPayload,
   defaultWidgetSettings,
-  formatAgeGroup,
+  hasResolvedWidgetFilters,
   loadWidgetSettings,
+  normalizeWidgetSettings,
   saveWidgetSettings,
+  STANDARDS_FILTER_SECTIONS,
   syncDataWidgets,
   WidgetKind,
   WidgetSettings,
 } from "@/utils/dataWidgets";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,10 +44,30 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { showToast } from "@/components/ui/Toast";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 type ActiveModal = WidgetKind | null;
 
+type WidgetPayloads = {
+  qualifyingTotals: DataWidgetPayload;
+  standards: DataWidgetPayload;
+  intlRankings: DataWidgetPayload;
+};
+
+type CommitOptions = {
+  /**
+   * The user pressed something: show the saving spinner and surface failures as
+   * a toast. Background commits stay silent.
+   */
+  interactive?: boolean;
+  /** Only the explicit "Update Widgets" button confirms success. */
+  announceSuccess?: boolean;
+  /** Skip when this exact payload has already been written. */
+  dedupe?: boolean;
+};
+
 export default function WidgetSettingsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -51,7 +75,9 @@ export default function WidgetSettingsScreen() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const lastAutoSyncedKey = useRef<string | null>(null);
+  const lastCommittedSignature = useRef<string | null>(null);
+  const commitQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingInteractiveCommits = useRef(0);
 
   const {
     data: totalsData,
@@ -82,80 +108,99 @@ export default function WidgetSettingsScreen() {
   });
 
   useEffect(() => {
+    let isCancelled = false;
     loadWidgetSettings()
-      .then((stored) => setSettings(stored))
-      .catch(() => setSettings(defaultWidgetSettings))
-      .finally(() => setSettingsLoaded(true));
+      .then((stored) => {
+        if (!isCancelled) setSettings(stored);
+      })
+      .catch(() => {
+        if (!isCancelled) setSettings(defaultWidgetSettings);
+      })
+      .finally(() => {
+        if (!isCancelled) setSettingsLoaded(true);
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  const eventOptions = useMemo(
-    () =>
-      Object.keys(totalsData)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
-    [totalsData],
-  );
-
-  const meetOptions = useMemo(
-    () =>
-      Array.from(new Set(intlRankings.map((ranking) => ranking.meet)))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
-    [intlRankings],
-  );
-
-  const rankingsGenderOptions = useMemo(
-    () =>
-      Array.from(new Set(intlRankings.map((ranking) => ranking.gender)))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
-    [intlRankings],
-  );
-
+  // Heal stored filters against what the freshly fetched data actually offers.
+  // `normalizeWidgetSettings` returns the same object when nothing changed, so
+  // this cannot loop.
   useEffect(() => {
     if (!settingsLoaded) return;
+    setSettings((previous) =>
+      normalizeWidgetSettings(previous, totalsData, intlRankings),
+    );
+  }, [intlRankings, settingsLoaded, totalsData]);
 
-    setSettings((previous) => {
-      const normalized = normalizeSettings(previous);
-      return areWidgetSettingsEqual(previous, normalized) ? previous : normalized;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventOptions, meetOptions, intlRankings.length, settingsLoaded, totalsData]);
+  const buildPayloads = useCallback(
+    (next: WidgetSettings): WidgetPayloads => ({
+      qualifyingTotals: buildQualifyingTotalsWidgetPayload(
+        totalsData,
+        next.qualifyingTotals,
+      ),
+      standards: buildStandardsWidgetPayload(standardsData, next.standards),
+      intlRankings: buildIntlRankingsWidgetPayload(
+        intlRankings,
+        next.intlRankings,
+      ),
+    }),
+    [intlRankings, standardsData, totalsData],
+  );
 
-  const syncWidgets = async (nextSettings: WidgetSettings, showAlert = true) => {
-    setIsSaving(true);
-    try {
-      await saveWidgetSettings(nextSettings);
-      syncDataWidgets({
-        qualifyingTotals: buildQualifyingTotalsWidgetPayload(
-          totalsData,
-          nextSettings.qualifyingTotals,
-        ),
-        standards: buildStandardsWidgetPayload(
-          standardsData,
-          nextSettings.standards,
-        ),
-        intlRankings: buildIntlRankingsWidgetPayload(
-          intlRankings,
-          nextSettings.intlRankings,
-        ),
-      });
-      if (showAlert) {
-        showToast({
-          type: "success",
-          message: "Widget settings saved. Your widgets will update shortly.",
-        });
+  /**
+   * The single write path. Persist first, then push to the native widget, so a
+   * widget never renders settings that failed to store. `dedupe` lets the
+   * background commit skip a payload byte-identical to the one already written
+   * — including one the user just applied by hand.
+   */
+  const commitWidgets = useCallback(
+    async (next: WidgetSettings, options: CommitOptions = {}) => {
+      const payloads = buildPayloads(next);
+      const signature = JSON.stringify({ settings: next, payloads });
+      if (options.interactive) {
+        pendingInteractiveCommits.current += 1;
+        setIsSaving(true);
       }
-    } catch (error) {
-      console.error("Failed to save widget settings", error);
-      showToast({
-        type: "error",
-        message: "Failed to save widget settings. Please try again.",
+
+      // Storage and native writes must finish in request order. Otherwise a
+      // slow auto-sync can overwrite filters applied while it was saving.
+      const commit = commitQueue.current.then(async () => {
+        if (options.dedupe && lastCommittedSignature.current === signature) return;
+        try {
+          await saveWidgetSettings(next);
+          syncDataWidgets(payloads);
+          lastCommittedSignature.current = signature;
+          if (options.announceSuccess) {
+            showToast({
+              type: "success",
+              message: "Widget settings saved. Your widgets will update shortly.",
+            });
+          }
+        } catch (commitError) {
+          console.error("Failed to save widget settings", commitError);
+          lastCommittedSignature.current = null;
+          if (options.interactive) {
+            showToast({
+              type: "error",
+              message: "Failed to save widget settings. Please try again.",
+            });
+          }
+        }
       });
-    } finally {
-      setIsSaving(false);
-    }
-  };
+      commitQueue.current = commit;
+      try {
+        await commit;
+      } finally {
+        if (options.interactive) {
+          pendingInteractiveCommits.current -= 1;
+          setIsSaving(pendingInteractiveCommits.current > 0);
+        }
+      }
+    },
+    [buildPayloads],
+  );
 
   const handleApply = (kind: WidgetKind, filters: Record<string, string>) => {
     const nextSettings = {
@@ -164,78 +209,39 @@ export default function WidgetSettingsScreen() {
     } as WidgetSettings;
     setSettings(nextSettings);
     setActiveModal(null);
-    void syncWidgets(nextSettings, false);
+    void commitWidgets(nextSettings, { interactive: true });
   };
 
   const loading = totalsLoading || standardsLoading || rankingsLoading;
   const error = totalsError || standardsError || rankingsError;
 
-  const qualifyingTotals = buildQualifyingTotalsWidgetPayload(
-    totalsData,
-    settings.qualifyingTotals,
-  );
-  const standards = buildStandardsWidgetPayload(
-    standardsData,
-    settings.standards,
-  );
-  const rankings = buildIntlRankingsWidgetPayload(
-    intlRankings,
-    settings.intlRankings,
-  );
+  const {
+    qualifyingTotals,
+    standards,
+    intlRankings: rankings,
+  } = useMemo(() => buildPayloads(settings), [buildPayloads, settings]);
 
   useEffect(() => {
-    const hasLoadedWidgetData =
-      eventOptions.length > 0 &&
-      Object.keys(standardsData).length > 0 &&
-      intlRankings.length > 0;
-
-    if (!settingsLoaded || loading || error || !hasLoadedWidgetData) return;
-
-    const totalAgeOptions = settings.qualifyingTotals.event
-      ? sortAgeGroups(Object.keys(totalsData[settings.qualifyingTotals.event] ?? {}), {
-          includeExtended: true,
-        })
-      : [];
-    const hasValidDefaultFilters =
-      eventOptions.includes(settings.qualifyingTotals.event) &&
-      totalAgeOptions.includes(settings.qualifyingTotals.ageGroup) &&
-      meetOptions.includes(settings.intlRankings.meet);
-    if (!hasValidDefaultFilters) return;
-
-    const syncKey = JSON.stringify({
-      settings,
-      qualifyingTotalsRows: qualifyingTotals.rows.length,
-      standardsRows: standards.rows.length,
-      rankingsRows: rankings.rows.length,
-    });
-    if (lastAutoSyncedKey.current === syncKey) return;
-    lastAutoSyncedKey.current = syncKey;
-
-    void saveWidgetSettings(settings).catch((saveError) => {
-      console.error("Failed to save widget settings", saveError);
-    });
-    syncDataWidgets({
-      qualifyingTotals,
-      standards,
-      intlRankings: rankings,
-    });
+    if (!settingsLoaded || loading || error) return;
+    if (
+      !hasResolvedWidgetFilters(settings, totalsData, standardsData, intlRankings)
+    ) {
+      return;
+    }
+    void commitWidgets(settings, { dedupe: true });
   }, [
+    commitWidgets,
     error,
-    eventOptions.length,
-    intlRankings.length,
+    intlRankings,
     loading,
-    meetOptions,
-    qualifyingTotals,
-    rankings,
     settings,
     settingsLoaded,
-    standards,
     standardsData,
     totalsData,
   ]);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen
         options={{
           title: "Widget Settings",
@@ -308,7 +314,12 @@ export default function WidgetSettingsScreen() {
             (isSaving || loading) && styles.disabled,
             pressed && !isSaving && !loading && { opacity: 0.85 },
           ]}
-          onPress={() => void syncWidgets(settings)}
+          onPress={() =>
+            void commitWidgets(settings, {
+              interactive: true,
+              announceSuccess: true,
+            })
+          }
         >
           {isSaving ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -329,7 +340,12 @@ export default function WidgetSettingsScreen() {
         onResetFilters={() =>
           handleApply("qualifyingTotals", defaultWidgetSettings.qualifyingTotals)
         }
-        sections={(tempFilters) => buildQualifyingTotalSections(tempFilters)}
+        sections={(tempFilters) =>
+          buildQualifyingTotalsFilterSections(
+            totalsData,
+            tempFilters.event || settings.qualifyingTotals.event,
+          )
+        }
         resultCount={(tempFilters) =>
           buildQualifyingTotalsWidgetPayload(
             totalsData,
@@ -347,7 +363,7 @@ export default function WidgetSettingsScreen() {
         onResetFilters={() =>
           handleApply("standards", defaultWidgetSettings.standards)
         }
-        sections={standardSections}
+        sections={STANDARDS_FILTER_SECTIONS}
         resultCount={(tempFilters) =>
           buildStandardsWidgetPayload(
             standardsData,
@@ -365,7 +381,12 @@ export default function WidgetSettingsScreen() {
         onResetFilters={() =>
           handleApply("intlRankings", defaultWidgetSettings.intlRankings)
         }
-        sections={(tempFilters) => buildRankingSections(tempFilters)}
+        sections={(tempFilters) =>
+          buildIntlRankingsFilterSections(
+            intlRankings,
+            tempFilters.meet || settings.intlRankings.meet,
+          )
+        }
         resultCount={(tempFilters) =>
           buildIntlRankingsWidgetPayload(
             intlRankings,
@@ -377,152 +398,7 @@ export default function WidgetSettingsScreen() {
     </ThemedView>
   );
 
-  function normalizeSettings(previous: WidgetSettings): WidgetSettings {
-    const nextEvent = eventOptions.includes(previous.qualifyingTotals.event)
-      ? previous.qualifyingTotals.event
-      : (eventOptions[0] ?? previous.qualifyingTotals.event);
-    const totalAgeOptions = nextEvent
-      ? sortAgeGroups(Object.keys(totalsData[nextEvent] ?? {}), {
-          includeExtended: true,
-        })
-      : [];
-    const nextTotalAge = totalAgeOptions.includes(previous.qualifyingTotals.ageGroup)
-      ? previous.qualifyingTotals.ageGroup
-      : (totalAgeOptions[0] ?? previous.qualifyingTotals.ageGroup);
-
-    const nextMeet = previous.intlRankings.meet || meetOptions[0] || "";
-    const rankingAgeOptions = getRankingAgeOptions(nextMeet);
-    const nextRankingAge = rankingAgeOptions.includes(previous.intlRankings.ageCategory)
-      ? previous.intlRankings.ageCategory
-      : (rankingAgeOptions.includes("Senior")
-          ? "Senior"
-          : rankingAgeOptions[0] ?? previous.intlRankings.ageCategory);
-    const previousRankingGender = previous.intlRankings.gender;
-    const nextRankingGender = previousRankingGender &&
-      rankingsGenderOptions.includes(previousRankingGender)
-      ? previousRankingGender
-      : ((rankingsGenderOptions.includes("Men")
-          ? "Men"
-          : rankingsGenderOptions[0]) as WidgetSettings["intlRankings"]["gender"] | undefined) ??
-        previous.intlRankings.gender;
-
-    return {
-      qualifyingTotals: {
-        ...previous.qualifyingTotals,
-        event: nextEvent,
-        ageGroup: nextTotalAge,
-      },
-      standards: previous.standards,
-      intlRankings: {
-        meet: nextMeet,
-        ageCategory: nextRankingAge,
-        gender: nextRankingGender,
-      },
-    };
-  }
-
-  function buildQualifyingTotalSections(
-    tempFilters: Record<string, string>,
-  ): FilterSection[] {
-    const selectedEvent = tempFilters.event || settings.qualifyingTotals.event;
-    const ageOptions = selectedEvent
-      ? sortAgeGroups(Object.keys(totalsData[selectedEvent] ?? {}), {
-          includeExtended: true,
-        })
-      : [];
-
-    return [
-      {
-        id: "event",
-        title: "Event",
-        options: eventOptions.map((event) => ({ value: event, label: event })),
-      },
-      {
-        id: "gender",
-        title: "Gender",
-        options: [
-          { value: "Men", label: "Men" },
-          { value: "Women", label: "Women" },
-        ],
-      },
-      {
-        id: "ageGroup",
-        title: "Age Group",
-        options: ageOptions.map((ageGroup) => ({
-          value: ageGroup,
-          label: formatAgeGroup(ageGroup),
-        })),
-        dependsOn: ["event"],
-      },
-    ];
-  }
-
-  function getRankingAgeOptions(meet: string) {
-    return sortAgeGroups(
-      Array.from(
-        new Set(
-          intlRankings
-            .filter((ranking) => !meet || ranking.meet === meet)
-            .map((ranking) => ranking.ageCategory),
-        ),
-      ).filter(Boolean),
-      { includeExtended: true },
-    );
-  }
-
-  function buildRankingSections(
-    tempFilters: Record<string, string>,
-  ): FilterSection[] {
-    const selectedMeet = tempFilters.meet || settings.intlRankings.meet;
-    const ageOptions = getRankingAgeOptions(selectedMeet);
-
-    return [
-      {
-        id: "meet",
-        title: "Meet",
-        options: meetOptions.map((meet) => ({ value: meet, label: meet })),
-      },
-      {
-        id: "ageCategory",
-        title: "Age Category",
-        options: ageOptions.map((ageCategory) => ({
-          value: ageCategory,
-          label: ageCategory,
-        })),
-        dependsOn: ["meet"],
-      },
-      {
-        id: "gender",
-        title: "Gender",
-        options: rankingsGenderOptions.map((gender) => ({
-          value: gender,
-          label: gender,
-        })),
-      },
-    ];
-  }
 }
-
-const standardSections: FilterSection[] = [
-  {
-    id: "gender",
-    title: "Gender",
-    options: [
-      { value: "men", label: "Men" },
-      { value: "women", label: "Women" },
-    ],
-  },
-  {
-    id: "ageGroup",
-    title: "Age Group",
-    options: [
-      { value: "u15", label: "U15" },
-      { value: "youth", label: "Youth" },
-      { value: "junior", label: "Junior" },
-      { value: "senior", label: "Senior" },
-    ],
-  },
-];
 
 function WidgetSettingsRow({
   title,
@@ -557,17 +433,13 @@ function WidgetSettingsRow({
       </View>
       <View style={styles.rowTrailing}>
         <IconSymbol
-          name={Platform.OS === "ios" ? "chevron.right" : "chevron-forward"}
+          name={getChevronIcon("right")}
           size={20}
           color={colors.link}
         />
       </View>
     </Pressable>
   );
-}
-
-function areWidgetSettingsEqual(a: WidgetSettings, b: WidgetSettings) {
-  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 const styles = StyleSheet.create({

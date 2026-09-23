@@ -1,4 +1,15 @@
 import { LiftResult, SupabaseLiftResult } from '@/data/types/athletes';
+import {
+  maxSuccessfulAttempt,
+  normalizeAthleteName,
+  wasAttemptMade,
+  wasAttemptTaken,
+} from '@/lib/athletes';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+  toMeetCalendarDate,
+} from '@/utils/dateTime';
 
 export interface AthleteAttemptEstimate {
   id: string;
@@ -25,18 +36,6 @@ interface AttemptData {
 enum LiftType {
   Snatch = 'snatch',
   CleanJerk = 'cj'
-}
-
-function normalizeAthleteName(name: string | null | undefined): string {
-  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function maxSuccessfulAttempt(attempts: Array<number | null | undefined>): number | null {
-  const successful = attempts.filter(
-    (attempt): attempt is number => typeof attempt === "number" && attempt > 0,
-  );
-  if (successful.length === 0) return null;
-  return Math.max(...successful);
 }
 
 function getSnatchBest(result: SupabaseLiftResult): number | null {
@@ -93,6 +92,20 @@ function calculateAverageIncrease(
   return { first: avgFirstToSecond, second: avgSecondToThird };
 }
 
+/**
+ * Share of **openers** the athlete made, per lift.
+ *
+ * Attempt classification is the shared convention in `lib/athletes.ts`: a
+ * non-zero number was taken, a positive number was made.
+ *
+ * This is deliberately a different measurement from
+ * `lib/wrapped-stats.ts`'s `makePercentage`, not a disagreeing definition of
+ * the same one. Wrapped scores all six attempts of a calendar year to tell the
+ * athlete how consistent they were. Here we are predicting the opener we are
+ * about to print, so second and third attempts — which are *chosen in reaction
+ * to* the opener, and are taken at all only when the opener went a certain way
+ * — would bias the estimate. Openers only, split by lift.
+ */
 function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj: number } {
   let snatchFirstAttempts = 0;
   let snatchFirstMakes = 0;
@@ -100,20 +113,14 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   let cjFirstMakes = 0;
 
   for (const result of results) {
-    if (result.snatch1 != null && result.snatch1 > 0) {
+    if (wasAttemptTaken(result.snatch1)) {
       snatchFirstAttempts++;
-      const snatchBest = getSnatchBest(result);
-      if (snatchBest != null && snatchBest >= result.snatch1) {
-        snatchFirstMakes++;
-      }
+      if (wasAttemptMade(result.snatch1)) snatchFirstMakes++;
     }
 
-    if (result.cj1 != null && result.cj1 > 0) {
+    if (wasAttemptTaken(result.cj1)) {
       cjFirstAttempts++;
-      const cjBest = getCJBest(result);
-      if (cjBest != null && cjBest >= result.cj1) {
-        cjFirstMakes++;
-      }
+      if (wasAttemptMade(result.cj1)) cjFirstMakes++;
     }
   }
 
@@ -215,20 +222,31 @@ function calculateAttemptsOutForEstimates(estimates: AthleteAttemptEstimate[]): 
   });
 }
 
+/**
+ * The `YYYY-MM-DD` a result belongs to, for string comparison against the
+ * history cutoff.
+ *
+ * Results carry calendar dates, so the date part is taken verbatim. Routing
+ * `"2026-06-20T00:00:00"` through `new Date(...)` instead parses it in the
+ * *device* timezone and `toISOString()` then hands back the previous day west
+ * of UTC, silently dropping the oldest day of every athlete's history window.
+ */
 function normalizeDate(raw: string | null | undefined): string {
   if (!raw) return "";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return raw;
-  return d.toISOString().split("T")[0];
+  const calendarDate = toMeetCalendarDate(raw);
+  if (calendarDate) return calendarDate;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toISOString().split("T")[0];
 }
 
 export function calculateEstimates(
   athletes: LiftResult[],
   athleteResults: SupabaseLiftResult[]
 ): AthleteAttemptEstimate[] {
-  const twoYearsAgo = new Date();
-  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-  const twoYearsAgoString = twoYearsAgo.toISOString().split('T')[0];
+  // Same window the screen fetched with, from the same helper — a second
+  // hand-rolled copy here would silently filter out rows the fetch paid for.
+  const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
 
   const tempEstimates: {
     athlete: LiftResult;
@@ -246,7 +264,7 @@ export function calculateEstimates(
     const athleteHistory = athleteResults.filter(
       result =>
         normalizeAthleteName(result.name) === normalizedAthleteName &&
-        normalizeDate(result.date) >= twoYearsAgoString
+        normalizeDate(result.date) >= historyCutoffDate
     );
 
     const bestSnatchCandidates = athleteHistory

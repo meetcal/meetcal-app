@@ -16,6 +16,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 type Gender = "Men" | "Women";
 
@@ -28,6 +29,7 @@ export default function AdaptiveRecordsScreen() {
 }
 
 function AdaptiveRecordsScreenContent() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { currentTheme } = useTheme();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
@@ -53,7 +55,7 @@ function AdaptiveRecordsScreenContent() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

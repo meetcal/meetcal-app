@@ -1,11 +1,16 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { OnboardingViewProps } from "@/types/schedule";
+import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
+// Named import: eslint-plugin-import cannot see enums re-exported through
+// expo-notifications' nested `export *` chain on the namespace object.
+import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { devLog } from "@/lib/logger";
 
 const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
 
@@ -148,15 +153,11 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const requestCalendarAccess = async () => {
     try {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status === "granted") {
-        if (__DEV__) {
-          console.log("Calendar access granted");
-        }
-      } else {
-        if (__DEV__) {
-          console.log("Calendar access denied");
-        }
-      }
+      devLog(
+        status === "granted"
+          ? "Calendar access granted"
+          : "Calendar access denied",
+      );
     } catch (error) {
       if (__DEV__) {
         console.error("Calendar permission error:", error);
@@ -169,24 +170,21 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("default", {
           name: "default",
-          importance: Notifications.AndroidImportance.MAX,
+          importance: AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: "#FF231F7C",
         });
       }
 
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status === "granted") {
-        if (__DEV__) {
-          console.log("Notification access granted");
-        }
-        await AsyncStorage.setItem("@notification_enabled", "true");
-      } else {
-        if (__DEV__) {
-          console.log("Notification access denied");
-        }
-        await AsyncStorage.setItem("@notification_enabled", "false");
-      }
+      const granted = status === "granted";
+      devLog(
+        granted ? "Notification access granted" : "Notification access denied",
+      );
+      await AsyncStorage.setItem(
+        NOTIFICATION_ENABLED_KEY,
+        granted ? "true" : "false",
+      );
     } catch (error) {
       if (__DEV__) {
         console.error("Notification permission error:", error);

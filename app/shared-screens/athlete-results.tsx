@@ -1,18 +1,33 @@
 import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { useAppColors } from "@/hooks/useAppColors";
+import { AppColors, useAppColors } from "@/hooks/useAppColors";
 import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import { SupabaseLiftResult } from "@/types/athlete-results";
+import { FlashList } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { devLog } from "@/lib/logger";
 
-function getRateColor(rate: number, colors: any) {
+/**
+ * A meet result date is a calendar date, not an instant. `new Date("2025-03-15")`
+ * is UTC midnight, so formatting it in the device timezone shows 3/14/2025 on
+ * every US device. Format in UTC and it reads back as the date the meet held.
+ */
+function formatResultDate(date: string | null | undefined): string {
+  if (!date) return "";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString(undefined, { timeZone: "UTC" });
+}
+
+function getRateColor(rate: number, colors: AppColors) {
   if (rate >= 80) return colors.success;
   if (rate < 70) return colors.fail;
   return "#FF9500";
@@ -25,7 +40,7 @@ function AttemptRateRow({
 }: {
   attemptNumber: number;
   rates: { makes: number; total: number; rate: number };
-  colors: any;
+  colors: AppColors;
 }) {
   return (
     <View style={styles.attemptRateRow}>
@@ -56,7 +71,7 @@ function AthleteStats({
   colors,
 }: {
   results: SupabaseLiftResult[];
-  colors: any;
+  colors: AppColors;
 }) {
   const stats = useMemo(() => {
     let snatchAttempts = 0;
@@ -252,9 +267,115 @@ function AthleteStats({
   );
 }
 
+/**
+ * One meet card. Roughly 25 native views, and an athlete's career runs to ~90
+ * meets, so these are rendered through a virtualized list rather than mounted
+ * all at once. Memoized because FlashList recycles cells: without it every
+ * scroll step re-renders cards whose props did not change.
+ */
+const MeetResultCard = React.memo(function MeetResultCard({
+  result,
+  colors,
+  isSnatchPR,
+  isCJPR,
+  isTotalPR,
+  isFirst,
+}: {
+  result: SupabaseLiftResult;
+  colors: AppColors;
+  isSnatchPR: boolean;
+  isCJPR: boolean;
+  isTotalPR: boolean;
+  isFirst: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.card },
+        isFirst && { marginTop: 16 },
+      ]}
+    >
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <View style={styles.meetNameRow}>
+          <ThemedText style={styles.meetName}>
+            {result.meet}
+          </ThemedText>
+          {isSnatchPR || isCJPR || isTotalPR ? (
+            <View style={[styles.prBadge, { backgroundColor: colors.prColor }]}>
+              <ThemedText style={styles.prBadgeText}>PR</ThemedText>
+            </View>
+          ) : null}
+        </View>
+        <ThemedText style={[styles.meetDate, { color: colors.secondaryText }]}>
+          Date: {formatResultDate(result.date)}
+        </ThemedText>
+        <ThemedText
+          style={[styles.weightClass, { color: colors.secondaryText }]}
+        >
+          {result.age}
+        </ThemedText>
+      </View>
+
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <View style={styles.liftRow}>
+          <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+            Snatch
+          </ThemedText>
+          <View style={styles.attempts}>
+            <AttemptDisplay attempt={result.snatch1} colors={colors} />
+            <AttemptDisplay attempt={result.snatch2} colors={colors} />
+            <AttemptDisplay attempt={result.snatch3} colors={colors} />
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.section, { borderBottomColor: colors.border }]}>
+        <View style={styles.liftRow}>
+          <ThemedText style={[styles.liftName, { color: colors.secondaryText }]}>
+            Clean & Jerk
+          </ThemedText>
+          <View style={styles.attempts}>
+            <AttemptDisplay attempt={result.cj1} colors={colors} />
+            <AttemptDisplay attempt={result.cj2} colors={colors} />
+            <AttemptDisplay attempt={result.cj3} colors={colors} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <ThemedText style={styles.total}>
+          <ThemedText
+            style={[styles.total, isSnatchPR && { color: colors.prColor }]}
+          >
+            {result.snatch_best ?? "—"}
+          </ThemedText>
+          /
+          <ThemedText
+            style={[styles.total, isCJPR && { color: colors.prColor }]}
+          >
+            {result.cj_best ?? "—"}
+          </ThemedText>
+          /
+          <ThemedText
+            style={[styles.total, isTotalPR && { color: colors.prColor }]}
+          >
+            {result.total ?? "—"}
+          </ThemedText>
+        </ThemedText>
+      </View>
+    </View>
+  );
+});
+
+function meetResultKey(result: SupabaseLiftResult, index: number): string {
+  return `${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`;
+}
+
 export default function AthleteResultsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { name } = useLocalSearchParams<{ name?: string; meet?: string }>();
+  const { name } = useLocalSearchParams<{ name?: string }>();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(
@@ -284,6 +405,7 @@ export default function AthleteResultsScreen() {
         setAthleteResults(cachedResults);
         setLoading(false);
       } else {
+        setAthleteResults([]);
         setLoading(true);
       }
 
@@ -306,7 +428,7 @@ export default function AthleteResultsScreen() {
               setLoading(false);
             }
           } catch (cacheError) {
-            console.log(
+            devLog(
               `Cache miss for athlete results, fetching from API ${cacheError}`,
             );
           }
@@ -342,6 +464,11 @@ export default function AthleteResultsScreen() {
     };
 
     fetchAthleteResults();
+    return () => {
+      // Supersede the in-flight request: leaving the screen (or opening a
+      // different athlete) must not repaint it with the previous results.
+      requestIdRef.current += 1;
+    };
   }, [name]);
 
   // For each lift, the index of the meet where the athlete's PR was set.
@@ -350,6 +477,26 @@ export default function AthleteResultsScreen() {
   const prIndexes = useMemo(
     () => findPRIndexes(athleteResults),
     [athleteResults],
+  );
+
+  // FlashList recycles cells, so it needs to be told when something outside
+  // `data` changes what a row renders. Both of these do.
+  const cardExtraData = useMemo(
+    () => ({ prIndexes, colors }),
+    [prIndexes, colors],
+  );
+  const renderResultCard = useCallback(
+    ({ item, index }: { item: SupabaseLiftResult; index: number }) => (
+      <MeetResultCard
+        result={item}
+        colors={colors}
+        isSnatchPR={index === prIndexes.snatch}
+        isCJPR={index === prIndexes.cj}
+        isTotalPR={index === prIndexes.total}
+        isFirst={index === 0}
+      />
+    ),
+    [colors, prIndexes],
   );
 
   if (!name) {
@@ -362,7 +509,7 @@ export default function AthleteResultsScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{
@@ -382,169 +529,58 @@ export default function AthleteResultsScreen() {
         }}
       />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 20 },
-        ]}
-      >
-        {loading ? (
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, marginTop: 16 },
-            ]}
-          >
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.secondaryText} />
-            </View>
-          </View>
-        ) : athleteResults.length === 0 ? (
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, marginTop: 16 },
-            ]}
-          >
-            <View style={styles.emptyStateContainer}>
-              <ThemedText
-                style={[styles.emptyStateText, { color: colors.secondaryText }]}
-              >
-                No meet results found for{" "}
-                {name}
-              </ThemedText>
-            </View>
-          </View>
-        ) : (
-          <>
-            <AthleteStats results={athleteResults} colors={colors} />
-            {athleteResults.map((result, index) => {
-              const isSnatchPR = index === prIndexes.snatch;
-              const isCJPR = index === prIndexes.cj;
-              const isTotalPR = index === prIndexes.total;
-              return (
-              <View
-                key={`${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`}
-                style={[
-                  styles.card,
-                  { backgroundColor: colors.card },
-                  index === 0 && { marginTop: 16 },
-                ]}
-              >
-                <View
-                  style={[styles.section, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.meetNameRow}>
-                    <ThemedText style={styles.meetName}>
-                      {result.meet}
-                    </ThemedText>
-                    {isSnatchPR || isCJPR || isTotalPR ? (
-                      <View
-                        style={[
-                          styles.prBadge,
-                          { backgroundColor: colors.prColor },
-                        ]}
-                      >
-                        <ThemedText style={styles.prBadgeText}>PR</ThemedText>
-                      </View>
-                    ) : null}
-                  </View>
-                  <ThemedText
-                    style={[styles.meetDate, { color: colors.secondaryText }]}
-                  >
-                    Date:{" "}
-                    {new Date(result.date).toLocaleDateString()}
-                  </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.weightClass,
-                      { color: colors.secondaryText },
-                    ]}
-                  >
-                    {result.age}
-                  </ThemedText>
-                </View>
-
-                <View
-                  style={[styles.section, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.liftRow}>
-                    <ThemedText
-                      style={[styles.liftName, { color: colors.secondaryText }]}
-                    >
-                      Snatch
-                    </ThemedText>
-                    <View style={styles.attempts}>
-                      <AttemptDisplay
-                        attempt={result.snatch1}
-                        colors={colors}
-                      />
-                      <AttemptDisplay
-                        attempt={result.snatch2}
-                        colors={colors}
-                      />
-                      <AttemptDisplay
-                        attempt={result.snatch3}
-                        colors={colors}
-                      />
-                    </View>
-                  </View>
-                </View>
-
-                <View
-                  style={[styles.section, { borderBottomColor: colors.border }]}
-                >
-                  <View style={styles.liftRow}>
-                    <ThemedText
-                      style={[styles.liftName, { color: colors.secondaryText }]}
-                    >
-                      Clean & Jerk
-                    </ThemedText>
-                    <View style={styles.attempts}>
-                      <AttemptDisplay attempt={result.cj1} colors={colors} />
-                      <AttemptDisplay attempt={result.cj2} colors={colors} />
-                      <AttemptDisplay attempt={result.cj3} colors={colors} />
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.section}>
-                  <ThemedText style={styles.total}>
-                    <ThemedText
-                      style={[
-                        styles.total,
-                        isSnatchPR && { color: colors.prColor },
-                      ]}
-                    >
-                      {result.snatch_best ?? "—"}
-                    </ThemedText>
-                    /
-                    <ThemedText
-                      style={[
-                        styles.total,
-                        isCJPR && { color: colors.prColor },
-                      ]}
-                    >
-                      {result.cj_best ?? "—"}
-                    </ThemedText>
-                    /
-                    <ThemedText
-                      style={[
-                        styles.total,
-                        isTotalPR && { color: colors.prColor },
-                      ]}
-                    >
-                      {result.total ?? "—"}
-                    </ThemedText>
-                  </ThemedText>
-                </View>
+      {loading || athleteResults.length === 0 ? (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
+        >
+          {loading ? (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.card, marginTop: 16 },
+              ]}
+            >
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.secondaryText} />
               </View>
-              );
-            })}
-          </>
-        )}
-      </ScrollView>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.card, marginTop: 16 },
+              ]}
+            >
+              <View style={styles.emptyStateContainer}>
+                <ThemedText
+                  style={[styles.emptyStateText, { color: colors.secondaryText }]}
+                >
+                  No meet results found for{" "}
+                  {name}
+                </ThemedText>
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <FlashList
+          data={athleteResults}
+          extraData={cardExtraData}
+          keyExtractor={meetResultKey}
+          renderItem={renderResultCard}
+          ListHeaderComponent={
+            <AthleteStats results={athleteResults} colors={colors} />
+          }
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: insets.bottom + 20,
+          }}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -554,7 +590,7 @@ function AttemptDisplay({
   colors,
 }: {
   attempt: number | null;
-  colors: any;
+  colors: AppColors;
 }) {
   if (attempt === null || attempt === 0) {
     return (

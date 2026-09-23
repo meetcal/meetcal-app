@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const sponsors: Sponsor[] = [
   {
@@ -41,25 +42,10 @@ const sponsors: Sponsor[] = [
     discount: "Team Support, and Coaching Education",
     image: require("@/assets/images/powergrace.png"), // Use your image
   },
-  // {
-  //   id: '3',
-  //   name: 'Virus',
-  //   description: 'The Official Apparel Sponsor of USA Weightlifting',
-  //   website: 'https://virusintl.com',
-  //   discount: 'Stop by the booth for 10% off!',
-  //   image: require('@/assets/images/virus.png') // Use your image
-  // },
-  // {
-  //   id: '4',
-  //   name: 'Onyx Straps',
-  //   description: 'The Gear For Weightlifters, By Weightlifters',
-  //   website: 'https://onyxstraps.com',
-  //   discount: 'Stop by the booth for BOGO straps!',
-  //   image: require('@/assets/images/onyx.png') // Use your image
-  // },
 ];
 
 export default function SponsorsScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -90,7 +76,7 @@ export default function SponsorsScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

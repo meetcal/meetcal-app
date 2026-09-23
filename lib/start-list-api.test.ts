@@ -224,3 +224,45 @@ describe("getLastYearBestsBatch", () => {
     expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
   });
 });
+
+describe("in-memory bests cache bound", () => {
+  it("serves a repeated name from memory without re-fetching", async () => {
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      A: { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
+    });
+
+    await startListApi.getLastYearBestsBatch(["A"]);
+    await startListApi.getLastYearBestsBatch(["A"]);
+
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts the oldest names once the cap is exceeded", async () => {
+    const limit = startListApi.YEAR_BESTS_CACHE_LIMIT;
+    // One name over the cap. Every name resolves, so every one is cached.
+    const names = Array.from({ length: limit + 1 }, (_, i) => `Athlete ${i}`);
+    mockFetchApiYearBestsByNames.mockImplementation(
+      async (requested: string[]) =>
+        Object.fromEntries(
+          requested.map((name) => [
+            name,
+            { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
+          ]),
+        ),
+    );
+
+    await startListApi.getLastYearBestsBatch(names);
+    mockFetchApiYearBestsByNames.mockClear();
+
+    // The most recent name is still memoized...
+    await startListApi.getLastYearBestsBatch([names[names.length - 1]]);
+    expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
+
+    // ...while the oldest has been evicted and has to be re-resolved.
+    await startListApi.getLastYearBestsBatch([names[0]]);
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledWith(
+      [names[0]],
+      expect.any(String),
+    );
+  });
+});

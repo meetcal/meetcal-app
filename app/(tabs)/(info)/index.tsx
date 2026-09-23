@@ -23,8 +23,10 @@ import { Stack, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function InfoScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -51,7 +53,7 @@ export default function InfoScreen() {
   return (
     <ThemedView
       testID="info-screen"
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{

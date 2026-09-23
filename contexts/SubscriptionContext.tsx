@@ -4,14 +4,26 @@ import Purchases, { CustomerInfo } from 'react-native-purchases';
 import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { devLog, devWarn } from '@/lib/logger';
 
+/**
+ * `setSubscribed` and `checkSubscriptionStatus` are provider internals, not
+ * part of this contract: entitlement is server truth (RevenueCat), so a screen
+ * that could write it locally is a bug waiting to happen. The provider keeps
+ * itself in sync via its own RevenueCat listener and reconnect effect.
+ */
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
   subscriptionType: 'free' | 'quarterly' | 'lifetime' | 'unknown' | null;
-  setSubscribed: (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => Promise<void>;
   isLoading: boolean;
+  /**
+   * Manual restore. No screen calls this today — the paywall uses
+   * RevenueCatUI's own restore button and only handles `onRestoreCompleted` —
+   * but a first-party "Restore Purchases" row is a store requirement the
+   * moment the app ships a non-RevenueCatUI purchase surface, so the working
+   * implementation stays exposed rather than being deleted and rewritten.
+   */
   restorePurchases: () => Promise<boolean>;
-  checkSubscriptionStatus: () => Promise<void>;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
 };
@@ -28,6 +40,13 @@ type SubscriptionCacheEntry = SubscriptionCacheData & {
 
 const SUBSCRIPTION_CACHE_KEY = 'subscription_cache_v2';
 const SUBSCRIPTION_CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * How long the cache-first render holds before the first RevenueCat round
+ * trip. Long enough that the network check never competes with first paint or
+ * the paywall's own fetch.
+ */
+const INITIAL_REFRESH_DELAY_MS = 8000;
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
@@ -111,7 +130,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       await AsyncStorage.setItem(SUBSCRIPTION_CACHE_KEY, JSON.stringify(cacheData));
       setLastSyncTimestamp(cacheData.timestamp);
       setIsUsingStaleCache(false);
-      console.log('Subscription cache saved:', cacheData);
+      devLog('Subscription cache saved:', cacheData);
     } catch (error) {
       console.error('Error saving subscription cache:', error);
     }
@@ -140,7 +159,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const isExpired = now - cacheData.timestamp > SUBSCRIPTION_CACHE_EXPIRY_MS;
 
       if (isExpired && markStaleCache) {
-        console.log('Subscription cache expired (older than 7 days), using stale');
+        devLog('Subscription cache expired (older than 7 days), using stale');
         setIsUsingStaleCache(true);
       }
 
@@ -160,7 +179,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     // Check for simulated subscription first
     const simulatedStatus = getSimulatedSubscriptionStatus();
     if (simulatedStatus !== null) {
-      console.log('Using simulated subscription status:', simulatedStatus);
+      devLog('Using simulated subscription status:', simulatedStatus);
       return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
     }
 
@@ -177,25 +196,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       }
     }
 
-    console.log('Checking entitlement status:', {
-      hasActiveEntitlement,
-      subscriptionType,
-      activeEntitlements: customerInfo.entitlements.active,
-      allEntitlements: customerInfo.entitlements
-    });
+    devLog('Checking entitlement status:', { hasActiveEntitlement, subscriptionType });
     
     return [hasActiveEntitlement, subscriptionType];
   };
 
   const checkSubscriptionStatus = async () => {
     try {
-      console.log('Checking subscription status...');
+      devLog('Checking subscription status...');
       setIsLoading(true);
 
       // Check for simulated subscription first
       const simulatedStatus = getSimulatedSubscriptionStatus();
       if (simulatedStatus !== null) {
-        console.log('Using simulated subscription status:', simulatedStatus);
+        devLog('Using simulated subscription status:', simulatedStatus);
         const type = simulatedStatus ? 'quarterly' : 'free';
         await saveSubscriptionCache(simulatedStatus, type);
         setIsSubscribed(simulatedStatus);
@@ -208,13 +222,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const hasNetwork = await isNetworkAvailable();
 
       if (!hasNetwork) {
-        console.log('No network available, using cached subscription data');
+        devLog('No network available, using cached subscription data');
         const cached = await getSubscriptionCache(true);
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
         } else {
-          console.warn('No network and no cache available, setting unknown state');
+          devWarn('No network and no cache available, setting unknown state');
           setIsSubscribed(null);
           setSubscriptionType('unknown');
         }
@@ -225,7 +239,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       // Network available, check real subscription
       const customerInfo = await Purchases.getCustomerInfo();
       const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
-      console.log('Real subscription status:', { hasActiveSubscription, type });
+      devLog('Real subscription status:', { hasActiveSubscription, type });
 
       await saveSubscriptionCache(hasActiveSubscription, type);
       recordConfirmedMembership(hasActiveSubscription, type);
@@ -239,9 +253,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (cached) {
         setIsSubscribed(cached.isSubscribed);
         setSubscriptionType(cached.subscriptionType);
-        setIsUsingStaleCache(false);
+        // Keep the stale flag honest: forcing it to false when the entry is
+        // past its 7-day expiry stops the reconnect effect from ever
+        // re-checking, so an expired entitlement stays "subscribed" for the
+        // rest of the session. The offline path already does this.
+        setIsUsingStaleCache(cached.isExpired);
       } else {
-        console.warn('Error checking subscription and no cache available, setting unknown state');
+        devWarn('Error checking subscription and no cache available, setting unknown state');
         setIsSubscribed(null);
         setSubscriptionType('unknown');
         setIsUsingStaleCache(false);
@@ -268,6 +286,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
 
         const cached = await getSubscriptionCache(false);
+        // `cancelled` guarded only the timeout below, so a provider that
+        // unmounted (or re-mounted on sign-out) during the SecureStore read
+        // still published the old user's entitlement.
+        if (cancelled) return;
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
@@ -285,10 +307,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           if (!cancelled) {
             void checkSubscriptionStatus();
           }
-        }, 8000);
+        }, INITIAL_REFRESH_DELAY_MS);
       } catch (error) {
         console.error('Failed to initialize subscription status:', error);
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
@@ -309,10 +331,12 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const setupListener = async () => {
       try {
         const listener = async (info: CustomerInfo) => {
-          console.log('Customer info updated:', info);
+          // Never log the whole CustomerInfo: it carries the RevenueCat app
+          // user id, purchase dates, and store transaction ids.
+          devLog('Customer info updated. Active entitlements:', Object.keys(info.entitlements.active));
           setIsLoading(true);
           const [hasActiveSubscription, type] = await checkEntitlementStatus(info);
-          console.log('Subscription update received:', { hasActiveSubscription, type });
+          devLog('Subscription update received:', { hasActiveSubscription, type });
 
           await saveSubscriptionCache(hasActiveSubscription, type);
           recordConfirmedMembership(hasActiveSubscription, type);
@@ -342,10 +366,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   // Listen for network changes and refresh when coming back online
   useEffect(() => {
     const unsubscribe = subscribeToNetworkChanges(async (isConnected) => {
-      console.log('Network state changed:', isConnected);
+      devLog('Network state changed:', isConnected);
 
       if (isConnected && isUsingStaleCache) {
-        console.log('Network restored and using stale cache, refreshing subscription...');
+        devLog('Network restored and using stale cache, refreshing subscription...');
         await checkSubscriptionStatus();
       }
     });
@@ -368,10 +392,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const restorePurchases = async (): Promise<boolean> => {
     try {
-      console.log('Attempting to restore purchases...');
+      devLog('Attempting to restore purchases...');
       const customerInfo = await Purchases.restorePurchases();
       const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
-      console.log('Restore purchases result:', { hasActiveSubscription, type });
+      devLog('Restore purchases result:', { hasActiveSubscription, type });
       
       await setSubscribed(hasActiveSubscription, type);
       return hasActiveSubscription;
@@ -386,10 +410,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       value={{
         isSubscribed,
         subscriptionType,
-        setSubscribed,
         isLoading,
         restorePurchases,
-        checkSubscriptionStatus,
         isUsingStaleCache,
         lastSyncTimestamp,
       }}

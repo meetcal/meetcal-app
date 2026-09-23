@@ -10,14 +10,17 @@ import { Stack } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
 import PaywallScreen from "../shared-screens/paywall";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export default function OfflineDataScreen() {
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const {
     isSubscribed,
@@ -59,7 +62,7 @@ export default function OfflineDataScreen() {
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <Stack.Screen
         options={{
@@ -78,42 +81,75 @@ export default function OfflineDataScreen() {
             color: colors.text,
           },
           headerTintColor: colors.text,
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              <Pressable
-                onPress={confirmRefreshAll}
-                disabled={isRefreshingAll || isDeletingAll}
-                style={({ pressed }) => [
-                  styles.headerButton,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                {isRefreshingAll ? (
-                  <ActivityIndicator size="small" color={colors.link} />
-                ) : (
-                  <IconSymbol
-                    name="arrow.clockwise"
-                    size={20}
-                    color={colors.link}
-                  />
-                )}
-              </Pressable>
-              <Pressable
-                onPress={confirmDeleteAll}
-                disabled={isRefreshingAll || isDeletingAll}
-                style={({ pressed }) => [
-                  styles.headerButton,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                {isDeletingAll ? (
-                  <ActivityIndicator size="small" color={colors.danger} />
-                ) : (
-                  <IconSymbol name="trash" size={20} color={colors.danger} />
-                )}
-              </Pressable>
-            </View>
-          ),
+          // Native UIBarButtonItems on iOS so they move into iPhone Duo's
+          // vertical bar. Native items can't host a spinner, so in-flight state
+          // is the standard dimmed/disabled treatment instead.
+          ...(Platform.OS === "ios"
+            ? {
+                unstable_headerRightItems: () => [
+                  {
+                    type: "button" as const,
+                    label: "Refresh all offline data",
+                    icon: {
+                      type: "sfSymbol" as const,
+                      name: "arrow.clockwise" as const,
+                    },
+                    tintColor: colors.link,
+                    disabled: isRefreshingAll || isDeletingAll,
+                    onPress: confirmRefreshAll,
+                  },
+                  {
+                    type: "button" as const,
+                    label: "Delete all offline data",
+                    icon: { type: "sfSymbol" as const, name: "trash" as const },
+                    tintColor: colors.danger,
+                    disabled: isRefreshingAll || isDeletingAll,
+                    onPress: confirmDeleteAll,
+                  },
+                ],
+              }
+            : {
+                headerRight: () => (
+                  <View style={styles.headerActions}>
+                    <Pressable
+                      onPress={confirmRefreshAll}
+                      disabled={isRefreshingAll || isDeletingAll}
+                      style={({ pressed }) => [
+                        styles.headerButton,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      {isRefreshingAll ? (
+                        <ActivityIndicator size="small" color={colors.link} />
+                      ) : (
+                        <IconSymbol
+                          name="arrow.clockwise"
+                          size={20}
+                          color={colors.link}
+                        />
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={confirmDeleteAll}
+                      disabled={isRefreshingAll || isDeletingAll}
+                      style={({ pressed }) => [
+                        styles.headerButton,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      {isDeletingAll ? (
+                        <ActivityIndicator size="small" color={colors.danger} />
+                      ) : (
+                        <IconSymbol
+                          name="trash"
+                          size={20}
+                          color={colors.danger}
+                        />
+                      )}
+                    </Pressable>
+                  </View>
+                ),
+              }),
         }}
       />
 

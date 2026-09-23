@@ -1,8 +1,8 @@
-import { getMeetData, saveMeetSchedule } from './offline-store';
+import { saveMeetSchedule } from './offline-store';
 import { fetchSchedule } from './queries';
-import type { MeetData } from './offline-store';
 import type { MeetName } from '@/data/types/meet';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { devLog } from '../logger';
 
 const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
@@ -13,6 +13,19 @@ export class SyncManager {
 
   constructor(meetId: MeetName) {
     this.meetId = meetId;
+  }
+
+  /**
+   * Starts the 5-minute refresh loop. Deliberately not done in the
+   * constructor: constructing a manager has to be free of side effects,
+   * because callers do construct them speculatively. `SelectedMeetContext`
+   * used to build one inside a `setState` updater, and React re-runs updaters
+   * (StrictMode double-invocation, and any render the update is replayed in)
+   * with the same pre-update `current` value — so the first instance's timer
+   * ran for the rest of the session with no reference left to stop it.
+   * Start/stop now belong to one effect.
+   */
+  public start() {
     this.startPeriodicSync();
   }
 
@@ -33,7 +46,7 @@ export class SyncManager {
 
   public async syncIfNeeded(): Promise<void> {
     if (this.isSyncing) {
-      console.log('Already syncing, skipping...');
+      devLog('Already syncing, skipping...');
       return;
     }
 
@@ -58,19 +71,6 @@ export class SyncManager {
     } finally {
       this.isSyncing = false;
     }
-  }
-
-  public async getMeetData(): Promise<MeetData> {
-    try {
-      // Always try to sync first
-      await this.syncIfNeeded();
-    } catch (error) {
-      console.log('Sync failed, using cached data:', error);
-    }
-
-    // Get data from cache (whether sync succeeded or failed)
-    const data = await getMeetData(this.meetId);
-    return data;
   }
 
   public stopSync() {
