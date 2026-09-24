@@ -54,6 +54,25 @@ describe("auth cache", () => {
     });
   });
 
+  it("shares one keychain read between concurrent callers", async () => {
+    // Every screen's `useAuthGuard` reads the hint on mount; without the
+    // in-flight join a tab switch issued one SecureStore round trip each.
+    await cacheAuthState(true, "user-1");
+    const SecureStore = jest.requireMock("expo-secure-store");
+    SecureStore.getItemAsync.mockClear();
+
+    const reads = await Promise.all(
+      Array.from({ length: 5 }, () => getCachedAuthState()),
+    );
+
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(1);
+    expect(reads.every((read) => read?.userId === "user-1")).toBe(true);
+
+    // Released afterwards: a later read goes back to the store.
+    await getCachedAuthState();
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+  });
+
   it("clears malformed JSON instead of throwing", async () => {
     mockStore.set("auth_state_cache", "{not-json");
     await expect(getCachedAuthState()).resolves.toBeNull();

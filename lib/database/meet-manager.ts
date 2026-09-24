@@ -30,8 +30,17 @@ import {
   NAMES_QUERY_CHUNK_SIZE,
 } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
+import {
+  getCachedMeetByName,
+  getCachedMeets,
+  MEETS_LIST_CACHE_KEY,
+  setCachedMeets,
+} from './meets-list-cache';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from '@/utils/dateTime';
 import { devLog } from '../logger';
+
+// Re-exported: callers have always read the meets list cache from here.
+export { getCachedMeetByName, getCachedMeets };
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
@@ -40,7 +49,6 @@ const MEET_CACHE_KEY = '@meet_cache_info';
 // declared in `offline-store`, which clears it alongside the athlete history
 // the validator vouches for.
 const PACKAGE_ETAG_KEY = PACKAGE_ETAG_STORAGE_KEY;
-const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
@@ -123,48 +131,6 @@ export function validatePrefetchedLiftingResults(
     if (matchedCount === 0) {
       throw new Error(`No matched lifting results fetched for meet athletes: ${meet}`);
     }
-  }
-}
-
-/**
- * The cached meets list is the offline source for the meet picker, the schedule
- * header and every meet-local time conversion, so a row without `name`,
- * `dates` or `time` is not a meet we can render — it would surface as
- * `Cannot read property 'timeZoneIdentifier' of undefined` in a screen rather
- * than as a missing row here.
- */
-function isCachedMeet(value: unknown): value is Meet {
-  if (!value || typeof value !== 'object') return false;
-  const meet = value as Partial<Meet>;
-  return (
-    typeof meet.name === 'string' &&
-    meet.name.length > 0 &&
-    typeof meet.dates === 'object' &&
-    meet.dates !== null &&
-    typeof meet.time === 'object' &&
-    meet.time !== null &&
-    typeof meet.time.timeZoneIdentifier === 'string'
-  );
-}
-
-export async function getCachedMeets(): Promise<Meet[]> {
-  try {
-    const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
-    if (!cached) return [];
-    const parsed: unknown = JSON.parse(cached);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isCachedMeet);
-  } catch (error) {
-    console.error('Error reading cached meets list:', error);
-    return [];
-  }
-}
-
-async function setCachedMeets(meets: Meet[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(MEETS_LIST_CACHE_KEY, JSON.stringify(meets));
-  } catch (error) {
-    console.error('Error saving cached meets list:', error);
   }
 }
 
@@ -262,16 +228,6 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
   })();
 
   return inFlightFetchMeets;
-}
-
-/**
- * The meet from the cached `/meets` list only — never the network. For
- * callers that want to *skip* a `/meets/details` round trip when the answer is
- * already on disk, and can carry on without it when it is not.
- */
-export async function getCachedMeetByName(name: string): Promise<Meet | null> {
-  const cached = await getCachedMeets();
-  return cached.find((meet) => meet.name === name) ?? null;
 }
 
 // Fetch a single meet by name
