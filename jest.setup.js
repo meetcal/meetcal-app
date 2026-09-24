@@ -19,7 +19,10 @@ jest.mock("@react-native-community/netinfo", () =>
 // whichever test mounts a screen first and has pushed several past Jest's 5s
 // budget on CI. Touching them here charges it to setup, outside any test's
 // timeout; once transformed, later files pay only module evaluation.
-{
+// Skipped in suites that cannot render (see `rendersReactNativeUi` in
+// jest/device-timezone-environment.js): evaluating these modules there cost
+// every `.ts` suite ~55ms for nothing.
+if (globalThis.__MEETCAL_WARM_RN_UI__ !== false) {
   const ReactNative = require("react-native");
   void [
     ReactNative.Animated,

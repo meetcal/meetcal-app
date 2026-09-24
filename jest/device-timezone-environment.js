@@ -38,6 +38,16 @@ function assertTimeZone(zone) {
   return zone;
 }
 
+/**
+ * Whether a test file may render React Native UI. JSX needs a `.tsx`/`.jsx`
+ * file; the `.ts` suites (lib/, utils/ logic) never mount a component, and
+ * warming react-native's lazy UI modules cost each of them ~55ms warm
+ * (~1.1s of a ~6.4s full run on 4 cores).
+ */
+function rendersReactNativeUi(testPath) {
+  return typeof testPath !== 'string' || /\.[jt]sx$/.test(testPath);
+}
+
 module.exports = class DeviceTimeZoneEnvironment extends ReactNativeEnv {
   constructor(config, context) {
     super(config, context);
@@ -51,7 +61,11 @@ module.exports = class DeviceTimeZoneEnvironment extends ReactNativeEnv {
     if (this.global.process && this.global.process.env) {
       this.global.process.env.TZ = zone;
     }
+    // Read by jest.setup.js: only suites that can render pay for warming
+    // react-native's UI modules.
+    this.global.__MEETCAL_WARM_RN_UI__ = rendersReactNativeUi(context.testPath);
   }
 };
 
 module.exports.DEFAULT_DEVICE_TIME_ZONE = DEFAULT_DEVICE_TIME_ZONE;
+module.exports.rendersReactNativeUi = rendersReactNativeUi;
