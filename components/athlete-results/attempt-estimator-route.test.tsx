@@ -1,3 +1,5 @@
+// Lives outside app/: Expo Router turns every file under app/ into a route,
+// so a test there was bundled into the app (react-test-renderer, jest.mock).
 import React from "react";
 import { Animated, Pressable, ScrollView } from "react-native";
 import { act, create } from "react-test-renderer";
