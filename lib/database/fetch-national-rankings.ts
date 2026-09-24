@@ -1,5 +1,9 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  OFFLINE_CACHE_KEYS,
+  readBoundedCacheEntry,
+  writeBoundedCacheEntry,
+} from './offline-cache';
 import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/meetcal-api';
 
 export type NationalRanking = {
@@ -8,7 +12,13 @@ export type NationalRanking = {
   total: number;
 };
 
-type RankingsCache = Record<string, NationalRanking[]>;
+/**
+ * Weight classes whose rankings stay cached for offline browsing. One class
+ * is ~14KB; 24 covers every class of one gender across a couple of age
+ * groups (what one lifter or coach flips between) in ~350KB, where the
+ * uncapped cache reached 1.7MB at 120 classes.
+ */
+export const MAX_CACHED_RANKING_CLASSES = 24;
 
 function mapRankings(rows: readonly Readonly<ApiNationalRankingRow>[]): NationalRanking[] {
   const seenNames = new Set<string>();
@@ -28,10 +38,11 @@ function mapRankings(rows: readonly Readonly<ApiNationalRankingRow>[]): National
   return rankings;
 }
 
-async function readNationalRankingsCache(weightClassAge: string) {
-  const cached = await getOfflineCache<RankingsCache>(OFFLINE_CACHE_KEYS.nationalRankings);
-  const data = cached?.data?.[weightClassAge];
-  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+function readNationalRankingsCache(weightClassAge: string) {
+  return readBoundedCacheEntry<NationalRanking[]>(
+    OFFLINE_CACHE_KEYS.nationalRankings,
+    weightClassAge,
+  );
 }
 
 async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
@@ -40,19 +51,13 @@ async function fetchNationalRankingsFresh(weightClassAge: string): Promise<Natio
   return mapRankings(rows);
 }
 
-async function persistNationalRankings(
-  weightClassAge: string,
-  rankings: NationalRanking[],
-) {
-  const cached = await getOfflineCache<RankingsCache>(
+function persistNationalRankings(weightClassAge: string, rankings: NationalRanking[]) {
+  return writeBoundedCacheEntry(
     OFFLINE_CACHE_KEYS.nationalRankings,
+    weightClassAge,
+    rankings,
+    MAX_CACHED_RANKING_CLASSES,
   );
-  const nextCache: RankingsCache = {
-    ...(cached?.data || {}),
-    [weightClassAge]: rankings,
-  };
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.nationalRankings, nextCache);
-  return { data: rankings, lastUpdatedAt: entry.lastSynced };
 }
 
 export const nationalRankingsResource = createMutableResource<
