@@ -31,7 +31,12 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     return <>{children}</>;
   }
 
-  if (isSubscriptionLoading) {
+  // Only the first answer is worth a spinner. The provider also flags
+  // `isLoading` for background refreshes (the post-launch RevenueCat check,
+  // a reconnect re-check, every CustomerInfo listener update) while it still
+  // holds a known entitlement; swapping the children out then unmounted the
+  // gated screen mid-use, dropping its filters and scroll and refetching.
+  if (isSubscriptionLoading && isSubscribed === null) {
     return (
       <ThemedView
         style={[

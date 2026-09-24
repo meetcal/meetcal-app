@@ -42,6 +42,12 @@ import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import {
+  confirmRevenueCatIdentity,
+  forgetRevenueCatIdentity,
+  hasSubscriptionEntitlement,
+  paywallRouteFor,
+} from "@/lib/premium-intent";
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -297,8 +303,19 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
     const syncUser = async () => {
       try {
+        // Whatever RevenueCat said before this point was about the previous
+        // user; a pending premium intent must wait for `logIn` below.
+        forgetRevenueCatIdentity();
         if (user?.id) {
-          await Purchases.logIn(user.id);
+          const userId = user.id;
+          const { customerInfo } = await Purchases.logIn(userId);
+          if (!cancelled) {
+            const paywall = confirmRevenueCatIdentity(
+              userId,
+              hasSubscriptionEntitlement(customerInfo),
+            );
+            if (paywall) router.push(paywallRouteFor(paywall));
+          }
 
           const email = user.primaryEmailAddress?.emailAddress;
           if (email) {

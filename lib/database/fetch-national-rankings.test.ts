@@ -1,9 +1,9 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { OFFLINE_CACHE_KEYS, writeBoundedCacheEntry } from "@/lib/database/offline-cache";
 import {
-  getOfflineCache,
-  OFFLINE_CACHE_KEYS,
-  setOfflineCache,
-} from "@/lib/database/offline-cache";
-import { nationalRankingsResource } from "@/lib/database/fetch-national-rankings";
+  MAX_CACHED_RANKING_CLASSES,
+  nationalRankingsResource,
+} from "@/lib/database/fetch-national-rankings";
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 
 const mockGetJson = jest.fn();
@@ -17,20 +17,10 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-jest.mock("@/lib/database/offline-cache", () => ({
-  OFFLINE_CACHE_KEYS: {
-    nationalRankings: "@offline_cache/national_rankings",
-  },
-  getOfflineCache: jest.fn(),
-  setOfflineCache: jest.fn(),
-}));
-
-const mockGetOfflineCache = getOfflineCache as jest.MockedFunction<
-  typeof getOfflineCache
->;
-const mockSetOfflineCache = setOfflineCache as jest.MockedFunction<
-  typeof setOfflineCache
->;
+// The real offline cache runs over the AsyncStorage mock from jest.setup.js.
+beforeEach(async () => {
+  await AsyncStorage.clear();
+});
 
 // `nationalRankingsResource` is the only path the screen uses. The removed
 // `fetchNationalRankings` wrapper re-implemented its network-then-cache policy
@@ -38,47 +28,67 @@ const mockSetOfflineCache = setOfflineCache as jest.MockedFunction<
 describe("nationalRankingsResource", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(Date, "now").mockReturnValue(2);
   });
 
-  it("returns deduped online rankings and merges them into the offline cache", async () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("returns deduped online rankings and adds them to the offline cache", async () => {
+    await writeBoundedCacheEntry(OFFLINE_CACHE_KEYS.nationalRankings, "Open Women's 71kg", [], 5);
     mockGetJson.mockResolvedValue([
       { name: "Athlete A", total: 250 },
       { name: "Athlete A", total: 240 },
       { name: "Athlete B", total: 235 },
       { name: null, total: 230 },
     ]);
-    mockGetOfflineCache.mockResolvedValue({
-      data: { "Open Women's 71kg": [] },
-      lastSynced: 1,
-    } as any);
-    mockSetOfflineCache.mockResolvedValue({ data: {}, lastSynced: 2 } as any);
 
     const result = await nationalRankingsResource.revalidate("Open Men's 89kg");
 
     expect(result.data.map((row) => row.name)).toEqual(["Athlete A", "Athlete B"]);
     expect(result.data[0].total).toBe(250);
     expect(result.lastUpdatedAt).toBe(2);
-    expect(mockSetOfflineCache).toHaveBeenCalledWith(
-      OFFLINE_CACHE_KEYS.nationalRankings,
-      { "Open Women's 71kg": [], "Open Men's 89kg": result.data },
-    );
+    await expect(nationalRankingsResource.loadCached("Open Men's 89kg")).resolves.toEqual({
+      data: result.data,
+      lastUpdatedAt: 2,
+    });
+    await expect(nationalRankingsResource.loadCached("Open Women's 71kg")).resolves.toEqual({
+      data: [],
+      lastUpdatedAt: 2,
+    });
   });
 
   it("serves the cached rankings for one class and rejects a failed refresh", async () => {
+    // The shape the cache held before it was bounded.
+    await AsyncStorage.setItem(
+      OFFLINE_CACHE_KEYS.nationalRankings,
+      JSON.stringify({
+        data: { "Open Women's 71kg": [{ id: 0, name: "Cached Athlete", total: 220 }] },
+        lastSynced: 1,
+      }),
+    );
     mockGetJson.mockRejectedValue(new Error("network failed"));
-    mockGetOfflineCache.mockResolvedValue({
-      data: {
-        "Open Women's 71kg": [{ id: 0, name: "Cached Athlete", total: 220 }],
-      },
-      lastSynced: 1,
-    } as any);
 
     await expect(nationalRankingsResource.loadCached("Open Women's 71kg")).resolves.toEqual({
       data: [{ id: 0, name: "Cached Athlete", total: 220 }],
       lastUpdatedAt: 1,
     });
     await expect(nationalRankingsResource.loadCached("Open Men's 102kg")).resolves.toBeNull();
+    const before = await AsyncStorage.getItem(OFFLINE_CACHE_KEYS.nationalRankings);
     await expect(nationalRankingsResource.revalidate("Open Women's 71kg")).rejects.toThrow();
-    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.nationalRankings)).resolves.toBe(before);
+  });
+
+  it(`keeps only the ${MAX_CACHED_RANKING_CLASSES} most recently viewed classes`, async () => {
+    mockGetJson.mockResolvedValue([{ name: "Athlete A", total: 250 }]);
+    for (let i = 0; i <= MAX_CACHED_RANKING_CLASSES; i += 1) {
+      await nationalRankingsResource.revalidate(`Class ${i}`);
+    }
+    await expect(nationalRankingsResource.loadCached("Class 0")).resolves.toBeNull();
+    await expect(nationalRankingsResource.loadCached("Class 1")).resolves.not.toBeNull();
+    await expect(
+      nationalRankingsResource.loadCached(`Class ${MAX_CACHED_RANKING_CLASSES}`),
+    ).resolves.not.toBeNull();
   });
 });

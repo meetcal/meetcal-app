@@ -1,15 +1,27 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
+import { AthleteClub, ClubMeetStats } from '@/types/club';
 import {
-  AthleteClub,
-  ClubMeetStats,
-  AthleteResult,
-} from '@/types/club';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  readBoundedCacheEntry,
+  setOfflineCache,
+  writeBoundedCacheEntry,
+} from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { fetchApiClubNames, getJsonArray, getJsonObject } from '@/lib/api/meetcal-api';
 
-type ClubAthletesCache = Record<string, AthleteClub[]>;
-type ClubMeetStatsCache = Record<string, ClubMeetStats>;
+/**
+ * Clubs whose athlete lists stay cached for offline browsing. A list is one
+ * row per athlete per meet, so a big club is tens of KB; 20 covers a coach's
+ * own club and the rivals they look up.
+ */
+export const MAX_CACHED_CLUB_ATHLETE_LISTS = 20;
+
+/**
+ * Club + meet stat cards kept for offline browsing. A card is ten numbers
+ * (~300 bytes), so 50 is a season of a club's meets for a few clubs in ~15KB.
+ */
+export const MAX_CACHED_CLUB_MEET_STATS = 50;
 
 type ApiClubAthlete = {
   member_id: string;
@@ -21,6 +33,10 @@ type ApiClubAthlete = {
   entry_total?: number;
 };
 
+/**
+ * `/clubs/meet-stats`. The API also sends a per-athlete `athlete_results`
+ * list; no screen shows it, so it is neither mapped nor stored.
+ */
 type ApiClubMeetStats = {
   total_athletes: number;
   gold_medals: number;
@@ -32,20 +48,6 @@ type ApiClubMeetStats = {
   snatch_make_rate?: number;
   cj_make_rate?: number;
   combined_make_rate?: number;
-  athlete_results: {
-    name: string;
-    weight_class: string;
-    snatch_best: number;
-    cj_best: number;
-    total: number;
-    body_weight: number;
-    medal?: string | null;
-    snatch_medal?: string | null;
-    cj_medal?: string | null;
-    total_medal?: string | null;
-    is_pr: boolean;
-    perfect_lifts: boolean;
-  }[];
 };
 
 function getClubMeetStatsKey(club: string, meet: string): string {
@@ -64,33 +66,6 @@ function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
     snatchMakeRate: row.snatch_make_rate ?? 0,
     cjMakeRate: row.cj_make_rate ?? 0,
     combinedMakeRate: row.combined_make_rate ?? 0,
-    // The API omits `athlete_results` for a club with nothing scored yet, so
-    // don't assume it's there even though the envelope itself is validated.
-    athleteResults: (row.athlete_results ?? []).map((result, index) => ({
-      id: index,
-      event_id: '',
-      meet: '',
-      date: '',
-      name: result.name,
-      age: 0,
-      body_weight: result.body_weight,
-      snatch1: 0,
-      snatch2: 0,
-      snatch3: 0,
-      snatch_best: result.snatch_best,
-      cj1: 0,
-      cj2: 0,
-      cj3: 0,
-      cj_best: result.cj_best,
-      total: result.total,
-      weight_class: result.weight_class,
-      medal: result.medal ?? undefined,
-      snatch_medal: result.snatch_medal ?? undefined,
-      cj_medal: result.cj_medal ?? undefined,
-      total_medal: result.total_medal ?? undefined,
-      is_pr: result.is_pr,
-      perfect_lifts: result.perfect_lifts,
-    } as AthleteResult)),
   };
 }
 
@@ -99,16 +74,19 @@ async function readClubsCache() {
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-async function readClubAthletesCache(club: string) {
-  const cached = await getOfflineCache<ClubAthletesCache>(OFFLINE_CACHE_KEYS.clubAthletes);
-  const data = cached?.data?.[club];
-  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+function readClubAthletesCache(club: string) {
+  return readBoundedCacheEntry<AthleteClub[]>(OFFLINE_CACHE_KEYS.clubAthletes, club);
 }
 
 async function readClubMeetStatsCache(club: string, meet: string) {
-  const cached = await getOfflineCache<ClubMeetStatsCache>(OFFLINE_CACHE_KEYS.clubMeetStats);
-  const data = cached?.data?.[getClubMeetStatsKey(club, meet)];
-  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+  const cached = await readBoundedCacheEntry<ClubMeetStats & { athleteResults?: unknown }>(
+    OFFLINE_CACHE_KEYS.clubMeetStats,
+    getClubMeetStatsKey(club, meet),
+  );
+  if (!cached) return null;
+  // Entries stored before the per-athlete list was dropped still carry it.
+  const { athleteResults: _unused, ...stats } = cached.data;
+  return { data: stats, lastUpdatedAt: cached.lastUpdatedAt };
 }
 
 async function fetchAllClubsFresh(): Promise<string[]> {
@@ -144,25 +122,22 @@ async function persistClubs(clubs: string[]) {
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
 
-async function persistClubAthletes(club: string, athletes: AthleteClub[]) {
-  const cached = await getOfflineCache<ClubAthletesCache>(OFFLINE_CACHE_KEYS.clubAthletes);
-  const nextCache: ClubAthletesCache = {
-    ...(cached?.data || {}),
-    [club]: athletes,
-  };
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubAthletes, nextCache);
-  return { data: athletes, lastUpdatedAt: entry.lastSynced };
+function persistClubAthletes(club: string, athletes: AthleteClub[]) {
+  return writeBoundedCacheEntry(
+    OFFLINE_CACHE_KEYS.clubAthletes,
+    club,
+    athletes,
+    MAX_CACHED_CLUB_ATHLETE_LISTS,
+  );
 }
 
-async function persistClubMeetStats(club: string, meet: string, stats: ClubMeetStats) {
-  const cacheKey = getClubMeetStatsKey(club, meet);
-  const cached = await getOfflineCache<ClubMeetStatsCache>(OFFLINE_CACHE_KEYS.clubMeetStats);
-  const nextCache: ClubMeetStatsCache = {
-    ...(cached?.data || {}),
-    [cacheKey]: stats,
-  };
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubMeetStats, nextCache);
-  return { data: stats, lastUpdatedAt: entry.lastSynced };
+function persistClubMeetStats(club: string, meet: string, stats: ClubMeetStats) {
+  return writeBoundedCacheEntry(
+    OFFLINE_CACHE_KEYS.clubMeetStats,
+    getClubMeetStatsKey(club, meet),
+    stats,
+    MAX_CACHED_CLUB_MEET_STATS,
+  );
 }
 
 export const clubsResource = createMutableResource<string[], []>({

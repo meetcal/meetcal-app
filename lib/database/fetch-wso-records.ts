@@ -4,8 +4,10 @@ import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
+  readBoundedCacheEntry,
   replaceOfflineCache,
   setOfflineCache,
+  writeBoundedCacheEntry,
 } from './offline-cache';
 import {
   fetchApiWsoAgeGroups,
@@ -24,16 +26,17 @@ type WSORecordsCache = Record<string, RecordsData>;
  * and is rejected rather than looped over.
  */
 export const MAX_OFFLINE_WSO_COUNT = 100;
-type FilteredWSORecordsCache = Record<string, RecordsData>;
+
+/**
+ * WSO + age group + gender views kept for offline browsing. A view is one
+ * age group's classes (a few KB); 30 covers both genders of every age group
+ * for a WSO or two. The full per-WSO copy an offline download stores
+ * (`wsoRecords`) is separate and not capped.
+ */
+export const MAX_CACHED_WSO_RECORD_VIEWS = 30;
 
 async function readWSOCache() {
   return await getOfflineCache<WSORecordsCache>(OFFLINE_CACHE_KEYS.wsoRecords);
-}
-
-async function readFilteredWSOCache() {
-  return await getOfflineCache<FilteredWSORecordsCache>(
-    OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
-  );
 }
 
 function getFilteredCacheKey(wso: string, ageGroup?: string, gender?: 'Men' | 'Women') {
@@ -51,11 +54,11 @@ async function readFilteredWSORecordsCache(
   ageGroup?: string,
   gender?: 'Men' | 'Women',
 ) {
-  const filteredCache = await readFilteredWSOCache();
-  const filteredData = filteredCache?.data?.[getFilteredCacheKey(wso, ageGroup, gender)];
-  if (filteredData) {
-    return { data: filteredData, lastUpdatedAt: filteredCache.lastSynced };
-  }
+  const filtered = await readBoundedCacheEntry<RecordsData>(
+    OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
+    getFilteredCacheKey(wso, ageGroup, gender),
+  );
+  if (filtered) return filtered;
 
   const cached = await readWSORecordsCache(wso);
   return cached
@@ -133,22 +136,18 @@ async function persistWSORecords(wso: string, result: RecordsData) {
   return { data: result, lastUpdatedAt: entry.lastSynced };
 }
 
-async function persistFilteredWSORecords(
+function persistFilteredWSORecords(
   wso: string,
   ageGroup: string,
   gender: 'Men' | 'Women',
   result: RecordsData,
 ) {
-  const cached = await readFilteredWSOCache();
-  const nextCache: FilteredWSORecordsCache = {
-    ...(cached?.data || {}),
-    [getFilteredCacheKey(wso, ageGroup, gender)]: result,
-  };
-  const entry = await setOfflineCache(
+  return writeBoundedCacheEntry(
     OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
-    nextCache,
+    getFilteredCacheKey(wso, ageGroup, gender),
+    result,
+    MAX_CACHED_WSO_RECORD_VIEWS,
   );
-  return { data: result, lastUpdatedAt: entry.lastSynced };
 }
 
 /**

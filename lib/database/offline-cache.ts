@@ -77,3 +77,98 @@ export async function clearOfflineCache(key: string): Promise<void> {
     console.error('Error clearing offline cache:', error);
   }
 }
+
+/** One entry of a bounded browse cache, with its own write time. */
+type BoundedCacheRecord = { key: string; data: unknown; lastSynced: number };
+
+function isBoundedCacheRecord(value: unknown): value is BoundedCacheRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { key?: unknown; lastSynced?: unknown };
+  return (
+    typeof record.key === 'string' &&
+    'data' in value &&
+    typeof record.lastSynced === 'number' &&
+    Number.isFinite(record.lastSynced)
+  );
+}
+
+/**
+ * The records of a bounded cache, oldest write first.
+ *
+ * Also reads the unbounded shape these keys used to hold (a plain
+ * `Record<entryKey, data>` under one blob-wide `lastSynced`), so an update
+ * does not throw away what a user browsed before it.
+ */
+function readBoundedRecords(entry: OfflineCacheEntry<unknown> | null): BoundedCacheRecord[] {
+  if (!entry) return [];
+  const { data, lastSynced } = entry;
+  if (Array.isArray(data)) return data.filter(isBoundedCacheRecord);
+  if (data && typeof data === 'object') {
+    return Object.entries(data).map(([key, value]) => ({ key, data: value, lastSynced }));
+  }
+  return [];
+}
+
+/**
+ * One entry of a browse cache written by `writeBoundedCacheEntry`, with the
+ * time that entry was written (not the last write of any entry).
+ */
+export async function readBoundedCacheEntry<T>(
+  cacheKey: string,
+  entryKey: string,
+): Promise<{ data: T; lastUpdatedAt: number } | null> {
+  const records = readBoundedRecords(await getOfflineCache<unknown>(cacheKey));
+  const record = records.find((r) => r.key === entryKey);
+  return record ? { data: record.data as T, lastUpdatedAt: record.lastSynced } : null;
+}
+
+/**
+ * Stores one browsed entry (a weight class, a club, a filter) in a cache that
+ * keeps only the `maxEntries` most recently written ones.
+ *
+ * Browse caches used to keep every entry ever viewed in one AsyncStorage blob,
+ * so the blob, and the parse + stringify on every switch, only grew (120
+ * ranking classes measured 1.7MB and ~30ms per switch). Writing an entry
+ * again makes it the newest. Like `setOfflineCache`, a failed write is logged,
+ * not thrown: the fresh data is still shown.
+ */
+export async function writeBoundedCacheEntry<T>(
+  cacheKey: string,
+  entryKey: string,
+  data: T,
+  maxEntries: number,
+): Promise<{ data: T; lastUpdatedAt: number }> {
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new Error(`Bounded cache ${cacheKey} needs maxEntries >= 1, got ${maxEntries}`);
+  }
+  const lastSynced = Date.now();
+  const kept = readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).filter(
+    (r) => r.key !== entryKey,
+  );
+  const next: BoundedCacheRecord[] = [
+    ...kept.slice(Math.max(0, kept.length - (maxEntries - 1))),
+    { key: entryKey, data, lastSynced },
+  ];
+  await setOfflineCache(cacheKey, next);
+  return { data, lastUpdatedAt: lastSynced };
+}
+
+/**
+ * Caches filled by browsing (not by an explicit download), which the offline
+ * screen's per-item rows do not list. "Delete All" and "Clear Cache" must
+ * still remove them.
+ */
+export const BROWSE_CACHE_KEYS = [
+  OFFLINE_CACHE_KEYS.nationalRankings,
+  OFFLINE_CACHE_KEYS.clubs,
+  OFFLINE_CACHE_KEYS.clubAthletes,
+  OFFLINE_CACHE_KEYS.clubMeetStats,
+  OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
+] as const;
+
+/** Removes every browse cache (`BROWSE_CACHE_KEYS`). */
+export async function clearBrowseCaches(): Promise<void> {
+  for (const key of BROWSE_CACHE_KEYS) {
+    await clearOfflineCache(key);
+  }
+}

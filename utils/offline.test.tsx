@@ -2,7 +2,7 @@ import React from "react";
 import { Alert } from "react-native";
 import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import { BROWSE_CACHE_KEYS, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
 import { useOfflineData } from "@/utils/offline";
 
@@ -258,6 +258,44 @@ describe("useOfflineData delete all", () => {
     ]);
     expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(1);
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Deleted");
+    act(() => tree.unmount());
+  });
+
+  it("also removes the caches filled by browsing rankings, clubs and records", async () => {
+    for (const key of BROWSE_CACHE_KEYS) await AsyncStorage.setItem(key, cacheEntry);
+    const tree = await mount();
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+
+    for (const key of [
+      OFFLINE_CACHE_KEYS.nationalRankings,
+      OFFLINE_CACHE_KEYS.clubAthletes,
+      OFFLINE_CACHE_KEYS.clubMeetStats,
+      OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
+    ]) {
+      await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    }
+    act(() => tree.unmount());
+  });
+
+  it("re-reads the rows when it finishes, so they show not downloaded", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, cacheEntry);
+    const tree = await mount();
+    expect(captured!.downloadStatuses.standards?.isDownloaded).toBe(true);
+    expect(captured!.downloadStatuses.qualifyingTotals?.isDownloaded).toBe(true);
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+
+    // Only the end of the action (`settled`) triggers the re-read; nothing
+    // else about the rows changed.
+    expect(captured!.isDeletingAll).toBe(false);
+    expect(captured!.downloadStatuses.standards).toEqual({ isDownloaded: false, lastSynced: null });
+    expect(captured!.downloadStatuses.qualifyingTotals).toEqual({
+      isDownloaded: false,
+      lastSynced: null,
+    });
     act(() => tree.unmount());
   });
 });

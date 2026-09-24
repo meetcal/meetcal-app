@@ -3,9 +3,9 @@ import { useIsOffline } from "@/hooks/useIsOffline";
 import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
-import type { SupabaseLiftResult } from "@/data/types/athletes";
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
 import { calculateWrappedStats } from "@/lib/wrapped-stats";
+import { selectWrappedRows } from "@/lib/wrapped-search";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
@@ -58,9 +58,6 @@ const SLIDE_GRADIENTS: [string, string, string][] = [
 ];
 
 const SLIDE_COUNT = 7;
-
-/** Upper bound on the rows one Wrapped run scores; a full year is far fewer. */
-const MAX_WRAPPED_RESULTS = 600;
 
 function AnimatedCounter({
   value,
@@ -197,20 +194,35 @@ export default function WeightliftingWrappedScreen() {
     loadingSuggestions,
     onQueryChange,
     dismissSuggestions,
+    presentSuggestions,
   } = useNameSuggestions(fetchNameSuggestions);
+  // The dropdown is showing the athletes one search matched, not typeahead.
+  const [didYouMean, setDidYouMean] = useState(false);
   const [isOffline] = useIsOffline();
   const flatListRef = useRef<FlatList>(null);
   const viewShotRef = useRef<React.ComponentRef<typeof ViewShot>>(null);
 
   const onSearchTextChange = useCallback((text: string) => {
     setSearchQuery(text);
+    setDidYouMean(false);
     onQueryChange(text);
   }, [onQueryChange]);
 
   const selectSuggestion = useCallback((name: string) => {
     setSearchQuery(name);
+    setDidYouMean(false);
     dismissSuggestions();
   }, [dismissSuggestions]);
+
+  // The pager is full-bleed (window width). When the width changes (fold,
+  // unfold, Split View) the list keeps its old offset, `currentSlide * old
+  // width`, which lands between slides; move it back onto the current one.
+  const lastSlideWidthRef = useRef(screenWidth);
+  useEffect(() => {
+    if (lastSlideWidthRef.current === screenWidth) return;
+    lastSlideWidthRef.current = screenWidth;
+    flatListRef.current?.scrollToOffset({ offset: currentSlide * screenWidth, animated: false });
+  }, [screenWidth, currentSlide]);
 
   const searchAthlete = async () => {
     if (!searchQuery.trim()) {
@@ -219,6 +231,7 @@ export default function WeightliftingWrappedScreen() {
     }
 
     dismissSuggestions();
+    setDidYouMean(false);
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();
@@ -226,28 +239,27 @@ export default function WeightliftingWrappedScreen() {
       const endDate = `${selectedYear + 1}-01-01`;
 
       const response = await searchApi(normalizedName, startDate, endDate);
-      const words = normalizedName.toLowerCase().split(/\s+/);
-      // `searchApi` already returns rows mapped into `SupabaseLiftResult` by
-      // `mapApiLiftingResult`; re-mapping them field-for-field here was a second
-      // copy of the same mapper (AGENTS: "one mapper family").
-      const data: SupabaseLiftResult[] = response.results
-        .filter((r) => {
-          const lower = (r.name || "").toLowerCase();
-          return words.every((w) => lower.includes(w));
-        })
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(0, MAX_WRAPPED_RESULTS);
+      const selection = selectWrappedRows(response);
 
-      if (!data || data.length === 0) {
+      if (selection.kind === "none") {
         showToast({
           type: "info",
           message: `No results found for ${searchQuery} in ${selectedYear}`,
         });
         return;
       }
+      if (selection.kind === "ambiguous") {
+        presentSuggestions(selection.names);
+        setDidYouMean(true);
+        showToast({
+          type: "info",
+          message: `Several athletes match ${normalizedName}. Pick one.`,
+        });
+        return;
+      }
 
-      setAthleteName(data[0].name || normalizedName);
-      const stats = calculateWrappedStats(data);
+      setAthleteName(selection.name);
+      const stats = calculateWrappedStats(selection.rows);
       setWrappedStats(stats);
       setCurrentSlide(0);
       setShowStats(true);
@@ -510,6 +522,7 @@ LIFTING
           </View>
           {showSuggestions && suggestions.length > 0 && (
             <View style={styles.suggestionsContainer}>
+              {didYouMean && <Text style={[styles.inputLabel, styles.didYouMeanLabel]}>DID YOU MEAN…</Text>}
               {suggestions.map((name) => (
                 <Pressable
                   key={name}
@@ -1573,6 +1586,11 @@ const styles = StyleSheet.create({
   },
   suggestionRowPressed: {
     backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  didYouMeanLabel: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    marginBottom: 4,
   },
   suggestionText: {
     fontSize: 15,

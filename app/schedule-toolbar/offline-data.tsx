@@ -19,6 +19,8 @@ import {
 import PaywallScreen from "../shared-screens/paywall";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+const OFFLINE_DATA_ROUTE = "/schedule-toolbar/offline-data";
+
 export default function OfflineDataScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
@@ -56,8 +58,11 @@ export default function OfflineDataScreen() {
     );
   }
 
+  // The paywall renders inline, so it cannot read `from` from the route;
+  // without it a signed-out user signing in (or closing the paywall) lands
+  // on the schedule tab instead of back here.
   if (!isSubscribed) {
-    return <PaywallScreen />;
+    return <PaywallScreen from={OFFLINE_DATA_ROUTE} feature="offline-data" />;
   }
 
   return (

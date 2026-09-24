@@ -54,6 +54,19 @@ export function useNameSuggestions(fetchNames: (query: string) => Promise<string
     setLoadingSuggestions(false);
   }, [supersede]);
 
+  /**
+   * Opens the dropdown on names the caller already has (a search that matched
+   * several athletes), dropping any pending or in-flight lookup.
+   */
+  const presentSuggestions = useCallback(
+    (names: readonly string[]) => {
+      supersede();
+      setSuggestions(names.slice(0, MAX_NAME_SUGGESTIONS));
+      setLoadingSuggestions(false);
+    },
+    [supersede],
+  );
+
   const onQueryChange = useCallback(
     (text: string) => {
       supersede();
@@ -88,5 +101,6 @@ export function useNameSuggestions(fetchNames: (query: string) => Promise<string
     loadingSuggestions,
     onQueryChange,
     dismissSuggestions,
+    presentSuggestions,
   };
 }

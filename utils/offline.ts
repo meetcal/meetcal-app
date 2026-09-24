@@ -11,6 +11,7 @@ import {
   refreshOfflineDownloads,
 } from "@/lib/database/offline-refresh";
 import {
+  clearBrowseCaches,
   clearOfflineCache,
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
@@ -412,6 +413,8 @@ export const useOfflineData = () => {
             clearOfflineCache(OFFLINE_CACHE_KEYS.records),
             clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords),
             clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords),
+            // Rankings, club and filtered-record views cached while browsing.
+            clearBrowseCaches(),
           ]);
     
           // One key listing shared by every meet. Each `clearMeetData` has to

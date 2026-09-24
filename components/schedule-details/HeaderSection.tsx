@@ -50,7 +50,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const router = useRouter();
   const colors = useAppColors();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
-  const { meetDetails } = useSelectedMeet();
+  const { meetDetails, availableMeets } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
 
@@ -63,7 +63,18 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   // `SelectedMeetContext` had resolved `meetDetails` labelled a New York
   // session's 9:00 AM start as "9:00 AM MDT". No abbreviation beats a
   // confidently wrong one.
-  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
+  //
+  // `meetDetails` is the *selected* meet, not necessarily this one: the saved
+  // tab, the next-session card and calendar / reminder deep links all open
+  // sessions from other meets, which then showed the selected meet's zone.
+  // Match by name, falling back to the same mapped list the picker uses.
+  const timeZoneAbbr = useMemo(() => {
+    const details =
+      meetDetails?.name === meet
+        ? meetDetails
+        : availableMeets.find((candidate) => candidate.name === meet);
+    return details?.time.abbreviation ?? "";
+  }, [meetDetails, availableMeets, meet]);
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);

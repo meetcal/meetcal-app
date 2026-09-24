@@ -19,9 +19,16 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
+const mockPaywallProps: unknown[] = [];
 jest.mock("@/app/shared-screens/paywall", () => {
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
-  return { __esModule: true, default: () => <Text>Paywall</Text> };
+  return {
+    __esModule: true,
+    default: (props: unknown) => {
+      mockPaywallProps.push(props);
+      return <Text>Paywall</Text>;
+    },
+  };
 });
 
 type HeaderItem = { label: string; disabled: boolean; onPress: () => void };
@@ -295,9 +302,16 @@ describe("OfflineDataScreen", () => {
 
   it("shows the paywall instead of any download action when not subscribed", async () => {
     mockIsSubscribed = false;
+    mockPaywallProps.length = 0;
     const tree = await mount();
     expect(rows(tree)).toHaveLength(0);
     expect(JSON.stringify(tree.toJSON())).toContain("Paywall");
+    // Rendered inline, so it must be told where "back" is: without `from`
+    // the paywall (and a sign-in it starts) returned to the schedule tab.
+    expect(mockPaywallProps.at(-1)).toEqual({
+      from: "/schedule-toolbar/offline-data",
+      feature: "offline-data",
+    });
     act(() => tree.unmount());
   });
 });

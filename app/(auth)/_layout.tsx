@@ -83,7 +83,17 @@ export default function AuthRoutesLayout() {
     cachedIsSignedIn,
   })
 
+  // Once the auth stack has been shown, it stays mounted. Redirecting on
+  // Clerk's signed-in flip unmounted `sign-in.tsx` before its post-auth
+  // effect ran, so the user never went back to `from` and the auth cache was
+  // never written. Only a user who *arrives* signed in is bounced to the app;
+  // sign-in owns navigation after a sign-in that happens here.
+  const [hasShownAuthStack, setHasShownAuthStack] = useState(false)
+  if (target === 'auth' && !hasShownAuthStack) setHasShownAuthStack(true)
+
+  if (hasShownAuthStack || target === 'auth') {
+    return <Stack screenOptions={{ headerShown: false }} />
+  }
   if (target === 'loading') return null
-  if (target === 'app') return <Redirect href="/(tabs)/(index)" />
-  return <Stack screenOptions={{ headerShown: false }} />
+  return <Redirect href="/(tabs)/(index)" />
 }
