@@ -136,3 +136,63 @@ describe("club browse caches are bounded", () => {
     });
   });
 });
+
+describe("club endpoint boundary validation", () => {
+  beforeEach(() => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("rejects a stats body missing a required count instead of persisting it", async () => {
+    const { total_athletes: _missing, ...withoutTotal } = STATS_ROW;
+    mockGetJsonObject.mockResolvedValue(withoutTotal);
+
+    await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(
+      /total_athletes/,
+    );
+    await expect(clubMeetStatsResource.loadCached("Club", "Meet")).resolves.toBeNull();
+  });
+
+  it("rejects a non-numeric make rate", async () => {
+    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, snatch_make_rate: "78%" });
+
+    await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(
+      /snatch_make_rate/,
+    );
+  });
+
+  it("rejects NaN and null counts, and accepts a null make rate as absent", async () => {
+    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, gold_medals: null });
+    await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(/gold_medals/);
+
+    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, total_prs: Number.NaN });
+    await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(/total_prs/);
+
+    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, cj_make_rate: null });
+    const result = await clubMeetStatsResource.revalidate("Club", "Meet");
+    expect(result.data.cjMakeRate).toBe(0);
+  });
+
+  it("drops a malformed athlete row, keeps the rest, and says how many went", async () => {
+    mockGetJsonArray.mockResolvedValue([
+      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
+      { member_id: "2", meet: "Meet", club: "Club" },
+      { member_id: 3, name: "Athlete C", meet: "Meet", club: "Club" },
+      null,
+      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club", gender: "Women" },
+    ]);
+
+    const athletes = await clubAthletesResource.revalidate("Club");
+
+    expect(athletes.data).toEqual([
+      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
+      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club" },
+    ]);
+    expect(console.warn).toHaveBeenCalledWith(
+      "[api] /clubs/athletes: dropped 3 of 5 malformed athlete rows",
+    );
+  });
+});
