@@ -1,5 +1,6 @@
 import { clearCachedMeetsList } from '@/lib/database/meet-manager';
 import { claimOfflineBulk, releaseOfflineBulk } from '@/lib/database/offline-activity';
+import { clearBrowseCaches } from '@/lib/database/offline-cache';
 import { clearAllAthleteHistory, clearAllMeetData } from '@/lib/database/offline-store';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
@@ -21,7 +22,8 @@ export interface ClearCacheDeps {
 
 /**
  * The profile screen's "Clear Cache": drop every downloaded meet, all athlete
- * history and the cached meets list, then download fresh copies.
+ * history, the browse caches (rankings, clubs, WSO views) and the cached meets
+ * list, then download fresh copies.
  *
  * This used to run in the screen with no guards. Offline, it deleted every
  * download and then reported success because both refreshes swallowed their
@@ -41,6 +43,7 @@ export async function clearCachedMeetData(deps: ClearCacheDeps): Promise<ClearCa
     await clearAllMeetData();
     await clearAllAthleteHistory();
     await clearCachedMeetsList();
+    await clearBrowseCaches();
 
     try {
       await deps.refreshAvailableMeets();

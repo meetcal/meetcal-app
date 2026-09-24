@@ -13,6 +13,7 @@ import {
 } from "@/lib/database/offline-activity";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
+import { BROWSE_CACHE_KEYS } from "@/lib/database/offline-cache";
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
@@ -99,6 +100,7 @@ describe("clearCachedMeetData", () => {
   it("clears everything, refreshes both, and reports success", async () => {
     await seedDownloads();
     await AsyncStorage.setItem(MEETS_LIST_CACHE_KEY, "[]");
+    for (const key of BROWSE_CACHE_KEYS) await AsyncStorage.setItem(key, "{}");
     const order: string[] = [];
     const d = deps({
       refreshAvailableMeets: jest.fn(async () => {
@@ -114,6 +116,10 @@ describe("clearCachedMeetData", () => {
     expect(outcome).toEqual({ status: "cleared" });
     await expect(AsyncStorage.getItem(HISTORY_KEY)).resolves.toBeNull();
     await expect(AsyncStorage.getItem(MEETS_LIST_CACHE_KEY)).resolves.toBeNull();
+    // Rankings, club and WSO browse caches go too; Clear Cache used to leave them.
+    for (const key of BROWSE_CACHE_KEYS) {
+      await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    }
     expect(order).toEqual(["meets", "selected"]);
     expect(clearCacheToast(outcome).type).toBe("success");
   });
