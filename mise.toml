@@ -1,0 +1,22 @@
+[tools]
+bun = "latest"
+node = "24"
+java = "17"
+ruby = "3.3"
+"npm:typescript" = "latest"
+"npm:eas-cli" = "latest"
+
+[tasks.deploy-ios]
+run = "EXPO_NO_CAPABILITY_SYNC=1 eas build --platform ios --profile production && eas submit --platform ios"
+[tasks.deploy-android]
+run = "eas build --platform android --profile production && eas submit --platform android"
+[tasks.update-prod]
+run = "bunx eas update --branch production --message 'Production update'"
+[tasks.update-preview]
+run = "bunx eas update --branch preview --message 'Production update'"
+[tasks.update-dev]
+run = "bunx eas update --branch development --message 'Production update'"
+[tasks.run]
+run = "bunx expo run:ios"
+[tasks.scan]
+run = "bunx rnsec scan && bunx react-doctor"
