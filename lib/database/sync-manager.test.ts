@@ -1,3 +1,5 @@
+import { SyncManager } from "@/lib/database/sync-manager";
+
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockFetchSchedule = jest.fn();
 const mockGetCachedMeetByName = jest.fn(async (): Promise<unknown> => null);
@@ -16,8 +18,6 @@ jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: () => mockIsNetworkAvailable(),
 }));
 jest.mock("@/lib/logger", () => ({ devLog: jest.fn() }));
-
-import { SyncManager } from "@/lib/database/sync-manager";
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 

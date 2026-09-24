@@ -9,6 +9,10 @@ import { act, create } from "react-test-renderer";
 
 import type { MeetName } from "@/data/types/meet";
 import type { Schedule } from "@/types/schedule";
+import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
+import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>(async () => []);
 
@@ -27,11 +31,6 @@ jest.mock("@/config/dev-mock-meet", () => ({
   getMockSchedule: jest.fn(() => []),
   getMockAthletesWithSession: jest.fn(() => []),
 }));
-
-import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
-import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
-import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 
 const MEETS = ["Meet A", "Meet B", "Meet C", "Meet D", "Meet E", "Meet F"];
 const ALLOWED = new Set(MEETS);
@@ -74,7 +73,12 @@ function Harness({
   saved: { meet: string }[];
   selectedMeet: MeetName | null;
 }) {
-  captured = useSavedScheduleLookup(saved, selectedMeet, ALLOWED);
+  const value = useSavedScheduleLookup(saved, selectedMeet, ALLOWED);
+  // Assigned after commit, not during render, so the test double stays
+  // within the rules of hooks; every read below happens after `act`.
+  React.useEffect(() => {
+    captured = value;
+  });
   return null;
 }
 

@@ -1,3 +1,12 @@
+import {
+  fetchAllResultsForName,
+  fetchAthleteBestsForNames,
+  fetchAthletesWithSession,
+  fetchRecentAthleteHistoryForNames,
+  fetchSchedule,
+  searchAthletesByName,
+} from "@/lib/database/queries";
+
 const mockFetchApiSchedule = jest.fn();
 const mockFetchApiAthletesWithSession = jest.fn();
 const mockFetchApiAthletes = jest.fn();
@@ -24,15 +33,6 @@ jest.mock("@/config/dev-mock-meet", () => ({
   getMockSchedule: jest.fn(() => []),
   getMockAthletesWithSession: jest.fn(() => []),
 }));
-
-import {
-  fetchAllResultsForName,
-  fetchAthleteBestsForNames,
-  fetchAthletesWithSession,
-  fetchRecentAthleteHistoryForNames,
-  fetchSchedule,
-  searchAthletesByName,
-} from "@/lib/database/queries";
 
 // The facades await the dev mock-meet check before reaching the API.
 const tick = async () => {

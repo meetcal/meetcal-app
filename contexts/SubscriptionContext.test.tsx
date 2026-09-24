@@ -3,6 +3,10 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Purchases from "react-native-purchases";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import {
+  SubscriptionProvider,
+  useSubscription,
+} from "@/contexts/SubscriptionContext";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -53,11 +57,6 @@ jest.mock("@/lib/networkUtils", () => ({
     };
   },
 }));
-
-import {
-  SubscriptionProvider,
-  useSubscription,
-} from "@/contexts/SubscriptionContext";
 
 const mockGetCustomerInfo = Purchases.getCustomerInfo as jest.MockedFunction<
   typeof Purchases.getCustomerInfo

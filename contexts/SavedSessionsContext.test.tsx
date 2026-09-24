@@ -1,5 +1,9 @@
 import React, { useState } from "react";
 import { act, create } from "react-test-renderer";
+import {
+  SavedSessionsProvider,
+  useSavedSessions,
+} from "@/contexts/SavedSessionsContext";
 
 /**
  * The provider's whole job is to hand the hook's value down unchanged, so
@@ -23,11 +27,6 @@ const mockHookValue = {
 jest.mock("@/hooks/useSavedSessions", () => ({
   useSavedSessions: () => mockHookValue,
 }));
-
-import {
-  SavedSessionsProvider,
-  useSavedSessions,
-} from "@/contexts/SavedSessionsContext";
 
 type ContextValue = ReturnType<typeof useSavedSessions>;
 

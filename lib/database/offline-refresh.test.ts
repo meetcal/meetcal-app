@@ -1,3 +1,9 @@
+import {
+  describeOfflineRefresh,
+  refreshOfflineDownloads,
+  REFRESH_FAILURES_LISTED,
+} from "@/lib/database/offline-refresh";
+
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: () => mockIsNetworkAvailable(),
@@ -12,12 +18,6 @@ const mockMark = jest.fn(async (..._args: unknown[]) => {});
 jest.mock("@/lib/database/offline-store", () => ({
   markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMark(...args),
 }));
-
-import {
-  describeOfflineRefresh,
-  refreshOfflineDownloads,
-  REFRESH_FAILURES_LISTED,
-} from "@/lib/database/offline-refresh";
 
 beforeEach(() => {
   jest.clearAllMocks();
