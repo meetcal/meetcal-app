@@ -7,6 +7,7 @@
 import React from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import AuthRoutesLayout from "@/app/(auth)/_layout";
+import { clearAuthCache } from "@/lib/authCache";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -88,7 +89,10 @@ async function signIn(renderer: ReactTestRenderer): Promise<void> {
 }
 
 describe("sign-in return path", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // `lib/authCache` remembers the last signature it wrote; an earlier test's
+    // write would make this file's first sign-in a skipped no-op write.
+    await clearAuthCache();
     jest.clearAllMocks();
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockSecureStore.clear();
