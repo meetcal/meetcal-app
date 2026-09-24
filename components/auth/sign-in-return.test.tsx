@@ -8,6 +8,11 @@ import React from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import AuthRoutesLayout from "@/app/(auth)/_layout";
 import { clearAuthCache } from "@/lib/authCache";
+import {
+  confirmRevenueCatIdentity,
+  forgetRevenueCatIdentity,
+  resetPremiumIntentState,
+} from "@/lib/premium-intent";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -93,6 +98,7 @@ describe("sign-in return path", () => {
     // `lib/authCache` remembers the last signature it wrote; an earlier test's
     // write would make this file's first sign-in a skipped no-op write.
     await clearAuthCache();
+    resetPremiumIntentState();
     jest.clearAllMocks();
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockSecureStore.clear();
@@ -132,6 +138,69 @@ describe("sign-in return path", () => {
 
     expect(mockRouter.replace).toHaveBeenCalledWith("/(tabs)/records");
     expect(JSON.stringify(mockRouter.replace.mock.calls)).not.toContain("paywall");
+  });
+
+  describe("premium intent", () => {
+    const paywallPushes = () =>
+      mockRouter.push.mock.calls.filter(([href]) =>
+        JSON.stringify(href).includes("/shared-screens/paywall"),
+      );
+
+    it("opens the paywall for a free user only after RevenueCat confirms the new user", async () => {
+      mockParams = { from: "/shared-screens/schedule-details", feature: "attempt-estimator" };
+      const renderer = await mountLayout();
+
+      await signIn(renderer);
+
+      expect(mockRouter.replace).toHaveBeenCalledWith("/shared-screens/schedule-details");
+      expect(paywallPushes()).toEqual([]);
+      // What `app/_layout.tsx` does once `Purchases.logIn` resolves.
+      expect(confirmRevenueCatIdentity("user_1", false)).toEqual({
+        from: "/shared-screens/schedule-details",
+        feature: "attempt-estimator",
+      });
+    });
+
+    it("pushes the paywall on top of `from` when logIn already resolved as free", async () => {
+      confirmRevenueCatIdentity("user_1", false);
+      mockParams = { from: "/shared-screens/schedule-details", feature: "qualifying-totals" };
+      const renderer = await mountLayout();
+
+      await signIn(renderer);
+
+      expect(mockRouter.replace).toHaveBeenCalledWith("/shared-screens/schedule-details");
+      expect(paywallPushes()).toEqual([
+        [
+          {
+            pathname: "/shared-screens/paywall",
+            params: { from: "/shared-screens/schedule-details", feature: "qualifying-totals" },
+          },
+        ],
+      ]);
+    });
+
+    it("never opens the paywall from the pre-logIn anonymous 'free' entitlement", async () => {
+      confirmRevenueCatIdentity("$RCAnonymousID:abc", false);
+      mockParams = { from: "/(tabs)/(start-list)", feature: "sort-athletes" };
+      const renderer = await mountLayout();
+
+      await signIn(renderer);
+      forgetRevenueCatIdentity();
+
+      expect(paywallPushes()).toEqual([]);
+      // logIn resolves: a subscriber.
+      expect(confirmRevenueCatIdentity("user_1", true)).toBeNull();
+    });
+
+    it("does not open the paywall after signing in for a free action", async () => {
+      confirmRevenueCatIdentity("user_1", false);
+      mockParams = { from: "/schedule-toolbar/profile", feature: "profile" };
+      const renderer = await mountLayout();
+
+      await signIn(renderer);
+
+      expect(paywallPushes()).toEqual([]);
+    });
   });
 
   it.each(["https://evil.example/phish", "//evil.example", undefined])(
