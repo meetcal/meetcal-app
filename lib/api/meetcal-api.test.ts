@@ -1096,6 +1096,42 @@ describe('conditional GETs for meet endpoints', () => {
     await expect(pending).resolves.toMatchObject({ name: 'Meet 0' });
   });
 
+  it('answers a 304 with the newer entry a concurrent request stored in flight', async () => {
+    let releaseSlow: (() => void) | undefined;
+    let conditionalCalls = 0;
+    const fetchMock = jest.fn(async (_url: string, init: { headers: Record<string, string> }) => {
+      if (!init.headers['If-None-Match']) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (h: string) => (h === 'etag' ? '"v1"' : null) },
+          text: async (): Promise<string> => JSON.stringify([meetRow('Meet A')]),
+        };
+      }
+      conditionalCalls += 1;
+      if (conditionalCalls === 1) {
+        // The slow revalidation: the server answered while "v1" was current.
+        await new Promise<void>((resolve) => {
+          releaseSlow = resolve;
+        });
+        return { ok: false, status: 304, headers: { get: () => '"v1"' }, text: async (): Promise<string> => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (h: string) => (h === 'etag' ? '"v2"' : null) },
+        text: async (): Promise<string> => JSON.stringify([meetRow('Meet B')]),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiMeets();
+    const slow = fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    releaseSlow?.();
+    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
+  });
+
   it('retries without a validator when a 304 names a different ETag than was sent', async () => {
     const fetchMock = queueFetch([
       { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },

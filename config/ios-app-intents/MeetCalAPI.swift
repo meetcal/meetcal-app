@@ -138,20 +138,19 @@ enum APIDateFormat {
 
 /// JSON body for the `POST` name-list endpoints (`/lifting-results/by-names`,
 /// `/lifting-results/recent`, `/lifting-results/bests`). Matches the backend's
-/// `NameListBody`; a nil `cutoff_date` is omitted from the JSON.
+/// `NameListBody`; nil fields are omitted from the JSON.
 struct NameListBody: Encodable {
     let names: [String]
-    let cutoff_date: String?
+    var cutoff_date: String? = nil
+    var limit_per_name: Int? = nil
 }
 
 // MARK: - History cutoff
 
 /// History-window cutoff dates. Mirrors `getHistoryCutoffDate(years)` and the
-/// `ATTEMPT_HISTORY_YEARS` / `YEAR_BESTS_YEARS` constants in utils/dateTime.ts;
-/// change them together so Siri and the app ask the API for the same window.
+/// `YEAR_BESTS_YEARS` constant in utils/dateTime.ts; change them together so
+/// Siri and the app ask the API for the same window.
 enum HistoryCutoff {
-    /// `ATTEMPT_HISTORY_YEARS` in utils/dateTime.ts.
-    static let attemptHistoryYears = 2
     /// `YEAR_BESTS_YEARS` in utils/dateTime.ts.
     static let yearBestsYears = 1
 
@@ -210,6 +209,8 @@ actor MeetCalAPI {
     /// lib/api/meetcal-api.ts; the API rejects more than `MAX_NAME_LIST_LEN`
     /// (100) names in one request.
     private static let nameChunkSize = 40
+    /// The API's `MAX_LIMIT_PER_NAME`; a larger `limit_per_name` is a `400`.
+    private static let maxLimitPerName = 200
     private let session: URLSession
     private let ttl: TimeInterval = 300 // ~5 minutes
 
@@ -247,14 +248,19 @@ actor MeetCalAPI {
     // `fetchApiResultsByNames` / `fetchApiYearBestsByNames` in
     // lib/api/meetcal-api.ts.
 
-    func resultsByNames(_ names: [String]) async throws -> [APILiftingResult] {
+    /// Each name's newest `limitPerName` results (newest first), so a long
+    /// career is not downloaded and cached just to show a few rows. Ranges
+    /// over the whole history, not a date window, so a lifter who has not
+    /// competed lately still gets their last meets.
+    func resultsByNames(_ names: [String], limitPerName: Int) async throws -> [APILiftingResult] {
         let cleaned = Self.cleanNameList(names)
         guard !cleaned.isEmpty else { return [] }
+        let limit = min(max(limitPerName, 1), Self.maxLimitPerName)
         var rows: [APILiftingResult] = []
         for chunk in Self.chunked(cleaned) {
             let part: [APILiftingResult] = try await postDecoded(
                 "/lifting-results/by-names",
-                body: NameListBody(names: chunk, cutoff_date: nil)
+                body: NameListBody(names: chunk, limit_per_name: limit)
             )
             rows.append(contentsOf: part)
         }

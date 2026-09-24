@@ -386,7 +386,10 @@ function sameEtag(a: string, b: string): boolean {
  * tag was stored, so shape checks never get skipped, only repeated work.
  *
  * The remembered entry is read once, before the request, so an eviction while
- * the request is in flight cannot strand a `304` without a body. A `304` whose
+ * the request is in flight cannot strand a `304` without a body; if a
+ * concurrent request replaced that entry meanwhile, the `304` resolves to the
+ * replacement instead, so a slow revalidation never returns data older than
+ * what a faster one already stored. A `304` whose
  * own `ETag` names a different tag than we sent is not trusted: the entry is
  * dropped and the request is retried once without a validator (where a `304`
  * is an error, as it always was). Every non-2xx/304 status throws exactly as
@@ -410,8 +413,14 @@ async function getJsonRevalidated<T>(
   if (raw.status === 304) {
     const answered = usableEtag(raw.etag);
     if (held && (answered == null || sameEtag(answered, held.etag))) {
-      // Refresh recency, unless a concurrent request already replaced it.
-      if (validatorCache.get(url) === held) validatorCache.set(url, held);
+      const current = validatorCache.get(url) as ValidatorEntry<T> | undefined;
+      if (current && current !== held) {
+        // A concurrent request stored a newer body while this one was in
+        // flight; this 304 only vouches for the older tag, so never publish
+        // the superseded value over it.
+        return current.value;
+      }
+      if (current === held) validatorCache.set(url, held); // refresh recency
       return held.value;
     }
     validatorCache.delete(url);
