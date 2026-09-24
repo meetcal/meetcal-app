@@ -114,7 +114,6 @@ const withAndroidSavedWidget = config => {
 
     let contents = config.modResults.contents;
     const originalContents = contents;
-    let packageAdded = false;
 
     if (!contents.includes('SavedWidgetPackage')) {
       const importStatement = `import ${packageName}.widget.SavedWidgetPackage`;
@@ -138,7 +137,6 @@ const withAndroidSavedWidget = config => {
           packagesApplyRe,
           `PackageList(this).packages.apply {\n${indent}${addPackage}\n${indent}`
         );
-        packageAdded = true;
       } else {
         const fallbackRe = /val packages = PackageList\(this\)\.packages\n/;
         if (fallbackRe.test(contents)) {
@@ -146,7 +144,6 @@ const withAndroidSavedWidget = config => {
             fallbackRe,
             match => `${match}    packages.add(SavedWidgetPackage())\n`
           );
-          packageAdded = true;
         }
       }
     }

@@ -3,11 +3,13 @@ const { defineConfig } = require("eslint/config");
 const expoConfig = require("eslint-config-expo/flat");
 const react = require("eslint-plugin-react");
 const reactNative = require("eslint-plugin-react-native");
+const globals = require("globals");
 
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*", "node_modules/*", ".expo/*"],
+    // `coverage/` is Jest's generated lcov report (git-ignored build output).
+    ignores: ["dist/*", "node_modules/*", ".expo/*", "coverage/*"],
   },
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
@@ -59,6 +61,42 @@ module.exports = defineConfig([
       // "react-native/no-inline-styles": "warn",
       "react-native/no-color-literals": "warn",
       "react-native/no-raw-text": "off", // Can be too strict
+    },
+  },
+  {
+    // CommonJS files that run under Node (Expo config plugins, build/tool
+    // configs, the custom Jest environment): `require`, `module`, and
+    // `__dirname` are real here.
+    files: [
+      "config/**/*.js",
+      "jest/**/*.js",
+      "targets/**/*.js",
+      "*.config.js",
+      ".prettierrc.js",
+      "jest.setup.js",
+    ],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    // Jest setup and test files run with Jest's globals.
+    files: ["jest.setup.js", "**/*.test.{js,jsx,ts,tsx}"],
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+      },
+    },
+  },
+  {
+    // `require()` is the only way to load a module after
+    // `jest.resetModules()` / `jest.isolateModules()` / `jest.doMock()`, and
+    // inside a `jest.mock` factory (which cannot close over imports).
+    files: ["**/*.test.{js,jsx,ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
 ]);
