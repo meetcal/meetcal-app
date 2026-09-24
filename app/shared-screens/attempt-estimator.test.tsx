@@ -1,4 +1,5 @@
 import React from "react";
+import { Animated, Pressable, ScrollView } from "react-native";
 import { act, create } from "react-test-renderer";
 import AttemptEstimatorScreen from "@/app/shared-screens/attempt-estimator";
 import {
@@ -11,6 +12,13 @@ import {
   saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
+
+// react-native's exports are lazy getters. On a cold transform cache (every CI
+// run) the first access to `Animated` costs ~2.3s and `ScrollView`/`Pressable`
+// ~0.7s more, all inside the first test's render, which pushed that test past
+// its 5s budget on CI. Touching them here, at module load, charges the one-time
+// cost to the file instead of to whichever test renders first.
+void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("expo-router", () => ({
@@ -45,9 +53,14 @@ const athlete = (name: string, number: number, platform: "Red" | "Blue") => ({
   session: { number, platform },
 });
 
+// Drain whole macrotask turns, not a fixed count of microtasks: the load
+// chain's await depth changes with the code, and a microtask count that is
+// one short fails intermittently rather than loudly.
 const flush = async () => {
   await act(async () => {
-    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
   });
 };
 
