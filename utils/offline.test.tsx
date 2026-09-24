@@ -564,3 +564,68 @@ describe("useOfflineData across a remount of the screen", () => {
     act(() => second.unmount());
   });
 });
+
+describe("useOfflineData failure paths release their claim", () => {
+  // The busy flags outlive the screen (offline-activity), so a claim a
+  // failure path forgot to release would lock every row and both header
+  // actions until the app process restarts.
+
+  it("Delete All that fails part-way reports it, and the screen is usable again", async () => {
+    mockClearAllAthleteHistory.mockRejectedValueOnce(new Error("disk full"));
+    const tree = await mount();
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Delete Failed");
+    expect(captured!.isDeletingAll).toBe(false);
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+    expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(2);
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Deleted");
+    act(() => tree.unmount());
+  });
+
+  it("Refresh All that throws keeps the downloads, says so, and can run again", async () => {
+    mockIsNetworkAvailable.mockRejectedValueOnce(new Error("NetInfo unavailable"));
+    const tree = await mount();
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+
+    const [title, message] = alertSpy.mock.calls.at(-1) ?? [];
+    expect(title).toBe("Refresh Failed");
+    expect(message).toContain("kept");
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(cacheEntry);
+    expect(captured!.isRefreshingAll).toBe(false);
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+    expect(mockFetchStandards).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Refresh Complete");
+    act(() => tree.unmount());
+  });
+
+  it("a Remove that fails reports it and frees the row", async () => {
+    const tree = await mount();
+    const remove = jest.fn(async () => {
+      throw new Error("storage error");
+    });
+
+    await act(async () => {
+      await captured!.handleDelete("A/B Standards", "standards", remove);
+    });
+    await tap("Remove");
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Remove Failed");
+    expect(captured!.downloadingItems.has("standards")).toBe(false);
+    const again = jest.fn(async () => {});
+    await act(async () => {
+      await captured!.handleDownload("standards", again);
+    });
+    expect(again).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+});
