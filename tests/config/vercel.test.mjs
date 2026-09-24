@@ -98,3 +98,11 @@ test("production rewrites serve route-specific metadata shells", async () => {
     assert.match(html, new RegExp(`href="https:\\/\\/meetcal\\.app\\/${route}"`));
   }
 });
+
+test("preview deployments keep the same-origin API rewrite", () => {
+  // Production origins call https://api.meetcal.app directly (see
+  // src/utils/api.rs); other Vercel origins, which the API's CORS policy
+  // rejects, still proxy through /api.
+  const apiRewrite = config.rewrites.find(({ source }) => source === "/api/:path*");
+  assert.equal(apiRewrite?.destination, "https://api.meetcal.app/:path*");
+});

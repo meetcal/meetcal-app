@@ -86,7 +86,9 @@ test("competition loading and error states stay contained", async ({ page, isMob
   await mockSubscribedUser(page);
   await page.route("**/data/qualifying-totals", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1_500));
-    await route.fulfill({ status: 503, ...jsonResponse({ error: "unavailable" }) });
+    // A 500 fails without retries; throttled and overloaded responses are
+    // retried and covered in competition.spec.ts.
+    await route.fulfill({ status: 500, ...jsonResponse({ error: "unavailable" }) });
   });
   await page.goto("/qualifying-totals");
   await expect(page.locator(".data-table-skeleton")).toBeVisible();

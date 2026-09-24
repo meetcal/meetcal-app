@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { jsonResponse, mockSubscribedUser } from "./support/api";
+import { jsonResponse, mockSubscribedUser, retryableResponse } from "./support/api";
 
 test("subscribed users can filter and sort qualifying totals", async ({ page }) => {
   await mockSubscribedUser(page);
@@ -268,4 +268,105 @@ test("wrapped builds a readable single-athlete yearly recap", async ({ page }) =
   await expect(page.getByRole("heading", { name: "2026 Wrapped — Test Athlete" })).toBeVisible();
   await expect(page.getByLabel("Compare with (optional)")).toHaveCount(0);
   await expect(page.locator(".wrapped-top-meet")).toContainText("Athletic Lab Weightlifting Club 2026 March Madness Weightlifting Meet");
+});
+
+const qualifyingTotal = {
+  qualifying_total: 210,
+  event_name: "Nationals",
+  gender: "Women",
+  age_category: "Senior",
+  weight_class: "69kg",
+};
+
+test("throttled and overloaded API responses are retried after Retry-After", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const statuses: number[] = [];
+  await page.route("**/data/qualifying-totals", async (route) => {
+    if (statuses.length === 0) {
+      statuses.push(429);
+      await route.fulfill(retryableResponse(429, "1"));
+    } else if (statuses.length === 1) {
+      statuses.push(503);
+      await route.fulfill(retryableResponse(503));
+    } else {
+      statuses.push(200);
+      await route.fulfill(jsonResponse([qualifyingTotal]));
+    }
+  });
+
+  await page.goto("/qualifying-totals");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr").first()).toContainText("Nationals");
+  expect(statuses).toEqual([429, 503, 200]);
+});
+
+test("persistent rate limiting explains the failure after two retries", async ({ page }) => {
+  await mockSubscribedUser(page);
+  let requests = 0;
+  await page.route("**/data/qualifying-totals", async (route) => {
+    requests += 1;
+    await route.fulfill(retryableResponse(429, "0"));
+  });
+
+  await page.goto("/qualifying-totals");
+  await expect(
+    page.getByText("Could not load qualifying totals: Too many requests right now; please try again in a moment"),
+  ).toBeVisible();
+  await expect(page.getByText(/returned an error/)).toHaveCount(0);
+  expect(requests).toBe(3);
+});
+
+test("athlete autocomplete waits for typing to pause before searching", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const queries: string[] = [];
+  await page.route("**/search?**", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("query") ?? "";
+    queries.push(query);
+    await route.fulfill(jsonResponse({ matched_name: null, suggestions: [query], results: [] }));
+  });
+
+  await page.goto("/results");
+  const athleteSearch = page.getByLabel("Athlete", { exact: true });
+  await athleteSearch.pressSequentially("Test Athlete", { delay: 20 });
+  await expect(page.getByRole("option", { name: "Test Athlete" })).toBeVisible();
+
+  // Ten keystrokes reach the three-character threshold; a slow runner may split
+  // the burst once, but never sends a search per keystroke.
+  expect(queries.length).toBeGreaterThanOrEqual(1);
+  expect(queries.length).toBeLessThanOrEqual(2);
+  expect(queries.at(-1)).toBe("Test Athlete");
+});
+
+test("a slow earlier athlete search cannot replace newer suggestions", async ({ page }) => {
+  await mockSubscribedUser(page);
+  let releaseSlowSearch = () => {};
+  const slowSearchReleased = new Promise<void>((resolve) => {
+    releaseSlowSearch = resolve;
+  });
+  let slowSearchFulfilled: Promise<void> | undefined;
+  await page.route("**/search?**", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("query");
+    if (query === "Ann") {
+      slowSearchFulfilled = slowSearchReleased.then(() =>
+        route.fulfill(jsonResponse({ matched_name: null, suggestions: ["Ann Stale"], results: [] })),
+      );
+      return;
+    }
+    await route.fulfill(jsonResponse({ matched_name: null, suggestions: ["Bob Current"], results: [] }));
+  });
+
+  await page.goto("/results");
+  const athleteSearch = page.getByLabel("Athlete", { exact: true });
+  const slowRequest = page.waitForRequest((request) => request.url().includes("query=Ann"));
+  await athleteSearch.fill("Ann");
+  await slowRequest;
+  await athleteSearch.fill("Bob");
+  await expect(page.getByRole("option", { name: "Bob Current" })).toBeVisible();
+
+  releaseSlowSearch();
+  await expect.poll(() => slowSearchFulfilled !== undefined).toBe(true);
+  await slowSearchFulfilled;
+  await page.waitForTimeout(100);
+  await expect(page.getByRole("option", { name: "Ann Stale" })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Bob Current" })).toBeVisible();
 });

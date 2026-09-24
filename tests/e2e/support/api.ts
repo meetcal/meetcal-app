@@ -49,3 +49,16 @@ export function jsonResponse(body: unknown) {
     body: JSON.stringify(body),
   };
 }
+
+export function retryableResponse(status: 429 | 503, retryAfter?: string) {
+  const response = jsonResponse({ error: status === 429 ? "rate limited" : "overloaded" });
+  return {
+    ...response,
+    status,
+    headers: {
+      ...response.headers,
+      "access-control-expose-headers": "retry-after",
+      ...(retryAfter === undefined ? {} : { "retry-after": retryAfter }),
+    },
+  };
+}
