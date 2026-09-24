@@ -134,6 +134,63 @@ enum APIDateFormat {
     }
 }
 
+// MARK: - Request bodies
+
+/// JSON body for the `POST` name-list endpoints (`/lifting-results/by-names`,
+/// `/lifting-results/recent`, `/lifting-results/bests`). Matches the backend's
+/// `NameListBody`; a nil `cutoff_date` is omitted from the JSON.
+struct NameListBody: Encodable {
+    let names: [String]
+    let cutoff_date: String?
+}
+
+// MARK: - History cutoff
+
+/// History-window cutoff dates. Mirrors `getHistoryCutoffDate(years)` and the
+/// `ATTEMPT_HISTORY_YEARS` / `YEAR_BESTS_YEARS` constants in utils/dateTime.ts;
+/// change them together so Siri and the app ask the API for the same window.
+enum HistoryCutoff {
+    /// `ATTEMPT_HISTORY_YEARS` in utils/dateTime.ts.
+    static let attemptHistoryYears = 2
+    /// `YEAR_BESTS_YEARS` in utils/dateTime.ts.
+    static let yearBestsYears = 1
+
+    /// The `YYYY-MM-DD` cutoff `years` before `now`: today's UTC calendar date
+    /// with the year reduced, exactly as the JS
+    /// `Date.UTC(y - years, m, d).toISOString().split("T")[0]` computes it.
+    static func date(yearsAgo years: Int, now: Date = Date()) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? .current
+        let today = calendar.dateComponents([.year, .month, .day], from: now)
+        // A Gregorian calendar always fills the components it was asked for.
+        return format(
+            year: (today.year ?? 1970) - years,
+            month: today.month ?? 1,
+            day: today.day ?? 1
+        )
+    }
+
+    /// Formats a calendar date the way JS `Date.UTC` normalizes it. The only
+    /// out-of-range input a real "today" can produce is Feb 29 in a non-leap
+    /// target year, which `Date.UTC` rolls forward to Mar 1 (not back to
+    /// Feb 28, as `Calendar.date(byAdding:)` would).
+    static func format(year: Int, month: Int, day: Int) -> String {
+        var month = month
+        var day = day
+        let isLeapYear = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+        if month == 2, day == 29, !isLeapYear {
+            month = 3
+            day = 1
+        }
+        return "\(zeroPadded(year, width: 4))-\(zeroPadded(month, width: 2))-\(zeroPadded(day, width: 2))"
+    }
+
+    private static func zeroPadded(_ value: Int, width: Int) -> String {
+        let digits = String(value)
+        return String(repeating: "0", count: max(0, width - digits.count)) + digits
+    }
+}
+
 // MARK: - Client
 
 enum MeetCalAPIError: Error {
@@ -147,7 +204,12 @@ actor MeetCalAPI {
     private let baseURL = URL(string: "https://api.meetcal.app")!
     // Same signal the RN app sends; the API gates stricter validation on it.
     private let appVersion =
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Names per name-list request. Matches `NAMES_QUERY_CHUNK_SIZE` in
+    /// lib/api/meetcal-api.ts; the API rejects more than `MAX_NAME_LIST_LEN`
+    /// (100) names in one request.
+    private static let nameChunkSize = 40
     private let session: URLSession
     private let ttl: TimeInterval = 300 // ~5 minutes
 
@@ -180,36 +242,54 @@ actor MeetCalAPI {
         try await getDecoded("/search", query: ["query": query])
     }
 
+    // Name lists go in a JSON body (`POST`), never a comma-joined query param,
+    // so a name containing a comma stays one name. Mirrors
+    // `fetchApiResultsByNames` / `fetchApiYearBestsByNames` in
+    // lib/api/meetcal-api.ts.
+
     func resultsByNames(_ names: [String]) async throws -> [APILiftingResult] {
-        guard !names.isEmpty else { return [] }
-        return try await getDecoded(
-            "/lifting-results/by-names",
-            query: ["names": names.joined(separator: ",")]
-        )
+        let cleaned = Self.cleanNameList(names)
+        guard !cleaned.isEmpty else { return [] }
+        var rows: [APILiftingResult] = []
+        for chunk in Self.chunked(cleaned) {
+            let part: [APILiftingResult] = try await postDecoded(
+                "/lifting-results/by-names",
+                body: NameListBody(names: chunk, cutoff_date: nil)
+            )
+            rows.append(contentsOf: part)
+        }
+        return rows
     }
 
     func bests(names: [String]) async throws -> [String: APIYearBests] {
-        guard !names.isEmpty else { return [:] }
-        // 6.2.0+ clients must send the window; one year matches the old default.
-        return try await getDecoded(
-            "/lifting-results/bests",
-            query: [
-                "names": names.joined(separator: ","),
-                "cutoff_date": Self.cutoffDate(yearsAgo: 1),
-            ]
-        )
+        let cleaned = Self.cleanNameList(names)
+        guard !cleaned.isEmpty else { return [:] }
+        // 6.2.0+ clients must send the window. One cutoff for every chunk.
+        let cutoff = HistoryCutoff.date(yearsAgo: HistoryCutoff.yearBestsYears)
+        var merged: [String: APIYearBests] = [:]
+        for chunk in Self.chunked(cleaned) {
+            let part: [String: APIYearBests] = try await postDecoded(
+                "/lifting-results/bests",
+                body: NameListBody(names: chunk, cutoff_date: cutoff)
+            )
+            merged.merge(part) { _, new in new }
+        }
+        return merged
     }
 
-    private static func cutoffDate(yearsAgo: Int) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
-        let date = calendar.date(byAdding: .year, value: -yearsAgo, to: Date()) ?? Date()
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+    /// Trims each name and drops blanks, as the backend's `clean_name_list`
+    /// does, so an all-blank list short-circuits instead of drawing a `400`.
+    private static func cleanNameList(_ names: [String]) -> [String] {
+        names
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Splits a name list into requests of at most `nameChunkSize` names.
+    private static func chunked(_ names: [String]) -> [[String]] {
+        stride(from: 0, to: names.count, by: nameChunkSize).map { start in
+            Array(names[start..<min(start + nameChunkSize, names.count)])
+        }
     }
 
     func qualifyingTotals() async throws -> [APIQualifyingTotalRow] {
@@ -234,11 +314,28 @@ actor MeetCalAPI {
         _ path: String,
         query: [String: String] = [:]
     ) async throws -> T {
-        let data = try await getData(path, query: query)
+        let data = try await fetchData(path, query: query, jsonBody: nil)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func getData(_ path: String, query: [String: String]) async throws -> Data {
+    private func postDecoded<T: Decodable, Body: Encodable>(
+        _ path: String,
+        body: Body
+    ) async throws -> T {
+        let encoder = JSONEncoder()
+        // Stable key order so the same request always hits the same cache key.
+        encoder.outputFormatting = .sortedKeys
+        let bodyData = try encoder.encode(body)
+        let data = try await fetchData(path, query: [:], jsonBody: bodyData)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// `GET` when `jsonBody` is nil, otherwise `POST` with a JSON body.
+    private func fetchData(
+        _ path: String,
+        query: [String: String],
+        jsonBody: Data?
+    ) async throws -> Data {
         var components = URLComponents(
             url: baseURL.appendingPathComponent(path),
             resolvingAgainstBaseURL: false
@@ -247,7 +344,12 @@ actor MeetCalAPI {
             components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         guard let url = components?.url else { throw MeetCalAPIError.invalidURL }
-        let cacheKey = url.absoluteString
+        // GET keys stay the bare URL; POST keys add the body, since the URL
+        // alone does not identify the request.
+        var cacheKey = url.absoluteString
+        if let jsonBody {
+            cacheKey = "POST \(cacheKey) \(String(decoding: jsonBody, as: UTF8.self))"
+        }
 
         if let cached = cachedData(for: cacheKey) {
             return cached
@@ -255,6 +357,11 @@ actor MeetCalAPI {
 
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let jsonBody {
+            request.httpMethod = "POST"
+            request.httpBody = jsonBody
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         if !appVersion.isEmpty {
             request.setValue(appVersion, forHTTPHeaderField: "X-MeetCal-App")
         }
