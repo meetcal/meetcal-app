@@ -1,11 +1,12 @@
 import { ThemedText } from "@/components/ui/ThemedText";
-import { getPlatformColors } from "@/constants/Colors";
+import { platformColor } from "@/constants/Colors";
 import { LiftResult } from "@/data/types/athletes";
 import {
   compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
 } from "@/lib/start-list-utils";
+import { isSamePlatform } from "@/lib/athletes";
 import { formatTo12Hour } from "@/utils/time";
 import {
   ShareBackgroundPresetId,
@@ -14,15 +15,6 @@ import {
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
-const getPlatformColor = (platform: string): string => {
-  const platformColors = getPlatformColors();
-  const normalizedPlatform =
-    platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
-  return (
-    platformColors[normalizedPlatform as keyof typeof platformColors] ||
-    platformColors.Blue
-  );
-};
 
 type PresetVisual = {
   canvas: string;
@@ -90,7 +82,7 @@ export default function ShareScheduleView({
       const sessionDetails = getSessionDetails(athlete.session.number);
       if (!sessionDetails) return;
       const platform = sessionDetails.platforms.find(
-        (p) => p.platform === athlete.session?.platform,
+        (p) => isSamePlatform(p.platform, athlete.session?.platform),
       );
       const startTime = platform?.platformStartTime || sessionDetails.startTime;
 
@@ -187,7 +179,7 @@ export default function ShareScheduleView({
                       style={[
                         styles.platformBadge,
                         {
-                          backgroundColor: getPlatformColor(
+                          backgroundColor: platformColor(
                             athlete.session?.platform || "",
                           ),
                         },

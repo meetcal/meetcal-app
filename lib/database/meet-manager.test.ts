@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  fetchMeetsFresh,
+  getCachedMeets,
   prefetchCriticalMeetData,
   HISTORY_REFRESH_TTL_MS,
+  HISTORY_RETRY_AFTER_DEFAULT_MS,
+  HISTORY_RETRY_AFTER_MAX_MS,
+  historyRetryDelayMs,
   prefetchMeetData,
   pruneHistorySyncedAt,
   touchMeetAccess,
@@ -48,7 +53,22 @@ const mockFetchApiMeetPackageConditional = jest.fn(
 const mockFetchApiResultsByNames = jest.fn(
   async (_names: string[]): Promise<any[]> => [],
 );
+const mockFetchApiMeets = jest.fn(async (): Promise<unknown[]> => []);
+// Per-athlete view of the batched history write, so assertions can still
+// name an athlete and its rows; the batch itself is counted separately.
 const mockSaveAthleteHistory = jest.fn(async () => undefined);
+const mockSaveAthleteHistoryBatch = jest.fn(
+  async (entries: readonly { name: string; results: unknown[] }[]): Promise<number> => {
+    for (const entry of entries) {
+      await (mockSaveAthleteHistory as jest.Mock)(entry.name, entry.results);
+    }
+    return entries.length;
+  },
+);
+const mockPruneOrphanedAthleteHistory = jest.fn(
+  async (_options?: { keepNames?: readonly string[] }): Promise<number> => 0,
+);
+const mockClearImplicitMeetData = jest.fn(async (_meet?: string): Promise<void> => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockSaveMeetAthletes = jest.fn(async () => undefined);
 // Every roster name has a history blob unless a test says otherwise.
@@ -82,11 +102,15 @@ jest.mock("@/lib/api/meetcal-api", () => {
       ),
     fetchApiResultsByNames: (...args: unknown[]) =>
       mockFetchApiResultsByNames(...(args as [string[]])),
+    fetchApiMeets: () => mockFetchApiMeets(),
   };
 });
 
 jest.mock("@/lib/database/offline-store", () => ({
-  clearImplicitMeetData: jest.fn(async () => undefined),
+  clearImplicitMeetData: (...args: unknown[]) =>
+    mockClearImplicitMeetData(...(args as [string | undefined])),
+  pruneOrphanedAthleteHistory: (...args: unknown[]) =>
+    mockPruneOrphanedAthleteHistory(...(args as [{ keepNames?: readonly string[] } | undefined])),
   clearMeetData: (...args: unknown[]) => mockClearMeetData.apply(null, args),
   getMeetData: jest.fn(async () => ({
     schedule: null,
@@ -101,8 +125,8 @@ jest.mock("@/lib/database/offline-store", () => ({
   getExplicitlyDownloadedMeetIds: async () => ({
     has: (meet: string) => mockIsExplicitlyDownloaded(meet),
   }),
-  saveAthleteHistory: (...args: unknown[]) =>
-    mockSaveAthleteHistory.apply(null, args),
+  saveAthleteHistoryBatch: (entries: readonly { name: string; results: unknown[] }[]) =>
+    mockSaveAthleteHistoryBatch(entries),
   saveAthleteBestsBatch: jest.fn(async () => undefined),
   saveMeetAthletes: (...args: unknown[]) =>
     mockSaveMeetAthletes.apply(null, args),
@@ -392,6 +416,83 @@ describe("full athlete history download", () => {
     expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(40);
     expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(10);
     expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(50);
+    // One storage batch per network batch, never one write per athlete.
+    expect(mockSaveAthleteHistoryBatch).toHaveBeenCalledTimes(2);
+    expect(mockSaveAthleteHistoryBatch.mock.calls[0][0]).toHaveLength(40);
+    expect(mockSaveAthleteHistoryBatch.mock.calls[1][0]).toHaveLength(10);
+  });
+
+  it("waits once for Retry-After on a 429 mid-download and then completes", async () => {
+    jest.useFakeTimers();
+    try {
+      const { MeetCalApiError } = jest.requireActual("@/lib/api/meetcal-api");
+      const athleteNames = Array.from({ length: 100 }, (_, i) => `Athlete ${i + 1}`);
+      mockFetchApiMeetPackage.mockResolvedValue({
+        meet: {},
+        schedule: [],
+        athletes: athleteNames.map(buildAthlete),
+        meet_results: [{ name: "Athlete 1" }],
+        recent_results_by_name: {},
+        year_bests_by_name: {},
+      });
+      const limited = new MeetCalApiError("POST /lifting-results/by-names failed with 429", 429, "");
+      (limited as { retryAfterSeconds?: number }).retryAfterSeconds = 1;
+      mockFetchApiResultsByNames
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(limited)
+        .mockResolvedValueOnce([{ name: "Athlete 41", date: "2025-01-01" }])
+        .mockResolvedValueOnce([]);
+
+      const prefetch = prefetchMeetData("History Meet Retry" as any);
+      // Batch 1, then batch 2's 429: the download is now parked on the timer.
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(999);
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(prefetch).resolves.toBeUndefined();
+
+      // Batch 2 was requested exactly twice; batches 1 and 3 once.
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(4);
+      expect(mockFetchApiResultsByNames.mock.calls[1][0]).toEqual(
+        mockFetchApiResultsByNames.mock.calls[2][0],
+      );
+      expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete 41", [
+        { name: "Athlete 41", date: "2025-01-01" },
+      ]);
+      expect(mockSaveAthleteHistoryBatch).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("marks history incomplete after a second 429 instead of retrying again", async () => {
+    jest.useFakeTimers();
+    try {
+      const { MeetCalApiError } = jest.requireActual("@/lib/api/meetcal-api");
+      mockFetchApiMeetPackage.mockResolvedValue({
+        meet: {},
+        schedule: [],
+        athletes: [buildAthlete("Athlete A")],
+        meet_results: [{ name: "Athlete A" }],
+        recent_results_by_name: {},
+        year_bests_by_name: {},
+      });
+      const limited = new MeetCalApiError("POST /lifting-results/by-names failed with 429", 429, "");
+      mockFetchApiResultsByNames.mockRejectedValue(limited);
+
+      const prefetch = prefetchMeetData("History Meet Retry Twice" as any);
+      // A `void` catch handler keeps the eventual rejection from being unhandled
+      // while the timers run.
+      prefetch.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(HISTORY_RETRY_AFTER_MAX_MS * 2);
+      await expect(prefetch).rejects.toThrow(/athlete_history/);
+
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
+      expect(mockSaveAthleteHistoryBatch).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("re-runs the whole ingest, history included, after a SQLITE_FULL cleanup", async () => {
@@ -412,6 +513,18 @@ describe("full athlete history download", () => {
     await prefetchMeetData("Recovery Meet A" as any);
 
     expect(mockSaveMeetAthletes).toHaveBeenCalledTimes(2);
+    // Orphaned history is pruned between the cleanup and the retry, keeping
+    // this meet's own athletes (their unchanged history costs no write).
+    expect(mockPruneOrphanedAthleteHistory).toHaveBeenCalledTimes(1);
+    expect(mockPruneOrphanedAthleteHistory).toHaveBeenCalledWith({ keepNames: ["Athlete A"] });
+    const order = [
+      ...mockClearImplicitMeetData.mock.invocationCallOrder.map((n) => [n, "clear"] as const),
+      ...mockPruneOrphanedAthleteHistory.mock.invocationCallOrder.map((n) => [n, "prune"] as const),
+      ...mockSaveMeetAthletes.mock.invocationCallOrder.map((n) => [n, "ingest"] as const),
+    ]
+      .sort(([a], [b]) => a - b)
+      .map(([, step]) => step);
+    expect(order).toEqual(["ingest", "clear", "prune", "ingest"]);
     // The recovery used to restore only `meet_results`; the athlete history
     // must be downloaded on the retry too.
     expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete A", [
@@ -680,6 +793,27 @@ describe("package revalidation with ETag", () => {
     expect(stampWrites).toHaveLength(1);
   });
 
+  it("issues no history requests on a 304 while the last full sync is younger than the TTL", async () => {
+    const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
+    expect(HISTORY_REFRESH_TTL_MS).toBeGreaterThan(SIX_DAYS_MS);
+    storedEtags(
+      { "Etag Meet Fresh Week": '"abc"' },
+      { "Etag Meet Fresh Week": Date.now() - SIX_DAYS_MS },
+    );
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet Fresh Week" as any);
+
+    // Only the gap check runs, and with every blob present nothing is fetched.
+    expect(mockFindAthleteNamesWithoutHistory).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
+    expect(mockSaveAthleteHistoryBatch).not.toHaveBeenCalled();
+  });
+
   it("re-downloads every athlete's history on a 304 when a refresh forces it, however fresh", async () => {
     // Synced just now: without the option this 304 would fetch nothing.
     storedEtags({ "Etag Meet Forced": '"abc"' });
@@ -896,5 +1030,184 @@ describe("pruneHistorySyncedAt", () => {
 
   it("returns an empty map for no stamps", () => {
     expect(pruneHistorySyncedAt({}, Date.now())).toEqual({});
+  });
+});
+
+describe("historyRetryDelayMs", () => {
+  const { MeetCalApiError } = jest.requireActual("@/lib/api/meetcal-api");
+  const apiError = (status: number, retryAfterSeconds?: unknown) => {
+    const error = new MeetCalApiError(`failed with ${status}`, status, "");
+    if (retryAfterSeconds !== undefined) {
+      (error as { retryAfterSeconds?: unknown }).retryAfterSeconds = retryAfterSeconds;
+    }
+    return error;
+  };
+
+  it("honors Retry-After seconds on a 429 or 503, capped", () => {
+    expect(historyRetryDelayMs(apiError(429, 2))).toBe(2000);
+    expect(historyRetryDelayMs(apiError(503, "3"))).toBe(3000);
+    expect(historyRetryDelayMs(apiError(429, 120))).toBe(HISTORY_RETRY_AFTER_MAX_MS);
+    expect(HISTORY_RETRY_AFTER_MAX_MS).toBeLessThanOrEqual(5000);
+  });
+
+  it("falls back to the default wait without a usable header", () => {
+    expect(historyRetryDelayMs(apiError(429))).toBe(HISTORY_RETRY_AFTER_DEFAULT_MS);
+    expect(historyRetryDelayMs(apiError(429, "Wed, 21 Oct 2026 07:28:00 GMT"))).toBe(
+      HISTORY_RETRY_AFTER_DEFAULT_MS,
+    );
+    expect(historyRetryDelayMs(apiError(503, -1))).toBe(HISTORY_RETRY_AFTER_DEFAULT_MS);
+  });
+
+  it("does not retry other failures", () => {
+    expect(historyRetryDelayMs(apiError(500, 1))).toBeNull();
+    expect(historyRetryDelayMs(apiError(404))).toBeNull();
+    expect(historyRetryDelayMs(new Error("network"))).toBeNull();
+  });
+});
+
+/** Routes the AsyncStorage mock through a real map for one test. */
+function useBackedStorage(seed: Record<string, string> = {}) {
+  const store = new Map(Object.entries(seed));
+  mockGetItem.mockImplementation(async (key: string) => store.get(key) ?? null);
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+    store.set(key, value);
+  });
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
+    store.delete(key);
+  });
+  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async (keys: string[]) => {
+    keys.forEach((key) => store.delete(key));
+  });
+  return store;
+}
+
+function resetStorageMocks() {
+  mockGetItem.mockImplementation(async () => null);
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async () => undefined);
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async () => undefined);
+  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async () => undefined);
+}
+
+describe("fetchMeetsFresh and the cached meets list", () => {
+  const MEETS_LIST_CACHE_KEY = "@meets_list_cache_v1";
+  const meet = (name: string) => ({
+    name,
+    dates: { start: "2099-06-20", end: "2099-06-22" },
+    time: { timeZoneIdentifier: "America/New_York" },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetStorageMocks();
+  });
+
+  it("keeps the cached list when /meets answers with no meets, but still returns none", async () => {
+    const store = useBackedStorage({
+      [MEETS_LIST_CACHE_KEY]: JSON.stringify([meet("Meet A"), meet("Meet B")]),
+    });
+    mockFetchApiMeets.mockResolvedValueOnce([]);
+
+    await expect(fetchMeetsFresh()).resolves.toEqual([]);
+
+    const cached = await getCachedMeets();
+    expect(cached.map((m) => m.name)).toEqual(["Meet A", "Meet B"]);
+    expect(JSON.parse(store.get(MEETS_LIST_CACHE_KEY) ?? "[]")).toHaveLength(2);
+  });
+
+  it("still writes a non-empty answer over the cache", async () => {
+    const store = useBackedStorage({
+      [MEETS_LIST_CACHE_KEY]: JSON.stringify([meet("Meet A"), meet("Meet B")]),
+    });
+    mockFetchApiMeets.mockResolvedValueOnce([meet("Meet C")]);
+
+    await fetchMeetsFresh();
+
+    expect(JSON.parse(store.get(MEETS_LIST_CACHE_KEY) ?? "[]").map((m: { name: string }) => m.name)).toEqual([
+      "Meet C",
+    ]);
+  });
+
+  it("writes an empty answer when there was no cache to lose", async () => {
+    const store = useBackedStorage();
+    mockFetchApiMeets.mockResolvedValueOnce([]);
+
+    await fetchMeetsFresh();
+
+    expect(store.get(MEETS_LIST_CACHE_KEY)).toBe("[]");
+  });
+});
+
+describe("eviction during a full prefetch", () => {
+  const MEET_CACHE_KEY = "@meet_cache_info";
+  const buildAthlete = (name: string) => ({
+    member_id: name,
+    name,
+    age: 25,
+    club: "Club",
+    wso: null,
+    gender: "Male",
+    weight_class: "81",
+    entry_total: 0,
+    adaptive: false,
+    session: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchAthletesWithSession.mockResolvedValue([]);
+    mockFetchSchedule.mockResolvedValue([]);
+    // Nothing is marked downloaded yet: the mark is written after the prefetch.
+    setExplicitlyDownloaded(() => false);
+  });
+
+  afterEach(() => {
+    resetStorageMocks();
+    setExplicitlyDownloaded(() => true);
+  });
+
+  it("never evicts the meet whose download is in flight, and stamps its access up front", async () => {
+    const store = useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: { D: { lastAccessed: 1, size: 0 } },
+      }),
+    });
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete D")],
+      meet_results: [{ name: "Athlete D" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    let finishHistory!: (rows: unknown[]) => void;
+    mockFetchApiResultsByNames.mockImplementationOnce(
+      () => new Promise<any[]>((resolve) => { finishHistory = resolve; }),
+    );
+
+    const startedAt = Date.now();
+    const download = prefetchMeetData("D" as any);
+    for (let i = 0; i < 20 && !finishHistory; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(finishHistory).toBeDefined();
+    const stamped = JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D.lastAccessed;
+    expect(stamped).toBeGreaterThanOrEqual(startedAt);
+
+    // Three other meets opened while the history downloads.
+    for (const other of ["E", "F", "G"]) {
+      await prefetchCriticalMeetData(other as any);
+    }
+
+    const cleared = mockClearMeetData.mock.calls.map(([name]) => name);
+    expect(cleared).not.toContain("D");
+
+    finishHistory([]);
+    await expect(download).resolves.toBeUndefined();
+    expect(mockClearMeetData.mock.calls.map(([name]) => name)).not.toContain("D");
+    expect(JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D).toBeDefined();
   });
 });

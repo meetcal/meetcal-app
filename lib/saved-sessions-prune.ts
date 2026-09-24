@@ -1,6 +1,11 @@
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import { MeetName } from '@/data/types/meet';
-import { fetchUserPreferences } from '@/lib/api/meetcal-api';
+import {
+  fetchUserPreferences,
+  getServerClockSample,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+} from '@/lib/api/meetcal-api';
+import { devLog } from '@/lib/logger';
 import { tokenBelongsTo } from '@/lib/saved-sessions-outbox';
 import type { SavedSession } from '@/lib/saved-sessions-store';
 import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
@@ -96,6 +101,7 @@ export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Prom
   if (!token || !stillThisUser() || !tokenBelongsTo(token, userId)) return;
 
   let autoUnsaveEnabled = false;
+  const requestedAt = Date.now();
   try {
     const prefs = await fetchUserPreferences(token);
     autoUnsaveEnabled = prefs.auto_unsave_started_sessions;
@@ -105,10 +111,24 @@ export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Prom
   }
   if (!autoUnsaveEnabled || !stillThisUser()) return;
 
+  // "Started two hours ago" on the server's clock, not the device's: a
+  // device clock two hours fast deleted today's sessions, notes and server
+  // copy included, before they began. The preferences request just made is
+  // the sample; without one, or with the device implausibly far off, skip.
+  const clock = getServerClockSample();
+  if (!clock || clock.sampledAt < requestedAt) {
+    devLog('pruneStartedSessions: no fresh server clock sample, skipping');
+    return;
+  }
+  if (Math.abs(clock.skewMs) > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
+    devLog('pruneStartedSessions: device clock is off by', clock.skewMs, 'ms, skipping');
+    return;
+  }
+
   const sessions = await deps.readStoredSessions();
   if (sessions.length === 0 || !stillThisUser()) return;
 
-  const expiredIds = await findExpiredSessionIds(sessions, new Date());
+  const expiredIds = await findExpiredSessionIds(sessions, new Date(Date.now() + clock.skewMs));
 
   for (const id of expiredIds) {
     if (!stillThisUser()) return;

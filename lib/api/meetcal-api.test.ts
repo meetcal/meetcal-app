@@ -40,10 +40,17 @@ import {
   mapApiYearBests,
   mapPackageSchedule,
   MEET_PACKAGE_TIMEOUT_MS,
+  getServerClockSample,
+  getServerClockSkewMs,
+  getTrustedNow,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
   MeetCalApiError,
+  parseRetryAfterSeconds,
+  resetServerClockForTests,
   MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
+  normalizePlatform,
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
@@ -51,6 +58,8 @@ import {
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
+import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
+import { generateSessionId } from '@/utils/session';
 import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
@@ -534,6 +543,34 @@ describe('meetcal API mappers', () => {
     expect(formatApiTime('08:00:00')).toBe('8:00 AM');
   });
 
+  it('keeps a Gold schedule platform as Gold and canonicalizes casing, never remapping to Red', () => {
+    const schedule = mapApiSchedule([
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'RED ', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '60kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'gold', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '65kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'stars & stripes', session_id: 2, start_time: '10:00', weigh_in_time: '08:00', weight_class: '71kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: '  ', session_id: 3, start_time: '12:00', weigh_in_time: '10:00', weight_class: '81kg' },
+    ]);
+    const sessions = schedule[0].sessions;
+    expect(sessions[0].platforms.map((p) => p.platform)).toEqual(['Red', 'Gold']);
+    expect(sessions[1].platforms.map((p) => p.platform)).toEqual(['Stars & Stripes']);
+    expect(sessions[2].platforms.map((p) => p.platform)).toEqual([UNKNOWN_PLATFORM]);
+    expect(normalizePlatform('unknown-color')).toBe('Unknown-color');
+  });
+
+  it('gives Red and Gold athletes in one session distinct platforms and session ids', () => {
+    const base = {
+      member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
+      entry_total: 250, gender: 'Men', weight_class: '73kg', session_number: 4,
+    };
+    const red = mapApiAthlete({ ...base, session_platform: 'Red' });
+    const gold = mapApiAthlete({ ...base, member_id: '2', name: 'Athlete B', session_platform: 'Gold' });
+    expect(red.session?.platform).toBe('Red');
+    expect(gold.session?.platform).toBe('Gold');
+    expect(generateSessionId('Test Meet' as never, 4, red.session!.platform)).not.toBe(
+      generateSessionId('Test Meet' as never, 4, gold.session!.platform),
+    );
+  });
+
   it('keeps lifting-result age as the API category string', () => {
     expect(mapApiLiftingResult({
       meet: 'Test Meet',
@@ -917,23 +954,38 @@ describe('meetcal API client error and auth boundaries', () => {
     expect((failure as MeetCalApiError).status).toBe(500);
   });
 
-  it('asks for one session and platform of the roster and omits an absent filter', async () => {
+  it('asks for one session of the roster, matches the platform client-side, and omits an absent filter', async () => {
     const athlete = {
       member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
       entry_total: 250, gender: 'Men', weight_class: '73kg',
       session_number: 2, session_platform: 'Blue',
     };
-    const fetchMock = mockFetch(JSON.stringify([athlete]));
+    // A hand-entered row: the server's exact `platform=Blue` compare would
+    // miss it, the app's case-insensitive match must not.
+    const paddedAthlete = { ...athlete, member_id: '2', name: 'Athlete B', session_platform: 'BLUE ' };
+    const goldAthlete = { ...athlete, member_id: '3', name: 'Athlete C', session_platform: 'Gold' };
+    const fetchMock = mockFetch(JSON.stringify([athlete, paddedAthlete, goldAthlete]));
 
     const rows = await fetchApiAthletesWithSession('Test Meet' as never, 2, 'Blue');
-    expect(rows.map((row) => row.session)).toEqual([{ number: 2, platform: 'Blue' }]);
+    expect(rows.map((row) => row.name)).toEqual(['Athlete A', 'Athlete B']);
+    expect(rows.map((row) => row.session)).toEqual([
+      { number: 2, platform: 'Blue' },
+      { number: 2, platform: 'Blue' },
+    ]);
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
-      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2&platform=Blue',
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2',
     );
 
     await fetchApiAthletesWithSession('Test Meet' as never);
     expect((fetchMock.mock.calls[1] as unknown as [string])[0]).toBe(
       'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet',
+    );
+
+    // Platform without a session number cannot be narrowed client-side
+    // cheaply, so it still goes to the server as the canonical name.
+    await fetchApiAthletesWithSession('Test Meet' as never, undefined, 'Gold');
+    expect((fetchMock.mock.calls[2] as unknown as [string])[0]).toBe(
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&platform=Gold',
     );
 
     mockFetch(JSON.stringify({ athletes: [athlete] }));
@@ -1764,5 +1816,126 @@ describe('by-names latest_only', () => {
       const body = JSON.parse((call as unknown as [string, { body: string }])[1].body);
       expect(body.latest_only).toBe(true);
     }
+  });
+});
+
+describe('server clock and Retry-After', () => {
+  const originalFetch = global.fetch;
+
+  function mockFetchWithHeaders(
+    headers: Record<string, string>,
+    status = 200,
+    body = '[]',
+  ) {
+    const lookup = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    const fetchMock = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (name: string) => lookup.get(name.toLowerCase()) ?? null },
+      text: async () => body,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    resetServerClockForTests();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.useRealTimers();
+    resetServerClockForTests();
+  });
+
+  it('has no trusted clock before the first response', () => {
+    expect(getServerClockSample()).toBeNull();
+    expect(getServerClockSkewMs()).toBeNull();
+    expect(getTrustedNow()).toBeNull();
+  });
+
+  it('samples the skew from the Date header, so a fast device clock is corrected', async () => {
+    jest.useFakeTimers();
+    const serverNow = new Date('2026-06-20T12:00:00.000Z');
+    // The device is three hours ahead of the server.
+    jest.setSystemTime(serverNow.getTime() + 3 * 60 * 60 * 1000);
+    mockFetchWithHeaders({ Date: serverNow.toUTCString() });
+
+    await fetchApiMeets();
+
+    expect(getServerClockSkewMs()).toBe(-3 * 60 * 60 * 1000);
+    expect(getServerClockSample()).toEqual({
+      skewMs: -3 * 60 * 60 * 1000,
+      sampledAt: Date.now(),
+    });
+    expect(getTrustedNow()?.getTime()).toBe(serverNow.getTime());
+    expect(Math.abs(getServerClockSkewMs() ?? 0)).toBeGreaterThan(MAX_PLAUSIBLE_CLOCK_SKEW_MS);
+  });
+
+  it('keeps the latest sample and ignores a missing or unparseable Date', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:30 GMT' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({ Date: 'not a date' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({});
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:10 GMT' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(10_000);
+  });
+
+  it('samples the clock from an error response too', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:01:00 GMT' }, 500, 'boom');
+
+    await expect(fetchApiMeets()).rejects.toBeInstanceOf(MeetCalApiError);
+    expect(getServerClockSkewMs()).toBe(60_000);
+  });
+
+  it('attaches Retry-After seconds to a 429', async () => {
+    mockFetchWithHeaders({ 'Retry-After': '3' }, 429, '');
+
+    const failure = await fetchApiResultsByNames(['Athlete A']).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(429);
+    expect((failure as MeetCalApiError).retryAfterSeconds).toBe(3);
+  });
+
+  it('turns an HTTP-date Retry-After into seconds from now and leaves junk undefined', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ 'Retry-After': 'Sat, 20 Jun 2026 12:00:02 GMT' }, 503, '');
+    const dated = await fetchApiMeets().catch((error: unknown) => error);
+    expect((dated as MeetCalApiError).retryAfterSeconds).toBe(2);
+
+    mockFetchWithHeaders({ 'Retry-After': 'soon' }, 503, '');
+    const junk = await fetchApiMeets().catch((error: unknown) => error);
+    expect((junk as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+
+    mockFetchWithHeaders({}, 503, '');
+    const none = await fetchApiMeets().catch((error: unknown) => error);
+    expect((none as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+  });
+
+  it('parses Retry-After values', () => {
+    const now = Date.parse('2026-06-20T12:00:00.000Z');
+    expect(parseRetryAfterSeconds('5', now)).toBe(5);
+    expect(parseRetryAfterSeconds(' 0 ', now)).toBe(0);
+    expect(parseRetryAfterSeconds('-1', now)).toBeUndefined();
+    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 11:59:00 GMT', now)).toBe(0);
+    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 12:00:10 GMT', now)).toBe(10);
+    expect(parseRetryAfterSeconds('', now)).toBeUndefined();
+    expect(parseRetryAfterSeconds(null, now)).toBeUndefined();
+    expect(parseRetryAfterSeconds(undefined, now)).toBeUndefined();
   });
 });

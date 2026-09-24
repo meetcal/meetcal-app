@@ -47,7 +47,10 @@ export function normalizeStoredSession(value: unknown): SavedSession | null {
   if (
     typeof row.id !== 'string' || row.id.trim().length === 0 ||
     typeof row.meet !== 'string' || row.meet.trim().length === 0 ||
-    !Number.isInteger(sessionNumber) || sessionNumber < 0 ||
+    // Session numbers start at 1: the API's validator treats 0 as "no
+    // session assigned", and `isLiftResult` rejects it too. A stored 0 has no
+    // session to navigate to and would never match a schedule row.
+    !Number.isInteger(sessionNumber) || sessionNumber < 1 ||
     typeof row.platform !== 'string' || row.platform.trim().length === 0
   ) {
     return null;

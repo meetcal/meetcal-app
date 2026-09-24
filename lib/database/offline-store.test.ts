@@ -18,14 +18,23 @@ import {
   getSessionAthletesFromMeetCache,
   initStore,
   markMeetExplicitlyDownloaded,
+  pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
   saveAthleteHistory,
+  saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 
 const mockStorage = new Map<string, string>();
+
+// Destructive expiry runs on the server's clock. By default the server
+// agrees with the device; tests that care override this.
+let mockTrustedNow: () => Date | null = () => new Date();
+jest.mock("@/lib/api/meetcal-api", () => ({
+  getTrustedNow: () => mockTrustedNow(),
+}));
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -1114,5 +1123,504 @@ describe("lifting results manifest bounds", () => {
     await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
       expect.objectContaining({ name: "Jane Doe", total: 200 }),
     ]);
+  });
+});
+
+describe("batched athlete history writes", () => {
+  const HISTORY_PREFIX = "meetcal_athlete_history_";
+  const row = (name: string, date: string, total = 200) =>
+    ({ id: 1, event_id: "evt", meet: "Meet A", date, name, total }) as any;
+  const entries = (count: number, date = "2025-01-01") =>
+    Array.from({ length: count }, (_, i) => ({
+      name: `Athlete ${i + 1}`,
+      results: [row(`Athlete ${i + 1}`, date)],
+    }));
+  const writeCalls = () => ({
+    multiSet: (AsyncStorage.multiSet as jest.Mock).mock.calls.length,
+    multiRemove: (AsyncStorage.multiRemove as jest.Mock).mock.calls.length,
+    setItem: (AsyncStorage.setItem as jest.Mock).mock.calls.length,
+    removeItem: (AsyncStorage.removeItem as jest.Mock).mock.calls.length,
+  });
+  const historyKeys = () =>
+    Array.from(mockStorage.keys()).filter((k) => k.startsWith(HISTORY_PREFIX)).sort();
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("writes a 40-athlete batch with one multiSet, no setItem and no per-athlete remove", async () => {
+    // Before: 40 athletes cost 40 manifest getItems, 40 chunk setItems, 40
+    // verify getItems and 40 manifest setItems = 80 writes, each an iOS
+    // manifest.json rewrite. After: one multiSet.
+    await expect(saveAthleteHistoryBatch(entries(40))).resolves.toBe(40);
+
+    expect(writeCalls()).toEqual({ multiSet: 1, multiRemove: 0, setItem: 0, removeItem: 0 });
+    expect(historyKeys()).toHaveLength(80);
+    await expect(getAllCachedLiftingResultsForAthlete("Athlete 40")).resolves.toEqual([
+      expect.objectContaining({ name: "Athlete 40", date: "2025-01-01" }),
+    ]);
+  });
+
+  it("writes nothing at all when the batch is byte-identical to what is stored", async () => {
+    await saveAthleteHistoryBatch(entries(40));
+    jest.clearAllMocks();
+
+    // The TTL refresh re-downloads unchanged history; it must not rewrite it.
+    await expect(saveAthleteHistoryBatch(entries(40))).resolves.toBe(0);
+
+    expect(writeCalls()).toEqual({ multiSet: 0, multiRemove: 0, setItem: 0, removeItem: 0 });
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+
+  it("rewrites only the athletes whose history changed, in one multiSet and one multiRemove", async () => {
+    await saveAthleteHistoryBatch(entries(40));
+    jest.clearAllMocks();
+
+    const changed = entries(40);
+    changed[4] = { name: "Athlete 5", results: [row("Athlete 5", "2026-02-01")] };
+    changed[9] = { name: "Athlete 10", results: [row("Athlete 10", "2026-02-01")] };
+    await expect(saveAthleteHistoryBatch(changed)).resolves.toBe(2);
+
+    expect(writeCalls()).toEqual({ multiSet: 1, multiRemove: 1, setItem: 0, removeItem: 0 });
+    const [pairs] = (AsyncStorage.multiSet as jest.Mock).mock.calls[0];
+    // 2 chunks + 2 manifests, chunks before manifests.
+    expect(pairs.map(([key]: [string, string]) => key)).toEqual([
+      `${HISTORY_PREFIX}athlete 5__chunk_0_g1`,
+      `${HISTORY_PREFIX}athlete 10__chunk_0_g1`,
+      `${HISTORY_PREFIX}athlete 5`,
+      `${HISTORY_PREFIX}athlete 10`,
+    ]);
+    // The previous generation's chunks are gone, nothing else was touched.
+    expect((AsyncStorage.multiRemove as jest.Mock).mock.calls[0][0]).toEqual([
+      `${HISTORY_PREFIX}athlete 5__chunk_0`,
+      `${HISTORY_PREFIX}athlete 10__chunk_0`,
+    ]);
+    expect(historyKeys()).toHaveLength(80);
+    await expect(getAllCachedLiftingResultsForAthlete("Athlete 5")).resolves.toEqual([
+      expect.objectContaining({ date: "2026-02-01" }),
+    ]);
+    await expect(getAllCachedLiftingResultsForAthlete("Athlete 6")).resolves.toEqual([
+      expect.objectContaining({ date: "2025-01-01" }),
+    ]);
+  });
+
+  it("removes the old chunks only after the new manifest is written", async () => {
+    await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2025-01-01")]);
+    jest.clearAllMocks();
+
+    await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2026-01-01")]);
+
+    const multiSetOrder = (AsyncStorage.multiSet as jest.Mock).mock.invocationCallOrder[0];
+    const multiRemoveOrder = (AsyncStorage.multiRemove as jest.Mock).mock.invocationCallOrder[0];
+    expect(multiSetOrder).toBeLessThan(multiRemoveOrder);
+    const manifest = JSON.parse(mockStorage.get(`${HISTORY_PREFIX}jane doe`) ?? "null");
+    expect(manifest).toEqual({ format: "deflate-base64-chunks-v1", chunks: 1, generation: 1 });
+    expect(historyKeys()).toEqual([
+      `${HISTORY_PREFIX}jane doe`,
+      `${HISTORY_PREFIX}jane doe__chunk_0_g1`,
+    ]);
+  });
+
+  it("keeps the previous copy readable when the batch write is rejected", async () => {
+    await saveAthleteHistoryBatch(entries(3));
+    const before = new Map(mockStorage);
+    jest.clearAllMocks();
+    (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(saveAthleteHistoryBatch(entries(3, "2026-06-01"))).rejects.toThrow("SQLITE_FULL");
+
+    // The old manifests point at the old chunks, which were never removed.
+    for (const [key, value] of before) {
+      expect(mockStorage.get(key)).toBe(value);
+    }
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    for (const name of ["Athlete 1", "Athlete 2", "Athlete 3"]) {
+      await expect(getAllCachedLiftingResultsForAthlete(name)).resolves.toEqual([
+        expect.objectContaining({ name, date: "2025-01-01" }),
+      ]);
+    }
+  });
+
+  it("restores the previous manifest when a chunk did not persist", async () => {
+    await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2025-01-01")]);
+    const previousManifest = mockStorage.get(`${HISTORY_PREFIX}jane doe`);
+    // The native layer reports success but the chunk is not there on read-back.
+    (AsyncStorage.multiSet as jest.Mock).mockImplementationOnce(
+      async (pairs: [string, string][]) => {
+        pairs
+          .filter(([key]) => !key.includes("__chunk_"))
+          .forEach(([key, value]) => mockStorage.set(key, value));
+      },
+    );
+
+    await expect(
+      saveAthleteHistory("Jane Doe", [row("Jane Doe", "2026-01-01")]),
+    ).rejects.toThrow(/Chunk 0 failed to persist/);
+
+    expect(mockStorage.get(`${HISTORY_PREFIX}jane doe`)).toBe(previousManifest);
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
+      expect.objectContaining({ date: "2025-01-01" }),
+    ]);
+  });
+
+  it("does not leave a manifest behind when a first write is rejected", async () => {
+    (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(saveAthleteHistory("New Athlete", [row("New Athlete", "2026-01-01")])).rejects.toThrow();
+
+    await expect(findAthleteNamesWithoutHistory(["New Athlete"])).resolves.toEqual(["New Athlete"]);
+  });
+
+  it("collapses two spellings of one name into a single write, the last winning", async () => {
+    await saveAthleteHistoryBatch([
+      { name: "Jane Doe", results: [row("Jane Doe", "2025-01-01")] },
+      { name: "  jane   DOE ", results: [row("Jane Doe", "2026-01-01")] },
+      { name: "   ", results: [row("", "2026-01-01")] },
+    ]);
+
+    expect(historyKeys()).toEqual([
+      `${HISTORY_PREFIX}jane doe`,
+      `${HISTORY_PREFIX}jane doe__chunk_0`,
+    ]);
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
+      expect.objectContaining({ date: "2026-01-01" }),
+    ]);
+  });
+
+  it("still reads a pre-generation manifest and its `__chunk_<n>` keys", async () => {
+    await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2025-01-01")]);
+    expect(mockStorage.get(`${HISTORY_PREFIX}jane doe`)).toBe(
+      '{"format":"deflate-base64-chunks-v1","chunks":1}',
+    );
+    expect(mockStorage.has(`${HISTORY_PREFIX}jane doe__chunk_0`)).toBe(true);
+
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toHaveLength(1);
+  });
+
+  it("rejects a manifest whose generation is not a non-negative integer", async () => {
+    mockStorage.set(
+      `${HISTORY_PREFIX}jane doe`,
+      '{"format":"deflate-base64-chunks-v1","chunks":1,"generation":1.5}',
+    );
+    mockStorage.set(`${HISTORY_PREFIX}jane doe__chunk_0`, "irrelevant");
+
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([]);
+  });
+
+  it("writes meet results through the same commit-point path", async () => {
+    await saveMeetLiftingResults("Meet A", [row("Jane Doe", "2025-01-01")]);
+    jest.clearAllMocks();
+
+    await saveMeetLiftingResults("Meet A", [row("Jane Doe", "2025-01-01")]);
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+
+    await saveMeetLiftingResults("Meet A", [row("Jane Doe", "2026-01-01")]);
+    expect(AsyncStorage.multiSet).toHaveBeenCalledTimes(1);
+    await expect(getMeetLiftingResults("Meet A" as never)).resolves.toEqual([
+      expect.objectContaining({ date: "2026-01-01" }),
+    ]);
+  });
+});
+
+describe("athlete history pruning", () => {
+  const HISTORY_PREFIX = "meetcal_athlete_history_";
+  const BESTS_PREFIX = "meetcal_athlete_bests_";
+  const row = (name: string) =>
+    ({ id: 1, event_id: "evt", meet: "Meet A", date: "2025-01-01", name, total: 200 }) as any;
+  const athlete = (meet: string, name: string) => ({
+    memberId: `${meet}-${name}`,
+    name,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+  });
+  const keysFor = (name: string) =>
+    Array.from(mockStorage.keys()).filter(
+      (k) => k.startsWith(`${HISTORY_PREFIX}${name}`) || k === `${BESTS_PREFIX}${name}`,
+    );
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("drops the history of athletes only the expired meet held and keeps shared athletes", async () => {
+    await saveMeetAthletes("Expired", [athlete("Expired", "Only Expired"), athlete("Expired", "Shared")] as never);
+    await saveMeetAthletes("Kept", [athlete("Kept", "Shared"), athlete("Kept", "Only Kept")] as never);
+    await saveAthleteHistoryBatch(
+      ["Only Expired", "Shared", "Only Kept"].map((name) => ({ name, results: [row(name)] })),
+    );
+    await saveAthleteBestsBatch({
+      "Only Expired": { snatch_best: 1, cj_best: 2, total: 3 },
+      Shared: { snatch_best: 1, cj_best: 2, total: 3 },
+    });
+    await markMeetExplicitlyDownloaded("Expired" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Kept" as never, true, { endDate: "2099-01-01" });
+
+    await clearExpiredDownloadedMeets();
+
+    expect(keysFor("only expired")).toEqual([]);
+    expect(keysFor("shared").sort()).toEqual([
+      `${BESTS_PREFIX}shared`,
+      `${HISTORY_PREFIX}shared`,
+      `${HISTORY_PREFIX}shared__chunk_0`,
+    ]);
+    expect(keysFor("only kept")).toHaveLength(2);
+    await expect(getAllCachedLiftingResultsForAthlete("Shared")).resolves.toHaveLength(1);
+    await expect(getMeetData("Kept" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Shared" }), expect.objectContaining({ name: "Only Kept" })],
+    });
+  });
+
+  it("removes exclusive history in bounded multiRemove batches", async () => {
+    const names = Array.from({ length: 600 }, (_, i) => `Athlete ${i + 1}`);
+    await saveMeetAthletes("Big", names.map((name) => athlete("Big", name)) as never);
+    await saveAthleteHistoryBatch(names.map((name) => ({ name, results: [row(name)] })));
+    jest.clearAllMocks();
+
+    await clearMeetData("Big" as never);
+
+    // 1200 history keys (manifest + chunk each): every remove is capped at 500.
+    const removes = (AsyncStorage.multiRemove as jest.Mock).mock.calls.map(([keys]) => keys.length);
+    expect(Math.max(...removes)).toBeLessThanOrEqual(500);
+    expect(Array.from(mockStorage.keys()).filter((k) => k.startsWith(HISTORY_PREFIX))).toEqual([]);
+  });
+
+  it("does not read other rosters when the cleared meet's athletes have no history", async () => {
+    await saveMeetAthletes("Browsed", [athlete("Browsed", "Nobody")] as never);
+    await saveMeetAthletes("Downloaded", [athlete("Downloaded", "Somebody")] as never);
+    await saveAthleteHistory("Somebody", [row("Somebody")]);
+    jest.clearAllMocks();
+
+    await clearMeetData("Browsed" as never);
+
+    const rosterReads = (AsyncStorage.getItem as jest.Mock).mock.calls.filter(
+      ([key]) => key === "meetcal_athletes_Downloaded",
+    );
+    expect(rosterReads).toHaveLength(0);
+    expect(keysFor("somebody")).toHaveLength(2);
+  });
+
+  it("skips per-meet pruning when every meet is being cleared", async () => {
+    await saveMeetAthletes("A", [athlete("A", "One")] as never);
+    await saveMeetAthletes("B", [athlete("B", "Two")] as never);
+    await saveAthleteHistoryBatch([{ name: "One", results: [row("One")] }, { name: "Two", results: [row("Two")] }]);
+    jest.clearAllMocks();
+
+    await clearAllMeetData();
+
+    // `clearAllAthleteHistory` follows in every caller; no roster reads here.
+    expect(keysFor("one")).toHaveLength(2);
+    expect(keysFor("two")).toHaveLength(2);
+  });
+
+  it("prunes history of athletes on no stored roster, keeping the caller's names", async () => {
+    await saveMeetAthletes("Kept", [athlete("Kept", "On Roster")] as never);
+    await saveAthleteHistoryBatch(
+      ["On Roster", "Orphan", "Incoming"].map((name) => ({ name, results: [row(name)] })),
+    );
+    await saveAthleteBestsBatch({ Orphan: { snatch_best: 1, cj_best: 2, total: 3 } });
+    // A chunk orphaned by an interrupted write of an orphaned athlete.
+    mockStorage.set(`${HISTORY_PREFIX}orphan__chunk_3_g2`, "stale");
+    jest.clearAllMocks();
+
+    await expect(pruneOrphanedAthleteHistory({ keepNames: ["Incoming"] })).resolves.toBe(4);
+
+    expect(keysFor("orphan")).toEqual([]);
+    expect(keysFor("on roster")).toHaveLength(2);
+    expect(keysFor("incoming")).toHaveLength(2);
+    expect(AsyncStorage.getAllKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 0 without reading rosters when no history is stored", async () => {
+    await saveMeetAthletes("Kept", [athlete("Kept", "On Roster")] as never);
+    jest.clearAllMocks();
+
+    await expect(pruneOrphanedAthleteHistory()).resolves.toBe(0);
+
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("downloaded meet expiry on the server's clock", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+  });
+  const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+    mockTrustedNow = () => new Date();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockTrustedNow = () => new Date();
+  });
+
+  it("leaves an ended meet alone when there is no server clock sample yet", async () => {
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    mockTrustedNow = () => null;
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(true);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Ended" })],
+    });
+  });
+
+  it("clears an ended meet once the server clock says it has ended", async () => {
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    mockTrustedNow = () => new Date();
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(false);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+
+  it("keeps today's meet when only the device clock, a day ahead, says it ended", async () => {
+    const realNow = Date.now();
+    await saveMeetAthletes("Today", [athlete("Today")] as never);
+    await markMeetExplicitlyDownloaded("Today" as never, true, { endDate: isoDate(realNow) });
+    jest.useFakeTimers();
+    jest.setSystemTime(realNow + 2 * DAY_MS);
+    // The last response's Date header put the server at real time.
+    mockTrustedNow = () => new Date(realNow);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Today")).resolves.toBe(true);
+    await expect(getMeetData("Today" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Today" })],
+    });
+  });
+
+  it("keeps sweeping when one meet fails to clear", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    for (const meet of ["Bad", "Good"]) {
+      await saveMeetAthletes(meet, [athlete(meet)] as never);
+      await markMeetExplicitlyDownloaded(meet as never, true, { endDate: "2020-01-01" });
+    }
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realRemove = removeItem.getMockImplementation();
+    removeItem.mockImplementation(async (key: string) => {
+      if (key === "meetcal_athletes_Bad") throw new Error("I/O error");
+      mockStorage.delete(key);
+    });
+
+    try {
+      await clearExpiredDownloadedMeets();
+    } finally {
+      removeItem.mockImplementation(realRemove);
+    }
+
+    await expect(getMeetData("Good" as never)).resolves.toMatchObject({ athletes: [] });
+    jest.restoreAllMocks();
+  });
+
+  async function isMeetExplicitlyDownloadedFor(meet: string): Promise<boolean> {
+    return (await getExplicitlyDownloadedMeetIds()).has(meet);
+  }
+});
+
+describe("clearMeetData failure order", () => {
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: {
+      number: 1,
+      platform: "Red",
+      date: "2099-06-20",
+      startTime: "9:00 AM",
+      weighInTime: "7:00 AM",
+    },
+  });
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("un-marks the download before removing anything, and rejects when a remove fails", async () => {
+    await saveMeetAthletes("Meet A", [athlete("Meet A")] as never);
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" });
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realRemove = removeItem.getMockImplementation();
+    removeItem.mockImplementation(async (key: string) => {
+      if (key === "meetcal_athletes_Meet A") throw new Error("I/O error");
+      mockStorage.delete(key);
+    });
+
+    try {
+      await expect(clearMeetData("Meet A" as never)).rejects.toThrow("I/O error");
+    } finally {
+      removeItem.mockImplementation(realRemove);
+    }
+
+    // Whatever is left on disk, the meet is no longer presented as downloaded.
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set());
+  });
+
+  it("rejects when the session caches cannot be removed", async () => {
+    await saveMeetAthletes("Meet A", [athlete("Meet A")] as never);
+    (AsyncStorage.multiRemove as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+    await expect(clearMeetData("Meet A" as never)).rejects.toThrow("SQLITE_BUSY");
+  });
+
+  it("lands both of two concurrent download marks", async () => {
+    await Promise.all([
+      markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" }),
+      markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" }),
+    ]);
+
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set(["Meet A", "Meet B"]));
+  });
+
+  it("keeps marking after an earlier mark's write failed", async () => {
+    (AsyncStorage.setItem as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error("SQLITE_FULL");
+    });
+    await expect(
+      markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" }),
+    ).rejects.toThrow("SQLITE_FULL");
+
+    await markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" });
+
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set(["Meet B"]));
   });
 });
