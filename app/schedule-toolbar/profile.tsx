@@ -12,11 +12,7 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
-import { clearCachedMeetsList } from "@/lib/database/meet-manager";
-import {
-  clearAllAthleteHistory,
-  clearAllMeetData,
-} from "@/lib/database/offline-store";
+import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
@@ -158,15 +154,11 @@ export default function ProfileScreen() {
 
     setIsClearingCache(true);
     try {
-      await clearAllMeetData();
-      await clearAllAthleteHistory();
-      await clearCachedMeetsList();
-      await refreshAvailableMeets();
-      await forceSync();
-      showToast({
-        type: "success",
-        message: "Cached meet data has been cleared and refreshed.",
+      const outcome = await clearCachedMeetData({
+        refreshAvailableMeets,
+        refreshSelectedMeet: forceSync,
       });
+      showToast(clearCacheToast(outcome));
     } catch (error) {
       console.error("Error clearing cache:", error);
       showToast({ type: "error", message: "Failed to clear cache. Please try again." });

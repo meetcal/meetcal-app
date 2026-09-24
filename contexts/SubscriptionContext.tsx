@@ -6,6 +6,7 @@ import { OneSignal } from 'react-native-onesignal';
 import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { devLog, devWarn } from '@/lib/logger';
+import { SUBSCRIPTION_ENTITLEMENT_ID } from '@/lib/premium-intent';
 
 /**
  * `setSubscribed` and `checkSubscriptionStatus` are provider internals, not
@@ -261,12 +262,12 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
     }
 
-    const hasActiveEntitlement = customerInfo.entitlements.active['Subscriptions'] != null;
+    const hasActiveEntitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID] != null;
     let subscriptionType: 'free' | 'quarterly' | 'lifetime' = 'free';
 
     if (hasActiveEntitlement) {
       // Check the specific product identifier or entitlement to determine type
-      const entitlement = customerInfo.entitlements.active['Subscriptions'];
+      const entitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID];
       if (entitlement?.productIdentifier.includes('lifetime')) {
         subscriptionType = 'lifetime';
       } else {

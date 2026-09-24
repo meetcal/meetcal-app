@@ -17,6 +17,11 @@ import {
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 import { devLog } from "@/lib/logger";
 
+/** Only a confirmed paid plan counts; "free" and "unknown" do not. */
+export function isSubscribedStatus(status: SubscriptionStatus): boolean {
+  return status === "quarterly" || status === "lifetime";
+}
+
 interface NotificationSettingsProps {
   subscriptionStatus: SubscriptionStatus;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
@@ -30,16 +35,28 @@ export function NotificationSettings({
 }: NotificationSettingsProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Auto-enable is a first-run default, not a policy that overrides the user.
+  // It used to fire whenever reminders were off: every visit after the user
+  // turned them off switched them back on, and turning them off on the same
+  // visit re-ran the effect with a stale `handleToggle` that wrote "true"
+  // after the reminders had already been cancelled. Only a key that has never
+  // been written is eligible.
+  const [isNeverWritten, setIsNeverWritten] = useState(false);
   const [autoEnableAttempted, setAutoEnableAttempted] = useState(false);
 
-  const isSubscribed = subscriptionStatus !== "free";
+  // Fail closed: "unknown" (no cache, no network) is not a subscription, so
+  // it must not auto-enable reminders or trigger the OS permission prompt.
+  const isSubscribed = isSubscribedStatus(subscriptionStatus);
 
   useEffect(() => {
     let isCancelled = false;
     const load = async () => {
       try {
         const enabled = await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY);
-        if (!isCancelled) setIsEnabled(enabled === "true");
+        if (!isCancelled) {
+          setIsEnabled(enabled === "true");
+          setIsNeverWritten(enabled === null);
+        }
       } catch (error) {
         console.error("Error loading notification settings:", error);
         if (!isCancelled) setIsEnabled(false);
@@ -55,17 +72,17 @@ export function NotificationSettings({
     };
   }, []);
 
-  // Automatically enable reminders if user becomes subscribed and reminders are currently off
+  // Default reminders on, once, for a subscriber who has never chosen.
   useEffect(() => {
-    if (isSubscribed && !isEnabled && !isLoading && !autoEnableAttempted) {
+    if (isSubscribed && isNeverWritten && !isLoading && !autoEnableAttempted) {
       devLog(
         "Subscription active and reminders off, attempting to enable automatically.",
       );
       setAutoEnableAttempted(true);
-      handleToggle();
+      void handleToggle({ auto: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubscribed, isEnabled, isLoading, autoEnableAttempted]);
+  }, [isSubscribed, isNeverWritten, isLoading, autoEnableAttempted]);
 
   const requestPermissions = async () => {
     if (Platform.OS === "android") {
@@ -89,7 +106,20 @@ export function NotificationSettings({
     return finalStatus === "granted";
   };
 
-  const handleToggle = async () => {
+  /**
+   * A denied OS permission during the first-run auto-enable is the user's
+   * answer. Record it as "off" so the auto-enable never re-runs: it only
+   * fires while the key has never been written, and writing only on success
+   * used to re-prompt (and pop "Permission Required") on every Profile visit.
+   * No alert here: the user did not tap anything.
+   */
+  const recordDeclinedAutoEnable = async () => {
+    setIsEnabled(false);
+    setIsNeverWritten(false);
+    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+  };
+
+  const handleToggle = async ({ auto = false }: { auto?: boolean } = {}) => {
     // 1. Check auth first
     const authResult = requireAuth({
       feature: "session-reminders",
@@ -137,12 +167,19 @@ export function NotificationSettings({
         if (!hasCheckedNotifications) {
           const permissionGranted = await requestPermissions();
           await AsyncStorage.setItem("hasCheckedNotifications", "true");
-          if (!permissionGranted) return;
+          if (!permissionGranted) {
+            if (auto) await recordDeclinedAutoEnable();
+            return;
+          }
         } else {
           // We've shown the prompt before, but let's check permissions again
           const { status: existingStatus } =
             await Notifications.getPermissionsAsync();
           if (existingStatus !== "granted") {
+            if (auto) {
+              await recordDeclinedAutoEnable();
+              return;
+            }
             Alert.alert(
               "Permission Required",
               "Please enable notifications in your device settings to receive session reminders.",
@@ -171,6 +208,7 @@ export function NotificationSettings({
 
       // Update the UI state first for better UX
       setIsEnabled(newEnabledState);
+      setIsNeverWritten(false);
 
       // Save to AsyncStorage
       await AsyncStorage.setItem(
@@ -202,7 +240,7 @@ export function NotificationSettings({
       label="Session Reminders"
       description="Get notified 1 hour before your sessions"
       value={isEnabled && isSubscribed}
-      onToggle={handleToggle}
+      onToggle={() => void handleToggle()}
       showPremiumBadge={!isSubscribed}
       switchDisabled={!isSubscribed}
       isLoading={isLoading}

@@ -1,21 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 const mockGetJsonArray = jest.fn();
 const mockFetchApiWsoList = jest.fn();
 const mockFetchApiWsoAgeGroups = jest.fn();
-const mockGetOfflineCache = jest.fn();
-const mockSetOfflineCache = jest.fn();
-const mockReplaceOfflineCache = jest.fn();
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
-}));
-jest.mock("@/lib/database/offline-cache", () => ({
-  OFFLINE_CACHE_KEYS: {
-    wsoRecords: "@offline_cache/wso_records",
-    wsoRecordsFiltered: "@offline_cache/wso_records_filtered",
-  },
-  getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
-  setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
-  replaceOfflineCache: (...args: unknown[]) => mockReplaceOfflineCache(...args),
 }));
 
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
@@ -36,20 +25,32 @@ afterAll(() => {
 import {
   downloadWSORecordsForOffline,
   fetchWSOAgeGroups,
+  MAX_CACHED_WSO_RECORD_VIEWS,
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
+import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
+
+const WSO_KEY = OFFLINE_CACHE_KEYS.wsoRecords;
+const FILTERED_KEY = OFFLINE_CACHE_KEYS.wsoRecordsFiltered;
+
+/** Writes a raw offline-cache entry, as an earlier app version may have. */
+async function seed(key: string, data: unknown, lastSynced: number) {
+  await AsyncStorage.setItem(key, JSON.stringify({ data, lastSynced }));
+}
+
+// The real offline cache runs over the AsyncStorage mock from jest.setup.js.
+beforeEach(async () => {
+  await AsyncStorage.clear();
+});
 
 /** One WSO's records, unfiltered, as the offline download stores them. */
 async function fetchWSORecords(wso: string): Promise<RecordsData> {
   mockFetchApiWsoList.mockResolvedValueOnce([wso]);
   await downloadWSORecordsForOffline();
-  const [, stored] = mockReplaceOfflineCache.mock.calls.at(-1) as [
-    string,
-    Record<string, RecordsData>,
-  ];
-  return stored[wso];
+  const stored = await getOfflineCache<Record<string, RecordsData>>(WSO_KEY);
+  return stored!.data[wso];
 }
 
 const row = (overrides: Record<string, unknown>) => ({
@@ -66,11 +67,6 @@ const row = (overrides: Record<string, unknown>) => ({
 describe("WSO records mapping and list", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
-      data,
-      lastSynced: 1,
-    }));
-    mockGetOfflineCache.mockResolvedValue(null);
   });
 
   it("drops rows without an age category or weight class and skips unknown genders", async () => {
@@ -106,17 +102,13 @@ describe("WSO records mapping and list", () => {
       data: ["Carolina", "Ohio"],
     });
 
-    mockGetOfflineCache.mockResolvedValueOnce({
-      data: { Ohio: {}, carolina: {} },
-      lastSynced: 1,
-    });
+    await expect(wsoListResource.loadCached()).resolves.toBeNull();
+
+    await seed(WSO_KEY, { Ohio: {}, carolina: {} }, 1);
     await expect(wsoListResource.loadCached()).resolves.toEqual({
       data: ["carolina", "Ohio"],
       lastUpdatedAt: 1,
     });
-
-    mockGetOfflineCache.mockResolvedValueOnce(null);
-    await expect(wsoListResource.loadCached()).resolves.toBeNull();
   });
 });
 
@@ -124,19 +116,15 @@ describe("wsoRecordsResource offline cache", () => {
   const senior = { Men: [{ weightClass: "89kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [{ weightClass: "71kg", snatchRecord: 4, cjRecord: 5, totalRecord: 9 }] };
   const junior = { Men: [], Women: [{ weightClass: "64kg", snatchRecord: 6, cjRecord: 7, totalRecord: 13 }] };
   const full = { Carolina: { Senior: senior, Junior: junior } };
-  let store: Record<string, { data: unknown; lastSynced: number } | null>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
-    store = {
-      "@offline_cache/wso_records": { data: full, lastSynced: 10 },
-      "@offline_cache/wso_records_filtered": null,
-    };
-    mockGetOfflineCache.mockImplementation(async (key: string) => store[key] ?? null);
-    mockSetOfflineCache.mockImplementation(async (key: string, data: unknown) => {
-      store[key] = { data, lastSynced: 20 };
-      return store[key];
-    });
+    jest.spyOn(Date, "now").mockReturnValue(20);
+    await seed(WSO_KEY, full, 10);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("derives a filtered view from the full WSO cache when no filtered copy exists", async () => {
@@ -149,10 +137,8 @@ describe("wsoRecordsResource offline cache", () => {
 
   it("prefers the exact filtered copy over the derived view", async () => {
     const filtered = { Senior: { Men: [{ weightClass: "96kg", snatchRecord: 9, cjRecord: 9, totalRecord: 18 }], Women: [] } };
-    store["@offline_cache/wso_records_filtered"] = {
-      data: { "Carolina:Senior:Men": filtered },
-      lastSynced: 15,
-    };
+    // The shape the filtered cache held before it was bounded.
+    await seed(FILTERED_KEY, { "Carolina:Senior:Men": filtered }, 15);
     await expect(wsoRecordsResource.loadCached("Carolina", "Senior", "Men")).resolves.toEqual({
       data: filtered,
       lastUpdatedAt: 15,
@@ -168,16 +154,30 @@ describe("wsoRecordsResource offline cache", () => {
 
     // The full copy is what every other filter falls back to offline; a
     // one-age-group subset written over it would hide the rest.
-    expect(store["@offline_cache/wso_records"]?.data).toEqual(full);
-    const filtered = store["@offline_cache/wso_records_filtered"]?.data as Record<string, unknown>;
-    expect(Object.keys(filtered)).toEqual(["Carolina:Senior:Men"]);
+    await expect(getOfflineCache(WSO_KEY)).resolves.toEqual({ data: full, lastSynced: 10 });
+    const stored = { Senior: { Men: [{ weightClass: "102kg", snatchRecord: 150, cjRecord: 180, totalRecord: 400 }], Women: [] } };
+    await expect(wsoRecordsResource.loadCached("Carolina", "Senior", "Men")).resolves.toEqual({
+      data: stored,
+      lastUpdatedAt: 20,
+    });
+  });
+
+  it(`keeps the ${MAX_CACHED_WSO_RECORD_VIEWS} most recently viewed filters`, async () => {
+    mockGetJsonArray.mockResolvedValue([row({ age_category: "Senior", gender: "Men" })]);
+    for (let i = 0; i <= MAX_CACHED_WSO_RECORD_VIEWS; i += 1) {
+      await wsoRecordsResource.revalidate(`WSO ${i}`, "Senior", "Men");
+    }
+    // Nothing cached for the evicted filter: not the view, and no full copy.
+    await expect(wsoRecordsResource.loadCached("WSO 0", "Senior", "Men")).resolves.toBeNull();
+    await expect(wsoRecordsResource.loadCached("WSO 1", "Senior", "Men")).resolves.not.toBeNull();
+    // The downloaded full copy is not part of the cap.
+    await expect(getOfflineCache(WSO_KEY)).resolves.toEqual({ data: full, lastSynced: 10 });
   });
 });
 
 describe("fetchWSOAgeGroups", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetOfflineCache.mockResolvedValue(null);
   });
 
   it("does not call the API for an empty WSO", async () => {
@@ -189,10 +189,11 @@ describe("fetchWSOAgeGroups", () => {
     mockFetchApiWsoAgeGroups.mockRejectedValue(new Error("down"));
     await expect(fetchWSOAgeGroups("Carolina")).rejects.toThrow();
 
-    mockGetOfflineCache.mockResolvedValue({
-      data: { Carolina: { Senior: { Men: [], Women: [] }, Junior: { Men: [], Women: [] } } },
-      lastSynced: 1,
-    });
+    await seed(
+      WSO_KEY,
+      { Carolina: { Senior: { Men: [], Women: [] }, Junior: { Men: [], Women: [] } } },
+      1,
+    );
     await expect(fetchWSOAgeGroups("Carolina")).resolves.toEqual(["Senior", "Junior"]);
   });
 
