@@ -485,15 +485,21 @@ export function tokenBelongsTo(token: string, userId: string): boolean {
 
 /**
  * The claims of a Clerk token that decide whether the API accepts it, for a
- * dev log after a 401: the issuer (which Clerk instance), `azp` (the web
+ * dev log after a 401: the raw header, the issuer (which Clerk instance), `azp` (the web
  * origin, absent on native sessions), `aud`, and seconds until expiry. Never
  * the token or its subject. Null when the payload is unreadable.
  */
 export function describeTokenClaims(
   token: string,
   nowMs: number = Date.now(),
-): { iss: unknown; azp: unknown; aud: unknown; expiresInSeconds: number | null } | null {
-  const payload = token.split('.')[1];
+): {
+  header: string | null;
+  iss: unknown;
+  azp: unknown;
+  aud: unknown;
+  expiresInSeconds: number | null;
+} | null {
+  const [headerPart, payload] = token.split('.');
   if (!payload) return null;
   const json = decodeBase64Url(payload);
   if (!json) return null;
@@ -501,6 +507,9 @@ export function describeTokenClaims(
     const claims: unknown = JSON.parse(json);
     if (!isRecord(claims)) return null;
     return {
+      // The raw header JSON (algorithm, key id, type): public metadata, and
+      // the part the API's `decode_header` has to parse.
+      header: headerPart ? decodeBase64Url(headerPart) : null,
       iss: claims.iss,
       azp: claims.azp,
       aud: claims.aud,

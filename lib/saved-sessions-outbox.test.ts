@@ -109,6 +109,7 @@ describe("describeTokenClaims", () => {
     const described = describeTokenClaims(token, 1_000_000_000);
 
     expect(described).toEqual({
+      header: '{"alg":"RS256"}',
       iss: "https://dev.clerk.test",
       azp: "https://meetcal.app",
       aud: undefined,
