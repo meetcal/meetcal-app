@@ -297,12 +297,24 @@ describe("AthleteItem session link", () => {
 
 describe("AthleteItem year bests", () => {
   it("stops the spinner and shows dashes when the bests request fails", async () => {
-    jest.mocked(getLastYearBests).mockRejectedValueOnce(new Error("timeout"));
+    // Rejected by the test once the request is in flight, not up front: the
+    // request starts from an idle callback (a 0ms timer here), and an
+    // already-rejected mock could settle inside the toggle's act() before the
+    // spinner was observed, so the test failed intermittently on CI.
+    let rejectBests!: (error: Error) => void;
+    jest
+      .mocked(getLastYearBests)
+      .mockImplementationOnce(() => new Promise((_, reject) => (rejectBests = reject)));
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     const tree = mountRow(makeProps({ isSubscribed: true }));
     await toggleRow(tree);
+    await settle(); // the idle callback runs; the request is now pending
+    expect(getLastYearBests).toHaveBeenCalledTimes(1);
     expect(spinnerCount(tree)).toBe(1);
 
+    await act(async () => {
+      rejectBests(new Error("timeout"));
+    });
     await settle();
 
     expect(getLastYearBests).toHaveBeenCalledWith("Jane Doe");
