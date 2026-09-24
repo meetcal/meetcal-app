@@ -3,6 +3,7 @@ const mockFetchApiWsoList = jest.fn();
 const mockFetchApiWsoAgeGroups = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
+const mockReplaceOfflineCache = jest.fn();
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
@@ -14,6 +15,7 @@ jest.mock("@/lib/database/offline-cache", () => ({
   },
   getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
+  replaceOfflineCache: (...args: unknown[]) => mockReplaceOfflineCache(...args),
 }));
 
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
@@ -32,11 +34,23 @@ afterAll(() => {
 });
 
 import {
+  downloadWSORecordsForOffline,
   fetchWSOAgeGroups,
-  fetchWSOList,
-  fetchWSORecords,
+  wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
+import type { RecordsData } from "@/types/records";
+
+/** One WSO's records, unfiltered, as the offline download stores them. */
+async function fetchWSORecords(wso: string): Promise<RecordsData> {
+  mockFetchApiWsoList.mockResolvedValueOnce([wso]);
+  await downloadWSORecordsForOffline();
+  const [, stored] = mockReplaceOfflineCache.mock.calls.at(-1) as [
+    string,
+    Record<string, RecordsData>,
+  ];
+  return stored[wso];
+}
 
 const row = (overrides: Record<string, unknown>) => ({
   age_category: "Senior",
@@ -49,7 +63,7 @@ const row = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-describe("fetchWSORecords", () => {
+describe("WSO records mapping and list", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
@@ -86,38 +100,23 @@ describe("fetchWSORecords", () => {
     expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });
   });
 
-  it("serves the cached WSO when the API fails and rethrows when there is none", async () => {
-    mockGetJsonArray.mockRejectedValue(new Error("down"));
-    const carolina = {
-      Senior: { Men: [{ weightClass: "89kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [] },
-      Junior: { Men: [], Women: [] },
-    };
-    mockGetOfflineCache.mockImplementation(async (key: string) =>
-      key === "@offline_cache/wso_records"
-        ? { data: { Carolina: carolina }, lastSynced: 1 }
-        : null,
-    );
-
-    await expect(fetchWSORecords("Carolina")).resolves.toEqual(carolina);
-    await expect(fetchWSORecords("Ohio")).rejects.toThrow("down");
-
-    mockGetOfflineCache.mockResolvedValue(null);
-    await expect(fetchWSORecords("Carolina")).rejects.toThrow("down");
-  });
-
-  it("lists WSOs from the API and falls back to the cached records' keys", async () => {
+  it("lists WSOs from the API, and from the cached records' keys, sorted", async () => {
     mockFetchApiWsoList.mockResolvedValueOnce(["Carolina", "Ohio"]);
-    await expect(fetchWSOList()).resolves.toEqual(["Carolina", "Ohio"]);
+    await expect(wsoListResource.revalidate()).resolves.toMatchObject({
+      data: ["Carolina", "Ohio"],
+    });
 
-    mockFetchApiWsoList.mockRejectedValue(new Error("down"));
     mockGetOfflineCache.mockResolvedValueOnce({
       data: { Ohio: {}, carolina: {} },
       lastSynced: 1,
     });
-    await expect(fetchWSOList()).resolves.toEqual(["carolina", "Ohio"]);
+    await expect(wsoListResource.loadCached()).resolves.toEqual({
+      data: ["carolina", "Ohio"],
+      lastUpdatedAt: 1,
+    });
 
     mockGetOfflineCache.mockResolvedValueOnce(null);
-    await expect(fetchWSOList()).rejects.toThrow("down");
+    await expect(wsoListResource.loadCached()).resolves.toBeNull();
   });
 });
 

@@ -8,7 +8,6 @@ import {
   setOfflineCache,
 } from './offline-cache';
 import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
-import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;
@@ -99,39 +98,18 @@ async function readFederationRecordsCache(federation: string) {
   return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-async function fetchRecordsFresh(
-  federation: string,
-  ageGroup?: string,
-  gender?: 'Men' | 'Women',
-): Promise<RecordsData> {
+async function fetchRecordsFresh(federation: string): Promise<RecordsData> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
     throw new Error('Offline');
   }
 
   const allRows = await fetchApiRecords();
-  const rows = allRows.filter(isCompleteRecordsRow).filter((row) => {
-    if (row.record_type !== federation) return false;
-    if (ageGroup && row.age_category !== ageGroup) return false;
-    if (gender && row.gender.toLowerCase() !== gender.toLowerCase()) return false;
-    return true;
-  });
+  const rows = allRows
+    .filter(isCompleteRecordsRow)
+    .filter((row) => row.record_type === federation);
 
   return mapRowsToRecordsData(rows);
-}
-
-async function fetchFederationsFresh(): Promise<string[]> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) {
-    throw new Error('Offline');
-  }
-
-  const rows = await fetchApiRecords();
-  return Array.from(
-    new Set(rows.filter(isCompleteRecordsRow).map((row) => row.record_type)),
-  ).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' }),
-  );
 }
 
 async function persistFederationRecords(federation: string, result: RecordsData) {
@@ -150,7 +128,7 @@ async function persistFederationRecords(federation: string, result: RecordsData)
  * One `/data/records` request, grouped by federation, and one write of the
  * whole cache once every federation has mapped. The old download listed
  * federations and then re-requested the same table once per federation, each
- * through `fetchRecords`, which falls back to the cached copy on failure — so
+ * through a browse fetcher that fell back to the cached copy on failure — so
  * a refresh whose requests failed still "succeeded". Rejects (leaving the
  * stored copy untouched) when offline, on an API error, or when the table
  * has no usable rows.
@@ -191,42 +169,6 @@ export const federationRecordsResource = createMutableResource<
   fetchFresh: (federation) => fetchRecordsFresh(federation),
   persistFresh: (data, federation) => persistFederationRecords(federation, data),
 });
-
-export async function fetchRecords(
-  federation: string = 'USAW',
-  ageGroup?: string,
-  gender?: 'Men' | 'Women'
-): Promise<RecordsData> {
-  try {
-    const result = await fetchRecordsFresh(federation, ageGroup, gender);
-    if (!ageGroup && !gender) {
-      await persistFederationRecords(federation, result);
-    }
-    return result;
-  } catch (error) {
-    const cached = await readFederationRecordsCache(federation);
-    if (cached?.data) {
-      return filterRecordsData(cached.data, ageGroup, gender);
-    }
-    throw error;
-  }
-}
-
-export async function fetchFederations(): Promise<string[]> {
-  try {
-    return await fetchFederationsFresh();
-  } catch (error) {
-    const cached = await readRecordsCache();
-    const federations = Object.keys(cached?.data || {}).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: 'base' }),
-    );
-    if (federations.length > 0) {
-      return federations;
-    }
-    console.error('Error fetching federations:', error);
-    throw error;
-  }
-}
 
 export async function fetchAgeGroups(federation: string): Promise<string[]> {
   if (!federation) return [];

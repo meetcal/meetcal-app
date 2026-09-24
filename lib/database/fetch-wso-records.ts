@@ -155,8 +155,9 @@ async function persistFilteredWSORecords(
  * Explicit offline download / refresh of every WSO's records.
  *
  * Sequential, one request per WSO, and a single write of the whole cache only
- * after every WSO arrived. `fetchWSORecords` falls back to the cached copy on
- * failure, so the old loop over it could "succeed" having refreshed nothing.
+ * after every WSO arrived. The old loop went through a browse fetcher that fell
+ * back to the cached copy on failure, so it could "succeed" having refreshed
+ * nothing.
  * Rejects, leaving the stored copy untouched, when offline, on any API error,
  * on an empty list, or on a list longer than `MAX_OFFLINE_WSO_COUNT`.
  */
@@ -204,41 +205,6 @@ export const wsoListResource = createMutableResource<string[], []>({
   fetchFresh: () => fetchWSOListFresh(),
   persistFresh: async () => null,
 });
-
-export async function fetchWSORecords(
-  wso: string,
-  ageGroup?: string,
-  gender?: 'Men' | 'Women'
-): Promise<RecordsData> {
-  try {
-    const result = await fetchWSORecordsFresh(wso, ageGroup, gender);
-    if (!ageGroup && !gender) {
-      await persistWSORecords(wso, result);
-    }
-    return result;
-  } catch (error) {
-    const cached = await readWSORecordsCache(wso);
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}
-
-export async function fetchWSOList(): Promise<string[]> {
-  try {
-    return await fetchWSOListFresh();
-  } catch (error) {
-    const cached = await readWSOCache();
-    const wsos = Object.keys(cached?.data || {}).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: 'base' }),
-    );
-    if (wsos.length > 0) {
-      return wsos;
-    }
-    throw error;
-  }
-}
 
 export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
   if (!wso) return [];

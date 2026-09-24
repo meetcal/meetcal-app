@@ -22,7 +22,9 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-import { fetchQualifyingTotals } from "@/lib/database/fetch-qualifying-totals";
+import { qualifyingTotalsResource } from "@/lib/database/fetch-qualifying-totals";
+
+const fetchQualifyingTotals = async () => (await qualifyingTotalsResource.revalidate()).data;
 
 const row = (overrides: Record<string, unknown>) => ({
   event_name: "Nationals",
@@ -33,7 +35,7 @@ const row = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-describe("fetchQualifyingTotals", () => {
+describe("qualifyingTotalsResource", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
@@ -70,33 +72,9 @@ describe("fetchQualifyingTotals", () => {
     );
   });
 
-  it("filters by event, age, gender and weight class", async () => {
-    mockGetJsonArray.mockResolvedValue([
-      row({}),
-      row({ weight_class: "96kg", qualifying_total: 320 }),
-      row({ gender: "Women", weight_class: "71kg", qualifying_total: 210 }),
-      row({ event_name: "AO", qualifying_total: 250 }),
-    ]);
-
-    await expect(
-      fetchQualifyingTotals("Nationals", "Senior", "Men", "96kg"),
-    ).resolves.toEqual({
-      Nationals: { Senior: { Men: { "96kg": 320 }, Women: {} } },
-    });
-    await expect(fetchQualifyingTotals("Missing")).resolves.toEqual({});
-  });
-
-  it("serves the cached copy when the API fails and rethrows when there is none", async () => {
+  it("rejects when the API fails, leaving the cached copy to the screen", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
-    mockGetOfflineCache.mockResolvedValueOnce({
-      data: { Nationals: { Senior: { Men: { "89kg": 300 }, Women: {} } } },
-      lastSynced: 1,
-    });
-    await expect(fetchQualifyingTotals("Nationals")).resolves.toEqual({
-      Nationals: { Senior: { Men: { "89kg": 300 }, Women: {} } },
-    });
-
-    mockGetOfflineCache.mockResolvedValueOnce(null);
     await expect(fetchQualifyingTotals()).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });

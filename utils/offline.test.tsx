@@ -22,35 +22,25 @@ jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({ availableMeets: MEETS, isLoading: false }),
 }));
 
-// Network fetchers: each would hit the API and then rewrite its cache. The
-// legacy browse names are mapped to the same mocks so these tests also run
-// against the old delete-then-download refresh (mutation check).
+// Network downloads: each would hit the API and then rewrite its cache.
 const mockFetchStandards = jest.fn(async () => {});
 const mockFetchQualifyingTotals = jest.fn(async () => {});
 jest.mock("@/lib/database/fetch-standards", () => ({
-  fetchStandards: () => mockFetchStandards(),
   downloadStandardsForOffline: () => mockFetchStandards(),
 }));
 jest.mock("@/lib/database/fetch-qualifying-totals", () => ({
-  fetchQualifyingTotals: () => mockFetchQualifyingTotals(),
   downloadQualifyingTotalsForOffline: () => mockFetchQualifyingTotals(),
 }));
 jest.mock("@/lib/database/fetch-adaptive-records", () => ({
-  fetchAdaptiveRecords: jest.fn(),
   downloadAdaptiveRecordsForOffline: jest.fn(),
 }));
 jest.mock("@/lib/database/fetch-records", () => ({
-  fetchFederations: jest.fn(async () => []),
-  fetchRecords: jest.fn(),
   downloadRecordsForOffline: jest.fn(),
 }));
 jest.mock("@/lib/database/fetch-wso-records", () => ({
-  fetchWSOList: jest.fn(async () => []),
-  fetchWSORecords: jest.fn(),
   downloadWSORecordsForOffline: jest.fn(),
 }));
 jest.mock("@/lib/database/fetchIntlRankings", () => ({
-  fetchIntlRankings: jest.fn(),
   downloadIntlRankingsForOffline: jest.fn(),
 }));
 
@@ -314,6 +304,161 @@ describe("useOfflineData single download", () => {
     await flush();
 
     expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
+});
+
+describe("useOfflineData single actions vs bulk actions", () => {
+  /** A download the test finishes by hand. */
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  it("does not remove an item whose Remove is confirmed while Refresh All runs", async () => {
+    const gate = deferred();
+    mockPrefetchMeetData.mockImplementation(() => gate.promise);
+    const tree = await mount();
+
+    // The row's confirmation opens before the refresh starts.
+    const removeStandards = jest.fn(async () => {});
+    await act(async () => {
+      await captured!.handleDelete("A/B Standards", "standards", removeStandards);
+    });
+    const removeButtons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+
+    act(() => captured!.confirmRefreshAll());
+    const refreshButtons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+    let refreshing!: Promise<unknown>;
+    await act(async () => {
+      refreshing = Promise.resolve(refreshButtons.find((b) => b.text === "Refresh All")?.onPress?.());
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Confirmed mid-refresh: the refresh listed standards before this tap
+    // and would write them back after the removal.
+    await act(async () => {
+      await removeButtons.find((b) => b.text === "Remove")?.onPress?.();
+    });
+    expect(removeStandards).not.toHaveBeenCalled();
+
+    await act(async () => {
+      gate.resolve();
+      await refreshing;
+    });
+    await flush();
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Refresh Complete");
+    act(() => tree.unmount());
+  });
+
+  it("ignores a row download while Refresh All runs", async () => {
+    const gate = deferred();
+    mockPrefetchMeetData.mockImplementation(() => gate.promise);
+    const tree = await mount();
+
+    act(() => captured!.confirmRefreshAll());
+    await act(async () => {
+      void (alertSpy.mock.calls.at(-1)?.[2] as AlertButton[])
+        .find((b) => b.text === "Refresh All")
+        ?.onPress?.();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const download = jest.fn(async () => {});
+    await act(async () => {
+      await captured!.handleDownload("meet:Meet B", download);
+    });
+    expect(download).not.toHaveBeenCalled();
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalledWith("Meet B", true, expect.anything());
+
+    await act(async () => {
+      gate.resolve();
+    });
+    await flush();
+    act(() => tree.unmount());
+  });
+
+  it("runs one refresh when two queued Refresh All alerts are both confirmed", async () => {
+    const gate = deferred();
+    mockPrefetchMeetData.mockImplementation(() => gate.promise);
+    const tree = await mount();
+
+    // Both alerts open from the same render, before either press.
+    act(() => captured!.confirmRefreshAll());
+    const first = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+    act(() => captured!.confirmRefreshAll());
+    const second = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+
+    await act(async () => {
+      void first.find((b) => b.text === "Refresh All")?.onPress?.();
+      void second.find((b) => b.text === "Refresh All")?.onPress?.();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      gate.resolve();
+    });
+    await flush();
+
+    expect(mockFetchStandards).toHaveBeenCalledTimes(1);
+    expect(mockPrefetchMeetData).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it("refuses Refresh All and Delete All while a row download runs, then allows them", async () => {
+    const gate = deferred();
+    const tree = await mount();
+
+    let downloading!: Promise<void>;
+    await act(async () => {
+      downloading = captured!.handleDownload("meet:Meet B", () => gate.promise);
+    });
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Download in Progress");
+    expect(mockFetchStandards).not.toHaveBeenCalled();
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Download in Progress");
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(cacheEntry);
+
+    await act(async () => {
+      gate.resolve();
+      await downloading;
+    });
+    await flush();
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+    expect(mockFetchStandards).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Refresh Complete");
+    act(() => tree.unmount());
+  });
+
+  it("ignores a second tap on a row whose download is still running", async () => {
+    const gate = deferred();
+    const tree = await mount();
+    const download = jest.fn(() => gate.promise);
+
+    let taps!: Promise<unknown>;
+    await act(async () => {
+      taps = Promise.all([
+        captured!.handleDownload("standards", download),
+        captured!.handleDownload("standards", download),
+      ]);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(download).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      gate.resolve();
+      await taps;
+    });
     act(() => tree.unmount());
   });
 });

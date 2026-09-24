@@ -187,6 +187,7 @@ export default function OfflineDataScreen() {
                   subtitle={formatLastSynced(status?.lastSynced)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
+                  disabled={isRefreshingAll || isDeletingAll}
                   colors={colors}
                   onDownload={() =>
                     handleDownload(id, () => prefetchMeetData(meet.name))
@@ -220,6 +221,7 @@ export default function OfflineDataScreen() {
                   subtitle={formatLastSynced(status?.lastSynced)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
+                  disabled={isRefreshingAll || isDeletingAll}
                   colors={colors}
                   onDownload={() => handleDownload(item.id, item.onDownload)}
                   onDelete={() =>

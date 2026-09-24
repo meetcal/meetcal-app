@@ -14,10 +14,7 @@ jest.mock("@/lib/networkUtils", () => ({
 
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
-import {
-  downloadStandardsForOffline,
-  fetchStandards,
-} from "@/lib/database/fetch-standards";
+import { downloadStandardsForOffline } from "@/lib/database/fetch-standards";
 import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
 import {
   downloadWSORecordsForOffline,
@@ -64,13 +61,12 @@ afterEach(() => {
 });
 
 describe("downloadStandardsForOffline", () => {
-  it("rejects on an API failure and leaves the stored copy, where fetchStandards serves the cache", async () => {
+  it("rejects on an API failure and leaves the stored copy", async () => {
     await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.standards, oldEntry);
     mockRespond.mockRejectedValue(new Error("Network request failed"));
 
-    // The browse fetcher "succeeds" from cache: fine for a screen, wrong for
-    // a refresh, which would then report "Refresh Complete".
-    await expect(fetchStandards()).resolves.toEqual({ old: true });
+    // Never the cached copy: a refresh that reached nothing must fail, not
+    // report "Refresh Complete".
     await expect(downloadStandardsForOffline()).rejects.toThrow();
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(oldEntry);
   });
