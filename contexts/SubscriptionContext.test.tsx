@@ -363,6 +363,48 @@ describe("SubscriptionProvider", () => {
     });
   });
 
+  it("initializes and runs the delayed refresh once, however often the provider re-renders", async () => {
+    mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_quarterly"));
+    const addListener = Purchases.addCustomerInfoUpdateListener as jest.Mock;
+
+    function Child({ label }: { label: string }) {
+      useSubscription();
+      return <>{label}</>;
+    }
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(
+        <SubscriptionProvider>
+          <Child label="first" />
+        </SubscriptionProvider>,
+      );
+    });
+    await flush();
+    for (const label of ["second", "third", "fourth"]) {
+      await act(async () => {
+        tree.update(
+          <SubscriptionProvider>
+            <Child label={label} />
+          </SubscriptionProvider>,
+        );
+      });
+    }
+    await flush();
+
+    await runInitialRefresh();
+    // The refresh's own state updates re-render the provider too.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(REFRESH_DELAY_MS * 3);
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(addListener).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      tree.unmount();
+    });
+  });
+
   it("does nothing after unmounting while the SecureStore read is pending", async () => {
     const getItem = jest.requireMock("expo-secure-store").getItemAsync as jest.Mock;
     let finishRead!: (raw: string | null) => void;

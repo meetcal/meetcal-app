@@ -104,7 +104,8 @@ function MeetResultsByClubScreenContent() {
     if (clubStats) {
       runEntryAnimation();
     }
-  }, [clubStats]);
+    // `runEntryAnimation` is stable: its deps are `useRef(...).current` values.
+  }, [clubStats, runEntryAnimation]);
 
   const generateImage = async () => {
     if (!shareableViewRef.current || !clubStats || clubStats.totalAthletes === 0) return;
