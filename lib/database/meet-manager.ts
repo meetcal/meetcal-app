@@ -10,8 +10,9 @@ import {
   getMeetData,
   isMeetExplicitlyDownloaded,
   PACKAGE_ETAG_STORAGE_KEY,
+  pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
-  saveAthleteHistory,
+  saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
@@ -26,6 +27,7 @@ import {
   mapApiAthletes,
   mapApiLiftingResult,
   mapPackageSchedule,
+  MeetCalApiError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
 } from '@/lib/api/meetcal-api';
@@ -57,7 +59,7 @@ const criticalPrefetchRequests = new Map<MeetName, Promise<void>>();
 const fullPrefetchRequests = new Map<MeetName, Promise<void>>();
 // Downloaded meets cache the FULL competition history for every athlete on the
 // start list. We fetch that history in sequential batches (rather than one
-// roster-wide payload) and persist one athlete at a time, keeping peak memory
+// roster-wide payload) and persist one batch at a time, keeping peak memory
 // bounded so the iOS watchdog can't terminate the download even though the total
 // history is now larger than the old 2-year window. One batch is one
 // `/lifting-results/by-names` request: anything larger is chunked again by the
@@ -71,7 +73,56 @@ const FULL_PREFETCH_DELAY_MS = 5000;
 // result that is not a best leaves it unchanged; on a `304` the history is
 // refreshed once it is older than this instead of never.
 const HISTORY_SYNCED_AT_KEY = '@meet_history_synced_at_v1';
-export const HISTORY_REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Seven days, not one. A history refresh re-fetches the whole roster: a
+ * national meet is ~1,500 names, which at `HISTORY_DOWNLOAD_BATCH_SIZE` (40)
+ * per request is 38 `/lifting-results/by-names` calls, and the backend
+ * charges each of those 5 rate-limit points (`rate_limit.rs`), so one
+ * refresh is ~190 points. Daily, that was 190 points per downloaded meet per
+ * device every day of the season, almost all of it re-downloading history
+ * that had not changed (the store now skips the write when the bytes match,
+ * but the requests were still made). Weekly is ~27 points a day. Results an
+ * athlete lifted since the last refresh are already covered: the package
+ * ETag changes on any result, and "Refresh All" forces history regardless.
+ */
+export const HISTORY_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * A `429`/`503` on a history batch is retried once after the server's
+ * `Retry-After`, capped here so a hostile or mistaken header cannot park the
+ * download, and never looped: a second failure marks the history incomplete
+ * and the next prefetch fills the gap.
+ */
+export const HISTORY_RETRY_AFTER_MAX_MS = 5000;
+/** Wait when the response carried no usable `Retry-After`. */
+export const HISTORY_RETRY_AFTER_DEFAULT_MS = 1000;
+const HISTORY_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
+
+/**
+ * How long a history batch should wait before its single retry, or null when
+ * the failure is not a rate-limit/unavailable response. The API client does
+ * not surface headers yet, so the seconds are read from an optional
+ * `retryAfterSeconds` on the error (number or the raw header string) and the
+ * default applies when it is absent or unparseable.
+ */
+export function historyRetryDelayMs(error: unknown): number | null {
+  if (!(error instanceof MeetCalApiError) || !HISTORY_RETRYABLE_STATUSES.has(error.status)) {
+    return null;
+  }
+  const raw = (error as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  const seconds =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
+  if (!Number.isFinite(seconds) || seconds < 0) return HISTORY_RETRY_AFTER_DEFAULT_MS;
+  return Math.min(seconds * 1000, HISTORY_RETRY_AFTER_MAX_MS);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function readHistorySyncedAt(): Promise<Record<string, number>> {
   try {
@@ -459,9 +510,10 @@ export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOpti
  * package's recent_results_by_name (a capped recent window kept for attempt
  * estimates / bests) — instead we pull full history from /lifting-results
  * /by-names in sequential batches, grouping the rows by athlete and writing
- * one athlete at a time. Sequential batches + per-athlete pako writes keep
- * peak memory bounded; the bulk roster history never sits in memory at once,
- * which is what previously let the iOS watchdog kill the download.
+ * the batch's athletes in one storage batch. Sequential batches + per-batch
+ * pako writes keep peak memory bounded; the bulk roster history never sits in
+ * memory at once, which is what previously let the iOS watchdog kill the
+ * download.
  *
  * Fetch *and* persist failures are recorded here rather than thrown: the
  * caller's SQLITE_FULL handler only knows how to redo the package ingest, and
@@ -479,7 +531,7 @@ async function downloadAthleteHistory(
   for (let i = 0; i < athleteNames.length; i += HISTORY_DOWNLOAD_BATCH_SIZE) {
     const batch = athleteNames.slice(i, i + HISTORY_DOWNLOAD_BATCH_SIZE);
     try {
-      const batchResults = await fetchApiResultsByNames(batch);
+      const batchResults = await fetchHistoryBatch(batch);
 
       const resultsByName = new Map<string, SupabaseLiftResult[]>();
       for (const row of batchResults) {
@@ -492,10 +544,15 @@ async function downloadAthleteHistory(
         }
       }
 
-      for (const name of batch) {
-        const rows = resultsByName.get(normalizeAthleteName(name)) ?? [];
-        await saveAthleteHistory(name, rows);
-      }
+      // One storage batch per network batch: one `multiSet`, one read-back,
+      // one `multiRemove`, and no write at all for athletes whose history
+      // has not changed since the last download.
+      await saveAthleteHistoryBatch(
+        batch.map((name) => ({
+          name,
+          results: resultsByName.get(normalizeAthleteName(name)) ?? [],
+        })),
+      );
     } catch (historyError) {
       // Count, not names: athlete names stay out of logs and crash reports.
       console.error('Prefetch athlete history batch failed:', {
@@ -507,6 +564,19 @@ async function downloadAthleteHistory(
     }
   }
   return complete;
+}
+
+/** One `/by-names` batch, retried once after `Retry-After` on a 429/503. */
+async function fetchHistoryBatch(batch: readonly string[]): Promise<SupabaseLiftResult[]> {
+  const names = Array.from(batch);
+  try {
+    return await fetchApiResultsByNames(names);
+  } catch (error) {
+    const delayMs = historyRetryDelayMs(error);
+    if (delayMs === null) throw error;
+    await wait(delayMs);
+    return fetchApiResultsByNames(names);
+  }
 }
 
 /**
@@ -607,6 +677,13 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
         if (refetched.status !== 'fresh') {
           throw new Error(`Unexpected 304 for ${meet} without a validator`);
         }
+        // The browse cache is small; what fills the database is the history
+        // of athletes on no stored roster. This meet's own athletes are kept
+        // even if its roster write is what failed: their unchanged history
+        // costs the retry no write at all.
+        await pruneOrphanedAthleteHistory({
+          keepNames: uniqueAthleteNames(mapApiAthletes(refetched.package.athletes, '/meets/package')),
+        });
         const { historyComplete } = await ingestMeetPackage(meet, refetched.package);
         if (historyComplete) {
           freshEtag = refetched.etag;
