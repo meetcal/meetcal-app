@@ -61,6 +61,7 @@ jest.mock("@/lib/database/sync-manager", () => ({
 }));
 
 import {
+  RECONNECT_REFETCH_JITTER_MAX_MS,
   SelectedMeetProvider,
   useSelectedMeet,
 } from "@/contexts/SelectedMeetContext";
@@ -101,12 +102,25 @@ const flush = async () => {
 let captured: ReturnType<typeof useSelectedMeet> | null = null;
 
 function Harness() {
-  captured = useSelectedMeet();
+  const value = useSelectedMeet();
+  // Assigned after commit, not during render, so the test double stays
+  // within the rules of hooks; every read below happens after `act`.
+  React.useEffect(() => {
+    captured = value;
+  });
   return null;
 }
 
+/** Fires any reconnect refetch parked behind its random jitter. */
+const passReconnectJitter = () => {
+  act(() => {
+    jest.advanceTimersByTime(RECONNECT_REFETCH_JITTER_MAX_MS);
+  });
+};
+
 describe("SelectedMeetProvider", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     mockSyncManagerBuilds.length = 0;
     mockSyncManagerStarts.length = 0;
@@ -121,6 +135,7 @@ describe("SelectedMeetProvider", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   // Regression: the 5-minute interval, the reconnect handler and the mount
@@ -151,6 +166,7 @@ describe("SelectedMeetProvider", () => {
       mockNetworkListener?.(false);
       mockNetworkListener?.(true);
     });
+    passReconnectJitter();
     await flush();
     expect(captured!.selectedMeet).toBe("Newer Meet");
 
@@ -200,5 +216,97 @@ describe("SelectedMeetProvider", () => {
       tree.unmount();
     });
     expect(mockSyncManagerStops).toEqual(["Meet A"]);
+  });
+
+  // Regression: the provider value was an object literal and the three
+  // actions were plain closures, so every consumer re-rendered whenever the
+  // tree above the provider did, and anything keyed on `setSelectedMeet`
+  // (effect deps, memoised rows) never settled.
+  it("keeps the context value identity across unrelated re-renders", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Meet A")]);
+
+    let rerender: () => void = () => {};
+    function Parent() {
+      const [, setTick] = React.useState(0);
+      React.useEffect(() => {
+        rerender = () => setTick((t) => t + 1);
+      }, []);
+      return (
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>
+      );
+    }
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Parent />);
+    });
+    await flush();
+    expect(captured!.selectedMeet).toBe("Meet A");
+
+    const settled = captured!;
+    act(() => {
+      rerender();
+    });
+    act(() => {
+      rerender();
+    });
+
+    expect(captured).toBe(settled);
+    expect(captured!.setSelectedMeet).toBe(settled.setSelectedMeet);
+    expect(captured!.forceSync).toBe(settled.forceSync);
+    expect(captured!.refreshAvailableMeets).toBe(settled.refreshAvailableMeets);
+
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  // Regression: every reconnect edge refetched `/meets` immediately, so a
+  // flapping connection produced a burst of identical requests.
+  it("coalesces flapping reconnect edges into one jittered refetch", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Meet A")]);
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>,
+      );
+    });
+    await flush();
+    expect(captured!.selectedMeet).toBe("Meet A");
+    // Mount runs `loadMeets` once, and selecting the meet re-creates it and
+    // runs it once more (see the comment on `meetDetailsRef`). Everything
+    // below is relative to that settled baseline.
+    const baseline = mockFetchMeetsFresh.mock.calls.length;
+
+    act(() => {
+      for (let i = 0; i < 4; i += 1) {
+        mockNetworkListener?.(false);
+        mockNetworkListener?.(true);
+      }
+    });
+    // Nothing fires on the edge itself.
+    expect(mockFetchMeetsFresh).toHaveBeenCalledTimes(baseline);
+
+    passReconnectJitter();
+    await flush();
+    expect(mockFetchMeetsFresh).toHaveBeenCalledTimes(baseline + 1);
+
+    // Once that refetch has finished, the next reconnect schedules another.
+    act(() => {
+      mockNetworkListener?.(false);
+      mockNetworkListener?.(true);
+    });
+    passReconnectJitter();
+    await flush();
+    expect(mockFetchMeetsFresh).toHaveBeenCalledTimes(baseline + 2);
+
+    act(() => {
+      tree.unmount();
+    });
   });
 });

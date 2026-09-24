@@ -16,11 +16,15 @@ import {
   requestCalendarPermissions,
   resolvePreferredAndroidCalendar,
 } from "@/utils/calendar";
+import {
+  createSessionDetailsDeepLink,
+  normalizeDeepLinkHref,
+} from "@/utils/deepLinks";
 import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -90,12 +94,26 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     showToast({ type: "success", message });
   };
 
+  // Where sign-in and the paywall send the user back to. The bare route path
+  // used to be passed, so the return landed on a details screen with no
+  // meet, session or platform and rendered blank.
+  const returnPath = useMemo(() => {
+    const href = normalizeDeepLinkHref(
+      createSessionDetailsDeepLink({
+        meet,
+        sessionNumber: Number(sessionNumber),
+        platform,
+      }),
+    );
+    return typeof href === "string" ? href : "/shared-screens/schedule-details";
+  }, [meet, sessionNumber, platform]);
+
   const handleSavePress = async () => {
     // Check authentication first
     const authResult = requireAuth({
       feature: "save-session",
       message: "Sign in to save sessions and sync them across your devices.",
-      returnPath: "/shared-screens/schedule-details",
+      returnPath,
     });
     if (authResult === null || authResult === false) {
       return;
@@ -359,7 +377,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               const authResult = requireAuth({
                 feature: "qualifying-totals",
                 message: "Sign in to access premium features.",
-                returnPath: "/shared-screens/schedule-details",
+                returnPath,
               });
               if (authResult === null || authResult === false) {
                 return;
@@ -377,7 +395,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                 router.push({
                   pathname: "/shared-screens/paywall",
                   params: {
-                    from: "/shared-screens/schedule-details",
+                    from: returnPath,
                     feature: "qualifying-totals",
                   },
                 });
@@ -413,7 +431,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               const authResult = requireAuth({
                 feature: "attempt-estimator",
                 message: "Sign in to access premium features.",
-                returnPath: "/shared-screens/schedule-details",
+                returnPath,
               });
               if (authResult === null || authResult === false) {
                 return;
@@ -431,7 +449,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
                 router.push({
                   pathname: "/shared-screens/paywall",
                   params: {
-                    from: "/shared-screens/schedule-details",
+                    from: returnPath,
                     feature: "attempt-estimator",
                   },
                 });

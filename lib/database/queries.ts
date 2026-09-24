@@ -1,6 +1,6 @@
 import type { Schedule } from '@/types/schedule';
 import type { SupabaseBests, SupabaseLiftResult, LiftResult } from '@/data/types/athletes';
-import { MeetName } from '@/data/types/meet';
+import { Meet, MeetName } from '@/data/types/meet';
 import {
   getMockAthletesWithSession,
   getMockSchedule,
@@ -19,7 +19,14 @@ import {
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
 
-export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
+/**
+ * @param meetDetails The meet when the caller already has it; saves the
+ * `/meets/details` request that otherwise accompanies every schedule fetch.
+ */
+export async function fetchSchedule(
+  meet: MeetName,
+  meetDetails?: Meet | null,
+): Promise<Schedule> {
   if (__DEV__ && (await isMockedMeet(meet))) {
     return getMockSchedule(meet);
   }
@@ -27,7 +34,7 @@ export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) return inFlight;
 
-  const request = fetchApiSchedule(meet)
+  const request = fetchApiSchedule(meet, meetDetails)
     .catch((error) => {
       console.error('Error in fetchSchedule:', error);
       throw error;

@@ -7,8 +7,14 @@ import {
   USTimeZoneIdentifier,
 } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import { getTimeZoneAbbreviation } from '@/utils/dateTime';
+import {
+  ATTEMPT_HISTORY_YEARS,
+  getHistoryCutoffDate,
+  getTimeZoneAbbreviation,
+  YEAR_BESTS_YEARS,
+} from '@/utils/dateTime';
 import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
@@ -18,7 +24,27 @@ const DEFAULT_TIMEOUT_MS = 10000;
 // version instead of flipping behaviour for builds already in the field. The
 // backend threshold lives in meetcal-backend `app/src/common/client.rs`.
 export const CLIENT_VERSION_HEADER = 'X-MeetCal-App';
-export const APP_VERSION: string = Constants.expoConfig?.version ?? '';
+
+/**
+ * The version declared on every request. `expoConfig.version` is empty in
+ * some release builds (an OTA manifest without a version, a bare workflow), and
+ * an omitted header makes the API treat a 6.2.0+ client as a legacy one. The
+ * native bundle version is what the store built, so it is the fallback.
+ */
+export function resolveAppVersion(
+  expoVersion: string | null | undefined,
+  nativeVersion: string | null | undefined,
+): string {
+  const expo = typeof expoVersion === 'string' ? expoVersion.trim() : '';
+  if (expo) return expo;
+  const native = typeof nativeVersion === 'string' ? nativeVersion.trim() : '';
+  return native;
+}
+
+export const APP_VERSION: string = resolveAppVersion(
+  Constants.expoConfig?.version,
+  Application.nativeApplicationVersion,
+);
 const SLOW_API_LOG_THRESHOLD_MS = 500;
 export const NAMES_QUERY_CHUNK_SIZE = 40;
 
@@ -91,17 +117,20 @@ function instantForMeetDate(dateIso: string | null | undefined): Date {
  * silent though — every displayed time for that meet will be an hour or three
  * off, and this is the only place that can say why.
  */
-function resolveTimeZoneIdentifier(value: string): USTimeZoneIdentifier {
+const FALLBACK_TIME_ZONE: USTimeZoneIdentifier = 'America/New_York';
+
+function resolveTimeZoneIdentifier(
+  value: string,
+): { identifier: USTimeZoneIdentifier; known: boolean } {
   if (Object.prototype.hasOwnProperty.call(timezoneOffsets, value)) {
-    return value as USTimeZoneIdentifier;
+    return { identifier: value as USTimeZoneIdentifier, known: true };
   }
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    console.warn(
-      '[api] unknown meet time zone, falling back to America/New_York',
-      value,
-    );
-  }
-  return 'America/New_York';
+  // Warned in production too: this is the only signal that a meet's times
+  // are being rendered in the wrong zone, and it is one line per bad meet row.
+  console.warn(
+    `[api] unknown meet time zone ${JSON.stringify(value)}, falling back to ${FALLBACK_TIME_ZONE}`,
+  );
+  return { identifier: FALLBACK_TIME_ZONE, known: false };
 }
 
 export const MEETCAL_API_BASE_URL =
@@ -155,13 +184,34 @@ export class MeetCalApiTimeoutError extends Error {
   path: string;
   timeoutMs: number;
 
-  constructor(method: string, path: string, timeoutMs: number) {
-    super(`${method} ${path} timed out after ${timeoutMs}ms`);
+  constructor(method: string, path: string, timeoutMs: number, message?: string) {
+    super(message ?? `${method} ${path} timed out after ${timeoutMs}ms`);
     this.name = 'MeetCalApiTimeoutError';
     this.path = path;
     this.timeoutMs = timeoutMs;
   }
 }
+
+/**
+ * The *server* gave up before we did. The API's request ceiling answers with
+ * `408 {"error":"timeout"}` (a gateway may send `504`), so without this it
+ * surfaced as a `MeetCalApiError` ("failed with 408") and skipped every
+ * caller's timeout branch. A subclass so
+ * `instanceof MeetCalApiTimeoutError` keeps matching; `status` is kept for
+ * logs.
+ */
+export class MeetCalApiServerTimeoutError extends MeetCalApiTimeoutError {
+  status: number;
+
+  constructor(method: string, path: string, timeoutMs: number, status: number) {
+    super(method, path, timeoutMs, `${method} ${path} timed out server-side (${status})`);
+    this.name = 'MeetCalApiServerTimeoutError';
+    this.status = status;
+  }
+}
+
+/** Statuses that mean "the request ran out of time", not "the request was bad". */
+const SERVER_TIMEOUT_STATUSES: ReadonlySet<number> = new Set([408, 504]);
 
 function assertObject(value: unknown, label: string): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -260,6 +310,10 @@ async function requestRaw(
     }
 
     const text = await response.text();
+
+    if (SERVER_TIMEOUT_STATUSES.has(response.status)) {
+      throw new MeetCalApiServerTimeoutError(method, path, timeoutMs, response.status);
+    }
 
     if (!response.ok) {
       throw new MeetCalApiError(
@@ -479,9 +533,11 @@ export type ApiMeetPackage = {
     } | null;
   })[];
   meet_results: ApiLiftingResult[];
-  attempt_estimates: unknown[];
-  year_bests_by_name: Record<string, ApiYearBests>;
-  recent_results_by_name: Record<string, ApiLiftingResult[]>;
+  // Optional sections, selected with `include=`. Absent unless asked for (or
+  // when talking to a backend that predates the parameter, which sends all).
+  attempt_estimates?: unknown[];
+  year_bests_by_name?: Record<string, ApiYearBests>;
+  recent_results_by_name?: Record<string, ApiLiftingResult[]>;
 };
 
 export type ApiSavedSession = {
@@ -538,12 +594,17 @@ function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentif
   });
 }
 
-export function mapApiMeet(row: ApiMeet): Meet {
-  const timeZoneIdentifier = resolveTimeZoneIdentifier(row.time_zone || '');
-  const offsetZone =
-    getTimeZoneAbbreviation(row.time_zone || timeZoneIdentifier) === 'Local'
-      ? timeZoneIdentifier
-      : row.time_zone;
+/**
+ * `Meet` plus the one fact the mapper alone knows: whether `time` is the
+ * meet's real zone or the fallback. Every consumer of `Meet` keeps working; a
+ * screen that wants to flag the fallback reads `timeZoneUnknown`.
+ */
+export type MappedMeet = Meet & { timeZoneUnknown: boolean };
+
+export function mapApiMeet(row: ApiMeet): MappedMeet {
+  const { identifier: timeZoneIdentifier, known } = resolveTimeZoneIdentifier(
+    row.time_zone || '',
+  );
   const meetInstant = instantForMeetDate(row.start_date);
   const status =
     row.status === 'ongoing' || row.status === 'completed' || row.status === 'upcoming'
@@ -566,14 +627,18 @@ export function mapApiMeet(row: ApiMeet): Meet {
     time: {
       timeZone: row.time_zone,
       timeZoneIdentifier,
-      abbreviation: getTimeZoneAbbreviation(row.time_zone || timeZoneIdentifier, meetInstant),
-      utcOffset: getUTCOffsetHours(offsetZone, row.start_date),
+      // Every field here derives from the *same* zone. Splitting them (the
+      // abbreviation and offset from the raw value, the identifier from the
+      // fallback) showed a "CST" label next to times converted in New York.
+      abbreviation: getTimeZoneAbbreviation(timeZoneIdentifier, meetInstant),
+      utcOffset: getUTCOffsetHours(timeZoneIdentifier, row.start_date),
     },
     dates: {
       start: row.start_date,
       end: row.end_date,
     },
     status,
+    timeZoneUnknown: !known,
   };
 }
 
@@ -692,10 +757,19 @@ export function mapApiAthletes(rows: readonly ApiAthleteWithSession[], source: s
   return athletes;
 }
 
+/**
+ * Rows are de-duplicated across cached meets by `event_id`. When the API has
+ * none, a stable composite of the row's identity beats `''`, which collapsed
+ * every id-less row into one key.
+ */
+function fallbackEventId(row: ApiLiftingResult): string {
+  return `${row.meet ?? ''}|${row.date ?? ''}|${row.name ?? ''}`;
+}
+
 export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
   return {
     id: row.id ?? index,
-    event_id: row.event_id ?? '',
+    event_id: row.event_id || fallbackEventId(row),
     meet: row.meet ?? '',
     date: row.date ?? '',
     name: row.name ?? '',
@@ -750,12 +824,20 @@ export async function fetchApiMeetByName(meet: string): Promise<Meet | null> {
   }
 }
 
-export async function fetchApiSchedule(meet: MeetName): Promise<Schedule> {
-  const [meetDetails, rows] = await Promise.all([
-    fetchApiMeetByName(meet),
+/**
+ * @param meetDetails The meet, when the caller already holds it (the cached
+ * meets list, the selected meet). Skips the `/meets/details` round trip that
+ * otherwise rides alongside every schedule fetch.
+ */
+export async function fetchApiSchedule(
+  meet: MeetName,
+  meetDetails?: Meet | null,
+): Promise<Schedule> {
+  const [resolvedMeet, rows] = await Promise.all([
+    meetDetails ? Promise.resolve(meetDetails) : fetchApiMeetByName(meet),
     getJson('/meets/schedule', { meet }),
   ]);
-  return mapApiSchedule(assertArray<ApiScheduleRow>(rows, '/meets/schedule'), meetDetails ?? undefined);
+  return mapApiSchedule(assertArray<ApiScheduleRow>(rows, '/meets/schedule'), resolvedMeet ?? undefined);
 }
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
@@ -779,16 +861,8 @@ export async function fetchApiAthletesWithSession(
   return mapApiAthletes(rows, '/meets/athletes-sessions');
 }
 
-/**
- * `YYYY-MM-DD` for `yearsAgo` years before `now`, the window the API used to
- * fall back to server-side. Clients on 6.2.0+ must send it explicitly so one
- * party owns the date.
- */
-export function defaultCutoffDate(yearsAgo: number, now: Date = new Date()): string {
-  const cutoff = new Date(now);
-  cutoff.setFullYear(cutoff.getFullYear() - yearsAgo);
-  return cutoff.toISOString().split('T')[0];
-}
+// Clients on 6.2.0+ must always send `cutoff_date`; the defaults below come
+// from the one UTC-only cutoff policy in `utils/dateTime.ts`.
 
 // Name lists go in a JSON body so a name containing a comma stays one name.
 // Chunking keeps each request under the API's name-list cap.
@@ -807,7 +881,7 @@ export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseL
 
 export async function fetchApiRecentResultsByNames(
   names: string[],
-  cutoffDate: string = defaultCutoffDate(2),
+  cutoffDate: string = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
 ): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
   const rows: SupabaseLiftResult[] = [];
@@ -821,7 +895,10 @@ export async function fetchApiRecentResultsByNames(
   return rows;
 }
 
-export async function fetchApiYearBests(name: string, cutoffDate: string = defaultCutoffDate(1)) {
+export async function fetchApiYearBests(
+  name: string,
+  cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
+) {
   const row = assertHasFields(await getJson('/lifting-results/year', {
     name,
     cutoff_date: cutoffDate,
@@ -831,7 +908,7 @@ export async function fetchApiYearBests(name: string, cutoffDate: string = defau
 
 export async function fetchApiYearBestsByNames(
   names: string[],
-  cutoffDate: string = defaultCutoffDate(1),
+  cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
   const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
@@ -869,8 +946,20 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
   };
 }
 
-const MEET_PACKAGE_TIMEOUT_MS = 20000;
+/**
+ * The API's own request ceiling is 15 s (it answers `408` past that), so a
+ * client timeout above it only ever waited for the server's 408. Kept below
+ * the ceiling so the client-side abort still fires first on a dead link.
+ */
+export const MEET_PACKAGE_TIMEOUT_MS = 14000;
 const MEET_PACKAGE_FIELDS = ['meet', 'schedule', 'athletes', 'meet_results'];
+/**
+ * Package sections the app actually ingests. `recent_results_by_name` and
+ * `attempt_estimates` were requested, decoded and thrown away — the download
+ * pulls full history from `/lifting-results/by-names` instead. Older backends
+ * ignore the parameter and send everything, which the parser tolerates.
+ */
+export const MEET_PACKAGE_INCLUDE = ['year_bests'] as const;
 
 export type MeetPackageFetch =
   | { status: 'fresh'; etag: string | null; package: ApiMeetPackage }
@@ -889,7 +978,11 @@ export async function fetchApiMeetPackageConditional(
   const raw = await requestRaw(
     'GET',
     '/meets/package',
-    { meet, history_cutoff_date: historyCutoffDate },
+    {
+      meet,
+      history_cutoff_date: historyCutoffDate,
+      include: [...MEET_PACKAGE_INCLUDE],
+    },
     undefined,
     { timeoutMs: MEET_PACKAGE_TIMEOUT_MS, ifNoneMatch },
   );
@@ -903,17 +996,6 @@ export async function fetchApiMeetPackageConditional(
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   return { status: 'fresh', etag: raw.etag, package: pkg as ApiMeetPackage };
-}
-
-export async function fetchApiMeetPackage(
-  meet: MeetName,
-  historyCutoffDate?: string,
-): Promise<ApiMeetPackage> {
-  const fetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate);
-  if (fetched.status !== 'fresh') {
-    throw new Error('/meets/package answered 304 without a validator');
-  }
-  return fetched.package;
 }
 
 export async function fetchApiWsoList(): Promise<string[]> {

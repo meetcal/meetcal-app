@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
@@ -6,6 +6,7 @@ import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
 import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { RECONNECT_REFETCH_JITTER_MAX_MS, reconnectRefetchDelayMs } from '@/lib/data/mutable-resource';
 import { reindexAppEntities } from '@/utils/appIntents';
 import { devLog } from '@/lib/logger';
 
@@ -26,6 +27,14 @@ const SELECTED_MEET_KEY = '@selected_meet';
  * schedule refresh this provider starts alongside it.
  */
 const MEET_LIST_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * A reconnect used to refetch `/meets` on the very edge, and every open
+ * screen's provider did the same, so a flapping connection (train, stadium
+ * wifi) hit the API in lockstep from every device that came back at once.
+ * The refetch now waits a random slice of this window, and further edges
+ * while one is pending or in flight are dropped.
+ */
+export { RECONNECT_REFETCH_JITTER_MAX_MS };
 const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,6 +74,11 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
+  // The reconnect-triggered refetch that is scheduled or running, if any.
+  const reconnectRefetchRef = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    inFlight: boolean;
+  }>({ timer: null, inFlight: false });
   // `loadMeets` is a ~150-line async sequence with a dozen commit points, and
   // three things start it: the mount/identity effect, a 5-minute interval, and
   // the network-reconnect handler. Nothing serialised them, so two runs could
@@ -127,7 +141,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   }, []);
 
   // Enhanced setSelectedMeet function with optimistic updates
-  const setSelectedMeet = async (meet: MeetName) => {
+  const setSelectedMeet = useCallback(async (meet: MeetName) => {
     // Capture the current selection so a transient lookup failure can restore
     // it instead of discarding a previously valid meet.
     const previousMeet = selectedMeet;
@@ -203,7 +217,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       }
       throw error;
     }
-  };
+  }, [selectedMeet, meetDetails, availableMeets, activateMeet, beginMeetWarmup]);
 
   // Initialize meet data
   const initializeMeetData = useCallback(async (meet: MeetName, meetData: Meet) => {
@@ -409,20 +423,36 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   }, [loadMeets]);
 
   useEffect(() => {
+    // Same object for the listener and the cleanup: the ref's contents never
+    // change identity, and the cleanup must clear the timer this
+    // subscription scheduled.
+    const pending = reconnectRefetchRef.current;
     const unsubscribe = subscribeToNetworkChanges((isConnected) => {
       const wasConnected = lastNetworkStateRef.current;
       lastNetworkStateRef.current = isConnected;
-      if (isConnected && wasConnected === false) {
-        loadMeets();
-      }
+      if (!isConnected || wasConnected !== false) return;
+
+      if (pending.timer !== null || pending.inFlight) return;
+
+      pending.timer = setTimeout(() => {
+        pending.timer = null;
+        pending.inFlight = true;
+        loadMeets().finally(() => {
+          pending.inFlight = false;
+        });
+      }, reconnectRefetchDelayMs());
     });
     return () => {
       unsubscribe();
+      if (pending.timer !== null) {
+        clearTimeout(pending.timer);
+        pending.timer = null;
+      }
     };
   }, [loadMeets]);
 
   // Force sync function
-  const forceSync = async () => {
+  const forceSync = useCallback(async () => {
     if (!syncManager || !selectedMeet) return;
 
     try {
@@ -430,12 +460,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     } catch (error) {
       console.error('Error forcing sync:', error);
     }
-  };
+  }, [syncManager, selectedMeet]);
 
   // Refresh available meets function. Always goes to the network: the one
   // caller is the profile screen's "clear cached meet data", which has just
   // emptied the cache this would otherwise read.
-  const refreshAvailableMeets = async () => {
+  const refreshAvailableMeets = useCallback(async () => {
     try {
       await clearExpiredDownloadedMeets();
       const fresh = await fetchMeetsFresh();
@@ -445,20 +475,35 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     } catch (error) {
       console.error('Error refreshing available meets:', error);
     }
-  };
+  }, []);
+
+  // Every screen reads this context. A value literal here handed each of them
+  // a new object on every provider render — and the provider re-renders for
+  // its own async loads — so `React.memo` children and effect deps keyed on
+  // the context never settled.
+  const value = useMemo<SelectedMeetContextType>(
+    () => ({
+      selectedMeet,
+      meetDetails,
+      availableMeets,
+      setSelectedMeet,
+      isLoading,
+      forceSync,
+      refreshAvailableMeets,
+    }),
+    [
+      selectedMeet,
+      meetDetails,
+      availableMeets,
+      setSelectedMeet,
+      isLoading,
+      forceSync,
+      refreshAvailableMeets,
+    ],
+  );
 
   return (
-    <SelectedMeetContext.Provider 
-      value={{ 
-        selectedMeet,
-        meetDetails,
-        availableMeets,
-        setSelectedMeet,
-        isLoading,
-        forceSync,
-        refreshAvailableMeets
-      }}
-    >
+    <SelectedMeetContext.Provider value={value}>
       {children}
     </SelectedMeetContext.Provider>
   );

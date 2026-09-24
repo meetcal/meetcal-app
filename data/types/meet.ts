@@ -60,6 +60,12 @@ export interface Meet {
   time: TimeConfig;
   dates: DateRange;
   status: 'upcoming' | 'ongoing' | 'completed';
+  /**
+   * True when the API sent a time zone the app does not recognise and the
+   * mapper fell back to a default, so this meet's times may be off. Set by
+   * `mapApiMeet`; absent on meets from other sources.
+   */
+  timeZoneUnknown?: boolean;
   // Additional meet-specific settings can be added here
   settings?: {
     [key: string]: unknown;

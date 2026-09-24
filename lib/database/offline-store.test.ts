@@ -29,6 +29,8 @@ import {
   clearAllMeetData,
   clearExpiredDownloadedMeets,
   clearMeetData,
+  findAthleteNamesWithoutHistory,
+  PACKAGE_ETAG_STORAGE_KEY,
   getAllCachedLiftingResultsForAthlete,
   getAllCachedLiftingResultsForAthletes,
   getAthleteLiftingResults,
@@ -363,6 +365,32 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("roster freshness stamp", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("is set by roster writes and left alone by schedule writes", async () => {
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy.mockReturnValue(1_000);
+    await saveMeetAthletes("Test Meet", [{ name: "A", meet: "Test Meet" }] as any);
+    nowSpy.mockReturnValue(9_000);
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "s1", number: 1, startTime: "10:00 AM", weighInTime: "8:00 AM", platforms: [] }],
+      },
+    ] as any);
+    nowSpy.mockRestore();
+
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.lastSyncTime).toBe(9_000);
+    expect(meetData.athletesSyncedAt).toBe(1_000);
+  });
+});
+
 describe("offline-store corrupt payload handling", () => {
   beforeEach(async () => {
     mockStorage.clear();
@@ -683,6 +711,174 @@ describe("clearAllAthleteHistory", () => {
         k.startsWith("meetcal_lifting_results_"),
       ),
     ).toBe(true);
+  });
+
+  it("drops the package validators that vouched for the deleted history", async () => {
+    // With the validators left behind, the next prefetch's 304 would find the
+    // roster still on disk and never re-download a single athlete.
+    mockStorage.set(PACKAGE_ETAG_STORAGE_KEY, JSON.stringify({ "Meet A": '"abc"' }));
+    await saveAthleteHistory("Jane Doe", [row()]);
+
+    await clearAllAthleteHistory();
+
+    expect(mockStorage.has(PACKAGE_ETAG_STORAGE_KEY)).toBe(false);
+  });
+
+  it("reports which athletes have no history blob, reading manifests only", async () => {
+    await saveAthleteHistory("Jane Doe", [row()]);
+    jest.clearAllMocks();
+
+    await expect(
+      findAthleteNamesWithoutHistory(["Jane Doe", "  jane   DOE ", "John Smith", ""]),
+    ).resolves.toEqual(["John Smith"]);
+    // One batched read; no chunk inflation.
+    expect(AsyncStorage.multiGet).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+    await expect(findAthleteNamesWithoutHistory([])).resolves.toEqual([]);
+  });
+});
+
+describe("cached lifting result row validation", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("drops corrupt rows from a cached results payload instead of throwing", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const good = { id: 1, event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
+    await saveMeetLiftingResults("Meet A", [good, null, 42, "nope", { date: "2025-01-01" }] as any);
+
+    await expect(getMeetLiftingResults("Meet A")).resolves.toEqual([good]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Dropped 4 malformed"));
+    warn.mockRestore();
+  });
+
+  it("treats an empty event_id as no id when de-duplicating across meets", async () => {
+    // `??` kept `''` and collapsed every id-less row into one `-date-name`
+    // key, so two different meets on the same day dropped one another.
+    await saveMeetLiftingResults("Meet A", [
+      { id: 1, event_id: "", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" } as any,
+    ]);
+    await saveMeetLiftingResults("Meet B", [
+      { id: 2, event_id: "", meet: "Meet B", date: "2025-01-01", name: "Jane Doe" } as any,
+    ]);
+
+    const results = await getAllCachedLiftingResultsForAthlete("Jane Doe");
+    expect(results.map((r) => r.meet).sort()).toEqual(["Meet A", "Meet B"]);
+  });
+});
+
+describe("offline store metadata validation", () => {
+  const STORE_KEY = "meetcal_offline_store";
+
+  beforeEach(() => {
+    mockStorage.clear();
+  });
+
+  it("drops corrupt meet entries and repairs missing keys instead of throwing", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    mockStorage.set(
+      STORE_KEY,
+      JSON.stringify({
+        meets: {
+          "Good Meet": {
+            scheduleKey: "meetcal_schedule_Good Meet",
+            athletesKey: "meetcal_athletes_Good Meet",
+            liftingResultsKey: "meetcal_lifting_results_Good Meet",
+            lastSyncTime: 5,
+          },
+          "Bare Meet": {},
+          "Null Meet": null,
+          "String Meet": "nope",
+          "Array Meet": [],
+        },
+      }),
+    );
+
+    await expect(getMeetSchedule("Good Meet")).resolves.toEqual([]);
+    // The validated store is written back on the next store write; asking
+    // for an unknown meet is the cheapest one.
+    await getMeetData("New Meet");
+    const stored = JSON.parse(mockStorage.get(STORE_KEY) ?? "{}");
+    expect(Object.keys(stored.meets).sort()).toEqual(["Bare Meet", "Good Meet", "New Meet"]);
+    expect(stored.meets["Good Meet"].lastSyncTime).toBe(5);
+    // A present-but-empty entry is rebuilt from the meet id.
+    expect(stored.meets["Bare Meet"]).toMatchObject({
+      scheduleKey: "meetcal_schedule_Bare Meet",
+      athletesKey: "meetcal_athletes_Bare Meet",
+      liftingResultsKey: "meetcal_lifting_results_Bare Meet",
+      lastSyncTime: 0,
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Dropped 3 malformed"));
+    warn.mockRestore();
+  });
+
+  it("reinitializes when `meets` is not an object", async () => {
+    mockStorage.set(STORE_KEY, JSON.stringify({ meets: [] }));
+    await expect(getMeetSchedule("Any Meet")).resolves.toEqual([]);
+    expect(JSON.parse(mockStorage.get(STORE_KEY) ?? "{}")).toMatchObject({ meets: {} });
+  });
+});
+
+describe("saveMeetSchedule validation", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("keeps a schedule whose session has a blank or unparseable time", async () => {
+    // `formatApiTime` maps a null or malformed API time to "", a documented
+    // normal state. Rejecting the whole schedule for it rendered "No schedule
+    // yet" for every session in the meet.
+    const schedule = [
+      {
+        date: "June 20, 2026",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "1",
+            number: 1,
+            startTime: "",
+            weighInTime: "",
+            platforms: [{ platform: "Red", weightClass: "60kg" }],
+          },
+          {
+            id: "2",
+            number: 2,
+            startTime: "1:00 PM",
+            weighInTime: "11:00 AM",
+            platforms: [{ platform: "Blue", weightClass: "71kg" }],
+          },
+        ],
+      },
+    ] as any;
+
+    await expect(saveMeetSchedule("Blank Time Meet", schedule)).resolves.toBeUndefined();
+    await expect(getMeetSchedule("Blank Time Meet")).resolves.toEqual(schedule);
+  });
+
+  it("still rejects a session that is not addressable", async () => {
+    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      saveMeetSchedule("Bad Meet", [
+        {
+          date: "June 20, 2026",
+          fullDate: "2026-06-20",
+          sessions: [{ id: "", number: 1, startTime: "9:00 AM", weighInTime: "7:00 AM", platforms: [] }],
+        },
+      ] as any),
+    ).rejects.toThrow("Invalid session structure");
+    await expect(
+      saveMeetSchedule("Bad Meet", [
+        {
+          date: "June 20, 2026",
+          fullDate: "2026-06-20",
+          sessions: [{ id: "1", number: 1, startTime: "9:00 AM", weighInTime: "7:00 AM", platforms: "Red" }],
+        },
+      ] as any),
+    ).rejects.toThrow("Invalid session structure");
+    error.mockRestore();
   });
 });
 

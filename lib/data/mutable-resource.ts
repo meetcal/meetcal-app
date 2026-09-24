@@ -42,6 +42,20 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
 
 const inFlightRequests = new Map<string, Promise<unknown>>();
 
+/**
+ * Upper bound of the random delay a reconnect-triggered refetch waits before
+ * hitting the API. Every mounted resource sees the same "back online" edge at
+ * the same instant, and the backend's request ceiling is 15 s, so a burst of
+ * simultaneous refetches from every screen is exactly what times out.
+ */
+export const RECONNECT_REFETCH_JITTER_MAX_MS = 1500;
+
+/** A delay in `[0, RECONNECT_REFETCH_JITTER_MAX_MS)` for one reconnect refetch. */
+export function reconnectRefetchDelayMs(random: () => number = Math.random): number {
+  const value = Math.floor(random() * RECONNECT_REFETCH_JITTER_MAX_MS);
+  return Math.min(Math.max(value, 0), RECONNECT_REFETCH_JITTER_MAX_MS - 1);
+}
+
 function sortObjectKeys(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortObjectKeys);
@@ -108,9 +122,21 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         : cached;
       const fresh = await config.fetchFresh(...params);
       const changed = !cacheEntry || !isEqual(cacheEntry.data, fresh);
-      const persisted = changed
-        ? await config.persistFresh(fresh, ...params)
-        : null;
+      // The fresh data is the result; the cache write is a side effect. A
+      // failed write (storage full, a validator rejecting one row) used to
+      // reject the whole refresh, so the screen kept showing the stale copy —
+      // or "nothing yet" — of data that had already arrived.
+      let persisted: ResourceCacheEntry<T> | null | void = null;
+      if (changed) {
+        try {
+          persisted = await config.persistFresh(fresh, ...params);
+        } catch (persistError) {
+          console.warn("Failed to persist fresh resource data; serving it uncached", {
+            key,
+            error: persistError,
+          });
+        }
+      }
 
       return {
         data: changed ? fresh : cacheEntry.data,
