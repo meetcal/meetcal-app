@@ -501,7 +501,14 @@ describe("SelectedMeetProvider persisted selection", () => {
   it("restores the previous meet and rethrows when saving a new selection fails", async () => {
     mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet"), makeMeet("Other Meet")]);
     const tree = await mount();
-    expect(captured!.selectedMeet).toBe("Window Meet");
+    // The previous meet is one a list refresh would not pick again by
+    // itself: out of the window, selected by name.
+    mockFetchApiMeetByName.mockResolvedValueOnce(makeMeet("Deep Link Meet"));
+    await act(async () => {
+      await captured!.setSelectedMeet("Deep Link Meet" as MeetName);
+    });
+    await flush();
+    expect(captured!.selectedMeet).toBe("Deep Link Meet");
 
     const diskFull = new Error("disk full");
     jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(diskFull);
@@ -512,8 +519,8 @@ describe("SelectedMeetProvider persisted selection", () => {
     await flush();
 
     expect(failure).toBe(diskFull);
-    expect(captured!.selectedMeet).toBe("Window Meet");
-    expect(captured!.meetDetails?.name).toBe("Window Meet");
+    expect(captured!.selectedMeet).toBe("Deep Link Meet");
+    expect(captured!.meetDetails?.name).toBe("Deep Link Meet");
     // The failed selection never warmed.
     expect(mockWarmMeetData).not.toHaveBeenCalledWith("Other Meet");
     act(() => tree.unmount());
