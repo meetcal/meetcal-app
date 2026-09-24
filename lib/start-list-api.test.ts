@@ -104,6 +104,9 @@ describe("getLastYearBests", () => {
     // Derived from the recent meet only, NOT the career-best older meet.
     expect(result).toEqual({ bestSnatch: 100, bestCJ: 120, bestTotal: 220 });
     expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Stale Athlete"], {
+      latestOnly: true,
+    });
     expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
       "Stale Athlete": { snatch_best: 100, cj_best: 120, total: 220 },
     });
@@ -226,7 +229,9 @@ describe("getLastYearBestsBatch", () => {
 
     // A single batched fetch for the two empty-window names.
     expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
-    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Stale", "Never"]);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Stale", "Never"], {
+      latestOnly: true,
+    });
 
     // Persists only rows with real bests; never-competed all-null row excluded.
     expect(mockSaveAthleteBestsBatch).toHaveBeenCalledTimes(1);
@@ -236,6 +241,47 @@ describe("getLastYearBestsBatch", () => {
       Stale: { snatch_best: 90, cj_best: 110, total: 200 },
     });
     expect(persisted).not.toHaveProperty("Never");
+  });
+
+  it("gives the same bests from the latest_only rows as from the full history", async () => {
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      Stale: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+    const latestRows = [
+      // Two rows on the latest date (e.g. a re-weigh listing), same meet.
+      liftRow({ name: "Stale", meet: "Recent Meet", date: "2021-01-01", snatch_best: 90, cj_best: 110, total: 200 }),
+      liftRow({ name: "Stale", meet: "Recent Meet", date: "2021-01-01", snatch_best: 95, cj_best: 105, total: 200 }),
+    ];
+    const fullHistory = [
+      ...latestRows,
+      liftRow({ name: "Stale", meet: "Old Meet", date: "2018-01-01", snatch_best: 300, cj_best: 360, total: 660 }),
+    ];
+
+    mockFetchApiResultsByNames.mockResolvedValue(fullHistory);
+    const fromFull = await startListApi.getLastYearBestsBatch(["Stale"]);
+
+    jest.resetModules();
+    mockFetchApiResultsByNames.mockResolvedValue(latestRows);
+    const fresh: typeof import("@/lib/start-list-api") = require("@/lib/start-list-api");
+    const fromLatest = await fresh.getLastYearBestsBatch(["Stale"]);
+
+    expect(fromLatest.Stale).toEqual({ bestSnatch: 95, bestCJ: 110, bestTotal: 200 });
+    expect(fromLatest).toEqual(fromFull);
+  });
+
+  it("matches latest_only rows to the requested name the way the API folds names", async () => {
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      "Jane  Doe": { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+    // The API bounds by folded name, so the latest rows may carry another
+    // spelling of the same lifter than the start list asked for.
+    mockFetchApiResultsByNames.mockResolvedValue([
+      liftRow({ name: "jane doe", meet: "Recent Meet", date: "2022-03-01", snatch_best: 70, cj_best: 90, total: 160 }),
+    ]);
+
+    const result = await startListApi.getLastYearBestsBatch(["Jane  Doe"]);
+
+    expect(result["Jane  Doe"]).toEqual({ bestSnatch: 70, bestCJ: 90, bestTotal: 160 });
   });
 
   it("returns zeros for missing names without fetching when fetchMissing is false", async () => {
