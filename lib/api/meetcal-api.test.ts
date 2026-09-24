@@ -40,7 +40,13 @@ import {
   mapApiYearBests,
   mapPackageSchedule,
   MEET_PACKAGE_TIMEOUT_MS,
+  getServerClockSample,
+  getServerClockSkewMs,
+  getTrustedNow,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
   MeetCalApiError,
+  parseRetryAfterSeconds,
+  resetServerClockForTests,
   MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
@@ -1810,5 +1816,126 @@ describe('by-names latest_only', () => {
       const body = JSON.parse((call as unknown as [string, { body: string }])[1].body);
       expect(body.latest_only).toBe(true);
     }
+  });
+});
+
+describe('server clock and Retry-After', () => {
+  const originalFetch = global.fetch;
+
+  function mockFetchWithHeaders(
+    headers: Record<string, string>,
+    status = 200,
+    body = '[]',
+  ) {
+    const lookup = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    const fetchMock = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: (name: string) => lookup.get(name.toLowerCase()) ?? null },
+      text: async () => body,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    resetServerClockForTests();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.useRealTimers();
+    resetServerClockForTests();
+  });
+
+  it('has no trusted clock before the first response', () => {
+    expect(getServerClockSample()).toBeNull();
+    expect(getServerClockSkewMs()).toBeNull();
+    expect(getTrustedNow()).toBeNull();
+  });
+
+  it('samples the skew from the Date header, so a fast device clock is corrected', async () => {
+    jest.useFakeTimers();
+    const serverNow = new Date('2026-06-20T12:00:00.000Z');
+    // The device is three hours ahead of the server.
+    jest.setSystemTime(serverNow.getTime() + 3 * 60 * 60 * 1000);
+    mockFetchWithHeaders({ Date: serverNow.toUTCString() });
+
+    await fetchApiMeets();
+
+    expect(getServerClockSkewMs()).toBe(-3 * 60 * 60 * 1000);
+    expect(getServerClockSample()).toEqual({
+      skewMs: -3 * 60 * 60 * 1000,
+      sampledAt: Date.now(),
+    });
+    expect(getTrustedNow()?.getTime()).toBe(serverNow.getTime());
+    expect(Math.abs(getServerClockSkewMs() ?? 0)).toBeGreaterThan(MAX_PLAUSIBLE_CLOCK_SKEW_MS);
+  });
+
+  it('keeps the latest sample and ignores a missing or unparseable Date', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:30 GMT' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({ Date: 'not a date' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({});
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(30_000);
+
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:10 GMT' });
+    await fetchApiMeets();
+    expect(getServerClockSkewMs()).toBe(10_000);
+  });
+
+  it('samples the clock from an error response too', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:01:00 GMT' }, 500, 'boom');
+
+    await expect(fetchApiMeets()).rejects.toBeInstanceOf(MeetCalApiError);
+    expect(getServerClockSkewMs()).toBe(60_000);
+  });
+
+  it('attaches Retry-After seconds to a 429', async () => {
+    mockFetchWithHeaders({ 'Retry-After': '3' }, 429, '');
+
+    const failure = await fetchApiResultsByNames(['Athlete A']).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(429);
+    expect((failure as MeetCalApiError).retryAfterSeconds).toBe(3);
+  });
+
+  it('turns an HTTP-date Retry-After into seconds from now and leaves junk undefined', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
+    mockFetchWithHeaders({ 'Retry-After': 'Sat, 20 Jun 2026 12:00:02 GMT' }, 503, '');
+    const dated = await fetchApiMeets().catch((error: unknown) => error);
+    expect((dated as MeetCalApiError).retryAfterSeconds).toBe(2);
+
+    mockFetchWithHeaders({ 'Retry-After': 'soon' }, 503, '');
+    const junk = await fetchApiMeets().catch((error: unknown) => error);
+    expect((junk as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+
+    mockFetchWithHeaders({}, 503, '');
+    const none = await fetchApiMeets().catch((error: unknown) => error);
+    expect((none as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+  });
+
+  it('parses Retry-After values', () => {
+    const now = Date.parse('2026-06-20T12:00:00.000Z');
+    expect(parseRetryAfterSeconds('5', now)).toBe(5);
+    expect(parseRetryAfterSeconds(' 0 ', now)).toBe(0);
+    expect(parseRetryAfterSeconds('-1', now)).toBeUndefined();
+    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 11:59:00 GMT', now)).toBe(0);
+    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 12:00:10 GMT', now)).toBe(10);
+    expect(parseRetryAfterSeconds('', now)).toBeUndefined();
+    expect(parseRetryAfterSeconds(null, now)).toBeUndefined();
+    expect(parseRetryAfterSeconds(undefined, now)).toBeUndefined();
   });
 });

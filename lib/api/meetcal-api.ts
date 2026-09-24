@@ -176,13 +176,96 @@ type RawResponse = {
 export class MeetCalApiError extends Error {
   status: number;
   body: string;
+  /**
+   * The response's `Retry-After`, in seconds, when it carried a usable one
+   * (a delay in seconds or an HTTP-date). Callers that retry once (the
+   * history download) wait this long, capped on their side.
+   */
+  retryAfterSeconds?: number;
 
-  constructor(message: string, status: number, body: string) {
+  constructor(message: string, status: number, body: string, retryAfterSeconds?: number) {
     super(message);
     this.name = 'MeetCalApiError';
     this.status = status;
     this.body = body;
+    if (retryAfterSeconds !== undefined) this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+/** A `Retry-After` header as non-negative seconds, or undefined when unusable. */
+export function parseRetryAfterSeconds(
+  header: string | null | undefined,
+  now: number = Date.now(),
+): number | undefined {
+  if (typeof header !== 'string' || header.trim() === '') return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds : undefined;
+  const at = Date.parse(header);
+  if (!Number.isFinite(at)) return undefined;
+  return Math.max(0, (at - now) / 1000);
+}
+
+/**
+ * Server clock, as seen in the last response's `Date` header.
+ *
+ * Destructive housekeeping — auto-unsaving started sessions (server DELETE
+ * included), clearing a downloaded meet once it has ended — used to trust
+ * `Date.now()`. A device clock a few hours ahead deleted today's sessions
+ * before they began; a day ahead wiped the downloaded meet at the next
+ * refresh tick, offline included. Those decisions now use the server's
+ * clock, sampled from every response and never persisted: a fresh process
+ * has no sample until it has talked to the API, and callers skip rather
+ * than guess (late is harmless, early is data loss).
+ */
+export type ServerClockSample = {
+  /** Server time minus device time at the sample, in ms. Positive: device is behind. */
+  skewMs: number;
+  /** `Date.now()` on the device when the sample was taken. */
+  sampledAt: number;
+};
+
+/**
+ * Beyond this, the device clock is not merely drifting and a decision that
+ * mixes device wall-clock inputs (stored meet-local times) with server time
+ * is not one to make automatically. Well past NTP drift, well short of a
+ * time-zone mistake.
+ */
+export const MAX_PLAUSIBLE_CLOCK_SKEW_MS = 15 * 60 * 1000;
+
+let serverClockSample: ServerClockSample | null = null;
+
+function recordServerClock(dateHeader: string | null | undefined): void {
+  if (typeof dateHeader !== 'string' || dateHeader === '') return;
+  const serverNow = Date.parse(dateHeader);
+  if (!Number.isFinite(serverNow)) return;
+  const deviceNow = Date.now();
+  // `Date` has one-second resolution and is stamped before the body streams;
+  // the latest sample is the closest to now, so it replaces any older one.
+  serverClockSample = { skewMs: serverNow - deviceNow, sampledAt: deviceNow };
+}
+
+/** The last server clock sample this process took, or null before any response. */
+export function getServerClockSample(): ServerClockSample | null {
+  return serverClockSample;
+}
+
+/** Server time minus device time in ms, or null before any response. */
+export function getServerClockSkewMs(): number | null {
+  return serverClockSample?.skewMs ?? null;
+}
+
+/**
+ * Now, on the server's clock: the device clock corrected by the last sample.
+ * Null when this process has not heard from the API yet.
+ */
+export function getTrustedNow(): Date | null {
+  if (!serverClockSample) return null;
+  return new Date(Date.now() + serverClockSample.skewMs);
+}
+
+/** Forgets the clock sample. For tests. */
+export function resetServerClockForTests(): void {
+  serverClockSample = null;
 }
 
 /**
@@ -320,6 +403,7 @@ async function requestRaw(
     });
     status = response.status;
     const etag = response.headers?.get?.('etag') ?? null;
+    recordServerClock(response.headers?.get?.('date'));
 
     if (status === 304 && options?.ifNoneMatch) {
       return { status, text: '', etag };
@@ -336,6 +420,7 @@ async function requestRaw(
         `${method} ${path} failed with ${response.status}`,
         response.status,
         text,
+        parseRetryAfterSeconds(response.headers?.get?.('retry-after')),
       );
     }
 
