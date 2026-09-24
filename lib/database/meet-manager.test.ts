@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  fetchMeetsFresh,
+  getCachedMeets,
   prefetchCriticalMeetData,
   HISTORY_REFRESH_TTL_MS,
   HISTORY_RETRY_AFTER_DEFAULT_MS,
@@ -51,6 +53,7 @@ const mockFetchApiMeetPackageConditional = jest.fn(
 const mockFetchApiResultsByNames = jest.fn(
   async (_names: string[]): Promise<any[]> => [],
 );
+const mockFetchApiMeets = jest.fn(async (): Promise<unknown[]> => []);
 // Per-athlete view of the batched history write, so assertions can still
 // name an athlete and its rows; the batch itself is counted separately.
 const mockSaveAthleteHistory = jest.fn(async () => undefined);
@@ -99,6 +102,7 @@ jest.mock("@/lib/api/meetcal-api", () => {
       ),
     fetchApiResultsByNames: (...args: unknown[]) =>
       mockFetchApiResultsByNames(...(args as [string[]])),
+    fetchApiMeets: () => mockFetchApiMeets(),
   };
 });
 
@@ -1058,5 +1062,152 @@ describe("historyRetryDelayMs", () => {
     expect(historyRetryDelayMs(apiError(500, 1))).toBeNull();
     expect(historyRetryDelayMs(apiError(404))).toBeNull();
     expect(historyRetryDelayMs(new Error("network"))).toBeNull();
+  });
+});
+
+/** Routes the AsyncStorage mock through a real map for one test. */
+function useBackedStorage(seed: Record<string, string> = {}) {
+  const store = new Map(Object.entries(seed));
+  mockGetItem.mockImplementation(async (key: string) => store.get(key) ?? null);
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+    store.set(key, value);
+  });
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
+    store.delete(key);
+  });
+  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async (keys: string[]) => {
+    keys.forEach((key) => store.delete(key));
+  });
+  return store;
+}
+
+function resetStorageMocks() {
+  mockGetItem.mockImplementation(async () => null);
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async () => undefined);
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async () => undefined);
+  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async () => undefined);
+}
+
+describe("fetchMeetsFresh and the cached meets list", () => {
+  const MEETS_LIST_CACHE_KEY = "@meets_list_cache_v1";
+  const meet = (name: string) => ({
+    name,
+    dates: { start: "2099-06-20", end: "2099-06-22" },
+    time: { timeZoneIdentifier: "America/New_York" },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetStorageMocks();
+  });
+
+  it("keeps the cached list when /meets answers with no meets, but still returns none", async () => {
+    const store = useBackedStorage({
+      [MEETS_LIST_CACHE_KEY]: JSON.stringify([meet("Meet A"), meet("Meet B")]),
+    });
+    mockFetchApiMeets.mockResolvedValueOnce([]);
+
+    await expect(fetchMeetsFresh()).resolves.toEqual([]);
+
+    const cached = await getCachedMeets();
+    expect(cached.map((m) => m.name)).toEqual(["Meet A", "Meet B"]);
+    expect(JSON.parse(store.get(MEETS_LIST_CACHE_KEY) ?? "[]")).toHaveLength(2);
+  });
+
+  it("still writes a non-empty answer over the cache", async () => {
+    const store = useBackedStorage({
+      [MEETS_LIST_CACHE_KEY]: JSON.stringify([meet("Meet A"), meet("Meet B")]),
+    });
+    mockFetchApiMeets.mockResolvedValueOnce([meet("Meet C")]);
+
+    await fetchMeetsFresh();
+
+    expect(JSON.parse(store.get(MEETS_LIST_CACHE_KEY) ?? "[]").map((m: { name: string }) => m.name)).toEqual([
+      "Meet C",
+    ]);
+  });
+
+  it("writes an empty answer when there was no cache to lose", async () => {
+    const store = useBackedStorage();
+    mockFetchApiMeets.mockResolvedValueOnce([]);
+
+    await fetchMeetsFresh();
+
+    expect(store.get(MEETS_LIST_CACHE_KEY)).toBe("[]");
+  });
+});
+
+describe("eviction during a full prefetch", () => {
+  const MEET_CACHE_KEY = "@meet_cache_info";
+  const buildAthlete = (name: string) => ({
+    member_id: name,
+    name,
+    age: 25,
+    club: "Club",
+    wso: null,
+    gender: "Male",
+    weight_class: "81",
+    entry_total: 0,
+    adaptive: false,
+    session: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchAthletesWithSession.mockResolvedValue([]);
+    mockFetchSchedule.mockResolvedValue([]);
+    // Nothing is marked downloaded yet: the mark is written after the prefetch.
+    setExplicitlyDownloaded(() => false);
+  });
+
+  afterEach(() => {
+    resetStorageMocks();
+    setExplicitlyDownloaded(() => true);
+  });
+
+  it("never evicts the meet whose download is in flight, and stamps its access up front", async () => {
+    const store = useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: { D: { lastAccessed: 1, size: 0 } },
+      }),
+    });
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete D")],
+      meet_results: [{ name: "Athlete D" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    let finishHistory!: (rows: unknown[]) => void;
+    mockFetchApiResultsByNames.mockImplementationOnce(
+      () => new Promise<any[]>((resolve) => { finishHistory = resolve; }),
+    );
+
+    const startedAt = Date.now();
+    const download = prefetchMeetData("D" as any);
+    for (let i = 0; i < 20 && !finishHistory; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(finishHistory).toBeDefined();
+    const stamped = JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D.lastAccessed;
+    expect(stamped).toBeGreaterThanOrEqual(startedAt);
+
+    // Three other meets opened while the history downloads.
+    for (const other of ["E", "F", "G"]) {
+      await prefetchCriticalMeetData(other as any);
+    }
+
+    const cleared = mockClearMeetData.mock.calls.map(([name]) => name);
+    expect(cleared).not.toContain("D");
+
+    finishHistory([]);
+    await expect(download).resolves.toBeUndefined();
+    expect(mockClearMeetData.mock.calls.map(([name]) => name)).not.toContain("D");
+    expect(JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D).toBeDefined();
   });
 });

@@ -54,6 +54,7 @@ const PACKAGE_ETAG_KEY = PACKAGE_ETAG_STORAGE_KEY;
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
+let warnedEmptyMeetsList = false;
 let lastFetchMeetsTimeoutLogAt = 0;
 const criticalPrefetchRequests = new Map<MeetName, Promise<void>>();
 const fullPrefetchRequests = new Map<MeetName, Promise<void>>();
@@ -277,6 +278,18 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
       if (!hasNetwork) throw new Error('Offline');
 
       const meets = await fetchApiMeets();
+      // A valid `200 []` (a deploy window, an empty upstream table) used to
+      // overwrite the only offline copy of the meets list; the next offline
+      // cold start then had no meet, no time zone and empty tabs while the
+      // roster and history were still on disk. Keep the cache; the caller
+      // still sees the empty answer.
+      if (meets.length === 0 && (await getCachedMeets()).length > 0) {
+        if (!warnedEmptyMeetsList) {
+          warnedEmptyMeetsList = true;
+          devLog('/meets answered with no meets; keeping the cached list');
+        }
+        return meets;
+      }
       await setCachedMeets(meets);
       return meets;
     } catch (error) {
@@ -463,6 +476,12 @@ async function cleanupOldMeetData() {
     if (explicitlyDownloaded.has(meet)) {
       continue;
     }
+    // A meet is marked downloaded only once its prefetch resolves, and its
+    // last access used to be stamped at the same point, so opening three
+    // other meets during a long history download evicted it mid-way.
+    if (fullPrefetchRequests.has(meet)) {
+      continue;
+    }
     implicitKept += 1;
     if (implicitKept <= MAX_CACHED_MEETS) {
       continue;
@@ -626,6 +645,9 @@ async function ingestMeetPackage(
 
 async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOptions) {
   const errors: string[] = [];
+  // Stamp the access up front too, so the meet is the most recent one for
+  // as long as the download runs, not only once it has finished.
+  await touchMeetAccess(meet);
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
   let freshEtag: string | null = null;
   // A `304` leaves the stored validator alone: the package it describes is
