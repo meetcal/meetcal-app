@@ -4,12 +4,18 @@ import {
   setOfflineCache,
 } from "@/lib/database/offline-cache";
 import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 
 const mockGetJson = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
-  getJsonArray: (...args: any[]) => mockGetJson(...args),
-}));
+// The real API client runs, so its boundary validators see these payloads.
+const originalFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = jsonFetchStub((path, query) => mockGetJson(path, query)) as unknown as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = originalFetch;
+});
 
 jest.mock("@/lib/database/offline-cache", () => ({
   OFFLINE_CACHE_KEYS: {

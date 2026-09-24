@@ -364,6 +364,105 @@ describe("saveSessionsFromAthletes", () => {
     expect(countNotificationFlagReads()).toBe(1);
     expect(scheduleNotification).toHaveBeenCalledTimes(1);
   });
+
+  describe("a change that lands while the batch is running", () => {
+    const SESSION_3 = "Test-Meet-3-Red";
+    const mockScheduleNotification = scheduleNotification as jest.MockedFunction<
+      typeof scheduleNotification
+    >;
+
+    /**
+     * Seeds session 3 with the user's own notes and a hand-added athlete,
+     * then starts the batch and holds it inside session 1's reminder, after
+     * session 1 is stored and before session 3 is merged.
+     */
+    async function startHeldBatch() {
+      await AsyncStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify([
+          makeSession(SESSION_3, {
+            sessionNumber: 3,
+            notes: "before",
+            athleteNames: ["Hand Pick"],
+          }),
+        ]),
+      );
+      let release: () => void = () => {};
+      mockScheduleNotification.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve("notification-id");
+          }),
+      );
+      const hook = await mountHook();
+      let batch: Promise<boolean> = Promise.resolve(false);
+      await act(async () => {
+        batch = hook.current.saveSessionsFromAthletes(
+          ATHLETES,
+          "Test Meet" as never,
+          SCHEDULE,
+        );
+      });
+      await flush();
+      expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+      return {
+        hook,
+        finish: async () => {
+          let ok = false;
+          await act(async () => {
+            release();
+            ok = await batch;
+          });
+          return ok;
+        },
+      };
+    }
+
+    const stored = async () =>
+      JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]") as Hook["savedSessions"];
+
+    it("keeps an edit saved mid-batch instead of merging over it from the old list", async () => {
+      const { hook, finish } = await startHeldBatch();
+
+      await act(async () => {
+        await hook.current.saveSession(
+          makeSession(SESSION_3, {
+            sessionNumber: 3,
+            notes: "after",
+            athleteNames: ["Hand Pick", "Late Pick"],
+          }),
+        );
+      });
+      await expect(finish()).resolves.toBe(true);
+
+      const row = (await stored()).find((s) => s.id === SESSION_3);
+      expect(row?.notes).toBe("after");
+      expect(row?.athleteNames).toEqual(["Hand Pick", "Late Pick", "Athlete 3"]);
+      expect(hook.current.savedSessions.find((s) => s.id === SESSION_3)?.notes).toBe("after");
+      const outbox = await readOutbox("user_1");
+      expect(outbox.sessions[SESSION_3]).toMatchObject({
+        op: "put",
+        session: expect.objectContaining({ notes: "after" }),
+      });
+    });
+
+    it("does not bring back the notes and names of a session unsaved mid-batch", async () => {
+      const { hook, finish } = await startHeldBatch();
+
+      await act(async () => {
+        await hook.current.removeSession(SESSION_3);
+      });
+      await expect(finish()).resolves.toBe(true);
+
+      // The batch still saves session 3 (its athlete is entered in it), but
+      // as a fresh row: nothing of the row the user removed comes back.
+      const row = (await stored()).find((s) => s.id === SESSION_3);
+      expect(row).toBeDefined();
+      expect(row?.notes).toBeUndefined();
+      expect(row?.athleteNames).toEqual(["Athlete 3"]);
+      expect(hook.current.savedSessions.find((s) => s.id === SESSION_3)?.notes).toBeUndefined();
+    });
+  });
 });
 
 

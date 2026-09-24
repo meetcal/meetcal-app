@@ -2,20 +2,11 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
 import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;
-type RecordsRow = {
-  age_category: string | null;
-  gender: string | null;
-  weight_class: string | null;
-  snatch_record: number | null;
-  cj_record: number | null;
-  total_record: number | null;
-  record_type: string | null;
-};
 
 type CompleteRecordsRow = {
   age_category: string;
@@ -27,7 +18,7 @@ type CompleteRecordsRow = {
   record_type: string;
 };
 
-function isCompleteRecordsRow(row: RecordsRow): row is CompleteRecordsRow {
+function isCompleteRecordsRow(row: Readonly<ApiRecordRow>): row is CompleteRecordsRow {
   return Boolean(
     row.age_category &&
       row.gender &&
@@ -39,7 +30,7 @@ function isCompleteRecordsRow(row: RecordsRow): row is CompleteRecordsRow {
   );
 }
 
-function mapRowsToRecordsData(rows: CompleteRecordsRow[]): RecordsData {
+function mapRowsToRecordsData(rows: readonly CompleteRecordsRow[]): RecordsData {
   const result: RecordsData = {};
 
   rows.forEach((row) => {
@@ -113,7 +104,7 @@ async function fetchRecordsFresh(
     throw new Error('Offline');
   }
 
-  const allRows = await getJsonArray<RecordsRow>('/data/records');
+  const allRows = await fetchApiRecords();
   const rows = allRows.filter(isCompleteRecordsRow).filter((row) => {
     if (row.record_type !== federation) return false;
     if (ageGroup && row.age_category !== ageGroup) return false;
@@ -130,7 +121,7 @@ async function fetchFederationsFresh(): Promise<string[]> {
     throw new Error('Offline');
   }
 
-  const rows = await getJsonArray<RecordsRow>('/data/records');
+  const rows = await fetchApiRecords();
   return Array.from(
     new Set(rows.filter(isCompleteRecordsRow).map((row) => row.record_type)),
   ).sort((a, b) =>
