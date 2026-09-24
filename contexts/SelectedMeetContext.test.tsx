@@ -448,4 +448,74 @@ describe("SelectedMeetProvider persisted selection", () => {
     expect(persisted?.name).toBe("Deep Link Meet");
     act(() => tree.unmount());
   });
+
+  describe("when the selected meet is missing from a fresh /meets list", () => {
+    // The stored meet is in the cached window (so it is painted first) but
+    // the fresh list no longer has it: it may have moved out of the window.
+    beforeEach(async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Old Meet");
+      mockGetCachedMeets.mockResolvedValue([makeMeet("Old Meet"), makeMeet("Window Meet")]);
+      mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    });
+
+    it("keeps the selection and its storage when the by-name lookup fails", async () => {
+      mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+      const tree = await mount();
+
+      expect(mockFetchApiMeetByName).toHaveBeenCalledWith("Old Meet");
+      expect(captured!.selectedMeet).toBe("Old Meet");
+      expect(captured!.meetDetails?.name).toBe("Old Meet");
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Old Meet");
+      act(() => tree.unmount());
+    });
+
+    it("keeps the selection and persists its details when the lookup finds it", async () => {
+      const resolved = { ...makeMeet("Old Meet"), status: "completed" } as Meet;
+      mockFetchApiMeetByName.mockResolvedValue(resolved);
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Old Meet");
+      expect(captured!.meetDetails).toEqual(resolved);
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Old Meet");
+      const persisted: unknown = JSON.parse(
+        (await AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)) ?? "null",
+      );
+      expect(persisted).toEqual(resolved);
+      act(() => tree.unmount());
+    });
+
+    it("falls back to the first fresh meet and clears storage when the meet is gone", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeMeet("Old Meet")));
+      mockFetchApiMeetByName.mockResolvedValue(null);
+      const tree = await mount();
+      await flush();
+
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      expect(captured!.meetDetails?.name).toBe("Window Meet");
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
+      await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBeNull();
+      act(() => tree.unmount());
+    });
+  });
+
+  it("restores the previous meet and rethrows when saving a new selection fails", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet"), makeMeet("Other Meet")]);
+    const tree = await mount();
+    expect(captured!.selectedMeet).toBe("Window Meet");
+
+    const diskFull = new Error("disk full");
+    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(diskFull);
+    let failure: unknown = null;
+    await act(async () => {
+      failure = await captured!.setSelectedMeet("Other Meet" as MeetName).catch((e: unknown) => e);
+    });
+    await flush();
+
+    expect(failure).toBe(diskFull);
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    expect(captured!.meetDetails?.name).toBe("Window Meet");
+    // The failed selection never warmed.
+    expect(mockWarmMeetData).not.toHaveBeenCalledWith("Other Meet");
+    act(() => tree.unmount());
+  });
 });

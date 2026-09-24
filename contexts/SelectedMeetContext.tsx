@@ -378,7 +378,8 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           if (outOfWindowMeet) {
             await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
             if (isStale()) return;
-            await Promise.resolve(
+            // Persist so an offline cold start can rehydrate this selection.
+            await AsyncStorage.setItem(
               SELECTED_MEET_DETAILS_KEY,
               JSON.stringify(outOfWindowMeet),
             );
