@@ -171,3 +171,54 @@ describe("useOfflineData delete all", () => {
     act(() => tree.unmount());
   });
 });
+
+describe("useOfflineData single download", () => {
+  it("marks a meet downloaded, with its end date, only after the download succeeds", async () => {
+    const tree = await mount();
+    const action = jest.fn(async () => {});
+
+    await act(async () => {
+      await captured!.handleDownload("meet:Meet B", action);
+    });
+    await flush();
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(mockMarkMeetExplicitlyDownloaded).toHaveBeenCalledWith("Meet B", true, {
+      endDate: "2099-07-02",
+    });
+    expect(captured!.downloadingItems.has("meet:Meet B")).toBe(false);
+    act(() => tree.unmount());
+  });
+
+  it("surfaces a failed download and never marks the meet downloaded", async () => {
+    const tree = await mount();
+    const action = jest.fn(async () => {
+      throw new Error("MeetCal API error 500");
+    });
+
+    await act(async () => {
+      await captured!.handleDownload("meet:Meet B", action);
+    });
+    await flush();
+
+    // A meet marked downloaded is kept past its end date and shown as
+    // available offline; a failed download must not claim that.
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalled();
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Download Failed");
+    expect(captured!.downloadingItems.size).toBe(0);
+    act(() => tree.unmount());
+  });
+
+  it("does not mark a meet for a competition item or a meet the app no longer lists", async () => {
+    const tree = await mount();
+
+    await act(async () => {
+      await captured!.handleDownload("standards", async () => {});
+      await captured!.handleDownload("meet:Removed Meet", async () => {});
+    });
+    await flush();
+
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
+});

@@ -1,3 +1,6 @@
+/**
+ * @jest-environment-options {"deviceTimeZone": "Pacific/Auckland"}
+ */
 import {
   APP_VERSION,
   buildApiUrl,
@@ -627,27 +630,26 @@ describe('meetcal API mappers', () => {
       weigh_in_time: '07:00:00',
       weight_class: '60kg',
     };
-    const originalTz = process.env.TZ;
-    // A device far east of the meet: a device-local anchor would flip the day.
-    process.env.TZ = 'Pacific/Auckland';
-    try {
-      const schedule = mapApiSchedule([
-        { ...row, date: '2026-06-20' },
-        { ...row, date: '2026-06-21T00:00:00' },
-        { ...row, date: 'TBD' },
-      ]);
-      expect(schedule.map((day) => day.date)).toEqual([
-        'June 20, 2026',
-        'June 21, 2026',
-        'TBD',
-      ]);
-      expect(schedule[2].fullDate).toBe('TBD');
-    } finally {
-      process.env.TZ = originalTz;
-    }
+    // A device far east of the meet: a device-local anchor would flip the
+    // day. The file's docblock pins the device zone
+    // (jest/device-timezone-environment.js); assigning process.env.TZ in a
+    // test would not change it.
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
+    const schedule = mapApiSchedule([
+      { ...row, date: '2026-06-20' },
+      { ...row, date: '2026-06-21T00:00:00' },
+      { ...row, date: 'TBD' },
+    ]);
+    expect(schedule.map((day) => day.date)).toEqual([
+      'June 20, 2026',
+      'June 21, 2026',
+      'TBD',
+    ]);
+    expect(schedule[2].fullDate).toBe('TBD');
   });
 
   it('computes New York DST offset from the meet date, not the device zone', () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
     const summer = mapApiMeet({
       name: 'Summer Meet',
       federation: 'USAW',

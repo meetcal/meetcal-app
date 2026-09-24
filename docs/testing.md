@@ -12,6 +12,18 @@ bunx tsx .codex/skills/review-code-performance-tests/scripts/report-coverage-gap
 
 CI (`.github/workflows/ci.yml`) runs lint, `tsc --noEmit`, and `bunx jest --ci`. The npm script `test` is watch mode and is not the CI gate.
 
+### Device time zone
+
+Jest runs every file on a pinned *device* zone, set by `jest/device-timezone-environment.js` (the `testEnvironment` in `package.json`) before the file loads. The default is `Pacific/Auckland`, so a runner on UTC cannot hide a device-local date bug. Assigning `process.env.TZ` inside a test does nothing (the sandbox gets a copy of `process.env`); pin a file instead:
+
+```ts
+/**
+ * @jest-environment-options {"deviceTimeZone": "America/Los_Angeles"}
+ */
+```
+
+Use a US zone to catch UTC midnight read back as local (`new Date("2026-06-20").getDate()` is 19 in Los Angeles) and a far-east zone to catch local midnight read back as UTC. Files that depend on a zone assert it (`Intl.DateTimeFormat().resolvedOptions().timeZone`). To sweep the unpinned files through another zone: `JEST_DEVICE_TIME_ZONE=Asia/Kolkata bunx jest --ci --watchman=false`.
+
 Put tests next to the module they cover (`lib/api/meetcal-api.test.ts`, not a parallel `__tests__` tree).
 
 Risk cases that belong in unit tests:

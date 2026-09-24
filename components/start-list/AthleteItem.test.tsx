@@ -4,6 +4,8 @@ import { act, create, type ReactTestInstance } from "react-test-renderer";
 import type { LiftResult } from "@/data/types/athletes";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
+import { getLastYearBests } from "@/lib/start-list-api";
+import { ActivityIndicator } from "react-native";
 import { AthleteItem, type AthleteRowProps } from "./AthleteItem";
 
 jest.mock("react-native-reanimated", () => ({
@@ -127,6 +129,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.mocked(getChevronIcon).mockClear();
+  jest.mocked(getLastYearBests).mockClear();
 });
 
 describe("AthleteItem", () => {
@@ -193,5 +196,152 @@ describe("AthleteItem", () => {
     act(() => {
       tree.unmount();
     });
+  });
+});
+
+function mountRow(props: AthleteRowProps) {
+  let tree!: ReturnType<typeof create>;
+  act(() => {
+    tree = create(<Parent props={props} />);
+  });
+  return tree;
+}
+
+async function toggleRow(tree: ReturnType<typeof create>) {
+  const [nameRow] = findPressables(tree);
+  await act(async () => {
+    nameRow.props.onPress();
+  });
+}
+
+/** Lets the idle callback (a 0 ms timer here) and the bests promise run. */
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+}
+
+const spinnerCount = (tree: ReturnType<typeof create>) =>
+  tree.root.findAll((node) => node.type === ActivityIndicator).length;
+
+describe("AthleteItem session link", () => {
+  it("opens the session with the embedded meet-local fields and the meet", async () => {
+    const props = makeProps();
+    const tree = mountRow(props);
+    await toggleRow(tree);
+
+    const [, sessionLink] = findPressables(tree);
+    act(() => sessionLink.props.onPress());
+
+    expect(props.router.push).toHaveBeenCalledWith({
+      pathname: "/shared-screens/schedule-details",
+      params: {
+        id: "session-4-Red",
+        sessionNumber: 4,
+        platform: "Red",
+        weightClass: "59",
+        startTime: "9:00 AM",
+        weighInTime: "7:00 AM",
+        date: "2026-06-20",
+        athleteName: "Jane Doe",
+        meet: "Test Meet",
+      },
+    });
+    act(() => tree.unmount());
+  });
+
+  it("falls back to the schedule's platform start time and derives the weigh-in", async () => {
+    const props = makeProps({
+      athlete: {
+        ...ATHLETE,
+        session: { number: 4, platform: "Blue" },
+      },
+      getSessionDetails: () =>
+        ({
+          date: "2026-06-21",
+          displayDate: "Sunday",
+          startTime: "8:00 AM",
+          weighInTime: "6:00 AM",
+          platforms: [
+            { platform: "Red", platformStartTime: "8:00 AM" },
+            { platform: "Blue", platformStartTime: "1:00 PM" },
+          ],
+        }) as unknown as ReturnType<AthleteRowProps["getSessionDetails"]>,
+    });
+    const tree = mountRow(props);
+    await toggleRow(tree);
+    const [, sessionLink] = findPressables(tree);
+    act(() => sessionLink.props.onPress());
+
+    expect(props.router.push).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
+      params: { startTime: "1:00 PM", weighInTime: "11:00 AM", date: "2026-06-21" },
+    });
+    act(() => tree.unmount());
+  });
+
+  it("does not navigate to a session it cannot place in time", async () => {
+    const props = makeProps({
+      athlete: { ...ATHLETE, session: { number: 4, platform: "Blue" } },
+      getSessionDetails: () => null,
+    });
+    const tree = mountRow(props);
+    await toggleRow(tree);
+    const [, sessionLink] = findPressables(tree);
+    act(() => sessionLink.props.onPress());
+
+    expect(props.router.push).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
+});
+
+describe("AthleteItem year bests", () => {
+  it("stops the spinner and shows dashes when the bests request fails", async () => {
+    jest.mocked(getLastYearBests).mockRejectedValueOnce(new Error("timeout"));
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const tree = mountRow(makeProps({ isSubscribed: true }));
+    await toggleRow(tree);
+    expect(spinnerCount(tree)).toBe(1);
+
+    await settle();
+
+    expect(getLastYearBests).toHaveBeenCalledWith("Jane Doe");
+    expect(spinnerCount(tree)).toBe(0);
+    expect(JSON.stringify(tree.toJSON())).toContain("—");
+    warn.mockRestore();
+    act(() => tree.unmount());
+  });
+
+  it("never shows a stale answer from a request started before the row was collapsed", async () => {
+    let resolveFirst!: (value: { bestSnatch: number; bestCJ: number; bestTotal: number }) => void;
+    jest
+      .mocked(getLastYearBests)
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const tree = mountRow(makeProps({ isSubscribed: true }));
+
+    await toggleRow(tree); // open: first request in flight
+    await settle();
+    await toggleRow(tree); // close
+    await toggleRow(tree); // open again: second request in flight
+    await settle();
+    expect(getLastYearBests).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveFirst({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
+    });
+
+    // The first answer belongs to a closed effect; the row keeps waiting for
+    // its own request instead of painting it.
+    expect(spinnerCount(tree)).toBe(1);
+    expect(JSON.stringify(tree.toJSON())).not.toContain("180kg");
+    act(() => tree.unmount());
+  });
+
+  it("does not request bests for a collapsed row", async () => {
+    const tree = mountRow(makeProps({ isSubscribed: true }));
+    await settle();
+    expect(getLastYearBests).not.toHaveBeenCalled();
+    act(() => tree.unmount());
   });
 });
