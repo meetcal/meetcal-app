@@ -259,3 +259,44 @@ describe("downloadAdaptiveRecordsForOffline", () => {
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.adaptiveRecords)).resolves.toBe(oldEntry);
   });
 });
+
+// Every downloader writes through replaceOfflineCache, which rejects on a
+// failed write. Only standards had a test for it, so switching any of the
+// other five back to the swallowing setOfflineCache went unnoticed, and
+// Refresh All would say "Refresh Complete" over a write that never landed.
+describe("a failed storage write", () => {
+  const validAnswer = async (path: string, query: Record<string, string>): Promise<unknown> => {
+    if (path === "/data/wso/") return ["Carolina"];
+    if (path.includes("wso")) return [];
+    if (path.includes("adaptive")) {
+      return query.gender === "Men" ? [{ weight_class: "73", snatch: 100, cj: 120, total: 220 }] : [];
+    }
+    if (path.includes("qualifying")) {
+      return [{ event_name: "Nationals", age_category: "Senior", gender: "Men", weight_class: "89kg", qualifying_total: 250 }];
+    }
+    if (path.includes("intl") || path.includes("rankings")) {
+      return [{ meet: "Worlds", ranking: 1, name: "Athlete A", weight_class: "89kg", total: 380, percent_a: 101.5, gender: "Men", age_category: "Senior" }];
+    }
+    if (path.includes("records")) return [recordRow({})];
+    return [standardRow];
+  };
+
+  it.each([
+    ["standards", downloadStandardsForOffline, OFFLINE_CACHE_KEYS.standards],
+    ["records", downloadRecordsForOffline, OFFLINE_CACHE_KEYS.records],
+    ["WSO records", downloadWSORecordsForOffline, OFFLINE_CACHE_KEYS.wsoRecords],
+    ["international rankings", downloadIntlRankingsForOffline, OFFLINE_CACHE_KEYS.intlRankings],
+    ["qualifying totals", downloadQualifyingTotalsForOffline, OFFLINE_CACHE_KEYS.qualifyingTotals],
+    ["adaptive records", downloadAdaptiveRecordsForOffline, OFFLINE_CACHE_KEYS.adaptiveRecords],
+  ] as const)("%s: rejects and keeps the stored copy", async (_name, download, key) => {
+    await AsyncStorage.setItem(key, oldEntry);
+    mockRespond.mockImplementation(validAnswer);
+    // The answer is usable: without the write failure the download succeeds.
+    await download();
+    await AsyncStorage.setItem(key, oldEntry);
+
+    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("SQLITE_FULL"));
+    await expect(download()).rejects.toThrow("SQLITE_FULL");
+    await expect(AsyncStorage.getItem(key)).resolves.toBe(oldEntry);
+  });
+});

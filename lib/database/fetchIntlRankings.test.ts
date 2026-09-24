@@ -22,7 +22,11 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
+import { intlRankingsResource } from "@/lib/database/fetchIntlRankings";
+
+// The screens read rankings through the resource; its fresh fetch is the
+// mapping under test (the old `fetchIntlRankings` wrapper had no callers).
+const fetchIntlRankings = async () => (await intlRankingsResource.revalidate()).data;
 
 const row = (overrides: Record<string, unknown>) => ({
   meet: "Worlds",
@@ -80,13 +84,9 @@ describe("fetchIntlRankings", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledTimes(1);
   });
 
-  it("serves the cached rankings when the API fails and rethrows otherwise", async () => {
+  it("rejects when the API fails instead of reporting fresh data", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
-    const cached = [{ meet: "Worlds", ranking: 2, name: "Cached" }];
-    mockGetOfflineCache.mockResolvedValueOnce({ data: cached, lastSynced: 1 });
-    await expect(fetchIntlRankings()).resolves.toEqual(cached);
-
-    mockGetOfflineCache.mockResolvedValueOnce(null);
     await expect(fetchIntlRankings()).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });

@@ -103,17 +103,3 @@ export const intlRankingsResource = createMutableResource<IntlRanking[], []>({
   fetchFresh: () => fetchIntlRankingsFresh(),
   persistFresh: (data) => persistIntlRankings(data),
 });
-
-export async function fetchIntlRankings(): Promise<IntlRanking[]> {
-  try {
-    const rankings = await fetchIntlRankingsFresh();
-    await persistIntlRankings(rankings);
-    return rankings;
-  } catch (error) {
-    const cached = await readIntlRankingsCache();
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}
