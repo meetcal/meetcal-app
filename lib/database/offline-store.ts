@@ -3,6 +3,8 @@ import type { Schedule } from '@/types/schedule';
 import type { LiftResult, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
+import { getTrustedNow } from '@/lib/api/meetcal-api';
+import { devLog } from '@/lib/logger';
 import { Buffer } from 'buffer';
 import { deflate, inflate } from 'pako';
 import {
@@ -112,31 +114,44 @@ async function getExplicitMeetDownloads(): Promise<ExplicitMeetDownloads> {
 }
 
 async function saveExplicitMeetDownloads(downloads: ExplicitMeetDownloads): Promise<void> {
-  try {
-    await AsyncStorage.setItem(
-      EXPLICIT_MEET_DOWNLOADS_KEY,
-      JSON.stringify(downloads),
-    );
-  } catch (error) {
-    console.error('Error saving explicit meet downloads:', error);
-  }
+  await AsyncStorage.setItem(
+    EXPLICIT_MEET_DOWNLOADS_KEY,
+    JSON.stringify(downloads),
+  );
 }
+
+/**
+ * Tail of the serialized read-modify-write chain over the downloads blob.
+ * `clearExpiredDownloadedMeets` is fired unawaited from every meets refresh
+ * while a download may be marking its meet: two overlapping calls each read
+ * the same blob and the second write dropped the first's change (a meet
+ * marked downloaded and then silently not, or an expired meet resurrected).
+ * Same pattern as `lib/authCache.ts`'s `writeChain`.
+ */
+let explicitDownloadsWriteChain: Promise<void> = Promise.resolve();
 
 export async function markMeetExplicitlyDownloaded(
   meetId: MeetName,
   downloaded: boolean,
   options?: { endDate?: string }
 ): Promise<void> {
-  const downloads = await getExplicitMeetDownloads();
-  if (downloaded) {
-    downloads[meetId] = {
-      markedAt: Date.now(),
-      ...(options?.endDate ? { endDate: options.endDate } : {}),
-    };
-  } else {
-    delete downloads[meetId];
-  }
-  await saveExplicitMeetDownloads(downloads);
+  const write = explicitDownloadsWriteChain
+    // A failed predecessor must not block the chain for good.
+    .catch(() => undefined)
+    .then(async () => {
+      const downloads = await getExplicitMeetDownloads();
+      if (downloaded) {
+        downloads[meetId] = {
+          markedAt: Date.now(),
+          ...(options?.endDate ? { endDate: options.endDate } : {}),
+        };
+      } else {
+        delete downloads[meetId];
+      }
+      await saveExplicitMeetDownloads(downloads);
+    });
+  explicitDownloadsWriteChain = write;
+  await write;
 }
 
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
@@ -168,21 +183,35 @@ const WESTERNMOST_MEET_OFFSET_MS = 10 * 60 * 60 * 1000;
 /** From the noon-UTC calendar anchor to midnight UTC starting the next day. */
 const NOON_TO_NEXT_MIDNIGHT_MS = 12 * 60 * 60 * 1000;
 
-function hasMeetEnded(endDate: string): boolean {
+export function hasMeetEnded(endDate: string, now: number): boolean {
   const anchor = meetCalendarDateAnchor(endDate);
   if (!anchor) return false;
   // Noon UTC on the end date + 12h = midnight UTC starting the next day.
   const endOfMeetDay =
     anchor.getTime() + NOON_TO_NEXT_MIDNIGHT_MS + WESTERNMOST_MEET_OFFSET_MS;
-  return endOfMeetDay < Date.now();
+  return endOfMeetDay < now;
 }
 
+/**
+ * Clears every downloaded meet whose end date has passed — on the server's
+ * clock. This runs from every meets refresh, offline included, so a device
+ * clock a day ahead used to wipe the meet the user was standing at. With no
+ * server sample yet (a cold start offline) nothing is cleared: expiring a
+ * meet late is harmless, expiring it early is data loss. One meet failing
+ * to clear does not stop the sweep.
+ */
 export async function clearExpiredDownloadedMeets(): Promise<void> {
   try {
+    const trustedNow = getTrustedNow();
+    if (!trustedNow) {
+      devLog('Skipping downloaded meet expiry: no server clock sample yet');
+      return;
+    }
+    const now = trustedNow.getTime();
     const downloads = await getExplicitMeetDownloads();
     const expiredMeetIds = Object.keys(downloads).filter((meetId) => {
       const endDate = downloads[meetId]?.endDate;
-      return endDate ? hasMeetEnded(endDate) : false;
+      return endDate ? hasMeetEnded(endDate, now) : false;
     });
     // This runs on every meets refresh — app start, every five minutes, and
     // every reconnect — and almost always finds nothing expired. Resolving
@@ -190,7 +219,11 @@ export async function clearExpiredDownloadedMeets(): Promise<void> {
     const storageKeys = await readStorageKeysForMeetClear(expiredMeetIds.length);
 
     for (const meetId of expiredMeetIds) {
-      await clearMeetData(meetId as MeetName, { storageKeys });
+      try {
+        await clearMeetData(meetId as MeetName, { storageKeys });
+      } catch (error) {
+        console.error('Error clearing expired downloaded meet:', error);
+      }
     }
   } catch (error) {
     console.error('Error clearing expired downloaded meets:', error);
@@ -1446,7 +1479,17 @@ export async function pruneOrphanedAthleteHistory(
   }
 }
 
-// Clear meet data from store
+/**
+ * Removes a meet's schedule, roster, results, per-session caches and (by
+ * default) the history only its athletes held, then resets its store entry.
+ *
+ * "Downloaded" is un-marked FIRST. The mark used to be the last write, with
+ * every error swallowed, so a kill or storage error mid-way left a meet
+ * marked downloaded with an empty roster — shown as offline-ready and
+ * never re-downloaded — and the Remove button reported success. Orphaned
+ * blobs from the reverse failure are reaped by the next eviction or clear.
+ * Errors propagate so callers can say "Remove Failed"; sweeps catch per meet.
+ */
 export async function clearMeetData(
   meet: MeetName,
   options?: {
@@ -1474,6 +1517,7 @@ export async function clearMeetData(
       options?.pruneHistory === false
         ? []
         : (await readStoredAthletes(athletesKey, [])).map((athlete) => athlete.name);
+    await markMeetExplicitlyDownloaded(meet, false);
     if (scheduleKey) {
       await AsyncStorage.removeItem(scheduleKey);
     }
@@ -1507,9 +1551,9 @@ export async function clearMeetData(
     };
     data.meets[meet] = emptyMeetData;
     await AsyncStorage.setItem(STORE_KEY, JSON.stringify(data));
-    await markMeetExplicitlyDownloaded(meet, false);
   } catch (error) {
     console.error('Error clearing meet data:', error);
+    throw error;
   }
 }
 
@@ -1520,7 +1564,11 @@ export async function clearAllMeetData(): Promise<void> {
     const storageKeys = await readStorageKeysForMeetClear(meetIds.length);
 
     for (const meetId of meetIds) {
-      await clearMeetData(meetId, { storageKeys, pruneHistory: false });
+      try {
+        await clearMeetData(meetId, { storageKeys, pruneHistory: false });
+      } catch (error) {
+        console.error('Error clearing meet data during clear-all:', error);
+      }
     }
   } catch (error) {
     console.error('Error clearing all meet data:', error);
@@ -1574,7 +1622,11 @@ export async function clearImplicitMeetData(exceptMeet?: MeetName): Promise<void
     );
 
     for (const meetId of implicitMeetIds) {
-      await clearMeetData(meetId as MeetName, { storageKeys });
+      try {
+        await clearMeetData(meetId as MeetName, { storageKeys });
+      } catch (error) {
+        console.error('Error clearing implicit meet:', error);
+      }
     }
   } catch (error) {
     console.error('Error clearing implicit meet data:', error);

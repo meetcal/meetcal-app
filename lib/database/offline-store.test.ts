@@ -29,6 +29,13 @@ import {
 
 const mockStorage = new Map<string, string>();
 
+// Destructive expiry runs on the server's clock. By default the server
+// agrees with the device; tests that care override this.
+let mockTrustedNow: () => Date | null = () => new Date();
+jest.mock("@/lib/api/meetcal-api", () => ({
+  getTrustedNow: () => mockTrustedNow(),
+}));
+
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
   default: {
@@ -1442,5 +1449,178 @@ describe("athlete history pruning", () => {
     await expect(pruneOrphanedAthleteHistory()).resolves.toBe(0);
 
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("downloaded meet expiry on the server's clock", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+  });
+  const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+    mockTrustedNow = () => new Date();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockTrustedNow = () => new Date();
+  });
+
+  it("leaves an ended meet alone when there is no server clock sample yet", async () => {
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    mockTrustedNow = () => null;
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(true);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Ended" })],
+    });
+  });
+
+  it("clears an ended meet once the server clock says it has ended", async () => {
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    mockTrustedNow = () => new Date();
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(false);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+
+  it("keeps today's meet when only the device clock, a day ahead, says it ended", async () => {
+    const realNow = Date.now();
+    await saveMeetAthletes("Today", [athlete("Today")] as never);
+    await markMeetExplicitlyDownloaded("Today" as never, true, { endDate: isoDate(realNow) });
+    jest.useFakeTimers();
+    jest.setSystemTime(realNow + 2 * DAY_MS);
+    // The last response's Date header put the server at real time.
+    mockTrustedNow = () => new Date(realNow);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Today")).resolves.toBe(true);
+    await expect(getMeetData("Today" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Today" })],
+    });
+  });
+
+  it("keeps sweeping when one meet fails to clear", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    for (const meet of ["Bad", "Good"]) {
+      await saveMeetAthletes(meet, [athlete(meet)] as never);
+      await markMeetExplicitlyDownloaded(meet as never, true, { endDate: "2020-01-01" });
+    }
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realRemove = removeItem.getMockImplementation();
+    removeItem.mockImplementation(async (key: string) => {
+      if (key === "meetcal_athletes_Bad") throw new Error("I/O error");
+      mockStorage.delete(key);
+    });
+
+    try {
+      await clearExpiredDownloadedMeets();
+    } finally {
+      removeItem.mockImplementation(realRemove);
+    }
+
+    await expect(getMeetData("Good" as never)).resolves.toMatchObject({ athletes: [] });
+    jest.restoreAllMocks();
+  });
+
+  async function isMeetExplicitlyDownloadedFor(meet: string): Promise<boolean> {
+    return (await getExplicitlyDownloadedMeetIds()).has(meet);
+  }
+});
+
+describe("clearMeetData failure order", () => {
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: {
+      number: 1,
+      platform: "Red",
+      date: "2099-06-20",
+      startTime: "9:00 AM",
+      weighInTime: "7:00 AM",
+    },
+  });
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("un-marks the download before removing anything, and rejects when a remove fails", async () => {
+    await saveMeetAthletes("Meet A", [athlete("Meet A")] as never);
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" });
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realRemove = removeItem.getMockImplementation();
+    removeItem.mockImplementation(async (key: string) => {
+      if (key === "meetcal_athletes_Meet A") throw new Error("I/O error");
+      mockStorage.delete(key);
+    });
+
+    try {
+      await expect(clearMeetData("Meet A" as never)).rejects.toThrow("I/O error");
+    } finally {
+      removeItem.mockImplementation(realRemove);
+    }
+
+    // Whatever is left on disk, the meet is no longer presented as downloaded.
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set());
+  });
+
+  it("rejects when the session caches cannot be removed", async () => {
+    await saveMeetAthletes("Meet A", [athlete("Meet A")] as never);
+    (AsyncStorage.multiRemove as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+    await expect(clearMeetData("Meet A" as never)).rejects.toThrow("SQLITE_BUSY");
+  });
+
+  it("lands both of two concurrent download marks", async () => {
+    await Promise.all([
+      markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" }),
+      markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" }),
+    ]);
+
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set(["Meet A", "Meet B"]));
+  });
+
+  it("keeps marking after an earlier mark's write failed", async () => {
+    (AsyncStorage.setItem as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error("SQLITE_FULL");
+    });
+    await expect(
+      markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" }),
+    ).rejects.toThrow("SQLITE_FULL");
+
+    await markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" });
+
+    await expect(getExplicitlyDownloadedMeetIds()).resolves.toEqual(new Set(["Meet B"]));
   });
 });
