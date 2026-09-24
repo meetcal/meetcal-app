@@ -5,11 +5,12 @@ import {
   MeetCalApiError,
   MeetCalApiTimeoutError,
 } from '@/lib/api/meetcal-api';
-import { devLog } from '@/lib/logger';
+import { devLog, devWarn } from '@/lib/logger';
 import {
   adoptPreOutboxSessions,
   currentDeliverySeq,
   deliveriesSince,
+  describeTokenClaims,
   type FlushResult,
   mergeServerSessions,
   readOutbox,
@@ -146,7 +147,15 @@ async function reconcileWithServer(
   // body, so reaching here means the server answered authoritatively.
   // Only an authoritative answer is allowed to shrink local state.
   const fetchStartedAt = currentDeliverySeq();
-  const apiSessions = await fetchSavedSessions(token);
+  let apiSessions: Awaited<ReturnType<typeof fetchSavedSessions>>;
+  try {
+    apiSessions = await fetchSavedSessions(token);
+  } catch (error) {
+    if (error instanceof MeetCalApiError && error.status === 401) {
+      devWarn('Saved sessions: API rejected the sign-in token (401)', describeTokenClaims(token));
+    }
+    throw error;
+  }
   if (!isCurrent()) return false;
   deps.setAuthExpired(false);
 

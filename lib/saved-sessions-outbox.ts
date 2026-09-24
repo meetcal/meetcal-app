@@ -483,6 +483,35 @@ export function tokenBelongsTo(token: string, userId: string): boolean {
   }
 }
 
+/**
+ * The claims of a Clerk token that decide whether the API accepts it, for a
+ * dev log after a 401: the issuer (which Clerk instance), `azp` (the web
+ * origin, absent on native sessions), `aud`, and seconds until expiry. Never
+ * the token or its subject. Null when the payload is unreadable.
+ */
+export function describeTokenClaims(
+  token: string,
+  nowMs: number = Date.now(),
+): { iss: unknown; azp: unknown; aud: unknown; expiresInSeconds: number | null } | null {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  const json = decodeBase64Url(payload);
+  if (!json) return null;
+  try {
+    const claims: unknown = JSON.parse(json);
+    if (!isRecord(claims)) return null;
+    return {
+      iss: claims.iss,
+      azp: claims.azp,
+      aud: claims.aud,
+      expiresInSeconds:
+        typeof claims.exp === 'number' ? Math.round(claims.exp - nowMs / 1000) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** A failure that says the network or server is unreachable right now. */
 function isConnectivityFailure(error: unknown): boolean {
   return error instanceof MeetCalApiTimeoutError || !(error instanceof MeetCalApiError);
@@ -572,6 +601,12 @@ async function runPass(
     } catch (error) {
       const kind = classifySyncError(error);
       if (kind === 'auth') {
+        // Otherwise silent: the load stops before its own GET, so the
+        // "sign-in expired" banner would show with nothing in the console.
+        devWarn(
+          `Saved sessions outbox: API rejected the sign-in token (401) on ${next.kind} ${next.key}; writes stay queued`,
+          describeTokenClaims(token),
+        );
         result.authExpired = true;
         return 'stopped';
       }
