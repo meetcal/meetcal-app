@@ -1112,10 +1112,24 @@ export default function StartListScreen() {
   };
 
   const handleSaveToCalendar = async () => {
-    if (!isSubscribed) {
-      router.push("/shared-screens/paywall");
+    // Same order as every other premium action: sign-in first (so the
+    // paywall is never opened for a signed-out user and the intent survives
+    // sign-in), then the paywall with a way back here. `null` is "unknown
+    // yet": do nothing rather than bounce a paying user to the paywall.
+    const authResult = requireAuth({
+      feature: "add-to-calendar",
+      message: "Sign in to add sessions to your calendar.",
+      returnPath: "/(tabs)/(start-list)",
+    });
+    if (authResult !== true) return;
+    if (isSubscribed === false) {
+      router.push({
+        pathname: "/shared-screens/paywall",
+        params: { from: "/(tabs)/(start-list)", feature: "add-to-calendar" },
+      });
       return;
     }
+    if (isSubscribed !== true) return;
 
     if (!selectedMeet || !isMeetName(selectedMeet)) {
       showToast({
