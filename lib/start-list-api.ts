@@ -4,6 +4,7 @@ import {
   fetchApiYearBests,
   fetchApiYearBestsByNames,
 } from '@/lib/api/meetcal-api';
+import { normalizeAthleteName } from '@/lib/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getCachedAthleteBestsForNames,
@@ -82,8 +83,10 @@ function deriveMostRecentMeetBests(results: SupabaseLiftResult[]): YearBests {
 }
 
 /**
- * Fetches full histories for athletes whose year-bests came back empty and
- * derives each athlete's bests from their most recent meet.
+ * Fetches each athlete's most recent meet date rows (`latest_only`) for
+ * athletes whose year-bests came back empty and derives their bests from that
+ * meet. `deriveMostRecentMeetBests` only ever reads the newest date's rows, so
+ * the full career history it used to download changed nothing.
  */
 async function getMostRecentMeetBestsBatch(
   names: string[],
@@ -91,18 +94,21 @@ async function getMostRecentMeetBestsBatch(
   const byName: Record<string, YearBests> = {};
   if (names.length === 0) return byName;
   try {
-    const rows = await fetchApiResultsByNames(names);
+    const rows = await fetchApiResultsByNames(names, { latestOnly: true });
     const grouped = new Map<string, SupabaseLiftResult[]>();
     rows.forEach((row) => {
-      const group = grouped.get(row.name);
+      // `latest_only` bounds rows per normalized name (the API's
+      // `normalize_name`), so group the same way rather than by raw spelling.
+      const key = normalizeAthleteName(row.name);
+      const group = grouped.get(key);
       if (group) {
         group.push(row);
       } else {
-        grouped.set(row.name, [row]);
+        grouped.set(key, [row]);
       }
     });
     names.forEach((name) => {
-      byName[name] = deriveMostRecentMeetBests(grouped.get(name) ?? []);
+      byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
     });
   } catch {
     names.forEach((name) => {
