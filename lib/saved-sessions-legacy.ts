@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MeetName } from '@/data/types/meet';
-import type { SavedSession } from '@/hooks/useSavedSessions';
+import type { SavedSession } from '@/lib/saved-sessions-store';
 import { migrateSessionsToMeetSpecific } from '@/utils/migration';
 import { getAllSavedSessionsKeys, getSavedSessionsKey } from '@/utils/session';
 

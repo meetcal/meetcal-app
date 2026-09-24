@@ -1,7 +1,9 @@
 import {
   APP_VERSION,
   buildApiUrl,
+  clearHttpValidatorCache,
   fetchApiClubNames,
+  fetchApiMeetByName,
   fetchApiMeetPackageConditional,
   fetchApiMeets,
   fetchApiRecentResultsByNames,
@@ -30,6 +32,7 @@ import {
   resolveAppVersion,
   searchApi,
 } from './meetcal-api';
+import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
@@ -886,5 +889,336 @@ describe('meetcal API client error and auth boundaries', () => {
     await expect(getJsonObject('/clubs/meet-stats')).rejects.toThrow(
       '/clubs/meet-stats expected an object response',
     );
+  });
+});
+
+describe('conditional GETs for meet endpoints', () => {
+  const originalFetch = global.fetch;
+
+  type Reply = { status: number; etag?: string | null; body?: string };
+
+  function meetRow(name: string, venue = 'Hall') {
+    return {
+      name,
+      start_date: '2026-06-20',
+      end_date: '2026-06-21',
+      time_zone: 'America/New_York',
+      status: 'upcoming',
+      venue_name: venue,
+      venue_city: 'City',
+      venue_state: 'ST',
+      venue_street: '1 Main',
+      venue_zip: '00000',
+    };
+  }
+
+  function queueFetch(replies: Reply[]) {
+    const fetchMock = jest.fn(async () => {
+      const reply = replies.shift();
+      if (!reply) throw new Error('unexpected fetch');
+      return {
+        ok: reply.status >= 200 && reply.status < 300,
+        status: reply.status,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'etag' ? reply.etag ?? null : null),
+        },
+        text: async () => reply.body ?? '',
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  function sentValidator(fetchMock: jest.Mock, call: number): string | undefined {
+    const init = fetchMock.mock.calls[call][1] as { headers: Record<string, string> };
+    return init.headers['If-None-Match'];
+  }
+
+  beforeEach(() => {
+    clearHttpValidatorCache();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    clearHttpValidatorCache();
+    jest.restoreAllMocks();
+  });
+
+  it('stores the ETag from a 200 and answers a 304 with the remembered meets', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 304, etag: '"v1"' },
+    ]);
+
+    const first = await fetchApiMeets();
+    expect(sentValidator(fetchMock, 0)).toBeUndefined();
+
+    const second = await fetchApiMeets();
+    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
+    expect(second).toEqual(first);
+    expect(second[0].name).toBe('Meet A');
+    // Freshly mapped objects each time: a caller mutating one cannot edit the cache.
+    expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('replaces the remembered body when the ETag changes', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 200, etag: '"v2"', body: JSON.stringify([meetRow('Meet B')]) },
+      { status: 304, etag: '"v2"' },
+    ]);
+
+    await fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    expect(sentValidator(fetchMock, 2)).toBe('"v2"');
+  });
+
+  it('revalidates meet details and schedule per URL', async () => {
+    const schedule = [
+      {
+        date: '2026-06-20',
+        platform: 'red',
+        session_id: 1,
+        start_time: '09:00:00',
+        weigh_in_time: '07:00:00',
+        weight_class: '60kg',
+      },
+    ];
+    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
+      const isSchedule = url.includes('/meets/schedule');
+      const tag = isSchedule ? '"s1"' : '"d1"';
+      if (init.headers['If-None-Match'] === tag) {
+        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
+        text: async () => JSON.stringify(isSchedule ? schedule : meetRow('Meet A')),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const first = await fetchApiSchedule('Meet A');
+    const second = await fetchApiSchedule('Meet A');
+    expect(second).toEqual(first);
+    expect(second[0].sessions[0].platforms[0].platform).toBe('Red');
+
+    const validators = fetchMock.mock.calls.map(([url, init]) => [
+      url.includes('/meets/schedule') ? 'schedule' : 'details',
+      init.headers['If-None-Match'],
+    ]);
+    expect(validators).toEqual(
+      expect.arrayContaining([
+        ['schedule', undefined],
+        ['details', undefined],
+        ['schedule', '"s1"'],
+        ['details', '"d1"'],
+      ]),
+    );
+  });
+
+  it('does not remember a body that failed shape validation', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"bad"', body: JSON.stringify({ not: 'an array' }) },
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+    ]);
+
+    await expect(fetchApiMeets()).rejects.toThrow('expected an array response');
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
+    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+  });
+
+  it('keeps throwing on non-2xx statuses and keeps the validator for next time', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 500, body: '{"error":"boom"}' },
+      { status: 304, etag: '"v1"' },
+    ]);
+
+    await fetchApiMeets();
+    const failure = await fetchApiMeets().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(500);
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
+    expect(sentValidator(fetchMock, 2)).toBe('"v1"');
+  });
+
+  it('still returns 404 as null for meet details', async () => {
+    queueFetch([{ status: 404, body: '{"error":"not found"}' }]);
+    await expect(fetchApiMeetByName('Gone Meet')).resolves.toBeNull();
+  });
+
+  it('bounds the number of remembered URLs', async () => {
+    const replies: Reply[] = [];
+    for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
+      replies.push({ status: 200, etag: `"d${i}"`, body: JSON.stringify(meetRow(`Meet ${i}`)) });
+    }
+    // Meet 0 is the oldest entry and was evicted: no validator, full body.
+    replies.push({ status: 200, etag: '"d0"', body: JSON.stringify(meetRow('Meet 0')) });
+    const fetchMock = queueFetch(replies);
+
+    for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
+      await fetchApiMeetByName(`Meet ${i}`);
+    }
+    await expect(fetchApiMeetByName('Meet 0')).resolves.toMatchObject({ name: 'Meet 0' });
+    expect(sentValidator(fetchMock, HTTP_VALIDATOR_CACHE_LIMIT + 1)).toBeUndefined();
+  });
+
+  it('answers a 304 from the entry read before the request, even if it was evicted in flight', async () => {
+    let releaseFirst: (() => void) | undefined;
+    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
+      const name = new URL(url).searchParams.get('meet') ?? '';
+      if (init.headers['If-None-Match']) {
+        // Hold the revalidation until the cache has been churned.
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        return { ok: false, status: 304, headers: { get: () => init.headers['If-None-Match'] }, text: async () => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (h: string) => (h === 'etag' ? `"${name}"` : null) },
+        text: async () => JSON.stringify(meetRow(name)),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiMeetByName('Meet 0');
+    const pending = fetchApiMeetByName('Meet 0');
+    for (let i = 1; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
+      await fetchApiMeetByName(`Meet ${i}`);
+    }
+    releaseFirst?.();
+    await expect(pending).resolves.toMatchObject({ name: 'Meet 0' });
+  });
+
+  it('answers a 304 with the newer entry a concurrent request stored in flight', async () => {
+    let releaseSlow: (() => void) | undefined;
+    let conditionalCalls = 0;
+    const fetchMock = jest.fn(async (_url: string, init: { headers: Record<string, string> }) => {
+      if (!init.headers['If-None-Match']) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: (h: string) => (h === 'etag' ? '"v1"' : null) },
+          text: async (): Promise<string> => JSON.stringify([meetRow('Meet A')]),
+        };
+      }
+      conditionalCalls += 1;
+      if (conditionalCalls === 1) {
+        // The slow revalidation: the server answered while "v1" was current.
+        await new Promise<void>((resolve) => {
+          releaseSlow = resolve;
+        });
+        return { ok: false, status: 304, headers: { get: () => '"v1"' }, text: async (): Promise<string> => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (h: string) => (h === 'etag' ? '"v2"' : null) },
+        text: async (): Promise<string> => JSON.stringify([meetRow('Meet B')]),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiMeets();
+    const slow = fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    releaseSlow?.();
+    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
+  });
+
+  it('retries without a validator when a 304 names a different ETag than was sent', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 304, etag: '"other"' },
+      { status: 200, etag: '"v2"', body: JSON.stringify([meetRow('Meet B')]) },
+    ]);
+
+    await fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
+    expect(sentValidator(fetchMock, 2)).toBeUndefined();
+  });
+
+  it('treats a 304 to a request that carried no validator as an error, as before', async () => {
+    queueFetch([{ status: 304, etag: '"v1"' }]);
+    const failure = await fetchApiMeets().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(304);
+  });
+
+  it('accepts a weak form of the sent ETag on a 304', async () => {
+    queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 304, etag: 'W/"v1"' },
+    ]);
+    await fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
+  });
+
+  it('forgets the validator when a 200 carries no ETag', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+      { status: 200, etag: null, body: JSON.stringify([meetRow('Meet B')]) },
+      { status: 200, etag: null, body: JSON.stringify([meetRow('Meet B')]) },
+    ]);
+    await fetchApiMeets();
+    await fetchApiMeets();
+    await fetchApiMeets();
+    expect(sentValidator(fetchMock, 2)).toBeUndefined();
+  });
+});
+
+describe('by-names latest_only', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('sends latest_only only when asked', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiResultsByNames(['Athlete A'], { latestOnly: true });
+    await fetchApiResultsByNames(['Athlete A']);
+    await fetchApiResultsByNames(['Athlete A'], { latestOnly: false });
+
+    const bodies = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, { body: string }])[1].body),
+    );
+    expect(bodies).toEqual([
+      { names: ['Athlete A'], latest_only: true },
+      { names: ['Athlete A'] },
+      { names: ['Athlete A'] },
+    ]);
+  });
+
+  it('keeps latest_only on every chunk', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiResultsByNames(names, { latestOnly: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const call of fetchMock.mock.calls) {
+      const body = JSON.parse((call as unknown as [string, { body: string }])[1].body);
+      expect(body.latest_only).toBe(true);
+    }
   });
 });

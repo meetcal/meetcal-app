@@ -1,6 +1,6 @@
 import { convertToUTC } from "@/data/meets/config";
 import { Meet, MeetName } from "@/data/types/meet";
-import { SavedSession } from "@/hooks/useSavedSessions";
+import { SavedSession } from "@/lib/saved-sessions-store";
 import { getCalendarDateInTimeZone } from "@/utils/dateTime";
 
 // Show the card for sessions starting in the future, and keep it visible for a

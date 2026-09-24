@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SavedSession } from '@/hooks/useSavedSessions';
+import type { SavedSession } from '@/lib/saved-sessions-store';
 import {
   deleteSavedSession,
   deleteSavedSessions,

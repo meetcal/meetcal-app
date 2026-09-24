@@ -16,6 +16,12 @@ import {
   YEAR_BESTS_YEARS,
 } from '@/utils/dateTime';
 import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
+import {
+  HTTP_VALIDATOR_CACHE_LIMIT,
+  usableEtag,
+  ValidatorCache,
+  type ValidatorEntry,
+} from '@/lib/api/http-cache';
 
 const DEFAULT_API_BASE_URL = 'https://api.meetcal.app';
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -359,6 +365,76 @@ async function requestJson<T>(
 ): Promise<T> {
   const { text } = await requestRaw(method, path, query, body, options);
   return parseResponseJson(method, path, text) as T;
+}
+
+const validatorCache = new ValidatorCache(HTTP_VALIDATOR_CACHE_LIMIT);
+
+/** Forgets every remembered `ETag`/body pair. For tests and sign-out style resets. */
+export function clearHttpValidatorCache(): void {
+  validatorCache.clear();
+}
+
+function sameEtag(a: string, b: string): boolean {
+  const strip = (tag: string) => (tag.startsWith('W/') ? tag.slice(2) : tag);
+  return strip(a) === strip(b);
+}
+
+/**
+ * Conditional GET for endpoints that send a strong `ETag` (see
+ * `lib/api/http-cache.ts`). Sends the last tag for this exact URL as
+ * `If-None-Match`; a `304` resolves to the value `validate` accepted when that
+ * tag was stored, so shape checks never get skipped, only repeated work.
+ *
+ * The remembered entry is read once, before the request, so an eviction while
+ * the request is in flight cannot strand a `304` without a body; if a
+ * concurrent request replaced that entry meanwhile, the `304` resolves to the
+ * replacement instead, so a slow revalidation never returns data older than
+ * what a faster one already stored. A `304` whose
+ * own `ETag` names a different tag than we sent is not trusted: the entry is
+ * dropped and the request is retried once without a validator (where a `304`
+ * is an error, as it always was). Every non-2xx/304 status throws exactly as
+ * `getJson` does.
+ *
+ * React Native's own URL cache does not get in the way: iOS switches a request
+ * carrying `If-None-Match` to `NSURLRequestReloadIgnoringLocalCacheData`
+ * (RCTNetworking) and OkHttp skips its cache for a request with conditions, so
+ * the `304` reaches `requestRaw`. Without a validator either one may answer
+ * from its own store after revalidating, which still arrives as a `200` body.
+ */
+async function getJsonRevalidated<T>(
+  path: string,
+  query: Record<string, QueryValue> | undefined,
+  validate: (json: unknown) => T,
+): Promise<T> {
+  const url = buildApiUrl(path, query);
+  const held = validatorCache.get(url) as ValidatorEntry<T> | undefined;
+  let raw = await requestRaw('GET', path, query, undefined, { ifNoneMatch: held?.etag });
+
+  if (raw.status === 304) {
+    const answered = usableEtag(raw.etag);
+    if (held && (answered == null || sameEtag(answered, held.etag))) {
+      const current = validatorCache.get(url) as ValidatorEntry<T> | undefined;
+      if (current && current !== held) {
+        // A concurrent request stored a newer body while this one was in
+        // flight; this 304 only vouches for the older tag, so never publish
+        // the superseded value over it.
+        return current.value;
+      }
+      if (current === held) validatorCache.set(url, held); // refresh recency
+      return held.value;
+    }
+    validatorCache.delete(url);
+    raw = await requestRaw('GET', path, query);
+  }
+
+  const value = validate(parseResponseJson('GET', path, raw.text));
+  const etag = usableEtag(raw.etag);
+  if (etag) {
+    validatorCache.set(url, { etag, value });
+  } else {
+    validatorCache.delete(url);
+  }
+  return value;
 }
 
 export function getJson<T>(
@@ -795,10 +871,9 @@ export function mapApiYearBests(row: ApiYearBests) {
   };
 }
 
-export async function fetchApiMeets(): Promise<Meet[]> {
-  const rows = assertArray<ApiMeet>(await getJson('/meets'), '/meets');
-  return rows.map((row, index) =>
-    mapApiMeet(
+function validateApiMeets(json: unknown): ApiMeet[] {
+  return assertArray<unknown>(json, '/meets').map(
+    (row, index) =>
       assertHasFields(row, `/meets[${index}]`, [
         'name',
         'start_date',
@@ -806,17 +881,34 @@ export async function fetchApiMeets(): Promise<Meet[]> {
         'time_zone',
         'status',
       ]) as ApiMeet,
-    ),
   );
+}
+
+function validateApiMeetDetails(json: unknown): ApiMeet {
+  return assertHasFields(json, '/meets/details', [
+    'name',
+    'start_date',
+    'end_date',
+    'time_zone',
+  ]) as ApiMeet;
+}
+
+function validateApiSchedule(json: unknown): ApiScheduleRow[] {
+  return assertArray<ApiScheduleRow>(json, '/meets/schedule');
+}
+
+// The three below revalidate with the remembered `ETag`. The cache holds the
+// validated API rows, never the mapped app objects, so every caller still gets
+// freshly built objects it may mutate.
+
+export async function fetchApiMeets(): Promise<Meet[]> {
+  const rows = await getJsonRevalidated('/meets', undefined, validateApiMeets);
+  return rows.map((row) => mapApiMeet(row));
 }
 
 export async function fetchApiMeetByName(meet: string): Promise<Meet | null> {
   try {
-    const row = assertHasFields(
-      await getJson('/meets/details', { meet }),
-      '/meets/details',
-      ['name', 'start_date', 'end_date', 'time_zone'],
-    ) as ApiMeet;
+    const row = await getJsonRevalidated('/meets/details', { meet }, validateApiMeetDetails);
     return row ? mapApiMeet(row) : null;
   } catch (error) {
     if (error instanceof MeetCalApiError && error.status === 404) return null;
@@ -835,9 +927,9 @@ export async function fetchApiSchedule(
 ): Promise<Schedule> {
   const [resolvedMeet, rows] = await Promise.all([
     meetDetails ? Promise.resolve(meetDetails) : fetchApiMeetByName(meet),
-    getJson('/meets/schedule', { meet }),
+    getJsonRevalidated('/meets/schedule', { meet }, validateApiSchedule),
   ]);
-  return mapApiSchedule(assertArray<ApiScheduleRow>(rows, '/meets/schedule'), resolvedMeet ?? undefined);
+  return mapApiSchedule(rows, resolvedMeet ?? undefined);
 }
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
@@ -864,14 +956,26 @@ export async function fetchApiAthletesWithSession(
 // Clients on 6.2.0+ must always send `cutoff_date`; the defaults below come
 // from the one UTC-only cutoff policy in `utils/dateTime.ts`.
 
+export type ResultsByNamesOptions = {
+  /**
+   * Only the rows from each athlete's most recent meet date (`latest_only`).
+   * The API applies it per normalized name (case and whitespace folded).
+   */
+  latestOnly?: boolean;
+};
+
 // Name lists go in a JSON body so a name containing a comma stays one name.
 // Chunking keeps each request under the API's name-list cap.
-export async function fetchApiResultsByNames(names: string[]): Promise<SupabaseLiftResult[]> {
+export async function fetchApiResultsByNames(
+  names: string[],
+  options: ResultsByNamesOptions = {},
+): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
   const rows: SupabaseLiftResult[] = [];
   for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+    const body = options.latestOnly ? { names: chunk, latest_only: true } : { names: chunk };
     const part = assertArray<ApiLiftingResult>(
-      await postJson('/lifting-results/by-names', { names: chunk }),
+      await postJson('/lifting-results/by-names', body),
       '/lifting-results/by-names',
     );
     rows.push(...part.map(mapApiLiftingResult));

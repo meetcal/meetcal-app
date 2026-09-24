@@ -209,9 +209,12 @@ struct GetAthleteResultsIntent: AppIntent {
     @Parameter(title: "Athlete Name", requestValueDialog: "Whose results do you want?")
     var name: String
 
+    /// Recent meets shown in the snippet; also the per-name fetch bound.
+    private static let recentResultCount = 5
+
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         async let bestsTask = MeetCalAPI.shared.bests(names: [name])
-        async let resultsTask = MeetCalAPI.shared.resultsByNames([name])
+        async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
         let bests = (try? await bestsTask) ?? [:]
         let results = (try? await resultsTask) ?? []
 
@@ -229,7 +232,7 @@ struct GetAthleteResultsIntent: AppIntent {
             ))
         }
 
-        for result in results.prefix(5) {
+        for result in results.prefix(Self.recentResultCount) {
             let total = result.total.map { "\($0) kg" } ?? "—"
             rows.append(SnippetRow(
                 leading: "",
