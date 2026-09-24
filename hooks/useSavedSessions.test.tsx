@@ -870,6 +870,31 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
+  it("keeps local sessions and does not shrink storage when getToken() rejects", async () => {
+    // Clerk can throw from `getToken()` (offline, a session refresh mid-flight).
+    // That is neither "no token" nor "the server says you have nothing", so
+    // the local list must survive untouched and nothing may reach the API.
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    const removeItem = AsyncStorage.removeItem as jest.MockedFunction<
+      typeof AsyncStorage.removeItem
+    >;
+    setItem.mockClear();
+    removeItem.mockClear();
+    mockFetchSavedSessions.mockResolvedValue([]);
+    mockGetToken.mockRejectedValue(new Error("Clerk: token refresh failed"));
+
+    const hook = await mountHook();
+
+    expect(mockFetchSavedSessions).not.toHaveBeenCalled();
+    expect(mockFetchUserPreferences).not.toHaveBeenCalled();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(hook.current.isLoading).toBe(false);
+    expect(setItem.mock.calls.some(([key]) => key === SESSION_KEY)).toBe(false);
+    expect(removeItem.mock.calls.some(([key]) => key === SESSION_KEY)).toBe(false);
+    expect(JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]")).toHaveLength(1);
+  });
+
   it("does not reconcile with a token issued for a different user", async () => {
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
     mockFetchSavedSessions.mockResolvedValue([apiRow("Someone-Elses-1-Red")]);
