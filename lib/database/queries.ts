@@ -15,6 +15,7 @@ import {
   fetchApiSchedule,
   searchApi,
 } from '@/lib/api/meetcal-api';
+import { getCachedMeetByName } from './meets-list-cache';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
@@ -22,6 +23,11 @@ const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
 /**
  * @param meetDetails The meet when the caller already has it; saves the
  * `/meets/details` request that otherwise accompanies every schedule fetch.
+ * Omitted (`undefined`), the meet is looked up in the cached `/meets` list
+ * first — the same cache-first policy `getMeetConfig` and `useScheduleData`
+ * use — so the reminder, Save All and start-list refresh paths cost one
+ * request instead of two. `null` means the caller already looked and found
+ * nothing, so the lookup is not repeated.
  */
 export async function fetchSchedule(
   meet: MeetName,
@@ -34,7 +40,11 @@ export async function fetchSchedule(
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) return inFlight;
 
-  const request = fetchApiSchedule(meet, meetDetails)
+  const request = (async () => {
+    const resolved =
+      meetDetails === undefined ? await getCachedMeetByName(meet) : meetDetails;
+    return fetchApiSchedule(meet, resolved);
+  })()
     .catch((error) => {
       console.error('Error in fetchSchedule:', error);
       throw error;

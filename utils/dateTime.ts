@@ -163,16 +163,18 @@ export function calculateInitialPage(
 /**
  * Gets the current date in a specific timezone, returned as a Date object
  * @param timeZone - IANA timezone identifier (e.g., "America/Los_Angeles")
+ * @param now - The instant to read; defaults to the wall clock. Callers that
+ * already hold a `now` pass it so one decision never mixes two clocks.
  * @returns Date object representing the current date in the specified timezone
  */
-export function getDateInTimeZone(timeZone: string): Date {
+export function getDateInTimeZone(timeZone: string, now: Date = new Date()): Date {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone,
       year: "numeric",
       month: "numeric",
       day: "numeric",
-    }).formatToParts(new Date());
+    }).formatToParts(now);
 
     const year = Number(
       parts.find((part) => part.type === "year")?.value ?? "0",
@@ -186,7 +188,6 @@ export function getDateInTimeZone(timeZone: string): Date {
 
     return new Date(year, month - 1, day);
   } catch {
-    const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }
 }
@@ -198,8 +199,11 @@ export function getDateInTimeZone(timeZone: string): Date {
  * *local* fields carry the target zone's calendar date, so read them back the
  * same way rather than re-deriving the offset.
  */
-export function getCalendarDateInTimeZone(timeZone: string): string {
-  const localMidnight = getDateInTimeZone(timeZone);
+export function getCalendarDateInTimeZone(
+  timeZone: string,
+  now: Date = new Date(),
+): string {
+  const localMidnight = getDateInTimeZone(timeZone, now);
   const pad = (value: number) => value.toString().padStart(2, "0");
   return `${localMidnight.getFullYear()}-${pad(localMidnight.getMonth() + 1)}-${pad(
     localMidnight.getDate(),

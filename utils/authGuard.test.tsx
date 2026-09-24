@@ -147,4 +147,97 @@ describe("useAuthGuard offline behavior", () => {
     expect(result).toBe(false);
     expect(alertSpy).toHaveBeenCalledTimes(1);
   });
+  it("fails closed when the SecureStore read and the network probe both throw", async () => {
+    // The probe fails open to "online", so Clerk's "no user" is authoritative
+    // and a lost cache read cannot let the caller through.
+    mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
+    mockGetCachedAuthState.mockRejectedValue(new Error("keychain unavailable"));
+    mockIsNetworkAvailable.mockRejectedValue(new Error("netinfo crashed"));
+
+    await act(async () => {
+      create(<Harness />);
+    });
+    await flushEffects();
+
+    expect(captured?.requireAuth({ feature: "saved-sessions" })).toBe(false);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    // Nothing verified, so nothing is written over the cache.
+    expect(mockCacheAuthState).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a cached sign-in with signed-out while Clerk answers offline", async () => {
+    // Clerk can report loaded-with-no-user offline. Persisting that would lock
+    // the user out of their saved sessions the next time they open offline.
+    mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
+    mockGetCachedAuthState.mockResolvedValue({
+      isSignedIn: true,
+      timestamp: Date.now(),
+      userId: "123",
+    });
+    mockIsNetworkAvailable.mockResolvedValue(false);
+
+    await act(async () => {
+      create(<Harness />);
+    });
+    await flushEffects();
+
+    expect(captured?.requireAuth({ feature: "saved-sessions" })).toBe(true);
+    expect(mockCacheAuthState).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("records a verified sign-out when Clerk is loaded, online and has no user", async () => {
+    mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
+    mockGetCachedAuthState.mockResolvedValue(null);
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockCacheAuthState.mockResolvedValue(undefined);
+
+    await act(async () => {
+      create(<Harness />);
+    });
+    await flushEffects();
+
+    expect(mockCacheAuthState).toHaveBeenCalledWith(false);
+  });
+
+  it("sends the Sign In button to the typed sign-in route with the return path", async () => {
+    mockUseUser.mockReturnValue({ user: null, isLoaded: true } as any);
+    mockGetCachedAuthState.mockResolvedValue(null);
+    mockIsNetworkAvailable.mockResolvedValue(true);
+
+    await act(async () => {
+      create(<Harness />);
+    });
+    await flushEffects();
+
+    captured?.requireAuth({
+      feature: "attempt-estimator",
+      message: "Sign in to estimate attempts.",
+      returnPath: "/shared-screens/schedule-details",
+    });
+    captured?.requireAuth({ feature: "saved-sessions" });
+
+    const [title, message, buttons] = alertSpy.mock.calls[0];
+    expect(title).toBe("Sign In Required");
+    expect(message).toBe("Sign in to estimate attempts.");
+    const signIn = (buttons as { text: string; onPress?: () => void }[]).find(
+      (button) => button.text === "Sign In",
+    );
+    signIn?.onPress?.();
+    expect(push).toHaveBeenCalledWith({
+      pathname: "/(auth)/sign-in",
+      params: { from: "/shared-screens/schedule-details", feature: "attempt-estimator" },
+    });
+
+    // No return path: back to the tabs, with the default message.
+    const [, defaultMessage, defaultButtons] = alertSpy.mock.calls[1];
+    expect(defaultMessage).toBe("You need to sign in to use this feature.");
+    (defaultButtons as { text: string; onPress?: () => void }[])
+      .find((button) => button.text === "Sign In")
+      ?.onPress?.();
+    expect(push).toHaveBeenLastCalledWith({
+      pathname: "/(auth)/sign-in",
+      params: { from: "/(tabs)", feature: "saved-sessions" },
+    });
+  });
 });

@@ -1,4 +1,7 @@
+// Lives outside app/: Expo Router turns every file under app/ into a route,
+// so a test there was bundled into the app (react-test-renderer, jest.mock).
 import React from "react";
+import { Animated, Pressable, ScrollView } from "react-native";
 import { act, create } from "react-test-renderer";
 import AttemptEstimatorScreen from "@/app/shared-screens/attempt-estimator";
 import {
@@ -8,8 +11,16 @@ import {
 import {
   saveAthleteHistory,
   saveMeetAthletes,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
+
+// react-native's exports are lazy getters. On a cold transform cache (every CI
+// run) the first access to `Animated` costs ~2.3s and `ScrollView`/`Pressable`
+// ~0.7s more, all inside the first test's render, which pushed that test past
+// its 5s budget on CI. Touching them here, at module load, charges the one-time
+// cost to the file instead of to whichever test renders first.
+void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("expo-router", () => ({
@@ -23,6 +34,7 @@ jest.mock("@/lib/database/offline-store", () => ({
   getSessionAthletesFromMeetCache: jest.fn(async () => []),
   getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveMeetAthletes: jest.fn(async () => {}),
+  saveSessionAthletes: jest.fn(async () => {}),
   saveAthleteHistory: jest.fn(async () => {}),
 }));
 jest.mock("@/lib/database/queries", () => ({
@@ -43,9 +55,14 @@ const athlete = (name: string, number: number, platform: "Red" | "Blue") => ({
   session: { number, platform },
 });
 
+// Drain whole macrotask turns, not a fixed count of microtasks: the load
+// chain's await depth changes with the code, and a microtask count that is
+// one short fails intermittently rather than loudly.
 const flush = async () => {
   await act(async () => {
-    for (let i = 0; i < 12; i += 1) await Promise.resolve();
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
   });
 };
 
@@ -70,10 +87,19 @@ describe("attempt estimator history fetch", () => {
     });
     await flush();
 
-    // The whole roster is one request (and refreshes the roster cache), but
-    // the history request — the expensive one — covers this session only.
+    // One request for this session and platform, never the whole roster
+    // (~457KB at a national meet), and only this session's cache is written:
+    // the roster blob is not re-read, merged and rewritten.
     expect(fetchAthletesWithSession).toHaveBeenCalledTimes(1);
-    expect(saveMeetAthletes).toHaveBeenCalledTimes(1);
+    expect(fetchAthletesWithSession).toHaveBeenCalledWith("test-meet", 1, "Red");
+    expect(saveMeetAthletes).not.toHaveBeenCalled();
+    expect(saveSessionAthletes).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(saveSessionAthletes).mock.calls[0]).toEqual([
+      "test-meet",
+      1,
+      "Red",
+      [athlete("Session Lifter A", 1, "Red"), athlete("Session Lifter B", 1, "Red")],
+    ]);
     expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledTimes(1);
     expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledWith(
       ["Session Lifter A", "Session Lifter B"],
@@ -102,6 +128,31 @@ describe("attempt estimator history fetch", () => {
 
     expect(fetchRecentAthleteHistoryForNames).not.toHaveBeenCalled();
     expect(saveAthleteHistory).not.toHaveBeenCalled();
+    // An empty answer never overwrites the cached session.
+    expect(saveSessionAthletes).not.toHaveBeenCalled();
+
+    await act(async () => {
+      tree.unmount();
+    });
+  });
+
+  it("still shows fresh estimates when the session cache write fails", async () => {
+    jest.mocked(fetchAthletesWithSession).mockResolvedValue([
+      athlete("Session Lifter A", 1, "Red"),
+    ]);
+    jest.mocked(saveSessionAthletes).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AttemptEstimatorScreen />);
+    });
+    await flush();
+
+    expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledWith(
+      ["Session Lifter A"],
+      getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
+    );
+    expect(JSON.stringify(tree.toJSON())).toContain("Session Lifter A");
 
     await act(async () => {
       tree.unmount();

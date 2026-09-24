@@ -1,5 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useIsOffline } from "@/hooks/useIsOffline";
+import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import type { SupabaseLiftResult } from "@/data/types/athletes";
@@ -173,14 +174,11 @@ function SlideContent({
   return <Animated.View style={[styles.slideContentInner, animStyle]}>{children}</Animated.View>;
 }
 
-/** Athlete names are long; shorter prefixes match too much of the federation. */
-const MIN_SUGGESTION_QUERY_LENGTH = 4;
-
-/** How long typing has to pause before a suggestion request goes out. */
-const SUGGESTION_DEBOUNCE_MS = 350;
-
-/** Suggestions render in a dropdown over the input, so the list is capped. */
-const MAX_NAME_SUGGESTIONS = 8;
+/** `/search` without dates answers name suggestions only. */
+async function fetchNameSuggestions(query: string): Promise<string[]> {
+  const { suggestions } = await searchApi(query);
+  return suggestions;
+}
 
 export default function WeightliftingWrappedScreen() {
   const router = useRouter();
@@ -193,57 +191,26 @@ export default function WeightliftingWrappedScreen() {
   const [showStats, setShowStats] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [athleteName, setAthleteName] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const {
+    suggestions,
+    showSuggestions,
+    loadingSuggestions,
+    onQueryChange,
+    dismissSuggestions,
+  } = useNameSuggestions(fetchNameSuggestions);
   const [isOffline] = useIsOffline();
   const flatListRef = useRef<FlatList>(null);
   const viewShotRef = useRef<React.ComponentRef<typeof ViewShot>>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const fetchSuggestions = useCallback(async (query: string) => {
-    if (query.trim().length < MIN_SUGGESTION_QUERY_LENGTH) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    setLoadingSuggestions(true);
-    try {
-      const { suggestions: names } = await searchApi(query.trim());
-      const words = query.trim().toLowerCase().split(/\s+/);
-      const filtered = names.filter((name) => {
-        const lower = name.toLowerCase();
-        return words.every((w) => lower.includes(w));
-      });
-      setSuggestions(filtered.slice(0, MAX_NAME_SUGGESTIONS));
-      setShowSuggestions(filtered.length > 0);
-    } catch {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    } finally {
-      setLoadingSuggestions(false);
-    }
-  }, []);
 
   const onSearchTextChange = useCallback((text: string) => {
     setSearchQuery(text);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.trim().length < MIN_SUGGESTION_QUERY_LENGTH) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    debounceRef.current = setTimeout(
-      () => fetchSuggestions(text),
-      SUGGESTION_DEBOUNCE_MS,
-    );
-  }, [fetchSuggestions]);
+    onQueryChange(text);
+  }, [onQueryChange]);
 
   const selectSuggestion = useCallback((name: string) => {
     setSearchQuery(name);
-    setSuggestions([]);
-    setShowSuggestions(false);
-  }, []);
+    dismissSuggestions();
+  }, [dismissSuggestions]);
 
   const searchAthlete = async () => {
     if (!searchQuery.trim()) {
@@ -251,7 +218,7 @@ export default function WeightliftingWrappedScreen() {
       return;
     }
 
-    setShowSuggestions(false);
+    dismissSuggestions();
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();

@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import {
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
@@ -12,6 +17,13 @@ import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
 type WSORecordsCache = Record<string, RecordsData>;
+
+/**
+ * Most WSOs an offline download will fetch, one request each. USAW has a few
+ * dozen; a list past this is a malformed response, not a bigger federation,
+ * and is rejected rather than looped over.
+ */
+export const MAX_OFFLINE_WSO_COUNT = 100;
 type FilteredWSORecordsCache = Record<string, RecordsData>;
 
 async function readWSOCache() {
@@ -139,6 +151,34 @@ async function persistFilteredWSORecords(
   return { data: result, lastUpdatedAt: entry.lastSynced };
 }
 
+/**
+ * Explicit offline download / refresh of every WSO's records.
+ *
+ * Sequential, one request per WSO, and a single write of the whole cache only
+ * after every WSO arrived. The old loop went through a browse fetcher that fell
+ * back to the cached copy on failure, so it could "succeed" having refreshed
+ * nothing.
+ * Rejects, leaving the stored copy untouched, when offline, on any API error,
+ * on an empty list, or on a list longer than `MAX_OFFLINE_WSO_COUNT`.
+ */
+export async function downloadWSORecordsForOffline(): Promise<void> {
+  const wsos = await fetchWSOListFresh();
+  if (wsos.length === 0) {
+    throw new Error('WSO records download returned no WSOs');
+  }
+  if (wsos.length > MAX_OFFLINE_WSO_COUNT) {
+    throw new Error(
+      `WSO list has ${wsos.length} entries, more than ${MAX_OFFLINE_WSO_COUNT}`,
+    );
+  }
+
+  const nextCache: WSORecordsCache = {};
+  for (const wso of wsos) {
+    nextCache[wso] = await fetchWSORecordsFresh(wso);
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords, nextCache);
+}
+
 export const wsoRecordsResource = createMutableResource<RecordsData, [string, string, 'Men' | 'Women']>({
   getKey: (wso, ageGroup, gender) => `${OFFLINE_CACHE_KEYS.wsoRecords}:${wso}:${ageGroup}:${gender}`,
   loadCached: (wso, ageGroup, gender) => readFilteredWSORecordsCache(wso, ageGroup, gender),
@@ -165,41 +205,6 @@ export const wsoListResource = createMutableResource<string[], []>({
   fetchFresh: () => fetchWSOListFresh(),
   persistFresh: async () => null,
 });
-
-export async function fetchWSORecords(
-  wso: string,
-  ageGroup?: string,
-  gender?: 'Men' | 'Women'
-): Promise<RecordsData> {
-  try {
-    const result = await fetchWSORecordsFresh(wso, ageGroup, gender);
-    if (!ageGroup && !gender) {
-      await persistWSORecords(wso, result);
-    }
-    return result;
-  } catch (error) {
-    const cached = await readWSORecordsCache(wso);
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}
-
-export async function fetchWSOList(): Promise<string[]> {
-  try {
-    return await fetchWSOListFresh();
-  } catch (error) {
-    const cached = await readWSOCache();
-    const wsos = Object.keys(cached?.data || {}).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: 'base' }),
-    );
-    if (wsos.length > 0) {
-      return wsos;
-    }
-    throw error;
-  }
-}
 
 export async function fetchWSOAgeGroups(wso: string): Promise<string[]> {
   if (!wso) return [];

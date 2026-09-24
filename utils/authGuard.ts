@@ -72,22 +72,8 @@ export function resolveAuthState({
   return false;
 }
 
-/**
- * Whether a `from` param is safe to hand to `router.replace`.
- *
- * `from` is a return path threaded through sign-in and the paywall. Callers
- * have not always sent one: the schedule tab's profile button sent the bare
- * string `"info"`, and sign-in's guard tested it against the unrelated literal
- * `"feature"`, so `router.replace("info")` resolved relative to
- * `/(auth)/sign-in` and dropped the user on a route that does not exist
- * instead of where they were going. Require an absolute in-app path, and
- * reject anything that could navigate off-app.
- */
-export function isInternalRoutePath(value: unknown): value is string {
-  if (typeof value !== 'string') return false;
-  // `//host` is protocol-relative, not an in-app path.
-  return value.startsWith('/') && !value.startsWith('//');
-}
+// Re-exported: the return-path rule and the deep-link rule are one policy.
+export { isInternalRoutePath } from '@/utils/deepLinks';
 
 export type AuthRouteTarget = 'loading' | 'app' | 'auth';
 

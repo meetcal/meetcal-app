@@ -32,6 +32,10 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.mocked(isNetworkAvailable).mockReset();
   unsubscribe.mockClear();
+  // Reset, not just re-implemented: the call count is asserted, and an
+  // earlier test's subscription would otherwise be counted (fails under
+  // `--randomize`).
+  jest.mocked(subscribeToNetworkChanges).mockReset();
   jest.mocked(subscribeToNetworkChanges).mockImplementation((listener) => {
     notify = listener;
     return unsubscribe;

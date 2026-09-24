@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SavedSession } from '@/lib/saved-sessions-store';
+import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
 import {
   deleteSavedSession,
   deleteSavedSessions,
@@ -102,17 +102,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/**
+ * A persisted PUT body goes through the same reader as the saved-sessions
+ * list. It used to have its own, weaker check (four typeof tests, then
+ * `as unknown as SavedSession`), so a body written by an older build with
+ * `athleteNames: "Jane Doe"` or `weightClass: null` was replayed as-is: the
+ * string reached `capAthleteNames` (which only checks `.length`) and the PUT,
+ * and `mergeServerSessions` published the row into the Saved list unnormalized.
+ */
 function parseSessionBody(value: unknown): SavedSession | undefined {
-  if (!isRecord(value)) return undefined;
-  if (
-    typeof value.id !== 'string' ||
-    typeof value.meet !== 'string' ||
-    typeof value.sessionNumber !== 'number' ||
-    typeof value.platform !== 'string'
-  ) {
-    return undefined;
-  }
-  return value as unknown as SavedSession;
+  return normalizeStoredSession(value) ?? undefined;
 }
 
 function parseOutbox(raw: string | null): SavedSessionsOutbox {
@@ -159,10 +158,6 @@ function parseOutbox(raw: string | null): SavedSessionsOutbox {
 
 export function countPendingWrites(outbox: SavedSessionsOutbox): number {
   return Object.keys(outbox.sessions).length + Object.keys(outbox.resets).length;
-}
-
-export function isOutboxEmpty(outbox: SavedSessionsOutbox): boolean {
-  return countPendingWrites(outbox) === 0;
 }
 
 /**

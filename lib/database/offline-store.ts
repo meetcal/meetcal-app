@@ -37,6 +37,20 @@ const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 const STORAGE_REMOVE_BATCH_SIZE = 500;
 /** Keys read per `multiGet` when probing which athletes have a history blob. */
 const STORAGE_READ_BATCH_SIZE = 500;
+/**
+ * Entries written per `multiSet`. The package's `year_bests_by_name` is
+ * roster-sized (a national meet is well over a thousand names), and one
+ * `multiSet` crosses the bridge as a single unbounded batch, like a remove.
+ */
+const STORAGE_WRITE_BATCH_SIZE = 500;
+/**
+ * Most chunk keys a lifting-results manifest may name: 256 x 180 KB is ~46 MB
+ * of base64, far past any real athlete or meet blob. The count is read back
+ * from storage and drives an `Array.from({ length })` and a key loop, so a
+ * corrupt manifest (`chunks: 1e9`, `Infinity`, `1.5`) must be rejected rather
+ * than allocate or iterate without bound.
+ */
+const MAX_LIFTING_RESULTS_CHUNKS = 256;
 const LIFTING_RESULTS_FORMAT = 'deflate-base64-chunks-v1';
 
 export interface MeetData {
@@ -151,13 +165,15 @@ export async function getExplicitlyDownloadedMeetIds(): Promise<Set<string>> {
 // timezone and would delete a Los Angeles meet's offline data at 9pm local on
 // its final day for a user sitting in New York.
 const WESTERNMOST_MEET_OFFSET_MS = 10 * 60 * 60 * 1000;
+/** From the noon-UTC calendar anchor to midnight UTC starting the next day. */
+const NOON_TO_NEXT_MIDNIGHT_MS = 12 * 60 * 60 * 1000;
 
 function hasMeetEnded(endDate: string): boolean {
   const anchor = meetCalendarDateAnchor(endDate);
   if (!anchor) return false;
   // Noon UTC on the end date + 12h = midnight UTC starting the next day.
   const endOfMeetDay =
-    anchor.getTime() + 12 * 60 * 60 * 1000 + WESTERNMOST_MEET_OFFSET_MS;
+    anchor.getTime() + NOON_TO_NEXT_MIDNIGHT_MS + WESTERNMOST_MEET_OFFSET_MS;
   return endOfMeetDay < Date.now();
 }
 
@@ -201,7 +217,16 @@ function isLiftingResultsManifest(value: unknown): value is LiftingResultsManife
     typeof value === 'object' &&
     value !== null &&
     (value as { format?: string }).format === LIFTING_RESULTS_FORMAT &&
-    typeof (value as { chunks?: unknown }).chunks === 'number'
+    isBoundedChunkCount((value as { chunks?: unknown }).chunks)
+  );
+}
+
+function isBoundedChunkCount(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= MAX_LIFTING_RESULTS_CHUNKS
   );
 }
 
@@ -327,6 +352,11 @@ async function writeStoredLiftingResults(
 
   const encoded = encodeLiftingResults(liftingResults);
   const chunks = splitIntoChunks(encoded, LIFTING_RESULTS_CHUNK_SIZE);
+  if (chunks.length > MAX_LIFTING_RESULTS_CHUNKS) {
+    throw new Error(
+      `Lifting results for ${liftingResultsKey} need ${chunks.length} chunks (max ${MAX_LIFTING_RESULTS_CHUNKS})`,
+    );
+  }
   const manifest: LiftingResultsManifest = {
     format: LIFTING_RESULTS_FORMAT,
     chunks: chunks.length,
@@ -504,8 +534,9 @@ export async function saveAthleteBestsBatch(
         JSON.stringify(bests),
       ] as [string, string]);
 
-    if (entries.length === 0) return;
-    await AsyncStorage.multiSet(entries);
+    for (let offset = 0; offset < entries.length; offset += STORAGE_WRITE_BATCH_SIZE) {
+      await AsyncStorage.multiSet(entries.slice(offset, offset + STORAGE_WRITE_BATCH_SIZE));
+    }
   } catch (error) {
     console.error('Error saving athlete bests:', error);
     throw error;

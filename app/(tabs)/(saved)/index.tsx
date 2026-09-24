@@ -12,9 +12,8 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { MeetName, isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SavedSession } from "@/hooks/useSavedSessions";
-import { fetchSchedule } from "@/lib/database/queries";
-import { LegacySavedSession, SessionScheduleLookup } from "@/types/saved";
-import { Schedule as ScheduleType } from "@/types/schedule";
+import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
+import { LegacySavedSession } from "@/types/saved";
 import { useAuthGuard } from "@/utils/authGuard";
 import {
   type CalendarDestination,
@@ -50,19 +49,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
 
-/**
- * How many saved meets' schedules are fetched at once.
- *
- * Every saved session can belong to a different meet, and `fetchSchedule`
- * issues two requests per meet. A plain `Promise.all` over the whole set
- * opened one connection per saved meet, so a user with a full season saved hit
- * the API with dozens of concurrent 10s-timeout requests on the one screen
- * most likely to be opened in a venue with bad signal, and every one of them
- * timed out together. Batches keep the fan-out bounded without going fully
- * sequential.
- */
-const SCHEDULE_FETCH_BATCH_SIZE = 4;
-
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const { user } = useUser();
@@ -88,11 +74,6 @@ export default function SavedScreen() {
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const colors = useAppColors();
-  // Add state for schedules map and loading
-  const [schedulesMap, setSchedulesMap] = useState<Map<MeetName, ScheduleType>>(
-    new Map(),
-  );
-  const [isSchedulesLoading, setIsSchedulesLoading] = useState(false);
   const [calendarDestinations, setCalendarDestinations] = useState<
     CalendarDestination[]
   >([]);
@@ -100,12 +81,7 @@ export default function SavedScreen() {
     CalendarSession[] | null
   >(null);
   const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
-  const schedulesMapRef = React.useRef<Map<MeetName, ScheduleType>>(new Map());
   const loadSavedSessionsRef = React.useRef(loadSavedSessions);
-
-  useEffect(() => {
-    schedulesMapRef.current = schedulesMap;
-  }, [schedulesMap]);
 
   useEffect(() => {
     loadSavedSessionsRef.current = loadSavedSessions;
@@ -167,41 +143,9 @@ export default function SavedScreen() {
   // actually EST, which looks to the user like the times are an hour wrong.
   const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
 
-  const sessionLookupByMeet = useMemo(() => {
-    const lookupByMeet = new Map<
-      MeetName,
-      Map<string, SessionScheduleLookup>
-    >();
-
-    for (const [meet, schedule] of schedulesMap.entries()) {
-      const meetLookup = new Map<string, SessionScheduleLookup>();
-
-      for (const day of schedule) {
-        for (const session of day.sessions) {
-          for (const platformInfo of session.platforms) {
-            const startTime =
-              platformInfo.platformStartTime || session.startTime;
-            meetLookup.set(
-              makeLookupKey(session.number, platformInfo.platform),
-              {
-                displayDate: day.date,
-                fullDate: day.fullDate,
-                startTime,
-                // "" when the schedule row has no start time, which the card
-                // and the calendar export both read as "unknown".
-                weighInTime: calculateWeighInTime(startTime),
-                weightClass: platformInfo.weightClass,
-              },
-            );
-          }
-        }
-      }
-
-      lookupByMeet.set(meet, meetLookup);
-    }
-
-    return lookupByMeet;
-  }, [schedulesMap]);
+  // Only the selected meet's schedule: it is the only meet this tab lists.
+  const { sessionLookupByMeet, isLoading: isSchedulesLoading } =
+    useSavedScheduleLookup(savedSessions, selectedMeet, allowedMeetNames);
 
   // Pre-meet rows are folded into the current list by the hook, which owns
   // the storage keys; this screen only decides when to ask.
@@ -518,87 +462,6 @@ export default function SavedScreen() {
       migrateSessions();
     }
   }, [hasMigrated, migrateSessions]);
-
-  // Fetch schedules incrementally for saved sessions.
-  useEffect(() => {
-    const meetNames = Array.from(
-      new Set(
-        savedSessions
-          .map((s) => s.meet)
-          .filter((m): m is MeetName => isMeetName(m, allowedMeetNames)),
-      ),
-    );
-    const requiredMeetSet = new Set(meetNames);
-
-    let isCancelled = false;
-    const run = async () => {
-      setSchedulesMap((prev) => {
-        const next = new Map<MeetName, ScheduleType>();
-        let changed = prev.size !== requiredMeetSet.size;
-        for (const [meet, schedule] of prev.entries()) {
-          if (requiredMeetSet.has(meet)) {
-            next.set(meet, schedule);
-          } else {
-            changed = true;
-          }
-        }
-        if (changed) {
-          schedulesMapRef.current = next;
-        }
-        return changed ? next : prev;
-      });
-
-      const missingMeets = meetNames.filter(
-        (meet) => !schedulesMapRef.current.has(meet),
-      );
-      if (missingMeets.length === 0) {
-        setIsSchedulesLoading(false);
-        return;
-      }
-
-      setIsSchedulesLoading(true);
-      const commitSchedule = (meetName: MeetName, schedule: ScheduleType) => {
-        if (isCancelled) return;
-        setSchedulesMap((prev) => {
-          const next = new Map(prev);
-          next.set(meetName, schedule);
-          schedulesMapRef.current = next;
-          return next;
-        });
-      };
-
-      for (
-        let index = 0;
-        index < missingMeets.length && !isCancelled;
-        index += SCHEDULE_FETCH_BATCH_SIZE
-      ) {
-        const batch = missingMeets.slice(index, index + SCHEDULE_FETCH_BATCH_SIZE);
-        await Promise.all(
-          batch.map(async (meetName) => {
-            try {
-              commitSchedule(meetName, await fetchSchedule(meetName));
-            } catch (fetchError) {
-              console.error(
-                `Error fetching schedule for ${meetName}:`,
-                fetchError,
-              );
-              // An empty schedule is how this screen records "we tried"; it
-              // stops the effect re-requesting the same failing meet forever.
-              commitSchedule(meetName, []);
-            }
-          }),
-        );
-      }
-      if (!isCancelled) {
-        setIsSchedulesLoading(false);
-      }
-    };
-
-    run();
-    return () => {
-      isCancelled = true;
-    };
-  }, [savedSessions, allowedMeetNames]);
 
   useEffect(() => {
     if (!selectedMeet || filterOptions.length === 0 || !letterFilter) return;

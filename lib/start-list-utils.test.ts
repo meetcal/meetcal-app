@@ -1,3 +1,6 @@
+/**
+ * @jest-environment-options {"deviceTimeZone": "Pacific/Auckland"}
+ */
 import {
   sortWeightClasses,
   parseStartTimeToMinutes,
@@ -152,21 +155,40 @@ describe("formatSessionDisplayDate", () => {
     ).toBe("Thu, Jan 15");
   });
 
+  // The docblock pins this file to Pacific/Auckland, east of every meet
+  // (jest/device-timezone-environment.js). The Los
+  // Angeles cases live in start-list-utils.us-device.test.ts.
+  it("runs on a device far east of Greenwich", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("Pacific/Auckland");
+  });
+
+  it("reads the calendar date in the meet zone whatever the device zone", () => {
+    expect(
+      formatSessionDisplayDate(undefined, "2026-01-15", "Pacific/Honolulu"),
+    ).toBe("Thu, Jan 15");
+    expect(
+      formatSessionDisplayDate(undefined, "2026-01-15T00:00:00", "America/New_York"),
+    ).toBe("Thu, Jan 15");
+    // Not a calendar date: shown as given rather than "Invalid Date".
+    expect(formatSessionDisplayDate("TBD", "TBD", "America/New_York")).toBe("TBD");
+  });
+
   it("formats an ISO full date with no timezone without drifting a day", () => {
-    // Regression: the no-timezone branch used to format UTC midnight in the
-    // device zone, so a Los Angeles device read "2026-01-15" as Jan 14.
-    const originalTz = process.env.TZ;
-    process.env.TZ = "America/Los_Angeles";
-    try {
-      expect(formatSessionDisplayDate(undefined, "2026-01-15")).toBe(
-        "Thu, Jan 15",
-      );
-      expect(formatSessionDisplayDate(undefined, "2026-01-15T00:00:00")).toBe(
-        "Thu, Jan 15",
-      );
-    } finally {
-      process.env.TZ = originalTz;
-    }
+    expect(formatSessionDisplayDate(undefined, "2026-01-15")).toBe("Thu, Jan 15");
+    expect(formatSessionDisplayDate(undefined, "2026-01-15T00:00:00")).toBe(
+      "Thu, Jan 15",
+    );
+  });
+
+  it("never re-parses a non-ISO date as device-local midnight", () => {
+    // Regression: with no ISO full date, the mapped day title went through
+    // `new Date("January 15, 2026")` (device midnight, Jan 14 11:00 UTC here)
+    // and was read back in UTC: "Wed, Jan 14".
+    expect(formatSessionDisplayDate("January 15, 2026")).toBe("January 15, 2026");
+    expect(
+      formatSessionDisplayDate("January 15, 2026", "", "America/New_York"),
+    ).toBe("January 15, 2026");
+    expect(formatSessionDisplayDate(undefined, "01/15/2026")).toBe("01/15/2026");
   });
 
   it("returns empty string when nothing is provided", () => {

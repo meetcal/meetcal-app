@@ -84,10 +84,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devInfo } from "@/lib/logger";
+import {
+  parseReviewPromptState,
+  REVIEW_COUNT_KEY,
+  REVIEW_PROMPTED_KEY,
+  shouldRequestReview,
+} from "@/lib/review-prompt";
 
-const REVIEW_COUNT_KEY = "startListFilterApplyCount";
-const REVIEW_PROMPTED_KEY = "startListReviewPromptedCounts";
-const REVIEW_COUNTS = [5, 50, 100] as const;
 
 type AthleteSortOption =
   | "alphabetical"
@@ -128,7 +131,7 @@ const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
  * The start list opens on the "A" letter filter, so the names the user is
  * about to see get their year bests warmed first. The cap bounds it: a
  * federation-scale roster has hundreds of A-names and `preloadYearBests`
- * chunks them into `NAMES_QUERY_CHUNK_SIZE` requests, so an uncapped warm
+ * chunks them into `SMALL_ROWS_NAMES_CHUNK_SIZE` requests, so an uncapped warm
  * would fire a dozen background requests against the screen the user is
  * actively scrolling.
  */
@@ -254,12 +257,9 @@ export default function StartListScreen() {
           AsyncStorage.getItem(REVIEW_PROMPTED_KEY),
         ]);
         if (!isMounted) return;
-        const count = Number(countRaw ?? 0);
-        const prompted = promptedRaw ? JSON.parse(promptedRaw) : [];
-        filterApplyCountRef.current = Number.isFinite(count) ? count : 0;
-        reviewPromptedCountsRef.current = Array.isArray(prompted)
-          ? prompted
-          : [];
+        const state = parseReviewPromptState(countRaw, promptedRaw);
+        filterApplyCountRef.current = state.applyCount;
+        reviewPromptedCountsRef.current = state.promptedCounts;
       } catch (error) {
         console.warn("StartList: Failed to load review state", error);
       }
@@ -292,8 +292,7 @@ export default function StartListScreen() {
 
   const requestReviewIfEligible = useCallback(
     async (nextCount: number) => {
-      if (!REVIEW_COUNTS.includes(nextCount as 5 | 50 | 100)) return;
-      if (reviewPromptedCountsRef.current.includes(nextCount)) return;
+      if (!shouldRequestReview(nextCount, reviewPromptedCountsRef.current)) return;
       try {
         const StoreReview = await loadStoreReview();
         if (!StoreReview) return;

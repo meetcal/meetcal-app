@@ -28,11 +28,13 @@ import {
   clearAllAthleteHistory,
   clearAllMeetData,
   clearExpiredDownloadedMeets,
+  clearImplicitMeetData,
   clearMeetData,
   findAthleteNamesWithoutHistory,
   PACKAGE_ETAG_STORAGE_KEY,
   getAllCachedLiftingResultsForAthlete,
   getAllCachedLiftingResultsForAthletes,
+  getCachedAthleteBestsForNames,
   getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
@@ -41,6 +43,7 @@ import {
   getSessionAthletesFromMeetCache,
   initStore,
   markMeetExplicitlyDownloaded,
+  saveAthleteBestsBatch,
   saveAthleteHistory,
   saveMeetAthletes,
   saveMeetLiftingResults,
@@ -963,5 +966,153 @@ describe("clearing several meets", () => {
 
     expect(AsyncStorage.getAllKeys).not.toHaveBeenCalled();
     expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(true);
+  });
+});
+
+describe("clearImplicitMeetData", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+  });
+
+  it("clears only meets the user did not download, and never the one being opened", async () => {
+    for (const meet of ["Downloaded", "Browsed", "Opening"]) {
+      await saveMeetAthletes(meet, [athlete(meet)] as never);
+    }
+    await markMeetExplicitlyDownloaded("Downloaded" as never, true, { endDate: "2099-06-20" });
+
+    await clearImplicitMeetData("Opening" as never);
+
+    await expect(getMeetData("Downloaded" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Downloaded" })],
+    });
+    await expect(getMeetData("Opening" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Opening" })],
+    });
+    await expect(getMeetData("Browsed" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+});
+
+describe("cached athlete bests", () => {
+  beforeEach(() => {
+    mockStorage.clear();
+  });
+
+  it("round-trips bests under the normalized name and skips blank names", async () => {
+    await saveAthleteBestsBatch({
+      "  Jane   Doe ": { snatch_best: 90, cj_best: 110, total: 200 },
+      "   ": { snatch_best: 1, cj_best: 1, total: 2 },
+    });
+
+    expect(AsyncStorage.multiSet).toHaveBeenLastCalledWith([
+      [expect.stringContaining("jane doe"), expect.any(String)],
+    ]);
+    await expect(getCachedAthleteBestsForNames(["jane doe", "Nobody"])).resolves.toEqual({
+      "jane doe": { snatch_best: 90, cj_best: 110, total: 200 },
+    });
+  });
+
+  it("reads corrupt or mistyped blobs as missing or null, never as numbers", async () => {
+    await saveAthleteBestsBatch({ "Jane Doe": { snatch_best: 90, cj_best: 110, total: 200 } });
+    const key = Array.from(mockStorage.keys()).find((k) => k.includes("jane doe"))!;
+
+    mockStorage.set(key, "{truncated");
+    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({ "Jane Doe": undefined });
+
+    mockStorage.set(key, JSON.stringify({ snatch_best: "90", cj_best: null, total: 200 }));
+    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({
+      "Jane Doe": { snatch_best: null, cj_best: null, total: 200 },
+    });
+  });
+
+  it("writes a roster-sized bests map in bounded multiSet batches", async () => {
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    multiSet.mockClear();
+    const bests = Object.fromEntries(
+      Array.from({ length: 1201 }, (_, i) => [
+        `Athlete ${i}`,
+        { snatch_best: 90, cj_best: 110, total: 200 },
+      ]),
+    );
+
+    await saveAthleteBestsBatch(bests);
+
+    expect(multiSet.mock.calls.map(([entries]) => entries.length)).toEqual([500, 500, 201]);
+    await expect(getCachedAthleteBestsForNames(["Athlete 1200"])).resolves.toEqual({
+      "Athlete 1200": { snatch_best: 90, cj_best: 110, total: 200 },
+    });
+  });
+
+  it("does not write at all for an empty map", async () => {
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    multiSet.mockClear();
+    await saveAthleteBestsBatch({});
+    expect(multiSet).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty record when storage is unavailable", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    (AsyncStorage.multiGet as jest.Mock).mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({});
+  });
+});
+
+describe("lifting results manifest bounds", () => {
+  const HISTORY_KEY = "meetcal_athlete_history_jane doe";
+
+  beforeEach(() => {
+    mockStorage.clear();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ["an absurd chunk count", 1e9],
+    ["an infinite chunk count", "Infinity"],
+    ["a fractional chunk count", 1.5],
+    ["a negative chunk count", -3],
+  ])("reads %s as no cached history without allocating per chunk", async (_label, chunks) => {
+    const multiGet = AsyncStorage.multiGet as jest.Mock;
+    multiGet.mockClear();
+    mockStorage.set(
+      HISTORY_KEY,
+      // JSON cannot spell Infinity; `1e400` parses to it.
+      `{"format":"deflate-base64-chunks-v1","chunks":${chunks === "Infinity" ? "1e400" : chunks}}`,
+    );
+
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([]);
+    const chunkReads = multiGet.mock.calls.filter(([keys]) =>
+      (keys as string[]).some((key) => key.includes("__chunk_")),
+    );
+    expect(chunkReads).toHaveLength(0);
+  });
+
+  it("replaces a corrupt manifest without iterating its chunk count", async () => {
+    const multiRemove = AsyncStorage.multiRemove as jest.Mock;
+    multiRemove.mockClear();
+    mockStorage.set(HISTORY_KEY, '{"format":"deflate-base64-chunks-v1","chunks":1000000000}');
+
+    await saveAthleteHistory("Jane Doe", [
+      { name: "Jane Doe", meet: "M", date: "2026-01-01", total: 200 } as never,
+    ]);
+
+    expect(multiRemove).not.toHaveBeenCalled();
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
+      expect.objectContaining({ name: "Jane Doe", total: 200 }),
+    ]);
   });
 });

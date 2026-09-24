@@ -1,4 +1,5 @@
 import React from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, create } from "react-test-renderer";
 
 import type { Meet, MeetName } from "@/data/types/meet";
@@ -308,5 +309,143 @@ describe("SelectedMeetProvider", () => {
     act(() => {
       tree.unmount();
     });
+  });
+});
+
+describe("SelectedMeetProvider persisted selection", () => {
+  const SELECTED_MEET_KEY = "@selected_meet";
+  const SELECTED_MEET_DETAILS_KEY = "@selected_meet_details";
+
+  beforeEach(async () => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    captured = null;
+    jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    await AsyncStorage.clear();
+    mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchApiMeetByName.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  async function mount() {
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>,
+      );
+    });
+    await flush();
+    await flush();
+    return tree;
+  }
+
+  it("rehydrates an out-of-window selection from its persisted details on an offline cold start", async () => {
+    const outOfWindow = makeMeet("Archived Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(outOfWindow));
+    mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+    mockFetchMeetsFresh.mockRejectedValue(new Error("Network request failed"));
+
+    const tree = await mount();
+
+    expect(captured!.selectedMeet).toBe("Archived Meet");
+    expect(captured!.meetDetails?.venue.address.street).toBe("1 Main");
+    expect(captured!.isLoading).toBe(false);
+    act(() => tree.unmount());
+  });
+
+  it.each([
+    ["not JSON", "{truncated"],
+    ["another meet's details", JSON.stringify(makeMeet("Different Meet"))],
+    ["an older shape without venue.address", JSON.stringify({ ...makeMeet("Archived Meet"), venue: { name: "x" } })],
+    ["an array", "[]"],
+  ])("does not hand persisted details that are %s to the Info tab", async (_label, raw) => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, raw);
+    mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+    mockFetchMeetsFresh.mockRejectedValue(new Error("Network request failed"));
+
+    const tree = await mount();
+
+    // Falls back to a meet it can render...
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    expect(captured!.meetDetails?.name).toBe("Window Meet");
+    // ...but a failed lookup is not proof the stored choice is gone.
+    await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Archived Meet");
+    act(() => tree.unmount());
+  });
+
+  it("forgets a stored meet only when an online lookup says it no longer exists", async () => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Deleted Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeMeet("Deleted Meet")));
+    mockFetchApiMeetByName.mockResolvedValue(null);
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+
+    const tree = await mount();
+
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBeNull();
+    act(() => tree.unmount());
+  });
+
+  it("keeps the current meet and storage when selecting an unknown meet fails on the network", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Window Meet");
+
+    mockFetchApiMeetByName.mockRejectedValue(new Error("timed out"));
+    let failure: unknown = null;
+    await act(async () => {
+      failure = await captured!.setSelectedMeet("Elsewhere Meet" as MeetName).catch((e: unknown) => e);
+    });
+
+    expect((failure as Error).message).toBe("timed out");
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Window Meet");
+    act(() => tree.unmount());
+  });
+
+  it("clears the selection when the meet definitively does not exist", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Window Meet");
+
+    mockFetchApiMeetByName.mockResolvedValue(null);
+    let failure: unknown = null;
+    await act(async () => {
+      failure = await captured!.setSelectedMeet("Typo Meet" as MeetName).catch((e: unknown) => e);
+    });
+
+    expect((failure as Error).message).toContain("not found");
+    await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
+    // The cleared selection is refilled from the meets list, never with the
+    // name that failed to resolve.
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    act(() => tree.unmount());
+  });
+
+  it("persists an out-of-window selection's details for the next offline start", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+
+    mockFetchApiMeetByName.mockResolvedValue(makeMeet("Deep Link Meet"));
+    await act(async () => {
+      await captured!.setSelectedMeet("Deep Link Meet" as MeetName);
+    });
+    await flush();
+
+    expect(captured!.selectedMeet).toBe("Deep Link Meet");
+    await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Deep Link Meet");
+    const persisted = JSON.parse((await AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)) ?? "null");
+    expect(persisted?.name).toBe("Deep Link Meet");
+    act(() => tree.unmount());
   });
 });
