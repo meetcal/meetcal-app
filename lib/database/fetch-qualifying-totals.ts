@@ -67,6 +67,11 @@ async function persistQualifyingTotals(
  */
 export async function downloadQualifyingTotalsForOffline(): Promise<void> {
   const data = await fetchQualifyingTotalsFresh();
+  // An event is only added with a row in it, so no events means no rows. An
+  // empty table would replace a real download with nothing.
+  if (Object.keys(data).length === 0) {
+    throw new Error('Qualifying totals download returned no rows');
+  }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);
 }
 

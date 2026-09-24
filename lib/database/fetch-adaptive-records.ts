@@ -66,6 +66,11 @@ async function persistAdaptiveRecords(data: RecordsData) {
  */
 export async function downloadAdaptiveRecordsForOffline(): Promise<void> {
   const data = await fetchAdaptiveRecordsFresh();
+  // An empty table would replace a real download with nothing.
+  const { Men, Women } = data[AGE_GROUP_KEY];
+  if (Men.length + Women.length === 0) {
+    throw new Error('Adaptive records download returned no rows');
+  }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
 }
 

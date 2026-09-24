@@ -134,6 +134,44 @@ describe('useNameSuggestions', () => {
     expect(hook.suggestions).toEqual([]);
     expect(hook.loadingSuggestions).toBe(false);
   });
+
+  // A stale failure is as out of order as a stale success: it must not wipe
+  // the newer query's names or stop its spinner early.
+  it('ignores a failure for a query the user has typed past', async () => {
+    type('john');
+    pauseTyping();
+    type('john smi');
+    pauseTyping();
+    type('john smit');
+    pauseTyping();
+    expect(fetchNames).toHaveBeenCalledTimes(3);
+
+    // Older request fails while the newest is still in flight: spinner stays.
+    await act(async () => {
+      pending.find((p) => p.query === 'john')!.reject(new Error('timeout'));
+    });
+    expect(hook.loadingSuggestions).toBe(true);
+
+    await answer('john smit', ['John Smith']);
+    expect(hook.suggestions).toEqual(['John Smith']);
+
+    // Older request fails after the newest painted: its names stay.
+    await act(async () => {
+      pending.find((p) => p.query === 'john smi')!.reject(new Error('late'));
+    });
+    expect(hook.suggestions).toEqual(['John Smith']);
+    expect(hook.loadingSuggestions).toBe(false);
+  });
+
+  it('closes the dropdown when the query drops below the minimum', async () => {
+    type('john');
+    pauseTyping();
+    await answer('john', ['John Smith']);
+    expect(hook.showSuggestions).toBe(true);
+    type('jo');
+    expect(hook.showSuggestions).toBe(false);
+    expect(hook.loadingSuggestions).toBe(false);
+  });
 });
 
 describe('filterNameSuggestions', () => {

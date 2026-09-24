@@ -81,6 +81,14 @@ async function persistStandards(data: StandardsData) {
  */
 export async function downloadStandardsForOffline(): Promise<void> {
   const data = await fetchStandardsFresh();
+  // An empty table would replace a real download with nothing.
+  const rowCount = Object.values(data).reduce(
+    (count, group) => count + group.men.length + group.women.length,
+    0,
+  );
+  if (rowCount === 0) {
+    throw new Error('Standards download returned no rows');
+  }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
 }
 

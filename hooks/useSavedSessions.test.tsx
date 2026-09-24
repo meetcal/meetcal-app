@@ -149,6 +149,13 @@ const mockDeleteSavedSessions = deleteSavedSessions as jest.MockedFunction<
 const mockGetMeetData = getMeetData as jest.MockedFunction<typeof getMeetData>;
 const mockConvertToUTC = convertToUTC as jest.MockedFunction<typeof convertToUTC>;
 
+// A future session start by default. `clearAllMocks` keeps implementations,
+// so a test that moves the session into the past (no reminder) would
+// otherwise leak into whichever test runs next (fails under `--randomize`).
+beforeEach(() => {
+  mockConvertToUTC.mockReturnValue(new Date("2099-01-01T15:00:00.000Z"));
+});
+
 const mockFetchSchedule = fetchSchedule as jest.MockedFunction<
   typeof fetchSchedule
 >;

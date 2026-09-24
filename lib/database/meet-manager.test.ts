@@ -705,6 +705,72 @@ describe("package revalidation with ETag", () => {
     expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
   });
 
+  /** Waits (bounded) until an async step has reached the mock. */
+  const untilCalled = async (mock: jest.Mock, times: number) => {
+    for (let i = 0; i < 50 && mock.mock.calls.length < times; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(mock).toHaveBeenCalledTimes(times);
+  };
+
+  // A background warm-up (SyncManager / warmMeetData) of the same meet may be
+  // in flight when the user taps Refresh All. Joining it would return an
+  // unforced 304 that skips history, and "Refresh Complete" would be a lie.
+  it("runs a forced refresh after an in-flight background prefetch instead of joining it", async () => {
+    storedEtags({ "Etag Meet Joined": '"abc"' });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFindAthleteNamesWithoutHistory.mockResolvedValue([]);
+    let answerBackground!: (value: { status: "not_modified" }) => void;
+    mockFetchApiMeetPackageConditional
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerBackground = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ status: "not_modified" });
+
+    const background = prefetchMeetData("Etag Meet Joined" as any);
+    // A second background caller joins the one in flight.
+    const joined = prefetchMeetData("Etag Meet Joined" as any);
+    const forced = prefetchMeetData("Etag Meet Joined" as any, { forceHistoryRefresh: true });
+    await untilCalled(mockFetchApiMeetPackageConditional, 1);
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+
+    answerBackground({ status: "not_modified" });
+    await Promise.all([background, joined, forced]);
+
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+  });
+
+  it("still runs a forced refresh when the in-flight background prefetch fails", async () => {
+    storedEtags({ "Etag Meet Joined Fail": '"abc"' });
+    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    let failBackground!: (error: Error) => void;
+    mockFetchApiMeetPackageConditional
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failBackground = reject;
+          }),
+      )
+      .mockResolvedValueOnce({ status: "not_modified" });
+
+    const background = prefetchMeetData("Etag Meet Joined Fail" as any);
+    const forced = prefetchMeetData("Etag Meet Joined Fail" as any, { forceHistoryRefresh: true });
+    await untilCalled(mockFetchApiMeetPackageConditional, 1);
+    failBackground(new Error("MeetCal API error 503"));
+
+    await expect(background).rejects.toThrow();
+    await expect(forced).resolves.toBeUndefined();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A"]);
+  });
+
   it("writes nothing over the stored meet when the package request fails", async () => {
     storedEtags({ "Etag Meet Down": '"abc"' });
     mockFetchApiMeetPackageConditional.mockRejectedValueOnce(new Error("MeetCal API error 503"));

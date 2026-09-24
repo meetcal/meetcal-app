@@ -82,9 +82,12 @@ let alertSpy: jest.SpyInstance;
 /** Taps the named button of the most recent alert and waits for its work. */
 async function tap(text: string) {
   const buttons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
-  const button = buttons.find((b) => b.text === text);
+  const button = buttons?.find((b) => b.text === text);
+  // A missing button would make every "was not called" assertion after it
+  // pass without the tap ever happening.
+  if (!button?.onPress) throw new Error(`no "${text}" button on the last alert`);
   await act(async () => {
-    await button?.onPress?.();
+    await button.onPress?.();
   });
   await flush();
 }
@@ -328,7 +331,10 @@ describe("useOfflineData single actions vs bulk actions", () => {
     await act(async () => {
       await captured!.handleDelete("A/B Standards", "standards", removeStandards);
     });
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Remove Download");
     const removeButtons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+    // Otherwise "not removed" below would hold without the tap happening.
+    expect(removeButtons.find((b) => b.text === "Remove")?.onPress).toBeInstanceOf(Function);
 
     act(() => captured!.confirmRefreshAll());
     const refreshButtons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];

@@ -65,7 +65,10 @@ describe('loadAthleteResults', () => {
     offline.resolve([row('Local')]);
     await done;
     // The API rows always land last, so they are what stays on screen.
-    expect(painted.at(-1)).toEqual({ source: 'api', meets: ['API'] });
+    expect(painted).toEqual([
+      { source: 'offline', meets: ['Local'] },
+      { source: 'api', meets: ['API'] },
+    ]);
   });
 
   it('does not let an empty API answer clobber on-device rows', async () => {
@@ -148,5 +151,35 @@ describe('loadAthleteResults', () => {
     offline.resolve([row('Local')]);
     await done;
     expect(painted).toEqual([]);
+  });
+
+  it('paints nothing more when the screen moves on while the request is in flight', async () => {
+    let current = true;
+    const full = deferred<SupabaseLiftResult[]>();
+    const { load, painted } = makeLoad({
+      readOffline: async () => [row('Local')],
+      fetchFull: () => full.promise,
+      isCurrent: () => current,
+    });
+    const done = loadAthleteResults(load);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
+
+    current = false;
+    full.resolve([row('Previous athlete API')]);
+    await done;
+    expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
+  });
+
+  it('does not log a failure for a screen that has moved on', async () => {
+    let current = true;
+    const full = deferred<SupabaseLiftResult[]>();
+    const { load, painted } = makeLoad({ fetchFull: () => full.promise, isCurrent: () => current });
+    const done = loadAthleteResults(load);
+    current = false;
+    full.reject(new Error('offline'));
+    await done;
+    expect(painted).toEqual([]);
+    expect(console.error).not.toHaveBeenCalled();
   });
 });

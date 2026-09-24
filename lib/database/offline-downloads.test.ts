@@ -6,6 +6,8 @@
  * report it, and must leave the stored copy exactly as it was.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
+import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
 
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
 jest.mock("@/lib/networkUtils", () => ({
@@ -60,7 +62,37 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+const standardRow = {
+  age_category: "Senior",
+  gender: "Men",
+  weight_class: "89kg",
+  standard_a: 330,
+  standard_b: 310,
+};
+
 describe("downloadStandardsForOffline", () => {
+  it("replaces the stored copy with the fresh table", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.standards, oldEntry);
+    mockRespond.mockResolvedValue([standardRow]);
+    await downloadStandardsForOffline();
+    const stored = (await readData(OFFLINE_CACHE_KEYS.standards)) as {
+      senior: { men: unknown[] };
+    };
+    expect(stored.senior.men).toEqual([{ weightClass: "89kg", a: 330, b: 310 }]);
+  });
+
+  // An empty answer (a backend reload in progress, or every row missing its
+  // keys) mapped to four empty groups and was written over a real download;
+  // Refresh All then said "Refresh Complete".
+  it("rejects an empty or all-malformed table and keeps the stored copy", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.standards, oldEntry);
+    mockRespond.mockResolvedValueOnce([]);
+    await expect(downloadStandardsForOffline()).rejects.toThrow("no rows");
+    mockRespond.mockResolvedValueOnce([{ ...standardRow, gender: null }]);
+    await expect(downloadStandardsForOffline()).rejects.toThrow("no rows");
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(oldEntry);
+  });
+
   it("rejects on an API failure and leaves the stored copy", async () => {
     await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.standards, oldEntry);
     mockRespond.mockRejectedValue(new Error("Network request failed"));
@@ -78,7 +110,7 @@ describe("downloadStandardsForOffline", () => {
   });
 
   it("rejects when the write fails instead of reporting it stored", async () => {
-    mockRespond.mockResolvedValue([]);
+    mockRespond.mockResolvedValue([standardRow]);
     jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("SQLITE_FULL"));
     await expect(downloadStandardsForOffline()).rejects.toThrow("SQLITE_FULL");
   });
@@ -172,5 +204,58 @@ describe("downloadIntlRankingsForOffline", () => {
 
     await expect(downloadIntlRankingsForOffline()).rejects.toThrow("no rows");
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.intlRankings)).resolves.toBe(oldEntry);
+  });
+});
+
+describe("downloadQualifyingTotalsForOffline", () => {
+  const totalRow = {
+    event_name: "Nationals",
+    age_category: "Senior",
+    gender: "Men",
+    weight_class: "89kg",
+    qualifying_total: 250,
+  };
+
+  it("replaces the stored copy with the fresh table", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, oldEntry);
+    mockRespond.mockResolvedValue([totalRow]);
+    await downloadQualifyingTotalsForOffline();
+    await expect(readData(OFFLINE_CACHE_KEYS.qualifyingTotals)).resolves.toEqual({
+      Nationals: { Senior: { Men: { "89kg": 250 }, Women: {} } },
+    });
+  });
+
+  it("rejects an empty or all-malformed table and keeps the stored copy", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, oldEntry);
+    mockRespond.mockResolvedValueOnce([]);
+    await expect(downloadQualifyingTotalsForOffline()).rejects.toThrow("no rows");
+    mockRespond.mockResolvedValueOnce([{ ...totalRow, gender: "Mixed" }]);
+    await expect(downloadQualifyingTotalsForOffline()).rejects.toThrow("no rows");
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.qualifyingTotals)).resolves.toBe(oldEntry);
+  });
+});
+
+describe("downloadAdaptiveRecordsForOffline", () => {
+  const adaptiveRow = { weight_class: "73", snatch: 100, cj: 120, total: 220 };
+
+  it("stores both genders, replacing the stored copy", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.adaptiveRecords, oldEntry);
+    mockRespond.mockImplementation(async (_path, query) =>
+      query.gender === "Men" ? [adaptiveRow] : [],
+    );
+    await downloadAdaptiveRecordsForOffline();
+    await expect(readData(OFFLINE_CACHE_KEYS.adaptiveRecords)).resolves.toEqual({
+      Adaptive: {
+        Men: [{ weightClass: "73kg", snatchRecord: 100, cjRecord: 120, totalRecord: 220 }],
+        Women: [],
+      },
+    });
+  });
+
+  it("rejects when neither gender has a record and keeps the stored copy", async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.adaptiveRecords, oldEntry);
+    mockRespond.mockResolvedValue([{ ...adaptiveRow, weight_class: null }]);
+    await expect(downloadAdaptiveRecordsForOffline()).rejects.toThrow("no rows");
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.adaptiveRecords)).resolves.toBe(oldEntry);
   });
 });
