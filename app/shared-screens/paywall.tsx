@@ -84,7 +84,7 @@ export default function PaywallScreen({
       return;
     }
 
-    router.replace('/(tabs)' as any);
+    router.replace('/(tabs)');
   };
 
   if (!isLoaded || !user || !offering) {

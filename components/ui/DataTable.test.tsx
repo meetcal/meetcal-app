@@ -1,7 +1,13 @@
 import React from "react";
-import { Text } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { act, create } from "react-test-renderer";
 import { DataTable } from "@/components/ui/DataTable";
+
+// react-native's exports are lazy getters. On a cold transform cache (every CI
+// run) the first access transforms the component tree behind each one, inside
+// whichever test renders first; that pushed this file's first test to ~5s, its
+// whole budget. Touching them at module load charges the cost to the file.
+void [ScrollView, StyleSheet, Text, View];
 
 type FlashListCall = {
   data: unknown[];

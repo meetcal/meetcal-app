@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiAdaptiveRecords, type ApiAdaptiveRecordRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
@@ -31,62 +36,42 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
   return records;
 }
 
-export async function fetchAdaptiveRecords(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
-  try {
-    const result = await fetchAdaptiveRecordsFresh(gender, ageGroup);
-    if (!gender && !ageGroup) {
-      await persistAdaptiveRecords(result);
-    }
-    return result;
-  } catch (error) {
-    const cached = await readAdaptiveRecordsCache(ageGroup);
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}
-
-async function readAdaptiveRecordsCache(ageGroup?: string) {
+async function readAdaptiveRecordsCache() {
   const cached = await getOfflineCache<RecordsData>(OFFLINE_CACHE_KEYS.adaptiveRecords);
   if (!cached?.data) return null;
-  if (ageGroup && !cached.data[ageGroup]) {
-    return {
-      data: { [ageGroup]: cached.data[AGE_GROUP_KEY] || { Men: [], Women: [] } },
-      lastUpdatedAt: cached.lastSynced,
-    };
-  }
   return { data: cached.data, lastUpdatedAt: cached.lastSynced };
 }
 
-async function fetchAdaptiveRecordsFresh(gender?: Gender, ageGroup?: string): Promise<RecordsData> {
+async function fetchAdaptiveRecordsFresh(): Promise<RecordsData> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
     throw new Error('Offline');
-  }
-
-  const ageGroupKey = ageGroup || AGE_GROUP_KEY;
-  const result: RecordsData = {
-    [ageGroupKey]: { Men: [], Women: [] },
-  };
-
-  if (gender) {
-    result[ageGroupKey][gender] = await fetchAdaptiveRecordsForGender(gender);
-    return result;
   }
 
   const [menRecords, womenRecords] = await Promise.all([
     fetchAdaptiveRecordsForGender('Men'),
     fetchAdaptiveRecordsForGender('Women'),
   ]);
-  result[ageGroupKey].Men = menRecords;
-  result[ageGroupKey].Women = womenRecords;
-  return result;
+  return { [AGE_GROUP_KEY]: { Men: menRecords, Women: womenRecords } };
 }
 
 async function persistAdaptiveRecords(data: RecordsData) {
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection that leaves the stored copy untouched. Never the cached fallback.
+ */
+export async function downloadAdaptiveRecordsForOffline(): Promise<void> {
+  const data = await fetchAdaptiveRecordsFresh();
+  // An empty table would replace a real download with nothing.
+  const { Men, Women } = data[AGE_GROUP_KEY];
+  if (Men.length + Women.length === 0) {
+    throw new Error('Adaptive records download returned no rows');
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
 }
 
 export const adaptiveRecordsResource = createMutableResource<RecordsData, []>({

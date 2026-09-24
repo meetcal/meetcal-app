@@ -23,10 +23,13 @@ afterAll(() => {
 });
 
 import {
+  federationRecordsResource,
   fetchAgeGroups,
-  fetchFederations,
-  fetchRecords,
 } from "@/lib/database/fetch-records";
+import type { RecordsData } from "@/types/records";
+
+const fetchRecords = async (federation: string): Promise<RecordsData> =>
+  (await federationRecordsResource.revalidate(federation)).data;
 
 const row = (overrides: Record<string, unknown>) => ({
   age_category: "Senior",
@@ -39,7 +42,7 @@ const row = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-describe("fetchRecords", () => {
+describe("federationRecordsResource and fetchAgeGroups", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, "error").mockImplementation(() => {});
@@ -75,15 +78,6 @@ describe("fetchRecords", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/records", { USAW: records });
   });
 
-  it("lists federations from complete rows only, sorted", async () => {
-    mockGetJsonArray.mockResolvedValue([
-      row({ record_type: "usaw" }),
-      row({ record_type: "IWF" }),
-      row({ record_type: "Broken", weight_class: null }),
-    ]);
-    await expect(fetchFederations()).resolves.toEqual(["IWF", "usaw"]);
-  });
-
   it("orders age groups youth-first, then masters by age", async () => {
     mockGetJsonArray.mockResolvedValue([
       row({ age_category: "Masters 45-49" }),
@@ -102,7 +96,7 @@ describe("fetchRecords", () => {
     await expect(fetchAgeGroups("")).resolves.toEqual([]);
   });
 
-  it("serves the cached federation, filtered, when the API fails", async () => {
+  it("falls back to the cached federation for age groups and rejects the records fetch", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
     mockGetOfflineCache.mockResolvedValue({
       data: {
@@ -114,14 +108,13 @@ describe("fetchRecords", () => {
       lastSynced: 1,
     });
 
-    const records = await fetchRecords("USAW", "Senior", "Men");
-    expect(Object.keys(records)).toEqual(["Senior"]);
-    expect(records.Senior.Women).toEqual([]);
-    await expect(fetchFederations()).resolves.toEqual(["USAW"]);
+    // Age groups fall back to the cached federation; the records fetch
+    // rejects, leaving the cached copy to the screen.
     await expect(fetchAgeGroups("USAW")).resolves.toEqual(["Junior", "Senior"]);
+    await expect(fetchRecords("USAW")).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
 
     mockGetOfflineCache.mockResolvedValue(null);
-    await expect(fetchRecords("USAW")).rejects.toThrow("down");
-    await expect(fetchFederations()).rejects.toThrow("down");
+    await expect(fetchAgeGroups("USAW")).rejects.toThrow("down");
   });
 });

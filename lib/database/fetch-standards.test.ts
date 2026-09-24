@@ -22,7 +22,9 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-import { fetchStandards } from "@/lib/database/fetch-standards";
+import { standardsResource } from "@/lib/database/fetch-standards";
+
+const fetchStandards = async () => (await standardsResource.revalidate()).data;
 
 const row = (overrides: Record<string, unknown>) => ({
   age_category: "Senior",
@@ -33,7 +35,7 @@ const row = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
-describe("fetchStandards", () => {
+describe("standardsResource", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
@@ -65,41 +67,9 @@ describe("fetchStandards", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards);
   });
 
-  it("filters by age group and gender without persisting the subset", async () => {
-    mockGetJsonArray.mockResolvedValue([
-      row({}),
-      row({ gender: "Women", weight_class: "71kg" }),
-      row({ age_category: "Junior", weight_class: "73kg" }),
-    ]);
-
-    const standards = await fetchStandards("senior", "women");
-
-    expect(standards.senior.women).toEqual([{ weightClass: "71kg", a: 300, b: 280 }]);
-    expect(standards.senior.men).toEqual([]);
-    expect(standards.junior.men).toEqual([]);
-    expect(mockSetOfflineCache).not.toHaveBeenCalled();
-  });
-
-  it("serves the cached copy, filtered, when the API fails", async () => {
-    mockGetJsonArray.mockRejectedValue(new Error("down"));
-    mockGetOfflineCache.mockResolvedValue({
-      data: {
-        u15: { men: [], women: [] },
-        youth: { men: [], women: [] },
-        junior: { men: [{ weightClass: "73kg", a: 1, b: 2 }], women: [] },
-        senior: { men: [{ weightClass: "89kg", a: 3, b: 4 }], women: [] },
-      },
-      lastSynced: 1,
-    });
-
-    const standards = await fetchStandards("senior");
-
-    expect(standards.senior.men).toEqual([{ weightClass: "89kg", a: 3, b: 4 }]);
-    expect(standards.junior.men).toEqual([]);
-  });
-
-  it("rethrows when the API fails and nothing is cached", async () => {
+  it("rejects when the API fails, leaving the cached copy to the screen", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
     await expect(fetchStandards()).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });

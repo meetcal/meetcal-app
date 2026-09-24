@@ -12,3 +12,26 @@ jest.mock(
 jest.mock("@react-native-community/netinfo", () =>
   require("@react-native-community/netinfo/jest/netinfo-mock.js"),
 );
+
+// react-native's exports are lazy getters, and on a cold transform cache (every
+// CI run) the first access to a UI module costs seconds: Animated ~2.3s,
+// ScrollView/Pressable ~0.7s. Left to the first render, that cost lands inside
+// whichever test mounts a screen first and has pushed several past Jest's 5s
+// budget on CI. Touching them here charges it to setup, outside any test's
+// timeout; once transformed, later files pay only module evaluation.
+// Skipped in suites that cannot render (see `rendersReactNativeUi` in
+// jest/device-timezone-environment.js): evaluating these modules there cost
+// every `.ts` suite ~55ms for nothing.
+if (globalThis.__MEETCAL_WARM_RN_UI__ !== false) {
+  const ReactNative = require("react-native");
+  void [
+    ReactNative.Animated,
+    ReactNative.ScrollView,
+    ReactNative.FlatList,
+    ReactNative.Pressable,
+    ReactNative.TouchableOpacity,
+    ReactNative.ActivityIndicator,
+    ReactNative.Modal,
+    ReactNative.TextInput,
+  ];
+}

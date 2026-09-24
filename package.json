@@ -21,6 +21,7 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "testEnvironment": "<rootDir>/jest/device-timezone-environment.js",
     "setupFiles": [
       "<rootDir>/jest.setup.js"
     ],

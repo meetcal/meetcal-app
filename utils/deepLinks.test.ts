@@ -71,6 +71,13 @@ describe("deep link helpers", () => {
     expect(normalizeDeepLinkHref("https://meetcal.app/open/saved")).toBeNull();
   });
 
+  it("rejects protocol-relative paths, the same rule as sign-in return paths", () => {
+    expect(normalizeDeepLinkHref("//evil.example/open/saved")).toBeNull();
+    expect(normalizeDeepLinkHref("  //evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("meetcal:////evil.example/x")).toBeNull();
+    expect(normalizeDeepLinkHref("/open/saved?x=1")).toBe("/open/saved?x=1");
+  });
+
   it("extracts links from local notification data aliases", () => {
     expect(getNotificationDeepLink({ url: "meetcal:///open/saved" })).toBe(
       "meetcal:///open/saved",

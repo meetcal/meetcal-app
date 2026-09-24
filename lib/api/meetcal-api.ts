@@ -13,6 +13,7 @@ import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
   getTimeZoneAbbreviation,
+  meetCalendarDateAnchor,
   YEAR_BESTS_YEARS,
 } from '@/utils/dateTime';
 import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
@@ -52,7 +53,22 @@ export const APP_VERSION: string = resolveAppVersion(
   Application.nativeApplicationVersion,
 );
 const SLOW_API_LOG_THRESHOLD_MS = 500;
+/**
+ * Names per request for the name-list endpoints whose rows are large: full
+ * history (`/lifting-results/by-names`) and the two-year window (`/recent`).
+ * One history batch is held in memory while it is written out, so this also
+ * bounds the offline download's peak memory (see `meet-manager`).
+ */
 export const NAMES_QUERY_CHUNK_SIZE = 40;
+/**
+ * Names per request where each name answers with a handful of numbers or rows:
+ * `/lifting-results/bests` (three bests per name) and `latest_only` history
+ * (one meet per name). Equal to the API's `MAX_NAME_LIST_LEN` (100), which is
+ * not version-gated; one more name is a `400`. Sorting a 1,562-athlete
+ * national start list by best total was 40 sequential requests at 40 names;
+ * it is 16 at 100.
+ */
+export const SMALL_ROWS_NAMES_CHUNK_SIZE = 100;
 
 /**
  * Meet dates are calendar dates with no time. 16:00 UTC is inside the same
@@ -60,12 +76,6 @@ export const NAMES_QUERY_CHUNK_SIZE = 40;
  * the zone offset at this instant gives the meet's own offset on that date.
  */
 const MEET_DATE_OFFSET_PROBE_HOUR_UTC = 16;
-/**
- * Noon UTC is inside the same calendar day in every US meet timezone, so a
- * meet date rendered from this instant never slips to the previous/next day.
- */
-const MEET_DATE_DISPLAY_HOUR_UTC = 12;
-
 function chunkValues<T>(values: T[], size: number): T[][] {
   if (values.length === 0) return [];
   const chunks: T[][] = [];
@@ -356,15 +366,21 @@ async function requestRaw(
   }
 }
 
-async function requestJson<T>(
+/**
+ * Parsed JSON as `unknown`. There is deliberately no type parameter: a
+ * `requestJson<T>` let a caller's annotation (`const rows: Row[] = await
+ * getJson(...)`) infer `T` and cast past `JSON.parse` unchecked. Callers narrow
+ * with `assertArray` / `assertHasFields` / a validator.
+ */
+async function requestJson(
   method: string,
   path: string,
   query?: Record<string, QueryValue>,
   body?: unknown,
   options?: RequestOptions,
-): Promise<T> {
+): Promise<unknown> {
   const { text } = await requestRaw(method, path, query, body, options);
-  return parseResponseJson(method, path, text) as T;
+  return parseResponseJson(method, path, text);
 }
 
 const validatorCache = new ValidatorCache(HTTP_VALIDATOR_CACHE_LIMIT);
@@ -437,12 +453,12 @@ async function getJsonRevalidated<T>(
   return value;
 }
 
-export function getJson<T>(
+export function getJson(
   path: string,
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('GET', path, query, undefined, options);
+): Promise<unknown> {
+  return requestJson('GET', path, query, undefined, options);
 }
 
 /**
@@ -459,7 +475,7 @@ export async function getJsonArray<T>(
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
 ): Promise<T[]> {
-  return assertArray<T>(await getJson<unknown>(path, query, options), path);
+  return assertArray<T>(await getJson(path, query, options), path);
 }
 
 /** `getJson` for the endpoints that return a single JSON object. */
@@ -468,41 +484,41 @@ export async function getJsonObject<T>(
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
 ): Promise<T> {
-  const response = await getJson<unknown>(path, query, options);
+  const response = await getJson(path, query, options);
   assertObject(response, path);
   return response as T;
 }
 
-export function postJson<T>(
+export function postJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('POST', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('POST', path, undefined, body, options);
 }
 
-export function putJson<T>(
+export function putJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('PUT', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('PUT', path, undefined, body, options);
 }
 
-export function patchJson<T>(
+export function patchJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('PATCH', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('PATCH', path, undefined, body, options);
 }
 
-export function deleteJson<T>(
+export function deleteJson(
   path: string,
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('DELETE', path, query, undefined, options);
+): Promise<unknown> {
+  return requestJson('DELETE', path, query, undefined, options);
 }
 
 export type ApiMeet = {
@@ -653,16 +669,18 @@ export function formatApiTime(time: string | null | undefined): string {
   }
 }
 
+/**
+ * Display title for a schedule day. The API's `date` is scraped text, not a
+ * typed date, so it is anchored through the one calendar-date parser
+ * (`meetCalendarDateAnchor`, noon UTC). The old inline copy fell back to
+ * `new Date(date)` for anything that was not `YYYY-MM-DD`, and a row dated
+ * "TBD" rendered as the day title "Invalid Date". A value that is not a
+ * calendar date is shown as sent.
+ */
 function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentifier): string {
-  const [datePart] = date.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
-    ? new Date(date)
-    : new Date(
-        Date.UTC(year, month - 1, day, MEET_DATE_DISPLAY_HOUR_UTC, 0, 0),
-      );
-
-  return safeUtcDate.toLocaleDateString('en-US', {
+  const anchor = meetCalendarDateAnchor(date);
+  if (!anchor) return date;
+  return anchor.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
@@ -972,7 +990,8 @@ export async function fetchApiResultsByNames(
 ): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
   const rows: SupabaseLiftResult[] = [];
-  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+  const chunkSize = options.latestOnly ? SMALL_ROWS_NAMES_CHUNK_SIZE : NAMES_QUERY_CHUNK_SIZE;
+  for (const chunk of chunkValues(names, chunkSize)) {
     const body = options.latestOnly ? { names: chunk, latest_only: true } : { names: chunk };
     const part = assertArray<ApiLiftingResult>(
       await postJson('/lifting-results/by-names', body),
@@ -1016,7 +1035,7 @@ export async function fetchApiYearBestsByNames(
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
   const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
-  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+  for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
     const response = await postJson('/lifting-results/bests', {
       names: chunk,
       cutoff_date: cutoffDate,
@@ -1450,8 +1469,14 @@ export async function deleteSavedSession(
     undefined,
     { token: authToken },
   );
-  assertObject(row, 'deleteSavedSession');
-  return { deleted: (row as { deleted?: unknown }).deleted === true };
+  // The outbox drops the pending delete once this resolves, so an
+  // acknowledgement that is not the backend's `{ deleted: bool }` fails here
+  // and the delete stays queued (a retry is idempotent).
+  const ack = assertHasFields(row, 'deleteSavedSession', ['deleted']);
+  if (typeof ack.deleted !== 'boolean') {
+    throw new Error('deleteSavedSession returned an invalid payload');
+  }
+  return { deleted: ack.deleted };
 }
 
 export async function deleteSavedSessions(
@@ -1460,11 +1485,11 @@ export async function deleteSavedSessions(
 ): Promise<{ deleted_count: number }> {
   const authToken = requireToken(token, 'deleteSavedSessions');
   const row = await deleteJson('/users/me/saved-sessions', { meet }, { token: authToken });
-  assertObject(row, 'deleteSavedSessions');
-  const deletedCount = (row as { deleted_count?: unknown }).deleted_count;
-  return {
-    deleted_count: typeof deletedCount === 'number' && Number.isFinite(deletedCount) ? deletedCount : 0,
-  };
+  const ack = assertHasFields(row, 'deleteSavedSessions', ['deleted_count']);
+  if (typeof ack.deleted_count !== 'number' || !Number.isFinite(ack.deleted_count)) {
+    throw new Error('deleteSavedSessions returned an invalid payload');
+  }
+  return { deleted_count: ack.deleted_count };
 }
 
 export async function fetchUserPreferences(

@@ -1,5 +1,5 @@
 import { SavedSession } from "@/hooks/useSavedSessions";
-import { selectNextSession } from "@/lib/next-session";
+import { selectNextSession, STARTED_GRACE_MS } from "@/lib/next-session";
 import { Meet } from "@/data/types/meet";
 
 const MEET_NAME = "Test Meet";
@@ -149,5 +149,109 @@ describe("selectNextSession", () => {
     const result = selectNextSession([session], MEET_NAME, meet, now);
     expect(result?.session.id).toBe("jst");
     expect(result?.startMs).toBe(new Date("2026-07-16T21:00:00Z").getTime());
+  });
+});
+
+describe("selectNextSession boundaries", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const upcomingTwoDayMeet = () =>
+    makeMeet({ status: "upcoming", dates: { start: "2026-07-15", end: "2026-07-16" } });
+
+  it("decides 'is the meet today' from the `now` it is given, not the wall clock", () => {
+    // Regression: the day check read `new Date()` while the start-time check
+    // read `now`. Park the wall clock years away to prove it is not consulted.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2031-01-01T12:00:00Z"));
+    const now = new Date("2026-07-16T18:00:00Z"); // 2pm EDT on the last day
+    const result = selectNextSession(
+      [makeSession({ id: "today", startTime: "3:00 PM" })],
+      MEET_NAME,
+      upcomingTwoDayMeet(),
+      now,
+    );
+    expect(result?.session.id).toBe("today");
+
+    // And the other way round: the wall clock inside the meet does not make
+    // a `now` after the meet count as today.
+    jest.setSystemTime(now);
+    expect(
+      selectNextSession(
+        [makeSession({ date: "2026-07-17", startTime: "3:00 PM" })],
+        MEET_NAME,
+        upcomingTwoDayMeet(),
+        new Date("2026-07-17T18:00:00Z"),
+      ),
+    ).toBeNull();
+  });
+
+  it("reads the meet's first and last day at the meet-zone midnight", () => {
+    const meet = upcomingTwoDayMeet();
+    const lateSession = makeSession({ date: "2026-07-17", startTime: "11:00 AM" });
+    const firstDaySession = makeSession({ date: "2026-07-15", startTime: "11:00 AM" });
+    // 23:59 EDT on the last day is still the meet (UTC already reads the 17th).
+    expect(
+      selectNextSession([lateSession], MEET_NAME, meet, new Date("2026-07-17T03:59:00Z")),
+    ).not.toBeNull();
+    // Midnight EDT after the last day is not.
+    expect(
+      selectNextSession([lateSession], MEET_NAME, meet, new Date("2026-07-17T04:00:00Z")),
+    ).toBeNull();
+    // 00:00 EDT on the first day is the meet; 23:59 EDT the day before is not.
+    expect(
+      selectNextSession([firstDaySession], MEET_NAME, meet, new Date("2026-07-15T04:00:00Z")),
+    ).not.toBeNull();
+    expect(
+      selectNextSession([firstDaySession], MEET_NAME, meet, new Date("2026-07-15T03:59:00Z")),
+    ).toBeNull();
+  });
+
+  it("drops a session exactly at the end of the grace window and keeps it 1 ms before", () => {
+    const start = new Date("2026-07-16T17:40:00Z"); // 1:40 PM EDT
+    const session = makeSession({ id: "edge", startTime: "1:40 PM" });
+    expect(
+      selectNextSession(
+        [session],
+        MEET_NAME,
+        makeMeet(),
+        new Date(start.getTime() + STARTED_GRACE_MS),
+      ),
+    ).toBeNull();
+    expect(
+      selectNextSession(
+        [session],
+        MEET_NAME,
+        makeMeet(),
+        new Date(start.getTime() + STARTED_GRACE_MS - 1),
+      )?.session.id,
+    ).toBe("edge");
+  });
+
+  it("breaks a start-time tie by list order, so the card does not flip between renders", () => {
+    const now = new Date("2026-07-16T18:00:00Z");
+    const red = makeSession({ id: "red", platform: "Red", startTime: "3:00 PM" });
+    const blue = makeSession({ id: "blue", platform: "Blue", startTime: "15:00" });
+    expect(selectNextSession([red, blue], MEET_NAME, makeMeet(), now)?.session.id).toBe("red");
+    expect(selectNextSession([blue, red], MEET_NAME, makeMeet(), now)?.session.id).toBe("blue");
+  });
+
+  it("skips a session whose date or time cannot be converted and keeps looking", () => {
+    const now = new Date("2026-07-16T18:00:00Z");
+    const impossibleDate = makeSession({ id: "bad-date", date: "2026-02-30", startTime: "2:30 PM" });
+    const badClock = makeSession({ id: "bad-clock", startTime: "25:99" });
+    const good = makeSession({ id: "good", startTime: "5:00 PM" });
+    expect(
+      selectNextSession([impossibleDate, badClock, good], MEET_NAME, makeMeet(), now)?.session.id,
+    ).toBe("good");
+  });
+
+  it("returns null when the meet has no time zone rather than using the device zone", () => {
+    const meet = makeMeet();
+    meet.time = { ...meet.time, timeZoneIdentifier: "" as Meet["time"]["timeZoneIdentifier"] };
+    expect(
+      selectNextSession([makeSession()], MEET_NAME, meet, new Date("2026-07-16T18:00:00Z")),
+    ).toBeNull();
   });
 });

@@ -1,6 +1,11 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/meetcal-api';
 
 export type IntlRanking = {
@@ -79,23 +84,22 @@ async function persistIntlRankings(rankings: IntlRanking[]) {
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
 
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection that leaves the stored copy untouched. An empty table is a
+ * rejection too: storing it would replace a real download with nothing.
+ */
+export async function downloadIntlRankingsForOffline(): Promise<void> {
+  const rankings = await fetchIntlRankingsFresh();
+  if (rankings.length === 0) {
+    throw new Error('International rankings download returned no rows');
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings);
+}
+
 export const intlRankingsResource = createMutableResource<IntlRanking[], []>({
   getKey: () => OFFLINE_CACHE_KEYS.intlRankings,
   loadCached: () => readIntlRankingsCache(),
   fetchFresh: () => fetchIntlRankingsFresh(),
   persistFresh: (data) => persistIntlRankings(data),
 });
-
-export async function fetchIntlRankings(): Promise<IntlRanking[]> {
-  try {
-    const rankings = await fetchIntlRankingsFresh();
-    await persistIntlRankings(rankings);
-    return rankings;
-  } catch (error) {
-    const cached = await readIntlRankingsCache();
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}

@@ -11,6 +11,7 @@ function DownloadRow({
   onDownload,
   onDelete,
   colors,
+  disabled = false,
 }: {
   title: string;
   subtitle: string;
@@ -18,6 +19,8 @@ function DownloadRow({
   isDownloading: boolean;
   onDownload: () => void;
   onDelete: () => void;
+  /** Refresh All / Delete All is running; the row's own action waits. */
+  disabled?: boolean;
   colors: {
     card: string;
     border: string;
@@ -34,10 +37,13 @@ function DownloadRow({
   return (
     <Pressable
       onPress={isDownloaded ? onDelete : onDownload}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [
         styles.row,
         { borderBottomColor: colors.border },
         pressed && { backgroundColor: colors.pressed },
+        disabled && styles.disabled,
       ]}
     >
       <View style={styles.rowText}>
@@ -64,6 +70,9 @@ function DownloadRow({
 export default DownloadRow;
 
 const styles = StyleSheet.create({
+  disabled: {
+    opacity: 0.5,
+  },
   row: {
     paddingHorizontal: 16,
     paddingVertical: 14,

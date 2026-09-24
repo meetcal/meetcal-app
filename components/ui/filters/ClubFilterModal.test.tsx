@@ -1,8 +1,15 @@
 import React from "react";
+import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { act, create } from "react-test-renderer";
 import ClubFilterModal from "@/components/ui/filters/ClubFilterModal";
 import { STARRED_CLUBS_FILTER } from "@/lib/start-list-utils";
 import type { LiftResult } from "@/data/types/athletes";
+
+// react-native's exports are lazy getters. On a cold transform cache (every CI
+// run) the first access transforms the component tree behind each one, inside
+// whichever test renders first; that pushed this file's first test to ~5s, its
+// whole budget. Touching them at module load charges the cost to the file.
+void [Modal, Platform, Pressable, StyleSheet, Text, TextInput, View];
 
 type FlashListCall = {
   data: readonly string[];

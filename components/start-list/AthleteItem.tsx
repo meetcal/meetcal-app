@@ -1,6 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { useExpandedId } from "@/contexts/ExpandedIdContext";
+import { useExpandedRow } from "@/contexts/ExpandedIdContext";
 import type { MeetName } from "@/data/types/meet";
 import { getLastYearBests } from "@/lib/start-list-api";
 import {
@@ -59,16 +59,14 @@ export const AthleteItem = React.memo(function AthleteItem({
   isSubscribed,
   onSeeAllResults,
 }: AthleteRowProps) {
-  const { expandedId, setExpandedId } = useExpandedId();
   const expandKey = `${athlete.memberId}_${athlete.name}`;
-  const isExpanded = expandedId === expandKey;
+  const { isExpanded, toggle } = useExpandedRow(expandKey);
   const onPress = useCallback(() => {
-    const willExpand = expandedId !== expandKey;
-    setExpandedId(willExpand ? expandKey : null);
+    const willExpand = toggle();
     if (willExpand && onExpand && index != null) {
       setTimeout(() => onExpand(index), 50);
     }
-  }, [expandKey, expandedId, setExpandedId, onExpand, index]);
+  }, [toggle, onExpand, index]);
   const [yearBests, setYearBests] = useState({
     bestSnatch: 0,
     bestCJ: 0,

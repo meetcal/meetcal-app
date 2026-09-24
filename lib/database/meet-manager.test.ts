@@ -113,6 +113,7 @@ import {
   prefetchCriticalMeetData,
   HISTORY_REFRESH_TTL_MS,
   prefetchMeetData,
+  pruneHistorySyncedAt,
   touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
@@ -685,6 +686,107 @@ describe("package revalidation with ETag", () => {
     expect(stampWrites).toHaveLength(1);
   });
 
+  it("re-downloads every athlete's history on a 304 when a refresh forces it, however fresh", async () => {
+    // Synced just now: without the option this 304 would fetch nothing.
+    storedEtags({ "Etag Meet Forced": '"abc"' });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet Forced" as any, { forceHistoryRefresh: true });
+
+    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(mockFindAthleteNamesWithoutHistory).not.toHaveBeenCalled();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    // The package is unchanged, so the roster/schedule on disk are not rewritten.
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
+  });
+
+  /** Waits (bounded) until an async step has reached the mock. */
+  const untilCalled = async (mock: jest.Mock, times: number) => {
+    for (let i = 0; i < 50 && mock.mock.calls.length < times; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(mock).toHaveBeenCalledTimes(times);
+  };
+
+  // A background warm-up (SyncManager / warmMeetData) of the same meet may be
+  // in flight when the user taps Refresh All. Joining it would return an
+  // unforced 304 that skips history, and "Refresh Complete" would be a lie.
+  it("runs a forced refresh after an in-flight background prefetch instead of joining it", async () => {
+    storedEtags({ "Etag Meet Joined": '"abc"' });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFindAthleteNamesWithoutHistory.mockResolvedValue([]);
+    let answerBackground!: (value: { status: "not_modified" }) => void;
+    mockFetchApiMeetPackageConditional
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerBackground = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ status: "not_modified" });
+
+    const background = prefetchMeetData("Etag Meet Joined" as any);
+    // A second background caller joins the one in flight.
+    const joined = prefetchMeetData("Etag Meet Joined" as any);
+    const forced = prefetchMeetData("Etag Meet Joined" as any, { forceHistoryRefresh: true });
+    await untilCalled(mockFetchApiMeetPackageConditional, 1);
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+
+    answerBackground({ status: "not_modified" });
+    await Promise.all([background, joined, forced]);
+
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+  });
+
+  it("still runs a forced refresh when the in-flight background prefetch fails", async () => {
+    storedEtags({ "Etag Meet Joined Fail": '"abc"' });
+    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    let failBackground!: (error: Error) => void;
+    mockFetchApiMeetPackageConditional
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failBackground = reject;
+          }),
+      )
+      .mockResolvedValueOnce({ status: "not_modified" });
+
+    const background = prefetchMeetData("Etag Meet Joined Fail" as any);
+    const forced = prefetchMeetData("Etag Meet Joined Fail" as any, { forceHistoryRefresh: true });
+    await untilCalled(mockFetchApiMeetPackageConditional, 1);
+    failBackground(new Error("MeetCal API error 503"));
+
+    await expect(background).rejects.toThrow();
+    await expect(forced).resolves.toBeUndefined();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A"]);
+  });
+
+  it("writes nothing over the stored meet when the package request fails", async () => {
+    storedEtags({ "Etag Meet Down": '"abc"' });
+    mockFetchApiMeetPackageConditional.mockRejectedValueOnce(new Error("MeetCal API error 503"));
+    jest.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      prefetchMeetData("Etag Meet Down" as any, { forceHistoryRefresh: true }),
+    ).rejects.toThrow(/meet_package/);
+
+    // A refresh relies on this: the previous download is still intact.
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
+    expect(mockSaveAthleteHistory).not.toHaveBeenCalled();
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+  });
+
   it("reports an incomplete download when the missing history cannot be fetched on a 304", async () => {
     storedEtags({ "Etag Meet A3": '"abc"' });
     mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
@@ -740,5 +842,65 @@ describe("package revalidation with ETag", () => {
 
     const saved = savedEtags();
     expect(saved[saved.length - 1]).toEqual({});
+  });
+  it("drops history stamps past the TTL when it records a new one", async () => {
+    const now = Date.now();
+    storedEtags(
+      {},
+      {
+        "Old Meet": now - HISTORY_REFRESH_TTL_MS - 1,
+        "Recent Meet": now - 1000,
+      },
+    );
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"t"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet Prune" as any);
+
+    const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
+    expect(stampWrites).toHaveLength(1);
+    const written = JSON.parse(stampWrites[0][1] as string);
+    expect(Object.keys(written).sort()).toEqual(["Etag Meet Prune", "Recent Meet"]);
+  });
+
+  it("drops corrupt stored ETags instead of carrying them forward", async () => {
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === PACKAGE_ETAG_KEY
+        ? JSON.stringify({ "Good Meet": '"g"', "Bad Meet": 42, "Empty Meet": "" })
+        : null,
+    );
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet E" as any);
+
+    const saved = savedEtags();
+    expect(saved[saved.length - 1]).toEqual({ "Good Meet": '"g"', "Etag Meet E": '"new"' });
+  });
+});
+
+describe("pruneHistorySyncedAt", () => {
+  it("keeps stamps younger than the TTL and drops the rest", () => {
+    const now = 10 * HISTORY_REFRESH_TTL_MS;
+    expect(
+      pruneHistorySyncedAt(
+        {
+          fresh: now - 1,
+          edge: now - HISTORY_REFRESH_TTL_MS,
+          old: now - HISTORY_REFRESH_TTL_MS - 1,
+        },
+        now,
+      ),
+    ).toEqual({ fresh: now - 1 });
+  });
+
+  it("returns an empty map for no stamps", () => {
+    expect(pruneHistorySyncedAt({}, Date.now())).toEqual({});
   });
 });

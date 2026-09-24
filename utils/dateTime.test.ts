@@ -1,3 +1,6 @@
+/**
+ * @jest-environment-options {"deviceTimeZone": "America/Los_Angeles"}
+ */
 import {
   getTimeZoneAbbreviation,
   formatDayTitle,
@@ -5,18 +8,18 @@ import {
   calculateInitialPage,
   meetCalendarDateAnchor,
   getHistoryCutoffDate,
+  getCalendarDateInTimeZone,
   YEAR_BESTS_YEARS,
 } from "@/utils/dateTime";
 import type { DaySchedule, Schedule } from "@/types/schedule";
 
-// Pin a US timezone for the whole file. The date-drift regressions below are
-// invisible when the runner happens to sit on UTC.
-const originalTz = process.env.TZ;
-beforeAll(() => {
-  process.env.TZ = "America/Los_Angeles";
-});
-afterAll(() => {
-  process.env.TZ = originalTz;
+// The date-drift regressions below are invisible when the runner sits on UTC,
+// so the docblock pins a US device zone before the file loads. (Assigning
+// process.env.TZ inside a test does not change Jest's zone; see
+// jest/device-timezone-environment.js.)
+it("runs on a US device zone", () => {
+  expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("America/Los_Angeles");
+  expect(new Date("2026-06-20").getDate()).toBe(19);
 });
 
 const day = (overrides: Partial<DaySchedule>): DaySchedule =>
@@ -125,16 +128,8 @@ describe("meetCalendarDateAnchor", () => {
     }
   });
 
-  it("survives a device timezone far east of the meet", () => {
-    // Device-local noon would land on the 19th in Denver from Tokyo.
-    const anchor = meetCalendarDateAnchor("2026-06-20")!;
-    expect(
-      anchor.toLocaleDateString("en-US", {
-        timeZone: "America/Denver",
-        day: "numeric",
-      }),
-    ).toBe("20");
-  });
+  // The far-east device case lives in dateTime.east-device.test.ts: a Los
+  // Angeles device cannot expose a device-local anchor.
 
   it("accepts a full ISO timestamp and rejects anything else", () => {
     expect(meetCalendarDateAnchor("2026-06-20T00:00:00Z")?.toISOString()).toBe(
@@ -241,5 +236,25 @@ describe("getHistoryCutoffDate", () => {
     expect(getHistoryCutoffDate(1, new Date("2024-02-29T12:00:00Z"))).toBe(
       "2023-03-01",
     );
+  });
+});
+
+describe("getCalendarDateInTimeZone", () => {
+  it("reads the given instant's calendar date in the meet zone, not the device zone", () => {
+    // 03:30Z on the 17th: still the 16th in New York and on this Los Angeles
+    // device, already the 17th in Tokyo.
+    const now = new Date("2026-07-17T03:30:00Z");
+    expect(getCalendarDateInTimeZone("America/New_York", now)).toBe("2026-07-16");
+    expect(getCalendarDateInTimeZone("Asia/Tokyo", now)).toBe("2026-07-17");
+    expect(getCalendarDateInTimeZone("UTC", now)).toBe("2026-07-17");
+  });
+
+  it("flips exactly at the meet-zone midnight", () => {
+    expect(
+      getCalendarDateInTimeZone("America/Chicago", new Date("2026-03-09T04:59:59Z")),
+    ).toBe("2026-03-08");
+    expect(
+      getCalendarDateInTimeZone("America/Chicago", new Date("2026-03-09T05:00:00Z")),
+    ).toBe("2026-03-09");
   });
 });

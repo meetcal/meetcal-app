@@ -13,17 +13,21 @@ export const STARTED_GRACE_MS = 30 * 60 * 1000;
  * the shared helper so this module and `calculateInitialPage` can never
  * disagree about what "today at the meet" means.
  */
-export function getTodayInMeetTimeZone(timeZone: string): string {
-  return getCalendarDateInTimeZone(timeZone);
+export function getTodayInMeetTimeZone(timeZone: string, now: Date = new Date()): string {
+  return getCalendarDateInTimeZone(timeZone, now);
 }
 
 /**
  * The meet is "today / ongoing" when its backend status says so, or when the
  * current date in the meet's timezone falls within the meet's date range.
  */
-export function isMeetTodayOrOngoing(meetDetails: Meet, timeZone: string): boolean {
+export function isMeetTodayOrOngoing(
+  meetDetails: Meet,
+  timeZone: string,
+  now: Date = new Date(),
+): boolean {
   if (meetDetails.status === "ongoing") return true;
-  const today = getTodayInMeetTimeZone(timeZone);
+  const today = getTodayInMeetTimeZone(timeZone, now);
   const start = (meetDetails.dates?.start ?? "").slice(0, 10);
   const end = (meetDetails.dates?.end ?? "").slice(0, 10);
   if (!start || !end) return false;
@@ -40,6 +44,11 @@ export type NextSessionSelection = {
  * or that started within the grace window. Returns null when the meet isn't
  * today/ongoing, or when nothing qualifies. Uses the shared convertToUTC
  * timezone math rather than re-deriving instants.
+ *
+ * Every time decision reads `now`. "Is the meet today" used to read the wall
+ * clock instead, so the card's ticking `now` and the day check could disagree
+ * across the meet-zone midnight, and the function could not be tested
+ * without faking the system clock.
  */
 export function selectNextSession(
   savedSessions: SavedSession[],
@@ -49,7 +58,7 @@ export function selectNextSession(
 ): NextSessionSelection | null {
   const timeZoneIdentifier = meetDetails?.time.timeZoneIdentifier ?? "";
   if (!selectedMeet || !meetDetails || !timeZoneIdentifier) return null;
-  if (!isMeetTodayOrOngoing(meetDetails, timeZoneIdentifier)) return null;
+  if (!isMeetTodayOrOngoing(meetDetails, timeZoneIdentifier, now)) return null;
 
   const nowMs = now.getTime();
   let best: NextSessionSelection | null = null;

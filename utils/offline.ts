@@ -1,15 +1,15 @@
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
-import { fetchQualifyingTotals } from "@/lib/database/fetch-qualifying-totals";
-import { fetchFederations, fetchRecords } from "@/lib/database/fetch-records";
-import { fetchStandards } from "@/lib/database/fetch-standards";
+import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
+import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
+import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
+import { downloadStandardsForOffline } from "@/lib/database/fetch-standards";
+import { downloadWSORecordsForOffline } from "@/lib/database/fetch-wso-records";
+import { downloadIntlRankingsForOffline } from "@/lib/database/fetchIntlRankings";
 import {
-  fetchWSOList,
-  fetchWSORecords,
-} from "@/lib/database/fetch-wso-records";
-import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
-import { prefetchMeetData } from "@/lib/database/meet-manager";
+  describeOfflineRefresh,
+  refreshOfflineDownloads,
+} from "@/lib/database/offline-refresh";
 import {
   clearOfflineCache,
   getOfflineCache,
@@ -27,8 +27,23 @@ import {
   getCalendarDateInTimeZone,
   toMeetCalendarDate,
 } from "@/utils/dateTime";
+import {
+  claimOfflineBulk,
+  claimOfflineItem,
+  getOfflineActivity,
+  releaseOfflineBulk,
+  releaseOfflineItem,
+  subscribeOfflineActivity,
+  type OfflineBulkAction,
+} from "@/lib/database/offline-activity";
 import { formatDistanceToNow } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Alert } from "react-native";
 
 type DownloadStatus = {
@@ -109,15 +124,21 @@ export const useOfflineData = () => {
     () => availableMeets.map((meet) => meet.name),
     [availableMeets],
   );
-  const [downloadingItems, setDownloadingItems] = useState<Set<string>>(
-    new Set()
-  );
   const [downloadStatuses, setDownloadStatuses] = useState<
     Record<string, DownloadStatus>
   >({});
-  const [refreshCounter, setRefreshCounter] = useState(0);
-  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
-  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  // Busy flags live in `offline-activity`, not in this hook: they are read
+  // synchronously (an alert's button holds the closure of the render that
+  // opened it, so render-time state still said "not busy"), and they outlive
+  // this mount (an action keeps running after the user swipes back, and a
+  // reopened screen must still see it).
+  const activity = useSyncExternalStore(
+    subscribeOfflineActivity,
+    getOfflineActivity,
+  );
+  const downloadingItems = activity.items;
+  const isRefreshingAll = activity.bulk === "refresh";
+  const isDeletingAll = activity.bulk === "delete";
 
   const filteredMeets = useMemo(
     () =>
@@ -143,7 +164,7 @@ export const useOfflineData = () => {
           id: "standards",
           title: "A/B Standards",
           onDownload: async () => {
-            await fetchStandards();
+            await downloadStandardsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.standards);
@@ -153,7 +174,7 @@ export const useOfflineData = () => {
           id: "adaptiveRecords",
           title: "Adaptive Records",
           onDownload: async () => {
-            await fetchAdaptiveRecords();
+            await downloadAdaptiveRecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords);
@@ -163,10 +184,7 @@ export const useOfflineData = () => {
           id: "records",
           title: "National & World Records",
           onDownload: async () => {
-            const federations = await fetchFederations();
-            for (const federation of federations) {
-              await fetchRecords(federation);
-            }
+            await downloadRecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.records);
@@ -176,7 +194,7 @@ export const useOfflineData = () => {
           id: "intlRankings",
           title: "International Rankings",
           onDownload: async () => {
-            await fetchIntlRankings();
+            await downloadIntlRankingsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.intlRankings);
@@ -186,7 +204,7 @@ export const useOfflineData = () => {
           id: "qualifyingTotals",
           title: "Qualifying Totals",
           onDownload: async () => {
-            await fetchQualifyingTotals();
+            await downloadQualifyingTotalsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals);
@@ -196,10 +214,7 @@ export const useOfflineData = () => {
           id: "wsoRecords",
           title: "WSO Records",
           onDownload: async () => {
-            const wsos = await fetchWSOList();
-            for (const wso of wsos) {
-              await fetchWSORecords(wso);
-            }
+            await downloadWSORecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords);
@@ -208,18 +223,6 @@ export const useOfflineData = () => {
       ],
       []
     );
-    
-    const updateDownloading = useCallback((id: string, downloading: boolean) => {
-        setDownloadingItems((prev) => {
-          const next = new Set(prev);
-          if (downloading) {
-            next.add(id);
-          } else {
-            next.delete(id);
-          }
-          return next;
-        });
-      }, []);
     
       const loadStatuses = useCallback(async () => {
         const nextStatuses: Record<string, DownloadStatus> = {};
@@ -295,10 +298,12 @@ export const useOfflineData = () => {
         return () => {
           cancelled = true;
         };
-      }, [loadStatuses, refreshCounter]);
+        // Re-read whenever an action ends (`activity.settled`), including one
+        // an earlier mount of this screen started: it may have changed storage.
+      }, [loadStatuses, activity.settled]);
     
       const handleDownload = async (id: string, action: () => Promise<void>) => {
-        updateDownloading(id, true);
+        if (!claimOfflineItem(id)) return;
         try {
           await action();
           const meetName = getMeetNameFromDownloadId(
@@ -311,7 +316,6 @@ export const useOfflineData = () => {
               endDate: meetDetails?.dates?.end,
             });
           }
-          setRefreshCounter((count) => count + 1);
         } catch (error) {
           console.error("Download failed:", error);
           Alert.alert(
@@ -319,7 +323,7 @@ export const useOfflineData = () => {
             "Please check your connection and try again.",
           );
         } finally {
-          updateDownloading(id, false);
+          releaseOfflineItem(id);
         }
       };
     
@@ -328,76 +332,78 @@ export const useOfflineData = () => {
         id: string,
         action: () => Promise<void>,
       ) => {
+        const busy = getOfflineActivity();
+        if (busy.bulk || busy.items.has(id)) return;
         Alert.alert("Remove Download", `Remove ${title} from this device?`, [
           { text: "Cancel", style: "cancel" },
           {
             text: "Remove",
             style: "destructive",
             onPress: async () => {
-              updateDownloading(id, true);
+              // Re-checked: a bulk action may have started while this
+              // confirmation was open.
+              if (!claimOfflineItem(id)) return;
               try {
                 await action();
-                setRefreshCounter((count) => count + 1);
               } catch (error) {
                 console.error("Delete failed:", error);
                 Alert.alert("Remove Failed", "Please try again.");
               } finally {
-                updateDownloading(id, false);
+                releaseOfflineItem(id);
               }
             },
           },
         ]);
       };
     
-      const refreshAllDownloadedData = async () => {
-        if (isRefreshingAll || isDeletingAll) return;
-        setIsRefreshingAll(true);
-    
-        try {
-          const downloadedMeetNames = availableMeets
-            .filter(
-              (meet) =>
-                downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
-            )
-            .map((meet) => meet.name);
-    
-          const downloadedCompetitionItems = competitionItems.filter(
-            (item) => downloadStatuses[item.id]?.isDownloaded,
-          );
-    
-          await deleteAllOfflineData(false, true, true);
-    
-          for (const item of downloadedCompetitionItems) {
-            await item.onDownload();
-          }
-    
-          for (const meetName of downloadedMeetNames) {
-            await prefetchMeetData(meetName);
-            const meetDetails = availableMeets.find((meet) => meet.name === meetName);
-            await markMeetExplicitlyDownloaded(meetName, true, {
-              endDate: meetDetails?.dates?.end,
-            });
-          }
-    
-          setRefreshCounter((count) => count + 1);
+      /** Claims every row for a bulk action, or says why it can't. */
+      const claimBulkAction = (action: OfflineBulkAction): boolean => {
+        const claim = claimOfflineBulk(action);
+        if (claim === "items-running") {
           Alert.alert(
-            "Refresh Complete",
-            "All downloaded data has been refreshed.",
+            "Download in Progress",
+            "Wait for the current download or removal to finish, then try again.",
           );
+        }
+        return claim === "claimed";
+      };
+
+      const refreshAllDownloadedData = async () => {
+        if (!claimBulkAction("refresh")) return;
+
+        try {
+          // Download-then-swap (see `refreshOfflineDownloads`): nothing is
+          // deleted, so a failed item keeps its previous copy.
+          const result = await refreshOfflineDownloads(
+            competitionItems
+              .filter((item) => downloadStatuses[item.id]?.isDownloaded)
+              .map((item) => ({
+                id: item.id,
+                title: item.title,
+                download: item.onDownload,
+              })),
+            availableMeets
+              .filter(
+                (meet) =>
+                  downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
+              )
+              .map((meet) => ({ name: meet.name, endDate: meet.dates?.end })),
+          );
+          const { title, message } = describeOfflineRefresh(result);
+          Alert.alert(title, message);
         } catch (error) {
           console.error("Refresh all failed:", error);
           Alert.alert(
             "Refresh Failed",
-            "Please check your connection and try again.",
+            "Please check your connection and try again. Your downloaded data has been kept.",
           );
         } finally {
-          setIsRefreshingAll(false);
+          releaseOfflineBulk("refresh");
         }
       };
     
-      const deleteAllOfflineData = async (showSuccessAlert: boolean, skipSettingIsDeletingAll = false, keepAthleteHistory = false) => {
-        if (!skipSettingIsDeletingAll && isDeletingAll) return;
-        if (!skipSettingIsDeletingAll) setIsDeletingAll(true);
+      const deleteAllOfflineData = async () => {
+        if (!claimBulkAction("delete")) return;
         try {
           await Promise.all([
             clearOfflineCache(OFFLINE_CACHE_KEYS.standards),
@@ -419,22 +425,17 @@ export const useOfflineData = () => {
           for (const meet of availableMeets) {
             await clearMeetData(meet.name, { storageKeys });
           }
-          if (!keepAthleteHistory) {
-            await clearAllAthleteHistory();
-          }
-    
-          setRefreshCounter((count) => count + 1);
-          if (showSuccessAlert) {
-            Alert.alert(
-              "Deleted",
-              "All offline data has been removed from your device.",
-            );
-          }
+          await clearAllAthleteHistory();
+
+          Alert.alert(
+            "Deleted",
+            "All offline data has been removed from your device.",
+          );
         } catch (error) {
           console.error("Delete all failed:", error);
           Alert.alert("Delete Failed", "Please try again.");
         } finally {
-          if (!skipSettingIsDeletingAll) setIsDeletingAll(false);
+          releaseOfflineBulk("delete");
         }
       };
     
@@ -460,7 +461,7 @@ export const useOfflineData = () => {
         {
           text: "Delete All",
           style: "destructive",
-          onPress: () => deleteAllOfflineData(true),
+          onPress: () => deleteAllOfflineData(),
         },
       ]
     );

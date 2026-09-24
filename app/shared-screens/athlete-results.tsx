@@ -5,6 +5,7 @@ import { AppColors, useAppColors } from "@/hooks/useAppColors";
 import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
+import { loadAthleteResults } from "@/lib/athlete-results-load";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -13,7 +14,6 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { devLog } from "@/lib/logger";
 
 /**
  * A meet result date is a calendar date, not an instant. `new Date("2025-03-15")`
@@ -411,49 +411,23 @@ export default function AthleteResultsScreen() {
 
       const requestId = ++requestIdRef.current;
       try {
-        // The offline cache only ever holds a partial window of an athlete's
-        // history (downloaded meets cache the full set, but other entry points
-        // may have less), so treat it as a fast first paint / offline fallback —
-        // never as the complete record. Whenever we're online we still fetch the
-        // full history below and replace what the cache showed.
-        let displayedResults: SupabaseLiftResult[] = cachedResults ?? [];
-        if (displayedResults.length === 0) {
-          try {
-            const offlineResults =
-              await getAllCachedLiftingResultsForAthlete(nameStr);
-            if (requestId !== requestIdRef.current) return;
-            if (offlineResults && offlineResults.length > 0) {
-              displayedResults = offlineResults;
-              setAthleteResults(offlineResults);
-              setLoading(false);
+        // The offline copy is a fast first paint / offline fallback, never
+        // the complete record; the full history from the API replaces it.
+        // The API request starts before the offline read (see
+        // `loadAthleteResults`).
+        await loadAthleteResults({
+          shown: cachedResults,
+          readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
+          fetchFull: () => fetchAllResultsForName(nameStr),
+          isCurrent: () => requestId === requestIdRef.current,
+          show: (rows, source) => {
+            if (source === "api") {
+              resultsCacheRef.current.set(cacheKey, rows);
             }
-          } catch (cacheError) {
-            devLog(
-              `Cache miss for athlete results, fetching from API ${cacheError}`,
-            );
-          }
-        }
-
-        // Always fetch the complete history when online. /lifting-results/by-names
-        // returns the athlete's entire career with no date cap, and it is a single
-        // athlete so there is no bulk-memory concern.
-        try {
-          const fullResults = await fetchAllResultsForName(nameStr);
-          if (requestId !== requestIdRef.current) return;
-          // Guard against an empty API response clobbering cached history (e.g. a
-          // transient name-normalization miss): only replace when we actually got
-          // results, or when there was nothing cached to begin with.
-          if (fullResults.length > 0 || displayedResults.length === 0) {
-            resultsCacheRef.current.set(cacheKey, fullResults);
-            setAthleteResults(fullResults);
-          }
-        } catch (apiError) {
-          // Offline or the request failed: keep whatever the cache gave us.
-          if (requestId !== requestIdRef.current) return;
-          if (displayedResults.length === 0) {
-            console.error("Error fetching athlete results:", apiError);
-          }
-        }
+            setAthleteResults(rows);
+            if (source === "offline") setLoading(false);
+          },
+        });
       } catch (error) {
         console.error("Error in fetchAthleteResults:", error);
       } finally {

@@ -114,14 +114,21 @@ export function useSavedSessions() {
       void reindexAppEntities();
       return;
     }
+    // `getMeetConfig` may hit the network (cache miss or expired TTL) while a
+    // later run for a newer meet or list resolves from cache. Without this
+    // flag the slower, older run landed last and repainted the widget with a
+    // meet or a session the user had already moved away from.
+    let cancelled = false;
     getMeetConfig(selectedMeet)
-      .then(config =>
-        syncSavedWidget(selectedMeet, savedSessions, config?.time?.timeZoneIdentifier ?? 'UTC')
-      )
-      .catch(() => syncSavedWidget(selectedMeet, savedSessions, 'UTC'))
-      .finally(() => {
+      .then(config => config?.time?.timeZoneIdentifier ?? 'UTC', () => 'UTC')
+      .then(timeZone => {
+        if (cancelled) return;
+        syncSavedWidget(selectedMeet, savedSessions, timeZone);
         void reindexAppEntities();
       });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedMeet, savedSessions]);
 
   const commitSessions = useCallback(

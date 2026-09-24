@@ -1,8 +1,14 @@
+/**
+ * @jest-environment-options {"deviceTimeZone": "Pacific/Auckland"}
+ */
 import {
   APP_VERSION,
   buildApiUrl,
   clearHttpValidatorCache,
+  deleteSavedSession,
+  deleteSavedSessions,
   fetchApiAdaptiveRecords,
+  fetchApiAthletesWithSession,
   fetchApiClubNames,
   fetchApiIntlRankings,
   fetchApiMeetByName,
@@ -17,11 +23,13 @@ import {
   fetchApiStandards,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
+  fetchApiYearBests,
   fetchApiWsoList,
   fetchApiWsoRecords,
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
+  getJson,
   getJsonArray,
   getJsonObject,
   mapApiAthlete,
@@ -36,6 +44,9 @@ import {
   MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
+  SMALL_ROWS_NAMES_CHUNK_SIZE,
+  patchAutoUnsavePreference,
+  putSavedSession,
   resolveAppVersion,
   searchApi,
 } from './meetcal-api';
@@ -96,6 +107,22 @@ describe('meetcal API client', () => {
         }),
       }),
     );
+  });
+
+  it('returns parsed JSON as unknown, never as a caller-inferred type', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ rows: 'not an array' }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // Compile-time regression (`bun run typecheck` covers test files): with a
+    // generic `getJson<T>`, this annotation inferred `T = string[]` and cast
+    // the object body past `JSON.parse` unchecked. It must not compile.
+    // @ts-expect-error unknown is not assignable to string[]
+    const rows: string[] = await getJson('/meets/athletes');
+    expect(Array.isArray(rows)).toBe(false);
   });
 
   it('reads plain array list endpoints', async () => {
@@ -594,7 +621,35 @@ describe('meetcal API mappers', () => {
     expect(formatApiTime('25:99')).toBe('');
   });
 
+  it('titles schedule days in the meet zone and never renders "Invalid Date"', () => {
+    const row = {
+      meet: 'Test Meet',
+      platform: 'Red',
+      session_id: 1,
+      start_time: '09:00:00',
+      weigh_in_time: '07:00:00',
+      weight_class: '60kg',
+    };
+    // A device far east of the meet: a device-local anchor would flip the
+    // day. The file's docblock pins the device zone
+    // (jest/device-timezone-environment.js); assigning process.env.TZ in a
+    // test would not change it.
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
+    const schedule = mapApiSchedule([
+      { ...row, date: '2026-06-20' },
+      { ...row, date: '2026-06-21T00:00:00' },
+      { ...row, date: 'TBD' },
+    ]);
+    expect(schedule.map((day) => day.date)).toEqual([
+      'June 20, 2026',
+      'June 21, 2026',
+      'TBD',
+    ]);
+    expect(schedule[2].fullDate).toBe('TBD');
+  });
+
   it('computes New York DST offset from the meet date, not the device zone', () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
     const summer = mapApiMeet({
       name: 'Summer Meet',
       federation: 'USAW',
@@ -804,6 +859,96 @@ describe('meetcal API client error and auth boundaries', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('sends one request for exactly a chunk of names and two for one more', async () => {
+    const fetchMock = mockFetch('{}');
+    const names = (count: number) => Array.from({ length: count }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockClear();
+    await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE + 1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const bodies = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names,
+    );
+    expect(bodies.map((chunk: string[]) => chunk.length)).toEqual([SMALL_ROWS_NAMES_CHUNK_SIZE, 1]);
+  });
+
+  it('sorts a national start list by bests in 16 requests, not 40, and never over the API cap', async () => {
+    const fetchMock = mockFetch('{}');
+    // The 2026 national roster size the start list comment measured.
+    const roster = Array.from({ length: 1562 }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiYearBestsByNames(roster);
+
+    expect(fetchMock).toHaveBeenCalledTimes(16);
+    const sizes = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
+    );
+    // The API's MAX_NAME_LIST_LEN is 100 for every client; one more is a 400.
+    expect(Math.max(...sizes)).toBe(100);
+    expect(sizes.reduce((a: number, b: number) => a + b, 0)).toBe(1562);
+  });
+
+  it('keeps full-history batches at the memory-bounded chunk size', async () => {
+    const fetchMock = mockFetch('[]');
+    const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiResultsByNames(names);
+
+    const sizes = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
+    );
+    expect(sizes).toEqual([NAMES_QUERY_CHUNK_SIZE, NAMES_QUERY_CHUNK_SIZE, 20]);
+  });
+
+  it('stops at the first failing chunk instead of returning a partial roster', async () => {
+    let call = 0;
+    global.fetch = jest.fn(async () => {
+      call += 1;
+      return call === 1
+        ? { ok: true, status: 200, text: async () => '[]' }
+        : { ok: false, status: 500, text: async () => '' };
+    }) as unknown as typeof fetch;
+    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+    const failure = await fetchApiResultsByNames(names).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(500);
+  });
+
+  it('asks for one session and platform of the roster and omits an absent filter', async () => {
+    const athlete = {
+      member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
+      entry_total: 250, gender: 'Men', weight_class: '73kg',
+      session_number: 2, session_platform: 'Blue',
+    };
+    const fetchMock = mockFetch(JSON.stringify([athlete]));
+
+    const rows = await fetchApiAthletesWithSession('Test Meet' as never, 2, 'Blue');
+    expect(rows.map((row) => row.session)).toEqual([{ number: 2, platform: 'Blue' }]);
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2&platform=Blue',
+    );
+
+    await fetchApiAthletesWithSession('Test Meet' as never);
+    expect((fetchMock.mock.calls[1] as unknown as [string])[0]).toBe(
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet',
+    );
+
+    mockFetch(JSON.stringify({ athletes: [athlete] }));
+    await expect(fetchApiAthletesWithSession('Test Meet' as never)).rejects.toThrow(
+      '/meets/athletes-sessions expected an array response',
+    );
+  });
+
+  it('rejects a single-athlete year-bests payload missing a best', async () => {
+    mockFetch(JSON.stringify({ best_snatch: 100, best_cj: 120 }));
+    await expect(fetchApiYearBests('Athlete A', '2025-06-20')).rejects.toThrow(
+      '/lifting-results/year missing fields: best_total',
+    );
+  });
+
   it('requires an auth token for saved sessions', async () => {
     await expect(fetchSavedSessions('')).rejects.toThrow('requires an auth token');
     await expect(fetchUserPreferences('   ')).rejects.toThrow('requires an auth token');
@@ -853,6 +998,135 @@ describe('meetcal API client error and auth boundaries', () => {
   it('rejects preferences when the flag is not a boolean', async () => {
     mockFetch(JSON.stringify({ auto_unsave_started_sessions: 'yes' }));
     await expect(fetchUserPreferences('clerk-token')).rejects.toThrow('expected a boolean');
+  });
+
+  describe('authenticated /users/me writes', () => {
+    // Response shapes from meetcal-backend app/src/routes/users/saved_sessions.rs
+    // (SaveSessionResponse, DeleteSavedSessionResponse,
+    // DeleteSavedSessionsResponse) and preferences.rs.
+    const body = {
+      meet: '2026 Nationals',
+      session_number: 3,
+      platform: 'Red',
+      weight_class: '71kg',
+      start_time: '10:00 AM',
+      date: '2026-06-20',
+      athlete_names: ['Athlete A'],
+    };
+
+    function lastRequest(fetchMock: jest.Mock) {
+      const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+      return { url, init, headers: init.headers as Record<string, string> };
+    }
+
+    it('refuses to send any write without a usable token', async () => {
+      const fetchMock = mockFetch('{}');
+      await expect(putSavedSession('', 's1', body)).rejects.toThrow('putSavedSession requires an auth token');
+      await expect(deleteSavedSession('  ', 's1')).rejects.toThrow('deleteSavedSession requires an auth token');
+      await expect(deleteSavedSessions(null as unknown as string)).rejects.toThrow(
+        'deleteSavedSessions requires an auth token',
+      );
+      await expect(patchAutoUnsavePreference(undefined as unknown as string, true)).rejects.toThrow(
+        'patchAutoUnsavePreference requires an auth token',
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('PUTs one saved session to its encoded id with the bearer token and a JSON body', async () => {
+      const id = '2026 Nationals/Finals-3-Red';
+      const fetchMock = mockFetch(JSON.stringify({ session_id: id, updated_at: 1717171717000 }));
+
+      await expect(putSavedSession('clerk-token', id, body)).resolves.toEqual({
+        session_id: id,
+        updated_at: 1717171717000,
+      });
+
+      const { url, init, headers } = lastRequest(fetchMock);
+      // A `/` in a meet name must stay inside the one path segment.
+      expect(url).toBe(
+        'https://api.meetcal.app/users/me/saved-sessions/2026%20Nationals%2FFinals-3-Red',
+      );
+      expect(init.method).toBe('PUT');
+      expect(headers.Authorization).toBe('Bearer clerk-token');
+      expect(headers['Content-Type']).toBe('application/json');
+      expect(JSON.parse(init.body as string)).toEqual(body);
+    });
+
+    it('rejects a PUT acknowledgement that is missing or mistypes its fields', async () => {
+      mockFetch(JSON.stringify({ session_id: 's1' }));
+      await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('missing fields: updated_at');
+      mockFetch(JSON.stringify({ session_id: 's1', updated_at: '1' }));
+      await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('invalid payload');
+      mockFetch('');
+      await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('empty body');
+    });
+
+    it('surfaces 401 and 400 on a write as MeetCalApiError with the status', async () => {
+      mockFetch('{"error":"unauthorized"}', 401);
+      const unauthorized = await putSavedSession('clerk-token', 's1', body).catch((e: unknown) => e);
+      expect(unauthorized).toBeInstanceOf(MeetCalApiError);
+      expect((unauthorized as MeetCalApiError).status).toBe(401);
+
+      mockFetch('{"error":"too many saved sessions","max":500}', 400);
+      const refused = await putSavedSession('clerk-token', 's1', body).catch((e: unknown) => e);
+      expect((refused as MeetCalApiError).status).toBe(400);
+      expect((refused as MeetCalApiError).body).toContain('too many saved sessions');
+    });
+
+    it('DELETEs one saved session by encoded id and reads the acknowledgement', async () => {
+      const fetchMock = mockFetch(JSON.stringify({ deleted: false }));
+      await expect(deleteSavedSession('clerk-token', 'a b-1-Red')).resolves.toEqual({ deleted: false });
+      const { url, init, headers } = lastRequest(fetchMock);
+      expect(url).toBe('https://api.meetcal.app/users/me/saved-sessions/a%20b-1-Red');
+      expect(init.method).toBe('DELETE');
+      expect(init.body).toBeUndefined();
+      expect(headers.Authorization).toBe('Bearer clerk-token');
+    });
+
+    it('scopes a bulk DELETE to one meet, or to every meet when none is given', async () => {
+      const fetchMock = mockFetch(JSON.stringify({ deleted_count: 4 }));
+      await expect(deleteSavedSessions('clerk-token', 'Meet & Greet')).resolves.toEqual({ deleted_count: 4 });
+      expect(lastRequest(fetchMock).url).toBe(
+        'https://api.meetcal.app/users/me/saved-sessions?meet=Meet+%26+Greet',
+      );
+
+      await deleteSavedSessions('clerk-token');
+      expect(lastRequest(fetchMock).url).toBe('https://api.meetcal.app/users/me/saved-sessions');
+      expect(lastRequest(fetchMock).init.method).toBe('DELETE');
+    });
+
+    it('does not read a malformed delete acknowledgement as success', async () => {
+      // The outbox clears a pending delete once this resolves. A body that is
+      // not the backend's shape (a proxy error page parsed as JSON, an older
+      // envelope) must keep the delete queued, not report it done.
+      mockFetch(JSON.stringify({}));
+      await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('deleteSavedSession');
+      mockFetch(JSON.stringify({ deleted: 'true' }));
+      await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('deleteSavedSession');
+      mockFetch(JSON.stringify({ error: 'nope' }));
+      await expect(deleteSavedSessions('clerk-token', 'Meet')).rejects.toThrow('deleteSavedSessions');
+      mockFetch(JSON.stringify({ deleted_count: '4' }));
+      await expect(deleteSavedSessions('clerk-token')).rejects.toThrow('deleteSavedSessions');
+      mockFetch('[]');
+      await expect(deleteSavedSessions('clerk-token')).rejects.toThrow('expected an object response');
+    });
+
+    it('PATCHes the auto-unsave preference and validates the echoed flag', async () => {
+      const fetchMock = mockFetch(JSON.stringify({ auto_unsave_started_sessions: true }));
+      await expect(patchAutoUnsavePreference('clerk-token', true)).resolves.toEqual({
+        auto_unsave_started_sessions: true,
+      });
+      const { url, init, headers } = lastRequest(fetchMock);
+      expect(url).toBe('https://api.meetcal.app/users/me/preferences/auto-unsave');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body as string)).toEqual({ enabled: true });
+      expect(headers.Authorization).toBe('Bearer clerk-token');
+
+      mockFetch(JSON.stringify({ auto_unsave_started_sessions: 'true' }));
+      await expect(patchAutoUnsavePreference('clerk-token', true)).rejects.toThrow('expected a boolean');
+      mockFetch(JSON.stringify({ enabled: true }));
+      await expect(patchAutoUnsavePreference('clerk-token', true)).rejects.toThrow('missing fields');
+    });
   });
 
   it('rejects search results that are not an array', async () => {
@@ -1481,7 +1755,7 @@ describe('by-names latest_only', () => {
       text: async () => JSON.stringify([]),
     }));
     global.fetch = fetchMock as unknown as typeof fetch;
-    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+    const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
 
     await fetchApiResultsByNames(names, { latestOnly: true });
 

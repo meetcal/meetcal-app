@@ -30,8 +30,17 @@ import {
   NAMES_QUERY_CHUNK_SIZE,
 } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
+import {
+  getCachedMeetByName,
+  getCachedMeets,
+  MEETS_LIST_CACHE_KEY,
+  setCachedMeets,
+} from './meets-list-cache';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from '@/utils/dateTime';
 import { devLog } from '../logger';
+
+// Re-exported: callers have always read the meets list cache from here.
+export { getCachedMeetByName, getCachedMeets };
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
@@ -40,7 +49,6 @@ const MEET_CACHE_KEY = '@meet_cache_info';
 // declared in `offline-store`, which clears it alongside the athlete history
 // the validator vouches for.
 const PACKAGE_ETAG_KEY = PACKAGE_ETAG_STORAGE_KEY;
-const MEETS_LIST_CACHE_KEY = '@meets_list_cache_v1';
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
@@ -80,10 +88,28 @@ async function readHistorySyncedAt(): Promise<Record<string, number>> {
   }
 }
 
+/**
+ * Stamps at least `HISTORY_REFRESH_TTL_MS` old read exactly like a missing one
+ * (the history counts as stale either way), so they are dropped on every
+ * write. Without this the map gained one entry per meet ever downloaded and
+ * never lost any.
+ */
+export function pruneHistorySyncedAt(
+  stamps: Record<string, number>,
+  now: number,
+): Record<string, number> {
+  const kept: Record<string, number> = {};
+  for (const [meet, syncedAt] of Object.entries(stamps)) {
+    if (now - syncedAt < HISTORY_REFRESH_TTL_MS) kept[meet] = syncedAt;
+  }
+  return kept;
+}
+
 async function markHistorySynced(meet: MeetName): Promise<void> {
   try {
-    const stamps = await readHistorySyncedAt();
-    stamps[meet] = Date.now();
+    const now = Date.now();
+    const stamps = pruneHistorySyncedAt(await readHistorySyncedAt(), now);
+    stamps[meet] = now;
     await AsyncStorage.setItem(HISTORY_SYNCED_AT_KEY, JSON.stringify(stamps));
   } catch (error) {
     console.warn('Could not record athlete history sync time:', error);
@@ -123,48 +149,6 @@ export function validatePrefetchedLiftingResults(
     if (matchedCount === 0) {
       throw new Error(`No matched lifting results fetched for meet athletes: ${meet}`);
     }
-  }
-}
-
-/**
- * The cached meets list is the offline source for the meet picker, the schedule
- * header and every meet-local time conversion, so a row without `name`,
- * `dates` or `time` is not a meet we can render — it would surface as
- * `Cannot read property 'timeZoneIdentifier' of undefined` in a screen rather
- * than as a missing row here.
- */
-function isCachedMeet(value: unknown): value is Meet {
-  if (!value || typeof value !== 'object') return false;
-  const meet = value as Partial<Meet>;
-  return (
-    typeof meet.name === 'string' &&
-    meet.name.length > 0 &&
-    typeof meet.dates === 'object' &&
-    meet.dates !== null &&
-    typeof meet.time === 'object' &&
-    meet.time !== null &&
-    typeof meet.time.timeZoneIdentifier === 'string'
-  );
-}
-
-export async function getCachedMeets(): Promise<Meet[]> {
-  try {
-    const cached = await AsyncStorage.getItem(MEETS_LIST_CACHE_KEY);
-    if (!cached) return [];
-    const parsed: unknown = JSON.parse(cached);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isCachedMeet);
-  } catch (error) {
-    console.error('Error reading cached meets list:', error);
-    return [];
-  }
-}
-
-async function setCachedMeets(meets: Meet[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(MEETS_LIST_CACHE_KEY, JSON.stringify(meets));
-  } catch (error) {
-    console.error('Error saving cached meets list:', error);
   }
 }
 
@@ -264,16 +248,6 @@ export async function fetchMeetsFresh(): Promise<Meet[]> {
   return inFlightFetchMeets;
 }
 
-/**
- * The meet from the cached `/meets` list only — never the network. For
- * callers that want to *skip* a `/meets/details` round trip when the answer is
- * already on disk, and can carry on without it when it is not.
- */
-export async function getCachedMeetByName(name: string): Promise<Meet | null> {
-  const cached = await getCachedMeets();
-  return cached.find((meet) => meet.name === name) ?? null;
-}
-
 // Fetch a single meet by name
 export async function fetchMeetByName(name: string): Promise<Meet | null> {
   try {
@@ -304,7 +278,13 @@ async function readPackageEtags(): Promise<Record<string, string>> {
     const raw = await AsyncStorage.getItem(PACKAGE_ETAG_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
+      // Keep only usable tags, so a corrupt entry is dropped on the next
+      // write instead of being carried forward indefinitely.
+      const etags: Record<string, string> = {};
+      for (const [meet, etag] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof etag === 'string' && etag.length > 0) etags[meet] = etag;
+      }
+      return etags;
     }
   } catch (error) {
     console.error('Error reading package etags:', error);
@@ -444,12 +424,29 @@ async function cleanupOldMeetData() {
   await saveCacheInfo(info);
 }
 
-// Prefetch meet data
-export async function prefetchMeetData(meet: MeetName) {
-  const inFlight = fullPrefetchRequests.get(meet);
-  if (inFlight) return inFlight;
+export type PrefetchMeetOptions = {
+  /**
+   * Re-download every athlete's history even when the package answers `304`
+   * and the history is younger than `HISTORY_REFRESH_TTL_MS`. A user-initiated
+   * "Refresh All" means *now*; the package ETag does not cover history.
+   */
+  forceHistoryRefresh?: boolean;
+};
 
-  const request = prefetchMeetDataUncached(meet).finally(() => {
+// Prefetch meet data. Writes over the stored copy in place and never clears
+// it first, so a failed prefetch leaves whatever was already on disk.
+export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOptions = {}) {
+  const inFlight = fullPrefetchRequests.get(meet);
+  if (inFlight) {
+    if (!options.forceHistoryRefresh) return inFlight;
+    // A background warm-up may not refresh history; let it finish (its
+    // outcome is not this caller's) and then run the forced one.
+    await inFlight.catch(() => undefined);
+    const next = fullPrefetchRequests.get(meet);
+    if (next) return next;
+  }
+
+  const request = prefetchMeetDataUncached(meet, options).finally(() => {
     fullPrefetchRequests.delete(meet);
   });
   fullPrefetchRequests.set(meet, request);
@@ -557,7 +554,7 @@ async function ingestMeetPackage(
   return { historyComplete };
 }
 
-async function prefetchMeetDataUncached(meet: MeetName) {
+async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOptions) {
   const errors: string[] = [];
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
   let freshEtag: string | null = null;
@@ -574,7 +571,9 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       // SQLITE_FULL cleanup remove history without touching the roster. Fill
       // in whatever is missing rather than trusting the validator for it.
       const syncedAt = (await readHistorySyncedAt())[meet] ?? 0;
-      const historyIsStale = Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
+      const historyIsStale =
+        options.forceHistoryRefresh === true ||
+        Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
       const toFetch = historyIsStale
         ? fetched.athleteNames
         : await findAthleteNamesWithoutHistory(fetched.athleteNames);

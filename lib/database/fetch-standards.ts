@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
@@ -19,29 +24,6 @@ type CompleteStandardsRow = Readonly<ApiStandardRow> & {
  */
 function isCompleteStandardsRow(row: Readonly<ApiStandardRow>): row is CompleteStandardsRow {
   return Boolean(row.age_category && row.gender && row.weight_class);
-}
-
-function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' | 'women'): StandardsData {
-  if (!ageGroup && !gender) return data;
-
-  const result: StandardsData = {
-    u15: { men: [], women: [] },
-    youth: { men: [], women: [] },
-    junior: { men: [], women: [] },
-    senior: { men: [], women: [] },
-  };
-
-  const ageGroups = ageGroup ? [ageGroup as keyof StandardsData] : (Object.keys(result) as (keyof StandardsData)[]);
-  ageGroups.forEach((group) => {
-    const source = data[group];
-    if (!source) return;
-    result[group] = {
-      men: gender === 'women' ? [] : source.men,
-      women: gender === 'men' ? [] : source.women,
-    };
-  });
-
-  return result;
 }
 
 function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
@@ -71,57 +53,43 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
   return result;
 }
 
-/**
- * Fetches standards data from the MeetCal API and organizes it into the StandardsData shape.
- * If ageGroup and gender are provided, fetches only that subset.
- */
-export async function fetchStandards(
-  ageGroup?: string,
-  gender?: 'men' | 'women'
-): Promise<StandardsData> {
-  try {
-    const result = await fetchStandardsFresh(ageGroup, gender);
-    if (!ageGroup && !gender) {
-      await persistStandards(result);
-    }
-    return result;
-  } catch (error) {
-    const cached = await readStandardsCache();
-    if (cached?.data) {
-      return filterStandards(cached.data, ageGroup, gender);
-    }
-    throw error;
-  }
-}
-
 async function readStandardsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.standards;
   const cached = await getOfflineCache<StandardsData>(cacheKey);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-async function fetchStandardsFresh(
-  ageGroup?: string,
-  gender?: 'men' | 'women'
-): Promise<StandardsData> {
+async function fetchStandardsFresh(): Promise<StandardsData> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
     throw new Error('Offline');
   }
 
-  const allRows = await fetchApiStandards();
-  const rows = allRows.filter(isCompleteStandardsRow).filter((row) => {
-    if (ageGroup && row.age_category.toLowerCase() !== ageGroup) return false;
-    if (gender && row.gender.toLowerCase() !== gender) return false;
-    return true;
-  });
-
-  return mapRows(rows);
+  const rows = await fetchApiStandards();
+  return mapRows(rows.filter(isCompleteStandardsRow));
 }
 
 async function persistStandards(data: StandardsData) {
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection. Never the cached copy (the browse path's fallback), which would
+ * let a failed refresh report success. On failure the stored copy is untouched.
+ */
+export async function downloadStandardsForOffline(): Promise<void> {
+  const data = await fetchStandardsFresh();
+  // An empty table would replace a real download with nothing.
+  const rowCount = Object.values(data).reduce(
+    (count, group) => count + group.men.length + group.women.length,
+    0,
+  );
+  if (rowCount === 0) {
+    throw new Error('Standards download returned no rows');
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
 }
 
 export const standardsResource = createMutableResource<StandardsData, []>({

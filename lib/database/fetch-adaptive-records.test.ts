@@ -22,9 +22,11 @@ afterAll(() => {
   global.fetch = originalFetch;
 });
 
-import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
+import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 
-describe("fetchAdaptiveRecords", () => {
+const fetchAdaptiveRecords = async () => (await adaptiveRecordsResource.revalidate()).data;
+
+describe("adaptiveRecordsResource", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
@@ -56,34 +58,9 @@ describe("fetchAdaptiveRecords", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/adaptive_records", records);
   });
 
-  it("fetches one gender under a custom age group without persisting", async () => {
-    mockGetJsonArray.mockResolvedValue([{ weight_class: "71kg", snatch: 80, cj: 100, total: 180 }]);
-
-    const records = await fetchAdaptiveRecords("Women", "Custom");
-
-    expect(records).toEqual({
-      Custom: {
-        Men: [],
-        Women: [{ weightClass: "71kg", snatchRecord: 80, cjRecord: 100, totalRecord: 180 }],
-      },
-    });
-    expect(mockGetJsonArray).toHaveBeenCalledTimes(1);
-    expect(mockSetOfflineCache).not.toHaveBeenCalled();
-  });
-
-  it("serves the cached copy, remapped to the requested age group, when the API fails", async () => {
+  it("rejects when the API fails, leaving the cached copy to the screen", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
-    mockGetOfflineCache.mockResolvedValue({
-      data: { Adaptive: { Men: [{ weightClass: "89kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [] } },
-      lastSynced: 1,
-    });
-
-    const records = await fetchAdaptiveRecords(undefined, "Other");
-    expect(records).toEqual({
-      Other: { Men: [{ weightClass: "89kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [] },
-    });
-
-    mockGetOfflineCache.mockResolvedValue(null);
     await expect(fetchAdaptiveRecords()).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });
