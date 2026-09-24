@@ -4,7 +4,7 @@
  * refresh of a known entitlement must not unmount the gated screen.
  */
 import React, { useEffect } from "react";
-import { Text } from "react-native";
+import { ActivityIndicator, Text } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import * as SecureStore from "expo-secure-store";
 import Purchases, { type CustomerInfo } from "react-native-purchases";
@@ -138,6 +138,30 @@ describe("SubscriptionGate", () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it("shows a spinner, not the paywall, until the first entitlement answer, then the screen", async () => {
+    let finishRead!: () => void;
+    (SecureStore.getItemAsync as jest.Mock).mockImplementationOnce(
+      (key: string) =>
+        new Promise<string | null>((resolve) => {
+          finishRead = () => resolve(mockSecureStore.get(key) ?? null);
+        }),
+    );
+
+    const renderer = await mountGate();
+    expect(renderer.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(texts(renderer)).toEqual([]);
+    expect(mounts).toBe(0);
+
+    await act(async () => {
+      finishRead();
+    });
+    await flush();
+
+    expect(renderer.root.findAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(texts(renderer)).toEqual(["Gated"]);
+    expect(mounts).toBe(1);
   });
 
   it("keeps the gated screen mounted across the post-launch refresh", async () => {

@@ -94,6 +94,15 @@ describe("bounded browse caches", () => {
     await expect(readBoundedCacheEntry(KEY, "c")).resolves.toEqual({ data: 4, lastUpdatedAt: 4000 });
   });
 
+  it("rewriting an entry replaces its old copy instead of keeping both", async () => {
+    await writeBoundedCacheEntry(KEY, "a", "v1", 5);
+    await writeBoundedCacheEntry(KEY, "a", "v2", 5);
+
+    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toMatchObject({ data: "v2" });
+    const stored = await getOfflineCache<unknown[]>(KEY);
+    expect(stored?.data).toHaveLength(1);
+  });
+
   it("reads and caps the unbounded object shape these keys held before", async () => {
     mockMemory.set(
       KEY,
