@@ -525,4 +525,38 @@ describe("SelectedMeetProvider persisted selection", () => {
     expect(mockWarmMeetData).not.toHaveBeenCalledWith("Other Meet");
     act(() => tree.unmount());
   });
+
+  // The profile screen's Clear Cache reports success only when both resolve.
+  it("refreshAvailableMeets rejects when the fresh list cannot be fetched, keeping the list", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+
+    const down = new Error("Network request failed");
+    mockFetchMeetsFresh.mockRejectedValueOnce(down);
+    let failure: unknown = null;
+    await act(async () => {
+      failure = await captured!.refreshAvailableMeets().catch((e: unknown) => e);
+    });
+
+    expect(failure).toBe(down);
+    expect(captured!.availableMeets.map((m) => m.name)).toEqual(["Window Meet"]);
+    act(() => tree.unmount());
+  });
+
+  it("forceSync rejects when the selected meet cannot be re-downloaded", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    expect(captured!.selectedMeet).toBe("Window Meet");
+
+    const down = new Error("Network request failed");
+    mockPrefetchMeetData.mockRejectedValueOnce(down);
+    let failure: unknown = null;
+    await act(async () => {
+      failure = await captured!.forceSync().catch((e: unknown) => e);
+    });
+
+    expect(mockPrefetchMeetData).toHaveBeenCalledWith("Window Meet");
+    expect(failure).toBe(down);
+    act(() => tree.unmount());
+  });
 });
