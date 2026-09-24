@@ -752,6 +752,19 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
+  it("does not reconcile with a token issued for a different user", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Someone-Elses-1-Red")]);
+    // Clerk already hands out the next account's token.
+    mockGetToken.mockResolvedValue(jwtFor("user_2"));
+
+    const hook = await mountHook();
+
+    expect(mockFetchSavedSessions).not.toHaveBeenCalled();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]")).toHaveLength(1);
+  });
+
   it("does not prune with a token issued for a different user", async () => {
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
     mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });

@@ -475,6 +475,13 @@ export function useSavedSessions() {
           devLog('Saved sessions: no Clerk token; keeping local sessions');
           return;
         }
+        // Clerk can already be on another account while this load is still
+        // keyed to `userId`; that account's list must never be merged into
+        // this user's store.
+        if (!tokenBelongsTo(token, userId)) {
+          devLog('Saved sessions: token is for another user; keeping local sessions');
+          return;
+        }
 
         // Send what the device still owes the server before asking it what
         // it has, so an offline save is on the list the reconcile reads.
