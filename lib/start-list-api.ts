@@ -4,6 +4,7 @@ import {
   fetchApiYearBests,
   fetchApiYearBestsByNames,
 } from '@/lib/api/meetcal-api';
+import { normalizeAthleteName } from '@/lib/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getCachedAthleteBestsForNames,
@@ -82,16 +83,6 @@ function deriveMostRecentMeetBests(results: SupabaseLiftResult[]): YearBests {
 }
 
 /**
- * The API's name fold (`normalize_name` in meetcal-backend: collapse
- * whitespace, lowercase). `latest_only` bounds rows per *folded* name, so
- * grouping by the raw spelling could pick a spelling whose rows the bound
- * already dropped.
- */
-function foldName(name: string): string {
-  return name.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
-}
-
-/**
  * Fetches each athlete's most recent meet date rows (`latest_only`) for
  * athletes whose year-bests came back empty and derives their bests from that
  * meet. `deriveMostRecentMeetBests` only ever reads the newest date's rows, so
@@ -106,7 +97,9 @@ async function getMostRecentMeetBestsBatch(
     const rows = await fetchApiResultsByNames(names, { latestOnly: true });
     const grouped = new Map<string, SupabaseLiftResult[]>();
     rows.forEach((row) => {
-      const key = foldName(row.name);
+      // `latest_only` bounds rows per normalized name (the API's
+      // `normalize_name`), so group the same way rather than by raw spelling.
+      const key = normalizeAthleteName(row.name);
       const group = grouped.get(key);
       if (group) {
         group.push(row);
@@ -115,7 +108,7 @@ async function getMostRecentMeetBestsBatch(
       }
     });
     names.forEach((name) => {
-      byName[name] = deriveMostRecentMeetBests(grouped.get(foldName(name)) ?? []);
+      byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
     });
   } catch {
     names.forEach((name) => {
