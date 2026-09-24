@@ -172,6 +172,19 @@ describe('useNameSuggestions', () => {
     expect(hook.showSuggestions).toBe(false);
     expect(hook.loadingSuggestions).toBe(false);
   });
+
+  it('presents caller names capped, and a late lookup does not replace them', async () => {
+    type('smith');
+    pauseTyping();
+    const names = Array.from({ length: MAX_NAME_SUGGESTIONS + 2 }, (_, i) => `Smith ${i}`);
+    act(() => {
+      hook.presentSuggestions(names);
+    });
+    expect(hook.suggestions).toEqual(names.slice(0, MAX_NAME_SUGGESTIONS));
+    expect(hook.loadingSuggestions).toBe(false);
+    await answer('smith', ['Someone Else']);
+    expect(hook.suggestions).toEqual(names.slice(0, MAX_NAME_SUGGESTIONS));
+  });
 });
 
 describe('filterNameSuggestions', () => {
