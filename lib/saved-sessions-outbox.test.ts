@@ -12,6 +12,7 @@ import {
   classifySyncError,
   clearSessionPending,
   countPendingWrites,
+  describeTokenClaims,
   flushOutbox,
   getSavedSessionsOutboxKey,
   markResetPending,
@@ -93,6 +94,35 @@ const getToken = async () => TOKEN;
 function ids(sessions: SavedSession[]): string[] {
   return sessions.map((s) => s.id);
 }
+
+describe("describeTokenClaims", () => {
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+
+  it("reports issuer, origin, audience and time to expiry, never the subject", () => {
+    const token = `${part({ alg: "RS256" })}.${part({
+      sub: "user_secret",
+      iss: "https://dev.clerk.test",
+      azp: "https://meetcal.app",
+      exp: 1_000_060,
+    })}.sig`;
+
+    const described = describeTokenClaims(token, 1_000_000_000);
+
+    expect(described).toEqual({
+      iss: "https://dev.clerk.test",
+      azp: "https://meetcal.app",
+      aud: undefined,
+      expiresInSeconds: 60,
+    });
+    expect(JSON.stringify(described)).not.toContain("user_secret");
+  });
+
+  it("returns null for an unreadable token", () => {
+    expect(describeTokenClaims("")).toBeNull();
+    expect(describeTokenClaims("a.!!!.c")).toBeNull();
+    expect(describeTokenClaims(`x.${part(["not", "an", "object"])}.y`)).toBeNull();
+  });
+});
 
 describe("outbox bookkeeping", () => {
   it("marks, counts and clears by rev", async () => {
@@ -440,6 +470,20 @@ describe("flushOutbox", () => {
     expect(result.authExpired).toBe(true);
     expect(mockPut).toHaveBeenCalledTimes(1);
     expect(countPendingWrites(await readOutbox(USER))).toBe(2);
+  });
+
+  it("says in a dev build which token claims a 401 rejected", async () => {
+    await markSessionPut(USER, session("a"));
+    mockPut.mockRejectedValueOnce(new MeetCalApiError("expired", 401, ""));
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    await flushOutbox(USER, getToken);
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("API rejected the sign-in token (401)"),
+      expect.objectContaining({ iss: undefined, azp: undefined, aud: undefined }),
+    );
+    warn.mockRestore();
   });
 
   it("sends nothing when the token is for a different user (account switched mid-flush)", async () => {
