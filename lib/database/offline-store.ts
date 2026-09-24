@@ -206,19 +206,85 @@ interface OfflineStore {
 interface LiftingResultsManifest {
   format: typeof LIFTING_RESULTS_FORMAT;
   chunks: number;
+  /**
+   * Which chunk-key generation the manifest names. Each rewrite of a blob
+   * bumps it so the new chunks land under keys the old manifest does not
+   * reference: the old chunks stay readable until the new manifest is
+   * written (the commit point) and are only removed after it. Absent on
+   * manifests written before generations existed, which is generation 0.
+   */
+  generation?: number;
 }
 
-function getLiftingResultsChunkKey(baseKey: string, index: number): string {
-  return `${baseKey}__chunk_${index}`;
+function getLiftingResultsChunkKey(
+  baseKey: string,
+  index: number,
+  generation = 0,
+): string {
+  // Generation 0 keeps the pre-generation key shape so existing blobs on
+  // devices stay readable without a migration.
+  return generation === 0
+    ? `${baseKey}__chunk_${index}`
+    : `${baseKey}__chunk_${index}_g${generation}`;
+}
+
+function getManifestChunkKeys(baseKey: string, manifest: LiftingResultsManifest): string[] {
+  const generation = manifest.generation ?? 0;
+  return Array.from({ length: manifest.chunks }, (_, index) =>
+    getLiftingResultsChunkKey(baseKey, index, generation),
+  );
 }
 
 function isLiftingResultsManifest(value: unknown): value is LiftingResultsManifest {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as { format?: unknown; chunks?: unknown; generation?: unknown };
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { format?: string }).format === LIFTING_RESULTS_FORMAT &&
-    isBoundedChunkCount((value as { chunks?: unknown }).chunks)
+    candidate.format === LIFTING_RESULTS_FORMAT &&
+    isBoundedChunkCount(candidate.chunks) &&
+    (candidate.generation === undefined || isChunkGeneration(candidate.generation))
   );
+}
+
+function isChunkGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** The manifest a stored payload describes, or null for legacy/corrupt values. */
+function parseLiftingResultsManifest(payload: string | null): LiftingResultsManifest | null {
+  if (!payload) return null;
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    return isLiftingResultsManifest(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `multiGet` in `STORAGE_READ_BATCH_SIZE` slices, as one key → value map. */
+async function multiGetBatched(keys: readonly string[]): Promise<Map<string, string | null>> {
+  const values = new Map<string, string | null>();
+  for (let offset = 0; offset < keys.length; offset += STORAGE_READ_BATCH_SIZE) {
+    const slice = keys.slice(offset, offset + STORAGE_READ_BATCH_SIZE);
+    const entries = await AsyncStorage.multiGet(slice);
+    slice.forEach((key, index) => {
+      values.set(key, entries[index]?.[1] ?? null);
+    });
+  }
+  return values;
+}
+
+/** `multiRemove` in `STORAGE_REMOVE_BATCH_SIZE` slices; nothing for no keys. */
+async function multiRemoveBatched(keys: readonly string[]): Promise<void> {
+  for (let offset = 0; offset < keys.length; offset += STORAGE_REMOVE_BATCH_SIZE) {
+    await AsyncStorage.multiRemove(keys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE));
+  }
+}
+
+/** `multiSet` in `STORAGE_WRITE_BATCH_SIZE` slices, in order; nothing for no pairs. */
+async function multiSetBatched(pairs: readonly [string, string][]): Promise<void> {
+  for (let offset = 0; offset < pairs.length; offset += STORAGE_WRITE_BATCH_SIZE) {
+    await AsyncStorage.multiSet(pairs.slice(offset, offset + STORAGE_WRITE_BATCH_SIZE));
+  }
 }
 
 function isBoundedChunkCount(value: unknown): value is number {
@@ -290,20 +356,16 @@ async function clearStoredLiftingResultsValue(liftingResultsKey: string): Promis
     return;
   }
 
-  try {
-    const parsed = JSON.parse(current) as unknown;
-    if (isLiftingResultsManifest(parsed)) {
-      const keys = [liftingResultsKey];
-      for (let i = 0; i < parsed.chunks; i += 1) {
-        keys.push(getLiftingResultsChunkKey(liftingResultsKey, i));
-      }
-      await AsyncStorage.multiRemove(keys);
-      return;
-    }
-  } catch {
-    // Legacy raw payload - fall through to single-key remove.
+  const manifest = parseLiftingResultsManifest(current);
+  if (manifest) {
+    await AsyncStorage.multiRemove([
+      liftingResultsKey,
+      ...getManifestChunkKeys(liftingResultsKey, manifest),
+    ]);
+    return;
   }
 
+  // Legacy raw payload or corrupt manifest: a single-key remove.
   await AsyncStorage.removeItem(liftingResultsKey);
 }
 
@@ -326,9 +388,7 @@ async function readStoredLiftingResults(
       return [];
     }
 
-    const chunkKeys = Array.from({ length: parsed.chunks }, (_, index) =>
-      getLiftingResultsChunkKey(liftingResultsKey, index),
-    );
+    const chunkKeys = getManifestChunkKeys(liftingResultsKey, parsed);
     const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
     const chunkValues = chunkEntries.map(([, value]) => value ?? '');
 
@@ -344,34 +404,174 @@ async function readStoredLiftingResults(
   }
 }
 
+type LiftingResultsWrite = {
+  key: string;
+  results: SupabaseLiftResult[];
+};
+
+/** One blob's planned rewrite inside a batch. */
+type PlannedLiftingResultsWrite = {
+  key: string;
+  /** The manifest value on disk before this write, restored if the write fails. */
+  previousPayload: string | null;
+  /** Chunk keys the previous manifest named; removed only after the new manifest lands. */
+  previousChunkKeys: string[];
+  chunkKeys: string[];
+  chunks: string[];
+  manifestPayload: string;
+};
+
+/**
+ * Writes several lifting-results blobs (meet results or per-athlete history)
+ * with a bounded number of storage calls and a crash-safe order.
+ *
+ * Why batched: iOS AsyncStorage keeps every value of 1 KB or less inline in
+ * one `manifest.json` and rewrites that whole file on every `setItem`/
+ * `multiSet` that touches an inline key. Per-athlete history chunks and
+ * manifests are almost all inline, so writing a 1,500-athlete roster one
+ * `setItem` at a time rewrote a multi-megabyte file ~3,000 times, serialized
+ * on the storage queue in front of every other read. One `multiSet` per
+ * batch rewrites it once.
+ *
+ * Why this order (the manifest is the commit point):
+ *   1. read the current manifests and, for unchanged blobs, skip the write
+ *      entirely (the daily history refresh mostly rewrites identical rows);
+ *   2. one `multiSet` of every new chunk followed by every new manifest, the
+ *      chunks under a fresh generation of keys so nothing the old manifest
+ *      references is touched;
+ *   3. one read-back of what was written, so a chunk that did not persist is
+ *      caught before the old chunks go;
+ *   4. one `multiRemove` of the chunk keys only the old manifests named.
+ * A failure in 2 or 3 restores the previous manifests, which still point at
+ * the previous chunks, so an interrupted download leaves each athlete with
+ * the copy it had rather than nothing. This used to be clear-then-write.
+ *
+ * @returns how many blobs were rewritten (the rest were byte-identical).
+ */
+async function writeStoredLiftingResultsBatch(
+  writes: readonly LiftingResultsWrite[],
+): Promise<number> {
+  if (writes.length === 0) return 0;
+  const keys = writes.map((write) => write.key);
+  const previousPayloads = await multiGetBatched(keys);
+
+  const encodedByKey = new Map<string, string>();
+  const previousManifests = new Map<string, LiftingResultsManifest>();
+  const previousChunkKeys: string[] = [];
+  for (const write of writes) {
+    encodedByKey.set(write.key, encodeLiftingResults(write.results));
+    const previous = parseLiftingResultsManifest(previousPayloads.get(write.key) ?? null);
+    if (previous) {
+      previousManifests.set(write.key, previous);
+      previousChunkKeys.push(...getManifestChunkKeys(write.key, previous));
+    }
+  }
+
+  // Read the old chunks once, compare encoded to encoded (no inflate), and
+  // drop every blob whose bytes are already on disk.
+  const previousChunks = await multiGetBatched(previousChunkKeys);
+  const planned: PlannedLiftingResultsWrite[] = [];
+  for (const write of writes) {
+    const encoded = encodedByKey.get(write.key) ?? '';
+    const previous = previousManifests.get(write.key) ?? null;
+    const oldChunkKeys = previous ? getManifestChunkKeys(write.key, previous) : [];
+    if (previous) {
+      const oldChunks = oldChunkKeys.map((chunkKey) => previousChunks.get(chunkKey));
+      if (oldChunks.every((chunk) => typeof chunk === 'string') && oldChunks.join('') === encoded) {
+        continue;
+      }
+    }
+    const chunks = splitIntoChunks(encoded, LIFTING_RESULTS_CHUNK_SIZE);
+    if (chunks.length > MAX_LIFTING_RESULTS_CHUNKS) {
+      throw new Error(
+        `Lifting results for ${write.key} need ${chunks.length} chunks (max ${MAX_LIFTING_RESULTS_CHUNKS})`,
+      );
+    }
+    const generation = previous ? (previous.generation ?? 0) + 1 : 0;
+    const manifest: LiftingResultsManifest = {
+      format: LIFTING_RESULTS_FORMAT,
+      chunks: chunks.length,
+      ...(generation > 0 ? { generation } : {}),
+    };
+    planned.push({
+      key: write.key,
+      previousPayload: previousPayloads.get(write.key) ?? null,
+      previousChunkKeys: oldChunkKeys,
+      chunkKeys: chunks.map((_, index) =>
+        getLiftingResultsChunkKey(write.key, index, generation),
+      ),
+      chunks,
+      manifestPayload: JSON.stringify(manifest),
+    });
+  }
+  if (planned.length === 0) return 0;
+
+  // Chunks first, manifests last, so a partial native write (iOS writes the
+  // pairs in order and reports the first failure at the end) can only leave
+  // a manifest unwritten, never a manifest naming chunks that are not there.
+  const pairs: [string, string][] = [];
+  for (const plan of planned) {
+    plan.chunkKeys.forEach((chunkKey, index) => pairs.push([chunkKey, plan.chunks[index]]));
+  }
+  for (const plan of planned) {
+    pairs.push([plan.key, plan.manifestPayload]);
+  }
+
+  try {
+    await multiSetBatched(pairs);
+    const written = await multiGetBatched(
+      planned.flatMap((plan) => [...plan.chunkKeys, plan.key]),
+    );
+    for (const plan of planned) {
+      const missingChunk = plan.chunkKeys.findIndex((chunkKey) => !written.get(chunkKey));
+      if (missingChunk !== -1) {
+        throw new Error(`Chunk ${missingChunk} failed to persist for ${plan.key}`);
+      }
+      if (written.get(plan.key) !== plan.manifestPayload) {
+        throw new Error(`Manifest failed to persist for ${plan.key}`);
+      }
+    }
+  } catch (error) {
+    await restorePreviousManifests(planned);
+    throw error;
+  }
+
+  const currentChunkKeys = new Set(planned.flatMap((plan) => plan.chunkKeys));
+  await multiRemoveBatched(
+    planned.flatMap((plan) =>
+      plan.previousChunkKeys.filter((chunkKey) => !currentChunkKeys.has(chunkKey)),
+    ),
+  );
+  return planned.length;
+}
+
+/**
+ * Points every blob of a failed batch back at the copy it had: the previous
+ * manifest (or raw payload) where there was one, no manifest where there was
+ * none. The previous chunks were never touched, so this is enough. Best
+ * effort: the write failed for a reason (`SQLITE_FULL`, most likely) that may
+ * fail this too, and the original error is what the caller needs to see.
+ */
+async function restorePreviousManifests(planned: readonly PlannedLiftingResultsWrite[]): Promise<void> {
+  const restore: [string, string][] = [];
+  const remove: string[] = [];
+  for (const plan of planned) {
+    if (plan.previousPayload !== null) restore.push([plan.key, plan.previousPayload]);
+    else remove.push(plan.key);
+  }
+  try {
+    await multiSetBatched(restore);
+    await multiRemoveBatched(remove);
+  } catch (restoreError) {
+    console.error('Could not restore previous lifting results manifests:', restoreError);
+  }
+}
+
 async function writeStoredLiftingResults(
   liftingResultsKey: string,
   liftingResults: SupabaseLiftResult[],
 ): Promise<void> {
-  await clearStoredLiftingResultsValue(liftingResultsKey);
-
-  const encoded = encodeLiftingResults(liftingResults);
-  const chunks = splitIntoChunks(encoded, LIFTING_RESULTS_CHUNK_SIZE);
-  if (chunks.length > MAX_LIFTING_RESULTS_CHUNKS) {
-    throw new Error(
-      `Lifting results for ${liftingResultsKey} need ${chunks.length} chunks (max ${MAX_LIFTING_RESULTS_CHUNKS})`,
-    );
-  }
-  const manifest: LiftingResultsManifest = {
-    format: LIFTING_RESULTS_FORMAT,
-    chunks: chunks.length,
-  };
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkKey = getLiftingResultsChunkKey(liftingResultsKey, i);
-    await AsyncStorage.setItem(chunkKey, chunks[i]);
-    const verify = await AsyncStorage.getItem(chunkKey);
-    if (!verify || verify.length === 0) {
-      throw new Error(`Chunk ${i} failed to persist for ${liftingResultsKey}`);
-    }
-  }
-
-  await AsyncStorage.setItem(liftingResultsKey, JSON.stringify(manifest));
+  await writeStoredLiftingResultsBatch([{ key: liftingResultsKey, results: liftingResults }]);
 }
 
 async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): Promise<LiftResult[]> {
@@ -481,9 +681,40 @@ export async function saveAthleteHistory(
   athleteName: string,
   results: SupabaseLiftResult[],
 ): Promise<void> {
+  await saveAthleteHistoryBatch([{ name: athleteName, results }]);
+}
+
+export type AthleteHistoryEntry = {
+  name: string;
+  results: SupabaseLiftResult[];
+};
+
+/**
+ * Persists several athletes' histories with one `multiSet`, one read-back and
+ * one `multiRemove` for the whole batch (see `writeStoredLiftingResultsBatch`),
+ * skipping athletes whose stored bytes already match. The history download
+ * calls this once per `/lifting-results/by-names` batch; per-athlete calls
+ * cost one manifest rewrite each on iOS.
+ *
+ * Two spellings of one name (the API folds them the same way) collapse to a
+ * single write, the last one winning.
+ *
+ * @returns how many athletes were actually rewritten.
+ */
+export async function saveAthleteHistoryBatch(
+  entries: readonly AthleteHistoryEntry[],
+): Promise<number> {
   try {
-    const key = getAthleteHistoryKey(normalizeAthleteName(athleteName));
-    await writeStoredLiftingResults(key, results);
+    const writesByKey = new Map<string, LiftingResultsWrite>();
+    for (const entry of entries) {
+      const normalized = normalizeAthleteName(entry.name);
+      if (normalized.length === 0) continue;
+      writesByKey.set(getAthleteHistoryKey(normalized), {
+        key: getAthleteHistoryKey(normalized),
+        results: entry.results,
+      });
+    }
+    return await writeStoredLiftingResultsBatch(Array.from(writesByKey.values()));
   } catch (error) {
     console.error('Error saving athlete history:', error);
     throw error;
@@ -1074,10 +1305,160 @@ export async function readStorageKeysForMeetClear(
   return AsyncStorage.getAllKeys();
 }
 
+/**
+ * The normalized athlete name an athlete-history or athlete-bests key belongs
+ * to, or null for any other key. Chunk keys are `<manifest key>__chunk_...`,
+ * so one prefix strip covers manifests, chunks and legacy raw payloads.
+ */
+function athleteNameOfStorageKey(key: string): string | null {
+  const prefix = key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)
+    ? ATHLETE_HISTORY_KEY_PREFIX
+    : key.startsWith(ATHLETE_BESTS_KEY_PREFIX)
+      ? ATHLETE_BESTS_KEY_PREFIX
+      : null;
+  if (!prefix) return null;
+  const rest = key.slice(prefix.length);
+  const chunkAt = rest.indexOf('__chunk_');
+  return chunkAt === -1 ? rest : rest.slice(0, chunkAt);
+}
+
+/**
+ * Normalized names of every athlete with a history blob (or a chunk of one)
+ * in a key listing. Reading the listing answers "is any history on disk for
+ * these athletes" without a `multiGet`.
+ */
+function athleteNamesWithHistoryInListing(storageKeys: readonly string[]): Set<string> {
+  const names = new Set<string>();
+  for (const key of storageKeys) {
+    if (!key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)) continue;
+    const name = athleteNameOfStorageKey(key);
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+/**
+ * Removes every history, chunk and bests key of the given athletes, taken from
+ * a key listing so no manifest has to be read, in bounded `multiRemove`
+ * batches. Keys already gone (a batch clear shares one listing) are a no-op.
+ */
+async function removeAthleteKeysFromListing(
+  storageKeys: readonly string[],
+  normalizedNames: ReadonlySet<string>,
+): Promise<number> {
+  if (normalizedNames.size === 0) return 0;
+  const keys = storageKeys.filter((key) => {
+    const name = athleteNameOfStorageKey(key);
+    return name !== null && normalizedNames.has(name);
+  });
+  await multiRemoveBatched(keys);
+  return keys.length;
+}
+
+/**
+ * Normalized names across every stored roster except `exceptMeet`'s, read one
+ * roster at a time (sequential on purpose: a roster is ~0.5 MB of JSON for a
+ * national meet). Cleared meets keep an empty entry and cost one null read.
+ */
+async function readRemainingRosterNames(
+  store: OfflineStore,
+  exceptMeet: string,
+): Promise<Set<string>> {
+  const names = new Set<string>();
+  for (const [meetId, entry] of Object.entries(store.meets)) {
+    if (meetId === exceptMeet) continue;
+    const roster = await readStoredAthletes(entry.athletesKey, []);
+    for (const athlete of roster) {
+      const normalized = normalizeAthleteName(athlete.name);
+      if (normalized) names.add(normalized);
+    }
+  }
+  return names;
+}
+
+/**
+ * Drops the history of the athletes on `rosterNames` that appear on no other
+ * stored roster, once a meet's data is being cleared. Athlete history is
+ * keyed by name, not by meet, so nothing else ever reclaimed it: a season of
+ * downloaded meets left every athlete's history behind after the meet
+ * expired, and the Android AsyncStorage database (6 MB by default, raised by
+ * `config/withAsyncStorageDbSize`) filled with rows no screen could reach.
+ *
+ * Cheap exit first: a browsed-but-never-downloaded meet has a roster and no
+ * history, and must not pay for reading every other roster.
+ */
+async function pruneAthleteHistoryExclusiveToRoster(
+  meet: string,
+  rosterNames: readonly string[],
+  store: OfflineStore,
+  storageKeys: readonly string[],
+): Promise<number> {
+  const withHistory = athleteNamesWithHistoryInListing(storageKeys);
+  const candidates = new Set<string>();
+  for (const name of rosterNames) {
+    const normalized = normalizeAthleteName(name);
+    if (normalized && withHistory.has(normalized)) candidates.add(normalized);
+  }
+  if (candidates.size === 0) return 0;
+
+  const shared = await readRemainingRosterNames(store, meet);
+  const exclusive = new Set<string>();
+  for (const name of candidates) {
+    if (!shared.has(name)) exclusive.add(name);
+  }
+  return removeAthleteKeysFromListing(storageKeys, exclusive);
+}
+
+/**
+ * Removes the history and bests of every athlete on no stored roster.
+ *
+ * The `SQLITE_FULL` recovery in `meet-manager` used to free only the implicit
+ * browse cache, which is small; the history left behind by meets cleared
+ * before per-meet pruning existed is what actually fills the database, and
+ * without this the retry failed the same way until "Delete all offline data".
+ * `keepNames` are athletes about to be (re)written by the caller, whose
+ * roster may not be on disk yet.
+ *
+ * @returns how many keys were removed.
+ */
+export async function pruneOrphanedAthleteHistory(
+  options?: { keepNames?: readonly string[] },
+): Promise<number> {
+  try {
+    const storageKeys = await AsyncStorage.getAllKeys();
+    const withHistory = athleteNamesWithHistoryInListing(storageKeys);
+    if (withHistory.size === 0) return 0;
+
+    const store = await getStore();
+    const keep = await readRemainingRosterNames(store, '');
+    for (const name of options?.keepNames ?? []) {
+      const normalized = normalizeAthleteName(name);
+      if (normalized) keep.add(normalized);
+    }
+    const orphaned = new Set<string>();
+    for (const name of withHistory) {
+      if (!keep.has(name)) orphaned.add(name);
+    }
+    return await removeAthleteKeysFromListing(storageKeys, orphaned);
+  } catch (error) {
+    console.error('Error pruning orphaned athlete history:', error);
+    return 0;
+  }
+}
+
 // Clear meet data from store
 export async function clearMeetData(
   meet: MeetName,
-  options?: { storageKeys?: readonly string[] },
+  options?: {
+    storageKeys?: readonly string[];
+    /**
+     * Whether to drop the history of athletes found on no other stored
+     * roster (the default). `clearAllMeetData` passes false: its callers
+     * clear every athlete's history right after, and reading every remaining
+     * roster once per meet would be quadratic work for nothing.
+     */
+    pruneHistory?: boolean;
+  },
 ): Promise<void> {
   try {
     // `getStore()` is the one validated reader: a raw
@@ -1087,6 +1468,12 @@ export async function clearMeetData(
     const scheduleKey = data.meets[meet]?.scheduleKey;
     const athletesKey = data.meets[meet]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meet}`;
     const liftingResultsKey = data.meets[meet]?.liftingResultsKey;
+    // The roster is what says whose history this meet was holding; read it
+    // before it goes.
+    const rosterNames =
+      options?.pruneHistory === false
+        ? []
+        : (await readStoredAthletes(athletesKey, [])).map((athlete) => athlete.name);
     if (scheduleKey) {
       await AsyncStorage.removeItem(scheduleKey);
     }
@@ -1106,6 +1493,9 @@ export async function clearMeetData(
     );
     if (sessionAthleteKeys.length > 0) {
       await AsyncStorage.multiRemove(sessionAthleteKeys);
+    }
+    if (rosterNames.length > 0) {
+      await pruneAthleteHistoryExclusiveToRoster(meet, rosterNames, data, keys);
     }
     const emptyMeetData: MeetData = {
       schedule: null,
@@ -1130,7 +1520,7 @@ export async function clearAllMeetData(): Promise<void> {
     const storageKeys = await readStorageKeysForMeetClear(meetIds.length);
 
     for (const meetId of meetIds) {
-      await clearMeetData(meetId, { storageKeys });
+      await clearMeetData(meetId, { storageKeys, pruneHistory: false });
     }
   } catch (error) {
     console.error('Error clearing all meet data:', error);
