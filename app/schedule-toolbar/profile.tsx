@@ -1,6 +1,7 @@
 import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
+import { ClerkAccountModal } from "@/components/profile/ClerkAccountModal";
 import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { ProfileActionSetting } from "@/components/profile/ProfileActionSetting";
@@ -16,7 +17,7 @@ import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -32,19 +33,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
 
-export type EditableField = "firstName" | "lastName" | "email";
+// Email is not edited in-app: it goes through Clerk's account screen, which
+// owns adding, verifying and switching the primary address.
+export type EditableField = "firstName" | "lastName";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
 
 function ProfileField({
   label,
   value,
-  field,
-  onEdit,
+  onPress,
 }: {
   label: string;
   value: string;
-  field: EditableField;
-  onEdit: (field: EditableField) => void;
+  onPress: () => void;
 }) {
   const colors = useAppColors();
   return (
@@ -54,7 +55,7 @@ function ProfileField({
         { backgroundColor: colors.card },
         pressed && { backgroundColor: colors.pressed },
       ]}
-      onPress={() => onEdit(field)}
+      onPress={onPress}
     >
       <View style={styles.fieldRow}>
         <View>
@@ -86,6 +87,7 @@ export default function ProfileScreen() {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
   const { isSubscribed, subscriptionType } = useSubscription();
@@ -110,6 +112,13 @@ export default function ProfileScreen() {
     }
   };
 
+  const closeAccount = useCallback(() => setIsAccountOpen(false), []);
+  // Signed out from inside Clerk's account screen: Clerk already ended the
+  // session, so only the app's own auth cache and route are left to reset.
+  const handleSignedOutInAccount = useCallback(() => {
+    void clearAuthCache().finally(() => router.replace("/(tabs)/(index)"));
+  }, [router]);
+
   const handleEdit = (field: EditableField) => {
     let currentValue = "";
     switch (field) {
@@ -118,9 +127,6 @@ export default function ProfileScreen() {
         break;
       case "lastName":
         currentValue = user?.lastName || "";
-        break;
-      case "email":
-        currentValue = user?.primaryEmailAddress?.emailAddress || "";
         break;
     }
     setEditValue(currentValue);
@@ -205,22 +211,19 @@ export default function ProfileScreen() {
           <ProfileField
             label="First Name"
             value={user?.firstName || ""}
-            field="firstName"
-            onEdit={handleEdit}
+            onPress={() => handleEdit("firstName")}
           />
           {divider}
           <ProfileField
             label="Last Name"
             value={user?.lastName || ""}
-            field="lastName"
-            onEdit={handleEdit}
+            onPress={() => handleEdit("lastName")}
           />
           {divider}
           <ProfileField
             label="Email"
             value={user?.primaryEmailAddress?.emailAddress || ""}
-            field="email"
-            onEdit={handleEdit}
+            onPress={() => setIsAccountOpen(true)}
           />
         </View>
 
@@ -412,6 +415,12 @@ export default function ProfileScreen() {
           <ThemedText style={styles.signOutButtonText}>Sign Out</ThemedText>
         </TouchableOpacity>
       </ScrollView>
+
+      <ClerkAccountModal
+        visible={isAccountOpen}
+        onClose={closeAccount}
+        onSignedOut={handleSignedOutInAccount}
+      />
 
       <EditProfileModal
         isEditing={isEditing}

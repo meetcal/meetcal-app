@@ -4,7 +4,6 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useUser } from "@clerk/expo";
 import React from "react";
 import {
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -60,25 +59,6 @@ const EditProfileModal = ({
           await user.update({
             lastName: editValue,
           });
-          break;
-        case "email":
-          // Ensure email is different before creating
-          if (editValue === user.primaryEmailAddress?.emailAddress) {
-            setIsEditing(false);
-            setEditingField(null);
-            return; // No change needed
-          }
-          const emailAddress = await user.createEmailAddress({
-            email: editValue,
-          });
-          await emailAddress.prepareVerification({
-            strategy: "email_code",
-          });
-
-          Alert.alert(
-            "Verification Required",
-            "Please check your email to verify your new email address.",
-          );
           break;
       }
       setIsEditing(false);
@@ -172,10 +152,7 @@ const EditProfileModal = ({
                   onChangeText={setEditValue}
                   placeholder={`Enter ${formatTitle(editingField || "")}`}
                   placeholderTextColor={colors.secondaryText}
-                  autoCapitalize={editingField === "email" ? "none" : "words"}
-                  keyboardType={
-                    editingField === "email" ? "email-address" : "default"
-                  }
+                  autoCapitalize="words"
                   autoFocus
                 />
 
