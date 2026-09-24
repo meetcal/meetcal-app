@@ -90,9 +90,12 @@ describe("findExpiredSessionIds", () => {
     }
   });
 
-  it("looks each meet's time zone up once, falling back to UTC", async () => {
+  it("looks each meet's time zone up once and keeps a meet's rows when its zone cannot be resolved", async () => {
+    // Meet A's lookup fails (not in the cached list, /meets/details down).
+    // Reading its wall-clock times as UTC would expire them early; they must
+    // be kept instead. Meet B resolves and its expired row is still pruned.
     mockGetMeetConfig.mockRejectedValueOnce(new Error("offline"));
-    await findExpiredSessionIds(
+    const ids = await findExpiredSessionIds(
       [
         session("a1", "2000-01-01T00:00:00.000Z", "Meet A"),
         session("a2", "2000-01-01T00:00:00.000Z", "Meet A"),
@@ -100,12 +103,21 @@ describe("findExpiredSessionIds", () => {
       ],
       NOW,
     );
+    expect(ids).toEqual(["b1"]);
     expect(mockGetMeetConfig).toHaveBeenCalledTimes(2);
     expect(mockConvertToUTC.mock.calls.map(([, , zone]) => zone)).toEqual([
-      "UTC",
-      "UTC",
       "America/New_York",
     ]);
+  });
+
+  it("keeps a meet's rows when its config has no time zone", async () => {
+    mockGetMeetConfig.mockResolvedValueOnce({ time: { timeZoneIdentifier: "" } } as never);
+    const ids = await findExpiredSessionIds(
+      [session("a1", "2000-01-01T00:00:00.000Z", "Meet A")],
+      NOW,
+    );
+    expect(ids).toEqual([]);
+    expect(mockConvertToUTC).not.toHaveBeenCalled();
   });
 });
 

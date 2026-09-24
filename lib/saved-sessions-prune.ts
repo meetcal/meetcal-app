@@ -12,15 +12,23 @@ import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 
 /**
  * Ids of the sessions that have passed the auto-unsave window at `now`.
- * Start times are meet-local, so each meet's time zone is looked up once
- * (UTC when its config cannot be read). Rows with no start time or date, or
- * whose time does not convert, are kept.
+ * Start times are meet-local, so each meet's time zone is looked up once.
+ * Rows with no start time or date, whose time does not convert, or whose
+ * meet's time zone cannot be resolved are kept.
+ *
+ * The zone lookup used to fall back to UTC. A meet outside the cached list
+ * whose `/meets/details` request failed (venue Wi-Fi) then had its wall-clock
+ * times read as UTC: a 9:00 AM Los Angeles session "started" at 2:00 AM local
+ * and was deleted, server copy and notes included, before it began. Pruning
+ * is destructive, so an unknown zone keeps the rows until a later load can
+ * resolve it.
  */
 export async function findExpiredSessionIds(
   sessions: SavedSession[],
   now: Date,
 ): Promise<string[]> {
-  const timeZoneByMeet = new Map<MeetName, string>();
+  // `null`: the meet's zone could not be resolved, so its rows are kept.
+  const timeZoneByMeet = new Map<MeetName, string | null>();
   const expiredIds: string[] = [];
 
   for (const session of sessions) {
@@ -30,12 +38,13 @@ export async function findExpiredSessionIds(
     if (timeZone === undefined) {
       try {
         const config = await getMeetConfig(session.meet);
-        timeZone = config?.time?.timeZoneIdentifier ?? 'UTC';
+        timeZone = config?.time?.timeZoneIdentifier || null;
       } catch {
-        timeZone = 'UTC';
+        timeZone = null;
       }
       timeZoneByMeet.set(session.meet, timeZone);
     }
+    if (timeZone === null) continue;
 
     let sessionStart: Date;
     try {
