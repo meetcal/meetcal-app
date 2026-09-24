@@ -124,6 +124,10 @@ jest.mock("@/lib/api/meetcal-api", () => {
     fetchUserPreferences: jest.fn(async () => ({
       auto_unsave_started_sessions: false,
     })),
+    // The prune needs a fresh server clock sample; the server agrees with
+    // the device here.
+    getServerClockSample: () => ({ skewMs: 0, sampledAt: Date.now() }),
+    MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
     putSavedSession: jest.fn(async (_token: string, id: string) => ({
       session_id: id,
       updated_at: 1,
