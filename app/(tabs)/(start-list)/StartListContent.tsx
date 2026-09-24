@@ -131,7 +131,7 @@ const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
  * The start list opens on the "A" letter filter, so the names the user is
  * about to see get their year bests warmed first. The cap bounds it: a
  * federation-scale roster has hundreds of A-names and `preloadYearBests`
- * chunks them into `NAMES_QUERY_CHUNK_SIZE` requests, so an uncapped warm
+ * chunks them into `SMALL_ROWS_NAMES_CHUNK_SIZE` requests, so an uncapped warm
  * would fire a dozen background requests against the screen the user is
  * actively scrolling.
  */

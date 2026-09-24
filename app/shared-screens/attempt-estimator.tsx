@@ -13,7 +13,7 @@ import {
 import {
   getAllCachedLiftingResultsForAthletes,
   getSessionAthletesFromMeetCache,
-  saveMeetAthletes,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import {
   fetchAthletesWithSession,
@@ -141,20 +141,29 @@ export default function AttemptEstimatorScreen() {
         return;
       }
 
-      const freshMeetAthletes = await fetchAthletesWithSession(meetId);
-      if (isStale()) return;
-      await saveMeetAthletes(meetId, freshMeetAthletes);
-      if (isStale()) return;
-
+      // This session's rows only: the same request (and in-flight key) the
+      // session screen that opens this one makes. It used to download the
+      // whole roster (~457KB / 1,562 athletes at a national meet), then
+      // re-read, merge and rewrite the roster cache, to keep one session.
       const freshSessionAthletes = filterSessionAthletes(
-        freshMeetAthletes,
+        await fetchAthletesWithSession(meetId, sessionNumber, params.platform),
         sessionNumber,
         params.platform,
       );
+      if (isStale()) return;
       if (freshSessionAthletes.length === 0) {
         setEstimates([]);
         return;
       }
+      // Off the critical path, as on the start list: a failed cache write
+      // must not cost the user the estimates already in hand. An empty
+      // answer (returned above) never overwrites a cached session.
+      saveSessionAthletes(
+        meetId,
+        sessionNumber,
+        params.platform,
+        freshSessionAthletes,
+      ).catch(() => {});
 
       // History for *this session's* athletes only. This used to pull the
       // two-year history of the entire roster (~40 sequential requests at a

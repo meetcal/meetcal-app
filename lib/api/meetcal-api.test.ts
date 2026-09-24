@@ -41,6 +41,7 @@ import {
   MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
+  SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
   resolveAppVersion,
@@ -860,16 +861,44 @@ describe('meetcal API client error and auth boundaries', () => {
     const fetchMock = mockFetch('{}');
     const names = (count: number) => Array.from({ length: count }, (_, i) => `Athlete ${i}`);
 
-    await fetchApiYearBestsByNames(names(NAMES_QUERY_CHUNK_SIZE));
+    await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE));
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fetchMock.mockClear();
-    await fetchApiYearBestsByNames(names(NAMES_QUERY_CHUNK_SIZE + 1));
+    await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE + 1));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const bodies = fetchMock.mock.calls.map(
       (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names,
     );
-    expect(bodies.map((chunk: string[]) => chunk.length)).toEqual([NAMES_QUERY_CHUNK_SIZE, 1]);
+    expect(bodies.map((chunk: string[]) => chunk.length)).toEqual([SMALL_ROWS_NAMES_CHUNK_SIZE, 1]);
+  });
+
+  it('sorts a national start list by bests in 16 requests, not 40, and never over the API cap', async () => {
+    const fetchMock = mockFetch('{}');
+    // The 2026 national roster size the start list comment measured.
+    const roster = Array.from({ length: 1562 }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiYearBestsByNames(roster);
+
+    expect(fetchMock).toHaveBeenCalledTimes(16);
+    const sizes = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
+    );
+    // The API's MAX_NAME_LIST_LEN is 100 for every client; one more is a 400.
+    expect(Math.max(...sizes)).toBe(100);
+    expect(sizes.reduce((a: number, b: number) => a + b, 0)).toBe(1562);
+  });
+
+  it('keeps full-history batches at the memory-bounded chunk size', async () => {
+    const fetchMock = mockFetch('[]');
+    const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE }, (_, i) => `Athlete ${i}`);
+
+    await fetchApiResultsByNames(names);
+
+    const sizes = fetchMock.mock.calls.map(
+      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
+    );
+    expect(sizes).toEqual([NAMES_QUERY_CHUNK_SIZE, NAMES_QUERY_CHUNK_SIZE, 20]);
   });
 
   it('stops at the first failing chunk instead of returning a partial roster', async () => {
@@ -1724,7 +1753,7 @@ describe('by-names latest_only', () => {
       text: async () => JSON.stringify([]),
     }));
     global.fetch = fetchMock as unknown as typeof fetch;
-    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+    const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
 
     await fetchApiResultsByNames(names, { latestOnly: true });
 

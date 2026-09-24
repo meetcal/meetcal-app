@@ -53,7 +53,22 @@ export const APP_VERSION: string = resolveAppVersion(
   Application.nativeApplicationVersion,
 );
 const SLOW_API_LOG_THRESHOLD_MS = 500;
+/**
+ * Names per request for the name-list endpoints whose rows are large: full
+ * history (`/lifting-results/by-names`) and the two-year window (`/recent`).
+ * One history batch is held in memory while it is written out, so this also
+ * bounds the offline download's peak memory (see `meet-manager`).
+ */
 export const NAMES_QUERY_CHUNK_SIZE = 40;
+/**
+ * Names per request where each name answers with a handful of numbers or rows:
+ * `/lifting-results/bests` (three bests per name) and `latest_only` history
+ * (one meet per name). Equal to the API's `MAX_NAME_LIST_LEN` (100), which is
+ * not version-gated; one more name is a `400`. Sorting a 1,562-athlete
+ * national start list by best total was 40 sequential requests at 40 names;
+ * it is 16 at 100.
+ */
+export const SMALL_ROWS_NAMES_CHUNK_SIZE = 100;
 
 /**
  * Meet dates are calendar dates with no time. 16:00 UTC is inside the same
@@ -975,7 +990,8 @@ export async function fetchApiResultsByNames(
 ): Promise<SupabaseLiftResult[]> {
   if (names.length === 0) return [];
   const rows: SupabaseLiftResult[] = [];
-  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+  const chunkSize = options.latestOnly ? SMALL_ROWS_NAMES_CHUNK_SIZE : NAMES_QUERY_CHUNK_SIZE;
+  for (const chunk of chunkValues(names, chunkSize)) {
     const body = options.latestOnly ? { names: chunk, latest_only: true } : { names: chunk };
     const part = assertArray<ApiLiftingResult>(
       await postJson('/lifting-results/by-names', body),
@@ -1019,7 +1035,7 @@ export async function fetchApiYearBestsByNames(
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
   const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
-  for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
+  for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
     const response = await postJson('/lifting-results/bests', {
       names: chunk,
       cutoff_date: cutoffDate,

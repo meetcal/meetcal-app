@@ -8,6 +8,7 @@ import {
 import {
   saveAthleteHistory,
   saveMeetAthletes,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
 
@@ -23,6 +24,7 @@ jest.mock("@/lib/database/offline-store", () => ({
   getSessionAthletesFromMeetCache: jest.fn(async () => []),
   getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveMeetAthletes: jest.fn(async () => {}),
+  saveSessionAthletes: jest.fn(async () => {}),
   saveAthleteHistory: jest.fn(async () => {}),
 }));
 jest.mock("@/lib/database/queries", () => ({
@@ -70,10 +72,19 @@ describe("attempt estimator history fetch", () => {
     });
     await flush();
 
-    // The whole roster is one request (and refreshes the roster cache), but
-    // the history request — the expensive one — covers this session only.
+    // One request for this session and platform, never the whole roster
+    // (~457KB at a national meet), and only this session's cache is written:
+    // the roster blob is not re-read, merged and rewritten.
     expect(fetchAthletesWithSession).toHaveBeenCalledTimes(1);
-    expect(saveMeetAthletes).toHaveBeenCalledTimes(1);
+    expect(fetchAthletesWithSession).toHaveBeenCalledWith("test-meet", 1, "Red");
+    expect(saveMeetAthletes).not.toHaveBeenCalled();
+    expect(saveSessionAthletes).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(saveSessionAthletes).mock.calls[0]).toEqual([
+      "test-meet",
+      1,
+      "Red",
+      [athlete("Session Lifter A", 1, "Red"), athlete("Session Lifter B", 1, "Red")],
+    ]);
     expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledTimes(1);
     expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledWith(
       ["Session Lifter A", "Session Lifter B"],
@@ -102,6 +113,31 @@ describe("attempt estimator history fetch", () => {
 
     expect(fetchRecentAthleteHistoryForNames).not.toHaveBeenCalled();
     expect(saveAthleteHistory).not.toHaveBeenCalled();
+    // An empty answer never overwrites the cached session.
+    expect(saveSessionAthletes).not.toHaveBeenCalled();
+
+    await act(async () => {
+      tree.unmount();
+    });
+  });
+
+  it("still shows fresh estimates when the session cache write fails", async () => {
+    jest.mocked(fetchAthletesWithSession).mockResolvedValue([
+      athlete("Session Lifter A", 1, "Red"),
+    ]);
+    jest.mocked(saveSessionAthletes).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<AttemptEstimatorScreen />);
+    });
+    await flush();
+
+    expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledWith(
+      ["Session Lifter A"],
+      getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
+    );
+    expect(JSON.stringify(tree.toJSON())).toContain("Session Lifter A");
 
     await act(async () => {
       tree.unmount();
