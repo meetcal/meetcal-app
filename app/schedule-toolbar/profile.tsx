@@ -2,7 +2,6 @@ import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSett
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import { ClerkAccountModal } from "@/components/profile/ClerkAccountModal";
-import EditProfileModal from "@/components/profile/EditProfileModal";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { ProfileActionSetting } from "@/components/profile/ProfileActionSetting";
 import { IconSymbol } from "@/components/ui/IconSymbol";
@@ -34,9 +33,6 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
 import { Palette } from "@/constants/Palette";
 
-// Email is not edited in-app: it goes through Clerk's account screen, which
-// owns adding, verifying and switching the primary address.
-export type EditableField = "firstName" | "lastName";
 export type SubscriptionStatus = "free" | "quarterly" | "lifetime" | "unknown";
 
 function ProfileField({
@@ -84,10 +80,6 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const router = useRouter();
   const pathname = usePathname();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingField, setEditingField] = useState<EditableField | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
@@ -119,21 +111,6 @@ export default function ProfileScreen() {
   const handleSignedOutInAccount = useCallback(() => {
     void clearAuthCache().finally(() => router.replace("/(tabs)/(index)"));
   }, [router]);
-
-  const handleEdit = (field: EditableField) => {
-    let currentValue = "";
-    switch (field) {
-      case "firstName":
-        currentValue = user?.firstName || "";
-        break;
-      case "lastName":
-        currentValue = user?.lastName || "";
-        break;
-    }
-    setEditValue(currentValue);
-    setEditingField(field);
-    setIsEditing(true);
-  };
 
   const sendEmailFeedback = () => {
     const email = "maddisen@meetcal.app";
@@ -174,10 +151,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const divider = (
-    <View style={[styles.sectionDivider, { backgroundColor: colors.border }]} />
-  );
-
   return (
     <ThemedView
       style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
@@ -210,19 +183,7 @@ export default function ProfileScreen() {
       >
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <ProfileField
-            label="First Name"
-            value={user?.firstName || ""}
-            onPress={() => handleEdit("firstName")}
-          />
-          {divider}
-          <ProfileField
-            label="Last Name"
-            value={user?.lastName || ""}
-            onPress={() => handleEdit("lastName")}
-          />
-          {divider}
-          <ProfileField
-            label="Email"
+            label="Edit Profile"
             value={user?.primaryEmailAddress?.emailAddress || ""}
             onPress={() => setIsAccountOpen(true)}
           />
@@ -422,17 +383,6 @@ export default function ProfileScreen() {
         onClose={closeAccount}
         onSignedOut={handleSignedOutInAccount}
       />
-
-      <EditProfileModal
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        editingField={editingField}
-        setEditingField={setEditingField}
-        editValue={editValue}
-        setEditValue={setEditValue}
-        setIsLoading={setIsLoading}
-        isLoading={isLoading}
-      />
     </ThemedView>
   );
 }
@@ -466,9 +416,6 @@ const styles = StyleSheet.create({
   },
   disabledSection: {
     opacity: 0.65,
-  },
-  sectionDivider: {
-    height: 1,
   },
   fieldRow: {
     flexDirection: "row",

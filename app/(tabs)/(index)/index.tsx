@@ -50,6 +50,8 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
 
+const IPHONE_DUO_HORIZONTAL_INSET = 84;
+
 /**
  * iOS 27.1 leading-aligns the native nav title on iPhone Duo's reorganised bar,
  * and `headerTitleAlign` is ignored by the iOS native stack. Rendering the date
@@ -73,6 +75,10 @@ function HeaderDate({ children }: { children: string }) {
 
 export default function ScheduleScreen() {
   const screenInsets = useScreenHorizontalInsets();
+  const insets = useSafeAreaInsets();
+  const shouldUseCustomHeader =
+    Platform.OS === "ios" &&
+    Math.max(insets.left, insets.right) >= IPHONE_DUO_HORIZONTAL_INSET;
   const navigation = useNavigation();
   const {
     selectedMeet,
@@ -108,10 +114,12 @@ export default function ScheduleScreen() {
     (title: string) => {
       navigation.setOptions({
         title,
-        headerTitle: () => <HeaderDate>{title}</HeaderDate>,
+        headerTitle: shouldUseCustomHeader
+          ? () => <HeaderDate>{title}</HeaderDate>
+          : undefined,
       });
     },
-    [navigation],
+    [navigation, shouldUseCustomHeader],
   );
 
   const {
@@ -274,11 +282,19 @@ export default function ScheduleScreen() {
       if (formattedDate) {
         navigation.setOptions({
           title: formattedDate,
-          headerTitle: () => <HeaderDate>{formattedDate}</HeaderDate>,
+          headerTitle: shouldUseCustomHeader
+            ? () => <HeaderDate>{formattedDate}</HeaderDate>
+            : undefined,
         });
       }
     }
-  }, [isLoading, schedule.length, meetDetails, navigation]);
+  }, [
+    isLoading,
+    schedule.length,
+    meetDetails,
+    navigation,
+    shouldUseCustomHeader,
+  ]);
 
   // Handle refreshing available meets in modal
   const handleRefreshMeets = useCallback(async () => {
