@@ -181,7 +181,7 @@ describe("calendar destinations and failures", () => {
         sdkCalendar({ id: "2", title: "Holidays", allowsModifications: false }),
         sdkCalendar({ id: "2147483648", title: "Overflow", isPrimary: true }),
         sdkCalendar({ id: "2147483647", title: "Alpha", ownerAccount: "me@example.com" }),
-        sdkCalendar({ id: "3", title: "Device", source: { name: "Phone", isLocalAccount: true } }),
+        sdkCalendar({ id: "3", title: "Device", source: { name: "Phone", isLocalAccount: true, type: "local" } }),
         sdkCalendar({ id: "4", title: "Work", isPrimary: true, ownerAccount: "work@example.com" }),
         sdkCalendar({ id: "5", title: "No Owner" }),
         sdkCalendar({ id: "acct-x", title: "Beta", ownerAccount: "me@example.com" }),
