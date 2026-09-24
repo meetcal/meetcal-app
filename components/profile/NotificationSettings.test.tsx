@@ -128,4 +128,55 @@ describe("NotificationSettings", () => {
     expect(mockRequestPermissions).not.toHaveBeenCalled();
     expect(setItemSpy).not.toHaveBeenCalled();
   });
+  describe("when the OS permission is denied", () => {
+    function permissionAlerts(): unknown[] {
+      return (Alert.alert as jest.Mock).mock.calls.filter(
+        ([title]) => title === "Permission Required",
+      );
+    }
+
+    it("records a denied first-run prompt as off so later visits do not re-prompt", async () => {
+      await AsyncStorage.removeItem("hasCheckedNotifications");
+      mockGetPermissions.mockResolvedValue({ status: "denied" });
+      mockRequestPermissions.mockResolvedValue({ status: "denied" });
+
+      const first = await mount("quarterly");
+      await act(async () => first.unmount());
+      const second = await mount("quarterly");
+
+      expect(permissionAlerts()).toHaveLength(0);
+      expect(mockRequestPermissions).toHaveBeenCalledTimes(1);
+      await expect(AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)).resolves.toBe("false");
+      expect(theSwitch(second).props.value).toBe(false);
+    });
+
+    it("does not alert on an auto-enable after the prompt was already shown", async () => {
+      mockGetPermissions.mockResolvedValue({ status: "denied" });
+
+      const first = await mount("lifetime");
+      await act(async () => first.unmount());
+      await mount("lifetime");
+
+      expect(permissionAlerts()).toHaveLength(0);
+      expect(mockGetPermissions).toHaveBeenCalledTimes(1);
+      expect(mockRequestPermissions).not.toHaveBeenCalled();
+      expect(reminderWrites()).toEqual(["false"]);
+    });
+
+    it("still explains the denied permission when the user taps the switch", async () => {
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+      mockGetPermissions.mockResolvedValue({ status: "denied" });
+      setItemSpy.mockClear();
+      const renderer = await mount("quarterly");
+
+      await act(async () => {
+        theSwitch(renderer).props.onValueChange(true);
+      });
+      await flush();
+
+      expect(permissionAlerts()).toHaveLength(1);
+      expect(reminderWrites()).toEqual([]);
+      expect(theSwitch(renderer).props.value).toBe(false);
+    });
+  });
 });
