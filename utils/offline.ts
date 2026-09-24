@@ -27,8 +27,23 @@ import {
   getCalendarDateInTimeZone,
   toMeetCalendarDate,
 } from "@/utils/dateTime";
+import {
+  claimOfflineBulk,
+  claimOfflineItem,
+  getOfflineActivity,
+  releaseOfflineBulk,
+  releaseOfflineItem,
+  subscribeOfflineActivity,
+  type OfflineBulkAction,
+} from "@/lib/database/offline-activity";
 import { formatDistanceToNow } from "date-fns";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Alert } from "react-native";
 
 type DownloadStatus = {
@@ -109,23 +124,21 @@ export const useOfflineData = () => {
     () => availableMeets.map((meet) => meet.name),
     [availableMeets],
   );
-  const [downloadingItems, setDownloadingItems] = useState<Set<string>>(
-    new Set()
-  );
   const [downloadStatuses, setDownloadStatuses] = useState<
     Record<string, DownloadStatus>
   >({});
-  const [refreshCounter, setRefreshCounter] = useState(0);
-  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
-  const [isDeletingAll, setIsDeletingAll] = useState(false);
-  // Synchronous busy flags. The state flags above drive the UI but are read
-  // through render-time closures: an alert's button captures the closure of
-  // the render that opened it, so two queued "Refresh All" alerts, or a row's
-  // "Remove" confirmed while Refresh All runs, still saw "not busy". A row
-  // removed mid-refresh was then re-downloaded (and a meet re-marked
-  // downloaded) by the refresh that had listed it before the removal.
-  const bulkActionRef = useRef<"refresh" | "delete" | null>(null);
-  const itemActionIdsRef = useRef<Set<string>>(new Set());
+  // Busy flags live in `offline-activity`, not in this hook: they are read
+  // synchronously (an alert's button holds the closure of the render that
+  // opened it, so render-time state still said "not busy"), and they outlive
+  // this mount (an action keeps running after the user swipes back, and a
+  // reopened screen must still see it).
+  const activity = useSyncExternalStore(
+    subscribeOfflineActivity,
+    getOfflineActivity,
+  );
+  const downloadingItems = activity.items;
+  const isRefreshingAll = activity.bulk === "refresh";
+  const isDeletingAll = activity.bulk === "delete";
 
   const filteredMeets = useMemo(
     () =>
@@ -211,18 +224,6 @@ export const useOfflineData = () => {
       []
     );
     
-    const updateDownloading = useCallback((id: string, downloading: boolean) => {
-        setDownloadingItems((prev) => {
-          const next = new Set(prev);
-          if (downloading) {
-            next.add(id);
-          } else {
-            next.delete(id);
-          }
-          return next;
-        });
-      }, []);
-    
       const loadStatuses = useCallback(async () => {
         const nextStatuses: Record<string, DownloadStatus> = {};
     
@@ -297,12 +298,12 @@ export const useOfflineData = () => {
         return () => {
           cancelled = true;
         };
-      }, [loadStatuses, refreshCounter]);
+        // Re-read whenever an action ends (`activity.settled`), including one
+        // an earlier mount of this screen started: it may have changed storage.
+      }, [loadStatuses, activity.settled]);
     
       const handleDownload = async (id: string, action: () => Promise<void>) => {
-        if (bulkActionRef.current || itemActionIdsRef.current.has(id)) return;
-        itemActionIdsRef.current.add(id);
-        updateDownloading(id, true);
+        if (!claimOfflineItem(id)) return;
         try {
           await action();
           const meetName = getMeetNameFromDownloadId(
@@ -315,7 +316,6 @@ export const useOfflineData = () => {
               endDate: meetDetails?.dates?.end,
             });
           }
-          setRefreshCounter((count) => count + 1);
         } catch (error) {
           console.error("Download failed:", error);
           Alert.alert(
@@ -323,8 +323,7 @@ export const useOfflineData = () => {
             "Please check your connection and try again.",
           );
         } finally {
-          itemActionIdsRef.current.delete(id);
-          updateDownloading(id, false);
+          releaseOfflineItem(id);
         }
       };
     
@@ -333,7 +332,8 @@ export const useOfflineData = () => {
         id: string,
         action: () => Promise<void>,
       ) => {
-        if (bulkActionRef.current || itemActionIdsRef.current.has(id)) return;
+        const busy = getOfflineActivity();
+        if (busy.bulk || busy.items.has(id)) return;
         Alert.alert("Remove Download", `Remove ${title} from this device?`, [
           { text: "Cancel", style: "cancel" },
           {
@@ -342,47 +342,34 @@ export const useOfflineData = () => {
             onPress: async () => {
               // Re-checked: a bulk action may have started while this
               // confirmation was open.
-              if (bulkActionRef.current || itemActionIdsRef.current.has(id)) {
-                return;
-              }
-              itemActionIdsRef.current.add(id);
-              updateDownloading(id, true);
+              if (!claimOfflineItem(id)) return;
               try {
                 await action();
-                setRefreshCounter((count) => count + 1);
               } catch (error) {
                 console.error("Delete failed:", error);
                 Alert.alert("Remove Failed", "Please try again.");
               } finally {
-                itemActionIdsRef.current.delete(id);
-                updateDownloading(id, false);
+                releaseOfflineItem(id);
               }
             },
           },
         ]);
       };
     
-      /**
-       * Claims the screen for a bulk action, or says why it can't. A single
-       * download or removal still running would race it: its item is either
-       * re-downloaded after its removal or removed after its refresh.
-       */
-      const claimBulkAction = (action: "refresh" | "delete"): boolean => {
-        if (bulkActionRef.current) return false;
-        if (itemActionIdsRef.current.size > 0) {
+      /** Claims every row for a bulk action, or says why it can't. */
+      const claimBulkAction = (action: OfflineBulkAction): boolean => {
+        const claim = claimOfflineBulk(action);
+        if (claim === "items-running") {
           Alert.alert(
             "Download in Progress",
             "Wait for the current download or removal to finish, then try again.",
           );
-          return false;
         }
-        bulkActionRef.current = action;
-        return true;
+        return claim === "claimed";
       };
 
       const refreshAllDownloadedData = async () => {
         if (!claimBulkAction("refresh")) return;
-        setIsRefreshingAll(true);
 
         try {
           // Download-then-swap (see `refreshOfflineDownloads`): nothing is
@@ -402,9 +389,6 @@ export const useOfflineData = () => {
               )
               .map((meet) => ({ name: meet.name, endDate: meet.dates?.end })),
           );
-          if (result.status === "done") {
-            setRefreshCounter((count) => count + 1);
-          }
           const { title, message } = describeOfflineRefresh(result);
           Alert.alert(title, message);
         } catch (error) {
@@ -414,14 +398,12 @@ export const useOfflineData = () => {
             "Please check your connection and try again. Your downloaded data has been kept.",
           );
         } finally {
-          bulkActionRef.current = null;
-          setIsRefreshingAll(false);
+          releaseOfflineBulk("refresh");
         }
       };
     
       const deleteAllOfflineData = async () => {
         if (!claimBulkAction("delete")) return;
-        setIsDeletingAll(true);
         try {
           await Promise.all([
             clearOfflineCache(OFFLINE_CACHE_KEYS.standards),
@@ -445,7 +427,6 @@ export const useOfflineData = () => {
           }
           await clearAllAthleteHistory();
 
-          setRefreshCounter((count) => count + 1);
           Alert.alert(
             "Deleted",
             "All offline data has been removed from your device.",
@@ -454,8 +435,7 @@ export const useOfflineData = () => {
           console.error("Delete all failed:", error);
           Alert.alert("Delete Failed", "Please try again.");
         } finally {
-          bulkActionRef.current = null;
-          setIsDeletingAll(false);
+          releaseOfflineBulk("delete");
         }
       };
     

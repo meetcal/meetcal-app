@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
 import { useOfflineData } from "@/utils/offline";
 
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
@@ -105,6 +106,7 @@ const cacheEntry = JSON.stringify({ data: { any: "rows" }, lastSynced: 1 });
 const freshEntry = JSON.stringify({ data: { any: "fresh rows" }, lastSynced: 2 });
 
 beforeEach(async () => {
+  resetOfflineActivityForTests();
   jest.clearAllMocks();
   captured = null;
   mockIsNetworkAvailable.mockReset();
@@ -466,5 +468,99 @@ describe("useOfflineData single actions vs bulk actions", () => {
       await taps;
     });
     act(() => tree.unmount());
+  });
+});
+
+describe("useOfflineData across a remount of the screen", () => {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  it("keeps Refresh All's claim after the user leaves and reopens the screen", async () => {
+    const gate = deferred();
+    mockPrefetchMeetData.mockImplementation(() => gate.promise);
+    const first = await mount();
+
+    act(() => captured!.confirmRefreshAll());
+    let refreshing!: Promise<unknown>;
+    await act(async () => {
+      refreshing = Promise.resolve(
+        (alertSpy.mock.calls.at(-1)?.[2] as AlertButton[])
+          .find((b) => b.text === "Refresh All")
+          ?.onPress?.(),
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(mockPrefetchMeetData).toHaveBeenCalledTimes(1);
+
+    // Swipe back mid-refresh, then open the screen again.
+    act(() => first.unmount());
+    const second = await mount();
+    expect(captured!.isRefreshingAll).toBe(true);
+
+    // Mounted flags used to say "idle": Delete All cleared storage and the
+    // orphaned refresh wrote Meet A back; a second Refresh All re-ran it.
+    act(() => captured!.confirmDeleteAll());
+    await act(async () => {
+      await (alertSpy.mock.calls.at(-1)?.[2] as AlertButton[])
+        .find((b) => b.text === "Delete All")
+        ?.onPress?.();
+    });
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+    expect(mockClearAllAthleteHistory).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await captured!.handleDownload("meet:Meet B", async () => {});
+    });
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalledWith(
+      "Meet B",
+      true,
+      expect.anything(),
+    );
+
+    await act(async () => {
+      gate.resolve();
+      await refreshing;
+    });
+    await flush();
+
+    // The reopened screen sees the refresh end and is usable again.
+    expect(captured!.isRefreshingAll).toBe(false);
+    expect(captured!.downloadingItems.size).toBe(0);
+    expect(mockPrefetchMeetData).toHaveBeenCalledTimes(1);
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+    expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(1);
+    act(() => second.unmount());
+  });
+
+  it("shows a row download started by an earlier mount as still downloading", async () => {
+    const gate = deferred();
+    const first = await mount();
+    let downloading!: Promise<void>;
+    await act(async () => {
+      downloading = captured!.handleDownload("standards", () => gate.promise);
+    });
+    act(() => first.unmount());
+
+    const second = await mount();
+    expect(captured!.downloadingItems.has("standards")).toBe(true);
+    const again = jest.fn(async () => {});
+    await act(async () => {
+      await captured!.handleDownload("standards", again);
+    });
+    expect(again).not.toHaveBeenCalled();
+
+    await act(async () => {
+      gate.resolve();
+      await downloading;
+    });
+    await flush();
+    expect(captured!.downloadingItems.has("standards")).toBe(false);
+    act(() => second.unmount());
   });
 });

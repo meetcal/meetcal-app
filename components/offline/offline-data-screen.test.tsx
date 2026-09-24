@@ -12,6 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import OfflineDataScreen from "@/app/schedule-toolbar/offline-data";
 import DownloadRow from "@/components/offline/DownloadRow";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("react-native-safe-area-context", () => ({
@@ -170,6 +171,7 @@ function lastAlertButtons(): AlertButton[] {
 }
 
 beforeEach(async () => {
+  resetOfflineActivityForTests();
   jest.clearAllMocks();
   mockIsSubscribed = true;
   mockScreenOptions = {};
