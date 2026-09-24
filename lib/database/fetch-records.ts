@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
 import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
@@ -137,6 +142,44 @@ async function persistFederationRecords(federation: string, result: RecordsData)
   };
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.records, nextCache);
   return { data: result, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh of every federation's records.
+ *
+ * One `/data/records` request, grouped by federation, and one write of the
+ * whole cache once every federation has mapped. The old download listed
+ * federations and then re-requested the same table once per federation, each
+ * through `fetchRecords`, which falls back to the cached copy on failure — so
+ * a refresh whose requests failed still "succeeded". Rejects (leaving the
+ * stored copy untouched) when offline, on an API error, or when the table
+ * has no usable rows.
+ */
+export async function downloadRecordsForOffline(): Promise<void> {
+  const hasNetwork = await isNetworkAvailable();
+  if (!hasNetwork) {
+    throw new Error('Offline');
+  }
+
+  const rowsByFederation = new Map<string, CompleteRecordsRow[]>();
+  for (const row of await fetchApiRecords()) {
+    if (!isCompleteRecordsRow(row)) continue;
+    const rows = rowsByFederation.get(row.record_type);
+    if (rows) {
+      rows.push(row);
+    } else {
+      rowsByFederation.set(row.record_type, [row]);
+    }
+  }
+  if (rowsByFederation.size === 0) {
+    throw new Error('Records download returned no federations');
+  }
+
+  const nextCache: RecordsCache = {};
+  for (const [federation, rows] of rowsByFederation) {
+    nextCache[federation] = mapRowsToRecordsData(rows);
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.records, nextCache);
 }
 
 export const federationRecordsResource = createMutableResource<

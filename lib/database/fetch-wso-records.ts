@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import {
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
@@ -12,6 +17,13 @@ import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 
 type WSORecordsCache = Record<string, RecordsData>;
+
+/**
+ * Most WSOs an offline download will fetch, one request each. USAW has a few
+ * dozen; a list past this is a malformed response, not a bigger federation,
+ * and is rejected rather than looped over.
+ */
+export const MAX_OFFLINE_WSO_COUNT = 100;
 type FilteredWSORecordsCache = Record<string, RecordsData>;
 
 async function readWSOCache() {
@@ -137,6 +149,33 @@ async function persistFilteredWSORecords(
     nextCache,
   );
   return { data: result, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh of every WSO's records.
+ *
+ * Sequential, one request per WSO, and a single write of the whole cache only
+ * after every WSO arrived. `fetchWSORecords` falls back to the cached copy on
+ * failure, so the old loop over it could "succeed" having refreshed nothing.
+ * Rejects, leaving the stored copy untouched, when offline, on any API error,
+ * on an empty list, or on a list longer than `MAX_OFFLINE_WSO_COUNT`.
+ */
+export async function downloadWSORecordsForOffline(): Promise<void> {
+  const wsos = await fetchWSOListFresh();
+  if (wsos.length === 0) {
+    throw new Error('WSO records download returned no WSOs');
+  }
+  if (wsos.length > MAX_OFFLINE_WSO_COUNT) {
+    throw new Error(
+      `WSO list has ${wsos.length} entries, more than ${MAX_OFFLINE_WSO_COUNT}`,
+    );
+  }
+
+  const nextCache: WSORecordsCache = {};
+  for (const wso of wsos) {
+    nextCache[wso] = await fetchWSORecordsFresh(wso);
+  }
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords, nextCache);
 }
 
 export const wsoRecordsResource = createMutableResource<RecordsData, [string, string, 'Men' | 'Women']>({

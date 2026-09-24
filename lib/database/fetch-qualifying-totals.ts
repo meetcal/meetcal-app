@@ -1,6 +1,11 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiQualifyingTotals } from '@/lib/api/meetcal-api';
 
 
@@ -95,6 +100,15 @@ async function persistQualifyingTotals(
 ) {
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection that leaves the stored copy untouched. Never the cached fallback.
+ */
+export async function downloadQualifyingTotalsForOffline(): Promise<void> {
+  const data = await fetchQualifyingTotalsFresh();
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);
 }
 
 export const qualifyingTotalsResource = createMutableResource<

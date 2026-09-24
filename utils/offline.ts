@@ -1,16 +1,15 @@
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
-import { fetchQualifyingTotals } from "@/lib/database/fetch-qualifying-totals";
-import { fetchFederations, fetchRecords } from "@/lib/database/fetch-records";
-import { fetchStandards } from "@/lib/database/fetch-standards";
+import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
+import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
+import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
+import { downloadStandardsForOffline } from "@/lib/database/fetch-standards";
+import { downloadWSORecordsForOffline } from "@/lib/database/fetch-wso-records";
+import { downloadIntlRankingsForOffline } from "@/lib/database/fetchIntlRankings";
 import {
-  fetchWSOList,
-  fetchWSORecords,
-} from "@/lib/database/fetch-wso-records";
-import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
-import { prefetchMeetData } from "@/lib/database/meet-manager";
-import { isNetworkAvailable } from "@/lib/networkUtils";
+  describeOfflineRefresh,
+  refreshOfflineDownloads,
+} from "@/lib/database/offline-refresh";
 import {
   clearOfflineCache,
   getOfflineCache,
@@ -144,7 +143,7 @@ export const useOfflineData = () => {
           id: "standards",
           title: "A/B Standards",
           onDownload: async () => {
-            await fetchStandards();
+            await downloadStandardsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.standards);
@@ -154,7 +153,7 @@ export const useOfflineData = () => {
           id: "adaptiveRecords",
           title: "Adaptive Records",
           onDownload: async () => {
-            await fetchAdaptiveRecords();
+            await downloadAdaptiveRecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords);
@@ -164,10 +163,7 @@ export const useOfflineData = () => {
           id: "records",
           title: "National & World Records",
           onDownload: async () => {
-            const federations = await fetchFederations();
-            for (const federation of federations) {
-              await fetchRecords(federation);
-            }
+            await downloadRecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.records);
@@ -177,7 +173,7 @@ export const useOfflineData = () => {
           id: "intlRankings",
           title: "International Rankings",
           onDownload: async () => {
-            await fetchIntlRankings();
+            await downloadIntlRankingsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.intlRankings);
@@ -187,7 +183,7 @@ export const useOfflineData = () => {
           id: "qualifyingTotals",
           title: "Qualifying Totals",
           onDownload: async () => {
-            await fetchQualifyingTotals();
+            await downloadQualifyingTotalsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals);
@@ -197,10 +193,7 @@ export const useOfflineData = () => {
           id: "wsoRecords",
           title: "WSO Records",
           onDownload: async () => {
-            const wsos = await fetchWSOList();
-            for (const wso of wsos) {
-              await fetchWSORecords(wso);
-            }
+            await downloadWSORecordsForOffline();
           },
           onDelete: async () => {
             await clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords);
@@ -353,62 +346,44 @@ export const useOfflineData = () => {
       const refreshAllDownloadedData = async () => {
         if (isRefreshingAll || isDeletingAll) return;
         setIsRefreshingAll(true);
-    
-        try {
-          // Refresh deletes before it re-downloads. Offline the re-download
-          // cannot happen, so starting would only wipe what the user saved.
-          if (!(await isNetworkAvailable())) {
-            Alert.alert(
-              "You're Offline",
-              "Connect to the internet to refresh. Your downloaded data has been kept.",
-            );
-            return;
-          }
 
-          const downloadedMeetNames = availableMeets
-            .filter(
-              (meet) =>
-                downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
-            )
-            .map((meet) => meet.name);
-    
-          const downloadedCompetitionItems = competitionItems.filter(
-            (item) => downloadStatuses[item.id]?.isDownloaded,
+        try {
+          // Download-then-swap (see `refreshOfflineDownloads`): nothing is
+          // deleted, so a failed item keeps its previous copy.
+          const result = await refreshOfflineDownloads(
+            competitionItems
+              .filter((item) => downloadStatuses[item.id]?.isDownloaded)
+              .map((item) => ({
+                id: item.id,
+                title: item.title,
+                download: item.onDownload,
+              })),
+            availableMeets
+              .filter(
+                (meet) =>
+                  downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
+              )
+              .map((meet) => ({ name: meet.name, endDate: meet.dates?.end })),
           );
-    
-          await deleteAllOfflineData(false, true, true);
-    
-          for (const item of downloadedCompetitionItems) {
-            await item.onDownload();
+          if (result.status === "done") {
+            setRefreshCounter((count) => count + 1);
           }
-    
-          for (const meetName of downloadedMeetNames) {
-            await prefetchMeetData(meetName);
-            const meetDetails = availableMeets.find((meet) => meet.name === meetName);
-            await markMeetExplicitlyDownloaded(meetName, true, {
-              endDate: meetDetails?.dates?.end,
-            });
-          }
-    
-          setRefreshCounter((count) => count + 1);
-          Alert.alert(
-            "Refresh Complete",
-            "All downloaded data has been refreshed.",
-          );
+          const { title, message } = describeOfflineRefresh(result);
+          Alert.alert(title, message);
         } catch (error) {
           console.error("Refresh all failed:", error);
           Alert.alert(
             "Refresh Failed",
-            "Please check your connection and try again.",
+            "Please check your connection and try again. Your downloaded data has been kept.",
           );
         } finally {
           setIsRefreshingAll(false);
         }
       };
     
-      const deleteAllOfflineData = async (showSuccessAlert: boolean, skipSettingIsDeletingAll = false, keepAthleteHistory = false) => {
-        if (!skipSettingIsDeletingAll && isDeletingAll) return;
-        if (!skipSettingIsDeletingAll) setIsDeletingAll(true);
+      const deleteAllOfflineData = async () => {
+        if (isDeletingAll || isRefreshingAll) return;
+        setIsDeletingAll(true);
         try {
           await Promise.all([
             clearOfflineCache(OFFLINE_CACHE_KEYS.standards),
@@ -430,22 +405,18 @@ export const useOfflineData = () => {
           for (const meet of availableMeets) {
             await clearMeetData(meet.name, { storageKeys });
           }
-          if (!keepAthleteHistory) {
-            await clearAllAthleteHistory();
-          }
-    
+          await clearAllAthleteHistory();
+
           setRefreshCounter((count) => count + 1);
-          if (showSuccessAlert) {
-            Alert.alert(
-              "Deleted",
-              "All offline data has been removed from your device.",
-            );
-          }
+          Alert.alert(
+            "Deleted",
+            "All offline data has been removed from your device.",
+          );
         } catch (error) {
           console.error("Delete all failed:", error);
           Alert.alert("Delete Failed", "Please try again.");
         } finally {
-          if (!skipSettingIsDeletingAll) setIsDeletingAll(false);
+          setIsDeletingAll(false);
         }
       };
     
@@ -471,7 +442,7 @@ export const useOfflineData = () => {
         {
           text: "Delete All",
           style: "destructive",
-          onPress: () => deleteAllOfflineData(true),
+          onPress: () => deleteAllOfflineData(),
         },
       ]
     );

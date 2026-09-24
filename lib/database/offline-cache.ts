@@ -52,6 +52,24 @@ export async function setOfflineCache<T>(key: string, data: T): Promise<OfflineC
   return entry;
 }
 
+/**
+ * `setOfflineCache` for an explicit download or refresh: a failed write
+ * rejects instead of being logged and reported as stored.
+ *
+ * The browse path deliberately swallows a failed write (fresh data is still
+ * shown). A download is different: "Downloaded" / "Refresh Complete" is a
+ * promise the data is on the device, and the write is the only thing that
+ * keeps it. A rejected write leaves the previous entry in place.
+ */
+export async function replaceOfflineCache<T>(key: string, data: T): Promise<OfflineCacheEntry<T>> {
+  const entry: OfflineCacheEntry<T> = {
+    data,
+    lastSynced: Date.now(),
+  };
+  await AsyncStorage.setItem(key, JSON.stringify(entry));
+  return entry;
+}
+
 export async function clearOfflineCache(key: string): Promise<void> {
   try {
     await AsyncStorage.removeItem(key);

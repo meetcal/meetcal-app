@@ -686,6 +686,41 @@ describe("package revalidation with ETag", () => {
     expect(stampWrites).toHaveLength(1);
   });
 
+  it("re-downloads every athlete's history on a 304 when a refresh forces it, however fresh", async () => {
+    // Synced just now: without the option this 304 would fetch nothing.
+    storedEtags({ "Etag Meet Forced": '"abc"' });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet Forced" as any, { forceHistoryRefresh: true });
+
+    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(mockFindAthleteNamesWithoutHistory).not.toHaveBeenCalled();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    // The package is unchanged, so the roster/schedule on disk are not rewritten.
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing over the stored meet when the package request fails", async () => {
+    storedEtags({ "Etag Meet Down": '"abc"' });
+    mockFetchApiMeetPackageConditional.mockRejectedValueOnce(new Error("MeetCal API error 503"));
+    jest.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      prefetchMeetData("Etag Meet Down" as any, { forceHistoryRefresh: true }),
+    ).rejects.toThrow(/meet_package/);
+
+    // A refresh relies on this: the previous download is still intact.
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
+    expect(mockSaveAthleteHistory).not.toHaveBeenCalled();
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+  });
+
   it("reports an incomplete download when the missing history cannot be fetched on a 304", async () => {
     storedEtags({ "Etag Meet A3": '"abc"' });
     mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });

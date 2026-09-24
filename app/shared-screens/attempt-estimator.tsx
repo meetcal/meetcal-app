@@ -163,7 +163,9 @@ export default function AttemptEstimatorScreen() {
         sessionNumber,
         params.platform,
         freshSessionAthletes,
-      ).catch(() => {});
+      ).catch((error) => {
+        console.warn("Failed to cache estimator session athletes:", error);
+      });
 
       // History for *this session's* athletes only. This used to pull the
       // two-year history of the entire roster (~40 sequential requests at a

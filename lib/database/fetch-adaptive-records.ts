@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiAdaptiveRecords, type ApiAdaptiveRecordRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
@@ -87,6 +92,15 @@ async function fetchAdaptiveRecordsFresh(gender?: Gender, ageGroup?: string): Pr
 async function persistAdaptiveRecords(data: RecordsData) {
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection that leaves the stored copy untouched. Never the cached fallback.
+ */
+export async function downloadAdaptiveRecordsForOffline(): Promise<void> {
+  const data = await fetchAdaptiveRecordsFresh();
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, data);
 }
 
 export const adaptiveRecordsResource = createMutableResource<RecordsData, []>({

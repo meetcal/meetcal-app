@@ -22,29 +22,41 @@ jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({ availableMeets: MEETS, isLoading: false }),
 }));
 
-// Network fetchers: each would hit the API and then rewrite its cache.
+// Network fetchers: each would hit the API and then rewrite its cache. The
+// legacy browse names are mapped to the same mocks so these tests also run
+// against the old delete-then-download refresh (mutation check).
 const mockFetchStandards = jest.fn(async () => {});
 const mockFetchQualifyingTotals = jest.fn(async () => {});
 jest.mock("@/lib/database/fetch-standards", () => ({
   fetchStandards: () => mockFetchStandards(),
+  downloadStandardsForOffline: () => mockFetchStandards(),
 }));
 jest.mock("@/lib/database/fetch-qualifying-totals", () => ({
   fetchQualifyingTotals: () => mockFetchQualifyingTotals(),
+  downloadQualifyingTotalsForOffline: () => mockFetchQualifyingTotals(),
 }));
-jest.mock("@/lib/database/fetch-adaptive-records", () => ({ fetchAdaptiveRecords: jest.fn() }));
+jest.mock("@/lib/database/fetch-adaptive-records", () => ({
+  fetchAdaptiveRecords: jest.fn(),
+  downloadAdaptiveRecordsForOffline: jest.fn(),
+}));
 jest.mock("@/lib/database/fetch-records", () => ({
   fetchFederations: jest.fn(async () => []),
   fetchRecords: jest.fn(),
+  downloadRecordsForOffline: jest.fn(),
 }));
 jest.mock("@/lib/database/fetch-wso-records", () => ({
   fetchWSOList: jest.fn(async () => []),
   fetchWSORecords: jest.fn(),
+  downloadWSORecordsForOffline: jest.fn(),
 }));
-jest.mock("@/lib/database/fetchIntlRankings", () => ({ fetchIntlRankings: jest.fn() }));
+jest.mock("@/lib/database/fetchIntlRankings", () => ({
+  fetchIntlRankings: jest.fn(),
+  downloadIntlRankingsForOffline: jest.fn(),
+}));
 
-const mockPrefetchMeetData = jest.fn(async (_meet: string) => {});
+const mockPrefetchMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
 jest.mock("@/lib/database/meet-manager", () => ({
-  prefetchMeetData: (meet: string) => mockPrefetchMeetData(meet),
+  prefetchMeetData: (meet: string, options?: unknown) => mockPrefetchMeetData(meet, options),
 }));
 
 const mockClearMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
@@ -97,11 +109,18 @@ async function mount() {
 }
 
 const cacheEntry = JSON.stringify({ data: { any: "rows" }, lastSynced: 1 });
+const freshEntry = JSON.stringify({ data: { any: "fresh rows" }, lastSynced: 2 });
 
 beforeEach(async () => {
   jest.clearAllMocks();
   captured = null;
+  mockIsNetworkAvailable.mockReset();
   mockIsNetworkAvailable.mockResolvedValue(true);
+  // A successful download writes over the stored copy.
+  mockFetchStandards.mockImplementation(async () => {
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.standards, freshEntry);
+  });
+  mockPrefetchMeetData.mockImplementation(async () => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
   alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
   await AsyncStorage.clear();
@@ -133,7 +152,7 @@ describe("useOfflineData refresh all", () => {
     act(() => tree.unmount());
   });
 
-  it("re-downloads only what was downloaded, and keeps athlete history", async () => {
+  it("re-downloads only what was downloaded, over the old copy, and keeps athlete history", async () => {
     const tree = await mount();
 
     act(() => captured!.confirmRefreshAll());
@@ -141,12 +160,88 @@ describe("useOfflineData refresh all", () => {
 
     expect(mockFetchStandards).toHaveBeenCalledTimes(1);
     expect(mockFetchQualifyingTotals).not.toHaveBeenCalled();
-    expect(mockPrefetchMeetData.mock.calls).toEqual([["Meet A"]]);
+    // A user refresh re-fetches history even when the package answers 304.
+    expect(mockPrefetchMeetData.mock.calls).toEqual([
+      ["Meet A", { forceHistoryRefresh: true }],
+    ]);
+    // Written over in place: nothing is cleared first.
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(freshEntry);
     expect(mockMarkMeetExplicitlyDownloaded).toHaveBeenCalledWith("Meet A", true, {
       endDate: "2099-06-22",
     });
     expect(mockClearAllAthleteHistory).not.toHaveBeenCalled();
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Refresh Complete");
+    act(() => tree.unmount());
+  });
+});
+
+describe("useOfflineData refresh all, partial failure", () => {
+  it("keeps the old copy of an item whose API call fails and replaces the rest", async () => {
+    mockFetchStandards.mockRejectedValueOnce(new Error("MeetCal API error 500"));
+    const tree = await mount();
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+
+    // Standards failed: the old download is still on disk.
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(cacheEntry);
+    // The meet after it still refreshed, and was never cleared or unmarked.
+    expect(mockPrefetchMeetData).toHaveBeenCalledWith("Meet A", { forceHistoryRefresh: true });
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+    expect(mockMarkMeetExplicitlyDownloaded).toHaveBeenCalledWith("Meet A", true, {
+      endDate: "2099-06-22",
+    });
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalledWith("Meet A", false);
+
+    const [title, message] = alertSpy.mock.calls.at(-1) ?? [];
+    expect(title).toBe("Refresh Incomplete");
+    expect(message).toContain("A/B Standards");
+    expect(message).not.toContain("Meet A");
+    expect(captured!.isRefreshingAll).toBe(false);
+    act(() => tree.unmount());
+  });
+
+  it("keeps a meet whose re-download fails downloaded, with its data", async () => {
+    mockPrefetchMeetData.mockRejectedValueOnce(
+      new Error("Offline prefetch incomplete (Meet A): meet_package"),
+    );
+    const tree = await mount();
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+
+    // Old refresh: clearMeetData wiped the roster/schedule and the
+    // "downloaded" mark before the failed re-download.
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+    expect(mockMarkMeetExplicitlyDownloaded).not.toHaveBeenCalled();
+    // The standards before it were replaced.
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(freshEntry);
+
+    const [title, message] = alertSpy.mock.calls.at(-1) ?? [];
+    expect(title).toBe("Refresh Incomplete");
+    expect(message).toContain("Meet A");
+    expect(message).toContain("still on this device");
+    act(() => tree.unmount());
+  });
+
+  it("stops when the connection drops mid-refresh and reports every item not refreshed", async () => {
+    const tree = await mount();
+    // Up for the pre-check, gone by the time standards fails.
+    mockIsNetworkAvailable.mockResolvedValueOnce(true).mockResolvedValue(false);
+    mockFetchStandards.mockRejectedValueOnce(new Error("Network request failed"));
+
+    act(() => captured!.confirmRefreshAll());
+    await tap("Refresh All");
+
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(cacheEntry);
+    expect(mockPrefetchMeetData).not.toHaveBeenCalled();
+    expect(mockClearMeetData).not.toHaveBeenCalled();
+
+    const [title, message] = alertSpy.mock.calls.at(-1) ?? [];
+    expect(title).toBe("Refresh Failed");
+    expect(message).toContain("connection was lost");
+    expect(message).toContain("A/B Standards, Meet A");
     act(() => tree.unmount());
   });
 });

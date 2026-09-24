@@ -1,7 +1,12 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
+import {
+  getOfflineCache,
+  OFFLINE_CACHE_KEYS,
+  replaceOfflineCache,
+  setOfflineCache,
+} from './offline-cache';
 import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
@@ -122,6 +127,16 @@ async function fetchStandardsFresh(
 async function persistStandards(data: StandardsData) {
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+}
+
+/**
+ * Explicit offline download / refresh: fresh from the API and stored, or a
+ * rejection. Never the cached copy — `fetchStandards` falls back to it, which
+ * let a failed refresh report success. On failure the stored copy is untouched.
+ */
+export async function downloadStandardsForOffline(): Promise<void> {
+  const data = await fetchStandardsFresh();
+  await replaceOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
 }
 
 export const standardsResource = createMutableResource<StandardsData, []>({

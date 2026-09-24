@@ -424,12 +424,29 @@ async function cleanupOldMeetData() {
   await saveCacheInfo(info);
 }
 
-// Prefetch meet data
-export async function prefetchMeetData(meet: MeetName) {
-  const inFlight = fullPrefetchRequests.get(meet);
-  if (inFlight) return inFlight;
+export type PrefetchMeetOptions = {
+  /**
+   * Re-download every athlete's history even when the package answers `304`
+   * and the history is younger than `HISTORY_REFRESH_TTL_MS`. A user-initiated
+   * "Refresh All" means *now*; the package ETag does not cover history.
+   */
+  forceHistoryRefresh?: boolean;
+};
 
-  const request = prefetchMeetDataUncached(meet).finally(() => {
+// Prefetch meet data. Writes over the stored copy in place and never clears
+// it first, so a failed prefetch leaves whatever was already on disk.
+export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOptions = {}) {
+  const inFlight = fullPrefetchRequests.get(meet);
+  if (inFlight) {
+    if (!options.forceHistoryRefresh) return inFlight;
+    // A background warm-up may not refresh history; let it finish (its
+    // outcome is not this caller's) and then run the forced one.
+    await inFlight.catch(() => undefined);
+    const next = fullPrefetchRequests.get(meet);
+    if (next) return next;
+  }
+
+  const request = prefetchMeetDataUncached(meet, options).finally(() => {
     fullPrefetchRequests.delete(meet);
   });
   fullPrefetchRequests.set(meet, request);
@@ -537,7 +554,7 @@ async function ingestMeetPackage(
   return { historyComplete };
 }
 
-async function prefetchMeetDataUncached(meet: MeetName) {
+async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOptions) {
   const errors: string[] = [];
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
   let freshEtag: string | null = null;
@@ -554,7 +571,9 @@ async function prefetchMeetDataUncached(meet: MeetName) {
       // SQLITE_FULL cleanup remove history without touching the roster. Fill
       // in whatever is missing rather than trusting the validator for it.
       const syncedAt = (await readHistorySyncedAt())[meet] ?? 0;
-      const historyIsStale = Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
+      const historyIsStale =
+        options.forceHistoryRefresh === true ||
+        Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
       const toFetch = historyIsStale
         ? fetched.athleteNames
         : await findAthleteNamesWithoutHistory(fetched.athleteNames);
