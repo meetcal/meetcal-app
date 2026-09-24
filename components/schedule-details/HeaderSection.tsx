@@ -24,14 +24,8 @@ import { calculateWeighInTime } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withSpring,
-} from "react-native-reanimated";
 import { Palette } from "@/constants/Palette";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
@@ -79,23 +73,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
-
-  // Bounce the save button whenever the saved state flips (not on first mount).
-  const saveScale = useSharedValue(1);
-  const didMountRef = useRef(false);
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    saveScale.value = withSequence(
-      withSpring(1.12, { damping: 12, stiffness: 320 }),
-      withSpring(1, { damping: 14, stiffness: 300 }),
-    );
-  }, [isSaved, saveScale]);
-  const saveAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: saveScale.value }],
-  }));
 
   const showSaveAlert = (action: "save" | "remove") => {
     const message =
@@ -343,19 +320,17 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       </View>
 
       <View style={styles.buttonContainer}>
-        <Animated.View style={[styles.saveButtonWrapper, saveAnimatedStyle]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveButton,
-              pressed && styles.saveButtonPressed,
-            ]}
-            onPress={handleSavePress}
-          >
-            <ThemedText style={styles.saveButtonText}>
-              {isSaved ? "Unsave Session" : "Save Session"}
-            </ThemedText>
-          </Pressable>
-        </Animated.View>
+        <Pressable
+          style={({ pressed }) => [
+            styles.saveButton,
+            pressed && styles.saveButtonPressed,
+          ]}
+          onPress={handleSavePress}
+        >
+          <ThemedText style={styles.saveButtonText}>
+            {isSaved ? "Unsave Session" : "Save Session"}
+          </ThemedText>
+        </Pressable>
 
         <Pressable
           style={({ pressed }) => [
@@ -518,14 +493,12 @@ const styles = StyleSheet.create({
     gap: 12,
     flexDirection: "row",
   },
-  saveButtonWrapper: {
-    flex: 1,
-  },
   saveButton: {
     backgroundColor: Palette.systemBlue,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
+    flex: 1,
   },
   saveButtonPressed: {
     opacity: 0.8,

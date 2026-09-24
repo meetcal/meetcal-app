@@ -1,4 +1,3 @@
-import { EditableField } from "@/app/schedule-toolbar/profile";
 import { getCloseIcon } from "@/lib/start-list-utils";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useUser } from "@clerk/expo";
@@ -20,6 +19,8 @@ import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 import { showToast } from "../ui/Toast";
 import { Palette } from "@/constants/Palette";
+
+type EditableField = "firstName" | "lastName";
 
 interface EditProfileModalProps {
   isEditing: boolean;
