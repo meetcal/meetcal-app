@@ -169,6 +169,23 @@ describe("formatSessionDisplayDate", () => {
     }
   });
 
+  it("reads the calendar date in the meet zone whatever the device zone", () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      expect(
+        formatSessionDisplayDate(undefined, "2026-01-15", "Pacific/Honolulu"),
+      ).toBe("Thu, Jan 15");
+      expect(
+        formatSessionDisplayDate(undefined, "2026-01-15T00:00:00", "America/New_York"),
+      ).toBe("Thu, Jan 15");
+      // Not a calendar date: shown as given rather than "Invalid Date".
+      expect(formatSessionDisplayDate("TBD", "TBD", "America/New_York")).toBe("TBD");
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
   });

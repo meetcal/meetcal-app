@@ -66,17 +66,3 @@ export const nationalRankingsResource = createMutableResource<
   persistFresh: (data, weightClassAge) =>
     persistNationalRankings(weightClassAge, data),
 });
-
-export async function fetchNationalRankings(weightClassAge: string): Promise<NationalRanking[]> {
-  try {
-    const rankings = await fetchNationalRankingsFresh(weightClassAge);
-    await persistNationalRankings(weightClassAge, rankings);
-    return rankings;
-  } catch (error) {
-    const cached = await readNationalRankingsCache(weightClassAge);
-    if (cached?.data) {
-      return cached.data;
-    }
-    throw error;
-  }
-}

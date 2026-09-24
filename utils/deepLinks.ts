@@ -111,12 +111,33 @@ export function getOneSignalDeepLink(event: unknown) {
   return value ?? null;
 }
 
+/**
+ * Whether a `from` param is safe to hand to `router.replace`.
+ *
+ * `from` is a return path threaded through sign-in and the paywall. Callers
+ * have not always sent one: the schedule tab's profile button sent the bare
+ * string `"info"`, and sign-in's guard tested it against the unrelated literal
+ * `"feature"`, so `router.replace("info")` resolved relative to
+ * `/(auth)/sign-in` and dropped the user on a route that does not exist
+ * instead of where they were going. Require an absolute in-app path, and
+ * reject anything that could navigate off-app.
+ *
+ * Deep links (`normalizeDeepLinkHref`) use the same rule: a push payload of
+ * `//host/path` used to be accepted as an in-app href because it starts with
+ * `/`.
+ */
+export function isInternalRoutePath(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  // `//host` is protocol-relative, not an in-app path.
+  return value.startsWith('/') && !value.startsWith('//');
+}
+
 export function normalizeDeepLinkHref(value: string): Href | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
   if (trimmed.startsWith("/")) {
-    return trimmed as Href;
+    return isInternalRoutePath(trimmed) ? (trimmed as Href) : null;
   }
 
   try {
@@ -130,7 +151,7 @@ export function normalizeDeepLinkHref(value: string): Href | null {
         ? `/${parsed.hostname}`
         : "";
     const path = `${hostPath}${parsed.pathname || ""}` || "/";
-    return `${path}${parsed.search}` as Href;
+    return isInternalRoutePath(path) ? (`${path}${parsed.search}` as Href) : null;
   } catch {
     return null;
   }

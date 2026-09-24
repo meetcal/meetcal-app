@@ -3,7 +3,7 @@ import {
   OFFLINE_CACHE_KEYS,
   setOfflineCache,
 } from "@/lib/database/offline-cache";
-import { fetchNationalRankings } from "@/lib/database/fetch-national-rankings";
+import { nationalRankingsResource } from "@/lib/database/fetch-national-rankings";
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 
 const mockGetJson = jest.fn();
@@ -32,49 +32,53 @@ const mockSetOfflineCache = setOfflineCache as jest.MockedFunction<
   typeof setOfflineCache
 >;
 
-describe("fetchNationalRankings offline cache behavior", () => {
+// `nationalRankingsResource` is the only path the screen uses. The removed
+// `fetchNationalRankings` wrapper re-implemented its network-then-cache policy
+// with no caller outside this file.
+describe("nationalRankingsResource", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("returns deduped online rankings and updates offline cache", async () => {
+  it("returns deduped online rankings and merges them into the offline cache", async () => {
     mockGetJson.mockResolvedValue([
       { name: "Athlete A", total: 250 },
       { name: "Athlete A", total: 240 },
       { name: "Athlete B", total: 235 },
+      { name: null, total: 230 },
     ]);
-    mockGetOfflineCache.mockResolvedValue({ data: {}, lastSynced: 1 } as any);
+    mockGetOfflineCache.mockResolvedValue({
+      data: { "Open Women's 71kg": [] },
+      lastSynced: 1,
+    } as any);
     mockSetOfflineCache.mockResolvedValue({ data: {}, lastSynced: 2 } as any);
 
-    const result = await fetchNationalRankings("Open Men's 89kg");
+    const result = await nationalRankingsResource.revalidate("Open Men's 89kg");
 
-    expect(result).toHaveLength(2);
-    expect(result[0].name).toBe("Athlete A");
-    expect(result[1].name).toBe("Athlete B");
+    expect(result.data.map((row) => row.name)).toEqual(["Athlete A", "Athlete B"]);
+    expect(result.data[0].total).toBe(250);
+    expect(result.lastUpdatedAt).toBe(2);
     expect(mockSetOfflineCache).toHaveBeenCalledWith(
       OFFLINE_CACHE_KEYS.nationalRankings,
-      { "Open Men's 89kg": result },
+      { "Open Women's 71kg": [], "Open Men's 89kg": result.data },
     );
   });
 
-  it("falls back to cached rankings when API fails", async () => {
+  it("serves the cached rankings for one class and rejects a failed refresh", async () => {
     mockGetJson.mockRejectedValue(new Error("network failed"));
     mockGetOfflineCache.mockResolvedValue({
       data: {
-        "Open Women's 71kg": [{ name: "Cached Athlete", total: 220 }],
+        "Open Women's 71kg": [{ id: 0, name: "Cached Athlete", total: 220 }],
       },
       lastSynced: 1,
     } as any);
 
-    const result = await fetchNationalRankings("Open Women's 71kg");
-
-    expect(result).toEqual([{ name: "Cached Athlete", total: 220 }]);
-  });
-
-  it("throws when API fails and no cached rankings exist", async () => {
-    mockGetJson.mockRejectedValue(new Error("network failed"));
-    mockGetOfflineCache.mockResolvedValue(null);
-
-    await expect(fetchNationalRankings("Open Men's 102kg")).rejects.toThrow();
+    await expect(nationalRankingsResource.loadCached("Open Women's 71kg")).resolves.toEqual({
+      data: [{ id: 0, name: "Cached Athlete", total: 220 }],
+      lastUpdatedAt: 1,
+    });
+    await expect(nationalRankingsResource.loadCached("Open Men's 102kg")).resolves.toBeNull();
+    await expect(nationalRankingsResource.revalidate("Open Women's 71kg")).rejects.toThrow();
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });

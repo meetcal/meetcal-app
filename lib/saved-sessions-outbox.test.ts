@@ -182,6 +182,63 @@ describe("unreadable storage", () => {
   });
 });
 
+describe("persisted PUT bodies", () => {
+  it("normalizes an older-build body before it is replayed or merged", async () => {
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({
+        nextRev: 3,
+        resets: {},
+        sessions: {
+          legacy: {
+            op: "put",
+            rev: 1,
+            meet: "Test Meet",
+            session: {
+              id: "legacy",
+              meet: "Test Meet",
+              sessionNumber: "4",
+              platform: "Blue",
+              weightClass: null,
+              startTime: null,
+              athleteNames: "Jane Doe",
+            },
+          },
+          blank: {
+            op: "put",
+            rev: 2,
+            meet: "Test Meet",
+            session: { id: "  ", meet: "Test Meet", sessionNumber: 1, platform: "Red" },
+          },
+        },
+      }),
+    );
+
+    const outbox = await readOutbox(USER);
+    // A body with no usable identity cannot be replayed.
+    expect(Object.keys(outbox.sessions)).toEqual(["legacy"]);
+    const body = outbox.sessions.legacy.session!;
+    expect(body).toMatchObject({
+      sessionNumber: 4,
+      weightClass: "",
+      startTime: "",
+      weighInTime: "",
+      date: "",
+    });
+    expect(body.athleteNames).toBeUndefined();
+
+    const merged = mergeServerSessions([], outbox);
+    expect(merged).toEqual([body]);
+
+    await flushOutbox(USER, getToken);
+    expect(mockPut).toHaveBeenCalledTimes(1);
+    const sent = mockPut.mock.calls[0][2];
+    expect(sent.session_number).toBe(4);
+    expect(sent.weight_class).toBe("");
+    expect(sent.athlete_names).toBeUndefined();
+  });
+});
+
 describe("mergeServerSessions", () => {
   it("keeps a pending PUT the server does not have yet, from the outbox body", async () => {
     await markSessionPut(USER, session("local-only"));

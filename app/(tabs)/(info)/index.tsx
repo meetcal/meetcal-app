@@ -19,7 +19,7 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAuthGuard } from "@/utils/authGuard";
 import * as Sentry from '@sentry/react-native';
-import { Stack, useRouter } from "expo-router";
+import { type Href, Stack, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,7 +36,7 @@ export default function InfoScreen() {
   const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
 
   const openCompDataScreen = useCallback(
-    (pathname: string, feature: string) => {
+    (pathname: Href, feature: string) => {
       const authResult = requireAuth({
         feature,
         message: "Sign in to access premium features.",
@@ -45,7 +45,7 @@ export default function InfoScreen() {
       if (authResult === null || authResult === false) {
         return;
       }
-      router.push(pathname as any);
+      router.push(pathname);
     },
     [requireAuth, router],
   );

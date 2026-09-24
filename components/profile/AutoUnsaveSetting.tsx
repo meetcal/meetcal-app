@@ -84,7 +84,7 @@ export function AutoUnsaveSetting({
           from: "/schedule-toolbar/profile",
           feature: "auto-unsave-started-sessions",
         },
-      } as never);
+      });
       return;
     }
 

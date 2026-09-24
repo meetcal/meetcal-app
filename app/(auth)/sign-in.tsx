@@ -50,7 +50,7 @@ export default function SignInScreen() {
         return;
       }
 
-      router.replace("/(tabs)/(index)" as any);
+      router.replace("/(tabs)/(index)");
     });
   }, [feature, from, isLoaded, isSignedIn, isSubscribed, isSubscriptionLoading, userId]);
 

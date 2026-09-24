@@ -594,6 +594,35 @@ describe('meetcal API mappers', () => {
     expect(formatApiTime('25:99')).toBe('');
   });
 
+  it('titles schedule days in the meet zone and never renders "Invalid Date"', () => {
+    const row = {
+      meet: 'Test Meet',
+      platform: 'Red',
+      session_id: 1,
+      start_time: '09:00:00',
+      weigh_in_time: '07:00:00',
+      weight_class: '60kg',
+    };
+    const originalTz = process.env.TZ;
+    // A device far east of the meet: a device-local anchor would flip the day.
+    process.env.TZ = 'Pacific/Auckland';
+    try {
+      const schedule = mapApiSchedule([
+        { ...row, date: '2026-06-20' },
+        { ...row, date: '2026-06-21T00:00:00' },
+        { ...row, date: 'TBD' },
+      ]);
+      expect(schedule.map((day) => day.date)).toEqual([
+        'June 20, 2026',
+        'June 21, 2026',
+        'TBD',
+      ]);
+      expect(schedule[2].fullDate).toBe('TBD');
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
   it('computes New York DST offset from the meet date, not the device zone', () => {
     const summer = mapApiMeet({
       name: 'Summer Meet',

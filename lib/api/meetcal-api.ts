@@ -13,6 +13,7 @@ import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
   getTimeZoneAbbreviation,
+  meetCalendarDateAnchor,
   YEAR_BESTS_YEARS,
 } from '@/utils/dateTime';
 import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
@@ -60,12 +61,6 @@ export const NAMES_QUERY_CHUNK_SIZE = 40;
  * the zone offset at this instant gives the meet's own offset on that date.
  */
 const MEET_DATE_OFFSET_PROBE_HOUR_UTC = 16;
-/**
- * Noon UTC is inside the same calendar day in every US meet timezone, so a
- * meet date rendered from this instant never slips to the previous/next day.
- */
-const MEET_DATE_DISPLAY_HOUR_UTC = 12;
-
 function chunkValues<T>(values: T[], size: number): T[][] {
   if (values.length === 0) return [];
   const chunks: T[][] = [];
@@ -653,16 +648,18 @@ export function formatApiTime(time: string | null | undefined): string {
   }
 }
 
+/**
+ * Display title for a schedule day. The API's `date` is scraped text, not a
+ * typed date, so it is anchored through the one calendar-date parser
+ * (`meetCalendarDateAnchor`, noon UTC). The old inline copy fell back to
+ * `new Date(date)` for anything that was not `YYYY-MM-DD`, and a row dated
+ * "TBD" rendered as the day title "Invalid Date". A value that is not a
+ * calendar date is shown as sent.
+ */
 function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentifier): string {
-  const [datePart] = date.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const safeUtcDate = Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)
-    ? new Date(date)
-    : new Date(
-        Date.UTC(year, month - 1, day, MEET_DATE_DISPLAY_HOUR_UTC, 0, 0),
-      );
-
-  return safeUtcDate.toLocaleDateString('en-US', {
+  const anchor = meetCalendarDateAnchor(date);
+  if (!anchor) return date;
+  return anchor.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
