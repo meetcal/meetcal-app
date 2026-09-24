@@ -316,4 +316,105 @@ describe("SubscriptionProvider", () => {
     await flush();
     expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
   });
+
+  describe("CustomerInfo listener", () => {
+    function listener(): (info: unknown) => Promise<void> {
+      const add = Purchases.addCustomerInfoUpdateListener as jest.Mock;
+      return add.mock.calls[add.mock.calls.length - 1][0];
+    }
+
+    it("publishes an active entitlement and writes it to SecureStore", async () => {
+      const value = await mountProvider();
+      expect(value.current.isSubscribed).toBeNull();
+
+      await act(async () => {
+        await listener()(customerInfo("meetcal_quarterly"));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("quarterly");
+      expect(value.current.isLoading).toBe(false);
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        appUserId: "rc_user",
+        isSubscribed: true,
+        subscriptionType: "quarterly",
+      });
+    });
+
+    it("publishes an empty entitlement as free, over a subscribed cache", async () => {
+      mockSecureStore.set(
+        SECURE_KEY,
+        JSON.stringify({ appUserId: "rc_user", isSubscribed: true, subscriptionType: "lifetime", timestamp: Date.now() }),
+      );
+      const value = await mountProvider();
+      expect(value.current.isSubscribed).toBe(true);
+
+      await act(async () => {
+        await listener()(customerInfo(null));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(false);
+      expect(value.current.subscriptionType).toBe("free");
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        isSubscribed: false,
+        subscriptionType: "free",
+      });
+    });
+  });
+
+  it("does nothing after unmounting while the SecureStore read is pending", async () => {
+    const getItem = jest.requireMock("expo-secure-store").getItemAsync as jest.Mock;
+    let finishRead!: (raw: string | null) => void;
+    getItem.mockImplementationOnce(
+      () => new Promise<string | null>((resolve) => {
+        finishRead = resolve;
+      }),
+    );
+    const renders: (boolean | null)[] = [];
+    function Consumer() {
+      renders.push(useSubscription().isSubscribed);
+      return null;
+    }
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(
+        <SubscriptionProvider>
+          <Consumer />
+        </SubscriptionProvider>,
+      );
+    });
+    await flush();
+    await act(async () => {
+      renderer.unmount();
+    });
+    const rendersAtUnmount = renders.length;
+
+    await act(async () => {
+      finishRead(
+        JSON.stringify({ appUserId: "rc_user", isSubscribed: true, subscriptionType: "quarterly", timestamp: Date.now() }),
+      );
+    });
+    await runInitialRefresh();
+
+    expect(renders.length).toBe(rendersAtUnmount);
+    expect(renders).not.toContain(true);
+    expect(mockGetCustomerInfo).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed restore as not subscribed and keeps the current state", async () => {
+    (Purchases.restorePurchases as jest.Mock).mockRejectedValue(new Error("store down"));
+    const value = await mountProvider();
+
+    let restored: boolean | undefined;
+    await act(async () => {
+      restored = await value.current.restorePurchases();
+    });
+
+    expect(restored).toBe(false);
+    expect(value.current.isSubscribed).toBeNull();
+    expect(mockSecureStore.has(SECURE_KEY)).toBe(false);
+  });
 });
