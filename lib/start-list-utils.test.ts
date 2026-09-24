@@ -186,6 +186,19 @@ describe("formatSessionDisplayDate", () => {
     }
   });
 
+  it("never re-parses a non-ISO date as device-local midnight", () => {
+    // Regression: with no ISO full date, the mapped day title went through
+    // `new Date("January 15, 2026")` (device midnight) and was read back in
+    // UTC, so a device east of Greenwich showed "Wed, Jan 14". Assert on the
+    // policy (shown as sent), not on a device zone: assigning
+    // `process.env.TZ` inside a Jest test does not change the zone.
+    expect(formatSessionDisplayDate("January 15, 2026")).toBe("January 15, 2026");
+    expect(
+      formatSessionDisplayDate("January 15, 2026", "", "America/New_York"),
+    ).toBe("January 15, 2026");
+    expect(formatSessionDisplayDate(undefined, "01/15/2026")).toBe("01/15/2026");
+  });
+
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
   });

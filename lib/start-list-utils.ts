@@ -140,15 +140,12 @@ export function formatSessionDisplayDate(
       timeZone: timeZoneId || 'UTC'
     });
   }
-  const source = fullDate || displayDate || '';
-  const parsed = new Date(source);
-  if (Number.isNaN(parsed.getTime())) return displayDate || source;
-  return parsed.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC'
-  });
+  // Not a `YYYY-MM-DD` calendar date: shown as sent, like the schedule
+  // mapper's day titles. This used to fall back to `new Date(source)`, which
+  // parses text such as the mapped day title "January 15, 2026" as *device*
+  // midnight; read back in UTC that is "Wed, Jan 14" on any device east of
+  // Greenwich.
+  return displayDate || fullDate || '';
 }
 
 /**

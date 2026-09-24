@@ -26,6 +26,7 @@ import {
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
+  getJson,
   getJsonArray,
   getJsonObject,
   mapApiAthlete,
@@ -102,6 +103,22 @@ describe('meetcal API client', () => {
         }),
       }),
     );
+  });
+
+  it('returns parsed JSON as unknown, never as a caller-inferred type', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ rows: 'not an array' }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // Compile-time regression (`bun run typecheck` covers test files): with a
+    // generic `getJson<T>`, this annotation inferred `T = string[]` and cast
+    // the object body past `JSON.parse` unchecked. It must not compile.
+    // @ts-expect-error unknown is not assignable to string[]
+    const rows: string[] = await getJson('/meets/athletes');
+    expect(Array.isArray(rows)).toBe(false);
   });
 
   it('reads plain array list endpoints', async () => {

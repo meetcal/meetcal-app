@@ -351,15 +351,21 @@ async function requestRaw(
   }
 }
 
-async function requestJson<T>(
+/**
+ * Parsed JSON as `unknown`. There is deliberately no type parameter: a
+ * `requestJson<T>` let a caller's annotation (`const rows: Row[] = await
+ * getJson(...)`) infer `T` and cast past `JSON.parse` unchecked. Callers narrow
+ * with `assertArray` / `assertHasFields` / a validator.
+ */
+async function requestJson(
   method: string,
   path: string,
   query?: Record<string, QueryValue>,
   body?: unknown,
   options?: RequestOptions,
-): Promise<T> {
+): Promise<unknown> {
   const { text } = await requestRaw(method, path, query, body, options);
-  return parseResponseJson(method, path, text) as T;
+  return parseResponseJson(method, path, text);
 }
 
 const validatorCache = new ValidatorCache(HTTP_VALIDATOR_CACHE_LIMIT);
@@ -432,12 +438,12 @@ async function getJsonRevalidated<T>(
   return value;
 }
 
-export function getJson<T>(
+export function getJson(
   path: string,
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('GET', path, query, undefined, options);
+): Promise<unknown> {
+  return requestJson('GET', path, query, undefined, options);
 }
 
 /**
@@ -454,7 +460,7 @@ export async function getJsonArray<T>(
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
 ): Promise<T[]> {
-  return assertArray<T>(await getJson<unknown>(path, query, options), path);
+  return assertArray<T>(await getJson(path, query, options), path);
 }
 
 /** `getJson` for the endpoints that return a single JSON object. */
@@ -463,41 +469,41 @@ export async function getJsonObject<T>(
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
 ): Promise<T> {
-  const response = await getJson<unknown>(path, query, options);
+  const response = await getJson(path, query, options);
   assertObject(response, path);
   return response as T;
 }
 
-export function postJson<T>(
+export function postJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('POST', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('POST', path, undefined, body, options);
 }
 
-export function putJson<T>(
+export function putJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('PUT', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('PUT', path, undefined, body, options);
 }
 
-export function patchJson<T>(
+export function patchJson(
   path: string,
   body: unknown,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('PATCH', path, undefined, body, options);
+): Promise<unknown> {
+  return requestJson('PATCH', path, undefined, body, options);
 }
 
-export function deleteJson<T>(
+export function deleteJson(
   path: string,
   query?: Record<string, QueryValue>,
   options?: RequestOptions,
-): Promise<T> {
-  return requestJson<T>('DELETE', path, query, undefined, options);
+): Promise<unknown> {
+  return requestJson('DELETE', path, query, undefined, options);
 }
 
 export type ApiMeet = {
