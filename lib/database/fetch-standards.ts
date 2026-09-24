@@ -2,18 +2,10 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
-type StandardsRow = {
-  age_category: string | null;
-  gender: string | null;
-  weight_class: string | null;
-  standard_a: number | null;
-  standard_b: number | null;
-};
-
-type CompleteStandardsRow = StandardsRow & {
+type CompleteStandardsRow = Readonly<ApiStandardRow> & {
   age_category: string;
   gender: string;
   weight_class: string;
@@ -25,8 +17,8 @@ type CompleteStandardsRow = StandardsRow & {
  * down, offline cache included — the same one-bad-row failure the qualifying
  * totals fetcher already guards against.
  */
-function isCompleteStandardsRow(row: StandardsRow): row is CompleteStandardsRow {
-  return Boolean(row && row.age_category && row.gender && row.weight_class);
+function isCompleteStandardsRow(row: Readonly<ApiStandardRow>): row is CompleteStandardsRow {
+  return Boolean(row.age_category && row.gender && row.weight_class);
 }
 
 function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' | 'women'): StandardsData {
@@ -52,7 +44,7 @@ function filterStandards(data: StandardsData, ageGroup?: string, gender?: 'men' 
   return result;
 }
 
-function mapRows(rows: CompleteStandardsRow[]): StandardsData {
+function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
   const result: StandardsData = {
     u15: { men: [], women: [] },
     youth: { men: [], women: [] },
@@ -117,7 +109,7 @@ async function fetchStandardsFresh(
     throw new Error('Offline');
   }
 
-  const allRows = await getJsonArray<StandardsRow>('/data/standards');
+  const allRows = await fetchApiStandards();
   const rows = allRows.filter(isCompleteStandardsRow).filter((row) => {
     if (ageGroup && row.age_category.toLowerCase() !== ageGroup) return false;
     if (gender && row.gender.toLowerCase() !== gender) return false;

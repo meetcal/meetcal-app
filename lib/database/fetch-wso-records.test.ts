@@ -4,11 +4,6 @@ const mockFetchApiWsoAgeGroups = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
-  getJsonArray: (...args: unknown[]) => mockGetJsonArray(...args),
-  fetchApiWsoList: (...args: unknown[]) => mockFetchApiWsoList(...args),
-  fetchApiWsoAgeGroups: (...args: unknown[]) => mockFetchApiWsoAgeGroups(...args),
-}));
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
@@ -20,6 +15,21 @@ jest.mock("@/lib/database/offline-cache", () => ({
   getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
 }));
+
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+
+// The real API client runs, so its boundary validators see these payloads.
+const originalFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = jsonFetchStub((path, query) => {
+    if (path === "/data/wso/") return mockFetchApiWsoList();
+    if (path === "/data/wso/age-groups") return mockFetchApiWsoAgeGroups(query.wso);
+    return mockGetJsonArray(path, query);
+  }) as unknown as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = originalFetch;
+});
 
 import { fetchWSOList, fetchWSORecords } from "@/lib/database/fetch-wso-records";
 
@@ -68,11 +78,7 @@ describe("fetchWSORecords", () => {
       totalRecord: 0,
     });
     expect(records.Senior.Women).toEqual([]);
-    expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", {
-      wso: "Carolina",
-      age_category: undefined,
-      gender: undefined,
-    });
+    expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });
   });
 
   it("serves the cached WSO when the API fails and rethrows when there is none", async () => {

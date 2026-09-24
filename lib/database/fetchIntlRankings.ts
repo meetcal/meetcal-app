@@ -1,7 +1,7 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/meetcal-api';
 
 export type IntlRanking = {
   meet: string;
@@ -14,37 +14,44 @@ export type IntlRanking = {
   ageCategory: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | 'University';
 };
 
-type ApiIntlRanking = {
-  meet: string | null;
-  ranking: number | null;
-  name: string | null;
-  weight_class: string | null;
-  total: number | null;
-  percent_a: number | null;
-  gender: 'Men' | 'Women' | null;
-  age_category: 'Senior' | 'Junior' | 'Youth' | 'U17' | 'U15' | 'University' | null;
-};
+const INTL_GENDERS: ReadonlySet<string> = new Set<IntlRanking['gender']>(['Men', 'Women']);
+const INTL_AGE_CATEGORIES: ReadonlySet<string> = new Set<IntlRanking['ageCategory']>([
+  'Senior',
+  'Junior',
+  'Youth',
+  'U17',
+  'U15',
+  'University',
+]);
 
-function isCompleteIntlRanking(row: ApiIntlRanking): row is {
-  meet: string;
-  ranking: number;
-  name: string;
-  weight_class: string;
-  total: number;
-  percent_a: number;
-  gender: 'Men' | 'Women';
-  age_category: IntlRanking['ageCategory'];
-} {
-  return Boolean(
-    row.meet &&
-      row.ranking != null &&
-      row.name &&
-      row.weight_class &&
-      row.total != null &&
-      row.percent_a != null &&
-      row.gender &&
-      row.age_category,
-  );
+function isIntlGender(value: string): value is IntlRanking['gender'] {
+  return INTL_GENDERS.has(value);
+}
+
+function isIntlAgeCategory(value: string): value is IntlRanking['ageCategory'] {
+  return INTL_AGE_CATEGORIES.has(value);
+}
+
+/**
+ * The row mapped into the app shape, or `null` when a column the screen
+ * needs is missing or outside the categories `IntlRanking` declares.
+ */
+function toIntlRanking(row: Readonly<ApiIntlRankingRow>): IntlRanking | null {
+  const { meet, ranking, name, weight_class, total, percent_a, gender, age_category } = row;
+  if (!meet || !name || !weight_class) return null;
+  if (ranking == null || total == null || percent_a == null) return null;
+  if (!gender || !isIntlGender(gender)) return null;
+  if (!age_category || !isIntlAgeCategory(age_category)) return null;
+  return {
+    meet,
+    ranking,
+    name,
+    weightClass: weight_class,
+    total,
+    percentA: percent_a,
+    gender,
+    ageCategory: age_category,
+  };
 }
 
 async function readIntlRankingsCache() {
@@ -58,17 +65,13 @@ async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
     throw new Error('Offline');
   }
 
-  const rows = await getJsonArray<ApiIntlRanking>('/data/intl-rankings');
-  return rows.filter(isCompleteIntlRanking).map((row) => ({
-    meet: row.meet,
-    ranking: row.ranking,
-    name: row.name,
-    weightClass: row.weight_class,
-    total: row.total,
-    percentA: row.percent_a,
-    gender: row.gender,
-    ageCategory: row.age_category,
-  }));
+  const rows = await fetchApiIntlRankings();
+  const rankings: IntlRanking[] = [];
+  for (const row of rows) {
+    const ranking = toIntlRanking(row);
+    if (ranking) rankings.push(ranking);
+  }
+  return rankings;
 }
 
 async function persistIntlRankings(rankings: IntlRanking[]) {

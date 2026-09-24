@@ -2,9 +2,6 @@ const mockGetJsonArray = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
-  getJsonArray: (...args: unknown[]) => mockGetJsonArray(...args),
-}));
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
@@ -13,6 +10,17 @@ jest.mock("@/lib/database/offline-cache", () => ({
   getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
 }));
+
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+
+// The real API client runs, so its boundary validators see these payloads.
+const originalFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = jsonFetchStub((path, query) => mockGetJsonArray(path, query)) as unknown as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = originalFetch;
+});
 
 import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
 
@@ -49,6 +57,12 @@ describe("fetchIntlRankings", () => {
       row({ gender: null }),
       row({ age_category: null }),
       row({ weight_class: null }),
+      // Outside the categories `IntlRanking` declares.
+      row({ gender: "Mixed" }),
+      row({ age_category: "Masters" }),
+      // A wrong-typed column reads as missing at the API boundary.
+      row({ total: "380" }),
+      null,
     ]);
 
     await expect(fetchIntlRankings()).resolves.toEqual([

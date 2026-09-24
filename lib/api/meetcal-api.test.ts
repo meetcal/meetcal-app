@@ -2,16 +2,23 @@ import {
   APP_VERSION,
   buildApiUrl,
   clearHttpValidatorCache,
+  fetchApiAdaptiveRecords,
   fetchApiClubNames,
+  fetchApiIntlRankings,
   fetchApiMeetByName,
   fetchApiMeetPackageConditional,
   fetchApiMeets,
+  fetchApiNationalRankings,
+  fetchApiQualifyingTotals,
   fetchApiRecentResultsByNames,
+  fetchApiRecords,
   fetchApiResultsByNames,
   fetchApiSchedule,
+  fetchApiStandards,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
   fetchApiWsoList,
+  fetchApiWsoRecords,
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
@@ -1172,6 +1179,269 @@ describe('conditional GETs for meet endpoints', () => {
     await fetchApiMeets();
     await fetchApiMeets();
     expect(sentValidator(fetchMock, 2)).toBeUndefined();
+  });
+});
+
+describe('conditional GETs for reference data', () => {
+  const originalFetch = global.fetch;
+
+  type Reply = { status: number; etag?: string | null; body?: unknown };
+
+  const recordRow = (overrides: Record<string, unknown> = {}) => ({
+    age_category: 'Senior',
+    gender: 'Men',
+    weight_class: '89kg',
+    record_type: 'USAW',
+    snatch_record: 170,
+    cj_record: 210,
+    total_record: 380,
+    ...overrides,
+  });
+
+  function queueFetch(replies: Reply[]) {
+    const fetchMock = jest.fn(async (_url: string, _init: { headers: Record<string, string> }) => {
+      const reply = replies.shift();
+      if (!reply) throw new Error('unexpected fetch');
+      return {
+        ok: reply.status >= 200 && reply.status < 300,
+        status: reply.status,
+        headers: {
+          get: (name: string) => (name.toLowerCase() === 'etag' ? reply.etag ?? null : null),
+        },
+        text: async () => (reply.body === undefined ? '' : JSON.stringify(reply.body)),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  function sentValidator(fetchMock: jest.Mock, call: number): string | undefined {
+    const init = fetchMock.mock.calls[call][1] as { headers: Record<string, string> };
+    return init.headers['If-None-Match'];
+  }
+
+  beforeEach(() => {
+    clearHttpValidatorCache();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    clearHttpValidatorCache();
+    jest.restoreAllMocks();
+  });
+
+  it('answers a 304 with the rows validated when the ETag was stored', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"r1"', body: [recordRow()] },
+      { status: 304, etag: '"r1"' },
+    ]);
+
+    const first = await fetchApiRecords();
+    const second = await fetchApiRecords();
+
+    expect(sentValidator(fetchMock, 0)).toBeUndefined();
+    expect(sentValidator(fetchMock, 1)).toBe('"r1"');
+    expect(second).toBe(first);
+    expect(second).toEqual([recordRow()]);
+  });
+
+  it('hands out frozen rows, so a caller cannot rewrite what the next 304 returns', async () => {
+    queueFetch([
+      { status: 200, etag: '"r1"', body: [recordRow()] },
+      { status: 304, etag: '"r1"' },
+    ]);
+
+    const rows = await fetchApiRecords();
+    expect(Object.isFrozen(rows)).toBe(true);
+    expect(Object.isFrozen(rows[0])).toBe(true);
+    try {
+      (rows[0] as { total_record: number | null }).total_record = 1;
+    } catch {
+      // Strict-mode code throws; sloppy-mode code is silently ignored.
+    }
+    expect(rows[0].total_record).toBe(380);
+    await expect(fetchApiRecords()).resolves.toEqual([recordRow()]);
+  });
+
+  it('returns a fresh copy of a cached string list on every call', async () => {
+    queueFetch([
+      { status: 200, etag: '"w1"', body: ['Ohio', 'Carolina'] },
+      { status: 304, etag: '"w1"' },
+    ]);
+
+    const first = await fetchApiWsoList();
+    first.sort();
+    first.push('Mutated');
+    await expect(fetchApiWsoList()).resolves.toEqual(['Ohio', 'Carolina']);
+  });
+
+  it('replaces the remembered rows when the ETag changes', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"s1"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 300, standard_b: 280 }] },
+      { status: 200, etag: '"s2"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 310, standard_b: 290 }] },
+      { status: 304, etag: '"s2"' },
+    ]);
+
+    await fetchApiStandards();
+    await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
+    expect(sentValidator(fetchMock, 1)).toBe('"s1"');
+    await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
+    expect(sentValidator(fetchMock, 2)).toBe('"s2"');
+  });
+
+  it('passes straight through on a route that sends no ETag', async () => {
+    const row = {
+      meet: 'Worlds',
+      ranking: 1,
+      name: 'Athlete A',
+      weight_class: '89kg',
+      total: 380,
+      percent_a: 101.5,
+      gender: 'Men',
+      age_category: 'Senior',
+    };
+    const fetchMock = queueFetch([
+      { status: 200, etag: null, body: [row] },
+      { status: 200, etag: null, body: [{ ...row, total: 385 }] },
+    ]);
+
+    await expect(fetchApiIntlRankings()).resolves.toEqual([row]);
+    await expect(fetchApiIntlRankings()).resolves.toEqual([{ ...row, total: 385 }]);
+    expect(sentValidator(fetchMock, 0)).toBeUndefined();
+    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+  });
+
+  it('throws on a body that fails validation and caches nothing', async () => {
+    const fetchMock = queueFetch([
+      { status: 200, etag: '"bad"', body: { error: 'wrapped' } },
+      { status: 200, etag: '"q1"', body: [] },
+      { status: 200, etag: '"c-bad"', body: ['Club A', 7] },
+      { status: 200, etag: '"c1"', body: ['Club A'] },
+    ]);
+
+    await expect(fetchApiQualifyingTotals()).rejects.toThrow(
+      '/data/qualifying-totals expected an array response',
+    );
+    await expect(fetchApiQualifyingTotals()).resolves.toEqual([]);
+    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+
+    await expect(fetchApiClubNames()).rejects.toThrow('/clubs expected a string array response');
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    expect(sentValidator(fetchMock, 3)).toBeUndefined();
+  });
+
+  it('reads a wrong-typed column as null and skips a non-object row', async () => {
+    queueFetch([
+      {
+        status: 200,
+        etag: '"q1"',
+        body: [
+          { event_name: 'Nationals', age_category: 'Senior', gender: 'Men', weight_class: '89kg', qualifying_total: '300', extra: 1 },
+          null,
+          'row',
+          [1, 2],
+        ],
+      },
+    ]);
+
+    await expect(fetchApiQualifyingTotals()).resolves.toEqual([
+      {
+        event_name: 'Nationals',
+        age_category: 'Senior',
+        gender: 'Men',
+        weight_class: '89kg',
+        qualifying_total: null,
+      },
+    ]);
+  });
+
+  it('remembers each query variant under its own URL', async () => {
+    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
+      const params = new URL(url).searchParams;
+      const key = [params.get('age_category'), params.get('gender'), params.get('wso')].join('|');
+      const tag = `"${key}"`;
+      if (init.headers['If-None-Match'] === tag) {
+        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
+        text: async () => JSON.stringify([{ name: key, total: 1, weight_class: '71kg', snatch: 1, cj: 1 }]),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      await expect(fetchApiNationalRankings('USAW', 'Senior 89')).resolves.toMatchObject([{ name: 'Senior 89||' }]);
+      await expect(fetchApiNationalRankings('USAW', 'Junior 89')).resolves.toMatchObject([{ name: 'Junior 89||' }]);
+      await expect(fetchApiAdaptiveRecords('Men', 'BWL')).resolves.toMatchObject([{ weight_class: '71kg' }]);
+      await expect(fetchApiAdaptiveRecords('Women', 'BWL')).resolves.toMatchObject([{ weight_class: '71kg' }]);
+      await expect(fetchApiWsoRecords('Ohio', 'Senior', 'Men')).resolves.toHaveLength(1);
+    }
+
+    const validators = fetchMock.mock.calls.map(([, init]) => init.headers['If-None-Match']);
+    expect(validators.slice(0, 5)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    expect(validators.slice(5)).toEqual([
+      '"Senior 89||"',
+      '"Junior 89||"',
+      '"|Men|"',
+      '"|Women|"',
+      '"Senior|Men|Ohio"',
+    ]);
+  });
+
+  it('keeps the meets validator through a session of reference-data browsing', async () => {
+    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
+      const parsed = new URL(url);
+      const tag = `"${parsed.pathname}?${parsed.searchParams.toString()}"`;
+      if (init.headers['If-None-Match'] === tag) {
+        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
+      }
+      let body: unknown = [];
+      if (parsed.pathname === '/meets') body = [];
+      else if (parsed.pathname === '/meets/details') body = { name: 'M', start_date: '2026-06-20', end_date: '2026-06-21', time_zone: 'America/New_York' };
+      else if (parsed.pathname === '/data/wso/' || parsed.pathname === '/clubs') body = ['A'];
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
+        text: async () => JSON.stringify(body),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchApiMeets();
+    await fetchApiRecords();
+    await fetchApiStandards();
+    await fetchApiQualifyingTotals();
+    await fetchApiIntlRankings();
+    await fetchApiWsoList();
+    await fetchApiClubNames();
+    await fetchApiAdaptiveRecords('Men', 'BWL');
+    await fetchApiAdaptiveRecords('Women', 'BWL');
+    for (let i = 0; i < 8; i += 1) {
+      await fetchApiMeetByName(`Meet ${i}`);
+      await fetchApiSchedule(`Meet ${i}`, mapApiMeet({
+        name: `Meet ${i}`,
+        start_date: '2026-06-20',
+        end_date: '2026-06-21',
+        time_zone: 'America/New_York',
+        status: 'upcoming',
+        venue_city: '',
+        venue_name: '',
+        venue_state: '',
+        venue_street: '',
+        venue_zip: '',
+      }));
+    }
+    for (let i = 0; i < 30; i += 1) {
+      await fetchApiNationalRankings('USAW', `Category ${i}`);
+    }
+
+    fetchMock.mockClear();
+    await fetchApiMeets();
+    expect(fetchMock.mock.calls[0][1].headers['If-None-Match']).toBe('"/meets?"');
   });
 });
 

@@ -2,9 +2,6 @@ const mockGetJsonArray = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
-  getJsonArray: (...args: unknown[]) => mockGetJsonArray(...args),
-}));
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
@@ -13,6 +10,17 @@ jest.mock("@/lib/database/offline-cache", () => ({
   getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
 }));
+
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+
+// The real API client runs, so its boundary validators see these payloads.
+const originalFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = jsonFetchStub((path, query) => mockGetJsonArray(path, query)) as unknown as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = originalFetch;
+});
 
 import { fetchAdaptiveRecords } from "@/lib/database/fetch-adaptive-records";
 

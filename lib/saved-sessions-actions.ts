@@ -89,18 +89,34 @@ export async function saveSession(
   session: SavedSession,
   options?: SaveSessionOptions,
 ): Promise<boolean> {
+  if (!session.meet) {
+    if (deps.userId) console.error('Cannot save session without meet information');
+    return false;
+  }
+  return saveSessionBuiltFrom(deps, () => session, options);
+}
+
+/**
+ * `saveSession` for a row that depends on the stored list: `build` receives
+ * the list as read inside the mutation queue, right before the upsert that
+ * publishes it. A caller that awaits between reads (the batch save awaits a
+ * sync and a reminder per row) would otherwise merge against a list a
+ * concurrent save or removal has already replaced, and undo that change
+ * when it publishes.
+ */
+async function saveSessionBuiltFrom(
+  deps: SavedSessionsActionDeps,
+  build: (storedSessions: SavedSession[]) => SavedSession,
+  options?: SaveSessionOptions,
+): Promise<boolean> {
   const { userId, queue } = deps;
   if (!userId) return false;
 
   try {
-    if (!session.meet) {
-      console.error('Cannot save session without meet information');
-      return false;
-    }
-
     // 1. Update local state and AsyncStorage, and record the pending PUT.
     const { updatedSession, previousSession, isUpdate, rev } = await queue.run(async () => {
-      const upsert = upsertSession(await deps.readStoredSessions(), session);
+      const storedSessions = await deps.readStoredSessions();
+      const upsert = upsertSession(storedSessions, build(storedSessions));
       // Outbox first: a crash before the local write still leaves the PUT
       // (with its body) queued, and the next reconcile restores the row.
       const rev = await markSessionPut(userId, upsert.updatedSession);
@@ -217,9 +233,6 @@ export async function saveSessionsFromAthletes(
 
     const uniqueSessionsToSave = sessionsFromAthletes(athletes, meet, schedule);
 
-    // Merge against what is stored, not the `savedSessions` render snapshot.
-    const storedSessions = await deps.readStoredSessions();
-
     // One read for the whole batch. `saveSession` otherwise re-reads this
     // single boolean preference from AsyncStorage once per session, and a
     // full national-meet roster produces one session per platform-session
@@ -228,17 +241,20 @@ export async function saveSessionsFromAthletes(
 
     let allSavesSucceeded = true;
     for (const sessionToSave of uniqueSessionsToSave) {
-      const sessionWithMergedData = mergeWithStoredSession(sessionToSave, storedSessions);
-
+      // Merged against the list as it is when this row is published, not a
+      // snapshot from before the loop: every iteration awaits a sync and a
+      // reminder, and a save or removal the user makes meanwhile must not
+      // be undone (or its removed notes brought back) by a later row.
       // `schedule` is the same meet's schedule for every iteration, so hand
       // it over rather than letting each save re-fetch it.
-      const success = await saveSession(deps, sessionWithMergedData, {
-        schedule,
-        notificationsEnabled,
-      });
+      const success = await saveSessionBuiltFrom(
+        deps,
+        (storedSessions) => mergeWithStoredSession(sessionToSave, storedSessions),
+        { schedule, notificationsEnabled },
+      );
       if (!success) {
         allSavesSucceeded = false;
-        console.error(`Failed to save session ${sessionWithMergedData.id} from start list.`);
+        console.error(`Failed to save session ${sessionToSave.id} from start list.`);
       }
     }
 

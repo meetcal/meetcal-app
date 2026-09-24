@@ -1,6 +1,6 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/meetcal-api';
 
 export type NationalRanking = {
   id: number;
@@ -8,14 +8,9 @@ export type NationalRanking = {
   total: number;
 };
 
-type NationalRankingRow = {
-  name: string | null;
-  total: number | null;
-};
-
 type RankingsCache = Record<string, NationalRanking[]>;
 
-function mapRankings(rows: NationalRankingRow[]): NationalRanking[] {
+function mapRankings(rows: readonly Readonly<ApiNationalRankingRow>[]): NationalRanking[] {
   const seenNames = new Set<string>();
   const rankings: NationalRanking[] = [];
   let idx = 0;
@@ -40,10 +35,7 @@ async function readNationalRankingsCache(weightClassAge: string) {
 }
 
 async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
-  const rows = await getJsonArray<NationalRankingRow>('/data/nat-rankings', {
-    federation: 'USAW',
-    age_category: weightClassAge,
-  });
+  const rows = await fetchApiNationalRankings('USAW', weightClassAge);
 
   return mapRankings(rows);
 }

@@ -1102,16 +1102,262 @@ export async function fetchApiMeetPackageConditional(
   return { status: 'fresh', etag: raw.etag, package: pkg as ApiMeetPackage };
 }
 
+// ---------------------------------------------------------------------------
+// Reference data (`/data/*`, `/clubs`).
+//
+// These tables change a few times a season, the screens that show them refetch
+// on every visit, and the API tags them with a strong `ETag` (or will: a route
+// without one just never stores a validator), so they all go through
+// `getJsonRevalidated`. What the cache keeps, and what a `304` hands back, is
+// the output of the validators below: fresh, frozen objects that carry exactly
+// the declared fields. Callers only read them — they filter/map into their own
+// structures — and the freeze means an accidental in-place edit can never
+// rewrite what the next `304` returns.
+//
+// Validation is per row, not all-or-nothing: the source tables have nullable
+// columns, and the fetchers in `lib/database/` already drop an incomplete row
+// rather than lose the whole table over it. So a field of the wrong type reads
+// as `null` and a non-object row is skipped; only a non-array body (an error
+// envelope, a paging wrapper) is rejected, which throws and caches nothing.
+// ---------------------------------------------------------------------------
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function nullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function validateRows<T extends object>(
+  json: unknown,
+  label: string,
+  readRow: (row: Record<string, unknown>) => T,
+): readonly Readonly<T>[] {
+  const rows: Readonly<T>[] = [];
+  for (const row of assertArray<unknown>(json, label)) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    rows.push(Object.freeze(readRow(row as Record<string, unknown>)));
+  }
+  return Object.freeze(rows);
+}
+
+function validateStringList(json: unknown, label: string): readonly string[] {
+  return Object.freeze([...assertStringArray(json, label)]);
+}
+
+export type ApiRecordRow = {
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
+  record_type: string | null;
+  snatch_record: number | null;
+  cj_record: number | null;
+  total_record: number | null;
+};
+
+export type ApiStandardRow = {
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
+  standard_a: number | null;
+  standard_b: number | null;
+};
+
+export type ApiQualifyingTotalRow = {
+  event_name: string | null;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
+  qualifying_total: number | null;
+};
+
+export type ApiIntlRankingRow = {
+  meet: string | null;
+  ranking: number | null;
+  name: string | null;
+  weight_class: string | null;
+  total: number | null;
+  percent_a: number | null;
+  gender: string | null;
+  age_category: string | null;
+};
+
+export type ApiNationalRankingRow = {
+  name: string | null;
+  total: number | null;
+};
+
+export type ApiWsoRecordRow = {
+  wso: string | null;
+  age_category: string | null;
+  gender: string | null;
+  weight_class: string | null;
+  snatch_record: number | null;
+  cj_record: number | null;
+  total_record: number | null;
+};
+
+export type ApiAdaptiveRecordRow = {
+  weight_class: string | null;
+  snatch: number | null;
+  cj: number | null;
+  total: number | null;
+};
+
+function validateApiRecords(json: unknown): readonly Readonly<ApiRecordRow>[] {
+  return validateRows(json, '/data/records', (row) => ({
+    age_category: nullableString(row.age_category),
+    gender: nullableString(row.gender),
+    weight_class: nullableString(row.weight_class),
+    record_type: nullableString(row.record_type),
+    snatch_record: nullableNumber(row.snatch_record),
+    cj_record: nullableNumber(row.cj_record),
+    total_record: nullableNumber(row.total_record),
+  }));
+}
+
+function validateApiStandards(json: unknown): readonly Readonly<ApiStandardRow>[] {
+  return validateRows(json, '/data/standards', (row) => ({
+    age_category: nullableString(row.age_category),
+    gender: nullableString(row.gender),
+    weight_class: nullableString(row.weight_class),
+    standard_a: nullableNumber(row.standard_a),
+    standard_b: nullableNumber(row.standard_b),
+  }));
+}
+
+function validateApiQualifyingTotals(
+  json: unknown,
+): readonly Readonly<ApiQualifyingTotalRow>[] {
+  return validateRows(json, '/data/qualifying-totals', (row) => ({
+    event_name: nullableString(row.event_name),
+    age_category: nullableString(row.age_category),
+    gender: nullableString(row.gender),
+    weight_class: nullableString(row.weight_class),
+    qualifying_total: nullableNumber(row.qualifying_total),
+  }));
+}
+
+function validateApiIntlRankings(json: unknown): readonly Readonly<ApiIntlRankingRow>[] {
+  return validateRows(json, '/data/intl-rankings', (row) => ({
+    meet: nullableString(row.meet),
+    ranking: nullableNumber(row.ranking),
+    name: nullableString(row.name),
+    weight_class: nullableString(row.weight_class),
+    total: nullableNumber(row.total),
+    percent_a: nullableNumber(row.percent_a),
+    gender: nullableString(row.gender),
+    age_category: nullableString(row.age_category),
+  }));
+}
+
+function validateApiNationalRankings(
+  json: unknown,
+): readonly Readonly<ApiNationalRankingRow>[] {
+  return validateRows(json, '/data/nat-rankings', (row) => ({
+    name: nullableString(row.name),
+    total: nullableNumber(row.total),
+  }));
+}
+
+function validateApiWsoRecords(json: unknown): readonly Readonly<ApiWsoRecordRow>[] {
+  return validateRows(json, '/data/wso/records', (row) => ({
+    wso: nullableString(row.wso),
+    age_category: nullableString(row.age_category),
+    gender: nullableString(row.gender),
+    weight_class: nullableString(row.weight_class),
+    snatch_record: nullableNumber(row.snatch_record),
+    cj_record: nullableNumber(row.cj_record),
+    total_record: nullableNumber(row.total_record),
+  }));
+}
+
+function validateApiAdaptiveRecords(
+  json: unknown,
+): readonly Readonly<ApiAdaptiveRecordRow>[] {
+  return validateRows(json, '/data/adaptive', (row) => ({
+    weight_class: nullableString(row.weight_class),
+    snatch: nullableNumber(row.snatch),
+    cj: nullableNumber(row.cj),
+    total: nullableNumber(row.total),
+  }));
+}
+
+export function fetchApiRecords(): Promise<readonly Readonly<ApiRecordRow>[]> {
+  return getJsonRevalidated('/data/records', undefined, validateApiRecords);
+}
+
+export function fetchApiStandards(): Promise<readonly Readonly<ApiStandardRow>[]> {
+  return getJsonRevalidated('/data/standards', undefined, validateApiStandards);
+}
+
+export function fetchApiQualifyingTotals(): Promise<readonly Readonly<ApiQualifyingTotalRow>[]> {
+  return getJsonRevalidated('/data/qualifying-totals', undefined, validateApiQualifyingTotals);
+}
+
+export function fetchApiIntlRankings(): Promise<readonly Readonly<ApiIntlRankingRow>[]> {
+  return getJsonRevalidated('/data/intl-rankings', undefined, validateApiIntlRankings);
+}
+
+export function fetchApiNationalRankings(
+  federation: string,
+  ageCategory: string,
+): Promise<readonly Readonly<ApiNationalRankingRow>[]> {
+  return getJsonRevalidated(
+    '/data/nat-rankings',
+    { federation, age_category: ageCategory },
+    validateApiNationalRankings,
+  );
+}
+
+export function fetchApiWsoRecords(
+  wso: string,
+  ageCategory?: string,
+  gender?: string,
+): Promise<readonly Readonly<ApiWsoRecordRow>[]> {
+  return getJsonRevalidated(
+    '/data/wso/records',
+    { wso, age_category: ageCategory, gender },
+    validateApiWsoRecords,
+  );
+}
+
+export function fetchApiAdaptiveRecords(
+  gender: string,
+  excludeFederation: string,
+): Promise<readonly Readonly<ApiAdaptiveRecordRow>[]> {
+  return getJsonRevalidated(
+    '/data/adaptive',
+    { exclude_federation: excludeFederation, gender },
+    validateApiAdaptiveRecords,
+  );
+}
+
+// The string lists are returned as a copy: callers sort and splice them.
+
 export async function fetchApiWsoList(): Promise<string[]> {
-  return assertStringArray(await getJson('/data/wso/'), '/data/wso/');
+  return [
+    ...(await getJsonRevalidated('/data/wso/', undefined, (json) =>
+      validateStringList(json, '/data/wso/'),
+    )),
+  ];
 }
 
 export async function fetchApiWsoAgeGroups(wso: string): Promise<string[]> {
-  return assertStringArray(await getJson('/data/wso/age-groups', { wso }), '/data/wso/age-groups');
+  return [
+    ...(await getJsonRevalidated('/data/wso/age-groups', { wso }, (json) =>
+      validateStringList(json, '/data/wso/age-groups'),
+    )),
+  ];
 }
 
 export async function fetchApiClubNames(): Promise<string[]> {
-  return assertStringArray(await getJson('/clubs'), '/clubs');
+  return [
+    ...(await getJsonRevalidated('/clubs', undefined, (json) =>
+      validateStringList(json, '/clubs'),
+    )),
+  ];
 }
 
 function mapApiSavedSession(row: unknown, index: number): ApiSavedSession {
