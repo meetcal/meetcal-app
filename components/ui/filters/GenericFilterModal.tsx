@@ -5,7 +5,6 @@ import { lightImpact } from "@/lib/haptics";
 import React, { useCallback, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import FilterChipGroup from "./FilterChipGroup";
 import FilterModalOptions from "./FilterModalOptions";
 import FilterModalTitle from "./FilterModalTitle";
+import FilterSheet from "./FilterSheet";
 
 export interface FilterOption {
   value: string;
@@ -77,7 +77,6 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const sectionLayoutsRef = useRef<Record<string, number>>({});
 
   const { height: windowHeight } = useWindowDimensions();
-  const sheetTopOffset = insets.top + 10;
   const maxOptionsHeight = windowHeight * 0.3;
 
   React.useEffect(() => {
@@ -211,174 +210,123 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={handleClose}
-    >
-      <View style={styles.sheetWrapper}>
-        <Pressable style={styles.sheetBackdrop} onPress={handleClose} />
-        <View
-          style={[
-            styles.sheetContent,
-            {
-              backgroundColor: colors.card,
-              top: sheetTopOffset,
-              height: windowHeight - sheetTopOffset,
-            },
-          ]}
-        >
-          <View style={styles.handleContainer}>
-            <View
-              style={[styles.handle, { backgroundColor: colors.borderBottom }]}
-            />
-          </View>
-
-          <ScrollView
-            ref={scrollViewRef}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            scrollEnabled={expandedSection === null}
-          >
-            {currentSections.map((section) => (
-              <View
-                key={section.id}
-                onLayout={(e) => handleSectionLayout(section.id, e)}
-                style={[
-                  styles.filterSection,
-                  { borderBottomColor: colors.border },
-                ]}
-              >
-                {section.displayMode === "chips" ? (
-                  <FilterChipGroup
-                    title={section.title}
-                    options={section.options}
-                    selectedValue={tempFilters[section.id] || ""}
-                    onSelect={(value) => {
-                      setTempFilters((prev) => ({
-                        ...prev,
-                        [section.id]: value,
-                      }));
-                    }}
-                    allOptionLabel={section.allOptionLabel}
-                  />
-                ) : (
-                  <>
-                    <FilterModalTitle
-                      title={section.title}
-                      value={getDisplayValue(section)}
-                      onPress={() => handleExpandSection(section.id)}
-                      icon={getChevronIcon(
-                        expandedSection === section.id ? "down" : "right",
-                      )}
-                    />
-
-                    {expandedSection === section.id &&
-                      (section.customContent ? (
-                        typeof section.customContent === "function" ? (
-                          section.customContent({
-                            tempFilters,
-                            setTempFilters,
-                            collapseSection: () => setExpandedSection(null),
-                          })
-                        ) : (
-                          section.customContent
-                        )
-                      ) : (
-                        <FilterModalOptions
-                          options={section.options}
-                          selectedValue={tempFilters[section.id] || ""}
-                          onSelect={(value) => {
-                            setTempFilters((prev) => ({
-                              ...prev,
-                              [section.id]: value,
-                            }));
-                            setExpandedSection(null);
-                          }}
-                          maxHeight={maxOptionsHeight}
-                          allOptionLabel={section.allOptionLabel}
-                        />
-                      ))}
-                  </>
-                )}
-              </View>
-            ))}
-          </ScrollView>
-
+    <FilterSheet visible={visible} onClose={handleClose}>
+      <ScrollView
+        ref={scrollViewRef}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={expandedSection === null}
+      >
+        {currentSections.map((section) => (
           <View
+            key={section.id}
+            onLayout={(e) => handleSectionLayout(section.id, e)}
             style={[
-              styles.footer,
-              {
-                borderTopColor: colors.border,
-                paddingBottom: 16 + resolvedFooterBottomInset,
-              },
+              styles.filterSection,
+              { borderBottomColor: colors.border },
             ]}
           >
-            <View style={styles.footerContent}>
-              {resolvedResultCount !== undefined && (
-                <ThemedText
-                  style={[styles.resultCount, { color: colors.secondaryText }]}
-                >
-                  {`${resolvedResultCount} ${resultLabel}`}
-                </ThemedText>
-              )}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.resetButton,
-                  pressed && { opacity: 0.8 },
-                ]}
-                onPress={handleReset}
-              >
-                <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.applyButton,
-                  { backgroundColor: colors.link },
-                  pressed && { opacity: 0.8 },
-                ]}
-                onPress={handleApply}
-              >
-                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
-              </Pressable>
-            </View>
+            {section.displayMode === "chips" ? (
+              <FilterChipGroup
+                title={section.title}
+                options={section.options}
+                selectedValue={tempFilters[section.id] || ""}
+                onSelect={(value) => {
+                  setTempFilters((prev) => ({
+                    ...prev,
+                    [section.id]: value,
+                  }));
+                }}
+                allOptionLabel={section.allOptionLabel}
+              />
+            ) : (
+              <>
+                <FilterModalTitle
+                  title={section.title}
+                  value={getDisplayValue(section)}
+                  onPress={() => handleExpandSection(section.id)}
+                  icon={getChevronIcon(
+                    expandedSection === section.id ? "down" : "right",
+                  )}
+                />
+
+                {expandedSection === section.id &&
+                  (section.customContent ? (
+                    typeof section.customContent === "function" ? (
+                      section.customContent({
+                        tempFilters,
+                        setTempFilters,
+                        collapseSection: () => setExpandedSection(null),
+                      })
+                    ) : (
+                      section.customContent
+                    )
+                  ) : (
+                    <FilterModalOptions
+                      options={section.options}
+                      selectedValue={tempFilters[section.id] || ""}
+                      onSelect={(value) => {
+                        setTempFilters((prev) => ({
+                          ...prev,
+                          [section.id]: value,
+                        }));
+                        setExpandedSection(null);
+                      }}
+                      maxHeight={maxOptionsHeight}
+                      allOptionLabel={section.allOptionLabel}
+                    />
+                  ))}
+              </>
+            )}
           </View>
+        ))}
+      </ScrollView>
+
+      <View
+        style={[
+          styles.footer,
+          {
+            borderTopColor: colors.border,
+            paddingBottom: 16 + resolvedFooterBottomInset,
+          },
+        ]}
+      >
+        <View style={styles.footerContent}>
+          {resolvedResultCount !== undefined && (
+            <ThemedText
+              style={[styles.resultCount, { color: colors.secondaryText }]}
+            >
+              {`${resolvedResultCount} ${resultLabel}`}
+            </ThemedText>
+          )}
+          <Pressable
+            style={({ pressed }) => [
+              styles.resetButton,
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={handleReset}
+          >
+            <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.applyButton,
+              { backgroundColor: colors.link },
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={handleApply}
+          >
+            <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </FilterSheet>
   );
 };
 
 export default GenericFilterModal;
 
 const styles = StyleSheet.create({
-  sheetWrapper: {
-    flex: 1,
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  sheetContent: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: "hidden",
-  },
-  handleContainer: {
-    alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-  },
   filterSection: {
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

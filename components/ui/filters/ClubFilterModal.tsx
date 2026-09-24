@@ -5,16 +5,9 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { getCloseIcon, STARRED_CLUBS_FILTER } from "@/lib/start-list-utils";
 import { FlashList } from "@shopify/flash-list";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import FilterSheet from "./FilterSheet";
 
 interface ClubFilterModalProps {
   visible: boolean;
@@ -37,10 +30,7 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
 }) => {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState("");
-
-  const sheetTopOffset = insets.top + 10;
 
   const sortedClubOptions = useMemo(() => {
     const clubs = Array.from(new Set(athletes.map((a) => a.club))).filter(
@@ -207,159 +197,112 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
   );
 
   return (
-    <Modal
+    <FilterSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      onClose={onClose}
+      header={
+        <View
+          style={[styles.header, { borderBottomColor: colors.border }]}
+        >
+          <ThemedText style={styles.headerTitle}>Club</ThemedText>
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [
+              styles.closeButton,
+              pressed && { opacity: 0.7 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Close club filter"
+          >
+            <IconSymbol name={getCloseIcon()} size={18} color={colors.text} />
+          </Pressable>
+        </View>
+      }
     >
-      <View style={styles.sheetWrapper}>
-        <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View
+        style={[
+          styles.searchContainer,
+          { borderBottomColor: colors.border },
+        ]}
+      >
         <View
           style={[
-            styles.sheetContent,
+            styles.searchBar,
             {
-              backgroundColor: colors.card,
-              top: sheetTopOffset,
-              height: windowHeight - sheetTopOffset,
+              backgroundColor: colors.pressed,
+              borderColor: colors.border,
             },
           ]}
         >
-          <View style={styles.handleContainer}>
-            <View
-              style={[styles.handle, { backgroundColor: colors.borderBottom }]}
-            />
-          </View>
-
-          <View
-            style={[styles.header, { borderBottomColor: colors.border }]}
-          >
-            <ThemedText style={styles.headerTitle}>Club</ThemedText>
+          <IconSymbol
+            name={
+              Platform.select({
+                ios: "magnifyingglass",
+                android: "search",
+              }) || "magnifyingglass"
+            }
+            size={16}
+            color={colors.secondaryText}
+          />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search clubs..."
+            placeholderTextColor={colors.secondaryText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCorrect={false}
+            spellCheck={false}
+          />
+          {searchQuery.length > 0 && (
             <Pressable
-              onPress={onClose}
+              onPress={() => setSearchQuery("")}
               style={({ pressed }) => [
-                styles.closeButton,
+                styles.clearButton,
                 pressed && { opacity: 0.7 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Close club filter"
-            >
-              <IconSymbol name={getCloseIcon()} size={18} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <View
-            style={[
-              styles.searchContainer,
-              { borderBottomColor: colors.border },
-            ]}
-          >
-            <View
-              style={[
-                styles.searchBar,
-                {
-                  backgroundColor: colors.pressed,
-                  borderColor: colors.border,
-                },
               ]}
             >
               <IconSymbol
                 name={
                   Platform.select({
-                    ios: "magnifyingglass",
-                    android: "search",
-                  }) || "magnifyingglass"
+                    ios: "xmark.circle.fill",
+                    android: "close",
+                  }) || "xmark.circle.fill"
                 }
                 size={16}
                 color={colors.secondaryText}
               />
-              <TextInput
-                style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Search clubs..."
-                placeholderTextColor={colors.secondaryText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCorrect={false}
-                spellCheck={false}
-              />
-              {searchQuery.length > 0 && (
-                <Pressable
-                  onPress={() => setSearchQuery("")}
-                  style={({ pressed }) => [
-                    styles.clearButton,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <IconSymbol
-                    name={
-                      Platform.select({
-                        ios: "xmark.circle.fill",
-                        android: "close",
-                      }) || "xmark.circle.fill"
-                    }
-                    size={16}
-                    color={colors.secondaryText}
-                  />
-                </Pressable>
-              )}
-            </View>
-          </View>
-
-          {/*
-            A national meet's roster is ~1562 athletes across roughly 550
-            distinct clubs (88 clubs for the largest meet currently in the
-            window, at 2.8 athletes per club). The previous `ScrollView` +
-            `filteredClubs.map(...)` mounted a `Pressable`, a nested star
-            `Pressable` and up to two native `IconSymbol` views for every one
-            of them in a single synchronous pass when the sheet opened. This
-            is the same size of list — and the same fix — as the 732-row
-            national-rankings table.
-          */}
-          <FlashList
-            data={filteredClubs}
-            keyExtractor={clubKeyExtractor}
-            renderItem={renderClub}
-            ListHeaderComponent={listHeader}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
-          />
+            </Pressable>
+          )}
         </View>
       </View>
-    </Modal>
+
+      {/*
+        A national meet's roster is ~1562 athletes across roughly 550
+        distinct clubs (88 clubs for the largest meet currently in the
+        window, at 2.8 athletes per club). The previous `ScrollView` +
+        `filteredClubs.map(...)` mounted a `Pressable`, a nested star
+        `Pressable` and up to two native `IconSymbol` views for every one
+        of them in a single synchronous pass when the sheet opened. This
+        is the same size of list — and the same fix — as the 732-row
+        national-rankings table.
+      */}
+      <FlashList
+        data={filteredClubs}
+        keyExtractor={clubKeyExtractor}
+        renderItem={renderClub}
+        ListHeaderComponent={listHeader}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+      />
+    </FilterSheet>
   );
 };
 
 export default ClubFilterModal;
 
 const styles = StyleSheet.create({
-  sheetWrapper: {
-    flex: 1,
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  sheetContent: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: "hidden",
-  },
-  handleContainer: {
-    alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
