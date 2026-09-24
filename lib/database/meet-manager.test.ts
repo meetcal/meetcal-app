@@ -1,3 +1,15 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  prefetchCriticalMeetData,
+  HISTORY_REFRESH_TTL_MS,
+  prefetchMeetData,
+  pruneHistorySyncedAt,
+  touchMeetAccess,
+  validatePrefetchedLiftingResults,
+  warmMeetData,
+} from "@/lib/database/meet-manager";
+import type { Schedule } from "@/types/schedule";
+
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
   default: {
@@ -54,12 +66,6 @@ const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
 
-function isoDateOffset(days: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().split("T")[0];
-}
-
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),
   fetchAthletesWithSession: (...args: unknown[]) =>
@@ -107,18 +113,6 @@ jest.mock("@/lib/database/offline-store", () => ({
     mockFindAthleteNamesWithoutHistory(names),
   PACKAGE_ETAG_STORAGE_KEY: "@meet_package_etag_v1",
 }));
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  prefetchCriticalMeetData,
-  HISTORY_REFRESH_TTL_MS,
-  prefetchMeetData,
-  pruneHistorySyncedAt,
-  touchMeetAccess,
-  validatePrefetchedLiftingResults,
-  warmMeetData,
-} from "@/lib/database/meet-manager";
-import type { Schedule } from "@/types/schedule";
 
 const mockGetItem = AsyncStorage.getItem as jest.Mock;
 

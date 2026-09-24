@@ -11,6 +11,7 @@ import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import { devLog } from "@/lib/logger";
+import { BlackAlpha, Palette } from "@/constants/Palette";
 
 const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
 
@@ -238,7 +239,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: BlackAlpha[50],
     justifyContent: "flex-end",
   },
   container: {
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: Platform.OS === "ios" ? 40 : 24,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: -2,
@@ -271,20 +272,20 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: Palette.systemBlue,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: "center",
     minHeight: 50,
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(128, 128, 128, 0.2)",
+    borderColor: Palette.neutralBorder,
   },
   buttonPressed: {
     opacity: 0.8,
   },
   buttonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

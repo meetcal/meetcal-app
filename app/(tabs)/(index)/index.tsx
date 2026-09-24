@@ -48,6 +48,7 @@ import {
 import { useUser } from "@clerk/expo";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Palette } from "@/constants/Palette";
 
 /**
  * iOS 27.1 leading-aligns the native nav title on iPhone Duo's reorganised bar,
@@ -501,7 +502,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,

@@ -67,7 +67,12 @@ type Hook = ReturnType<typeof useOfflineData>;
 let captured: Hook | null = null;
 
 function Harness() {
-  captured = useOfflineData();
+  const value = useOfflineData();
+  // Assigned after commit, not during render, so the test double stays
+  // within the rules of hooks; every read below happens after `act`.
+  React.useEffect(() => {
+    captured = value;
+  });
   return null;
 }
 

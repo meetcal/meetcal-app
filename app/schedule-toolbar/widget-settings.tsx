@@ -45,6 +45,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { showToast } from "@/components/ui/Toast";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 type ActiveModal = WidgetKind | null;
 
@@ -466,7 +467,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -520,7 +521,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   saveButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

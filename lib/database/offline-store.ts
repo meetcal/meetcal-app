@@ -4,7 +4,7 @@ import type { LiftResult, SupabaseBests, SupabaseLiftResult } from '@/data/types
 import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { Buffer } from 'buffer';
-import pako from 'pako';
+import { deflate, inflate } from 'pako';
 import {
   filterSessionAthletes,
   normalizeLiftResults,
@@ -265,13 +265,13 @@ function splitIntoChunks(value: string, chunkSize: number): string[] {
 
 function encodeLiftingResults(results: SupabaseLiftResult[]): string {
   const json = JSON.stringify(results);
-  const compressed = pako.deflate(json);
+  const compressed = deflate(json);
   return Buffer.from(compressed).toString('base64');
 }
 
 function decodeLiftingResults(encoded: string): SupabaseLiftResult[] {
   const bytes = Buffer.from(encoded, 'base64');
-  const inflated = pako.inflate(bytes);
+  const inflated = inflate(bytes);
   const json = Buffer.from(inflated).toString();
   const parsed: unknown = JSON.parse(json);
   // A truncated chunk set can still inflate to valid JSON that is not a row

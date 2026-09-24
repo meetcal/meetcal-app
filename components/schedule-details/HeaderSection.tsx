@@ -32,6 +32,7 @@ import Animated, {
   withSequence,
   withSpring,
 } from "react-native-reanimated";
+import { Palette } from "@/constants/Palette";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
   sessionNumber,
@@ -521,7 +522,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   saveButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: Palette.systemBlue,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
@@ -530,12 +531,12 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   saveButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 15,
     fontWeight: "600",
   },
   calendarButton: {
-    backgroundColor: "#34C759", // iOS green
+    backgroundColor: Palette.systemGreen, // iOS green
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
@@ -545,7 +546,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   calendarButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 15,
     fontWeight: "600",
   },

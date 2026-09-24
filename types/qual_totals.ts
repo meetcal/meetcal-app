@@ -1,4 +1,3 @@
-type Gender = "Men" | "Women";
 type Event = string;
 type AgeGroup = string;
 

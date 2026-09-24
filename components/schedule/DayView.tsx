@@ -27,7 +27,7 @@ export function DayView({
   }, [onRefreshComplete]);
 
   const renderSession = useCallback(
-    ({ item }: { item: (typeof day.sessions)[number] }) => (
+    ({ item }: { item: DayViewProps["day"]["sessions"][number] }) => (
       <SessionView session={item} timeZone={timeZone} meet={meet} />
     ),
     [timeZone, meet],

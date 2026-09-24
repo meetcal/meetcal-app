@@ -12,7 +12,7 @@
     "test:ci": "jest --ci --watchman=false",
     "test:coverage": "jest --ci --watchman=false --coverage --coverageDirectory=coverage --coverageReporters=text-summary --coverageReporters=lcov",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint",
+    "lint": "expo lint --max-warnings 0",
     "maestro:bootstrap": "xcrun simctl terminate booted ${APP_ID:-com.memohnsen.meetcal} || true; xcrun simctl openurl booted \"${DEV_CLIENT_URL:-exp+meetcal://expo-development-client/?url=http%3A%2F%2F192.168.0.114%3A8081}\"",
     "maestro:test": "bun run maestro:bootstrap && maestro test -e APP_ID=${APP_ID:-com.memohnsen.meetcal} .maestro",
     "maestro:test:flow": "bun run maestro:bootstrap && maestro test -e APP_ID=${APP_ID:-com.memohnsen.meetcal}",

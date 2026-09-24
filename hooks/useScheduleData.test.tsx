@@ -2,6 +2,7 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 
 import type { Schedule } from "@/types/schedule";
+import { useScheduleData } from "@/hooks/useScheduleData";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
@@ -29,8 +30,6 @@ jest.mock("@/lib/networkUtils", () => ({
   subscribeToNetworkChanges: jest.fn(() => () => {}),
 }));
 
-import { useScheduleData } from "@/hooks/useScheduleData";
-
 const DAY: Schedule[number] = {
   date: "June 20, 2099",
   fullDate: "2099-06-20",
@@ -56,7 +55,12 @@ const flush = async () => {
 let captured: ReturnType<typeof useScheduleData> | null = null;
 
 function Harness({ meet }: { meet: string }) {
-  captured = useScheduleData(meet);
+  const value = useScheduleData(meet);
+  // Assigned after commit, not during render, so the test double stays
+  // within the rules of hooks; every read below happens after `act`.
+  React.useEffect(() => {
+    captured = value;
+  });
   return null;
 }
 

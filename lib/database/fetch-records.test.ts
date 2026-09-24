@@ -1,3 +1,10 @@
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import {
+  federationRecordsResource,
+  fetchAgeGroups,
+} from "@/lib/database/fetch-records";
+import type { RecordsData } from "@/types/records";
+
 const mockGetJsonArray = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
@@ -11,8 +18,6 @@ jest.mock("@/lib/database/offline-cache", () => ({
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
 }));
 
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
-
 // The real API client runs, so its boundary validators see these payloads.
 const originalFetch = global.fetch;
 beforeAll(() => {
@@ -21,12 +26,6 @@ beforeAll(() => {
 afterAll(() => {
   global.fetch = originalFetch;
 });
-
-import {
-  federationRecordsResource,
-  fetchAgeGroups,
-} from "@/lib/database/fetch-records";
-import type { RecordsData } from "@/types/records";
 
 const fetchRecords = async (federation: string): Promise<RecordsData> =>
   (await federationRecordsResource.revalidate(federation)).data;

@@ -1,5 +1,3 @@
-/* eslint-disable */
-
 // Replaces the generated (git-ignored) `expo-env.d.ts`, which does
 // `/// <reference types="expo/types" />` and pulls in three files. We take two of
 // them and deliberately skip the third, `expo/types/react-native-web`.

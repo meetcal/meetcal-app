@@ -1,12 +1,6 @@
 import { MeetName } from "@/data/types/meet";
 import { Schedule } from "./schedule";
 
-export interface SessionPlatformDetails {
-  platform: string;
-  platformStartTime?: string;
-  weightClass?: string;
-}
-
 export interface Session {
   number: number;
   platforms: SessionPlatformDetails[];

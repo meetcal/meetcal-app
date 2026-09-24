@@ -90,6 +90,7 @@ import {
   REVIEW_PROMPTED_KEY,
   shouldRequestReview,
 } from "@/lib/review-prompt";
+import { Palette } from "@/constants/Palette";
 
 
 type AthleteSortOption =
@@ -1809,7 +1810,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     gap: 8,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,

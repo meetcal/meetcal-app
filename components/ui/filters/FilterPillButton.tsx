@@ -5,6 +5,7 @@ import { getChevronIcon } from "@/lib/start-list-utils";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { PillFilterConfig } from "./FilterPillTypes";
+import { Palette } from "@/constants/Palette";
 
 export function getPillLabel(config: PillFilterConfig) {
   if (!config.value) return config.label;
@@ -33,7 +34,7 @@ export const PillContent: React.FC<PillContentProps> = ({ config }) => {
       <ThemedText
         style={[
           styles.pillText,
-          { color: isActive ? "#FFFFFF" : colors.text },
+          { color: isActive ? Palette.white : colors.text },
           isActive && styles.pillTextActive,
         ]}
         numberOfLines={1}

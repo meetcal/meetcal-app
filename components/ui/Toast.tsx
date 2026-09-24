@@ -12,6 +12,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { Palette } from "@/constants/Palette";
 
 export type ToastType = "success" | "error" | "info";
 
@@ -224,7 +225,7 @@ const styles = StyleSheet.create({
   },
   message: {
     ...Type.bodySemiBold,
-    color: "#FFFFFF",
+    color: Palette.white,
     flex: 1,
   },
 });

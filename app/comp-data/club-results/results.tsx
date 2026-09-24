@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { MedalTint, Palette, RecapCardPalette, WhiteAlpha } from "@/constants/Palette";
 
 export default function MeetResultsByClubScreen() {
   return (
@@ -104,7 +105,8 @@ function MeetResultsByClubScreenContent() {
     if (clubStats) {
       runEntryAnimation();
     }
-  }, [clubStats]);
+    // `runEntryAnimation` is stable: its deps are `useRef(...).current` values.
+  }, [clubStats, runEntryAnimation]);
 
   const generateImage = async () => {
     if (!shareableViewRef.current || !clubStats || clubStats.totalAthletes === 0) return;
@@ -252,7 +254,7 @@ function MeetResultsByClubScreenContent() {
             {totalMedals > 0 && (
               <View style={styles.medalChipsRow}>
                 {clubStats.goldMedals > 0 && (
-                  <View style={[styles.medalChip, { backgroundColor: "rgba(255,215,0,0.15)" }]}>
+                  <View style={[styles.medalChip, { backgroundColor: MedalTint.gold }]}>
                     <Text style={styles.medalChipEmoji}>🥇</Text>
                     <ThemedText style={[styles.medalChipCount, { color: colors.gold }]}>
                       {clubStats.goldMedals}
@@ -263,7 +265,7 @@ function MeetResultsByClubScreenContent() {
                   </View>
                 )}
                 {clubStats.silverMedals > 0 && (
-                  <View style={[styles.medalChip, { backgroundColor: "rgba(192,192,192,0.15)" }]}>
+                  <View style={[styles.medalChip, { backgroundColor: MedalTint.silver }]}>
                     <Text style={styles.medalChipEmoji}>🥈</Text>
                     <ThemedText style={[styles.medalChipCount, { color: colors.silver }]}>
                       {clubStats.silverMedals}
@@ -274,7 +276,7 @@ function MeetResultsByClubScreenContent() {
                   </View>
                 )}
                 {clubStats.bronzeMedals > 0 && (
-                  <View style={[styles.medalChip, { backgroundColor: "rgba(205,127,50,0.15)" }]}>
+                  <View style={[styles.medalChip, { backgroundColor: MedalTint.bronze }]}>
                     <Text style={styles.medalChipEmoji}>🥉</Text>
                     <ThemedText style={[styles.medalChipCount, { color: colors.bronze }]}>
                       {clubStats.bronzeMedals}
@@ -774,7 +776,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   retryButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 16,
     fontWeight: "600",
   },
@@ -792,7 +794,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 4,
-    backgroundColor: "#FFD700",
+    backgroundColor: Palette.gold,
     borderTopLeftRadius: 20,
     borderBottomLeftRadius: 20,
   },
@@ -910,7 +912,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   mainShareButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },
@@ -963,7 +965,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   shareButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },
@@ -974,7 +976,7 @@ const shareableStyles = StyleSheet.create({
   container: {
     width: 800,
     height: 1000,
-    backgroundColor: "#0A0A0F",
+    backgroundColor: RecapCardPalette.background,
     padding: 50,
     overflow: "hidden",
   },
@@ -991,24 +993,24 @@ const shareableStyles = StyleSheet.create({
   brandName: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: 0.3,
   },
   brandDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#FFD700",
+    backgroundColor: Palette.gold,
   },
   brandTag: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#8E8E93",
+    color: Palette.systemGray,
     letterSpacing: 2,
   },
   goldSeparator: {
     height: 2,
-    backgroundColor: "#FFD700",
+    backgroundColor: Palette.gold,
     opacity: 0.6,
     borderRadius: 1,
     marginBottom: 24,
@@ -1016,7 +1018,7 @@ const shareableStyles = StyleSheet.create({
   clubName: {
     fontSize: 52,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: -1.5,
     lineHeight: 58,
     marginBottom: 8,
@@ -1024,7 +1026,7 @@ const shareableStyles = StyleSheet.create({
   meetName: {
     fontSize: 20,
     fontWeight: "500",
-    color: "#8E8E93",
+    color: Palette.systemGray,
     letterSpacing: 0.2,
     marginBottom: 24,
   },
@@ -1036,7 +1038,7 @@ const shareableStyles = StyleSheet.create({
   },
   medalBlock: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: WhiteAlpha[5],
     borderRadius: 16,
     paddingVertical: 18,
     paddingHorizontal: 12,
@@ -1058,7 +1060,7 @@ const shareableStyles = StyleSheet.create({
   medalBlockLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#8E8E93",
+    color: Palette.systemGray,
     letterSpacing: 1.5,
   },
   // Stats grid
@@ -1071,7 +1073,7 @@ const shareableStyles = StyleSheet.create({
   },
   statCard: {
     width: "49%",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: WhiteAlpha[6],
     borderRadius: 16,
     paddingVertical: 22,
     paddingHorizontal: 20,
@@ -1085,7 +1087,7 @@ const shareableStyles = StyleSheet.create({
   statValue: {
     fontSize: 40,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: -1,
     lineHeight: 44,
     includeFontPadding: false,
@@ -1093,7 +1095,7 @@ const shareableStyles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#8E8E93",
+    color: Palette.systemGray,
     letterSpacing: 1.2,
   },
   makeRateRow: {
@@ -1102,7 +1104,7 @@ const shareableStyles = StyleSheet.create({
   },
   makeRateCard: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: WhiteAlpha[6],
     borderRadius: 16,
     paddingVertical: 20,
     paddingHorizontal: 14,
@@ -1113,14 +1115,14 @@ const shareableStyles = StyleSheet.create({
   makeRateValue: {
     fontSize: 38,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     lineHeight: 42,
     includeFontPadding: false,
   },
   makeRateLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#8E8E93",
+    color: Palette.systemGray,
     letterSpacing: 1,
   },
 });

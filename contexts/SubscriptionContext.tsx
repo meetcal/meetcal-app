@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
@@ -280,7 +280,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     return [hasActiveEntitlement, subscriptionType];
   };
 
-  const checkSubscriptionStatus = async () => {
+  // An Effect Event: only the effects below call it (the delayed refresh and
+  // the reconnect listener), always at its latest version, without making it
+  // a dependency that would re-run the initialization or re-subscribe.
+  const checkSubscriptionStatus = useEffectEvent(async () => {
     try {
       devLog('Checking subscription status...');
       setIsLoading(true);
@@ -345,7 +348,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       }
       setIsLoading(false);
     }
-  };
+  });
 
   // Initialize subscription status - cache-first, no blocking network check
   useEffect(() => {

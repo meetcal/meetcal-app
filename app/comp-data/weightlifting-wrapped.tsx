@@ -41,6 +41,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ViewShot from "react-native-view-shot";
+import { BlackAlpha, Palette, WhiteAlpha, WrappedPalette } from "@/constants/Palette";
 
 const YEARS = Array.from(
   { length: 10 },
@@ -924,7 +925,7 @@ kg
 const styles = StyleSheet.create({
   storyContainer: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: Palette.black,
   },
 
   backNavButton: {
@@ -936,7 +937,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: WhiteAlpha[10],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -949,7 +950,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: BlackAlpha[50],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -979,7 +980,7 @@ const styles = StyleSheet.create({
   },
   slideOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.15)",
+    backgroundColor: BlackAlpha[15],
   },
   slideContentInner: {
     flex: 1,
@@ -997,7 +998,7 @@ const styles = StyleSheet.create({
   slideTopLabel: {
     fontSize: 13,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.6)",
+    color: WhiteAlpha[60],
     letterSpacing: 4,
     textAlign: "center",
     marginBottom: 20,
@@ -1015,55 +1016,55 @@ const styles = StyleSheet.create({
   searchPreTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#1DB954",
+    color: WrappedPalette.green,
     letterSpacing: 6,
     marginBottom: 4,
   },
   searchTitle: {
     fontSize: 52,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     lineHeight: 54,
     marginBottom: 12,
   },
   searchTitleAccent: {
     width: 48,
     height: 4,
-    backgroundColor: "#1DB954",
+    backgroundColor: WrappedPalette.green,
     borderRadius: 2,
     marginBottom: 36,
   },
   searchCard: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: WhiteAlpha[7],
     borderRadius: 20,
     padding: 24,
     marginBottom: 32,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: WhiteAlpha[8],
   },
   inputLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 2,
     marginBottom: 10,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: WhiteAlpha[8],
     borderRadius: 12,
     paddingHorizontal: 14,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: WhiteAlpha[10],
   },
   searchInput: {
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 10,
     fontSize: 16,
-    color: "#FFFFFF",
+    color: Palette.white,
     fontWeight: "500",
   },
   yearScroll: {
@@ -1079,21 +1080,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: WhiteAlpha[6],
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: WhiteAlpha[10],
   },
   yearPillActive: {
-    backgroundColor: "#1DB954",
-    borderColor: "#1DB954",
+    backgroundColor: WrappedPalette.green,
+    borderColor: WrappedPalette.green,
   },
   yearPillText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
   },
   yearPillTextActive: {
-    color: "#000000",
+    color: Palette.black,
     fontWeight: "800",
   },
   unwrapButton: {
@@ -1109,12 +1110,12 @@ const styles = StyleSheet.create({
   unwrapButtonText: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#000000",
+    color: Palette.black,
     letterSpacing: 2,
   },
   searchFooter: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.35)",
+    color: WhiteAlpha[35],
     textAlign: "center",
     lineHeight: 22,
   },
@@ -1122,9 +1123,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(255,165,0,0.2)",
+    backgroundColor: WrappedPalette.offlineBannerBackground,
     borderWidth: 1,
-    borderColor: "rgba(255,165,0,0.4)",
+    borderColor: WrappedPalette.offlineBannerBorder,
     borderRadius: 12,
     padding: 14,
     marginBottom: 24,
@@ -1132,7 +1133,7 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     flex: 1,
     fontSize: 14,
-    color: "rgba(255,255,255,0.95)",
+    color: WhiteAlpha[95],
     lineHeight: 20,
   },
 
@@ -1145,37 +1146,37 @@ const styles = StyleSheet.create({
   titleSlideYear: {
     fontSize: 96,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: -2,
     lineHeight: 96,
   },
   titleDivider: {
     width: 60,
     height: 3,
-    backgroundColor: "rgba(255,255,255,0.4)",
+    backgroundColor: WhiteAlpha[40],
     borderRadius: 2,
     marginVertical: 20,
   },
   titleSlideName: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: 4,
     textAlign: "center",
     marginBottom: 20,
   },
   rankBadge: {
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: WhiteAlpha[15],
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    borderColor: WhiteAlpha[25],
   },
   rankBadgeText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: 3,
     textTransform: "uppercase",
   },
@@ -1192,12 +1193,12 @@ const styles = StyleSheet.create({
   titleBottomNumber: {
     fontSize: 24,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
   },
   titleBottomLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 1,
     textTransform: "uppercase",
     marginTop: 2,
@@ -1205,7 +1206,7 @@ const styles = StyleSheet.create({
   titleBottomDivider: {
     width: 1,
     height: 32,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: WhiteAlpha[20],
   },
 
   // Total weight slide
@@ -1217,26 +1218,26 @@ const styles = StyleSheet.create({
   heroStatPrefix: {
     fontSize: 16,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 4,
     marginBottom: 8,
   },
   heroStatNumber: {
     fontSize: 72,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     textAlign: "center",
     lineHeight: 80,
   },
   heroStatSuffix: {
     fontSize: 28,
     fontWeight: "800",
-    color: "rgba(255,255,255,0.7)",
+    color: WhiteAlpha[70],
     letterSpacing: 8,
     marginTop: 4,
   },
   funFactCard: {
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: BlackAlpha[25],
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 16,
@@ -1245,7 +1246,7 @@ const styles = StyleSheet.create({
   funFactText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
+    color: WhiteAlpha[80],
     textAlign: "center",
   },
 
@@ -1258,42 +1259,42 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   prCard: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: WhiteAlpha[10],
     borderRadius: 20,
     padding: 24,
     width: "100%",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: WhiteAlpha[10],
   },
   prCardLarge: {
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderColor: "rgba(255,255,255,0.25)",
+    backgroundColor: WhiteAlpha[18],
+    borderColor: WhiteAlpha[25],
     paddingVertical: 32,
   },
   prLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 3,
     marginBottom: 6,
   },
   prValue: {
     fontSize: 40,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
   },
   prLabelLarge: {
     fontSize: 14,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.6)",
+    color: WhiteAlpha[60],
     letterSpacing: 3,
     marginBottom: 8,
   },
   prValueLarge: {
     fontSize: 56,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
   },
 
   // Consistency slide
@@ -1308,7 +1309,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 120,
     borderWidth: 10,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: WhiteAlpha[10],
   },
   ringInner: {
     alignItems: "center",
@@ -1321,18 +1322,18 @@ const styles = StyleSheet.create({
   ringPercentage: {
     fontSize: 44,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
   },
   ringPercent: {
     fontSize: 24,
     fontWeight: "800",
-    color: "rgba(255,255,255,0.7)",
+    color: WhiteAlpha[70],
     marginLeft: 2,
   },
   ringLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 3,
     marginTop: 2,
   },
@@ -1348,13 +1349,13 @@ const styles = StyleSheet.create({
   consistencyStatNumber: {
     fontSize: 32,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     marginBottom: 4,
   },
   consistencyStatLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 2,
     textAlign: "center",
     lineHeight: 16,
@@ -1362,7 +1363,7 @@ const styles = StyleSheet.create({
   consistencyStatDivider: {
     width: 1,
     height: 48,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: WhiteAlpha[20],
   },
 
   // Journey slide
@@ -1380,18 +1381,18 @@ const styles = StyleSheet.create({
   journeyHeroNumber: {
     fontSize: 88,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     lineHeight: 92,
   },
   journeyHeroLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 4,
     marginTop: 4,
   },
   journeyCard: {
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: BlackAlpha[25],
     borderRadius: 20,
     padding: 24,
     width: "100%",
@@ -1400,14 +1401,14 @@ const styles = StyleSheet.create({
   journeyCardLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
+    color: WhiteAlpha[40],
     letterSpacing: 2,
     marginBottom: 8,
   },
   journeyCardValue: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: Palette.white,
     textAlign: "center",
   },
   journeyStatsRow: {
@@ -1417,7 +1418,7 @@ const styles = StyleSheet.create({
   },
   journeyStat: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: WhiteAlpha[10],
     borderRadius: 16,
     padding: 20,
     alignItems: "center",
@@ -1425,17 +1426,17 @@ const styles = StyleSheet.create({
   journeyStatNumber: {
     fontSize: 24,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     marginBottom: 4,
   },
   journeyStatLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 2,
   },
   positiveText: {
-    color: "#1DB954",
+    color: WrappedPalette.green,
   },
 
   // Favorite attempt slide
@@ -1447,32 +1448,32 @@ const styles = StyleSheet.create({
   attemptOrdinal: {
     fontSize: 96,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     lineHeight: 96,
   },
   attemptLabel: {
     fontSize: 28,
     fontWeight: "800",
-    color: "rgba(255,255,255,0.7)",
+    color: WhiteAlpha[70],
     letterSpacing: 8,
     marginBottom: 16,
   },
   attemptDivider: {
     width: 48,
     height: 3,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: WhiteAlpha[30],
     borderRadius: 2,
     marginVertical: 20,
   },
   attemptTitle: {
     fontSize: 32,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     letterSpacing: 4,
     marginBottom: 24,
   },
   attemptDescCard: {
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: BlackAlpha[25],
     borderRadius: 20,
     paddingHorizontal: 28,
     paddingVertical: 20,
@@ -1480,7 +1481,7 @@ const styles = StyleSheet.create({
   attemptDescription: {
     fontSize: 16,
     fontWeight: "500",
-    color: "rgba(255,255,255,0.8)",
+    color: WhiteAlpha[80],
     textAlign: "center",
     lineHeight: 24,
   },
@@ -1495,13 +1496,13 @@ const styles = StyleSheet.create({
   shareYear: {
     fontSize: 56,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     lineHeight: 56,
   },
   shareName: {
     fontSize: 18,
     fontWeight: "800",
-    color: "rgba(255,255,255,0.7)",
+    color: WhiteAlpha[70],
     letterSpacing: 4,
     marginTop: 8,
     marginBottom: 32,
@@ -1517,23 +1518,23 @@ const styles = StyleSheet.create({
   shareSummaryItem: {
     flex: 1,
     minWidth: "40%",
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: WhiteAlpha[10],
     borderRadius: 16,
     padding: 20,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: WhiteAlpha[8],
   },
   shareSummaryValue: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: Palette.white,
     marginBottom: 4,
   },
   shareSummaryLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.5)",
+    color: WhiteAlpha[50],
     letterSpacing: 2,
   },
   shareActionButton: {
@@ -1553,7 +1554,7 @@ const styles = StyleSheet.create({
   shareActionText: {
     fontSize: 15,
     fontWeight: "900",
-    color: "#000000",
+    color: Palette.black,
     letterSpacing: 2,
   },
   searchAgainButton: {
@@ -1563,16 +1564,16 @@ const styles = StyleSheet.create({
   searchAgainText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.6)",
+    color: WhiteAlpha[60],
     textDecorationLine: "underline",
   },
 
   suggestionsContainer: {
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: BlackAlpha[45],
     borderRadius: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: WhiteAlpha[8],
     overflow: "hidden",
   },
   suggestionRow: {
@@ -1582,10 +1583,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: WhiteAlpha[6],
   },
   suggestionRowPressed: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: WhiteAlpha[8],
   },
   didYouMeanLabel: {
     paddingHorizontal: 14,
@@ -1595,7 +1596,7 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 15,
     fontWeight: "500",
-    color: "rgba(255,255,255,0.85)",
+    color: WhiteAlpha[85],
     flex: 1,
   },
 });

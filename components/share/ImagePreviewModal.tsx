@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Palette, SharePreviewPalette } from "@/constants/Palette";
 
 export default function ImagePreviewModal({
   visible,
@@ -165,7 +166,7 @@ export default function ImagePreviewModal({
                           style={[
                             styles.segmentText,
                             {
-                              color: isActive ? "#FFFFFF" : colors.secondaryText,
+                              color: isActive ? Palette.white : colors.secondaryText,
                             },
                           ]}
                         >
@@ -267,7 +268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E1E1E1",
+    borderBottomColor: Palette.lightSeparator,
     position: "relative",
   },
   title: {
@@ -299,14 +300,14 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   imageCard: {
-    backgroundColor: "transparent",
+    backgroundColor: Palette.transparent,
     borderRadius: 0,
     width: "100%",
   },
   imageCardTransparent: {
-    backgroundColor: "transparent",
+    backgroundColor: Palette.transparent,
     borderWidth: 1,
-    borderColor: "#DADADA",
+    borderColor: SharePreviewPalette.transparentCardBorder,
   },
   image: {
     width: "100%",
@@ -339,17 +340,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   checkerLight: {
-    backgroundColor: "#F0F0F0",
+    backgroundColor: SharePreviewPalette.checkerLight,
   },
   checkerDark: {
-    backgroundColor: "#D8D8D8",
+    backgroundColor: SharePreviewPalette.checkerDark,
   },
   shareButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#007AFF",
+    backgroundColor: Palette.systemBlue,
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -357,7 +358,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
   },
   shareButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

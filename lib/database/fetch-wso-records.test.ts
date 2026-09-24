@@ -1,4 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import {
+  downloadWSORecordsForOffline,
+  fetchWSOAgeGroups,
+  MAX_CACHED_WSO_RECORD_VIEWS,
+  wsoListResource,
+  wsoRecordsResource,
+} from "@/lib/database/fetch-wso-records";
+import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import type { RecordsData } from "@/types/records";
+
 const mockGetJsonArray = jest.fn();
 const mockFetchApiWsoList = jest.fn();
 const mockFetchApiWsoAgeGroups = jest.fn();
@@ -6,8 +17,6 @@ const mockFetchApiWsoAgeGroups = jest.fn();
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
-
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 
 // The real API client runs, so its boundary validators see these payloads.
 const originalFetch = global.fetch;
@@ -21,16 +30,6 @@ beforeAll(() => {
 afterAll(() => {
   global.fetch = originalFetch;
 });
-
-import {
-  downloadWSORecordsForOffline,
-  fetchWSOAgeGroups,
-  MAX_CACHED_WSO_RECORD_VIEWS,
-  wsoListResource,
-  wsoRecordsResource,
-} from "@/lib/database/fetch-wso-records";
-import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
-import type { RecordsData } from "@/types/records";
 
 const WSO_KEY = OFFLINE_CACHE_KEYS.wsoRecords;
 const FILTERED_KEY = OFFLINE_CACHE_KEYS.wsoRecordsFiltered;

@@ -19,7 +19,12 @@ const fetchNames = jest.fn(
 
 let hook!: ReturnType<typeof useNameSuggestions>;
 function Harness() {
-  hook = useNameSuggestions(fetchNames);
+  const value = useNameSuggestions(fetchNames);
+  // Assigned after commit, not during render, so the test double stays
+  // within the rules of hooks; every read below happens after `act`.
+  React.useEffect(() => {
+    hook = value;
+  });
   return null;
 }
 

@@ -1,3 +1,6 @@
+import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { intlRankingsResource } from "@/lib/database/fetchIntlRankings";
+
 const mockGetJsonArray = jest.fn();
 const mockGetOfflineCache = jest.fn();
 const mockSetOfflineCache = jest.fn();
@@ -11,8 +14,6 @@ jest.mock("@/lib/database/offline-cache", () => ({
   setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
 }));
 
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
-
 // The real API client runs, so its boundary validators see these payloads.
 const originalFetch = global.fetch;
 beforeAll(() => {
@@ -21,8 +22,6 @@ beforeAll(() => {
 afterAll(() => {
   global.fetch = originalFetch;
 });
-
-import { intlRankingsResource } from "@/lib/database/fetchIntlRankings";
 
 // The screens read rankings through the resource; its fresh fetch is the
 // mapping under test (the old `fetchIntlRankings` wrapper had no callers).

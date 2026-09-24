@@ -8,12 +8,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
 import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
-
-const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
-jest.mock("@/lib/networkUtils", () => ({
-  isNetworkAvailable: () => mockIsNetworkAvailable(),
-}));
-
 import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { downloadStandardsForOffline } from "@/lib/database/fetch-standards";
@@ -23,6 +17,11 @@ import {
   MAX_OFFLINE_WSO_COUNT,
 } from "@/lib/database/fetch-wso-records";
 import { downloadIntlRankingsForOffline } from "@/lib/database/fetchIntlRankings";
+
+const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
+jest.mock("@/lib/networkUtils", () => ({
+  isNetworkAvailable: () => mockIsNetworkAvailable(),
+}));
 
 const mockRespond = jest.fn<Promise<unknown>, [string, Record<string, string>]>();
 const originalFetch = global.fetch;

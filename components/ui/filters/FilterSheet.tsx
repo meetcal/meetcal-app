@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isSheetDrag, shouldDismissSheet } from "./filterSheetGesture";
+import { BlackAlpha } from "@/constants/Palette";
 
 export interface FilterSheetProps {
   visible: boolean;
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: BlackAlpha[40],
   },
   sheetContent: {
     position: "absolute",

@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IconSymbol } from "../ui/IconSymbol";
 import { ThemedText } from "../ui/ThemedText";
 import { showToast } from "../ui/Toast";
+import { Palette } from "@/constants/Palette";
 
 interface EditProfileModalProps {
   isEditing: boolean;
@@ -219,7 +220,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   saveButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: Palette.systemBlue,
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -228,7 +229,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   saveButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

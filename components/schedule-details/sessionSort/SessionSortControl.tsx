@@ -5,6 +5,7 @@ import React, { useCallback, useState } from "react";
 import { Modal, Pressable, StyleSheet } from "react-native";
 import { SortButtonContent } from "./SortButtonContent";
 import type { SessionSortControlProps } from "./types";
+import { BlackAlpha } from "@/constants/Palette";
 
 /**
  * Default / Android session sort control. Uses a custom modal so the Android
@@ -112,7 +113,7 @@ export default SessionSortControl;
 const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: BlackAlpha[40],
     justifyContent: "center",
     paddingHorizontal: 20,
   },

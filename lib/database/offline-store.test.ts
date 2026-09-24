@@ -1,28 +1,3 @@
-const mockStorage = new Map<string, string>();
-
-jest.mock("@react-native-async-storage/async-storage", () => ({
-  __esModule: true,
-  default: {
-    getItem: jest.fn(async (key: string) => mockStorage.get(key) ?? null),
-    setItem: jest.fn(async (key: string, value: string) => {
-      mockStorage.set(key, value);
-    }),
-    removeItem: jest.fn(async (key: string) => {
-      mockStorage.delete(key);
-    }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
-    }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
-    ),
-    multiRemove: jest.fn(async (keys: string[]) => {
-      keys.forEach((key) => mockStorage.delete(key));
-    }),
-    getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
-  },
-}));
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   clearAllAthleteHistory,
@@ -49,6 +24,31 @@ import {
   saveMeetLiftingResults,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
+
+const mockStorage = new Map<string, string>();
+
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (key: string) => mockStorage.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      mockStorage.set(key, value);
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      mockStorage.delete(key);
+    }),
+    multiSet: jest.fn(async (entries: [string, string][]) => {
+      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    }),
+    multiGet: jest.fn(async (keys: string[]) =>
+      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    ),
+    multiRemove: jest.fn(async (keys: string[]) => {
+      keys.forEach((key) => mockStorage.delete(key));
+    }),
+    getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
+  },
+}));
 
 describe("offline-store athlete lifting results", () => {
   beforeEach(async () => {
