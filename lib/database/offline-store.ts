@@ -21,6 +21,12 @@ const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
 const ATHLETE_HISTORY_KEY_PREFIX = 'meetcal_athlete_history_';
 const ATHLETE_BESTS_KEY_PREFIX = 'meetcal_athlete_bests_';
 const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
+/**
+ * `/meets/package` ETag per meet, owned by `meet-manager`. Declared here
+ * because a `304` against it is only trustworthy while the athlete history it
+ * vouches for is still on disk, and this module is what deletes that history.
+ */
+export const PACKAGE_ETAG_STORAGE_KEY = '@meet_package_etag_v1';
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 
 /**
@@ -29,6 +35,8 @@ const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
  * one unbounded batch (PoT #4 "declare sizes").
  */
 const STORAGE_REMOVE_BATCH_SIZE = 500;
+/** Keys read per `multiGet` when probing which athletes have a history blob. */
+const STORAGE_READ_BATCH_SIZE = 500;
 const LIFTING_RESULTS_FORMAT = 'deflate-base64-chunks-v1';
 
 export interface MeetData {
@@ -38,6 +46,12 @@ export interface MeetData {
   athletes: LiftResult[];
   liftingResultsKey: string;
   lastSyncTime: number;
+  /**
+   * When the roster alone was last written. `lastSyncTime` is also bumped by
+   * schedule and results writes, so it cannot tell a fresh roster apart from
+   * an old roster next to a fresh schedule.
+   */
+  athletesSyncedAt?: number;
 }
 
 type ExplicitMeetDownloadEntry = {
@@ -191,6 +205,31 @@ function isLiftingResultsManifest(value: unknown): value is LiftingResultsManife
   );
 }
 
+/**
+ * A cached lifting-result row the readers can use. `name` is the only field
+ * every consumer dereferences (`normalizeAthleteName(r.name)`); the rest are
+ * read defensively. Anything else — a number, `null`, a bare string — is a
+ * corrupt entry and is dropped rather than left to throw in a `.filter`.
+ */
+function isCachedLiftResult(value: unknown): value is SupabaseLiftResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { name?: unknown }).name === 'string'
+  );
+}
+
+function toCachedLiftResults(rows: readonly unknown[]): SupabaseLiftResult[] {
+  const valid = rows.filter(isCachedLiftResult);
+  if (valid.length !== rows.length) {
+    console.warn(
+      `Dropped ${rows.length - valid.length} malformed cached lifting result rows`,
+    );
+  }
+  return valid;
+}
+
 function splitIntoChunks(value: string, chunkSize: number): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < value.length; i += chunkSize) {
@@ -217,7 +256,7 @@ function decodeLiftingResults(encoded: string): SupabaseLiftResult[] {
   if (!Array.isArray(parsed)) {
     throw new Error('Cached lifting results payload was not an array');
   }
-  return parsed as SupabaseLiftResult[];
+  return toCachedLiftResults(parsed);
 }
 
 async function clearStoredLiftingResultsValue(liftingResultsKey: string): Promise<void> {
@@ -255,7 +294,7 @@ async function readStoredLiftingResults(
     const parsed = JSON.parse(payload) as unknown;
 
     if (Array.isArray(parsed)) {
-      return parsed as SupabaseLiftResult[];
+      return toCachedLiftResults(parsed);
     }
 
     if (!isLiftingResultsManifest(parsed) || parsed.chunks <= 0) {
@@ -391,7 +430,8 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
       athletesKey,
       athletes,
       liftingResultsKey: store.meets[meetId].liftingResultsKey,
-      lastSyncTime: store.meets[meetId].lastSyncTime
+      lastSyncTime: store.meets[meetId].lastSyncTime,
+      athletesSyncedAt: store.meets[meetId].athletesSyncedAt ?? 0,
     };
   } catch (error) {
     console.error('Error getting meet data:', error);
@@ -418,6 +458,29 @@ export async function saveAthleteHistory(
     console.error('Error saving athlete history:', error);
     throw error;
   }
+}
+
+/**
+ * The subset of `athleteNames` with no history blob on disk. Reads only the
+ * per-athlete manifest keys (a few dozen bytes each), in bounded batches, so
+ * a roster-wide probe never inflates a single result row.
+ */
+export async function findAthleteNamesWithoutHistory(
+  athleteNames: readonly string[],
+): Promise<string[]> {
+  const uniqueNames = Array.from(new Set(athleteNames.filter(Boolean)));
+  const missing: string[] = [];
+  for (let offset = 0; offset < uniqueNames.length; offset += STORAGE_READ_BATCH_SIZE) {
+    const batch = uniqueNames.slice(offset, offset + STORAGE_READ_BATCH_SIZE);
+    const entries = await AsyncStorage.multiGet(
+      batch.map((name) => getAthleteHistoryKey(normalizeAthleteName(name))),
+    );
+    batch.forEach((name, index) => {
+      const payload = entries[index]?.[1];
+      if (!payload) missing.push(name);
+    });
+  }
+  return missing;
 }
 
 function normalizeCachedBests(value: unknown): SupabaseBests | null {
@@ -553,7 +616,9 @@ export async function getAllCachedLiftingResultsForAthletes(
       for (const r of meetResults) {
         const targets = namesByNormalized.get(normalizeAthleteName(r.name));
         if (!targets) continue;
-        const baseKey = `${r.event_id ?? r.meet}-${r.date}-${r.name}`;
+        // `||`, not `??`: an `event_id` of `''` is "no id", and `??` kept it,
+        // collapsing every id-less row into the same `-date-name` key.
+        const baseKey = `${r.event_id || r.meet}-${r.date}-${r.name}`;
         const isSentinelKey = baseKey === 'undefined-undefined-undefined';
         for (const athleteName of targets) {
           const seen = seenByName.get(athleteName)!;
@@ -742,8 +807,13 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
         throw new Error(`Invalid day structure at index ${index}`);
       }
 
+      // Only the fields that make a session addressable. `startTime` and
+      // `weighInTime` are legitimately "" when the API row has no time or an
+      // unparseable one (`formatApiTime` documents that), and requiring them
+      // made one blank row throw the whole schedule away — "No schedule yet"
+      // for every session in the meet.
       day.sessions.forEach((session, sessionIndex) => {
-        if (!session.id || !session.number || !session.startTime || !session.weighInTime || !Array.isArray(session.platforms)) {
+        if (!session.id || !session.number || !Array.isArray(session.platforms)) {
           console.error(`Invalid session structure at day ${index}, session ${sessionIndex}:`, session);
           throw new Error(`Invalid session structure at day ${index}, session ${sessionIndex}`);
         }
@@ -774,7 +844,8 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       athletesKey: currentAthletesKey,
       athletes: [],
       liftingResultsKey: currentLiftingResultsKey,
-      lastSyncTime: Date.now()
+      lastSyncTime: Date.now(),
+      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
     };
     
     // Save the updated store metadata (now much smaller)
@@ -811,6 +882,7 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
       athletes: [],
       liftingResultsKey: currentLiftingResultsKey,
       lastSyncTime: Date.now(),
+      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
     };
 
     await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
@@ -894,6 +966,7 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
     store.meets[meetId].athletesKey = athletesKey;
     store.meets[meetId].athletes = [];
     store.meets[meetId].lastSyncTime = Date.now();
+    store.meets[meetId].athletesSyncedAt = Date.now();
     try {
       await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
     } catch (metadataError) {
@@ -1054,6 +1127,10 @@ export async function clearAllAthleteHistory(): Promise<void> {
         athleteHistoryKeys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE),
       );
     }
+    // The package validators vouched for history that is now gone. Left in
+    // place, the next prefetch's `304` would short-circuit with the roster
+    // still on disk and never re-download a single athlete.
+    await AsyncStorage.removeItem(PACKAGE_ETAG_STORAGE_KEY);
   } catch (error) {
     console.error('Error clearing athlete history:', error);
   }
@@ -1094,13 +1171,69 @@ export async function getLastSyncTime(meet: MeetName): Promise<number | null> {
   }
 }
 
+/**
+ * One meet's store entry, or null when the persisted value is not one.
+ *
+ * The keys are what every reader dereferences; a missing one is rebuilt from
+ * the meet id, the same defaults `getMeetData` uses for a brand-new meet. The
+ * inline `athletes` array is legacy (rosters live under `athletesKey` now) and
+ * is kept only when it is actually an array.
+ */
+function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entry = value as Record<string, unknown>;
+  const stringOr = (candidate: unknown, fallback: string) =>
+    typeof candidate === 'string' && candidate.length > 0 ? candidate : fallback;
+  return {
+    schedule: null,
+    scheduleKey: stringOr(entry.scheduleKey, `${SCHEDULE_KEY_PREFIX}${meetId}`),
+    athletesKey: stringOr(entry.athletesKey, `${ATHLETES_KEY_PREFIX}${meetId}`),
+    athletes: Array.isArray(entry.athletes) ? (entry.athletes as LiftResult[]) : [],
+    liftingResultsKey: stringOr(
+      entry.liftingResultsKey,
+      `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`,
+    ),
+    lastSyncTime:
+      typeof entry.lastSyncTime === 'number' && Number.isFinite(entry.lastSyncTime)
+        ? entry.lastSyncTime
+        : 0,
+    athletesSyncedAt:
+      typeof entry.athletesSyncedAt === 'number' && Number.isFinite(entry.athletesSyncedAt)
+        ? entry.athletesSyncedAt
+        : 0,
+  };
+}
+
+function toOfflineStore(value: unknown): OfflineStore | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const meetsValue = (value as { meets?: unknown }).meets;
+  if (!meetsValue || typeof meetsValue !== 'object' || Array.isArray(meetsValue)) {
+    return null;
+  }
+  const meets: OfflineStore['meets'] = {};
+  let dropped = 0;
+  for (const [meetId, entry] of Object.entries(meetsValue as Record<string, unknown>)) {
+    const meetData = toStoredMeetData(meetId, entry);
+    if (meetData) {
+      meets[meetId] = meetData;
+    } else {
+      dropped += 1;
+    }
+  }
+  if (dropped > 0) {
+    console.warn(`Dropped ${dropped} malformed offline store meet entries`);
+  }
+  return { meets };
+}
+
 async function getStore(): Promise<OfflineStore> {
   const store = await AsyncStorage.getItem(STORE_KEY);
   if (store) {
     try {
-      const parsed = JSON.parse(store) as OfflineStore;
-      if (parsed && typeof parsed === 'object' && parsed.meets && typeof parsed.meets === 'object') {
-        return parsed;
+      const parsed: unknown = JSON.parse(store);
+      const validated = toOfflineStore(parsed);
+      if (validated) {
+        return validated;
       }
     } catch (error) {
       console.warn('Store payload was invalid, reinitializing:', error);

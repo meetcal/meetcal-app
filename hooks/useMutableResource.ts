@@ -4,6 +4,7 @@ import {
   MutableResource,
   ResourceCacheEntry,
   ResourceSource,
+  reconnectRefetchDelayMs,
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
 
@@ -235,20 +236,29 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   useEffect(() => {
     if (!enabled) return;
 
+    // Jitter reconnect refetches so a venue-wide connectivity flap does not
+    // hit the API with every subscriber at the same instant.
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = subscribeToNetworkChanges((isConnected) => {
       const previous = lastReconnectStateRef.current;
       lastReconnectStateRef.current = isConnected;
-      if (isConnected && previous === false) {
-        refresh(true).catch((refreshError) => {
-          console.error("Failed to revalidate resource after reconnect", {
-            key,
-            error: refreshError,
+      if (isConnected && previous === false && reconnectTimer === null) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          refresh(true).catch((refreshError) => {
+            console.error("Failed to revalidate resource after reconnect", {
+              key,
+              error: refreshError,
+            });
           });
-        });
+        }, reconnectRefetchDelayMs());
       }
     });
 
-    return unsubscribe;
+    return () => {
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      unsubscribe();
+    };
   }, [enabled, key, refresh]);
 
   return {

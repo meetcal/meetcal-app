@@ -1,4 +1,8 @@
-import { createMutableResource } from "@/lib/data/mutable-resource";
+import {
+  createMutableResource,
+  RECONNECT_REFETCH_JITTER_MAX_MS,
+  reconnectRefetchDelayMs,
+} from "@/lib/data/mutable-resource";
 
 describe("createMutableResource", () => {
   it("persists fresh data when it differs from cached data", async () => {
@@ -40,6 +44,32 @@ describe("createMutableResource", () => {
     expect(result.changed).toBe(false);
     expect(result.data).toEqual({ value: 1 });
     expect(persistFresh).not.toHaveBeenCalled();
+  });
+
+  it("serves the fresh data when the cache write fails", async () => {
+    // A cache-write throw (storage full, a validator rejecting one row) used
+    // to reject the whole refresh, so data that had already arrived never
+    // reached the screen.
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const resource = createMutableResource({
+      getKey: () => "unpersistable",
+      loadCached: async () => ({ data: { value: 1 }, lastUpdatedAt: 10 }),
+      fetchFresh: async () => ({ value: 2 }),
+      persistFresh: async () => {
+        throw new Error("SQLITE_FULL");
+      },
+    });
+
+    const result = await resource.revalidate();
+
+    expect(result.data).toEqual({ value: 2 });
+    expect(result.changed).toBe(true);
+    expect(result.lastUpdatedAt).toBe(10);
+    expect(warn).toHaveBeenCalledWith(
+      "Failed to persist fresh resource data; serving it uncached",
+      expect.objectContaining({ key: "unpersistable" }),
+    );
+    warn.mockRestore();
   });
 
   it("dedupes concurrent revalidations by resource key", async () => {
@@ -115,5 +145,21 @@ describe("createMutableResource", () => {
     resolvers[1]({ value: 2 });
     await expect(second).resolves.toMatchObject({ data: { value: 2 } });
     await expect(joined).resolves.toMatchObject({ data: { value: 2 } });
+  });
+});
+
+describe("reconnectRefetchDelayMs", () => {
+  it("spreads reconnect refetches over a bounded window", () => {
+    expect(reconnectRefetchDelayMs(() => 0)).toBe(0);
+    expect(reconnectRefetchDelayMs(() => 0.5)).toBe(
+      Math.floor(RECONNECT_REFETCH_JITTER_MAX_MS / 2),
+    );
+    // `Math.random` is in [0, 1); guard the edge anyway.
+    expect(reconnectRefetchDelayMs(() => 1)).toBe(RECONNECT_REFETCH_JITTER_MAX_MS - 1);
+    for (let i = 0; i < 50; i += 1) {
+      const delay = reconnectRefetchDelayMs();
+      expect(delay).toBeGreaterThanOrEqual(0);
+      expect(delay).toBeLessThan(RECONNECT_REFETCH_JITTER_MAX_MS);
+    }
   });
 });

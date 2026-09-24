@@ -6,7 +6,8 @@ import type { Schedule } from "@/types/schedule";
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
 const mockClearMeetSchedule = jest.fn<Promise<void>, [string]>();
-const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
+const mockFetchSchedule = jest.fn<Promise<Schedule>, [string, unknown]>();
+const mockGetCachedMeetByName = jest.fn<Promise<unknown>, [string]>(async () => null);
 
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
@@ -16,7 +17,12 @@ jest.mock("@/lib/database/offline-store", () => ({
 }));
 
 jest.mock("@/lib/database/queries", () => ({
-  fetchSchedule: (meet: string) => mockFetchSchedule(meet),
+  fetchSchedule: (meet: string, meetDetails: unknown) =>
+    mockFetchSchedule(meet, meetDetails),
+}));
+
+jest.mock("@/lib/database/meet-manager", () => ({
+  getCachedMeetByName: (meet: string) => mockGetCachedMeetByName(meet),
 }));
 
 jest.mock("@/lib/networkUtils", () => ({
@@ -60,6 +66,27 @@ describe("useScheduleData", () => {
     captured = null;
     mockSaveMeetSchedule.mockResolvedValue(undefined);
     mockClearMeetSchedule.mockResolvedValue(undefined);
+    mockGetCachedMeetByName.mockResolvedValue(null);
+  });
+
+  it("hands the cached meet to the schedule fetch so no details request rides along", async () => {
+    const cachedMeet = { name: "Cached Meet" };
+    mockGetCachedMeetByName.mockResolvedValue(cachedMeet);
+    mockGetMeetSchedule.mockResolvedValue([]);
+    mockFetchSchedule.mockResolvedValue([DAY]);
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Cached Meet" />);
+    });
+    await flush();
+
+    expect(mockGetCachedMeetByName).toHaveBeenCalledWith("Cached Meet");
+    expect(mockFetchSchedule).toHaveBeenCalledWith("Cached Meet", cachedMeet);
+
+    act(() => {
+      tree.unmount();
+    });
   });
 
   // Regression: `persistFresh` used to call `clearMeetSchedule` for an empty

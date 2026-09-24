@@ -1,4 +1,5 @@
 import { saveMeetSchedule } from './offline-store';
+import { getCachedMeetByName } from './meet-manager';
 import { fetchSchedule } from './queries';
 import type { MeetName } from '@/data/types/meet';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -57,8 +58,11 @@ export class SyncManager {
         return;
       }
 
-      // Fetch only the schedule - athletes and results are fetched on-demand
-      const schedule = await fetchSchedule(this.meetId);
+      // Fetch only the schedule - athletes and results are fetched on-demand.
+      // The meet itself comes from the cached list so this tick is one
+      // request, not a schedule + details pair every five minutes.
+      const cachedMeet = await getCachedMeetByName(this.meetId);
+      const schedule = await fetchSchedule(this.meetId, cachedMeet);
 
       // Only save if we have data
       if (schedule.length > 0) {

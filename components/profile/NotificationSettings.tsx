@@ -94,7 +94,7 @@ export function NotificationSettings({
     const authResult = requireAuth({
       feature: "session-reminders",
       message: "Sign in to enable session reminders.",
-      returnPath: "/(tabs)/(index)/profile",
+      returnPath: "/schedule-toolbar/profile",
     });
     if (authResult === null || authResult === false) {
       return;
@@ -113,7 +113,7 @@ export function NotificationSettings({
               router.push({
                 pathname: "/shared-screens/paywall",
                 params: {
-                  from: "/(tabs)/(index)/profile",
+                  from: "/schedule-toolbar/profile",
                   feature: "session-reminders",
                 },
               });

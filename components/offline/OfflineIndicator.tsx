@@ -1,12 +1,10 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { isNetworkAvailable } from '@/lib/networkUtils';
+import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** How often the banner re-checks reachability while mounted. */
-const NETWORK_POLL_INTERVAL_MS = 5000;
 /**
  * Cold start has Clerk, RevenueCat and the meets list all in flight, and
  * `isInternetReachable` is briefly null. Waiting this long before the banner
@@ -22,23 +20,37 @@ export function OfflineIndicator() {
   const [hasCheckedNetwork, setHasCheckedNetwork] = useState(false);
   const [minDelayPassed, setMinDelayPassed] = useState(false);
 
-  // Check network status
+  // One probe for the initial answer, then NetInfo's own change events. This
+  // banner is mounted for the life of the app and used to re-probe
+  // reachability on a 5-second interval the whole time; the listener is what
+  // `useIsOffline` and the providers already use. As there, a change event
+  // that lands before the probe resolves is the newer answer and wins.
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
+    let receivedNetworkEvent = false;
 
-    async function checkNetwork() {
-      const hasNetwork = await isNetworkAvailable();
-      if (cancelled) return;
-      setIsOffline(!hasNetwork);
+    isNetworkAvailable()
+      .then((hasNetwork) => {
+        if (!mounted) return;
+        if (!receivedNetworkEvent) setIsOffline(!hasNetwork);
+        setHasCheckedNetwork(true);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        if (!receivedNetworkEvent) setIsOffline(false);
+        setHasCheckedNetwork(true);
+      });
+
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      receivedNetworkEvent = true;
+      if (!mounted) return;
+      setIsOffline(!isConnected);
       setHasCheckedNetwork(true);
-    }
-    checkNetwork();
+    });
 
-    // Check periodically
-    const interval = setInterval(checkNetwork, NETWORK_POLL_INTERVAL_MS);
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      mounted = false;
+      unsubscribe();
     };
   }, []);
 

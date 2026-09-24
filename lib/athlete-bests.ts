@@ -9,7 +9,7 @@
  */
 import { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
-import { maxSuccessfulAttempt } from "@/lib/athletes";
+import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
 import {
   getAllCachedLiftingResultsForAthletes,
   getCachedAthleteBestsForNames,
@@ -140,9 +140,7 @@ async function loadStoredBests(names: string[]): Promise<{
 }
 
 function createBatchKey(names: string[], meetId: MeetName): string {
-  const normalizedNames = names
-    .map((name) => name.trim().toLowerCase().replace(/\s+/g, " "))
-    .sort();
+  const normalizedNames = names.map(normalizeAthleteName).sort();
   return `${meetId}:${normalizedNames.join("|")}`;
 }
 

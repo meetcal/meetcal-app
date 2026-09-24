@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 
 type ExpandedIdContextType = {
   expandedId: string | null;
@@ -9,9 +9,13 @@ const ExpandedIdContext = createContext<ExpandedIdContextType | undefined>(undef
 
 export function ExpandedIdProvider({ children }: { children: React.ReactNode }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Every start-list row reads this context. The value used to be an object
+  // literal, so each render of the screen around the provider handed every
+  // mounted row a new object and re-rendered it through `React.memo`.
+  const value = useMemo(() => ({ expandedId, setExpandedId }), [expandedId]);
 
   return (
-    <ExpandedIdContext.Provider value={{ expandedId, setExpandedId }}>
+    <ExpandedIdContext.Provider value={value}>
       {children}
     </ExpandedIdContext.Provider>
   );

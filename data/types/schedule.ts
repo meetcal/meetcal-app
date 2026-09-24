@@ -1,22 +1,10 @@
-import { Platform } from './athletes';
-import { calculateWeighInTime } from '@/utils/time';
+// `types/schedule.ts` is the source of truth for the schedule domain types.
+// This module used to carry a structurally identical `Session` / platform
+// pair; it now re-exports them under the names its importers already use.
+import type { Platform, Session } from '@/types/schedule';
 
-export interface PlatformSession {
-  platform: Platform;
-  weightClass: string;
-  platformStartTime?: string;  // Optional platform-specific start time
-}
-
-export interface Session {
-  id: string;
-  number: number;
-  startTime: string;
-  weighInTime: string;
-  platforms: PlatformSession[];
-}
-
-// Re-export calculateWeighInTime from utils for backwards compatibility
-export { calculateWeighInTime };
+export type PlatformSession = Platform;
+export type { Session };
 
 export function getPlatformStartTime(session: Session, platformName: string): string {
   const platform = session.platforms.find(p => p.platform === platformName);

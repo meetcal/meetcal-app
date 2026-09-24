@@ -3,6 +3,7 @@ import { NextSessionCard } from "@/components/saved/NextSessionCard";
 import SessionCard from "@/components/saved/SessionCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
@@ -25,15 +26,9 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
-import { migrateSessionsToMeetSpecific } from "@/utils/migration";
-import {
-  getAllSavedSessionsKeys,
-  getSavedSessionsKey,
-  makeLookupKey,
-} from "@/utils/session";
+import { makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/expo";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -71,8 +66,13 @@ const SCHEDULE_FETCH_BATCH_SIZE = 4;
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const { user } = useUser();
-  const { savedSessions, saveSession, loadSavedSessions, resetAllSessions } =
-    useSavedSessions();
+  const {
+    savedSessions,
+    authExpired,
+    loadSavedSessions,
+    resetAllSessions,
+    migrateLegacySessions,
+  } = useSavedSessions();
   const { selectedMeet, availableMeets, meetDetails } = useSelectedMeet();
   const allowedMeetNames = useMemo(
     () => new Set(availableMeets.map((m) => m.name)),
@@ -131,50 +131,27 @@ export default function SavedScreen() {
     // At this point, user must be authenticated
     if (!user?.id) return;
 
+    // The hook clears the selected meet only (legacy storage keys included),
+    // or everything when no meet is selected. Say which one is about to happen.
+    const scope = selectedMeet ? `for ${selectedMeet}` : "for every meet";
     Alert.alert(
       "Reset Saved Sessions",
-      "Are you sure you want to remove all saved sessions? This cannot be undone.",
+      `Remove all saved sessions ${scope}? This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            try {
-              await resetAllSessions(selectedMeet ?? undefined);
-              const STORAGE_KEYS = getAllSavedSessionsKeys(user!.id);
-              for (const key of STORAGE_KEYS) {
-                const stored = await AsyncStorage.getItem(key);
-                if (stored) {
-                  let sessions: { meet?: string }[] = [];
-                  try {
-                    const parsed: unknown = JSON.parse(stored);
-                    if (Array.isArray(parsed))
-                      sessions = parsed as { meet?: string }[];
-                  } catch (err) {
-                    console.error("Failed to parse stored sessions:", err, {
-                      key,
-                      stored,
-                    });
-                  }
-                  if (Array.isArray(sessions)) {
-                    const filtered = sessions.filter(
-                      (s) => s.meet !== selectedMeet,
-                    );
-                    await AsyncStorage.setItem(key, JSON.stringify(filtered));
-                  }
-                }
-              }
-              await AsyncStorage.setItem(
-                `@sessions_reset_${user!.id}`,
-                Date.now().toString(),
-              );
+            const reset = await resetAllSessions(selectedMeet ?? undefined);
+            if (reset) {
               showToast({
                 type: "success",
-                message: "All saved sessions for this meet have been reset.",
+                message: selectedMeet
+                  ? "All saved sessions for this meet have been reset."
+                  : "All saved sessions have been reset.",
               });
-            } catch (error) {
-              console.error("Error resetting sessions:", error);
+            } else {
               showToast({ type: "error", message: "Failed to reset saved sessions." });
             }
           },
@@ -226,54 +203,14 @@ export default function SavedScreen() {
     return lookupByMeet;
   }, [schedulesMap]);
 
-  // Update migrateSessions function to use user-specific storage
+  // Pre-meet rows are folded into the current list by the hook, which owns
+  // the storage keys; this screen only decides when to ask.
   const migrateSessions = useCallback(async () => {
     if (!user?.id || !selectedMeet) return;
-
-    try {
-      devLog("Starting session migration");
-      const STORAGE_KEYS = getAllSavedSessionsKeys(user.id);
-      let needsMigration = false;
-
-      for (const key of STORAGE_KEYS) {
-        const storedData = await AsyncStorage.getItem(key);
-        if (storedData) {
-          try {
-            const parsed: unknown = JSON.parse(storedData);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              // Only object entries can carry a `meet`. `null` entries are
-              // skipped by `migrateSessionsToMeetSpecific` rather than
-              // aborting the migration for this key.
-              needsMigration = parsed.some(
-                (session) =>
-                  !session || typeof session !== "object" || !session.meet,
-              );
-              if (needsMigration) {
-                const migratedSessions = await migrateSessionsToMeetSpecific(
-                  parsed,
-                  selectedMeet,
-                );
-
-                await Promise.all([
-                  AsyncStorage.setItem(
-                    getSavedSessionsKey(user.id),
-                    JSON.stringify(migratedSessions),
-                  ),
-                  ...migratedSessions.map((session) => saveSession(session)),
-                ]);
-              }
-            }
-          } catch (e) {
-            console.error(`Error migrating sessions in ${key}:`, e);
-          }
-        }
-      }
-
-      setHasMigrated(true);
-    } catch (error) {
-      console.error("Error during session migration:", error);
-    }
-  }, [selectedMeet, saveSession, user?.id]);
+    devLog("Starting session migration");
+    await migrateLegacySessions(selectedMeet);
+    setHasMigrated(true);
+  }, [selectedMeet, migrateLegacySessions, user?.id]);
 
   // Filter saved sessions by meet and letter - strict meet filtering
   const filteredSessions = useMemo(() => {
@@ -751,11 +688,24 @@ export default function SavedScreen() {
           { paddingBottom: insets.bottom + 100 },
         ]}
         ListHeaderComponent={
-          <NextSessionCard
-            selectedMeet={selectedMeet}
-            meetDetails={meetDetails}
-            savedSessions={savedSessions}
-          />
+          <>
+            {authExpired && (
+              <View
+                testID="saved-sync-notice"
+                style={[styles.syncNotice, { borderColor: colors.border }]}
+              >
+                <ThemedText style={[styles.syncNoticeText, { color: colors.secondaryText }]}>
+                  Your sign-in has expired, so saved sessions are not syncing.
+                  Sign out and back in to sync them again.
+                </ThemedText>
+              </View>
+            )}
+            <NextSessionCard
+              selectedMeet={selectedMeet}
+              meetDetails={meetDetails}
+              savedSessions={savedSessions}
+            />
+          </>
         }
         ListEmptyComponent={() => (
           <View testID="saved-empty-state" style={styles.emptyContainer}>
@@ -822,5 +772,15 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     minHeight: 320,
+  },
+  syncNotice: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  syncNoticeText: {
+    fontSize: 13,
   },
 });

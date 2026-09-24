@@ -1,7 +1,7 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { FlashList } from "@shopify/flash-list";
-import React from "react";
+import React, { useCallback } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 
 export interface DataTableColumn {
@@ -50,6 +50,19 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const colors = useAppColors();
   const hasRows = !loading && !error && data.length > 0;
+
+  // FlashList recycles cells and memoises them on `item` and `extraData`. A
+  // row's colours come from the caller's `renderRow` closure, so the theme
+  // has to be part of what the list compares or a light/dark flip leaves the
+  // recycled, off-screen cells painted in the old palette. `useAppColors`
+  // returns the palette object for the active scheme, so its identity is the
+  // theme.
+  const renderItem = useCallback(
+    ({ item, index }: { item: T; index: number }) => (
+      <>{renderRow(item, index)}</>
+    ),
+    [renderRow],
+  );
 
   const header = (
     <View style={[styles.headerRow, { borderBottomColor: colors.border }]}>
@@ -109,7 +122,8 @@ export function DataTable<T>({
             <FlashList
               data={data}
               keyExtractor={keyExtractor}
-              renderItem={({ item, index }) => <>{renderRow(item, index)}</>}
+              renderItem={renderItem}
+              extraData={colors}
               contentInsetAdjustmentBehavior="automatic"
               {...scrollViewProps}
             />

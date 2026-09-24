@@ -16,6 +16,10 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useSessionAthletes } from "@/hooks/useMeetAthletes";
 import { SessionAthlete } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
+import {
+  createSessionDetailsDeepLink,
+  normalizeDeepLinkHref,
+} from "@/utils/deepLinks";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -68,6 +72,15 @@ export default function SessionAthletes({
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const refreshKeyRef = useRef(refreshKey);
+  // Where sign-in and the paywall send the user back to. The bare route path
+  // used to be passed, so the return landed on a details screen with no
+  // meet, session or platform and rendered blank.
+  const returnPath = useMemo(() => {
+    const href = normalizeDeepLinkHref(
+      createSessionDetailsDeepLink({ meet: meetId, sessionNumber, platform }),
+    );
+    return typeof href === "string" ? href : "/shared-screens/schedule-details";
+  }, [meetId, sessionNumber, platform]);
   const loadStartedAtRef = useRef(performance.now());
   const loggedLoadRef = useRef(false);
   const bestsLoadStartedAtRef = useRef(performance.now());
@@ -277,7 +290,7 @@ export default function SessionAthletes({
     const authResult = requireAuth({
       feature: "sort-athletes",
       message: "Sign in to access premium features.",
-      returnPath: "/shared-screens/schedule-details",
+      returnPath,
     });
     if (authResult === null || authResult === false) {
       return;
@@ -285,11 +298,11 @@ export default function SessionAthletes({
     router.push({
       pathname: "/shared-screens/paywall",
       params: {
-        from: "/shared-screens/schedule-details",
+        from: returnPath,
         feature: "sort-athletes",
       },
     });
-  }, [requireAuth, router]);
+  }, [requireAuth, returnPath, router]);
 
    
   const loading = isLoading || (sessionAthletes.length === 0 && isRefreshing);
@@ -471,7 +484,7 @@ export default function SessionAthletes({
                         const authResult = requireAuth({
                           feature: "athlete-bests",
                           message: "Sign in to access premium features.",
-                          returnPath: "/shared-screens/schedule-details",
+                          returnPath,
                         });
                         if (authResult === null || authResult === false) {
                           return;
@@ -479,7 +492,7 @@ export default function SessionAthletes({
                         router.push({
                           pathname: "/shared-screens/paywall",
                           params: {
-                            from: "/shared-screens/schedule-details",
+                            from: returnPath,
                             feature: "athlete-bests",
                           },
                         });
@@ -539,7 +552,7 @@ export default function SessionAthletes({
                       const authResult = requireAuth({
                         feature: "athlete-results",
                         message: "Sign in to access premium features.",
-                        returnPath: "/shared-screens/schedule-details",
+                        returnPath,
                       });
                       if (authResult === null || authResult === false) {
                         return;

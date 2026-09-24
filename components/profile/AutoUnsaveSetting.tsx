@@ -101,9 +101,10 @@ export function AutoUnsaveSetting({
     try {
       const token = await getToken();
       if (!token) throw new Error("Missing Clerk token");
-      // The server is authoritative: it may clamp or refuse the change (an
-      // entitlement re-check runs there), so take its answer rather than
-      // leaving the optimistic value standing.
+      // The server stores the flag and echoes what it persisted, so take its
+      // answer rather than leaving the optimistic value standing. It does not
+      // re-check the RevenueCat entitlement: the `isSubscribed` gate above is
+      // the only one, and it is a client-side hint.
       const result = await patchAutoUnsavePreference(token, nextValue);
       setIsEnabled(result.auto_unsave_started_sessions);
     } catch (error) {

@@ -8,6 +8,7 @@ import { MeetName } from "@/data/types/meet";
 import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
+import { getCachedMeetByName } from "@/lib/database/meet-manager";
 import { fetchSchedule } from "@/lib/database/queries";
 import { useMutableResource } from "@/hooks/useMutableResource";
 
@@ -31,7 +32,9 @@ const scheduleResource = createMutableResource<Schedule, [MeetName]>({
       lastUpdatedAt: null,
     };
   },
-  fetchFresh: async (meet) => fetchSchedule(meet),
+  // The meets list is cached before a meet can be selected, so the schedule
+  // fetch skips its `/meets/details` companion request whenever it can.
+  fetchFresh: async (meet) => fetchSchedule(meet, await getCachedMeetByName(meet)),
   persistFresh: async (data, meet) => {
     // An empty response is not a command to delete the offline copy. This used
     // to call `clearMeetSchedule(meet)`, so one `200 []` from

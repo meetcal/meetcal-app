@@ -1,5 +1,9 @@
+import type { Platform as PlatformName } from '@/data/types/athletes';
+
+// Source of truth for the schedule domain types. `data/types/schedule.ts`
+// re-exports these under its older names so its importers keep working.
 export type Platform = {
-  platform: 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+  platform: PlatformName;
   weightClass: string;
   platformStartTime?: string; // Optional field for platform-specific start time
 };

@@ -160,6 +160,32 @@ describe("getLastYearBests", () => {
   });
 });
 
+describe("offline fallback date window", () => {
+  it("compares result dates as calendar dates, keeping a result on the cutoff day", async () => {
+    // `new Date("2025-09-23")` is UTC midnight; comparing via `toISOString`
+    // still worked, but the pattern is the same one that drifts a day for
+    // anything else and it is the only place that did not go through
+    // `toMeetCalendarDate`.
+    const { getHistoryCutoffDate, YEAR_BESTS_YEARS } = jest.requireActual<
+      typeof import("@/utils/dateTime")
+    >("@/utils/dateTime");
+    const cutoff = getHistoryCutoffDate(YEAR_BESTS_YEARS);
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
+    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
+    mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
+      liftRow({ date: cutoff, snatch_best: 100, cj_best: 120, total: 220 }),
+      liftRow({ date: "2010-01-01", meet: "Old Meet", snatch_best: 150, cj_best: 180, total: 330 }),
+      liftRow({ date: "not a date", snatch_best: 90, cj_best: 110, total: 200 }),
+    ]);
+
+    const bests = await startListApi.getLastYearBests("Athlete");
+
+    // The cutoff-day row and the undated row are inside the window; the 2010
+    // career bests are not.
+    expect(bests).toEqual({ bestSnatch: 100, bestCJ: 120, bestTotal: 220 });
+  });
+});
+
 describe("getLastYearBestsBatch", () => {
   it("resolves fresh, stale, and never-competed names with one full-history fetch", async () => {
     mockFetchApiYearBestsByNames.mockResolvedValue({

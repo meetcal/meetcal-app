@@ -50,9 +50,16 @@ const SENTRY_TRACES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_PROFILES_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_SESSION_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
 const SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE = __DEV__ ? 1.0 : 0;
+// A DSN is a public client identifier, not a secret. `EXPO_PUBLIC_SENTRY_DSN`
+// overrides it per environment; the production DSN stays as the fallback so a
+// build or OTA whose env lacks the variable still reports crashes instead of
+// silently shipping with Sentry off.
+const DEFAULT_SENTRY_DSN =
+  'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528';
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN || DEFAULT_SENTRY_DSN;
 
 Sentry.init({
-  dsn: 'https://a1b2ad477f94d131253b40d07c40c690@o4510884729847808.ingest.us.sentry.io/4510884731158528',
+  dsn: SENTRY_DSN,
   environment: SENTRY_ENVIRONMENT,
   sendDefaultPii: false,
   enableLogs: false,
