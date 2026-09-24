@@ -9,11 +9,14 @@ import {
   scheduleNotification,
 } from "@/utils/notifications";
 import {
+  deleteSavedSession,
+  deleteSavedSessions,
   fetchSavedSessions,
   fetchUserPreferences,
   MeetCalApiError,
   putSavedSession,
 } from "@/lib/api/meetcal-api";
+import { getMeetData } from "@/lib/database/offline-store";
 import { convertToUTC } from "@/data/meets/config";
 import {
   countPendingWrites,
@@ -135,6 +138,13 @@ const mockFetchUserPreferences = fetchUserPreferences as jest.MockedFunction<
 const mockPutSavedSession = putSavedSession as jest.MockedFunction<
   typeof putSavedSession
 >;
+const mockDeleteSavedSession = deleteSavedSession as jest.MockedFunction<
+  typeof deleteSavedSession
+>;
+const mockDeleteSavedSessions = deleteSavedSessions as jest.MockedFunction<
+  typeof deleteSavedSessions
+>;
+const mockGetMeetData = getMeetData as jest.MockedFunction<typeof getMeetData>;
 const mockConvertToUTC = convertToUTC as jest.MockedFunction<typeof convertToUTC>;
 
 const mockFetchSchedule = fetchSchedule as jest.MockedFunction<
@@ -926,5 +936,180 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
     await expect(AsyncStorage.getItem("savedSessions_user_1")).resolves.toBeNull();
     expect(mockPutSavedSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("destructive writes: resets, removals and batch saves", () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    mockClerkUser = { id: "user_1" };
+    mockGetToken.mockResolvedValue(TOKEN);
+    mockPutSavedSession.mockReset();
+    mockPutSavedSession.mockImplementation(async (_token, id) => ({
+      session_id: id,
+      updated_at: 1,
+    }));
+    mockDeleteSavedSession.mockReset();
+    mockDeleteSavedSession.mockResolvedValue({ deleted: true });
+    mockDeleteSavedSessions.mockReset();
+    mockDeleteSavedSessions.mockResolvedValue({ deleted_count: 1 });
+    mockFetchSavedSessions.mockReset();
+    mockFetchSavedSessions.mockResolvedValue([]);
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: false });
+    mockFetchSchedule.mockReset();
+    mockGetMeetData.mockReset();
+    mockGetMeetData.mockResolvedValue({ schedule: null } as never);
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const OTHER_MEET = "Other Meet";
+
+  async function mountWithTwoMeets() {
+    mockFetchSavedSessions.mockResolvedValue([
+      apiRow("Test-Meet-1-Red"),
+      { ...apiRow("Other-Meet-1-Red"), meet: OTHER_MEET },
+    ]);
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toHaveLength(2);
+    return hook;
+  }
+
+  it("resets one meet: only that meet's rows go, locally, on the server and in legacy storage", async () => {
+    const hook = await mountWithTwoMeets();
+    await AsyncStorage.setItem(
+      "savedSessions_user_1",
+      JSON.stringify([makeSession("legacy-a"), { ...makeSession("legacy-b"), meet: OTHER_MEET }]),
+    );
+
+    let ok = false;
+    await act(async () => {
+      ok = await hook.current.resetAllSessions("Test Meet" as never);
+    });
+
+    expect(ok).toBe(true);
+    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, "Test Meet");
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Other-Meet-1-Red"]);
+    const stored = JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]");
+    expect(stored.map((s: { id: string }) => s.id)).toEqual(["Other-Meet-1-Red"]);
+    const legacy = JSON.parse((await AsyncStorage.getItem("savedSessions_user_1")) ?? "[]");
+    expect(legacy.map((s: { id: string }) => s.id)).toEqual(["legacy-b"]);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
+  it("resets every meet with one unscoped DELETE", async () => {
+    const hook = await mountWithTwoMeets();
+
+    await act(async () => {
+      await hook.current.resetAllSessions();
+    });
+
+    expect(mockDeleteSavedSessions).toHaveBeenCalledTimes(1);
+    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, undefined);
+    expect(hook.current.savedSessions).toEqual([]);
+  });
+
+  it("keeps an offline reset queued so the next reconcile cannot bring the rows back", async () => {
+    const hook = await mountWithTwoMeets();
+    mockDeleteSavedSessions.mockRejectedValue(new Error("Network request failed"));
+
+    let ok = false;
+    await act(async () => {
+      ok = await hook.current.resetAllSessions("Test Meet" as never);
+    });
+    // The reset is recorded and will be replayed; the local removal stands.
+    expect(ok).toBe(true);
+    expect((await readOutbox("user_1")).resets["Test Meet"]).toBeDefined();
+
+    // The server still has both rows, because the DELETE never arrived.
+    await act(async () => {
+      await hook.current.loadSavedSessions();
+    });
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Other-Meet-1-Red"]);
+  });
+
+  it("keeps a removal queued when the DELETE fails with a 5xx, and still cancels the reminder", async () => {
+    const hook = await mountHook();
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+    mockDeleteSavedSession.mockRejectedValue(new MeetCalApiError("down", 503, ""));
+
+    let ok = false;
+    await act(async () => {
+      ok = await hook.current.removeSession("Test-Meet-1-Red");
+    });
+
+    expect(ok).toBe(true);
+    expect(hook.current.savedSessions).toEqual([]);
+    expect((await readOutbox("user_1")).sessions["Test-Meet-1-Red"]).toMatchObject({ op: "delete" });
+    expect(mockDeleteSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red");
+  });
+
+  it("does not write anything without a signed-in user", async () => {
+    mockClerkUser = null;
+    const { getCachedAuthState } = jest.requireMock("@/lib/authCache") as {
+      getCachedAuthState: jest.Mock;
+    };
+    getCachedAuthState.mockResolvedValueOnce(null);
+    const hook = await mountHook();
+
+    let results: boolean[] = [];
+    await act(async () => {
+      results = [
+        await hook.current.saveSession(makeSession("Test-Meet-1-Red")),
+        await hook.current.removeSession("Test-Meet-1-Red"),
+        await hook.current.resetAllSessions(),
+      ];
+    });
+
+    expect(results).toEqual([false, false, false]);
+    expect(mockPutSavedSession).not.toHaveBeenCalled();
+    expect(mockDeleteSavedSessions).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  it("falls back to the downloaded schedule when the schedule fetch fails", async () => {
+    mockFetchSchedule.mockRejectedValue(new Error("offline"));
+    mockGetMeetData.mockResolvedValue({ schedule: SCHEDULE } as never);
+    const hook = await mountHook();
+
+    let ok = false;
+    await act(async () => {
+      ok = await hook.current.saveSessionsFromAthletes(ATHLETES, "Test Meet" as never);
+    });
+
+    expect(ok).toBe(true);
+    expect(mockGetMeetData).toHaveBeenCalledWith("Test Meet");
+    // The schedule supplies each session's day and start time.
+    expect(hook.current.savedSessions.map((s) => [s.sessionNumber, s.date, s.startTime])).toEqual([
+      [1, "2099-06-20", "10:00 AM"],
+      [2, "2099-06-20", "10:00 AM"],
+      [3, "2099-06-20", "10:00 AM"],
+    ]);
+  });
+
+  it("reports a partial batch failure but keeps the rows the server accepted", async () => {
+    mockPutSavedSession.mockImplementation(async (_token, id) => {
+      if (id.endsWith("-2-Red")) {
+        throw new MeetCalApiError("too many saved sessions", 400, "");
+      }
+      return { session_id: id, updated_at: 1 };
+    });
+    const hook = await mountHook();
+
+    let ok = true;
+    await act(async () => {
+      ok = await hook.current.saveSessionsFromAthletes(ATHLETES, "Test Meet" as never, SCHEDULE);
+    });
+
+    expect(ok).toBe(false);
+    expect(hook.current.savedSessions.map((s) => s.sessionNumber).sort()).toEqual([1, 3]);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 });

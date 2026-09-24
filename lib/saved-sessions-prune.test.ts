@@ -68,6 +68,28 @@ describe("findExpiredSessionIds", () => {
     expect(ids).toEqual([]);
   });
 
+  it("keeps a session whose stored date does not exist instead of rolling it into the past", async () => {
+    // Real conversion: month 00 used to normalise to the previous December,
+    // which is "already started", so auto-unsave deleted the session.
+    const actual = jest.requireActual("@/data/meets/config") as typeof import("@/data/meets/config");
+    mockConvertToUTC.mockImplementation(actual.convertToUTC);
+    try {
+      const ids = await findExpiredSessionIds(
+        [
+          { ...session("impossible", "10:00 AM"), date: "2099-00-10" },
+          { ...session("past", "10:00 AM"), date: "2099-06-19" },
+        ],
+        NOW,
+      );
+      expect(ids).toEqual(["past"]);
+    } finally {
+      mockConvertToUTC.mockImplementation((time: string) => {
+        if (time === "bad") throw new Error("bad time");
+        return new Date(time);
+      });
+    }
+  });
+
   it("looks each meet's time zone up once, falling back to UTC", async () => {
     mockGetMeetConfig.mockRejectedValueOnce(new Error("offline"));
     await findExpiredSessionIds(

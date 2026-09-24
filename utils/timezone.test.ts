@@ -77,6 +77,28 @@ describe("timezone utilities", () => {
       ).toBe("3:30 AM");
     });
 
+    it("accepts a real leap day", () => {
+      expect(
+        convertZonedLocalToUTC("2028-02-29", "10:00 AM", "America/New_York").toISOString(),
+      ).toBe("2028-02-29T15:00:00.000Z");
+    });
+
+    it("rejects calendar dates that do not exist instead of rolling them into another day", () => {
+      // `Date.UTC` silently normalises these (Feb 29 2026 -> Mar 1, month 0 ->
+      // the previous December). A session carrying one would get a reminder on
+      // the wrong day, and a month-0 date lands in the past, which the
+      // auto-unsave prune treats as "already started" and deletes.
+      for (const date of ["2026-02-29", "2026-02-30", "2026-04-31", "2026-13-01", "2026-00-10", "2026-06-00"]) {
+        expect(() => convertZonedLocalToUTC(date, "10:00 AM", "America/New_York")).toThrow(
+          `Invalid date: ${date}`,
+        );
+      }
+    });
+
+    it("rejects an unknown IANA zone rather than guessing an offset", () => {
+      expect(() => convertZonedLocalToUTC("2026-06-20", "10:00 AM", "Mars/Olympus")).toThrow();
+    });
+
     it("keeps Arizona offsets stable across DST periods", () => {
       const jan = convertZonedLocalToUTC(
         "2026-01-15",

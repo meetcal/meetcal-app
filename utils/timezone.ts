@@ -141,6 +141,14 @@ export function convertZonedLocalToUTC(
   const year = Number(dateMatch[1]);
   const month = Number(dateMatch[2]);
   const day = Number(dateMatch[3]);
+  // `Date.UTC` normalises out-of-range parts (Feb 29 2026 -> Mar 1, month 00
+  // -> the previous December), which would turn a malformed session date into
+  // a real instant on another day. Day 0 of the next month is this month's
+  // last day, which also gets leap years right.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) {
+    throw new Error(`Invalid date: ${date}`);
+  }
   const { hour, minute } = parseClockTime(time);
 
   const naiveUtcTimestamp = Date.UTC(year, month - 1, day, hour, minute, 0, 0);

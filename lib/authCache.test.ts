@@ -73,6 +73,33 @@ describe("auth cache", () => {
     expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("retries a sign-out write that failed instead of deduping it as already persisted", async () => {
+    await cacheAuthState(true, "user-1");
+    const SecureStore = jest.requireMock("expo-secure-store");
+    SecureStore.setItemAsync.mockRejectedValueOnce(new Error("keychain locked"));
+
+    // A failed keychain write must not throw into the auth guard...
+    await expect(cacheAuthState(false)).resolves.toBeUndefined();
+    // ...and the stale signed-in hint is still what is stored.
+    await expect(getCachedAuthState()).resolves.toMatchObject({ isSignedIn: true });
+
+    // The next identical call writes again rather than skipping as unchanged.
+    await cacheAuthState(false);
+    await expect(getCachedAuthState()).resolves.toMatchObject({ isSignedIn: false });
+  });
+
+  it("treats a stored entry with a non-string userId or a negative timestamp as invalid", async () => {
+    mockStore.set(
+      "auth_state_cache",
+      JSON.stringify({ isSignedIn: true, timestamp: Date.now(), userId: 42 }),
+    );
+    await expect(getCachedAuthState()).resolves.toBeNull();
+    mockStore.set("auth_state_cache", JSON.stringify({ isSignedIn: true, timestamp: -1 }));
+    await expect(getCachedAuthState()).resolves.toBeNull();
+    mockStore.set("auth_state_cache", JSON.stringify([true]));
+    await expect(getCachedAuthState()).resolves.toBeNull();
+  });
+
   it("clears malformed JSON instead of throwing", async () => {
     mockStore.set("auth_state_cache", "{not-json");
     await expect(getCachedAuthState()).resolves.toBeNull();

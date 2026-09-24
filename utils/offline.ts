@@ -10,6 +10,7 @@ import {
 } from "@/lib/database/fetch-wso-records";
 import { fetchIntlRankings } from "@/lib/database/fetchIntlRankings";
 import { prefetchMeetData } from "@/lib/database/meet-manager";
+import { isNetworkAvailable } from "@/lib/networkUtils";
 import {
   clearOfflineCache,
   getOfflineCache,
@@ -354,6 +355,16 @@ export const useOfflineData = () => {
         setIsRefreshingAll(true);
     
         try {
+          // Refresh deletes before it re-downloads. Offline the re-download
+          // cannot happen, so starting would only wipe what the user saved.
+          if (!(await isNetworkAvailable())) {
+            Alert.alert(
+              "You're Offline",
+              "Connect to the internet to refresh. Your downloaded data has been kept.",
+            );
+            return;
+          }
+
           const downloadedMeetNames = availableMeets
             .filter(
               (meet) =>

@@ -1447,8 +1447,14 @@ export async function deleteSavedSession(
     undefined,
     { token: authToken },
   );
-  assertObject(row, 'deleteSavedSession');
-  return { deleted: (row as { deleted?: unknown }).deleted === true };
+  // The outbox drops the pending delete once this resolves, so an
+  // acknowledgement that is not the backend's `{ deleted: bool }` fails here
+  // and the delete stays queued (a retry is idempotent).
+  const ack = assertHasFields(row, 'deleteSavedSession', ['deleted']);
+  if (typeof ack.deleted !== 'boolean') {
+    throw new Error('deleteSavedSession returned an invalid payload');
+  }
+  return { deleted: ack.deleted };
 }
 
 export async function deleteSavedSessions(
@@ -1457,11 +1463,11 @@ export async function deleteSavedSessions(
 ): Promise<{ deleted_count: number }> {
   const authToken = requireToken(token, 'deleteSavedSessions');
   const row = await deleteJson('/users/me/saved-sessions', { meet }, { token: authToken });
-  assertObject(row, 'deleteSavedSessions');
-  const deletedCount = (row as { deleted_count?: unknown }).deleted_count;
-  return {
-    deleted_count: typeof deletedCount === 'number' && Number.isFinite(deletedCount) ? deletedCount : 0,
-  };
+  const ack = assertHasFields(row, 'deleteSavedSessions', ['deleted_count']);
+  if (typeof ack.deleted_count !== 'number' || !Number.isFinite(ack.deleted_count)) {
+    throw new Error('deleteSavedSessions returned an invalid payload');
+  }
+  return { deleted_count: ack.deleted_count };
 }
 
 export async function fetchUserPreferences(
