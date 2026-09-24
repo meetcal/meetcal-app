@@ -378,8 +378,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           if (outOfWindowMeet) {
             await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
             if (isStale()) return;
-            // Persist so an offline cold start can rehydrate this selection.
-            await AsyncStorage.setItem(
+            await Promise.resolve(
               SELECTED_MEET_DETAILS_KEY,
               JSON.stringify(outOfWindowMeet),
             );
@@ -459,12 +458,15 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       await prefetchMeetData(selectedMeet);
     } catch (error) {
       console.error('Error forcing sync:', error);
+      // Rethrown: "Clear Cache" reported success after a failed re-download.
+      throw error;
     }
   }, [syncManager, selectedMeet]);
 
-  // Refresh available meets function. Always goes to the network: the one
-  // caller is the profile screen's "clear cached meet data", which has just
-  // emptied the cache this would otherwise read.
+  // Refresh available meets function. Always goes to the network: the
+  // profile screen's "clear cached meet data" has just emptied the cache this
+  // would otherwise read. Rejects on failure so that caller can tell a
+  // refreshed list from an empty one; the meet picker catches it.
   const refreshAvailableMeets = useCallback(async () => {
     try {
       await clearExpiredDownloadedMeets();
@@ -474,6 +476,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       );
     } catch (error) {
       console.error('Error refreshing available meets:', error);
+      throw error;
     }
   }, []);
 
