@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PlatformBadge } from "../schedule-details/PlatformBadge";
+import { Palette } from "@/constants/Palette";
 
 export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   const router = useRouter();
@@ -136,7 +137,7 @@ const styles = StyleSheet.create({
   sessionContainer: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -152,7 +153,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   platformsContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Palette.white,
     borderRadius: 8,
     overflow: "hidden",
     margin: 16,
@@ -166,7 +167,7 @@ const styles = StyleSheet.create({
   },
   platformCardBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E1E1E1",
+    borderBottomColor: Palette.lightSeparator,
   },
   platformContent: {
     flex: 1,

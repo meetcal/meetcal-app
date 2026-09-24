@@ -29,6 +29,7 @@ import {
     View
 } from "react-native";
 import { devInfo } from "@/lib/logger";
+import { Palette } from "@/constants/Palette";
 
 function toSessionAthletesByPlatform(
   platform: string,
@@ -644,7 +645,7 @@ const styles = StyleSheet.create({
   meetResultsText: {
     fontSize: 15,
     fontWeight: "500",
-    color: "#007AFF",
+    color: Palette.systemBlue,
   },
   loadingContainer: {
     padding: 32,
@@ -672,14 +673,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "#007AFF",
+    backgroundColor: Palette.systemBlue,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
     marginTop: 4,
   },
   premiumUnlockText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 13,
     fontWeight: "600",
   },

@@ -13,7 +13,6 @@ jest.mock("expo-notifications", () => ({
 
 // Required, not imported: the module registers its handler at load, and an
 // import would be hoisted above the mock functions it calls.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { cancelNotification, scheduleNotification } = require("@/utils/notifications") as typeof import("@/utils/notifications");
 
 const NOW = Date.UTC(2026, 5, 20, 15, 0, 0);

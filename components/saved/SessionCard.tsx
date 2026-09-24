@@ -8,6 +8,7 @@ import { makeLookupKey } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Palette } from "@/constants/Palette";
 
 const SessionCard = React.memo<SessionCardProps>(
   ({
@@ -248,10 +249,10 @@ export default SessionCard;
 
 const styles = StyleSheet.create({
   sessionContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Palette.white,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -284,15 +285,15 @@ const styles = StyleSheet.create({
   },
   timeLabel: {
     fontSize: 14,
-    color: "#666",
+    color: Palette.mediumGray,
     marginRight: 4,
   },
   timeText: {
     fontSize: 15,
-    color: "#666",
+    color: Palette.mediumGray,
   },
   platformContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Palette.white,
     borderRadius: 8,
     overflow: "hidden",
     margin: 16,
@@ -307,18 +308,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   platformText: {
-    color: "#FFF",
+    color: Palette.white,
     fontSize: 14,
     fontWeight: "600",
   },
   weightClassText: {
     fontSize: 15,
-    color: "#666",
+    color: Palette.mediumGray,
   },
   athleteContainer: {
     padding: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#E1E1E1",
+    borderTopColor: Palette.lightSeparator,
   },
   athleteLabel: {
     fontSize: 14,
@@ -357,7 +358,7 @@ const styles = StyleSheet.create({
   notesLabel: {
     fontSize: 14,
     marginBottom: 12,
-    color: "#8E8E93",
+    color: Palette.systemGray,
   },
   notesText: {
     fontSize: 15,

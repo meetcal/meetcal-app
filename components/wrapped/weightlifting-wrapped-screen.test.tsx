@@ -24,7 +24,6 @@ jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({
   __esModule: true,
   default: jest.fn(),
 }));
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const useWindowDimensions = require("react-native/Libraries/Utilities/useWindowDimensions")
   .default as jest.Mock;
 function setWidth(width: number) {

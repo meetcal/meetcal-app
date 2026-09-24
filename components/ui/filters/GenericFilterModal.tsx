@@ -16,6 +16,7 @@ import FilterChipGroup from "./FilterChipGroup";
 import FilterModalOptions from "./FilterModalOptions";
 import FilterModalTitle from "./FilterModalTitle";
 import FilterSheet from "./FilterSheet";
+import { Palette } from "@/constants/Palette";
 
 export interface FilterOption {
   value: string;
@@ -345,7 +346,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resetButton: {
-    backgroundColor: "#FF3B30",
+    backgroundColor: Palette.systemRed,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -353,7 +354,7 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: Palette.white,
   },
   resultCount: {
     fontSize: 15,
@@ -365,7 +366,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   applyButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

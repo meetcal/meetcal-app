@@ -3,6 +3,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, create } from "react-test-renderer";
 
 import type { Meet, MeetName } from "@/data/types/meet";
+import {
+  RECONNECT_REFETCH_JITTER_MAX_MS,
+  SelectedMeetProvider,
+  useSelectedMeet,
+} from "@/contexts/SelectedMeetContext";
 
 const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
 const mockFetchMeetsFresh = jest.fn<Promise<Meet[]>, []>();
@@ -60,12 +65,6 @@ jest.mock("@/lib/database/sync-manager", () => ({
     }
   },
 }));
-
-import {
-  RECONNECT_REFETCH_JITTER_MAX_MS,
-  SelectedMeetProvider,
-  useSelectedMeet,
-} from "@/contexts/SelectedMeetContext";
 
 function makeMeet(name: string): Meet {
   return {

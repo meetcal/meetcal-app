@@ -8,6 +8,7 @@ import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
 import { isInternalRoutePath } from '@/utils/authGuard';
 import { devLog } from '@/lib/logger';
+import { Palette } from '@/constants/Palette';
 
 /**
  * `from` / `feature` normally arrive as route params, but `SubscriptionGate`
@@ -93,7 +94,7 @@ export default function PaywallScreen({
         style={[
           styles.container,
           {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+            backgroundColor: currentTheme === 'dark' ? Palette.black : Palette.white,
           },
           screenInsets,
         ]}

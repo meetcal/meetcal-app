@@ -3,6 +3,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { FlashList } from "@shopify/flash-list";
 import React, { useCallback } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { Palette } from "@/constants/Palette";
 
 export interface DataTableColumn {
   label: string;
@@ -182,7 +183,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -195,7 +196,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(60, 60, 67, 0.03)",
+    backgroundColor: Palette.tableHeaderTint,
   },
   headerCell: {
     flex: 1,

@@ -10,7 +10,7 @@ import { searchAthletesByName } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -62,25 +62,9 @@ function AllMeetResultsScreenContent() {
     });
   }, []);
 
-  // Debounced search effect
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchText.trim().length >= MIN_SEARCH_QUERY_LENGTH) {
-        performSearch(searchText.trim());
-      } else if (searchText.trim().length === 0) {
-        searchRequestVersion.current += 1;
-        setSearchResults([]);
-        setError(null);
-      } else {
-        searchRequestVersion.current += 1;
-        setIsLoading(false);
-      }
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [searchText]);
-
-  const performSearch = async (query: string) => {
+  // An Effect Event: the debounce timer below always calls the latest
+  // version, and the effect re-arms only when `searchText` changes.
+  const performSearch = useEffectEvent(async (query: string) => {
     const requestVersion = ++searchRequestVersion.current;
     setIsLoading(true);
     setError(null);
@@ -113,7 +97,25 @@ function AllMeetResultsScreenContent() {
       if (requestVersion !== searchRequestVersion.current) return;
       setIsLoading(false);
     }
-  };
+  });
+
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchText.trim().length >= MIN_SEARCH_QUERY_LENGTH) {
+        performSearch(searchText.trim());
+      } else if (searchText.trim().length === 0) {
+        searchRequestVersion.current += 1;
+        setSearchResults([]);
+        setError(null);
+      } else {
+        searchRequestVersion.current += 1;
+        setIsLoading(false);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   const handleAthletePress = useCallback(
     (athleteName: string) => {

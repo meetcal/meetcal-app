@@ -32,6 +32,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
+import { Palette } from "@/constants/Palette";
 
 // Email is not edited in-app: it goes through Clerk's account screen, which
 // owns adding, verifying and switching the primary address.
@@ -449,7 +450,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -483,14 +484,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   signOutButton: {
-    backgroundColor: "#FF3B30",
+    backgroundColor: Palette.systemRed,
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
     marginTop: 14,
   },
   signOutButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

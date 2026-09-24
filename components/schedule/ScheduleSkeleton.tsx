@@ -4,6 +4,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { ScheduleSkeletonProps } from "@/types/schedule";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { Palette } from "@/constants/Palette";
 
 export function ScheduleSkeleton({
   label = "Loading schedule...",
@@ -112,7 +113,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -132,7 +133,7 @@ const styles = StyleSheet.create({
   sessionContainer: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   platformsContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Palette.white,
     borderRadius: 8,
     overflow: "hidden",
     margin: 16,

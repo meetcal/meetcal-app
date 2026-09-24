@@ -3,6 +3,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ThemedText } from "../ThemedText";
 import type { FilterOption } from "./GenericFilterModal";
+import { Palette } from "@/constants/Palette";
 
 interface FilterChipGroupProps {
   title: string;
@@ -58,7 +59,7 @@ const FilterChipGroup = ({
               <ThemedText
                 style={[
                   styles.chipText,
-                  { color: isSelected ? "#FFFFFF" : colors.text },
+                  { color: isSelected ? Palette.white : colors.text },
                   isSelected && styles.chipTextSelected,
                 ]}
                 numberOfLines={1}

@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Palette } from "@/constants/Palette";
 
 interface FilterBarProps {
   displayText: string;
@@ -76,7 +77,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,

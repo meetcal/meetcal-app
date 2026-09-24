@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { Palette } from "@/constants/Palette";
 
 /**
  * Everything a row needs from the app's contexts, resolved once by the screen.
@@ -212,7 +213,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                 </ThemedText>
                 <View style={styles.sessionValueContainer}>
                   <ThemedText
-                    style={[styles.detailValue, { color: "#007AFF" }]}
+                    style={[styles.detailValue, { color: Palette.systemBlue }]}
                   >
                     Session{" "}
                     {athlete.session.number}
@@ -399,7 +400,7 @@ const styles = StyleSheet.create({
   athleteCard: {
     borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -460,5 +461,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  meetResultsText: { fontSize: 15, fontWeight: "500", color: "#007AFF" },
+  meetResultsText: { fontSize: 15, fontWeight: "500", color: Palette.systemBlue },
 });

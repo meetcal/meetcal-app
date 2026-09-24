@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { BlackAlpha, Palette } from "@/constants/Palette";
 
 export function UpdateNotification() {
   const {
@@ -110,7 +111,7 @@ export function UpdateNotification() {
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: BlackAlpha[50],
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 340,
     borderRadius: 12,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -151,27 +152,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   laterButton: {
-    backgroundColor: "transparent",
+    backgroundColor: Palette.transparent,
   },
   laterButtonText: {
     fontSize: 16,
     fontWeight: "500",
   },
   updateButton: {
-    backgroundColor: "#007aff",
+    backgroundColor: Palette.systemBlue,
   },
   updateButtonText: {
-    color: "white",
+    color: Palette.white,
     fontSize: 16,
     fontWeight: "600",
   },
   dismissButton: {
-    backgroundColor: "transparent",
+    backgroundColor: Palette.transparent,
     borderWidth: 1,
-    borderColor: "#ff3b30",
+    borderColor: Palette.systemRed,
   },
   dismissButtonText: {
-    color: "#ff3b30",
+    color: Palette.systemRed,
     fontSize: 16,
     fontWeight: "500",
   },

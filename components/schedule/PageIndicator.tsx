@@ -10,6 +10,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Palette } from "@/constants/Palette";
 
 const INACTIVE_COLOR = "#5A9AD4";
 const ACTIVE_COLOR = "#007AFF";
@@ -38,7 +39,7 @@ function Dot({ active, activeShadow }: { active: boolean; activeShadow: string }
       style={[
         styles.dot,
         active && styles.activeDot,
-        { shadowColor: active ? activeShadow : "transparent" },
+        { shadowColor: active ? activeShadow : Palette.transparent },
         animatedStyle,
       ]}
     />
@@ -112,7 +113,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 4,

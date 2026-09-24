@@ -14,6 +14,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 /**
  * A meet result date is a calendar date, not an instant. `new Date("2025-03-15")`
@@ -624,7 +625,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   prBadgeText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 12,
     fontWeight: "700",
   },

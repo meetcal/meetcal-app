@@ -13,10 +13,8 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: jest.fn(),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const useWindowDimensions = require("react-native/Libraries/Utilities/useWindowDimensions")
   .default as jest.Mock;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { useSafeAreaInsets } = require("react-native-safe-area-context") as {
   useSafeAreaInsets: jest.Mock;
 };

@@ -18,6 +18,7 @@ import {
   ResetPill,
 } from "./FilterPillButton";
 import type { FilterPillBarProps, PillFilterConfig } from "./FilterPillTypes";
+import { Palette } from "@/constants/Palette";
 
 type AnchoredMenu = {
   config: PillFilterConfig;
@@ -206,14 +207,14 @@ export default FilterPillBar;
 const styles = StyleSheet.create({
   menuBackdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "transparent",
+    backgroundColor: Palette.transparent,
   },
   menu: {
     position: "absolute",
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
