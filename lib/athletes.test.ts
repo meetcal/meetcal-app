@@ -1,7 +1,10 @@
 import type { LiftResult } from "@/data/types/athletes";
+import { UNKNOWN_PLATFORM } from "@/data/types/athletes";
 import {
+  canonicalizePlatform,
   filterSessionAthletes,
   isLiftResult,
+  isSamePlatform,
   maxSuccessfulAttempt,
   normalizeAthleteName,
   normalizeLiftResult,
@@ -45,6 +48,40 @@ describe("normalizePlatformKey", () => {
   });
 });
 
+describe("canonicalizePlatform", () => {
+  it.each([
+    ["RED ", "Red"],
+    ["gold", "Gold"],
+    ["stars & stripes", "Stars & Stripes"],
+    ["  blue   b ", "Blue B"],
+    ["Red", "Red"],
+  ])("canonicalizes %j to %j", (input, expected) => {
+    expect(canonicalizePlatform(input)).toBe(expected);
+  });
+
+  it("never remaps an unknown platform to Red", () => {
+    expect(canonicalizePlatform("Gold")).toBe("Gold");
+    expect(canonicalizePlatform("Platform 3")).toBe("Platform 3");
+  });
+
+  it("maps blank and missing platforms to the Unknown constant", () => {
+    expect(canonicalizePlatform("   ")).toBe(UNKNOWN_PLATFORM);
+    expect(canonicalizePlatform(null)).toBe(UNKNOWN_PLATFORM);
+    expect(canonicalizePlatform(undefined)).toBe(UNKNOWN_PLATFORM);
+  });
+});
+
+describe("isSamePlatform", () => {
+  it("treats 'RED ' and 'Red' as the same platform", () => {
+    expect(isSamePlatform("RED ", "Red")).toBe(true);
+    expect(isSamePlatform("stars  & stripes", "Stars & Stripes")).toBe(true);
+  });
+
+  it("keeps Red and Gold apart", () => {
+    expect(isSamePlatform("Red", "Gold")).toBe(false);
+  });
+});
+
 describe("filterSessionAthletes", () => {
   const athletes = [
     athlete("a", { number: 1, platform: "Red" }),
@@ -82,6 +119,16 @@ describe("maxSuccessfulAttempt", () => {
 });
 
 describe("isLiftResult", () => {
+  it("accepts a session on a platform outside the historical six", () => {
+    expect(isLiftResult(athlete("gold", { number: 1, platform: "Gold" }))).toBe(true);
+    expect(isLiftResult(athlete("p3", { number: 1, platform: "Platform 3" }))).toBe(true);
+    expect(normalizeLiftResults([athlete("gold", { number: 1, platform: "Gold" })])).toHaveLength(1);
+  });
+
+  it("rejects a blank platform", () => {
+    expect(isLiftResult(athlete("blank", { number: 1, platform: "  " }))).toBe(false);
+  });
+
   it("accepts athletes with and without session metadata", () => {
     expect(isLiftResult(athlete("Jane"))).toBe(true);
     expect(isLiftResult(athlete("Jane", { number: 1, platform: "Red" }))).toBe(true);
@@ -135,7 +182,7 @@ describe("normalizeLiftResult", () => {
     null,
     "Jane",
     { ...athlete("Jane"), name: " " },
-    { ...athlete("Jane"), session: { number: 1, platform: "Purple" } },
+    { ...athlete("Jane"), session: { number: 1, platform: "" } },
   ])("still rejects unsalvageable rows %p", (row) => {
     expect(normalizeLiftResult(row)).toBeNull();
   });

@@ -11,6 +11,16 @@ import {
 } from "@/utils/deepLinks";
 
 describe("deep link helpers", () => {
+  it("runs against expo's URL, the one the app ships with", () => {
+    // jest-expo installs expo's winter `URL` and marks it with this symbol.
+    // Without it these tests would silently exercise Node's `URL`, whose
+    // handling of a `meetcal:///` scheme is not what the device runs.
+    const marker = (globalThis.URL as unknown as Record<symbol, unknown>)[
+      Symbol.for("expo.builtin")
+    ];
+    expect(marker).toBeDefined();
+  });
+
   it("creates app deep links with encoded query params", () => {
     expect(createAppDeepLink("/schedule-toolbar/widget-settings")).toBe(
       "meetcal:///schedule-toolbar/widget-settings",

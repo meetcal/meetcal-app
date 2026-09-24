@@ -1,4 +1,4 @@
-import type { LiftResult } from '@/data/types/athletes';
+import { UNKNOWN_PLATFORM, type LiftResult, type Platform } from '@/data/types/athletes';
 
 /**
  * Shared athlete/session primitives.
@@ -13,7 +13,6 @@ import type { LiftResult } from '@/data/types/athletes';
  * (including `lib/database/*`) without creating a cycle.
  */
 
-const ATHLETE_PLATFORMS = new Set(['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue']);
 const OPTIONAL_SESSION_FIELDS = ['date', 'startTime', 'weighInTime', 'displayDate'];
 
 /** Runtime boundary for persisted/API-mapped athlete rows. */
@@ -36,8 +35,7 @@ export function isLiftResult(value: unknown): value is LiftResult {
   const session = row.session as Record<string, unknown>;
   return (
     typeof session.number === 'number' && Number.isInteger(session.number) && session.number > 0 &&
-    typeof session.platform === 'string' &&
-    ATHLETE_PLATFORMS.has(session.platform) &&
+    typeof session.platform === 'string' && session.platform.trim().length > 0 &&
     OPTIONAL_SESSION_FIELDS.every(
       (field) => session[field] === undefined || typeof session[field] === 'string',
     )
@@ -103,9 +101,40 @@ export function normalizeAthleteName(name: string | null | undefined): string {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-/** Canonical form of a platform name used for cache keys and comparisons. */
+/**
+ * Equality key for a platform name: trimmed, lowercased, inner whitespace
+ * collapsed. This is the one rule for deciding that two platform strings name
+ * the same platform (`"RED "` ≡ `"Red"`); every session/platform match in the
+ * app goes through it (or {@link isSamePlatform}).
+ */
 export function normalizePlatformKey(value: string | null | undefined): string {
-  return (value || '').trim().toLowerCase();
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** True when two platform strings name the same platform. */
+export function isSamePlatform(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  return normalizePlatformKey(a) === normalizePlatformKey(b);
+}
+
+/**
+ * Display/storage form of a platform name: trimmed, inner whitespace
+ * collapsed, each whitespace-separated word title-cased. Mirrors the backend
+ * scrapers' `normalize_platform` (`scrapers/common/normalize.py`) word for
+ * word, so the name the app sends back to the API is the name the scrapers
+ * stored: `"RED "` → `"Red"`, `"gold"` → `"Gold"`,
+ * `"stars & stripes"` → `"Stars & Stripes"`. Unknown names are kept, never
+ * remapped to Red. A blank or missing value becomes {@link UNKNOWN_PLATFORM}.
+ */
+export function canonicalizePlatform(value: string | null | undefined): Platform {
+  const collapsed = (value || '').trim().replace(/\s+/g, ' ');
+  if (collapsed.length === 0) return UNKNOWN_PLATFORM;
+  return collapsed
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }
 
 /** The athletes lifting on one session number + platform. */

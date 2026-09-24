@@ -1,4 +1,27 @@
-export type Platform = 'Red' | 'White' | 'Blue' | 'Stars' | 'Stripes' | 'Rogue';
+/**
+ * The platforms the app has a fixed sort position for. Everything else is
+ * still a valid platform (the backend stores the name as free text and
+ * scrapers title-case whatever the meet publishes), so this union is only for
+ * the places that genuinely need a literal list, such as the sort order.
+ */
+export const KNOWN_PLATFORMS = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'] as const;
+export type KnownPlatform = (typeof KNOWN_PLATFORMS)[number];
+
+/**
+ * A session platform name in canonical form: trimmed, inner whitespace
+ * collapsed, each word title-cased (`"RED "` → `"Red"`, `"gold"` → `"Gold"`).
+ * Produced by `canonicalizePlatform` in `lib/athletes.ts`; never coerced to a
+ * known name, so a meet with a Gold platform keeps it.
+ */
+export type Platform = string;
+
+/**
+ * Canonical name for a schedule/athlete row whose platform is blank. The
+ * schedule renders it like any other platform (a badge with this label) and
+ * session ids stay unique per session number, which an empty string would not
+ * give.
+ */
+export const UNKNOWN_PLATFORM: Platform = 'Unknown';
 
 export interface LiftResult {
   memberId: string;

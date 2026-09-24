@@ -650,6 +650,23 @@ describe("useOfflineData failure paths release their claim", () => {
     act(() => tree.unmount());
   });
 
+  it("a meet Remove whose clearMeetData rejects shows Remove Failed", async () => {
+    const tree = await mount();
+    const { clearMeetData } = jest.requireMock("@/lib/database/offline-store");
+    mockClearMeetData.mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+    // Wired the way the offline-data screen does it.
+    await act(async () => {
+      await captured!.handleDelete("Meet A", "meet:Meet A", () => clearMeetData("Meet A"));
+    });
+    await tap("Remove");
+
+    expect(mockClearMeetData).toHaveBeenCalledWith("Meet A", undefined);
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Remove Failed");
+    expect(captured!.downloadingItems.has("meet:Meet A")).toBe(false);
+    act(() => tree.unmount());
+  });
+
   it("a Remove that fails reports it and frees the row", async () => {
     const tree = await mount();
     const remove = jest.fn(async () => {

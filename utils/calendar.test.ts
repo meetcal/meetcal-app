@@ -54,6 +54,10 @@ describe("calendar event input", () => {
     jest.clearAllMocks();
     clearMeetConfigCache();
     mockFetchMeetByName.mockResolvedValue(LOS_ANGELES_MEET);
+    // Set here, not inherited from the mock factory: the other describe's
+    // afterEach restoreAllMocks wipes the factory default, so this block
+    // failed whenever --randomize ran it second.
+    mockCreateEventAsync.mockResolvedValue("event-1");
   });
 
   async function buildEvent() {

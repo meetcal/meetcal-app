@@ -33,6 +33,36 @@ export const Palette = {
   gold: "#FFD700",
 } as const;
 
+/**
+ * Session platform badge fills. Every value carries white text legibly.
+ * The first six are the historical platform colors; `white` is deliberately
+ * the iOS gray so a "White" badge still reads. `neutral` is the one general
+ * color every platform without a color of its own gets.
+ */
+export const PlatformPalette = {
+  red: "#FF3B30",
+  white: "#8E8E93",
+  blue: "#007AFF",
+  stars: "#AF52DE",
+  stripes: "#34C759",
+  rogue: "#000000",
+  green: "#1E8E3E",
+  yellow: "#B08900",
+  gold: "#B8860B",
+  silver: "#7A7A7F",
+  bronze: "#A05A2C",
+  orange: "#E8590C",
+  purple: "#6F42C1",
+  pink: "#D6336C",
+  black: "#000000",
+  gray: "#6E6E73",
+  brown: "#795548",
+  teal: "#0B7A75",
+  navy: "#1F3A93",
+  maroon: "#800000",
+  neutral: "#5C6370",
+} as const;
+
 /** Medal-colored chip backgrounds (gold / silver / bronze at 15%). */
 export const MedalTint = {
   gold: "rgba(255,215,0,0.15)",

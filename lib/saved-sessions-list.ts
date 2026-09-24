@@ -1,5 +1,6 @@
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
+import { isSamePlatform } from '@/lib/athletes';
 import { capAthleteNames } from '@/lib/saved-sessions-outbox';
 import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { Schedule as ScheduleType } from '@/types/schedule';
@@ -124,7 +125,7 @@ export function sessionsFromAthletes(
         );
 
         const platform = scheduleSession?.platforms.find(p =>
-          p.platform === athlete.session?.platform
+          isSamePlatform(p.platform, athlete.session?.platform)
         );
 
         if (sessionDay && scheduleSession && platform) {

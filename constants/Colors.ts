@@ -3,6 +3,9 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
  */
 
+import { PlatformPalette } from './Palette';
+import { normalizePlatformKey } from '@/lib/athletes';
+
 export const Colors = {
   light: {
     text: '#11181C',
@@ -66,13 +69,48 @@ export const Colors = {
   },
 };
 
-export function getPlatformColors() {
-  return {
-    Red: '#FF3B30',
-    White: '#8E8E93',
-    Blue: '#007AFF',
-    Stars: '#AF52DE',
-    Stripes: '#34C759',
-    Rogue: '#000000',
-  } as const;
+/**
+ * Badge color by platform name. Keys are `normalizePlatformKey` form
+ * (lowercase, whitespace collapsed); aliases share a token.
+ */
+const PLATFORM_COLOR_BY_KEY: Readonly<Record<string, string>> = {
+  red: PlatformPalette.red,
+  white: PlatformPalette.white,
+  blue: PlatformPalette.blue,
+  stars: PlatformPalette.stars,
+  stripes: PlatformPalette.stripes,
+  rogue: PlatformPalette.rogue,
+  green: PlatformPalette.green,
+  yellow: PlatformPalette.yellow,
+  gold: PlatformPalette.gold,
+  silver: PlatformPalette.silver,
+  bronze: PlatformPalette.bronze,
+  orange: PlatformPalette.orange,
+  purple: PlatformPalette.purple,
+  pink: PlatformPalette.pink,
+  black: PlatformPalette.black,
+  gray: PlatformPalette.gray,
+  grey: PlatformPalette.gray,
+  brown: PlatformPalette.brown,
+  teal: PlatformPalette.teal,
+  navy: PlatformPalette.navy,
+  maroon: PlatformPalette.maroon,
+};
+
+/**
+ * The one badge color for a session platform, used by every screen that
+ * shows one so they all agree.
+ *
+ * Matches case-insensitively on the whole name (`"RED "` → red) and then on
+ * the first word, so compound names like `"Red 2"` or `"Blue B"` keep their
+ * color. Anything else (`"Gold Coast"`, `"Platform 3"`, an unknown name) gets
+ * the one neutral color; the badge still shows the name.
+ */
+export function platformColor(platform: string | null | undefined): string {
+  const key = normalizePlatformKey(platform);
+  if (key.length === 0) return PlatformPalette.neutral;
+  const exact = PLATFORM_COLOR_BY_KEY[key];
+  if (exact) return exact;
+  const firstWord = key.split(' ')[0];
+  return PLATFORM_COLOR_BY_KEY[firstWord] ?? PlatformPalette.neutral;
 }

@@ -258,11 +258,19 @@ export async function getLastYearBestsBatch(
   if (missing.length > 0) {
     const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
     const fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
+    // The API keys its answer by the cleaned name (trimmed, whitespace
+    // folded), so a roster spelling like ' Jane Doe' never matched its own
+    // row under the raw key and was persisted as "no results". Match the way
+    // `getMostRecentMeetBestsBatch` already does.
+    const fetchedByNormalized = new Map<string, (typeof fetched)[string]>();
+    for (const [key, row] of Object.entries(fetched)) {
+      fetchedByNormalized.set(normalizeAthleteName(key), row);
+    }
     const persisted: Record<string, ReturnType<typeof toStoredBests>> = {};
 
     const emptyNames: string[] = [];
     missing.forEach((name) => {
-      const row = fetched[name];
+      const row = fetchedByNormalized.get(normalizeAthleteName(name));
       const bests = row
         ? {
             bestSnatch: row.bestSnatch || 0,

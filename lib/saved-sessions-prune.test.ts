@@ -12,8 +12,16 @@ jest.mock("@/data/meets/config", () => ({
   }),
 }));
 
+// The preferences request is also the server clock sample the prune needs;
+// by default the server agrees with the device and the sample is fresh.
+let mockServerClock: () => { skewMs: number; sampledAt: number } | null = () => ({
+  skewMs: 0,
+  sampledAt: Date.now(),
+});
 jest.mock("@/lib/api/meetcal-api", () => ({
   fetchUserPreferences: jest.fn(async () => ({ auto_unsave_started_sessions: true })),
+  getServerClockSample: () => mockServerClock(),
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
 }));
 
 const mockGetMeetConfig = getMeetConfig as jest.MockedFunction<typeof getMeetConfig>;
@@ -42,6 +50,7 @@ function jwtFor(sub: string): string {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockServerClock = () => ({ skewMs: 0, sampledAt: Date.now() });
   mockGetMeetConfig.mockResolvedValue({
     time: { timeZoneIdentifier: "America/New_York" },
   } as never);
@@ -164,6 +173,73 @@ describe("pruneStartedSessions", () => {
     await pruneStartedSessions(d);
     expect(d.removeSession).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  describe("on the server's clock", () => {
+    const HOUR_MS = 60 * 60 * 1000;
+    // Started 90 minutes ago by the server's clock: not yet past the window.
+    const recent = (serverNow: number) => session("recent", new Date(serverNow - 90 * 60 * 1000).toISOString());
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("removes nothing when the device clock runs three hours ahead of the server", async () => {
+      jest.useFakeTimers();
+      const serverNow = Date.parse("2099-06-20T12:00:00.000Z");
+      jest.setSystemTime(serverNow + 3 * HOUR_MS);
+      // The Date header says real time; the device is three hours fast.
+      mockServerClock = () => ({ skewMs: -3 * HOUR_MS, sampledAt: Date.now() });
+      const d = deps({ readStoredSessions: async () => [recent(serverNow), expired] });
+
+      await pruneStartedSessions(d);
+
+      // Neither the session that "started" 4.5 h ago by the device nor the
+      // genuinely old one: a clock that far off is not trusted to delete.
+      expect(d.removeSession).not.toHaveBeenCalled();
+    });
+
+    it("removes started sessions when the Date header matches the device", async () => {
+      jest.useFakeTimers();
+      const serverNow = Date.parse("2099-06-20T12:00:00.000Z");
+      jest.setSystemTime(serverNow);
+      mockServerClock = () => ({ skewMs: 0, sampledAt: Date.now() });
+      const d = deps({ readStoredSessions: async () => [recent(serverNow), expired] });
+
+      await pruneStartedSessions(d);
+
+      expect(d.removeSession).toHaveBeenCalledTimes(1);
+      expect(d.removeSession).toHaveBeenCalledWith("old");
+    });
+
+    it("judges the window on the corrected clock for a small skew", async () => {
+      jest.useFakeTimers();
+      const serverNow = Date.parse("2099-06-20T12:00:00.000Z");
+      // Device 10 minutes fast: by its clock `edge` started 2h05m ago, by
+      // the server's 1h55m.
+      jest.setSystemTime(serverNow + 10 * 60 * 1000);
+      mockServerClock = () => ({ skewMs: -10 * 60 * 1000, sampledAt: Date.now() });
+      const edge = session("edge", new Date(serverNow - 115 * 60 * 1000).toISOString());
+      const d = deps({ readStoredSessions: async () => [edge, expired] });
+
+      await pruneStartedSessions(d);
+
+      expect(d.removeSession).toHaveBeenCalledTimes(1);
+      expect(d.removeSession).toHaveBeenCalledWith("old");
+    });
+
+    it("skips without a server clock sample, or with a stale one", async () => {
+      mockServerClock = () => null;
+      const none = deps();
+      await pruneStartedSessions(none);
+      expect(none.removeSession).not.toHaveBeenCalled();
+
+      // A sample from before this prune's own request is not this request's.
+      mockServerClock = () => ({ skewMs: 0, sampledAt: Date.now() - 60_000 });
+      const stale = deps();
+      await pruneStartedSessions(stale);
+      expect(stale.removeSession).not.toHaveBeenCalled();
+    });
   });
 
   it("stops once the user is no longer active", async () => {

@@ -138,6 +138,28 @@ describe("meetCalendarDateAnchor", () => {
     expect(meetCalendarDateAnchor("TBD")).toBeNull();
     expect(meetCalendarDateAnchor(null)).toBeNull();
   });
+
+  // `Date.UTC` normalises an out-of-range part onto a real day, so before
+  // this check a feed row dated Feb 30 rendered as (and was counted on) Mar 2.
+  // Same rule as `convertZonedLocalToUTC` in utils/timezone.ts.
+  it.each([
+    ["2026-02-30", "Feb 30 does not exist"],
+    ["2026-13-01", "month 13"],
+    ["2026-00-10", "month 0"],
+    ["2026-04-31", "Apr 31 does not exist"],
+    ["2026-06-00", "day 0"],
+    ["2027-02-29", "2027 is not a leap year"],
+  ])("returns null for the impossible date %s (%s)", (input) => {
+    expect(meetCalendarDateAnchor(input)).toBeNull();
+  });
+
+  it.each([
+    ["2028-02-29", "2028-02-29T12:00:00.000Z"],
+    ["2026-12-31", "2026-12-31T12:00:00.000Z"],
+    ["2026-01-01", "2026-01-01T12:00:00.000Z"],
+  ])("still accepts the real calendar date %s", (input, iso) => {
+    expect(meetCalendarDateAnchor(input)?.toISOString()).toBe(iso);
+  });
 });
 
 describe("calculateInitialPage in the meet timezone", () => {

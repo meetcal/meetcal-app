@@ -85,6 +85,9 @@ export default ({ config }) => ({
     ],
     './config/withAndroidSavedWidget',
     './config/withIOSSavedWidget',
+    // Android AsyncStorage defaults to a 6 MB SQLite ceiling; downloaded
+    // meets' athlete history does not fit. See the plugin for the budget.
+    './config/withAsyncStorageDbSize',
     [
       '@sentry/react-native',
       {

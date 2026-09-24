@@ -1,4 +1,5 @@
 import { MeetName } from "@/data/types/meet";
+import { canonicalizePlatform } from "@/lib/athletes";
 
 /**
  * Get user-specific storage key for saved sessions
@@ -8,14 +9,18 @@ export function getSavedSessionsKey(userId: string): string {
 }
 
 /**
- * Generate unique session ID from meet, session number, and platform
+ * Generate unique session ID from meet, session number, and platform.
+ *
+ * The platform goes in canonicalized (`"RED "` → `"Red"`) so one platform has
+ * one id however a caller spelled it. Ids persisted before this were built
+ * from already-canonical names, so they are unchanged.
  */
 export function generateSessionId(
   meet: MeetName,
   sessionNumber: number | string,
   platform: string,
 ): string {
-  return `${meet}-${sessionNumber}-${platform}`.replace(/\s+/g, "-");
+  return `${meet}-${sessionNumber}-${canonicalizePlatform(platform)}`.replace(/\s+/g, "-");
 }
 
 /**
@@ -33,13 +38,15 @@ export function getAllSavedSessionsKeys(userId: string): string[] {
 }
 
 /**
- * Create lookup key for session-platform combinations
+ * In-memory lookup key for session-platform combinations. The platform part
+ * is canonicalized, so a saved session stored as `"RED "` still finds the
+ * schedule row keyed `"Red"`.
  */
 export function makeLookupKey(
   sessionNumber: number | string,
   platform: string,
 ): string {
   const normalizedSession = String(sessionNumber).replace(/\s+/g, "-");
-  const normalizedPlatform = String(platform).replace(/\s+/g, "-");
+  const normalizedPlatform = canonicalizePlatform(platform).replace(/\s+/g, "-");
   return `${normalizedSession}-${normalizedPlatform}`;
 }

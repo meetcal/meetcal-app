@@ -5,8 +5,8 @@ import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { Platform as PlatformType } from "@/data/types/athletes";
 import { useAppColors } from "@/hooks/useAppColors";
+import { isSamePlatform } from "@/lib/athletes";
 import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
@@ -236,7 +236,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         (session: Session) =>
           session.number === parseInt(sessionNumber) &&
           session.platforms.some(
-            (p: SessionPlatformDetails) => p.platform === platform,
+            (p: SessionPlatformDetails) => isSamePlatform(p.platform, platform),
           ),
       ),
     );
@@ -259,7 +259,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         (s) => s.number === parseInt(sessionNumber),
       );
       const platformData = session?.platforms.find(
-        (p) => p.platform === platform,
+        (p) => isSamePlatform(p.platform, platform),
       );
       const startTimeToUse = platformData?.platformStartTime || startTime;
       const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
@@ -335,7 +335,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
 
       <View style={[styles.section, { borderBottomColor: colors.border }]}>
         <View style={styles.platformWeightRow}>
-          <PlatformBadge platform={platform as PlatformType} />
+          <PlatformBadge platform={platform} />
           <ThemedText style={[styles.inlineValue, { color: colors.text }]}>
             {sessionWeightClass}
           </ThemedText>

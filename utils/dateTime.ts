@@ -110,7 +110,11 @@ export function formatDayTitle(day: DaySchedule): string {
  * anchoring at UTC midnight loses a day everywhere west of Greenwich. Noon UTC
  * survives both.
  *
- * @returns null when `dateIso` is not a calendar date.
+ * @returns null when `dateIso` is not a calendar date. That includes a date
+ * that does not exist (`2026-02-30`, `2026-13-01`, `2027-02-29`): `Date.UTC`
+ * would normalise those onto a real day (Mar 2, Jan 1 of the next year, Mar
+ * 1) and a malformed feed row would render as, and be counted on, a day the
+ * meet never named. Same rule as `convertZonedLocalToUTC`.
  */
 export function meetCalendarDateAnchor(
   dateIso: string | null | undefined,
@@ -118,10 +122,14 @@ export function meetCalendarDateAnchor(
   if (typeof dateIso !== "string") return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateIso.trim());
   if (!match) return null;
-  const anchor = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12),
-  );
-  return Number.isNaN(anchor.getTime()) ? null : anchor;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12) return null;
+  // Day 0 of the next month is this month's last day; leap years included.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) return null;
+  return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
 /**

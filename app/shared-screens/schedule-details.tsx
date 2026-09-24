@@ -9,6 +9,7 @@ import {
   DaySchedule,
   Platform as PlatformDetails,
 } from "@/types/schedule";
+import { isSamePlatform } from "@/lib/athletes";
 import { Session } from "@/types/schedule-details";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
@@ -70,7 +71,7 @@ export default function SessionDetailsScreen() {
     );
 
     const platformData = session?.platforms.find(
-      (p: PlatformDetails) => p.platform === params.platform,
+      (p: PlatformDetails) => isSamePlatform(p.platform, params.platform),
     );
 
     return platformData?.weightClass || params.weightClass;
@@ -103,7 +104,7 @@ export default function SessionDetailsScreen() {
     );
 
     const platformData = session?.platforms.find(
-      (p: PlatformDetails) => p.platform === params.platform,
+      (p: PlatformDetails) => isSamePlatform(p.platform, params.platform),
     );
 
     return platformData?.platformStartTime || params.startTime;

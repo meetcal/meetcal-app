@@ -1,4 +1,4 @@
-import { isLiftResult } from '@/lib/athletes';
+import { canonicalizePlatform, filterSessionAthletes, isLiftResult } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import {
   Meet,
@@ -176,13 +176,96 @@ type RawResponse = {
 export class MeetCalApiError extends Error {
   status: number;
   body: string;
+  /**
+   * The response's `Retry-After`, in seconds, when it carried a usable one
+   * (a delay in seconds or an HTTP-date). Callers that retry once (the
+   * history download) wait this long, capped on their side.
+   */
+  retryAfterSeconds?: number;
 
-  constructor(message: string, status: number, body: string) {
+  constructor(message: string, status: number, body: string, retryAfterSeconds?: number) {
     super(message);
     this.name = 'MeetCalApiError';
     this.status = status;
     this.body = body;
+    if (retryAfterSeconds !== undefined) this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+/** A `Retry-After` header as non-negative seconds, or undefined when unusable. */
+export function parseRetryAfterSeconds(
+  header: string | null | undefined,
+  now: number = Date.now(),
+): number | undefined {
+  if (typeof header !== 'string' || header.trim() === '') return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds : undefined;
+  const at = Date.parse(header);
+  if (!Number.isFinite(at)) return undefined;
+  return Math.max(0, (at - now) / 1000);
+}
+
+/**
+ * Server clock, as seen in the last response's `Date` header.
+ *
+ * Destructive housekeeping — auto-unsaving started sessions (server DELETE
+ * included), clearing a downloaded meet once it has ended — used to trust
+ * `Date.now()`. A device clock a few hours ahead deleted today's sessions
+ * before they began; a day ahead wiped the downloaded meet at the next
+ * refresh tick, offline included. Those decisions now use the server's
+ * clock, sampled from every response and never persisted: a fresh process
+ * has no sample until it has talked to the API, and callers skip rather
+ * than guess (late is harmless, early is data loss).
+ */
+export type ServerClockSample = {
+  /** Server time minus device time at the sample, in ms. Positive: device is behind. */
+  skewMs: number;
+  /** `Date.now()` on the device when the sample was taken. */
+  sampledAt: number;
+};
+
+/**
+ * Beyond this, the device clock is not merely drifting and a decision that
+ * mixes device wall-clock inputs (stored meet-local times) with server time
+ * is not one to make automatically. Well past NTP drift, well short of a
+ * time-zone mistake.
+ */
+export const MAX_PLAUSIBLE_CLOCK_SKEW_MS = 15 * 60 * 1000;
+
+let serverClockSample: ServerClockSample | null = null;
+
+function recordServerClock(dateHeader: string | null | undefined): void {
+  if (typeof dateHeader !== 'string' || dateHeader === '') return;
+  const serverNow = Date.parse(dateHeader);
+  if (!Number.isFinite(serverNow)) return;
+  const deviceNow = Date.now();
+  // `Date` has one-second resolution and is stamped before the body streams;
+  // the latest sample is the closest to now, so it replaces any older one.
+  serverClockSample = { skewMs: serverNow - deviceNow, sampledAt: deviceNow };
+}
+
+/** The last server clock sample this process took, or null before any response. */
+export function getServerClockSample(): ServerClockSample | null {
+  return serverClockSample;
+}
+
+/** Server time minus device time in ms, or null before any response. */
+export function getServerClockSkewMs(): number | null {
+  return serverClockSample?.skewMs ?? null;
+}
+
+/**
+ * Now, on the server's clock: the device clock corrected by the last sample.
+ * Null when this process has not heard from the API yet.
+ */
+export function getTrustedNow(): Date | null {
+  if (!serverClockSample) return null;
+  return new Date(Date.now() + serverClockSample.skewMs);
+}
+
+/** Forgets the clock sample. For tests. */
+export function resetServerClockForTests(): void {
+  serverClockSample = null;
 }
 
 /**
@@ -320,6 +403,7 @@ async function requestRaw(
     });
     status = response.status;
     const etag = response.headers?.get?.('etag') ?? null;
+    recordServerClock(response.headers?.get?.('date'));
 
     if (status === 304 && options?.ifNoneMatch) {
       return { status, text: '', etag };
@@ -336,6 +420,7 @@ async function requestRaw(
         `${method} ${path} failed with ${response.status}`,
         response.status,
         text,
+        parseRetryAfterSeconds(response.headers?.get?.('retry-after')),
       );
     }
 
@@ -650,11 +735,14 @@ function getUTCOffsetHours(timeZoneIdentifier: string, dateIso: string): number 
   return -getOffsetMinutesAtInstant(timeZoneIdentifier, instant) / 60;
 }
 
+/**
+ * Canonical platform name for an API row. Platforms are free text on the
+ * server, so any name survives (`"Gold"` stays `"Gold"`); only casing and
+ * whitespace are normalized. The old version coerced every unknown name to
+ * `'Red'`, which merged a meet's Red and Gold platforms into one session.
+ */
 export function normalizePlatform(platform: string | null | undefined): Platform {
-  const value = (platform || '').trim();
-  const normalized = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-  const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  return validPlatforms.includes(normalized as Platform) ? normalized as Platform : 'Red';
+  return canonicalizePlatform(platform);
 }
 
 export function formatApiTime(time: string | null | undefined): string {
@@ -955,20 +1043,35 @@ export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   return mapApiAthletes(rows, '/meets/athletes');
 }
 
+/**
+ * Athletes with their session assignment, optionally narrowed to one session
+ * and/or platform.
+ *
+ * The server's `platform` filter is an exact string compare against the
+ * stored `session_platform`. Scrapers store the same title-cased form the app
+ * canonicalizes to, but the column is free text and a hand-written row could
+ * hold `"RED "`, which `platform=Red` would miss server-side. So when a session
+ * number is given the request is narrowed by `session_number` only (a session
+ * is a handful of platforms, so the extra rows are cheap) and the platform is
+ * matched client-side with the app's one case-insensitive rule. Only a
+ * platform-without-session query is sent to the server as is.
+ */
 export async function fetchApiAthletesWithSession(
   meet: MeetName,
   sessionNumber?: number,
   platform?: string,
 ): Promise<LiftResult[]> {
+  const filterLocally = sessionNumber != null && !!platform;
   const rows = assertArray<ApiAthleteWithSession>(
     await getJson('/meets/athletes-sessions', {
       meet,
       session_number: sessionNumber,
-      platform,
+      platform: filterLocally ? undefined : platform,
     }),
     '/meets/athletes-sessions',
   );
-  return mapApiAthletes(rows, '/meets/athletes-sessions');
+  const athletes = mapApiAthletes(rows, '/meets/athletes-sessions');
+  return filterLocally ? filterSessionAthletes(athletes, sessionNumber, platform) : athletes;
 }
 
 // Clients on 6.2.0+ must always send `cutoff_date`; the defaults below come

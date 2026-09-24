@@ -156,7 +156,10 @@ describe("auth cache", () => {
     });
   });
 
-  it.each(["1e400", "-1", String(Date.now() + 8 * 24 * 60 * 60 * 1000)])(
+  // A timestamp far in the future is *not* on this list: it is what a
+  // correct entry looks like to a device whose clock has jumped back, and it
+  // is left in place (see the next test).
+  it.each(["1e400", "-1"])(
     "rejects an invalid cache timestamp %s",
     async (timestamp) => {
       mockStore.set("auth_state_cache", `{"isSignedIn":true,"timestamp":${timestamp}}`);
@@ -164,6 +167,33 @@ describe("auth cache", () => {
       expect(mockStore.has("auth_state_cache")).toBe(false);
     },
   );
+
+  it("does not use, but also does not delete, an entry from implausibly far in the future", async () => {
+    const SecureStore = jest.requireMock("expo-secure-store") as {
+      deleteItemAsync: jest.Mock;
+    };
+    const writtenAt = Date.now();
+    await cacheAuthState(true, "user-1");
+    SecureStore.deleteItemAsync.mockClear();
+
+    // A dead RTC boots the device eight days into the past.
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(writtenAt - 8 * 24 * 60 * 60 * 1000);
+      await expect(getCachedAuthState()).resolves.toBeNull();
+      expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+      expect(mockStore.has("auth_state_cache")).toBe(true);
+
+      // The clock corrects itself (offline, at the venue): the hint is back.
+      jest.setSystemTime(writtenAt + 60 * 1000);
+      await expect(getCachedAuthState()).resolves.toMatchObject({
+        isSignedIn: true,
+        userId: "user-1",
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   it("keeps an entry whose timestamp is slightly in the future", async () => {
     // A write made while the clock ran fast, read after it was corrected.

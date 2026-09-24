@@ -284,6 +284,24 @@ describe("getLastYearBestsBatch", () => {
     expect(result["Jane  Doe"]).toEqual({ bestSnatch: 70, bestCJ: 90, bestTotal: 160 });
   });
 
+  it("matches a bests row keyed by the cleaned name to the roster's raw spelling", async () => {
+    // The API trims and folds whitespace in the names it echoes back, so the
+    // roster's ' Jane Doe' used to miss its own row and be stored as "—".
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      "Jane Doe": { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+    });
+
+    const result = await startListApi.getLastYearBestsBatch([" Jane Doe", "jane  doe"]);
+
+    expect(result[" Jane Doe"]).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
+    expect(result["jane  doe"]).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
+    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
+    expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
+      " Jane Doe": { snatch_best: 80, cj_best: 100, total: 180 },
+      "jane  doe": { snatch_best: 80, cj_best: 100, total: 180 },
+    });
+  });
+
   it("returns zeros for missing names without fetching when fetchMissing is false", async () => {
     const result = await startListApi.getLastYearBestsBatch(["A", "B"], {
       fetchMissing: false,

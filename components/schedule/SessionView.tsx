@@ -1,6 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { PLATFORM_SORT_ORDER } from "@/constants/platform-sort";
+import { sortByPlatform } from "@/constants/platform-sort";
 import { useAppColors } from "@/hooks/useAppColors";
 import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
@@ -14,16 +14,7 @@ export function SessionView({ session, timeZone, meet }: SessionViewProps) {
   const colors = useAppColors();
 
   const sortedPlatforms = useMemo(
-    () =>
-      [...session.platforms].sort((a, b) => {
-        const idxA = PLATFORM_SORT_ORDER.indexOf(
-          a.platform as (typeof PLATFORM_SORT_ORDER)[number],
-        );
-        const idxB = PLATFORM_SORT_ORDER.indexOf(
-          b.platform as (typeof PLATFORM_SORT_ORDER)[number],
-        );
-        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-      }),
+    () => sortByPlatform(session.platforms, (p) => p.platform),
     [session.platforms],
   );
 

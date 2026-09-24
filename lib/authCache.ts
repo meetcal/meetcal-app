@@ -39,17 +39,21 @@ interface AuthCacheData {
 }
 
 /**
- * How far in the future a stored timestamp may sit and still be trusted.
+ * How far in the future a stored timestamp may sit and still be used.
  *
  * A timestamp ahead of `Date.now()` is not corruption: it is what a write made
  * while the device clock ran fast looks like after the clock is corrected
- * backwards. Deleting it on read wiped a valid sign-in, which offline is a
- * lockout. Anything further out than one full expiry window is implausible and
- * is still treated as invalid, so a bogus timestamp cannot pin the entry alive.
+ * backwards. Anything further out than one full expiry window is implausible
+ * and is not used, so a bogus timestamp cannot pin the entry alive — but it is
+ * not deleted either. A dead RTC that boots to 2020 makes every real entry
+ * look eight days "in the future"; deleting it then locked the user out once
+ * the clock corrected itself offline at the venue, until an online sign-in.
+ * The entry is unusable *now*; when the clock is right again it is a valid
+ * seven-day hint like any other. Only structural invalidity clears.
  */
 const MAX_CLOCK_SKEW_MS = CACHE_EXPIRY_MS;
 
-// Runtime validator for cached auth data
+// Runtime validator for cached auth data: shape only, never the clock.
 function isAuthCacheData(obj: unknown): obj is AuthCacheData {
   if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
     return false;
@@ -60,7 +64,6 @@ function isAuthCacheData(obj: unknown): obj is AuthCacheData {
     typeof record.timestamp === 'number' &&
     Number.isFinite(record.timestamp) &&
     record.timestamp >= 0 &&
-    record.timestamp <= Date.now() + MAX_CLOCK_SKEW_MS &&
     (record.userId === undefined || typeof record.userId === 'string')
   );
 }
@@ -151,6 +154,11 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
     }
 
     const now = Date.now();
+
+    if (parsed.timestamp > now + MAX_CLOCK_SKEW_MS) {
+      devLog('Auth cache timestamp is implausibly far ahead of the device clock; not using it');
+      return null;
+    }
 
     // Check if cache is expired
     const isExpired = now - parsed.timestamp > CACHE_EXPIRY_MS;

@@ -5,6 +5,7 @@ const mockSetNotificationHandler = jest.fn();
 
 jest.mock("expo-notifications", () => ({
   AndroidNotificationPriority: { HIGH: "high" },
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval" },
   setNotificationHandler: (handler: unknown) => mockSetNotificationHandler(handler),
   scheduleNotificationAsync: (request: unknown) => mockScheduleNotificationAsync(request),
   cancelScheduledNotificationAsync: (id: string) => mockCancelScheduledNotificationAsync(id),
@@ -13,13 +14,14 @@ jest.mock("expo-notifications", () => ({
 
 // Required, not imported: the module registers its handler at load, and an
 // import would be hoisted above the mock functions it calls.
-const { cancelNotification, scheduleNotification } = require("@/utils/notifications") as typeof import("@/utils/notifications");
+const { ANDROID_NOTIFICATION_CHANNEL_ID, cancelNotification, scheduleNotification } =
+  require("@/utils/notifications") as typeof import("@/utils/notifications");
 
 const NOW = Date.UTC(2026, 5, 20, 15, 0, 0);
 
 type ScheduledRequest = {
   content: { title: string; body: string; data: Record<string, unknown> };
-  trigger: { type: string; seconds: number; repeats: boolean };
+  trigger: { type: string; seconds: number; repeats: boolean; channelId?: string };
   identifier?: string;
 };
 
@@ -59,10 +61,24 @@ describe("scheduleNotification", () => {
     ).resolves.toBe("notif-1");
 
     const request = lastRequest();
-    expect(request.trigger).toEqual({ type: "timeInterval", seconds: 90, repeats: false });
+    expect(request.trigger).toEqual({
+      type: "timeInterval",
+      seconds: 90,
+      repeats: false,
+      channelId: "default",
+    });
     expect(request.identifier).toBe("sess-4");
     expect(request.content).toMatchObject({ title: "Session soon", body: "Session 4 starts in 30 min" });
     expect(request.content.data).toEqual({ identifier: "sess-4", url: undefined });
+  });
+
+  it("delivers on the Android channel the settings screens create", async () => {
+    // expo-notifications routes a channel-less trigger to its fallback
+    // "Miscellaneous" channel, so the MAX-importance "default" channel the
+    // app registers (vibration, light, heads-up) would never carry a reminder.
+    await scheduleNotification("t", "b", new Date(NOW + 60_000), "sess-4");
+    expect(ANDROID_NOTIFICATION_CHANNEL_ID).toBe("default");
+    expect(lastRequest().trigger.channelId).toBe(ANDROID_NOTIFICATION_CHANNEL_ID);
   });
 
   it.each([

@@ -57,6 +57,11 @@ describe("normalizeStoredSession", () => {
     expect(normalizeStoredSession({ ...session(), platform: null })).toBeNull();
     expect(normalizeStoredSession({ ...session(), sessionNumber: 1.5 })).toBeNull();
     expect(normalizeStoredSession({ ...session(), sessionNumber: -1 })).toBeNull();
+    // 0 is "no session assigned" to the API and to `isLiftResult`; a stored
+    // row with it has nothing to open.
+    expect(normalizeStoredSession({ ...session(), sessionNumber: 0 })).toBeNull();
+    expect(normalizeStoredSession({ ...session(), sessionNumber: "0" })).toBeNull();
+    expect(normalizeStoredSession({ ...session(), sessionNumber: 1 })).not.toBeNull();
     expect(normalizeStoredSession({ ...session(), sessionNumber: "" })).toBeNull();
   });
 
