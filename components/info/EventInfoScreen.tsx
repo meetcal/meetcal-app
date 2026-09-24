@@ -13,6 +13,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { Palette } from "@/constants/Palette";
 
 export default function EventInfoScreen() {
   const colors = useAppColors();
@@ -261,7 +262,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,

@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 export default function ClubMeetsListScreen() {
   return (
@@ -327,7 +328,7 @@ const styles = StyleSheet.create({
   meetItem: {
     borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: 1,
@@ -351,7 +352,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 16,
     fontWeight: "600",
   },

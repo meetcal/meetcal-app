@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 type Gender = "Men" | "Women";
 
@@ -105,7 +106,7 @@ function AdaptiveRecordsScreenContent() {
                   {
                     color:
                       appliedGender === gender
-                        ? "#FFFFFF"
+                        ? Palette.white
                         : colors.secondaryText,
                   },
                 ]}

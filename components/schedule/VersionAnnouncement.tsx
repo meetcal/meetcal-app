@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Palette } from "@/constants/Palette";
 
 // Multiple screens mount their own copy (schedule and info tabs). Both run
 // their storage check before either is dismissed, so without a session-level
@@ -175,7 +176,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     maxHeight: "80%",
-    shadowColor: "#000",
+    shadowColor: Palette.shadow,
     shadowOffset: {
       width: 0,
       height: -2,
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dismissButtonText: {
-    color: "#ffffff",
+    color: Palette.white,
     fontSize: 17,
     fontWeight: "600",
   },

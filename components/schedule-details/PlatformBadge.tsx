@@ -2,6 +2,7 @@ import { getPlatformColors } from "@/constants/Colors";
 import { Platform as PlatformType } from "@/data/types/athletes";
 import { StyleSheet, View } from "react-native";
 import { ThemedText } from "../ui/ThemedText";
+import { Palette } from "@/constants/Palette";
 
 export function PlatformBadge({ platform }: { platform: PlatformType }) {
   const platformColors = getPlatformColors();
@@ -23,7 +24,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   platformText: {
-    color: "#FFF",
+    color: Palette.white,
     fontSize: 15,
     fontWeight: "600",
   },
