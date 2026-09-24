@@ -2,31 +2,21 @@ import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiAdaptiveRecords, type ApiAdaptiveRecordRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
 type Gender = 'Men' | 'Women';
 
-type AdaptiveRecordRow = {
-  weight_class: string | null;
-  snatch: number | null;
-  cj: number | null;
-  total: number | null;
-};
-
 const AGE_GROUP_KEY = 'Adaptive';
 
 async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClassRecord[]> {
-  const rows = await getJsonArray<AdaptiveRecordRow>('/data/adaptive', {
-    exclude_federation: 'BWL',
-    gender,
-  });
+  const rows = await fetchApiAdaptiveRecords(gender, 'BWL');
   // `weight_class` is nullable in the source table and it is this row's only
   // identity; `.endsWith` on a null one threw and lost the whole gender's
   // records rather than the single bad row.
   const records = rows
-    .filter((row): row is AdaptiveRecordRow & { weight_class: string } =>
-      Boolean(row?.weight_class),
+    .filter((row): row is Readonly<ApiAdaptiveRecordRow> & { weight_class: string } =>
+      Boolean(row.weight_class),
     )
     .map((row) => ({
       weightClass: row.weight_class.endsWith('kg')

@@ -1,7 +1,7 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { getOfflineCache, OFFLINE_CACHE_KEYS, setOfflineCache } from './offline-cache';
-import { getJsonArray } from '@/lib/api/meetcal-api';
+import { fetchApiQualifyingTotals } from '@/lib/api/meetcal-api';
 
 
 export type QualifyingTotalsData = {
@@ -11,14 +11,6 @@ export type QualifyingTotalsData = {
       Women: { [weightClass: string]: number };
     };
   };
-};
-
-type QualifyingTotalRow = {
-  event_name: string;
-  age_category: string;
-  gender: 'Men' | 'Women';
-  weight_class: string;
-  qualifying_total: number;
 };
 
 function filterTotals(
@@ -76,11 +68,10 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
     throw new Error('Offline');
   }
 
-  const rows = await getJsonArray<QualifyingTotalRow>('/data/qualifying-totals');
+  const rows = await fetchApiQualifyingTotals();
 
   const result: QualifyingTotalsData = {};
   rows.forEach((row) => {
-    if (!row || typeof row !== 'object') return;
     const e = row.event_name;
     const a = row.age_category;
     const g = row.gender;
