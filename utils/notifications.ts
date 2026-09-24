@@ -10,6 +10,16 @@ import { devLog } from '@/lib/logger';
  */
 export const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
+/**
+ * The Android channel every reminder is delivered on. It is the one the
+ * onboarding and profile screens create with `AndroidImportance.MAX`,
+ * vibration and a light; a trigger that names no channel lands on
+ * expo-notifications' fallback "Miscellaneous" channel instead, which is
+ * created at default importance and so shows no heads-up banner. Ignored on
+ * iOS.
+ */
+export const ANDROID_NOTIFICATION_CHANNEL_ID = 'default';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -56,11 +66,11 @@ export async function scheduleNotification(
         url: session ? createSessionDetailsDeepLink(session) : undefined,
       },
     },
-    // @ts-ignore - Expo accepts this trigger format but TypeScript types are incorrect
     trigger: {
-      type: 'timeInterval',
-      seconds: seconds,
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds,
       repeats: false,
+      channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
     },
     identifier,
   });
