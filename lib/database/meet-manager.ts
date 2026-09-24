@@ -88,10 +88,28 @@ async function readHistorySyncedAt(): Promise<Record<string, number>> {
   }
 }
 
+/**
+ * Stamps at least `HISTORY_REFRESH_TTL_MS` old read exactly like a missing one
+ * (the history counts as stale either way), so they are dropped on every
+ * write. Without this the map gained one entry per meet ever downloaded and
+ * never lost any.
+ */
+export function pruneHistorySyncedAt(
+  stamps: Record<string, number>,
+  now: number,
+): Record<string, number> {
+  const kept: Record<string, number> = {};
+  for (const [meet, syncedAt] of Object.entries(stamps)) {
+    if (now - syncedAt < HISTORY_REFRESH_TTL_MS) kept[meet] = syncedAt;
+  }
+  return kept;
+}
+
 async function markHistorySynced(meet: MeetName): Promise<void> {
   try {
-    const stamps = await readHistorySyncedAt();
-    stamps[meet] = Date.now();
+    const now = Date.now();
+    const stamps = pruneHistorySyncedAt(await readHistorySyncedAt(), now);
+    stamps[meet] = now;
     await AsyncStorage.setItem(HISTORY_SYNCED_AT_KEY, JSON.stringify(stamps));
   } catch (error) {
     console.warn('Could not record athlete history sync time:', error);
@@ -260,7 +278,13 @@ async function readPackageEtags(): Promise<Record<string, string>> {
     const raw = await AsyncStorage.getItem(PACKAGE_ETAG_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
+      // Keep only usable tags, so a corrupt entry is dropped on the next
+      // write instead of being carried forward indefinitely.
+      const etags: Record<string, string> = {};
+      for (const [meet, etag] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof etag === 'string' && etag.length > 0) etags[meet] = etag;
+      }
+      return etags;
     }
   } catch (error) {
     console.error('Error reading package etags:', error);

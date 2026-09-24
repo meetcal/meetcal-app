@@ -113,6 +113,7 @@ import {
   prefetchCriticalMeetData,
   HISTORY_REFRESH_TTL_MS,
   prefetchMeetData,
+  pruneHistorySyncedAt,
   touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
@@ -740,5 +741,65 @@ describe("package revalidation with ETag", () => {
 
     const saved = savedEtags();
     expect(saved[saved.length - 1]).toEqual({});
+  });
+  it("drops history stamps past the TTL when it records a new one", async () => {
+    const now = Date.now();
+    storedEtags(
+      {},
+      {
+        "Old Meet": now - HISTORY_REFRESH_TTL_MS - 1,
+        "Recent Meet": now - 1000,
+      },
+    );
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"t"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet Prune" as any);
+
+    const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
+    expect(stampWrites).toHaveLength(1);
+    const written = JSON.parse(stampWrites[0][1] as string);
+    expect(Object.keys(written).sort()).toEqual(["Etag Meet Prune", "Recent Meet"]);
+  });
+
+  it("drops corrupt stored ETags instead of carrying them forward", async () => {
+    mockGetItem.mockImplementation(async (key: string) =>
+      key === PACKAGE_ETAG_KEY
+        ? JSON.stringify({ "Good Meet": '"g"', "Bad Meet": 42, "Empty Meet": "" })
+        : null,
+    );
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet E" as any);
+
+    const saved = savedEtags();
+    expect(saved[saved.length - 1]).toEqual({ "Good Meet": '"g"', "Etag Meet E": '"new"' });
+  });
+});
+
+describe("pruneHistorySyncedAt", () => {
+  it("keeps stamps younger than the TTL and drops the rest", () => {
+    const now = 10 * HISTORY_REFRESH_TTL_MS;
+    expect(
+      pruneHistorySyncedAt(
+        {
+          fresh: now - 1,
+          edge: now - HISTORY_REFRESH_TTL_MS,
+          old: now - HISTORY_REFRESH_TTL_MS - 1,
+        },
+        now,
+      ),
+    ).toEqual({ fresh: now - 1 });
+  });
+
+  it("returns an empty map for no stamps", () => {
+    expect(pruneHistorySyncedAt({}, Date.now())).toEqual({});
   });
 });

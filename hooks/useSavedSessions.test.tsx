@@ -17,7 +17,8 @@ import {
   putSavedSession,
 } from "@/lib/api/meetcal-api";
 import { getMeetData } from "@/lib/database/offline-store";
-import { convertToUTC } from "@/data/meets/config";
+import { convertToUTC, getMeetConfig } from "@/data/meets/config";
+import { syncSavedWidget } from "@/utils/savedWidget";
 import {
   countPendingWrites,
   MAX_SAVED_SESSION_ATHLETE_NAMES,
@@ -60,8 +61,9 @@ jest.mock("@/lib/data/mutable-resource", () => ({
   reconnectRefetchDelayMs: () => 0,
 }));
 
+let mockSelectedMeet: string | null = null;
 jest.mock("@/contexts/SelectedMeetContext", () => ({
-  useSelectedMeet: () => ({ selectedMeet: null }),
+  useSelectedMeet: () => ({ selectedMeet: mockSelectedMeet }),
 }));
 
 jest.mock("@/lib/database/queries", () => ({
@@ -1111,5 +1113,58 @@ describe("destructive writes: resets, removals and batch saves", () => {
     expect(ok).toBe(false);
     expect(hook.current.savedSessions.map((s) => s.sessionNumber).sort()).toEqual([1, 3]);
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+});
+
+describe("saved widget sync", () => {
+  const mockGetMeetConfig = getMeetConfig as jest.MockedFunction<typeof getMeetConfig>;
+  const mockSyncSavedWidget = syncSavedWidget as jest.MockedFunction<typeof syncSavedWidget>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockClerkUser = null;
+    mockGetToken.mockResolvedValue(null);
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    mockSelectedMeet = null;
+    mockGetMeetConfig.mockImplementation((async () => ({
+      time: { timeZoneIdentifier: "America/New_York" },
+    })) as never);
+  });
+
+  it("does not let a slow config lookup for the previous meet repaint the widget", async () => {
+    let resolveMeetA: (value: unknown) => void = () => {};
+    mockGetMeetConfig.mockImplementation(((meet: string) =>
+      meet === "Meet A"
+        ? new Promise((resolve) => {
+            resolveMeetA = resolve;
+          })
+        : Promise.resolve({ time: { timeZoneIdentifier: "America/Denver" } })) as never);
+
+    mockSelectedMeet = "Meet A";
+    const hook = await mountHook();
+    mockSelectedMeet = "Meet B";
+    await hook.rerender();
+
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
+
+    // Meet A's lookup (a network fetch) resolves after Meet B's cached one.
+    await act(async () => {
+      resolveMeetA({ time: { timeZoneIdentifier: "America/New_York" } });
+    });
+    await flush();
+
+    expect(mockSyncSavedWidget.mock.calls.some(([meet]) => meet === "Meet A")).toBe(false);
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
+  });
+
+  it("falls back to UTC when the meet config cannot be read", async () => {
+    mockGetMeetConfig.mockRejectedValue(new Error("Meet not found"));
+    mockSelectedMeet = "Meet C";
+    await mountHook();
+
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), "UTC");
   });
 });

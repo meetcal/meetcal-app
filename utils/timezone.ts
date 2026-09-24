@@ -6,9 +6,35 @@ type ZonedDateParts = {
   minute: number;
 };
 
+/**
+ * Formatters kept per zone id. Mirrors `ABBREVIATION_FORMATTER_CACHE_LIMIT` in
+ * `utils/dateTime.ts`: a meet list spans a handful of US zones, and the bound
+ * keeps odd spellings of the same zone from accumulating for the process life.
+ */
+export const PARTS_FORMATTER_CACHE_LIMIT = 32;
+/**
+ * Half-width of the window probed for a DST transition around a wall-clock
+ * time: every US offset change lands inside +/- 12 hours of it.
+ */
+const DST_PROBE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const MS_PER_MINUTE = 60 * 1000;
+
 const PARTS_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
 
+/**
+ * `Intl.DateTimeFormat` treats a missing `timeZone` as "the device zone", so an
+ * `undefined` that slipped past the types (a persisted row, an unmapped API
+ * field) would silently render meet-local times in the phone's zone. Fail
+ * loudly instead; every caller already turns a throw into a skip or fallback.
+ */
+function assertTimeZone(timeZone: unknown): asserts timeZone is string {
+  if (typeof timeZone !== "string" || timeZone.trim().length === 0) {
+    throw new Error(`Invalid time zone: ${JSON.stringify(timeZone)}`);
+  }
+}
+
 function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
+  assertTimeZone(timeZone);
   const cached = PARTS_FORMATTER_CACHE.get(timeZone);
   if (cached) return cached;
 
@@ -22,6 +48,12 @@ function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
     second: "2-digit",
     hour12: false,
   });
+  // Insertion-ordered eviction: `Map` keys iterate oldest-first.
+  while (PARTS_FORMATTER_CACHE.size >= PARTS_FORMATTER_CACHE_LIMIT) {
+    const oldest = PARTS_FORMATTER_CACHE.keys().next();
+    if (oldest.done) break;
+    PARTS_FORMATTER_CACHE.delete(oldest.value);
+  }
   PARTS_FORMATTER_CACHE.set(timeZone, formatter);
   return formatter;
 }
@@ -78,7 +110,7 @@ function toUtcTimestamp(parts: ZonedDateParts): number {
 
 function toComparableMinutes(parts: ZonedDateParts): number {
   return (
-    Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0, 0) / 60000 +
+    Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0, 0) / MS_PER_MINUTE +
     parts.hour * 60 +
     parts.minute
   );
@@ -125,7 +157,7 @@ export function getOffsetMinutesAtInstant(
   instant: Date,
 ): number {
   const zonedParts = getZonedParts(timeZone, instant);
-  return (toUtcTimestamp(zonedParts) - instant.getTime()) / 60000;
+  return (toUtcTimestamp(zonedParts) - instant.getTime()) / MS_PER_MINUTE;
 }
 
 export function convertZonedLocalToUTC(
@@ -159,17 +191,17 @@ export function convertZonedLocalToUTC(
       getOffsetMinutesAtInstant(timeZone, new Date(naiveUtcTimestamp)),
       getOffsetMinutesAtInstant(
         timeZone,
-        new Date(naiveUtcTimestamp - 12 * 60 * 60 * 1000),
+        new Date(naiveUtcTimestamp - DST_PROBE_WINDOW_MS),
       ),
       getOffsetMinutesAtInstant(
         timeZone,
-        new Date(naiveUtcTimestamp + 12 * 60 * 60 * 1000),
+        new Date(naiveUtcTimestamp + DST_PROBE_WINDOW_MS),
       ),
     ]),
   );
 
   const candidateInstants = offsets.map(
-    (offsetMinutes) => new Date(naiveUtcTimestamp - offsetMinutes * 60 * 1000),
+    (offsetMinutes) => new Date(naiveUtcTimestamp - offsetMinutes * MS_PER_MINUTE),
   );
 
   const exactMatches = candidateInstants.filter((candidate) => {

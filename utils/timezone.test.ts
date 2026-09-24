@@ -201,3 +201,61 @@ describe("timezone utilities", () => {
     });
   });
 });
+
+describe("timezone input assertions", () => {
+  const instant = new Date("2026-06-20T16:00:00.000Z");
+
+  it.each([undefined, null, "", "   "])(
+    "throws for a missing zone (%p) instead of using the device zone",
+    (zone) => {
+      expect(() => getOffsetMinutesAtInstant(zone as unknown as string, instant)).toThrow(
+        /Invalid time zone/,
+      );
+      expect(() =>
+        convertZonedLocalToUTC("2026-06-20", "10:00 AM", zone as unknown as string),
+      ).toThrow(/Invalid time zone/);
+    },
+  );
+
+  it("still throws for an unknown IANA id", () => {
+    expect(() => getOffsetMinutesAtInstant("Mars/Olympus", instant)).toThrow();
+  });
+});
+
+describe("parts formatter cache", () => {
+  const RealDateTimeFormat = Intl.DateTimeFormat;
+
+  afterEach(() => {
+    (Intl as { DateTimeFormat: unknown }).DateTimeFormat = RealDateTimeFormat;
+  });
+
+  it("keeps at most PARTS_FORMATTER_CACHE_LIMIT formatters, evicting the oldest", () => {
+    let constructed = 0;
+    function CountingDateTimeFormat(locale?: string, options?: Intl.DateTimeFormatOptions) {
+      constructed += 1;
+      return new RealDateTimeFormat(locale, options);
+    }
+    (Intl as { DateTimeFormat: unknown }).DateTimeFormat =
+      CountingDateTimeFormat as unknown as typeof Intl.DateTimeFormat;
+
+    let tz!: typeof import("@/utils/timezone");
+    jest.isolateModules(() => {
+      tz = require("@/utils/timezone");
+    });
+    const zones = Intl.supportedValuesOf("timeZone").slice(0, tz.PARTS_FORMATTER_CACHE_LIMIT + 1);
+    const instant = new Date("2026-06-20T16:00:00.000Z");
+
+    tz.getOffsetMinutesAtInstant(zones[0], instant);
+    tz.getOffsetMinutesAtInstant(zones[0], instant);
+    expect(constructed).toBe(1);
+
+    for (const zone of zones.slice(1)) tz.getOffsetMinutesAtInstant(zone, instant);
+    expect(constructed).toBe(zones.length);
+
+    // The first zone was the oldest entry and has been evicted; the newest is still held.
+    tz.getOffsetMinutesAtInstant(zones[zones.length - 1], instant);
+    expect(constructed).toBe(zones.length);
+    tz.getOffsetMinutesAtInstant(zones[0], instant);
+    expect(constructed).toBe(zones.length + 1);
+  });
+});

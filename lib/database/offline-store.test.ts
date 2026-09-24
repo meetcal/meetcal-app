@@ -1036,9 +1036,83 @@ describe("cached athlete bests", () => {
     });
   });
 
+  it("writes a roster-sized bests map in bounded multiSet batches", async () => {
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    multiSet.mockClear();
+    const bests = Object.fromEntries(
+      Array.from({ length: 1201 }, (_, i) => [
+        `Athlete ${i}`,
+        { snatch_best: 90, cj_best: 110, total: 200 },
+      ]),
+    );
+
+    await saveAthleteBestsBatch(bests);
+
+    expect(multiSet.mock.calls.map(([entries]) => entries.length)).toEqual([500, 500, 201]);
+    await expect(getCachedAthleteBestsForNames(["Athlete 1200"])).resolves.toEqual({
+      "Athlete 1200": { snatch_best: 90, cj_best: 110, total: 200 },
+    });
+  });
+
+  it("does not write at all for an empty map", async () => {
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    multiSet.mockClear();
+    await saveAthleteBestsBatch({});
+    expect(multiSet).not.toHaveBeenCalled();
+  });
+
   it("returns an empty record when storage is unavailable", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     (AsyncStorage.multiGet as jest.Mock).mockRejectedValueOnce(new Error("storage unavailable"));
     await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({});
+  });
+});
+
+describe("lifting results manifest bounds", () => {
+  const HISTORY_KEY = "meetcal_athlete_history_jane doe";
+
+  beforeEach(() => {
+    mockStorage.clear();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ["an absurd chunk count", 1e9],
+    ["an infinite chunk count", "Infinity"],
+    ["a fractional chunk count", 1.5],
+    ["a negative chunk count", -3],
+  ])("reads %s as no cached history without allocating per chunk", async (_label, chunks) => {
+    const multiGet = AsyncStorage.multiGet as jest.Mock;
+    multiGet.mockClear();
+    mockStorage.set(
+      HISTORY_KEY,
+      // JSON cannot spell Infinity; `1e400` parses to it.
+      `{"format":"deflate-base64-chunks-v1","chunks":${chunks === "Infinity" ? "1e400" : chunks}}`,
+    );
+
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([]);
+    const chunkReads = multiGet.mock.calls.filter(([keys]) =>
+      (keys as string[]).some((key) => key.includes("__chunk_")),
+    );
+    expect(chunkReads).toHaveLength(0);
+  });
+
+  it("replaces a corrupt manifest without iterating its chunk count", async () => {
+    const multiRemove = AsyncStorage.multiRemove as jest.Mock;
+    multiRemove.mockClear();
+    mockStorage.set(HISTORY_KEY, '{"format":"deflate-base64-chunks-v1","chunks":1000000000}');
+
+    await saveAthleteHistory("Jane Doe", [
+      { name: "Jane Doe", meet: "M", date: "2026-01-01", total: 200 } as never,
+    ]);
+
+    expect(multiRemove).not.toHaveBeenCalled();
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
+      expect.objectContaining({ name: "Jane Doe", total: 200 }),
+    ]);
   });
 });
