@@ -1,15 +1,17 @@
-import { getPlatformColors } from "@/constants/Colors";
+import { platformColor } from "@/constants/Colors";
 import { Platform as PlatformType } from "@/data/types/athletes";
 import { StyleSheet, View } from "react-native";
 import { ThemedText } from "../ui/ThemedText";
 import { Palette } from "@/constants/Palette";
 
 export function PlatformBadge({ platform }: { platform: PlatformType }) {
-  const platformColors = getPlatformColors();
-  const backgroundColor = platformColors[platform as PlatformType] || "#808080";
+  const backgroundColor = platformColor(platform);
 
   return (
-    <View style={[styles.platformBadge, { backgroundColor }]}>
+    <View
+      testID="platform-badge"
+      style={[styles.platformBadge, { backgroundColor }]}
+    >
       <ThemedText style={styles.platformText}>{platform}</ThemedText>
     </View>
   );
@@ -20,7 +22,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    width: 80,
+    minWidth: 80,
     alignItems: "center",
   },
   platformText: {

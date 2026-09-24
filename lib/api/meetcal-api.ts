@@ -1,4 +1,4 @@
-import { isLiftResult } from '@/lib/athletes';
+import { canonicalizePlatform, filterSessionAthletes, isLiftResult } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import {
   Meet,
@@ -650,11 +650,14 @@ function getUTCOffsetHours(timeZoneIdentifier: string, dateIso: string): number 
   return -getOffsetMinutesAtInstant(timeZoneIdentifier, instant) / 60;
 }
 
+/**
+ * Canonical platform name for an API row. Platforms are free text on the
+ * server, so any name survives (`"Gold"` stays `"Gold"`); only casing and
+ * whitespace are normalized. The old version coerced every unknown name to
+ * `'Red'`, which merged a meet's Red and Gold platforms into one session.
+ */
 export function normalizePlatform(platform: string | null | undefined): Platform {
-  const value = (platform || '').trim();
-  const normalized = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-  const validPlatforms: Platform[] = ['Red', 'White', 'Blue', 'Stars', 'Stripes', 'Rogue'];
-  return validPlatforms.includes(normalized as Platform) ? normalized as Platform : 'Red';
+  return canonicalizePlatform(platform);
 }
 
 export function formatApiTime(time: string | null | undefined): string {
@@ -955,20 +958,35 @@ export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   return mapApiAthletes(rows, '/meets/athletes');
 }
 
+/**
+ * Athletes with their session assignment, optionally narrowed to one session
+ * and/or platform.
+ *
+ * The server's `platform` filter is an exact string compare against the
+ * stored `session_platform`. Scrapers store the same title-cased form the app
+ * canonicalizes to, but the column is free text and a hand-written row could
+ * hold `"RED "`, which `platform=Red` would miss server-side. So when a session
+ * number is given the request is narrowed by `session_number` only (a session
+ * is a handful of platforms, so the extra rows are cheap) and the platform is
+ * matched client-side with the app's one case-insensitive rule. Only a
+ * platform-without-session query is sent to the server as is.
+ */
 export async function fetchApiAthletesWithSession(
   meet: MeetName,
   sessionNumber?: number,
   platform?: string,
 ): Promise<LiftResult[]> {
+  const filterLocally = sessionNumber != null && !!platform;
   const rows = assertArray<ApiAthleteWithSession>(
     await getJson('/meets/athletes-sessions', {
       meet,
       session_number: sessionNumber,
-      platform,
+      platform: filterLocally ? undefined : platform,
     }),
     '/meets/athletes-sessions',
   );
-  return mapApiAthletes(rows, '/meets/athletes-sessions');
+  const athletes = mapApiAthletes(rows, '/meets/athletes-sessions');
+  return filterLocally ? filterSessionAthletes(athletes, sessionNumber, platform) : athletes;
 }
 
 // Clients on 6.2.0+ must always send `cutoff_date`; the defaults below come

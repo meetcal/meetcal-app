@@ -44,6 +44,7 @@ import {
   MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
+  normalizePlatform,
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
@@ -51,6 +52,8 @@ import {
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
+import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
+import { generateSessionId } from '@/utils/session';
 import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
@@ -534,6 +537,34 @@ describe('meetcal API mappers', () => {
     expect(formatApiTime('08:00:00')).toBe('8:00 AM');
   });
 
+  it('keeps a Gold schedule platform as Gold and canonicalizes casing, never remapping to Red', () => {
+    const schedule = mapApiSchedule([
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'RED ', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '60kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'gold', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '65kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: 'stars & stripes', session_id: 2, start_time: '10:00', weigh_in_time: '08:00', weight_class: '71kg' },
+      { date: '2026-06-20', meet: 'Test Meet', platform: '  ', session_id: 3, start_time: '12:00', weigh_in_time: '10:00', weight_class: '81kg' },
+    ]);
+    const sessions = schedule[0].sessions;
+    expect(sessions[0].platforms.map((p) => p.platform)).toEqual(['Red', 'Gold']);
+    expect(sessions[1].platforms.map((p) => p.platform)).toEqual(['Stars & Stripes']);
+    expect(sessions[2].platforms.map((p) => p.platform)).toEqual([UNKNOWN_PLATFORM]);
+    expect(normalizePlatform('unknown-color')).toBe('Unknown-color');
+  });
+
+  it('gives Red and Gold athletes in one session distinct platforms and session ids', () => {
+    const base = {
+      member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
+      entry_total: 250, gender: 'Men', weight_class: '73kg', session_number: 4,
+    };
+    const red = mapApiAthlete({ ...base, session_platform: 'Red' });
+    const gold = mapApiAthlete({ ...base, member_id: '2', name: 'Athlete B', session_platform: 'Gold' });
+    expect(red.session?.platform).toBe('Red');
+    expect(gold.session?.platform).toBe('Gold');
+    expect(generateSessionId('Test Meet' as never, 4, red.session!.platform)).not.toBe(
+      generateSessionId('Test Meet' as never, 4, gold.session!.platform),
+    );
+  });
+
   it('keeps lifting-result age as the API category string', () => {
     expect(mapApiLiftingResult({
       meet: 'Test Meet',
@@ -917,23 +948,38 @@ describe('meetcal API client error and auth boundaries', () => {
     expect((failure as MeetCalApiError).status).toBe(500);
   });
 
-  it('asks for one session and platform of the roster and omits an absent filter', async () => {
+  it('asks for one session of the roster, matches the platform client-side, and omits an absent filter', async () => {
     const athlete = {
       member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
       entry_total: 250, gender: 'Men', weight_class: '73kg',
       session_number: 2, session_platform: 'Blue',
     };
-    const fetchMock = mockFetch(JSON.stringify([athlete]));
+    // A hand-entered row: the server's exact `platform=Blue` compare would
+    // miss it, the app's case-insensitive match must not.
+    const paddedAthlete = { ...athlete, member_id: '2', name: 'Athlete B', session_platform: 'BLUE ' };
+    const goldAthlete = { ...athlete, member_id: '3', name: 'Athlete C', session_platform: 'Gold' };
+    const fetchMock = mockFetch(JSON.stringify([athlete, paddedAthlete, goldAthlete]));
 
     const rows = await fetchApiAthletesWithSession('Test Meet' as never, 2, 'Blue');
-    expect(rows.map((row) => row.session)).toEqual([{ number: 2, platform: 'Blue' }]);
+    expect(rows.map((row) => row.name)).toEqual(['Athlete A', 'Athlete B']);
+    expect(rows.map((row) => row.session)).toEqual([
+      { number: 2, platform: 'Blue' },
+      { number: 2, platform: 'Blue' },
+    ]);
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
-      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2&platform=Blue',
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2',
     );
 
     await fetchApiAthletesWithSession('Test Meet' as never);
     expect((fetchMock.mock.calls[1] as unknown as [string])[0]).toBe(
       'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet',
+    );
+
+    // Platform without a session number cannot be narrowed client-side
+    // cheaply, so it still goes to the server as the canonical name.
+    await fetchApiAthletesWithSession('Test Meet' as never, undefined, 'Gold');
+    expect((fetchMock.mock.calls[2] as unknown as [string])[0]).toBe(
+      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&platform=Gold',
     );
 
     mockFetch(JSON.stringify({ athletes: [athlete] }));

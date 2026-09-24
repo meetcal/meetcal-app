@@ -1,5 +1,5 @@
 import { ThemedText } from "@/components/ui/ThemedText";
-import { getPlatformColors } from "@/constants/Colors";
+import { platformColor } from "@/constants/Colors";
 import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SessionCardProps } from "@/types/saved";
@@ -128,10 +128,7 @@ const SessionCard = React.memo<SessionCardProps>(
             style={[
               styles.platformIndicator,
               {
-                backgroundColor:
-                  getPlatformColors()[
-                    platform as keyof ReturnType<typeof getPlatformColors>
-                  ],
+                backgroundColor: platformColor(platform),
               },
             ]}
           >
