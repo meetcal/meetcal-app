@@ -6,13 +6,13 @@ import {
   MAX_CACHED_CLUB_MEET_STATS,
 } from "@/lib/database/fetch-club-stats";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
-const mockGetJsonArray = jest.fn();
-const mockGetJsonObject = jest.fn();
+const mockFetchApiClubAthletes = jest.fn();
+const mockFetchApiClubMeetStats = jest.fn();
 const mockFetchApiClubNames = jest.fn();
 
 jest.mock("@/lib/api/meetcal-api", () => ({
-  getJsonArray: (...args: unknown[]) => mockGetJsonArray(...args),
-  getJsonObject: (...args: unknown[]) => mockGetJsonObject(...args),
+  fetchApiClubAthletes: (...args: unknown[]) => mockFetchApiClubAthletes(...args),
+  fetchApiClubMeetStats: (...args: unknown[]) => mockFetchApiClubMeetStats(...args),
   fetchApiClubNames: (...args: unknown[]) => mockFetchApiClubNames(...args),
 }));
 jest.mock("@/lib/networkUtils", () => ({
@@ -38,7 +38,7 @@ beforeEach(async () => {
 
 describe("club stats mappers", () => {
   it("maps meet stats and tolerates a missing athlete_results section", async () => {
-    mockGetJsonObject.mockResolvedValue(STATS_ROW);
+    mockFetchApiClubMeetStats.mockResolvedValue(STATS_ROW);
 
     const result = await clubMeetStatsResource.revalidate("Club", "Meet");
 
@@ -61,7 +61,7 @@ describe("club stats mappers", () => {
   });
 
   it("maps athlete rows into the club athlete shape, one entry per row, without the athlete list", async () => {
-    mockGetJsonObject.mockResolvedValue({
+    mockFetchApiClubMeetStats.mockResolvedValue({
       total_athletes: 1,
       gold_medals: 0,
       silver_medals: 0,
@@ -91,7 +91,7 @@ describe("club stats mappers", () => {
     expect(result.data).not.toHaveProperty("athleteResults");
     expect(await AsyncStorage.getItem(OFFLINE_CACHE_KEYS.clubMeetStats)).not.toContain("Athlete A");
 
-    mockGetJsonArray.mockResolvedValue([
+    mockFetchApiClubAthletes.mockResolvedValue([
       { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", gender: "Men" },
     ]);
     const athletes = await clubAthletesResource.revalidate("Club");
@@ -103,7 +103,7 @@ describe("club stats mappers", () => {
 
 describe("club browse caches are bounded", () => {
   it(`keeps the ${MAX_CACHED_CLUB_ATHLETE_LISTS} most recently viewed clubs' athletes`, async () => {
-    mockGetJsonArray.mockResolvedValue([
+    mockFetchApiClubAthletes.mockResolvedValue([
       { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
     ]);
     for (let i = 0; i <= MAX_CACHED_CLUB_ATHLETE_LISTS; i += 1) {
@@ -114,7 +114,7 @@ describe("club browse caches are bounded", () => {
   });
 
   it(`keeps the ${MAX_CACHED_CLUB_MEET_STATS} most recently viewed meet stats`, async () => {
-    mockGetJsonObject.mockResolvedValue(STATS_ROW);
+    mockFetchApiClubMeetStats.mockResolvedValue(STATS_ROW);
     for (let i = 0; i <= MAX_CACHED_CLUB_MEET_STATS; i += 1) {
       await clubMeetStatsResource.revalidate("Club", `Meet ${i}`);
     }
@@ -148,7 +148,7 @@ describe("club endpoint boundary validation", () => {
 
   it("rejects a stats body missing a required count instead of persisting it", async () => {
     const { total_athletes: _missing, ...withoutTotal } = STATS_ROW;
-    mockGetJsonObject.mockResolvedValue(withoutTotal);
+    mockFetchApiClubMeetStats.mockResolvedValue(withoutTotal);
 
     await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(
       /total_athletes/,
@@ -157,7 +157,7 @@ describe("club endpoint boundary validation", () => {
   });
 
   it("rejects a non-numeric make rate", async () => {
-    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, snatch_make_rate: "78%" });
+    mockFetchApiClubMeetStats.mockResolvedValue({ ...STATS_ROW, snatch_make_rate: "78%" });
 
     await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(
       /snatch_make_rate/,
@@ -165,19 +165,19 @@ describe("club endpoint boundary validation", () => {
   });
 
   it("rejects NaN and null counts, and accepts a null make rate as absent", async () => {
-    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, gold_medals: null });
+    mockFetchApiClubMeetStats.mockResolvedValue({ ...STATS_ROW, gold_medals: null });
     await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(/gold_medals/);
 
-    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, total_prs: Number.NaN });
+    mockFetchApiClubMeetStats.mockResolvedValue({ ...STATS_ROW, total_prs: Number.NaN });
     await expect(clubMeetStatsResource.revalidate("Club", "Meet")).rejects.toThrow(/total_prs/);
 
-    mockGetJsonObject.mockResolvedValue({ ...STATS_ROW, cj_make_rate: null });
+    mockFetchApiClubMeetStats.mockResolvedValue({ ...STATS_ROW, cj_make_rate: null });
     const result = await clubMeetStatsResource.revalidate("Club", "Meet");
     expect(result.data.cjMakeRate).toBe(0);
   });
 
   it("drops a malformed athlete row, keeps the rest, and says how many went", async () => {
-    mockGetJsonArray.mockResolvedValue([
+    mockFetchApiClubAthletes.mockResolvedValue([
       { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
       { member_id: "2", meet: "Meet", club: "Club" },
       { member_id: 3, name: "Athlete C", meet: "Meet", club: "Club" },

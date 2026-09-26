@@ -4,17 +4,17 @@ import {
   MAX_CACHED_RANKING_CLASSES,
   nationalRankingsResource,
 } from "@/lib/database/fetch-national-rankings";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 
 const mockGetJson = jest.fn();
 
 // The real API client runs, so its boundary validators see these payloads.
-const originalFetch = global.fetch;
 beforeAll(() => {
-  global.fetch = jsonFetchStub((path, query) => mockGetJson(path, query)) as unknown as typeof fetch;
+  setApiTransportForTests(jsonTransportStub((path, query) => mockGetJson(path, query)));
 });
 afterAll(() => {
-  global.fetch = originalFetch;
+  setApiTransportForTests(null);
 });
 
 // The real offline cache runs over the AsyncStorage mock from jest.setup.js.

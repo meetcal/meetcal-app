@@ -11,7 +11,8 @@ import type { MeetName } from "@/data/types/meet";
 import type { Schedule } from "@/types/schedule";
 import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
 import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>(async () => []);
@@ -96,12 +97,12 @@ beforeEach(async () => {
   clearHttpValidatorCache();
   await AsyncStorage.clear();
   await AsyncStorage.setItem(MEETS_LIST_CACHE_KEY, JSON.stringify(MEETS.map(cachedMeet)));
-  const stub = jsonFetchStub((path, query) => {
+  const stub = jsonTransportStub((path, query) => {
     requests.push(`${path}?meet=${query.meet}`);
     if (path === "/meets/schedule") return SCHEDULE_ROWS;
     throw new Error(`unexpected ${path}`);
   });
-  global.fetch = jest.fn(stub) as unknown as typeof fetch;
+  setApiTransportForTests(jest.fn(stub));
 });
 
 describe("useSavedScheduleLookup", () => {
@@ -158,9 +159,11 @@ describe("useSavedScheduleLookup", () => {
         ],
       },
     ] as unknown as Schedule);
-    global.fetch = jest.fn(async () => {
-      throw new TypeError("Network request failed");
-    }) as unknown as typeof fetch;
+    setApiTransportForTests(
+      jest.fn(async () => {
+        throw new TypeError("Network request failed");
+      }),
+    );
     jest.spyOn(console, "error").mockImplementation(() => {});
 
     let tree!: ReturnType<typeof create>;
@@ -176,4 +179,8 @@ describe("useSavedScheduleLookup", () => {
     act(() => tree.unmount());
     jest.restoreAllMocks();
   });
+});
+
+afterAll(() => {
+  setApiTransportForTests(null);
 });

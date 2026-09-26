@@ -2,13 +2,14 @@
  * @jest-environment-options {"deviceTimeZone": "Pacific/Auckland"}
  */
 import {
-  APP_VERSION,
-  buildApiUrl,
   clearHttpValidatorCache,
   deleteSavedSession,
   deleteSavedSessions,
   fetchApiAdaptiveRecords,
+  fetchApiAthletes,
   fetchApiAthletesWithSession,
+  fetchApiClubAthletes,
+  fetchApiClubMeetStats,
   fetchApiClubNames,
   fetchApiIntlRankings,
   fetchApiMeetByName,
@@ -29,9 +30,6 @@ import {
   fetchSavedSessions,
   fetchUserPreferences,
   formatApiTime,
-  getJson,
-  getJsonArray,
-  getJsonObject,
   mapApiAthlete,
   mapApiAthletes,
   mapApiLiftingResult,
@@ -39,25 +37,26 @@ import {
   mapApiSchedule,
   mapApiYearBests,
   mapPackageSchedule,
+  MEET_PACKAGE_INCLUDE,
   MEET_PACKAGE_TIMEOUT_MS,
   getServerClockSample,
   getServerClockSkewMs,
   getTrustedNow,
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
   MeetCalApiError,
-  parseRetryAfterSeconds,
   resetServerClockForTests,
-  MeetCalApiServerTimeoutError,
   MeetCalApiTimeoutError,
   NAMES_QUERY_CHUNK_SIZE,
   normalizePlatform,
+  SERVER_CLOCK_RESAMPLE_MS,
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
-  resolveAppVersion,
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
+import { callQuery, isClockCall } from './json-transport-stub';
+import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
 import {
@@ -66,203 +65,344 @@ import {
   YEAR_BESTS_YEARS,
 } from '@/utils/dateTime';
 
-// Hoisted by jest above the imports; placed here to satisfy import/first.
-jest.mock('expo-constants', () => ({
-  __esModule: true,
-  default: { expoConfig: { version: '6.2.0' } },
-}));
-jest.mock('expo-application', () => ({
-  __esModule: true,
-  nativeApplicationVersion: '6.1.9',
-}));
+/** The client's per-call default (`DEFAULT_TIMEOUT_MS` in meetcal-api.ts). */
+const DEFAULT_TIMEOUT_MS = 10000;
+/** How long the first request waits for its clock sample (`SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS`). */
+const FIRST_SAMPLE_GRACE_MS = 2000;
+const HOUR_MS = 60 * 60 * 1000;
 
-/** The API's request ceiling; a client timeout above it can never fire first. */
-const BACKEND_REQUEST_CEILING_MS = 15000;
+// --- fake transport ---------------------------------------------------------
+
+type Responder = (call: ApiCall) => unknown;
+
+/**
+ * Swaps in a fake transport. Clock calls (`system:serverTime`) never reach
+ * `respond`: `clock` answers them, by default with the device clock, so the
+ * first request's wait for its clock sample never stalls a test.
+ */
+function installTransport(respond: Responder, clock: Responder = () => Date.now()) {
+  const transport = jest.fn(
+    async (call: ApiCall): Promise<unknown> => (isClockCall(call) ? clock(call) : respond(call)),
+  );
+  setApiTransportForTests(transport);
+  const allCalls = (): ApiCall[] => transport.mock.calls.map(([call]) => call);
+  const dataCalls = (): ApiCall[] => allCalls().filter((call) => !isClockCall(call));
+  const clockCalls = (): ApiCall[] => allCalls().filter((call) => isClockCall(call));
+  const lastCall = (): ApiCall => {
+    const calls = dataCalls();
+    if (calls.length === 0) throw new Error('no data call was made');
+    return calls[calls.length - 1];
+  };
+  return { transport, dataCalls, clockCalls, lastCall };
+}
+
+/** Answers every call with `body`; a conditional query gets it as `{ etag, body }`. */
+function answer(body: unknown, etag: string | null = null): Responder {
+  return (call) => (call.conditional ? { etag, body } : body);
+}
+
+/** What a Convex function's `ConvexError({ status, error })` reaches the client as. */
+function apiFailure(status: number, data: Record<string, unknown> = { error: 'failed' }) {
+  return new TransportRequestError(
+    `query failed with ${status}`,
+    status,
+    JSON.stringify({ status, ...data }),
+  );
+}
+
+type Reply = { etag?: string | null; body?: unknown; json?: unknown } | { fail: number };
+
+/** Answers data calls from `replies` in order; `{ fail }` rejects with that status. */
+function queueTransport(replies: Reply[]) {
+  const fake = installTransport(() => {
+    const reply = replies.shift();
+    if (!reply) throw new Error('unexpected call');
+    if ('fail' in reply) throw apiFailure(reply.fail);
+    return reply;
+  });
+  return { ...fake, sentTag: (index: number) => fake.dataCalls()[index].args.ifNoneMatch };
+}
+
+function never(): Promise<never> {
+  return new Promise<never>(() => {});
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+}
+
+function meetRow(name: string, venue = 'Hall') {
+  return {
+    name,
+    start_date: '2026-06-20',
+    end_date: '2026-06-21',
+    time_zone: 'America/New_York',
+    status: 'upcoming',
+    venue_name: venue,
+    venue_city: 'City',
+    venue_state: 'ST',
+    venue_street: '1 Main',
+    venue_zip: '00000',
+  };
+}
+
+beforeEach(() => {
+  resetServerClockForTests();
+  clearHttpValidatorCache();
+  // The `__DEV__` slow-request log fires whenever fake time passes 500ms.
+  jest.spyOn(console, 'info').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  setApiTransportForTests(null);
+  resetServerClockForTests();
+  clearHttpValidatorCache();
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
 
 describe('meetcal API client', () => {
-  const originalFetch = global.fetch;
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-    jest.restoreAllMocks();
-  });
-
-  it('builds query strings with comma-separated array values', () => {
-    expect(buildApiUrl('/lifting-results/by-names', {
-      names: ['Athlete A', 'Athlete B'],
-      cutoff_date: undefined,
-    })).toBe(
-      'https://api.meetcal.app/lifting-results/by-names?names=Athlete+A%2CAthlete+B',
+  it('carries the Clerk token on authenticated calls and never on public reads or the clock', async () => {
+    const { lastCall, clockCalls } = installTransport((call) =>
+      call.fn === 'users:preferences' ? { auto_unsave_started_sessions: true } : answer([])(call),
     );
-  });
-
-  it('sends bearer auth headers for authenticated requests', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ auto_unsave_started_sessions: true }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(fetchUserPreferences('clerk-token')).resolves.toEqual({
       auto_unsave_started_sessions: true,
     });
+    expect(lastCall()).toEqual({
+      path: '/users/me/preferences',
+      fn: 'users:preferences',
+      kind: 'query',
+      args: {},
+      token: 'clerk-token',
+    });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/users/me/preferences',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer clerk-token',
-        }),
-      }),
-    );
-  });
-
-  it('returns parsed JSON as unknown, never as a caller-inferred type', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ rows: 'not an array' }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    // Compile-time regression (`bun run typecheck` covers test files): with a
-    // generic `getJson<T>`, this annotation inferred `T = string[]` and cast
-    // the object body past `JSON.parse` unchecked. It must not compile.
-    // @ts-expect-error unknown is not assignable to string[]
-    const rows: string[] = await getJson('/meets/athletes');
-    expect(Array.isArray(rows)).toBe(false);
+    await fetchApiClubNames();
+    expect(lastCall().fn).toBe('reference:clubs');
+    expect(lastCall().token).toBeUndefined();
+    // The clock mutation that rode alongside the signed-in call is public too.
+    expect(clockCalls().length).toBeGreaterThan(0);
+    expect(clockCalls().every((call) => call.token === undefined)).toBe(true);
   });
 
   it('reads plain array list endpoints', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify(['Carolina', 'Ohio']),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { dataCalls } = installTransport(answer(['Carolina', 'Ohio']));
 
     await expect(fetchApiWsoList()).resolves.toEqual(['Carolina', 'Ohio']);
     await expect(fetchApiWsoAgeGroups('Carolina')).resolves.toEqual(['Carolina', 'Ohio']);
     await expect(fetchApiClubNames()).resolves.toEqual(['Carolina', 'Ohio']);
+
+    expect(dataCalls().map(({ fn, args }) => [fn, args])).toEqual([
+      ['reference:wsoList', {}],
+      ['reference:wsoAgeGroups', { wso: 'Carolina' }],
+      ['reference:clubs', {}],
+    ]);
+    expect(dataCalls().every((call) => call.kind === 'query' && call.conditional === true)).toBe(true);
   });
 
   it('rejects the retired wrapped WSO list shape', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ wsos: ['Carolina', 'Ohio'] }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    installTransport(answer({ wsos: ['Carolina', 'Ohio'] }));
 
     await expect(fetchApiWsoList()).rejects.toThrow('/data/wso/ expected an array response');
   });
 
-  it('declares the app version on every request', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify([]),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    expect(APP_VERSION).toBe('6.2.0');
-    await fetchApiClubNames();
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/clubs',
-      expect.objectContaining({
-        headers: expect.objectContaining({ 'X-MeetCal-App': '6.2.0' }),
-      }),
-    );
-  });
-
-  it('posts name lists so a comma inside a name stays one name', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify([]),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it('sends name lists as one array argument, so a comma inside a name stays one name', async () => {
+    const { lastCall } = installTransport(answer([]));
 
     await fetchApiResultsByNames(['Nordstrom, Alexander', 'Athlete B']);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/lifting-results/by-names',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ names: ['Nordstrom, Alexander', 'Athlete B'] }),
-      }),
-    );
+
+    expect(lastCall()).toMatchObject({
+      path: '/lifting-results/by-names',
+      fn: 'results:byNames',
+      kind: 'query',
+    });
+    expect(lastCall().args.names).toEqual(['Nordstrom, Alexander', 'Athlete B']);
+    expect(lastCall().args.latestOnly).toBeUndefined();
   });
 
   it('always sends a cutoff for recent results, defaulting to the shared history window', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify([]),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { lastCall } = installTransport(answer([]));
 
     await fetchApiRecentResultsByNames(['Athlete A']);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
-    const body = JSON.parse(init.body) as { names: string[]; cutoff_date: string };
-    expect(body.names).toEqual(['Athlete A']);
-    expect(body.cutoff_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    expect(lastCall().fn).toBe('results:recent');
+    expect(lastCall().args.names).toEqual(['Athlete A']);
+    expect(lastCall().args.cutoffDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     // One cutoff policy: the UTC-only `getHistoryCutoffDate`, not a second
     // device-local copy of the same arithmetic.
-    expect(body.cutoff_date).toBe(getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS));
+    expect(lastCall().args.cutoffDate).toBe(getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS));
   });
 
   it('defaults the year-bests cutoff to the shared one-year window', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({}),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { lastCall } = installTransport(answer([]));
 
     await fetchApiYearBestsByNames(['Athlete A']);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
-    expect(JSON.parse(init.body).cutoff_date).toBe(getHistoryCutoffDate(YEAR_BESTS_YEARS));
+
+    expect(lastCall().fn).toBe('results:bests');
+    expect(lastCall().args.cutoffDate).toBe(getHistoryCutoffDate(YEAR_BESTS_YEARS));
   });
 
-  it('prefers the Expo version and falls back to the native bundle version', () => {
-    expect(resolveAppVersion('6.2.0', '6.1.9')).toBe('6.2.0');
-    expect(resolveAppVersion('', '6.1.9')).toBe('6.1.9');
-    expect(resolveAppVersion(undefined, '6.1.9')).toBe('6.1.9');
-    expect(resolveAppVersion('  ', null)).toBe('');
+  it.each<[string, () => Promise<unknown>, Partial<ApiCall>, unknown]>([
+    [
+      'fetchApiMeetByName',
+      () => fetchApiMeetByName('Test Meet'),
+      { path: '/meets/details', fn: 'meets:details', args: { meet: 'Test Meet' }, conditional: true },
+      meetRow('Test Meet'),
+    ],
+    [
+      'fetchApiAthletes',
+      () => fetchApiAthletes('Test Meet' as never),
+      { path: '/meets/athletes', fn: 'meets:athletes', args: { meet: 'Test Meet' } },
+      [],
+    ],
+    [
+      'fetchApiYearBests',
+      () => fetchApiYearBests('Athlete A', '2025-06-20'),
+      {
+        path: '/lifting-results/year',
+        fn: 'results:yearBests',
+        args: { name: 'Athlete A', cutoffDate: '2025-06-20' },
+      },
+      { best_snatch: 100, best_cj: 120, best_total: 220 },
+    ],
+    [
+      'searchApi',
+      () => searchApi('Athlete', '2025-01-01', '2025-12-31'),
+      {
+        path: '/search',
+        fn: 'results:search',
+        args: { query: 'Athlete', startDate: '2025-01-01', endDate: '2025-12-31' },
+      },
+      { matched_name: null, suggestions: [], results: [] },
+    ],
+    [
+      'fetchApiRecords',
+      () => fetchApiRecords(),
+      { path: '/data/records', fn: 'reference:records', args: {}, conditional: true },
+      [],
+    ],
+    [
+      'fetchApiStandards',
+      () => fetchApiStandards(),
+      { path: '/data/standards', fn: 'reference:standards', args: {}, conditional: true },
+      [],
+    ],
+    [
+      'fetchApiQualifyingTotals',
+      () => fetchApiQualifyingTotals(),
+      { path: '/data/qualifying-totals', fn: 'reference:qualifyingTotals', args: {}, conditional: true },
+      [],
+    ],
+    [
+      'fetchApiIntlRankings',
+      () => fetchApiIntlRankings(),
+      { path: '/data/intl-rankings', fn: 'reference:intlRankings', args: {}, conditional: true },
+      [],
+    ],
+    [
+      'fetchApiNationalRankings',
+      () => fetchApiNationalRankings('USAW', 'Senior 89'),
+      {
+        path: '/data/nat-rankings',
+        fn: 'reference:nationalRankings',
+        args: { federation: 'USAW', ageCategory: 'Senior 89' },
+        conditional: true,
+      },
+      [],
+    ],
+    [
+      'fetchApiWsoRecords',
+      () => fetchApiWsoRecords('Ohio', 'Senior', 'Men'),
+      {
+        path: '/data/wso/records',
+        fn: 'reference:wsoRecords',
+        args: { wso: 'Ohio', ageCategory: 'Senior', gender: 'Men' },
+        conditional: true,
+      },
+      [],
+    ],
+    [
+      'fetchApiAdaptiveRecords',
+      () => fetchApiAdaptiveRecords('Men', 'BWL'),
+      {
+        path: '/data/adaptive',
+        fn: 'reference:adaptiveRecords',
+        args: { gender: 'Men', excludeFederation: 'BWL' },
+        conditional: true,
+      },
+      [],
+    ],
+    [
+      'fetchApiClubAthletes',
+      () => fetchApiClubAthletes('Club A'),
+      { path: '/clubs/athletes', fn: 'reference:clubAthletes', args: { club: 'Club A' } },
+      [],
+    ],
+    [
+      'fetchApiClubMeetStats',
+      () => fetchApiClubMeetStats('Club A', 'Test Meet'),
+      {
+        path: '/clubs/meet-stats',
+        fn: 'reference:clubMeetStats',
+        args: { club: 'Club A', meet: 'Test Meet' },
+      },
+      {},
+    ],
+  ])('%s makes one public query call with the route arguments', async (_name, invoke, expected, body) => {
+    const { dataCalls } = installTransport(answer(body));
+
+    await invoke();
+
+    expect(dataCalls()).toHaveLength(1);
+    const [call] = dataCalls();
+    expect(call.path).toBe(expected.path);
+    expect(call.fn).toBe(expected.fn);
+    expect(call.kind).toBe('query');
+    // `toEqual` ignores an `ifNoneMatch: undefined` member, which is what a
+    // first conditional read sends.
+    expect(call.args).toEqual(expected.args);
+    expect(call.args.ifNoneMatch).toBeUndefined();
+    expect(call.conditional === true).toBe(expected.conditional === true);
+    expect(call.token).toBeUndefined();
   });
 
   it('skips the details request when the caller already has the meet', async () => {
-    const fetchMock = jest.fn(async (url: string) => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        url.includes('/meets/schedule')
-          ? JSON.stringify([
-              {
-                date: '2026-06-20',
-                platform: 'Red',
-                session_id: 1,
-                start_time: '09:00:00',
-                weigh_in_time: '07:00:00',
-                weight_class: '60kg',
-              },
-            ])
-          : JSON.stringify({
-              name: 'Test Meet',
-              start_date: '2026-06-20',
-              end_date: '2026-06-21',
-              time_zone: 'America/Los_Angeles',
-              venue_name: 'Venue',
-              venue_street: '1 Main',
-              venue_city: 'LA',
-              venue_state: 'CA',
-              venue_zip: '90001',
-              status: 'upcoming',
-            }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { dataCalls, transport } = installTransport((call) =>
+      call.fn === 'meets:schedule'
+        ? answer([
+            {
+              date: '2026-06-20',
+              platform: 'Red',
+              session_id: 1,
+              start_time: '09:00:00',
+              weigh_in_time: '07:00:00',
+              weight_class: '60kg',
+            },
+          ])(call)
+        : answer({
+            name: 'Test Meet',
+            start_date: '2026-06-20',
+            end_date: '2026-06-21',
+            time_zone: 'America/Los_Angeles',
+            venue_name: 'Venue',
+            venue_street: '1 Main',
+            venue_city: 'LA',
+            venue_state: 'CA',
+            venue_zip: '90001',
+            status: 'upcoming',
+          })(call),
+    );
     const meet = mapApiMeet({
       name: 'Test Meet',
       status: 'upcoming',
@@ -278,46 +418,61 @@ describe('meetcal API client', () => {
 
     const schedule = await fetchApiSchedule('Test Meet', meet);
 
-    const urls = fetchMock.mock.calls.map(([url]) => url);
-    expect(urls).toHaveLength(1);
-    expect(urls[0]).toContain('/meets/schedule');
+    expect(dataCalls().map((call) => call.fn)).toEqual(['meets:schedule']);
+    expect(dataCalls()[0].args).toEqual({ meet: 'Test Meet' });
     expect(schedule[0].date).toBe('June 20, 2026');
 
     // Without the meet the details request still rides alongside.
-    fetchMock.mockClear();
+    transport.mockClear();
     await fetchApiSchedule('Test Meet');
-    expect(fetchMock.mock.calls.map(([url]) => url).some((url) => url.includes('/meets/details'))).toBe(true);
+    expect(dataCalls().map((call) => call.fn).sort()).toEqual(['meets:details', 'meets:schedule']);
   });
 
-  it('revalidates the meet package with If-None-Match and honours 304', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: false,
-      status: 304,
-      headers: { get: (name: string) => (name === 'etag' ? '"abc"' : null) },
-      text: async () => '',
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it('revalidates the meet package with ifNoneMatch and honours an answer without a body', async () => {
+    const { lastCall } = installTransport(() => ({ etag: '"abc"' }));
 
     await expect(
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
     ).resolves.toEqual({ status: 'not_modified' });
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/meets/package?meet=Test+Meet&history_cutoff_date=2024-01-01&include=year_bests',
-      expect.objectContaining({
-        headers: expect.objectContaining({ 'If-None-Match': '"abc"' }),
-      }),
+    expect(lastCall()).toEqual({
+      path: '/meets/package',
+      fn: 'meets:packageForMeet',
+      kind: 'query',
+      conditional: true,
+      args: {
+        meet: 'Test Meet',
+        historyCutoffDate: '2024-01-01',
+        include: ['year_bests'],
+        ifNoneMatch: '"abc"',
+      },
+    });
+  });
+
+  it('trusts a bodiless package answer only for the tag the caller holds', async () => {
+    // No tag in the answer: it can only be vouching for the one that was sent.
+    installTransport(() => ({}));
+    await expect(
+      fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
+    ).resolves.toEqual({ status: 'not_modified' });
+
+    // A different tag, or no tag sent at all, leaves the caller with nothing.
+    installTransport(() => ({ etag: '"other"' }));
+    await expect(
+      fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
+    ).rejects.toThrow('/meets/package answered without a body');
+    await expect(
+      fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', null),
+    ).rejects.toThrow('/meets/package answered without a body');
+
+    // Not the `{ etag, body }` envelope at all.
+    installTransport(() => null);
+    await expect(fetchApiMeetPackageConditional('Test Meet' as never)).rejects.toThrow(
+      '/meets/package expected an object response',
     );
   });
 
   it('asks the package for the year-bests section only and tolerates the rest being absent', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: async () =>
-        JSON.stringify({ meet: {}, schedule: [], athletes: [], meet_results: [] }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { lastCall } = installTransport(answer({ meet: {}, schedule: [], athletes: [], meet_results: [] }));
 
     const fetched = await fetchApiMeetPackageConditional('Test Meet', '2024-01-01', null);
     expect(fetched.status).toBe('fresh');
@@ -326,50 +481,99 @@ describe('meetcal API client', () => {
       expect(fetched.package.attempt_estimates).toBeUndefined();
       expect(fetched.package.year_bests_by_name).toBeUndefined();
     }
-    const [url] = fetchMock.mock.calls[0] as unknown as [string];
-    expect(new URL(url).searchParams.get('include')).toBe('year_bests');
+    expect(MEET_PACKAGE_INCLUDE).toEqual(['year_bests']);
+    expect(lastCall().args.include).toEqual(['year_bests']);
+    // A copy, so nothing downstream can edit the exported constant.
+    expect(lastCall().args.include).not.toBe(MEET_PACKAGE_INCLUDE);
   });
 
-  it('keeps the package timeout under the backend request ceiling', () => {
-    expect(MEET_PACKAGE_TIMEOUT_MS).toBeLessThan(BACKEND_REQUEST_CEILING_MS);
-  });
-
-  it('returns the package and its etag on a fresh response', async () => {
+  it('returns the package and its etag on a fresh answer', async () => {
     const pkg = { meet: {}, schedule: [], athletes: [], meet_results: [] };
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: { get: (name: string) => (name === 'etag' ? '"def"' : null) },
-      text: async () => JSON.stringify(pkg),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const { lastCall } = installTransport(answer(pkg, '"def"'));
 
     await expect(
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', null),
     ).resolves.toEqual({ status: 'fresh', etag: '"def"', package: pkg });
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { headers: Record<string, string> }];
-    expect(init.headers['If-None-Match']).toBeUndefined();
+    expect(lastCall().args.ifNoneMatch).toBeUndefined();
   });
 
-  it('posts batch year bests with the cutoff', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        JSON.stringify({
-          'Athlete A': {
-            best_snatch: 100,
-            best_cj: 120,
-            best_total: 220,
-          },
-          'Athlete B': {
-            best_snatch: 90,
-            best_cj: 110,
-            best_total: 200,
-          },
-        }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it('turns the package year_bests list into the name-keyed map the app reads', async () => {
+    const wire = {
+      meet: {},
+      schedule: [],
+      athletes: [],
+      meet_results: [],
+      year_bests: [
+        { name: 'Andrés Álvarez', best_snatch: 95, best_cj: 110, best_total: 205 },
+        { name: 'Athlete B', best_snatch: 0, best_cj: 0, best_total: 0 },
+      ],
+    };
+    installTransport(answer(wire, '"pkg"'));
+
+    const fetched = await fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', null);
+
+    if (fetched.status !== 'fresh') throw new Error('expected a fresh package');
+    expect(fetched.etag).toBe('"pkg"');
+    expect(fetched.package).toEqual({
+      meet: {},
+      schedule: [],
+      athletes: [],
+      meet_results: [],
+      year_bests_by_name: {
+        'Andrés Álvarez': { best_snatch: 95, best_cj: 110, best_total: 205 },
+        'Athlete B': { best_snatch: 0, best_cj: 0, best_total: 0 },
+      },
+    });
+    expect('year_bests' in fetched.package).toBe(false);
+
+    installTransport(answer({ ...wire, year_bests: [] }));
+    const empty = await fetchApiMeetPackageConditional('Test Meet' as never);
+    expect(empty.status === 'fresh' && empty.package.year_bests_by_name).toEqual({});
+  });
+
+  it.each<[string, unknown, string]>([
+    ['not a list', { 'Athlete A': { best_snatch: 1, best_cj: 1, best_total: 2 } }, '/meets/package.year_bests expected an array response'],
+    ['a row missing a best', [{ name: 'A', best_snatch: 1, best_cj: 1, best_total: 2 }, { name: 'B', best_snatch: 1, best_cj: 1 }], '/meets/package.year_bests[1] missing fields: best_total'],
+    ['a row without a name', [{ best_snatch: 1, best_cj: 1, best_total: 2 }], '/meets/package.year_bests[0] missing fields: name'],
+    ['a non-string name', [{ name: 7, best_snatch: 1, best_cj: 1, best_total: 2 }], '/meets/package.year_bests[0] has invalid name'],
+    ['a non-object row', [null], '/meets/package.year_bests[0] expected an object response'],
+  ])('rejects a package whose year_bests is %s', async (_case, yearBests, message) => {
+    installTransport(answer({ meet: {}, schedule: [], athletes: [], meet_results: [], year_bests: yearBests }));
+
+    await expect(fetchApiMeetPackageConditional('Test Meet' as never)).rejects.toThrow(message);
+  });
+
+  it('gives the package call its own, longer timeout', async () => {
+    jest.useFakeTimers();
+    installTransport(() => never());
+    let settled = false;
+    const pending = fetchApiMeetPackageConditional('Test Meet' as never)
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true;
+      });
+
+    await flushMicrotasks();
+    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
+    jest.advanceTimersByTime(MEET_PACKAGE_TIMEOUT_MS - DEFAULT_TIMEOUT_MS);
+    const failure = await pending;
+    expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
+    expect((failure as MeetCalApiTimeoutError).message).toBe(
+      `GET /meets/package timed out after ${MEET_PACKAGE_TIMEOUT_MS}ms`,
+    );
+    expect((failure as MeetCalApiTimeoutError).timeoutMs).toBe(MEET_PACKAGE_TIMEOUT_MS);
+  });
+
+  it('sends batch year bests with the cutoff and maps the named list back to a map', async () => {
+    const { lastCall } = installTransport(
+      answer([
+        { name: 'Athlete A', best_snatch: 100, best_cj: 120, best_total: 220 },
+        { name: 'Athlete B', best_snatch: 90, best_cj: 110, best_total: 200 },
+      ]),
+    );
 
     await expect(
       fetchApiYearBestsByNames(['Athlete A', 'Athlete B'], '2025-06-19'),
@@ -378,22 +582,63 @@ describe('meetcal API client', () => {
       'Athlete B': { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.meetcal.app/lifting-results/bests',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ names: ['Athlete A', 'Athlete B'], cutoff_date: '2025-06-19' }),
-      }),
+    expect(lastCall()).toEqual({
+      path: '/lifting-results/bests',
+      fn: 'results:bests',
+      kind: 'query',
+      args: { names: ['Athlete A', 'Athlete B'], cutoffDate: '2025-06-19' },
+    });
+  });
+
+  it('keys batch year bests by names that are not ASCII', async () => {
+    // Convex object keys must be ASCII, which is why the wire format is a list.
+    const names = ['Andrés Álvarez', 'Zoë Ørsted', '李娜', 'Nordstrom, Alexander'];
+    const { lastCall } = installTransport(
+      answer(names.map((name, i) => ({ name, best_snatch: 80 + i, best_cj: 100 + i, best_total: 180 + 2 * i }))),
+    );
+
+    const bests = await fetchApiYearBestsByNames(names, '2025-06-19');
+
+    expect(lastCall().args.names).toEqual(names);
+    expect(Object.keys(bests)).toEqual(names);
+    expect(bests['Andrés Álvarez']).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
+    expect(bests['李娜']).toEqual({ bestSnatch: 82, bestCJ: 102, bestTotal: 184 });
+  });
+
+  it('rejects a malformed batch year-bests row, naming its index', async () => {
+    const good = { name: 'Athlete A', best_snatch: 100, best_cj: 120, best_total: 220 };
+
+    installTransport(answer([good, { name: 'Athlete B', best_snatch: 100, best_cj: 120 }]));
+    await expect(fetchApiYearBestsByNames(['Athlete A', 'Athlete B'])).rejects.toThrow(
+      '/lifting-results/bests[1] missing fields: best_total',
+    );
+
+    installTransport(answer([good, { best_snatch: 1, best_cj: 1, best_total: 2 }]));
+    await expect(fetchApiYearBestsByNames(['Athlete A', 'Athlete B'])).rejects.toThrow(
+      '/lifting-results/bests[1] missing fields: name',
+    );
+
+    installTransport(answer([{ ...good, name: 42 }]));
+    await expect(fetchApiYearBestsByNames(['Athlete A'])).rejects.toThrow(
+      '/lifting-results/bests[0] has invalid name',
+    );
+
+    installTransport(answer([good, null]));
+    await expect(fetchApiYearBestsByNames(['Athlete A'])).rejects.toThrow(
+      '/lifting-results/bests[1] expected an object response',
+    );
+  });
+
+  it('rejects the retired name-keyed map shape for batch year bests', async () => {
+    installTransport(answer({ 'Athlete A': { best_snatch: 100, best_cj: 120, best_total: 220 } }));
+
+    await expect(fetchApiYearBestsByNames(['Athlete A'])).rejects.toThrow(
+      '/lifting-results/bests expected an array response',
     );
   });
 
   it('throws when runtime response validation fails', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ names: ['not', 'an', 'array'] }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+    installTransport(answer({ names: ['not', 'an', 'array'] }));
 
     await expect(fetchApiMeets()).rejects.toThrow('/meets expected an array response');
   });
@@ -806,26 +1051,12 @@ describe('meetcal API mappers', () => {
 });
 
 describe('meetcal API client error and auth boundaries', () => {
-  const originalFetch = global.fetch;
+  it('rejects a conditional answer that is not the { etag, body } envelope', async () => {
+    installTransport(() => null);
+    await expect(fetchApiMeets()).rejects.toThrow('/meets expected an object response');
 
-  afterEach(() => {
-    global.fetch = originalFetch;
-    jest.restoreAllMocks();
-  });
-
-  function mockFetch(body: string, status = 200) {
-    const fetchMock = jest.fn(async () => ({
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => body,
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
-    return fetchMock;
-  }
-
-  it('rejects empty JSON bodies', async () => {
-    mockFetch('');
-    await expect(fetchApiMeets()).rejects.toThrow('returned an empty body');
+    installTransport(() => [meetRow('Meet A')]);
+    await expect(fetchApiMeets()).rejects.toThrow('/meets expected an object response');
   });
 
   it('reports a timeout as a distinct error type, not a bare Error', async () => {
@@ -833,125 +1064,179 @@ describe('meetcal API client error and auth boundaries', () => {
     // other failure. Telling them apart used to mean matching the message,
     // which silently stopped matching.
     jest.useFakeTimers();
-    try {
-      global.fetch = jest.fn(async (_url: unknown, init: unknown) => {
-        const { signal } = init as { signal: AbortSignal };
-        return await new Promise((_resolve, reject) => {
-          signal.addEventListener('abort', () => {
-            const abortError = new Error('Aborted');
-            abortError.name = 'AbortError';
-            reject(abortError);
-          });
-        });
-      }) as unknown as typeof fetch;
+    installTransport(() => never());
 
-      const pending = fetchApiMeets().catch((error: unknown) => error);
-      jest.runOnlyPendingTimers();
-      const failure = await pending;
-      expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
-      expect(failure).not.toBeInstanceOf(MeetCalApiError);
-      expect((failure as MeetCalApiTimeoutError).path).toBe('/meets');
-      expect((failure as MeetCalApiTimeoutError).timeoutMs).toBeGreaterThan(0);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
+    const pending = fetchApiMeets().catch((error: unknown) => error);
+    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    const failure = await pending;
 
-  it('treats the server-side 408 (empty body) as a timeout, not a plain API error', async () => {
-    mockFetch('', 408);
-    const failure = await fetchApiMeets().catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(MeetCalApiServerTimeoutError);
-    // Callers already branch on the timeout class; the server's timeout must
-    // land in that branch too.
     expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(failure).not.toBeInstanceOf(MeetCalApiError);
-    expect((failure as MeetCalApiServerTimeoutError).status).toBe(408);
-    expect((failure as MeetCalApiServerTimeoutError).path).toBe('/meets');
+    expect((failure as MeetCalApiTimeoutError).path).toBe('/meets');
+    expect((failure as MeetCalApiTimeoutError).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
+    expect((failure as MeetCalApiTimeoutError).message).toBe(
+      `GET /meets timed out after ${DEFAULT_TIMEOUT_MS}ms`,
+    );
   });
 
-  it('reports a non-2xx response as MeetCalApiError with its status', async () => {
-    mockFetch('{"error":"nope"}', 404);
+  it('labels a mutation that times out as POST', async () => {
+    jest.useFakeTimers();
+    installTransport(() => never());
+
+    const pending = patchAutoUnsavePreference('clerk-token', true).catch((error: unknown) => error);
+    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    const failure = await pending;
+
+    expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
+    expect((failure as MeetCalApiTimeoutError).message).toBe(
+      `POST /users/me/preferences/auto-unsave timed out after ${DEFAULT_TIMEOUT_MS}ms`,
+    );
+  });
+
+  it('does not time out a call that answers just inside the limit, and leaves no timer behind', async () => {
+    jest.useFakeTimers();
+    const reply = deferred<unknown>();
+    installTransport(() => reply.promise);
+
+    const pending = fetchApiClubAthletes('Club A');
+    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS - 1);
+    reply.resolve([{ name: 'Athlete A' }]);
+
+    await expect(pending).resolves.toEqual([{ name: 'Athlete A' }]);
+    expect(jest.getTimerCount()).toBe(0);
+    // A slow call is still named in the development log.
+    expect(console.info).toHaveBeenCalledWith('[perf] slow api request', {
+      elapsedMs: DEFAULT_TIMEOUT_MS - 1,
+      path: '/clubs/athletes',
+      fn: 'reference:clubAthletes',
+    });
+  });
+
+  it('reports a rejected call as MeetCalApiError with its status and body', async () => {
+    installTransport(() => {
+      throw apiFailure(404, { error: 'nope' });
+    });
+
     const failure = await fetchApiMeets().catch((error: unknown) => error);
+
     expect(failure).toBeInstanceOf(MeetCalApiError);
     expect(failure).not.toBeInstanceOf(MeetCalApiTimeoutError);
     expect((failure as MeetCalApiError).status).toBe(404);
+    expect(JSON.parse((failure as MeetCalApiError).body)).toEqual({ status: 404, error: 'nope' });
+    expect((failure as MeetCalApiError).message).toBe('query failed with 404');
   });
 
-  it('rejects invalid JSON bodies', async () => {
-    mockFetch('{not-json');
-    await expect(fetchApiMeets()).rejects.toThrow('returned invalid JSON');
+  it('lets a connection failure through as is, never as an API status', async () => {
+    // The outbox retries anything that is not a MeetCalApiError; a dropped
+    // socket must not look like the server refusing the write.
+    const dropped = new Error('Connection lost while action was in flight');
+    installTransport(() => {
+      throw dropped;
+    });
+
+    const failure = await fetchApiAthletes('Test Meet' as never).catch((error: unknown) => error);
+
+    expect(failure).toBe(dropped);
+    expect(failure).not.toBeInstanceOf(MeetCalApiError);
+    expect(failure).not.toBeInstanceOf(MeetCalApiTimeoutError);
   });
 
-  it('does not fetch when the name list is empty', async () => {
-    const fetchMock = mockFetch('[]');
+  it('does not call the backend when the name list is empty', async () => {
+    const { transport } = installTransport(answer([]));
     await expect(fetchApiResultsByNames([])).resolves.toEqual([]);
+    await expect(fetchApiRecentResultsByNames([])).resolves.toEqual([]);
     await expect(fetchApiYearBestsByNames([])).resolves.toEqual({});
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Not even the clock sample.
+    expect(transport).not.toHaveBeenCalled();
   });
 
   it('chunks oversized name lists', async () => {
-    const fetchMock = mockFetch('[]');
+    const { dataCalls } = installTransport(answer([]));
     const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+
     await fetchApiResultsByNames(names);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await fetchApiRecentResultsByNames(names, '2024-01-01');
+
+    expect(dataCalls().map((call) => [call.fn, (call.args.names as string[]).length])).toEqual([
+      ['results:byNames', NAMES_QUERY_CHUNK_SIZE],
+      ['results:byNames', 1],
+      ['results:recent', NAMES_QUERY_CHUNK_SIZE],
+      ['results:recent', 1],
+    ]);
+    expect(dataCalls().slice(2).every((call) => call.args.cutoffDate === '2024-01-01')).toBe(true);
+    expect(dataCalls().flatMap((call) => call.args.names as string[])).toEqual([...names, ...names]);
   });
 
   it('sends one request for exactly a chunk of names and two for one more', async () => {
-    const fetchMock = mockFetch('{}');
+    const { dataCalls, transport } = installTransport(answer([]));
     const names = (count: number) => Array.from({ length: count }, (_, i) => `Athlete ${i}`);
 
     await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dataCalls()).toHaveLength(1);
 
-    fetchMock.mockClear();
+    transport.mockClear();
     await fetchApiYearBestsByNames(names(SMALL_ROWS_NAMES_CHUNK_SIZE + 1));
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const bodies = fetchMock.mock.calls.map(
-      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names,
+    expect(dataCalls()).toHaveLength(2);
+    expect(dataCalls().map((call) => (call.args.names as string[]).length)).toEqual([
+      SMALL_ROWS_NAMES_CHUNK_SIZE,
+      1,
+    ]);
+  });
+
+  it('merges the bests from every chunk', async () => {
+    installTransport((call) =>
+      (call.args.names as string[]).map((name) => ({ name, best_snatch: 1, best_cj: 2, best_total: 3 })),
     );
-    expect(bodies.map((chunk: string[]) => chunk.length)).toEqual([SMALL_ROWS_NAMES_CHUNK_SIZE, 1]);
+    const roster = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE + 5 }, (_, i) => `Athlete ${i}`);
+
+    const bests = await fetchApiYearBestsByNames(roster);
+
+    expect(Object.keys(bests)).toHaveLength(roster.length);
+    expect(bests[`Athlete ${roster.length - 1}`]).toEqual({ bestSnatch: 1, bestCJ: 2, bestTotal: 3 });
   });
 
   it('sorts a national start list by bests in 16 requests, not 40, and never over the API cap', async () => {
-    const fetchMock = mockFetch('{}');
+    const { dataCalls } = installTransport(answer([]));
     // The 2026 national roster size the start list comment measured.
     const roster = Array.from({ length: 1562 }, (_, i) => `Athlete ${i}`);
 
     await fetchApiYearBestsByNames(roster);
 
-    expect(fetchMock).toHaveBeenCalledTimes(16);
-    const sizes = fetchMock.mock.calls.map(
-      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
-    );
-    // The API's MAX_NAME_LIST_LEN is 100 for every client; one more is a 400.
+    expect(dataCalls()).toHaveLength(16);
+    const sizes = dataCalls().map((call) => (call.args.names as string[]).length);
+    // The server's name-list cap is 100 for every client; one more is a 400.
     expect(Math.max(...sizes)).toBe(100);
-    expect(sizes.reduce((a: number, b: number) => a + b, 0)).toBe(1562);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(1562);
   });
 
   it('keeps full-history batches at the memory-bounded chunk size', async () => {
-    const fetchMock = mockFetch('[]');
+    const { dataCalls } = installTransport(answer([]));
     const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE }, (_, i) => `Athlete ${i}`);
 
     await fetchApiResultsByNames(names);
 
-    const sizes = fetchMock.mock.calls.map(
-      (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).names.length,
-    );
-    expect(sizes).toEqual([NAMES_QUERY_CHUNK_SIZE, NAMES_QUERY_CHUNK_SIZE, 20]);
+    expect(dataCalls().map((call) => (call.args.names as string[]).length)).toEqual([
+      NAMES_QUERY_CHUNK_SIZE,
+      NAMES_QUERY_CHUNK_SIZE,
+      20,
+    ]);
   });
 
   it('stops at the first failing chunk instead of returning a partial roster', async () => {
     let call = 0;
-    global.fetch = jest.fn(async () => {
+    const { dataCalls } = installTransport(() => {
       call += 1;
-      return call === 1
-        ? { ok: true, status: 200, text: async () => '[]' }
-        : { ok: false, status: 500, text: async () => '' };
-    }) as unknown as typeof fetch;
-    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
+      if (call === 1) return [];
+      throw apiFailure(500);
+    });
+    const names = Array.from({ length: NAMES_QUERY_CHUNK_SIZE * 2 + 1 }, (_, i) => `Athlete ${i}`);
+
     const failure = await fetchApiResultsByNames(names).catch((error: unknown) => error);
+
     expect(failure).toBeInstanceOf(MeetCalApiError);
     expect((failure as MeetCalApiError).status).toBe(500);
+    // The third chunk is never asked for.
+    expect(dataCalls()).toHaveLength(2);
   });
 
   it('asks for one session of the roster, matches the platform client-side, and omits an absent filter', async () => {
@@ -960,11 +1245,11 @@ describe('meetcal API client error and auth boundaries', () => {
       entry_total: 250, gender: 'Men', weight_class: '73kg',
       session_number: 2, session_platform: 'Blue',
     };
-    // A hand-entered row: the server's exact `platform=Blue` compare would
+    // A hand-entered row: the server's exact `platform: 'Blue'` compare would
     // miss it, the app's case-insensitive match must not.
     const paddedAthlete = { ...athlete, member_id: '2', name: 'Athlete B', session_platform: 'BLUE ' };
     const goldAthlete = { ...athlete, member_id: '3', name: 'Athlete C', session_platform: 'Gold' };
-    const fetchMock = mockFetch(JSON.stringify([athlete, paddedAthlete, goldAthlete]));
+    const { dataCalls } = installTransport(answer([athlete, paddedAthlete, goldAthlete]));
 
     const rows = await fetchApiAthletesWithSession('Test Meet' as never, 2, 'Blue');
     expect(rows.map((row) => row.name)).toEqual(['Athlete A', 'Athlete B']);
@@ -972,56 +1257,72 @@ describe('meetcal API client error and auth boundaries', () => {
       { number: 2, platform: 'Blue' },
       { number: 2, platform: 'Blue' },
     ]);
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
-      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&session_number=2',
-    );
+    expect(dataCalls()[0]).toMatchObject({
+      path: '/meets/athletes-sessions',
+      fn: 'meets:athletesSessions',
+      kind: 'query',
+    });
+    // What the query actually filters on, as the Rust route's parameters.
+    expect(callQuery(dataCalls()[0])).toEqual({ meet: 'Test Meet', session_number: '2' });
+    expect(dataCalls()[0].args.sessionNumber).toBe(2);
+    expect(dataCalls()[0].args.platform).toBeUndefined();
 
     await fetchApiAthletesWithSession('Test Meet' as never);
-    expect((fetchMock.mock.calls[1] as unknown as [string])[0]).toBe(
-      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet',
-    );
+    expect(callQuery(dataCalls()[1])).toEqual({ meet: 'Test Meet' });
 
     // Platform without a session number cannot be narrowed client-side
     // cheaply, so it still goes to the server as the canonical name.
     await fetchApiAthletesWithSession('Test Meet' as never, undefined, 'Gold');
-    expect((fetchMock.mock.calls[2] as unknown as [string])[0]).toBe(
-      'https://api.meetcal.app/meets/athletes-sessions?meet=Test+Meet&platform=Gold',
-    );
+    expect(callQuery(dataCalls()[2])).toEqual({ meet: 'Test Meet', platform: 'Gold' });
 
-    mockFetch(JSON.stringify({ athletes: [athlete] }));
+    installTransport(answer({ athletes: [athlete] }));
     await expect(fetchApiAthletesWithSession('Test Meet' as never)).rejects.toThrow(
       '/meets/athletes-sessions expected an array response',
     );
   });
 
   it('rejects a single-athlete year-bests payload missing a best', async () => {
-    mockFetch(JSON.stringify({ best_snatch: 100, best_cj: 120 }));
+    installTransport(answer({ best_snatch: 100, best_cj: 120 }));
     await expect(fetchApiYearBests('Athlete A', '2025-06-20')).rejects.toThrow(
       '/lifting-results/year missing fields: best_total',
     );
   });
 
   it('requires an auth token for saved sessions', async () => {
+    const { transport } = installTransport(answer({}));
     await expect(fetchSavedSessions('')).rejects.toThrow('requires an auth token');
     await expect(fetchUserPreferences('   ')).rejects.toThrow('requires an auth token');
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it('reads saved sessions with the token', async () => {
+    const { lastCall } = installTransport(answer({ sessions: [] }));
+    await expect(fetchSavedSessions('clerk-token')).resolves.toEqual([]);
+    expect(lastCall()).toEqual({
+      path: '/users/me/saved-sessions',
+      fn: 'users:savedSessions',
+      kind: 'query',
+      args: {},
+      token: 'clerk-token',
+    });
   });
 
   it('rejects saved-session payloads that are not arrays', async () => {
-    mockFetch(JSON.stringify({ sessions: { nope: true } }));
+    installTransport(answer({ sessions: { nope: true } }));
     await expect(fetchSavedSessions('clerk-token')).rejects.toThrow(
       '/users/me/saved-sessions.sessions expected an array response',
     );
   });
 
   it('rejects saved-session rows missing required fields', async () => {
-    mockFetch(JSON.stringify({
+    installTransport(answer({
       sessions: [{ session_id: 's1', meet: 'Meet' }],
     }));
     await expect(fetchSavedSessions('clerk-token')).rejects.toThrow('missing fields');
   });
 
   it('maps a valid saved-session payload', async () => {
-    mockFetch(JSON.stringify({
+    installTransport(answer({
       sessions: [{
         session_id: 's1',
         meet: 'Test Meet',
@@ -1048,14 +1349,15 @@ describe('meetcal API client error and auth boundaries', () => {
   });
 
   it('rejects preferences when the flag is not a boolean', async () => {
-    mockFetch(JSON.stringify({ auto_unsave_started_sessions: 'yes' }));
+    installTransport(answer({ auto_unsave_started_sessions: 'yes' }));
     await expect(fetchUserPreferences('clerk-token')).rejects.toThrow('expected a boolean');
   });
 
   describe('authenticated /users/me writes', () => {
-    // Response shapes from meetcal-backend app/src/routes/users/saved_sessions.rs
-    // (SaveSessionResponse, DeleteSavedSessionResponse,
-    // DeleteSavedSessionsResponse) and preferences.rs.
+    // Response shapes from convex/users.ts, which answers what meetcal-backend
+    // app/src/routes/users/saved_sessions.rs (SaveSessionResponse,
+    // DeleteSavedSessionResponse, DeleteSavedSessionsResponse) and
+    // preferences.rs did.
     const body = {
       meet: '2026 Nationals',
       session_number: 3,
@@ -1066,13 +1368,8 @@ describe('meetcal API client error and auth boundaries', () => {
       athlete_names: ['Athlete A'],
     };
 
-    function lastRequest(fetchMock: jest.Mock) {
-      const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
-      return { url, init, headers: init.headers as Record<string, string> };
-    }
-
     it('refuses to send any write without a usable token', async () => {
-      const fetchMock = mockFetch('{}');
+      const { transport } = installTransport(answer({}));
       await expect(putSavedSession('', 's1', body)).rejects.toThrow('putSavedSession requires an auth token');
       await expect(deleteSavedSession('  ', 's1')).rejects.toThrow('deleteSavedSession requires an auth token');
       await expect(deleteSavedSessions(null as unknown as string)).rejects.toThrow(
@@ -1081,108 +1378,128 @@ describe('meetcal API client error and auth boundaries', () => {
       await expect(patchAutoUnsavePreference(undefined as unknown as string, true)).rejects.toThrow(
         'patchAutoUnsavePreference requires an auth token',
       );
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(transport).not.toHaveBeenCalled();
     });
 
-    it('PUTs one saved session to its encoded id with the bearer token and a JSON body', async () => {
+    it('saves one session through users:putSavedSession with the token and the id intact', async () => {
       const id = '2026 Nationals/Finals-3-Red';
-      const fetchMock = mockFetch(JSON.stringify({ session_id: id, updated_at: 1717171717000 }));
+      const { lastCall } = installTransport(answer({ session_id: id, updated_at: 1717171717000 }));
 
       await expect(putSavedSession('clerk-token', id, body)).resolves.toEqual({
         session_id: id,
         updated_at: 1717171717000,
       });
 
-      const { url, init, headers } = lastRequest(fetchMock);
-      // A `/` in a meet name must stay inside the one path segment.
-      expect(url).toBe(
-        'https://api.meetcal.app/users/me/saved-sessions/2026%20Nationals%2FFinals-3-Red',
-      );
-      expect(init.method).toBe('PUT');
-      expect(headers.Authorization).toBe('Bearer clerk-token');
-      expect(headers['Content-Type']).toBe('application/json');
-      expect(JSON.parse(init.body as string)).toEqual(body);
+      // A `/` in a meet name is just part of the `sessionId` argument; the
+      // path only names the route for logs.
+      expect(lastCall()).toEqual({
+        path: `/users/me/saved-sessions/${id}`,
+        fn: 'users:putSavedSession',
+        kind: 'mutation',
+        token: 'clerk-token',
+        args: { sessionId: id, ...body },
+      });
     });
 
-    it('rejects a PUT acknowledgement that is missing or mistypes its fields', async () => {
-      mockFetch(JSON.stringify({ session_id: 's1' }));
+    it('rejects a save acknowledgement that is missing or mistypes its fields', async () => {
+      installTransport(answer({ session_id: 's1' }));
       await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('missing fields: updated_at');
-      mockFetch(JSON.stringify({ session_id: 's1', updated_at: '1' }));
+      installTransport(answer({ session_id: 's1', updated_at: '1' }));
       await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('invalid payload');
-      mockFetch('');
-      await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow('empty body');
+      installTransport(answer(null));
+      await expect(putSavedSession('clerk-token', 's1', body)).rejects.toThrow(
+        'putSavedSession expected an object response',
+      );
     });
 
     it('surfaces 401 and 400 on a write as MeetCalApiError with the status', async () => {
-      mockFetch('{"error":"unauthorized"}', 401);
+      installTransport(() => {
+        throw apiFailure(401, { error: 'unauthorized' });
+      });
       const unauthorized = await putSavedSession('clerk-token', 's1', body).catch((e: unknown) => e);
       expect(unauthorized).toBeInstanceOf(MeetCalApiError);
       expect((unauthorized as MeetCalApiError).status).toBe(401);
 
-      mockFetch('{"error":"too many saved sessions","max":500}', 400);
+      installTransport(() => {
+        throw apiFailure(400, { error: 'too many saved sessions', max: 500 });
+      });
       const refused = await putSavedSession('clerk-token', 's1', body).catch((e: unknown) => e);
+      expect(refused).toBeInstanceOf(MeetCalApiError);
       expect((refused as MeetCalApiError).status).toBe(400);
       expect((refused as MeetCalApiError).body).toContain('too many saved sessions');
     });
 
-    it('DELETEs one saved session by encoded id and reads the acknowledgement', async () => {
-      const fetchMock = mockFetch(JSON.stringify({ deleted: false }));
+    it('deletes one saved session by id and reads the acknowledgement', async () => {
+      const { lastCall } = installTransport(answer({ deleted: false }));
       await expect(deleteSavedSession('clerk-token', 'a b-1-Red')).resolves.toEqual({ deleted: false });
-      const { url, init, headers } = lastRequest(fetchMock);
-      expect(url).toBe('https://api.meetcal.app/users/me/saved-sessions/a%20b-1-Red');
-      expect(init.method).toBe('DELETE');
-      expect(init.body).toBeUndefined();
-      expect(headers.Authorization).toBe('Bearer clerk-token');
+      expect(lastCall()).toEqual({
+        path: '/users/me/saved-sessions/a b-1-Red',
+        fn: 'users:deleteSavedSession',
+        kind: 'mutation',
+        token: 'clerk-token',
+        args: { sessionId: 'a b-1-Red' },
+      });
     });
 
-    it('scopes a bulk DELETE to one meet, or to every meet when none is given', async () => {
-      const fetchMock = mockFetch(JSON.stringify({ deleted_count: 4 }));
+    it('scopes a bulk delete to one meet, or to every meet when none is given', async () => {
+      const { lastCall } = installTransport(answer({ deleted_count: 4 }));
       await expect(deleteSavedSessions('clerk-token', 'Meet & Greet')).resolves.toEqual({ deleted_count: 4 });
-      expect(lastRequest(fetchMock).url).toBe(
-        'https://api.meetcal.app/users/me/saved-sessions?meet=Meet+%26+Greet',
-      );
+      expect(lastCall()).toEqual({
+        path: '/users/me/saved-sessions',
+        fn: 'users:deleteSavedSessions',
+        kind: 'mutation',
+        token: 'clerk-token',
+        args: { meet: 'Meet & Greet' },
+      });
 
       await deleteSavedSessions('clerk-token');
-      expect(lastRequest(fetchMock).url).toBe('https://api.meetcal.app/users/me/saved-sessions');
-      expect(lastRequest(fetchMock).init.method).toBe('DELETE');
+      expect(lastCall().fn).toBe('users:deleteSavedSessions');
+      expect(lastCall().kind).toBe('mutation');
+      // No `meet` member at all once undefined is dropped: every meet.
+      expect(callQuery(lastCall())).toEqual({});
+      expect(lastCall().args.meet).toBeUndefined();
     });
 
     it('does not read a malformed delete acknowledgement as success', async () => {
-      // The outbox clears a pending delete once this resolves. A body that is
-      // not the backend's shape (a proxy error page parsed as JSON, an older
-      // envelope) must keep the delete queued, not report it done.
-      mockFetch(JSON.stringify({}));
+      // The outbox clears a pending delete once this resolves. An answer that
+      // is not the backend's shape (an older envelope, a function that
+      // returned nothing) must keep the delete queued, not report it done.
+      installTransport(answer({}));
       await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('deleteSavedSession');
-      mockFetch(JSON.stringify({ deleted: 'true' }));
+      installTransport(answer({ deleted: 'true' }));
       await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('deleteSavedSession');
-      mockFetch(JSON.stringify({ error: 'nope' }));
+      installTransport(answer(null));
+      await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('expected an object response');
+      installTransport(answer({ error: 'nope' }));
       await expect(deleteSavedSessions('clerk-token', 'Meet')).rejects.toThrow('deleteSavedSessions');
-      mockFetch(JSON.stringify({ deleted_count: '4' }));
+      installTransport(answer({ deleted_count: '4' }));
       await expect(deleteSavedSessions('clerk-token')).rejects.toThrow('deleteSavedSessions');
-      mockFetch('[]');
+      installTransport(answer([]));
       await expect(deleteSavedSessions('clerk-token')).rejects.toThrow('expected an object response');
     });
 
-    it('PATCHes the auto-unsave preference and validates the echoed flag', async () => {
-      const fetchMock = mockFetch(JSON.stringify({ auto_unsave_started_sessions: true }));
+    it('sets the auto-unsave preference and validates the echoed flag', async () => {
+      const { lastCall } = installTransport(answer({ auto_unsave_started_sessions: true }));
       await expect(patchAutoUnsavePreference('clerk-token', true)).resolves.toEqual({
         auto_unsave_started_sessions: true,
       });
-      const { url, init, headers } = lastRequest(fetchMock);
-      expect(url).toBe('https://api.meetcal.app/users/me/preferences/auto-unsave');
-      expect(init.method).toBe('PATCH');
-      expect(JSON.parse(init.body as string)).toEqual({ enabled: true });
-      expect(headers.Authorization).toBe('Bearer clerk-token');
+      expect(lastCall()).toEqual({
+        path: '/users/me/preferences/auto-unsave',
+        fn: 'users:setAutoUnsave',
+        kind: 'mutation',
+        token: 'clerk-token',
+        args: { enabled: true },
+      });
 
-      mockFetch(JSON.stringify({ auto_unsave_started_sessions: 'true' }));
+      installTransport(answer({ auto_unsave_started_sessions: 'true' }));
       await expect(patchAutoUnsavePreference('clerk-token', true)).rejects.toThrow('expected a boolean');
-      mockFetch(JSON.stringify({ enabled: true }));
+      installTransport(answer({ enabled: true }));
       await expect(patchAutoUnsavePreference('clerk-token', true)).rejects.toThrow('missing fields');
     });
   });
 
   it('rejects search results that are not an array', async () => {
-    mockFetch(JSON.stringify({
+    installTransport(answer({
       matched_name: null,
       suggestions: ['A'],
       results: { bad: true },
@@ -1190,8 +1507,13 @@ describe('meetcal API client error and auth boundaries', () => {
     await expect(searchApi('A')).rejects.toThrow('/search.results expected an array response');
   });
 
+  it('rejects search suggestions that are not all strings', async () => {
+    installTransport(answer({ matched_name: null, suggestions: ['A', 1], results: [] }));
+    await expect(searchApi('A')).rejects.toThrow('/search.suggestions expected a string array response');
+  });
+
   it('rejects meet packages whose collection fields are not arrays', async () => {
-    mockFetch(JSON.stringify({
+    installTransport(answer({
       meet: { name: 'Meet' },
       schedule: [],
       athletes: { nope: true },
@@ -1202,113 +1524,82 @@ describe('meetcal API client error and auth boundaries', () => {
     );
   });
 
-  it('rejects an object where a row array endpoint is expected', async () => {
-    // Callers go straight to `.filter`/`.map`, so an envelope response used to
+  it('rejects an object where a row array query is expected', async () => {
+    // Callers go straight to `.filter`/`.map`, so an envelope answer used to
     // surface as "rows.filter is not a function" inside a fetcher rather than
-    // naming the endpoint.
-    mockFetch(JSON.stringify({ rows: [] }));
-    await expect(getJsonArray('/data/records')).rejects.toThrow(
-      '/data/records expected an array response',
+    // naming the query.
+    installTransport(answer({ rows: [] }));
+    await expect(fetchApiClubAthletes('Club A')).rejects.toThrow(
+      '/clubs/athletes expected an array response',
     );
+    await expect(fetchApiRecords()).rejects.toThrow('/data/records expected an array response');
   });
 
   it('accepts an empty row array', async () => {
-    mockFetch('[]');
-    await expect(getJsonArray('/data/records')).resolves.toEqual([]);
+    installTransport(answer([]));
+    await expect(fetchApiClubAthletes('Club A')).resolves.toEqual([]);
+    await expect(fetchApiRecords()).resolves.toEqual([]);
   });
 
   it('rejects an array where a single object is expected', async () => {
-    mockFetch('[]');
-    await expect(getJsonObject('/clubs/meet-stats')).rejects.toThrow(
+    installTransport(answer([]));
+    await expect(fetchApiClubMeetStats('Club A', 'Test Meet')).rejects.toThrow(
       '/clubs/meet-stats expected an object response',
     );
   });
 });
 
-describe('conditional GETs for meet endpoints', () => {
-  const originalFetch = global.fetch;
-
-  type Reply = { status: number; etag?: string | null; body?: string };
-
-  function meetRow(name: string, venue = 'Hall') {
-    return {
-      name,
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'America/New_York',
-      status: 'upcoming',
-      venue_name: venue,
-      venue_city: 'City',
-      venue_state: 'ST',
-      venue_street: '1 Main',
-      venue_zip: '00000',
-    };
-  }
-
-  function queueFetch(replies: Reply[]) {
-    const fetchMock = jest.fn(async () => {
-      const reply = replies.shift();
-      if (!reply) throw new Error('unexpected fetch');
-      return {
-        ok: reply.status >= 200 && reply.status < 300,
-        status: reply.status,
-        headers: {
-          get: (name: string) => (name.toLowerCase() === 'etag' ? reply.etag ?? null : null),
-        },
-        text: async () => reply.body ?? '',
-      };
-    });
-    global.fetch = fetchMock as unknown as typeof fetch;
-    return fetchMock;
-  }
-
-  function sentValidator(fetchMock: jest.Mock, call: number): string | undefined {
-    const init = fetchMock.mock.calls[call][1] as { headers: Record<string, string> };
-    return init.headers['If-None-Match'];
-  }
-
+describe('conditional reads for meet queries', () => {
   beforeEach(() => {
-    clearHttpValidatorCache();
+    // The meets list's arguments carry the current hour; pin it so every
+    // call in a test shares one cache key.
+    jest.useFakeTimers({ now: new Date('2026-06-20T12:30:00.000Z') });
   });
 
-  afterEach(() => {
-    global.fetch = originalFetch;
-    clearHttpValidatorCache();
-    jest.restoreAllMocks();
-  });
-
-  it('stores the ETag from a 200 and answers a 304 with the remembered meets', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 304, etag: '"v1"' },
+  it('stores the etag from a full answer and answers a bodiless one with the remembered meets', async () => {
+    const { sentTag, dataCalls } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: '"v1"' },
     ]);
 
     const first = await fetchApiMeets();
-    expect(sentValidator(fetchMock, 0)).toBeUndefined();
+    expect(sentTag(0)).toBeUndefined();
 
     const second = await fetchApiMeets();
-    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
+    expect(sentTag(1)).toBe('"v1"');
+    expect(dataCalls().every((call) => call.fn === 'meets:list' && call.conditional === true)).toBe(true);
     expect(second).toEqual(first);
     expect(second[0].name).toBe('Meet A');
     // Freshly mapped objects each time: a caller mutating one cannot edit the cache.
     expect(second[0]).not.toBe(first[0]);
   });
 
-  it('replaces the remembered body when the ETag changes', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 200, etag: '"v2"', body: JSON.stringify([meetRow('Meet B')]) },
-      { status: 304, etag: '"v2"' },
+  it('trusts a bodiless answer that names no tag for the tag that was sent', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      {},
+    ]);
+
+    await fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
+    expect(sentTag(1)).toBe('"v1"');
+  });
+
+  it('replaces the remembered body when the etag changes', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: '"v2"', body: [meetRow('Meet B')] },
+      { etag: '"v2"' },
     ]);
 
     await fetchApiMeets();
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
+    expect(sentTag(1)).toBe('"v1"');
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(sentValidator(fetchMock, 2)).toBe('"v2"');
+    expect(sentTag(2)).toBe('"v2"');
   });
 
-  it('revalidates meet details and schedule per URL', async () => {
+  it('revalidates meet details and schedule per query', async () => {
     const schedule = [
       {
         date: '2026-06-20',
@@ -1319,56 +1610,46 @@ describe('conditional GETs for meet endpoints', () => {
         weight_class: '60kg',
       },
     ];
-    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
-      const isSchedule = url.includes('/meets/schedule');
+    const { dataCalls } = installTransport((call) => {
+      const isSchedule = call.fn === 'meets:schedule';
       const tag = isSchedule ? '"s1"' : '"d1"';
-      if (init.headers['If-None-Match'] === tag) {
-        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
-      }
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
-        text: async () => JSON.stringify(isSchedule ? schedule : meetRow('Meet A')),
-      };
+      if (call.args.ifNoneMatch === tag) return { etag: tag };
+      return { etag: tag, body: isSchedule ? schedule : meetRow('Meet A') };
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     const first = await fetchApiSchedule('Meet A');
     const second = await fetchApiSchedule('Meet A');
     expect(second).toEqual(first);
     expect(second[0].sessions[0].platforms[0].platform).toBe('Red');
 
-    const validators = fetchMock.mock.calls.map(([url, init]) => [
-      url.includes('/meets/schedule') ? 'schedule' : 'details',
-      init.headers['If-None-Match'],
-    ]);
+    const validators = dataCalls().map((call) => [call.fn, call.args.ifNoneMatch]);
+    expect(validators).toHaveLength(4);
     expect(validators).toEqual(
       expect.arrayContaining([
-        ['schedule', undefined],
-        ['details', undefined],
-        ['schedule', '"s1"'],
-        ['details', '"d1"'],
+        ['meets:schedule', undefined],
+        ['meets:details', undefined],
+        ['meets:schedule', '"s1"'],
+        ['meets:details', '"d1"'],
       ]),
     );
   });
 
   it('does not remember a body that failed shape validation', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"bad"', body: JSON.stringify({ not: 'an array' }) },
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
+    const { sentTag } = queueTransport([
+      { etag: '"bad"', body: { not: 'an array' } },
+      { etag: '"v1"', body: [meetRow('Meet A')] },
     ]);
 
     await expect(fetchApiMeets()).rejects.toThrow('expected an array response');
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+    expect(sentTag(1)).toBeUndefined();
   });
 
-  it('keeps throwing on non-2xx statuses and keeps the validator for next time', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 500, body: '{"error":"boom"}' },
-      { status: 304, etag: '"v1"' },
+  it('keeps throwing on rejected calls and keeps the tag for next time', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { fail: 500 },
+      { etag: '"v1"' },
     ]);
 
     await fetchApiMeets();
@@ -1376,70 +1657,65 @@ describe('conditional GETs for meet endpoints', () => {
     expect(failure).toBeInstanceOf(MeetCalApiError);
     expect((failure as MeetCalApiError).status).toBe(500);
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-    expect(sentValidator(fetchMock, 2)).toBe('"v1"');
+    expect(sentTag(2)).toBe('"v1"');
   });
 
-  it('still returns 404 as null for meet details', async () => {
-    queueFetch([{ status: 404, body: '{"error":"not found"}' }]);
+  it('still returns 404 as null for meet details, and throws anything else', async () => {
+    queueTransport([{ fail: 404 }]);
     await expect(fetchApiMeetByName('Gone Meet')).resolves.toBeNull();
+
+    queueTransport([{ fail: 500 }]);
+    const failure = await fetchApiMeetByName('Broken Meet').catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MeetCalApiError);
+    expect((failure as MeetCalApiError).status).toBe(500);
   });
 
-  it('bounds the number of remembered URLs', async () => {
+  it('bounds the number of remembered queries', async () => {
     const replies: Reply[] = [];
     for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
-      replies.push({ status: 200, etag: `"d${i}"`, body: JSON.stringify(meetRow(`Meet ${i}`)) });
+      replies.push({ etag: `"d${i}"`, body: meetRow(`Meet ${i}`) });
     }
-    // Meet 0 is the oldest entry and was evicted: no validator, full body.
-    replies.push({ status: 200, etag: '"d0"', body: JSON.stringify(meetRow('Meet 0')) });
-    const fetchMock = queueFetch(replies);
+    // Meet 0 is the oldest entry and was evicted: no tag, full body.
+    replies.push({ etag: '"d0"', body: meetRow('Meet 0') });
+    const { sentTag } = queueTransport(replies);
 
     for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
       await fetchApiMeetByName(`Meet ${i}`);
     }
     await expect(fetchApiMeetByName('Meet 0')).resolves.toMatchObject({ name: 'Meet 0' });
-    expect(sentValidator(fetchMock, HTTP_VALIDATOR_CACHE_LIMIT + 1)).toBeUndefined();
+    expect(sentTag(HTTP_VALIDATOR_CACHE_LIMIT + 1)).toBeUndefined();
   });
 
-  it('answers a 304 from the entry read before the request, even if it was evicted in flight', async () => {
+  it('answers a bodiless reply from the entry read before the call, even if it was evicted in flight', async () => {
     let releaseFirst: (() => void) | undefined;
-    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
-      const name = new URL(url).searchParams.get('meet') ?? '';
-      if (init.headers['If-None-Match']) {
+    installTransport(async (call) => {
+      const name = String(call.args.meet);
+      if (call.args.ifNoneMatch) {
         // Hold the revalidation until the cache has been churned.
         await new Promise<void>((resolve) => {
           releaseFirst = resolve;
         });
-        return { ok: false, status: 304, headers: { get: () => init.headers['If-None-Match'] }, text: async () => '' };
+        return { etag: call.args.ifNoneMatch };
       }
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: (h: string) => (h === 'etag' ? `"${name}"` : null) },
-        text: async () => JSON.stringify(meetRow(name)),
-      };
+      return { etag: `"${name}"`, body: meetRow(name) };
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchApiMeetByName('Meet 0');
     const pending = fetchApiMeetByName('Meet 0');
     for (let i = 1; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
       await fetchApiMeetByName(`Meet ${i}`);
     }
+    expect(releaseFirst).toBeDefined();
     releaseFirst?.();
     await expect(pending).resolves.toMatchObject({ name: 'Meet 0' });
   });
 
-  it('answers a 304 with the newer entry a concurrent request stored in flight', async () => {
+  it('answers a bodiless reply with the newer entry a concurrent call stored in flight', async () => {
     let releaseSlow: (() => void) | undefined;
     let conditionalCalls = 0;
-    const fetchMock = jest.fn(async (_url: string, init: { headers: Record<string, string> }) => {
-      if (!init.headers['If-None-Match']) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: (h: string) => (h === 'etag' ? '"v1"' : null) },
-          text: async (): Promise<string> => JSON.stringify([meetRow('Meet A')]),
-        };
+    installTransport(async (call) => {
+      if (!call.args.ifNoneMatch) {
+        return { etag: '"v1"', body: [meetRow('Meet A')] };
       }
       conditionalCalls += 1;
       if (conditionalCalls === 1) {
@@ -1447,16 +1723,10 @@ describe('conditional GETs for meet endpoints', () => {
         await new Promise<void>((resolve) => {
           releaseSlow = resolve;
         });
-        return { ok: false, status: 304, headers: { get: () => '"v1"' }, text: async (): Promise<string> => '' };
+        return { etag: '"v1"' };
       }
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: (h: string) => (h === 'etag' ? '"v2"' : null) },
-        text: async (): Promise<string> => JSON.stringify([meetRow('Meet B')]),
-      };
+      return { etag: '"v2"', body: [meetRow('Meet B')] };
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchApiMeets();
     const slow = fetchApiMeets();
@@ -1465,54 +1735,74 @@ describe('conditional GETs for meet endpoints', () => {
     await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
   });
 
-  it('retries without a validator when a 304 names a different ETag than was sent', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 304, etag: '"other"' },
-      { status: 200, etag: '"v2"', body: JSON.stringify([meetRow('Meet B')]) },
+  it('retries without a tag when a bodiless answer names a different tag than was sent', async () => {
+    const { sentTag, dataCalls } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: '"other"' },
+      { etag: '"v2"', body: [meetRow('Meet B')] },
     ]);
 
     await fetchApiMeets();
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(sentValidator(fetchMock, 1)).toBe('"v1"');
-    expect(sentValidator(fetchMock, 2)).toBeUndefined();
+    expect(dataCalls()).toHaveLength(3);
+    expect(sentTag(1)).toBe('"v1"');
+    expect(sentTag(2)).toBeUndefined();
   });
 
-  it('treats a 304 to a request that carried no validator as an error, as before', async () => {
-    queueFetch([{ status: 304, etag: '"v1"' }]);
-    const failure = await fetchApiMeets().catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(MeetCalApiError);
-    expect((failure as MeetCalApiError).status).toBe(304);
-  });
+  it('treats a bodiless answer to a call that carried no tag as an error after one retry', async () => {
+    const { sentTag, dataCalls } = queueTransport([{ etag: '"v1"' }, { etag: '"v1"' }]);
 
-  it('accepts a weak form of the sent ETag on a 304', async () => {
-    queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 304, etag: 'W/"v1"' },
-    ]);
-    await fetchApiMeets();
+    await expect(fetchApiMeets()).rejects.toThrow('/meets answered without a body');
+    expect(dataCalls()).toHaveLength(2);
+    expect(sentTag(0)).toBeUndefined();
+    expect(sentTag(1)).toBeUndefined();
+
+    // The retry is a real second chance, not a formality.
+    queueTransport([{ etag: '"v1"' }, { etag: '"v1"', body: [meetRow('Meet A')] }]);
     await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
   });
 
-  it('forgets the validator when a 200 carries no ETag', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"v1"', body: JSON.stringify([meetRow('Meet A')]) },
-      { status: 200, etag: null, body: JSON.stringify([meetRow('Meet B')]) },
-      { status: 200, etag: null, body: JSON.stringify([meetRow('Meet B')]) },
+  it('forgets the tag when a full answer carries no usable etag', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: null, body: [meetRow('Meet B')] },
+      { etag: '  ', body: [meetRow('Meet B')] },
+      { etag: null, body: [meetRow('Meet B')] },
     ]);
     await fetchApiMeets();
     await fetchApiMeets();
     await fetchApiMeets();
-    expect(sentValidator(fetchMock, 2)).toBeUndefined();
+    await fetchApiMeets();
+    expect(sentTag(1)).toBe('"v1"');
+    expect(sentTag(2)).toBeUndefined();
+    expect(sentTag(3)).toBeUndefined();
+  });
+
+  it('keys the meets list on the hour it asks about', async () => {
+    const { sentTag, dataCalls } = queueTransport([
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: '"v1"' },
+      { etag: '"v1"', body: [meetRow('Meet A')] },
+    ]);
+
+    await fetchApiMeets();
+    jest.setSystemTime(new Date('2026-06-20T12:59:59.000Z'));
+    await fetchApiMeets();
+    jest.setSystemTime(new Date('2026-06-20T13:00:00.000Z'));
+    await fetchApiMeets();
+
+    expect(dataCalls().map((call) => call.args.now)).toEqual([
+      Date.parse('2026-06-20T12:00:00.000Z'),
+      Date.parse('2026-06-20T12:00:00.000Z'),
+      Date.parse('2026-06-20T13:00:00.000Z'),
+    ]);
+    expect(sentTag(1)).toBe('"v1"');
+    // A new hour is a new question; the old hour's tag does not answer it.
+    expect(sentTag(2)).toBeUndefined();
   });
 });
 
-describe('conditional GETs for reference data', () => {
-  const originalFetch = global.fetch;
-
-  type Reply = { status: number; etag?: string | null; body?: unknown };
-
+describe('conditional reads for reference data', () => {
   const recordRow = (overrides: Record<string, unknown> = {}) => ({
     age_category: 'Senior',
     gender: 'Men',
@@ -1524,57 +1814,25 @@ describe('conditional GETs for reference data', () => {
     ...overrides,
   });
 
-  function queueFetch(replies: Reply[]) {
-    const fetchMock = jest.fn(async (_url: string, _init: { headers: Record<string, string> }) => {
-      const reply = replies.shift();
-      if (!reply) throw new Error('unexpected fetch');
-      return {
-        ok: reply.status >= 200 && reply.status < 300,
-        status: reply.status,
-        headers: {
-          get: (name: string) => (name.toLowerCase() === 'etag' ? reply.etag ?? null : null),
-        },
-        text: async () => (reply.body === undefined ? '' : JSON.stringify(reply.body)),
-      };
-    });
-    global.fetch = fetchMock as unknown as typeof fetch;
-    return fetchMock;
-  }
-
-  function sentValidator(fetchMock: jest.Mock, call: number): string | undefined {
-    const init = fetchMock.mock.calls[call][1] as { headers: Record<string, string> };
-    return init.headers['If-None-Match'];
-  }
-
-  beforeEach(() => {
-    clearHttpValidatorCache();
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-    clearHttpValidatorCache();
-    jest.restoreAllMocks();
-  });
-
-  it('answers a 304 with the rows validated when the ETag was stored', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"r1"', body: [recordRow()] },
-      { status: 304, etag: '"r1"' },
+  it('answers a bodiless reply with the rows validated when the etag was stored', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"r1"', body: [recordRow()] },
+      { etag: '"r1"' },
     ]);
 
     const first = await fetchApiRecords();
     const second = await fetchApiRecords();
 
-    expect(sentValidator(fetchMock, 0)).toBeUndefined();
-    expect(sentValidator(fetchMock, 1)).toBe('"r1"');
+    expect(sentTag(0)).toBeUndefined();
+    expect(sentTag(1)).toBe('"r1"');
     expect(second).toBe(first);
     expect(second).toEqual([recordRow()]);
   });
 
-  it('hands out frozen rows, so a caller cannot rewrite what the next 304 returns', async () => {
-    queueFetch([
-      { status: 200, etag: '"r1"', body: [recordRow()] },
-      { status: 304, etag: '"r1"' },
+  it('hands out frozen rows, so a caller cannot rewrite what the next unchanged answer returns', async () => {
+    queueTransport([
+      { etag: '"r1"', body: [recordRow()] },
+      { etag: '"r1"' },
     ]);
 
     const rows = await fetchApiRecords();
@@ -1590,9 +1848,9 @@ describe('conditional GETs for reference data', () => {
   });
 
   it('returns a fresh copy of a cached string list on every call', async () => {
-    queueFetch([
-      { status: 200, etag: '"w1"', body: ['Ohio', 'Carolina'] },
-      { status: 304, etag: '"w1"' },
+    queueTransport([
+      { etag: '"w1"', body: ['Ohio', 'Carolina'] },
+      { etag: '"w1"' },
     ]);
 
     const first = await fetchApiWsoList();
@@ -1601,21 +1859,21 @@ describe('conditional GETs for reference data', () => {
     await expect(fetchApiWsoList()).resolves.toEqual(['Ohio', 'Carolina']);
   });
 
-  it('replaces the remembered rows when the ETag changes', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"s1"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 300, standard_b: 280 }] },
-      { status: 200, etag: '"s2"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 310, standard_b: 290 }] },
-      { status: 304, etag: '"s2"' },
+  it('replaces the remembered rows when the etag changes', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"s1"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 300, standard_b: 280 }] },
+      { etag: '"s2"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 310, standard_b: 290 }] },
+      { etag: '"s2"' },
     ]);
 
     await fetchApiStandards();
     await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
-    expect(sentValidator(fetchMock, 1)).toBe('"s1"');
+    expect(sentTag(1)).toBe('"s1"');
     await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
-    expect(sentValidator(fetchMock, 2)).toBe('"s2"');
+    expect(sentTag(2)).toBe('"s2"');
   });
 
-  it('passes straight through on a route that sends no ETag', async () => {
+  it('passes straight through when the query answers without an etag', async () => {
     const row = {
       meet: 'Worlds',
       ranking: 1,
@@ -1626,40 +1884,39 @@ describe('conditional GETs for reference data', () => {
       gender: 'Men',
       age_category: 'Senior',
     };
-    const fetchMock = queueFetch([
-      { status: 200, etag: null, body: [row] },
-      { status: 200, etag: null, body: [{ ...row, total: 385 }] },
+    const { sentTag } = queueTransport([
+      { etag: null, body: [row] },
+      { etag: null, body: [{ ...row, total: 385 }] },
     ]);
 
     await expect(fetchApiIntlRankings()).resolves.toEqual([row]);
     await expect(fetchApiIntlRankings()).resolves.toEqual([{ ...row, total: 385 }]);
-    expect(sentValidator(fetchMock, 0)).toBeUndefined();
-    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+    expect(sentTag(0)).toBeUndefined();
+    expect(sentTag(1)).toBeUndefined();
   });
 
   it('throws on a body that fails validation and caches nothing', async () => {
-    const fetchMock = queueFetch([
-      { status: 200, etag: '"bad"', body: { error: 'wrapped' } },
-      { status: 200, etag: '"q1"', body: [] },
-      { status: 200, etag: '"c-bad"', body: ['Club A', 7] },
-      { status: 200, etag: '"c1"', body: ['Club A'] },
+    const { sentTag } = queueTransport([
+      { etag: '"bad"', body: { error: 'wrapped' } },
+      { etag: '"q1"', body: [] },
+      { etag: '"c-bad"', body: ['Club A', 7] },
+      { etag: '"c1"', body: ['Club A'] },
     ]);
 
     await expect(fetchApiQualifyingTotals()).rejects.toThrow(
       '/data/qualifying-totals expected an array response',
     );
     await expect(fetchApiQualifyingTotals()).resolves.toEqual([]);
-    expect(sentValidator(fetchMock, 1)).toBeUndefined();
+    expect(sentTag(1)).toBeUndefined();
 
     await expect(fetchApiClubNames()).rejects.toThrow('/clubs expected a string array response');
     await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-    expect(sentValidator(fetchMock, 3)).toBeUndefined();
+    expect(sentTag(3)).toBeUndefined();
   });
 
   it('reads a wrong-typed column as null and skips a non-object row', async () => {
-    queueFetch([
+    queueTransport([
       {
-        status: 200,
         etag: '"q1"',
         body: [
           { event_name: 'Nationals', age_category: 'Senior', gender: 'Men', weight_class: '89kg', qualifying_total: '300', extra: 1 },
@@ -1681,22 +1938,13 @@ describe('conditional GETs for reference data', () => {
     ]);
   });
 
-  it('remembers each query variant under its own URL', async () => {
-    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
-      const params = new URL(url).searchParams;
-      const key = [params.get('age_category'), params.get('gender'), params.get('wso')].join('|');
+  it('remembers each query variant under its own arguments', async () => {
+    const { dataCalls } = installTransport((call) => {
+      const key = [call.args.ageCategory ?? '', call.args.gender ?? '', call.args.wso ?? ''].join('|');
       const tag = `"${key}"`;
-      if (init.headers['If-None-Match'] === tag) {
-        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
-      }
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
-        text: async () => JSON.stringify([{ name: key, total: 1, weight_class: '71kg', snatch: 1, cj: 1 }]),
-      };
+      if (call.args.ifNoneMatch === tag) return { etag: tag };
+      return { etag: tag, body: [{ name: key, total: 1, weight_class: '71kg', snatch: 1, cj: 1 }] };
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     for (let pass = 0; pass < 2; pass += 1) {
       await expect(fetchApiNationalRankings('USAW', 'Senior 89')).resolves.toMatchObject([{ name: 'Senior 89||' }]);
@@ -1706,7 +1954,7 @@ describe('conditional GETs for reference data', () => {
       await expect(fetchApiWsoRecords('Ohio', 'Senior', 'Men')).resolves.toHaveLength(1);
     }
 
-    const validators = fetchMock.mock.calls.map(([, init]) => init.headers['If-None-Match']);
+    const validators = dataCalls().map((call) => call.args.ifNoneMatch);
     expect(validators.slice(0, 5)).toEqual([undefined, undefined, undefined, undefined, undefined]);
     expect(validators.slice(5)).toEqual([
       '"Senior 89||"',
@@ -1717,25 +1965,30 @@ describe('conditional GETs for reference data', () => {
     ]);
   });
 
-  it('keeps the meets validator through a session of reference-data browsing', async () => {
-    const fetchMock = jest.fn(async (url: string, init: { headers: Record<string, string> }) => {
-      const parsed = new URL(url);
-      const tag = `"${parsed.pathname}?${parsed.searchParams.toString()}"`;
-      if (init.headers['If-None-Match'] === tag) {
-        return { ok: false, status: 304, headers: { get: () => tag }, text: async () => '' };
-      }
+  it('treats an omitted optional argument like an absent one', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"o1"', body: [] },
+      { etag: '"o1"' },
+    ]);
+
+    await fetchApiWsoRecords('Ohio');
+    await fetchApiWsoRecords('Ohio', undefined, undefined);
+    expect(sentTag(1)).toBe('"o1"');
+  });
+
+  it('keeps the meets tag through a session of reference-data browsing', async () => {
+    jest.useFakeTimers({ now: new Date('2026-06-20T12:30:00.000Z') });
+    const tagFor = (call: ApiCall) =>
+      `"${call.fn}?${new URLSearchParams(callQuery(call)).toString()}"`;
+    const { dataCalls, transport } = installTransport((call) => {
+      const tag = tagFor(call);
+      if (call.args.ifNoneMatch === tag) return { etag: tag };
       let body: unknown = [];
-      if (parsed.pathname === '/meets') body = [];
-      else if (parsed.pathname === '/meets/details') body = { name: 'M', start_date: '2026-06-20', end_date: '2026-06-21', time_zone: 'America/New_York' };
-      else if (parsed.pathname === '/data/wso/' || parsed.pathname === '/clubs') body = ['A'];
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: (name: string) => (name === 'etag' ? tag : null) },
-        text: async () => JSON.stringify(body),
-      };
+      if (call.fn === 'meets:list') body = [];
+      else if (call.fn === 'meets:details') body = { name: 'M', start_date: '2026-06-20', end_date: '2026-06-21', time_zone: 'America/New_York' };
+      else if (call.fn === 'reference:wsoList' || call.fn === 'reference:clubs') body = ['A'];
+      return { etag: tag, body };
     });
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     await fetchApiMeets();
     await fetchApiRecords();
@@ -1765,88 +2018,277 @@ describe('conditional GETs for reference data', () => {
       await fetchApiNationalRankings('USAW', `Category ${i}`);
     }
 
-    fetchMock.mockClear();
+    transport.mockClear();
     await fetchApiMeets();
-    expect(fetchMock.mock.calls[0][1].headers['If-None-Match']).toBe('"/meets?"');
+    const [meetsCall] = dataCalls();
+    expect(meetsCall.fn).toBe('meets:list');
+    expect(meetsCall.args.ifNoneMatch).toBe(tagFor(meetsCall));
   });
 });
 
-describe('by-names latest_only', () => {
-  const originalFetch = global.fetch;
+describe('JSON text answers', () => {
+  const scheduleRow = {
+    date: '2026-06-20',
+    platform: 'Red',
+    session_id: 1,
+    start_time: '09:00:00',
+    weigh_in_time: '07:00:00',
+    weight_class: '60kg',
+  };
+  const recordRow = {
+    age_category: 'Senior',
+    gender: 'Men',
+    weight_class: '89kg',
+    record_type: 'USAW',
+    snatch_record: 170,
+    cj_record: 210,
+    total_record: 380,
+  };
+  const athleteRow = {
+    member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
+    entry_total: 250, gender: 'Men', weight_class: '73kg',
+    session_number: 2, session_platform: 'Blue',
+  };
+  const resultRow = {
+    id: 1, event_id: 'e1', meet: 'Test Meet', date: '2026-06-20', name: 'Athlete A',
+    age: 'Open', body_weight: 72.5, snatch1: 100, snatch2: 0, snatch3: 0, snatch_best: 100,
+    cj1: 120, cj2: 0, cj3: 0, cj_best: 120, total: 220,
+  };
 
-  afterEach(() => {
-    global.fetch = originalFetch;
+  /**
+   * A conditional query that tags its text answer `"t1"` and answers the tag
+   * alone when the caller sends it back.
+   */
+  function textRevalidating(body: unknown) {
+    return installTransport((call) =>
+      call.args.ifNoneMatch === '"t1"' ? { etag: '"t1"' } : { etag: '"t1"', json: JSON.stringify(body) },
+    );
+  }
+
+  it.each<[string, () => Promise<unknown>, string, unknown, unknown]>([
+    ['fetchApiMeets', () => fetchApiMeets(), 'meets:list', [meetRow('Meet A')], [{ name: 'Meet A', venue: { name: 'Hall' } }]],
+    ['fetchApiMeetByName', () => fetchApiMeetByName('Meet A'), 'meets:details', meetRow('Meet A'), { name: 'Meet A' }],
+    [
+      'fetchApiSchedule',
+      () => fetchApiSchedule('Meet A', mapApiMeet(meetRow('Meet A'))),
+      'meets:schedule',
+      [scheduleRow],
+      [{ fullDate: '2026-06-20', sessions: [{ number: 1, startTime: '9:00 AM' }] }],
+    ],
+    ['fetchApiRecords', () => fetchApiRecords(), 'reference:records', [recordRow], [recordRow]],
+    [
+      'fetchApiStandards',
+      () => fetchApiStandards(),
+      'reference:standards',
+      [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 300, standard_b: 280 }],
+      [{ standard_a: 300, standard_b: 280 }],
+    ],
+    [
+      'fetchApiQualifyingTotals',
+      () => fetchApiQualifyingTotals(),
+      'reference:qualifyingTotals',
+      [{ event_name: 'Nationals', age_category: 'Senior', gender: 'Men', weight_class: '89kg', qualifying_total: 300 }],
+      [{ event_name: 'Nationals', qualifying_total: 300 }],
+    ],
+    [
+      'fetchApiIntlRankings',
+      () => fetchApiIntlRankings(),
+      'reference:intlRankings',
+      [{ meet: 'Worlds', ranking: 1, name: 'Athlete A', weight_class: '89kg', total: 380, percent_a: 101.5, gender: 'Men', age_category: 'Senior' }],
+      [{ meet: 'Worlds', total: 380 }],
+    ],
+    [
+      'fetchApiNationalRankings',
+      () => fetchApiNationalRankings('USAW', 'Senior 89'),
+      'reference:nationalRankings',
+      [{ name: 'Athlete A', total: 380 }],
+      [{ name: 'Athlete A', total: 380 }],
+    ],
+    [
+      'fetchApiWsoRecords',
+      () => fetchApiWsoRecords('Ohio', 'Senior', 'Men'),
+      'reference:wsoRecords',
+      [{ wso: 'Ohio', age_category: 'Senior', gender: 'Men', weight_class: '89kg', snatch_record: 150, cj_record: 190, total_record: 340 }],
+      [{ wso: 'Ohio', total_record: 340 }],
+    ],
+    [
+      'fetchApiAdaptiveRecords',
+      () => fetchApiAdaptiveRecords('Men', 'BWL'),
+      'reference:adaptiveRecords',
+      [{ weight_class: '71kg', snatch: 60, cj: 80, total: 140 }],
+      [{ weight_class: '71kg', total: 140 }],
+    ],
+    ['fetchApiWsoList', () => fetchApiWsoList(), 'reference:wsoList', ['Ohio', 'Carolina'], ['Ohio', 'Carolina']],
+    ['fetchApiWsoAgeGroups', () => fetchApiWsoAgeGroups('Ohio'), 'reference:wsoAgeGroups', ['Senior'], ['Senior']],
+    ['fetchApiClubNames', () => fetchApiClubNames(), 'reference:clubs', ['Club A', 'Café Club'], ['Club A', 'Café Club']],
+  ])('%s decodes an { etag, json } answer and reuses it when the tag comes back alone', async (_name, invoke, fn, body, expected) => {
+    const { dataCalls } = textRevalidating(body);
+
+    const first = await invoke();
+    const second = await invoke();
+
+    expect(first).toMatchObject(expected as object);
+    expect(second).toEqual(first);
+    expect(dataCalls().map((call) => [call.fn, call.args.ifNoneMatch])).toEqual([
+      [fn, undefined],
+      [fn, '"t1"'],
+    ]);
   });
 
-  it('sends latest_only only when asked', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify([]),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it('decodes an { etag, json } meet package and answers not_modified for the stored tag', async () => {
+    const wire = {
+      meet: meetRow('Meet A'),
+      schedule: [],
+      athletes: [athleteRow],
+      meet_results: [resultRow],
+      year_bests: [{ name: 'Andrés Álvarez', best_snatch: 95, best_cj: 110, best_total: 205 }],
+    };
+    const { dataCalls } = textRevalidating(wire);
+
+    const first = await fetchApiMeetPackageConditional('Meet A' as never, '2024-01-01', null);
+    if (first.status !== 'fresh') throw new Error('expected a fresh package');
+    expect(first.etag).toBe('"t1"');
+    const { year_bests: _wire, ...rest } = wire;
+    expect(first.package).toEqual({
+      ...rest,
+      year_bests_by_name: { 'Andrés Álvarez': { best_snatch: 95, best_cj: 110, best_total: 205 } },
+    });
+
+    await expect(
+      fetchApiMeetPackageConditional('Meet A' as never, '2024-01-01', first.etag),
+    ).resolves.toEqual({ status: 'not_modified' });
+    expect(dataCalls().map((call) => call.args.ifNoneMatch)).toEqual([undefined, '"t1"']);
+  });
+
+  it.each<[string, () => Promise<unknown>, unknown[], unknown]>([
+    ['fetchApiAthletes', () => fetchApiAthletes('Test Meet' as never), [athleteRow], [{ name: 'Athlete A', entryTotal: 250 }]],
+    [
+      'fetchApiAthletesWithSession',
+      () => fetchApiAthletesWithSession('Test Meet' as never, 2, 'blue'),
+      [athleteRow, { ...athleteRow, member_id: '2', name: 'Athlete B', session_platform: 'Gold' }],
+      [{ name: 'Athlete A', session: { number: 2, platform: 'Blue' } }],
+    ],
+    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), [resultRow], [{ id: 1, total: 220 }]],
+    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A'], '2024-01-01'), [resultRow], [{ id: 1, snatch2: 0 }]],
+  ])('%s decodes a { json } answer and still accepts a plain array', async (_name, invoke, rows, expected) => {
+    installTransport(() => ({ json: JSON.stringify(rows) }));
+    const fromText = await invoke();
+    expect(fromText).toMatchObject(expected as object);
+    expect(fromText).toHaveLength((expected as unknown[]).length);
+
+    installTransport(() => rows);
+    await expect(invoke()).resolves.toEqual(fromText);
+  });
+
+  it.each<[string, () => Promise<unknown>, string, (json: unknown) => unknown]>([
+    ['fetchApiAthletes', () => fetchApiAthletes('Test Meet' as never), '/meets/athletes', (json) => ({ json })],
+    ['fetchApiAthletesWithSession', () => fetchApiAthletesWithSession('Test Meet' as never), '/meets/athletes-sessions', (json) => ({ json })],
+    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), '/lifting-results/by-names', (json) => ({ json })],
+    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A']), '/lifting-results/recent', (json) => ({ json })],
+    ['fetchApiRecords', () => fetchApiRecords(), '/data/records', (json) => ({ etag: '"t1"', json })],
+    ['fetchApiMeets', () => fetchApiMeets(), '/meets', (json) => ({ etag: '"t1"', json })],
+    ['fetchApiMeetPackageConditional', () => fetchApiMeetPackageConditional('Test Meet' as never), '/meets/package', (json) => ({ etag: '"t1"', json })],
+  ])('%s names its path when the JSON text is empty, unparseable or not text', async (_name, invoke, path, wrap) => {
+    installTransport(() => wrap(''));
+    await expect(invoke()).rejects.toThrow(`${path} returned an empty body`);
+
+    installTransport(() => wrap('{"rows": ['));
+    await expect(invoke()).rejects.toThrow(`${path} returned invalid JSON`);
+
+    for (const notText of [null, 42, ['[]'], { rows: [] }]) {
+      installTransport(() => wrap(notText));
+      await expect(invoke()).rejects.toThrow(`${path} returned a non-text json field`);
+    }
+  });
+
+  it('remembers nothing from a text answer that failed to decode', async () => {
+    const { sentTag } = queueTransport([
+      { etag: '"bad"', json: '[{' },
+      { etag: '"t1"', json: JSON.stringify([recordRow]) },
+    ]);
+
+    await expect(fetchApiRecords()).rejects.toThrow('/data/records returned invalid JSON');
+    await expect(fetchApiRecords()).resolves.toEqual([recordRow]);
+    expect(sentTag(1)).toBeUndefined();
+  });
+
+  it('still fails an array endpoint whose JSON text is not an array', async () => {
+    installTransport(() => ({ json: '{"rows":[]}' }));
+    await expect(fetchApiResultsByNames(['Athlete A'])).rejects.toThrow(
+      '/lifting-results/by-names expected an array response',
+    );
+    await expect(fetchApiAthletes('Test Meet' as never)).rejects.toThrow(
+      '/meets/athletes expected an array response',
+    );
+
+    installTransport(() => ({ etag: '"t1"', json: '{"rows":[]}' }));
+    await expect(fetchApiRecords()).rejects.toThrow('/data/records expected an array response');
+    await expect(fetchApiMeets()).rejects.toThrow('/meets expected an array response');
+
+    installTransport(() => ({ etag: '"t1"', json: 'null' }));
+    await expect(fetchApiMeetPackageConditional('Test Meet' as never)).rejects.toThrow(
+      '/meets/package expected an object response',
+    );
+  });
+
+  it('coerces package year_bests values that are not finite numbers to 0, and parses numeric text', async () => {
+    installTransport(
+      answer({
+        meet: {},
+        schedule: [],
+        athletes: [],
+        meet_results: [],
+        year_bests: [
+          { name: 'A', best_snatch: null, best_cj: '12', best_total: Number.NaN },
+          { name: 'B', best_snatch: 'abc', best_cj: Number.POSITIVE_INFINITY, best_total: 7 },
+          { name: 'C', best_snatch: ' ', best_cj: {}, best_total: '205.5' },
+        ],
+      }),
+    );
+
+    const fetched = await fetchApiMeetPackageConditional('Test Meet' as never);
+
+    if (fetched.status !== 'fresh') throw new Error('expected a fresh package');
+    expect(fetched.package.year_bests_by_name).toEqual({
+      // `toFiniteNumber`: numeric text is read as a number, like `entry_total`.
+      A: { best_snatch: 0, best_cj: 12, best_total: 0 },
+      B: { best_snatch: 0, best_cj: 0, best_total: 7 },
+      C: { best_snatch: 0, best_cj: 0, best_total: 205.5 },
+    });
+  });
+});
+
+describe('by-names latestOnly', () => {
+  it('sends latestOnly only when asked', async () => {
+    const { dataCalls } = installTransport(answer([]));
 
     await fetchApiResultsByNames(['Athlete A'], { latestOnly: true });
     await fetchApiResultsByNames(['Athlete A']);
     await fetchApiResultsByNames(['Athlete A'], { latestOnly: false });
 
-    const bodies = fetchMock.mock.calls.map(
-      (call) => JSON.parse((call as unknown as [string, { body: string }])[1].body),
-    );
-    expect(bodies).toEqual([
-      { names: ['Athlete A'], latest_only: true },
-      { names: ['Athlete A'] },
-      { names: ['Athlete A'] },
+    expect(dataCalls().map((call) => call.args.latestOnly)).toEqual([true, undefined, undefined]);
+    expect(dataCalls().map(callQuery)).toEqual([
+      { names: 'Athlete A', latest_only: 'true' },
+      { names: 'Athlete A' },
+      { names: 'Athlete A' },
     ]);
   });
 
-  it('keeps latest_only on every chunk', async () => {
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify([]),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
+  it('keeps latestOnly on every chunk', async () => {
+    const { dataCalls } = installTransport(answer([]));
     const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
 
     await fetchApiResultsByNames(names, { latestOnly: true });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    for (const call of fetchMock.mock.calls) {
-      const body = JSON.parse((call as unknown as [string, { body: string }])[1].body);
-      expect(body.latest_only).toBe(true);
+    expect(dataCalls()).toHaveLength(2);
+    for (const call of dataCalls()) {
+      expect(call.args.latestOnly).toBe(true);
     }
   });
 });
 
-describe('server clock and Retry-After', () => {
-  const originalFetch = global.fetch;
-
-  function mockFetchWithHeaders(
-    headers: Record<string, string>,
-    status = 200,
-    body = '[]',
-  ) {
-    const lookup = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-    const fetchMock = jest.fn(async () => ({
-      ok: status >= 200 && status < 300,
-      status,
-      headers: { get: (name: string) => lookup.get(name.toLowerCase()) ?? null },
-      text: async () => body,
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
-    return fetchMock;
-  }
-
-  beforeEach(() => {
-    resetServerClockForTests();
-  });
-
-  afterEach(() => {
-    global.fetch = originalFetch;
-    jest.useRealTimers();
-    resetServerClockForTests();
-  });
+describe('server clock', () => {
+  const T0 = Date.parse('2026-06-20T12:00:00.000Z');
 
   it('has no trusted clock before the first response', () => {
     expect(getServerClockSample()).toBeNull();
@@ -1854,88 +2296,250 @@ describe('server clock and Retry-After', () => {
     expect(getTrustedNow()).toBeNull();
   });
 
-  it('samples the skew from the Date header, so a fast device clock is corrected', async () => {
-    jest.useFakeTimers();
-    const serverNow = new Date('2026-06-20T12:00:00.000Z');
+  it('samples the clock mutation alongside the first request, so a fast device clock is corrected', async () => {
+    const serverNow = T0;
     // The device is three hours ahead of the server.
-    jest.setSystemTime(serverNow.getTime() + 3 * 60 * 60 * 1000);
-    mockFetchWithHeaders({ Date: serverNow.toUTCString() });
+    jest.useFakeTimers({ now: serverNow + 3 * HOUR_MS });
+    const { clockCalls } = installTransport(answer([]), () => serverNow);
 
     await fetchApiMeets();
 
-    expect(getServerClockSkewMs()).toBe(-3 * 60 * 60 * 1000);
+    expect(clockCalls()).toEqual([
+      { path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} },
+    ]);
+    expect(getServerClockSkewMs()).toBe(-3 * HOUR_MS);
     expect(getServerClockSample()).toEqual({
-      skewMs: -3 * 60 * 60 * 1000,
+      skewMs: -3 * HOUR_MS,
       sampledAt: Date.now(),
     });
-    expect(getTrustedNow()?.getTime()).toBe(serverNow.getTime());
+    expect(getTrustedNow()?.getTime()).toBe(serverNow);
     expect(Math.abs(getServerClockSkewMs() ?? 0)).toBeGreaterThan(MAX_PLAUSIBLE_CLOCK_SKEW_MS);
   });
 
-  it('keeps the latest sample and ignores a missing or unparseable Date', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
-    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:30 GMT' });
-    await fetchApiMeets();
-    expect(getServerClockSkewMs()).toBe(30_000);
+  it('sends the clock call without holding the request back, and measures skew from the round-trip midpoint', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const clock = deferred<number>();
+    const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => clock.promise);
 
-    mockFetchWithHeaders({ Date: 'not a date' });
-    await fetchApiMeets();
-    expect(getServerClockSkewMs()).toBe(30_000);
+    const pending = fetchApiClubNames();
+    // Both calls are out before either answers.
+    expect(clockCalls()).toHaveLength(1);
+    expect(dataCalls()).toHaveLength(1);
 
-    mockFetchWithHeaders({});
-    await fetchApiMeets();
-    expect(getServerClockSkewMs()).toBe(30_000);
+    // 400ms round trip; the server read its clock 1000ms after the send.
+    jest.setSystemTime(T0 + 400);
+    clock.resolve(T0 + 1000);
 
-    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:00:10 GMT' });
-    await fetchApiMeets();
-    expect(getServerClockSkewMs()).toBe(10_000);
+    await expect(pending).resolves.toEqual(['Club A']);
+    // 1000 - (0 + 400) / 2
+    expect(getServerClockSample()).toEqual({ skewMs: 800, sampledAt: T0 + 400 });
+    expect(getTrustedNow()?.getTime()).toBe(T0 + 400 + 800);
   });
 
-  it('samples the clock from an error response too', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
-    mockFetchWithHeaders({ Date: 'Sat, 20 Jun 2026 12:01:00 GMT' }, 500, 'boom');
+  it('evaluates the meets window on the server clock, rounded down to the hour', async () => {
+    jest.useFakeTimers({ now: Date.parse('2026-06-20T14:10:00.000Z') });
+    const { dataCalls } = installTransport(answer([]), () => Date.now() - 3 * HOUR_MS);
+
+    // No sample yet: the device clock is all there is.
+    await fetchApiMeets();
+    await fetchApiMeets();
+
+    expect(dataCalls().map((call) => call.args.now)).toEqual([
+      Date.parse('2026-06-20T14:00:00.000Z'),
+      Date.parse('2026-06-20T11:00:00.000Z'),
+    ]);
+  });
+
+  it('keeps a fresh sample and refreshes a stale one in the background', async () => {
+    jest.useFakeTimers({ now: T0 });
+    let clockAnswer: () => unknown = () => Date.now() + 5000;
+    const { clockCalls } = installTransport(answer([]), () => clockAnswer());
+
+    await fetchApiClubNames();
+    expect(getServerClockSkewMs()).toBe(5000);
+    expect(clockCalls()).toHaveLength(1);
+
+    // Exactly at the limit is still fresh.
+    jest.setSystemTime(T0 + SERVER_CLOCK_RESAMPLE_MS);
+    await fetchApiClubNames();
+    expect(clockCalls()).toHaveLength(1);
+
+    const refresh = deferred<number>();
+    clockAnswer = () => refresh.promise;
+    jest.setSystemTime(T0 + SERVER_CLOCK_RESAMPLE_MS + 1);
+    // Not the first sample: the request does not wait for the refresh.
+    await expect(fetchApiClubNames()).resolves.toEqual([]);
+    expect(clockCalls()).toHaveLength(2);
+    // One refresh in flight is shared, not repeated per request.
+    await fetchApiClubNames();
+    expect(clockCalls()).toHaveLength(2);
+    expect(getServerClockSkewMs()).toBe(5000);
+
+    refresh.resolve(Date.now() + 7000);
+    await flushMicrotasks();
+    expect(getServerClockSample()).toEqual({
+      skewMs: 7000,
+      sampledAt: T0 + SERVER_CLOCK_RESAMPLE_MS + 1,
+    });
+  });
+
+  it('does not fail the request when the clock call fails or answers junk, and tries again next time', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const clockAnswers: (() => unknown)[] = [
+      () => {
+        throw new Error('mutation failed');
+      },
+      () => 'soon',
+      () => Number.NaN,
+      () => T0 + 30_000,
+    ];
+    const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswers.shift()?.());
+
+    for (let i = 0; i < 3; i += 1) {
+      await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+      expect(getServerClockSample()).toBeNull();
+      expect(getTrustedNow()).toBeNull();
+    }
+    await fetchApiClubNames();
+
+    expect(clockCalls()).toHaveLength(4);
+    expect(getServerClockSkewMs()).toBe(30_000);
+  });
+
+  it('samples the clock even when the request it rides alongside fails', async () => {
+    jest.useFakeTimers({ now: T0 });
+    installTransport(
+      () => {
+        throw apiFailure(500);
+      },
+      () => T0 + 60_000,
+    );
 
     await expect(fetchApiMeets()).rejects.toBeInstanceOf(MeetCalApiError);
+    await flushMicrotasks();
     expect(getServerClockSkewMs()).toBe(60_000);
   });
 
-  it('attaches Retry-After seconds to a 429', async () => {
-    mockFetchWithHeaders({ 'Retry-After': '3' }, 429, '');
+  it('holds the first request at most the grace period for a clock call that never answers', async () => {
+    jest.useFakeTimers({ now: T0 });
+    installTransport(answer(['Club A']), () => never());
+    let settled = false;
+    const pending = fetchApiClubNames().finally(() => {
+      settled = true;
+    });
 
-    const failure = await fetchApiResultsByNames(['Athlete A']).catch((error: unknown) => error);
+    await flushMicrotasks();
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS - 1);
+    await flushMicrotasks();
+    expect(settled).toBe(false);
 
-    expect(failure).toBeInstanceOf(MeetCalApiError);
-    expect((failure as MeetCalApiError).status).toBe(429);
-    expect((failure as MeetCalApiError).retryAfterSeconds).toBe(3);
+    jest.advanceTimersByTime(1);
+    await expect(pending).resolves.toEqual(['Club A']);
+    expect(getServerClockSample()).toBeNull();
+    // The grace timer and the request timeout are cleared; only the stuck
+    // sample's own abandonment timer is left.
+    expect(jest.getTimerCount()).toBe(1);
   });
 
-  it('turns an HTTP-date Retry-After into seconds from now and leaves junk undefined', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-06-20T12:00:00.000Z'));
-    mockFetchWithHeaders({ 'Retry-After': 'Sat, 20 Jun 2026 12:00:02 GMT' }, 503, '');
-    const dated = await fetchApiMeets().catch((error: unknown) => error);
-    expect((dated as MeetCalApiError).retryAfterSeconds).toBe(2);
+  it('does not hold later requests for a clock call that is still stuck', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const { clockCalls } = installTransport(answer(['Club A']), () => never());
 
-    mockFetchWithHeaders({ 'Retry-After': 'soon' }, 503, '');
-    const junk = await fetchApiMeets().catch((error: unknown) => error);
-    expect((junk as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+    const first = fetchApiClubNames();
+    await flushMicrotasks();
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
+    await first;
 
-    mockFetchWithHeaders({}, 503, '');
-    const none = await fetchApiMeets().catch((error: unknown) => error);
-    expect((none as MeetCalApiError).retryAfterSeconds).toBeUndefined();
+    let settled = false;
+    const second = fetchApiClubNames().finally(() => {
+      settled = true;
+    });
+    await flushMicrotasks();
+    expect(settled).toBe(true);
+    await expect(second).resolves.toEqual(['Club A']);
+    // It joined the sample in flight rather than starting another.
+    expect(clockCalls()).toHaveLength(1);
   });
 
-  it('parses Retry-After values', () => {
-    const now = Date.parse('2026-06-20T12:00:00.000Z');
-    expect(parseRetryAfterSeconds('5', now)).toBe(5);
-    expect(parseRetryAfterSeconds(' 0 ', now)).toBe(0);
-    expect(parseRetryAfterSeconds('-1', now)).toBeUndefined();
-    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 11:59:00 GMT', now)).toBe(0);
-    expect(parseRetryAfterSeconds('Sat, 20 Jun 2026 12:00:10 GMT', now)).toBe(10);
-    expect(parseRetryAfterSeconds('', now)).toBeUndefined();
-    expect(parseRetryAfterSeconds(null, now)).toBeUndefined();
-    expect(parseRetryAfterSeconds(undefined, now)).toBeUndefined();
+  it('does not hold a second request at startup for the clock call the first one started', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => never());
+    let firstSettled = false;
+    let secondSettled = false;
+
+    const first = fetchApiClubNames().finally(() => {
+      firstSettled = true;
+    });
+    const second = fetchApiWsoList().finally(() => {
+      secondSettled = true;
+    });
+    expect(clockCalls()).toHaveLength(1);
+    expect(dataCalls()).toHaveLength(2);
+
+    await flushMicrotasks();
+    expect(secondSettled).toBe(true);
+    expect(firstSettled).toBe(false);
+
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
+    await expect(first).resolves.toEqual(['Club A']);
+    await expect(second).resolves.toEqual(['Club A']);
+  });
+
+  it('abandons a stuck clock call after 10s so a later request can start a new one', async () => {
+    const SAMPLE_TIMEOUT_MS = 10000; // `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`
+    jest.useFakeTimers({ now: T0 });
+    let clockAnswer: () => unknown = () => never();
+    const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswer());
+
+    const first = fetchApiClubNames();
+    await flushMicrotasks();
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
+    await first;
+
+    // Just short of the limit the stuck call is still the one in flight.
+    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - FIRST_SAMPLE_GRACE_MS - 1);
+    await fetchApiClubNames();
+    expect(clockCalls()).toHaveLength(1);
+
+    jest.advanceTimersByTime(1);
+    await flushMicrotasks();
+    clockAnswer = () => Date.now() + 42_000;
+    // No sample yet, and this request starts the new one, so it waits for it.
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    expect(clockCalls()).toHaveLength(2);
+    expect(getServerClockSample()).toEqual({ skewMs: 42_000, sampledAt: T0 + SAMPLE_TIMEOUT_MS });
+  });
+
+  it('discards a sample whose round trip took longer than 5s, and keeps one of exactly 5s', async () => {
+    const MAX_ROUND_TRIP_MS = 5000; // `MAX_CLOCK_SAMPLE_ROUND_TRIP_MS`
+    jest.useFakeTimers({ now: T0 });
+    let clock = deferred<number>();
+    const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
+
+    const first = fetchApiClubNames();
+    await flushMicrotasks();
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
+    await expect(first).resolves.toEqual(['Club A']);
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1 - FIRST_SAMPLE_GRACE_MS);
+    clock.resolve(Date.now() + 60_000);
+    await flushMicrotasks();
+    expect(getServerClockSample()).toBeNull();
+
+    // The discarded sample is finished, so the next request starts another.
+    const sentAt = Date.now();
+    clock = deferred<number>();
+    const second = fetchApiClubNames();
+    await flushMicrotasks();
+    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
+    await second;
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS - FIRST_SAMPLE_GRACE_MS);
+    clock.resolve(Date.now() + 60_000);
+    await flushMicrotasks();
+    expect(clockCalls()).toHaveLength(2);
+    // 60s ahead of the receive time, measured from the midpoint.
+    expect(getServerClockSample()).toEqual({
+      skewMs: 60_000 + MAX_ROUND_TRIP_MS / 2,
+      sampledAt: sentAt + MAX_ROUND_TRIP_MS,
+    });
   });
 });
