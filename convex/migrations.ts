@@ -3,6 +3,8 @@ import { internalMutation } from './_generated/server';
 import { internal } from './_generated/api';
 import { normalizeName } from './lib/names';
 import { deleteViewsWithPrefix } from './lib/views';
+import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
+import { recordWrite } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
 
@@ -53,5 +55,64 @@ export const dropRetiredViews = internalMutation({
       dropped += await deleteViewsWithPrefix(ctx, header.key);
     }
     return dropped;
+  },
+});
+
+/**
+ * The Postgres casing migration (`20260604130000_normalize_gender_age_casing`)
+ * for the Convex copies of the reference tables, using the writer's own
+ * normalizers. When normalizing makes a row collide with another on the
+ * table's natural key, the most recently written one is kept, since that is
+ * the one a scraper wrote with normalized values.
+ *
+ *   npx convex run migrations:normalizeReferenceCasing '{"table":"standards"}'
+ */
+export const normalizeReferenceCasing = internalMutation({
+  args: {
+    table: v.union(
+      v.literal('standards'),
+      v.literal('records'),
+      v.literal('wso_records'),
+      v.literal('qualifying_totals'),
+      v.literal('intl_rankings'),
+    ),
+  },
+  handler: async (ctx, { table }) => {
+    const rows = (await ctx.db.query(table).collect()).sort((a, b) => b._creationTime - a._creationTime);
+    const naturalKey = (row: Record<string, unknown>): string | null => {
+      switch (table) {
+        case 'standards':
+          return JSON.stringify([row.ageCategory, row.gender, row.weightClass]);
+        case 'records':
+          return JSON.stringify([row.recordType, row.ageCategory, row.gender, row.weightClass]);
+        case 'wso_records':
+          return JSON.stringify([row.wso, row.ageCategory, row.gender, row.weightClass]);
+        case 'qualifying_totals':
+          return JSON.stringify([row.eventName, row.gender, row.ageCategory, row.weightClass]);
+        default:
+          return null;
+      }
+    };
+    const seen = new Set<string>();
+    let patched = 0;
+    let deleted = 0;
+    for (const row of rows) {
+      const normalized: Record<string, string> = {};
+      if (typeof row.gender === 'string') normalized.gender = normalizeGender(row.gender);
+      if (typeof row.ageCategory === 'string') normalized.ageCategory = normalizeAgeCategory(row.ageCategory);
+      const key = naturalKey({ ...row, ...normalized });
+      if (key !== null && seen.has(key)) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+        continue;
+      }
+      if (key !== null) seen.add(key);
+      if (normalized.gender !== row.gender || normalized.ageCategory !== row.ageCategory) {
+        await ctx.db.patch(row._id, normalized as never);
+        patched += 1;
+      }
+    }
+    if (patched + deleted > 0) await recordWrite(ctx, table, [{ kind: 'table', key: table }]);
+    return { rows: rows.length, patched, deleted };
   },
 });

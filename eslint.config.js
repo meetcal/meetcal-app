@@ -9,7 +9,7 @@ module.exports = defineConfig([
   expoConfig,
   {
     // `coverage/` is Jest's generated lcov report (git-ignored build output).
-    ignores: ["dist/*", "node_modules/*", ".expo/*", "coverage/*"],
+    ignores: ["dist/*", "node_modules/*", ".expo/*", "coverage/*", "convex/_generated/*"],
   },
   {
     files: ["**/*.{js,jsx,ts,tsx}"],

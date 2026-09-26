@@ -2,8 +2,9 @@ import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 
 /**
- * Scheduled jobs that only touch Convex data. (The scrapers read other
- * sites and run outside Convex; they write through `convex/ingest.ts`.)
+ * Every scheduled job. Scrapers are ported from the retired VPS crontab
+ * (`meetcal-backend/scrapers/run_scraper_job.sh`) at the same UTC times the
+ * VPS ran them (its clock was US Eastern, EDT).
  */
 const crons = cronJobs();
 
@@ -12,5 +13,8 @@ const crons = cronJobs();
 // becomes true in any US zone. It reads the few not-yet-completed meets and
 // writes only when one changes.
 crons.hourly('complete ended meets', { minuteUTC: 15 }, internal.ingest.completeEndedMeets);
+
+// VPS: `15 23 * * *` EDT.
+crons.daily('standards', { hourUTC: 3, minuteUTC: 15 }, internal.scrapers.standards.run, {});
 
 export default crons;

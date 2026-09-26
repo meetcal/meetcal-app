@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
+import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { bumpVersion, type SourceTable } from './lib/views';
@@ -234,5 +235,50 @@ export const completeEndedMeets = internalMutation({
     if (hints.length > 0) await recordWrite(ctx, 'meets', hints);
     console.log(`Marked ${hints.length} ended meet(s) completed.`);
     return hints.length;
+  },
+});
+
+/** Per-row outcome of an upsert, as the Python writers reported it. */
+export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean };
+
+/**
+ * Inserts or updates standards matched on (age category, gender, weight
+ * class), normalized like `upsert_standard`. Never deletes: a class the PDF
+ * stops listing keeps its last standards, as it did in Postgres.
+ */
+export const upsertStandards = internalMutation({
+  args: {
+    rows: v.array(
+      v.object({ ageCategory: v.string(), gender: v.string(), weightClass: v.string(), standardA: v.number(), standardB: v.number() }),
+    ),
+  },
+  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
+    const outcomes: UpsertOutcome[] = [];
+    for (const row of rows) {
+      const doc = {
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        standardA: row.standardA,
+        standardB: row.standardB,
+      };
+      const existing = (
+        await ctx.db
+          .query('standards')
+          .withIndex('by_age_gender', (q) => q.eq('ageCategory', doc.ageCategory).eq('gender', doc.gender))
+          .collect()
+      ).find((s) => s.weightClass === doc.weightClass);
+      if (!existing) {
+        await ctx.db.insert('standards', doc);
+        outcomes.push({ wasInsert: true, wasChanged: true });
+      } else if (existing.standardA !== doc.standardA || existing.standardB !== doc.standardB) {
+        await ctx.db.patch(existing._id, doc);
+        outcomes.push({ wasInsert: false, wasChanged: true });
+      } else {
+        outcomes.push({ wasInsert: false, wasChanged: false });
+      }
+    }
+    if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'standards', [{ kind: 'table', key: 'standards' }]);
+    return outcomes;
   },
 });

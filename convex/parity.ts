@@ -190,7 +190,8 @@ export const run = internalAction({
       return d.toISOString().slice(0, 10);
     })();
     const yearAgo = addMonths(cutoff, 12);
-    const { meets, classes } = await ctx.runQuery(internal.parity.sample, {});
+    const { meets, classes }: { meets: string[]; classes: { federation: string; ageCategory: string }[] } =
+      await ctx.runQuery(internal.parity.sample, {});
 
     for (const meet of meets.slice(0, args.meets ?? meets.length)) {
       const s = await ctx.runQuery(internal.parity.meetSample, { meet });
