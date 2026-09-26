@@ -20,4 +20,7 @@ crons.daily('standards', { hourUTC: 3, minuteUTC: 15 }, internal.scrapers.standa
 // VPS: `35 23 * * *` EDT.
 crons.daily('usaw records', { hourUTC: 3, minuteUTC: 35 }, internal.scrapers.records.run, {});
 
+// VPS: `55 23 * * *` EDT.
+crons.daily('umwf records', { hourUTC: 3, minuteUTC: 55 }, internal.scrapers.umwf.run, {});
+
 export default crons;
