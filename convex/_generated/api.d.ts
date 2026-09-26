@@ -8,23 +8,26 @@
  * @module
  */
 
-import type * as athletes from "../athletes.js";
-import type * as autoUnsaveSavedSessionsJob from "../autoUnsaveSavedSessionsJob.js";
-import type * as crons from "../crons.js";
-import type * as http from "../http.js";
-import type * as intlRankings from "../intlRankings.js";
-import type * as liftingResults from "../liftingResults.js";
-import type * as meetStatusJob from "../meetStatusJob.js";
+import type * as ingest from "../ingest.js";
+import type * as lib_directory from "../lib/directory.js";
+import type * as lib_etag from "../lib/etag.js";
+import type * as lib_history from "../lib/history.js";
+import type * as lib_meetData from "../lib/meetData.js";
+import type * as lib_names from "../lib/names.js";
+import type * as lib_referenceData from "../lib/referenceData.js";
+import type * as lib_results from "../lib/results.js";
+import type * as lib_sort from "../lib/sort.js";
+import type * as lib_validation from "../lib/validation.js";
+import type * as lib_viewKeys from "../lib/viewKeys.js";
+import type * as lib_views from "../lib/views.js";
 import type * as meets from "../meets.js";
-import type * as qualifyingTotals from "../qualifyingTotals.js";
-import type * as records from "../records.js";
-import type * as savedSessions from "../savedSessions.js";
-import type * as savedSessionsSync from "../savedSessionsSync.js";
-import type * as schedule from "../schedule.js";
-import type * as scraperIngestion from "../scraperIngestion.js";
-import type * as standards from "../standards.js";
-import type * as userPreferences from "../userPreferences.js";
-import type * as wsoRecords from "../wsoRecords.js";
+import type * as migrations from "../migrations.js";
+import type * as parity from "../parity.js";
+import type * as reference from "../reference.js";
+import type * as results from "../results.js";
+import type * as system from "../system.js";
+import type * as users from "../users.js";
+import type * as views from "../views.js";
 
 import type {
   ApiFromModules,
@@ -33,23 +36,26 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  athletes: typeof athletes;
-  autoUnsaveSavedSessionsJob: typeof autoUnsaveSavedSessionsJob;
-  crons: typeof crons;
-  http: typeof http;
-  intlRankings: typeof intlRankings;
-  liftingResults: typeof liftingResults;
-  meetStatusJob: typeof meetStatusJob;
+  ingest: typeof ingest;
+  "lib/directory": typeof lib_directory;
+  "lib/etag": typeof lib_etag;
+  "lib/history": typeof lib_history;
+  "lib/meetData": typeof lib_meetData;
+  "lib/names": typeof lib_names;
+  "lib/referenceData": typeof lib_referenceData;
+  "lib/results": typeof lib_results;
+  "lib/sort": typeof lib_sort;
+  "lib/validation": typeof lib_validation;
+  "lib/viewKeys": typeof lib_viewKeys;
+  "lib/views": typeof lib_views;
   meets: typeof meets;
-  qualifyingTotals: typeof qualifyingTotals;
-  records: typeof records;
-  savedSessions: typeof savedSessions;
-  savedSessionsSync: typeof savedSessionsSync;
-  schedule: typeof schedule;
-  scraperIngestion: typeof scraperIngestion;
-  standards: typeof standards;
-  userPreferences: typeof userPreferences;
-  wsoRecords: typeof wsoRecords;
+  migrations: typeof migrations;
+  parity: typeof parity;
+  reference: typeof reference;
+  results: typeof results;
+  system: typeof system;
+  users: typeof users;
+  views: typeof views;
 }>;
 
 /**

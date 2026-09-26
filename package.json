@@ -56,6 +56,7 @@
     "@shopify/flash-list": "2.0.2",
     "@types/pako": "^2.0.3",
     "babel-plugin-module-resolver": "^5.0.2",
+    "convex": "^1.46.0",
     "date-fns": "^4.1.0",
     "expo": "58.0.0-preview.5",
     "expo-application": "~58.0.1",
