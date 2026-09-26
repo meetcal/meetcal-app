@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as ingest from "../ingest.js";
 import type * as lib_directory from "../lib/directory.js";
 import type * as lib_etag from "../lib/etag.js";
@@ -36,6 +37,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   ingest: typeof ingest;
   "lib/directory": typeof lib_directory;
   "lib/etag": typeof lib_etag;

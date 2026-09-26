@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
+import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { bumpVersion, type SourceTable } from './lib/views';
 import {
@@ -205,3 +206,33 @@ export const replaceStandards = replaceTable('standards');
 export const replaceQualifyingTotals = replaceTable('qualifying_totals');
 export const replaceIntlRankings = replaceTable('intl_rankings');
 export const replaceWsoRecords = replaceTable('wso_records');
+
+/**
+ * Marks meets completed once their end date has passed on the meet's own
+ * calendar (`complete_ended_meets.sql` in the Rust backend): a meet ending
+ * tonight in Los Angeles is not completed at 17:00 Pacific just because the
+ * UTC date rolled over. Run hourly by `convex/crons.ts`; writes only when a
+ * meet actually changes, through `recordWrite` like every other write.
+ */
+export const completeEndedMeets = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const formatters: ZoneFormatters = new Map();
+    const hints: WriteHint[] = [];
+    for (const status of ['upcoming', 'ongoing'] as const) {
+      const meets = await ctx.db
+        .query('meets')
+        .withIndex('by_status', (q) => q.eq('status', status))
+        .collect();
+      for (const meet of meets) {
+        if (meet.endDate >= meetLocalDate(now, meet.timeZone, formatters)) continue;
+        await ctx.db.patch(meet._id, { status: 'completed', updatedAt: now });
+        hints.push({ kind: 'meet', key: meet.name });
+      }
+    }
+    if (hints.length > 0) await recordWrite(ctx, 'meets', hints);
+    console.log(`Marked ${hints.length} ended meet(s) completed.`);
+    return hints.length;
+  },
+});

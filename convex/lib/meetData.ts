@@ -57,6 +57,36 @@ export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meet
     .first();
 }
 
+/**
+ * One `Intl.DateTimeFormat` per zone, shared across a function's meets:
+ * building one costs more than everything else a meets pass does.
+ */
+export type ZoneFormatters = Map<string, Intl.DateTimeFormat | null>;
+
+/**
+ * `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone`: the Rust
+ * backend's `meet_local_date(time_zone)`, including its fallback to the UTC
+ * date for a blank or unknown zone.
+ */
+export function meetLocalDate(instant: number, timeZone: string, formatters: ZoneFormatters = new Map()): string {
+  if (!formatters.has(timeZone)) {
+    let formatter: Intl.DateTimeFormat | null;
+    try {
+      formatter = timeZone.trim()
+        ? new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+        : null;
+    } catch {
+      formatter = null;
+    }
+    formatters.set(timeZone, formatter);
+  }
+  const formatter = formatters.get(timeZone);
+  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
+  const parts = formatter.formatToParts(instant);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 /** Postgres `date + INTERVAL 'n months'`: same day, clamped to the month's end. */
 export function addMonths(date: string, months: number): string {
   const [year, month, day] = date.split('-').map(Number);

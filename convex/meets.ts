@@ -10,6 +10,7 @@ import {
   computeTimelines,
   joinRoster,
   meetByName,
+  meetLocalDate,
   packageAthlete,
   packageStaticText,
   plainRoster,
@@ -18,6 +19,7 @@ import {
   type ApiScheduleRow,
   type Timeline,
   type TimelinesView,
+  type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { compareBytes } from './lib/sort';
@@ -30,24 +32,6 @@ import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
 // they are fresh (`convex/views.ts`) and computed live otherwise. Large
 // answers travel as JSON text (`{ json }`, or `{ etag, json }` when
 // conditional); see `convex/lib/views.ts`.
-
-/** `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone` (UTC if unknown). */
-function localDate(instant: number, timeZone: string, formatters: Map<string, Intl.DateTimeFormat | null>): string {
-  if (!formatters.has(timeZone)) {
-    let formatter: Intl.DateTimeFormat | null;
-    try {
-      formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-    } catch {
-      formatter = null;
-    }
-    formatters.set(timeZone, formatter);
-  }
-  const formatter = formatters.get(timeZone);
-  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
-  const parts = formatter.formatToParts(instant);
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
 
 const UPCOMING_WINDOW_MONTHS = 3;
 
@@ -70,11 +54,9 @@ export const list = query({
           .collect(),
       ),
     );
-    // One formatter per zone: building an `Intl.DateTimeFormat` costs more
-    // than everything else this query does.
-    const formatters = new Map<string, Intl.DateTimeFormat | null>();
+    const formatters: ZoneFormatters = new Map();
     const meets = [...upcoming, ...ongoing]
-      .filter((meet) => meet.startDate <= addMonths(localDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
+      .filter((meet) => meet.startDate <= addMonths(meetLocalDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
       .sort((a, b) => compareBytes(a.startDate, b.startDate));
     return revalidated(meets.map(toApiMeet), ifNoneMatch);
   },
