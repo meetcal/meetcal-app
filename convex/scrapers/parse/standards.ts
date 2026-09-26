@@ -1,4 +1,4 @@
-import { parse } from 'node-html-parser';
+import { parseHtml } from '../lib/html';
 import { absoluteUrl } from '../lib/http';
 
 // Pure parsing for `scrapers/standards.ts`, kept free of Convex and Node
@@ -8,7 +8,7 @@ export type Standard = { age_category: string; gender: string; weight_class: str
 
 export function findStandardsPdfUrl(html: string, pageUrl: string): string | null {
   const candidates: string[] = [];
-  for (const link of parse(html).querySelectorAll('a[href]')) {
+  for (const link of parseHtml(html).querySelectorAll('a[href]')) {
     const href = link.getAttribute('href') ?? '';
     const text = link.text.trim();
     if (!text.toLowerCase().includes('standards') && !href.toLowerCase().includes('standards')) continue;

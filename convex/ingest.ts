@@ -282,3 +282,59 @@ export const upsertStandards = internalMutation({
     return outcomes;
   },
 });
+
+const recordRow = v.object({
+  recordType: v.string(),
+  ageCategory: v.string(),
+  gender: v.string(),
+  weightClass: v.string(),
+  snatchRecord: v.optional(v.number()),
+  cjRecord: v.optional(v.number()),
+  totalRecord: v.optional(v.number()),
+});
+
+/**
+ * Inserts or updates records matched on (type, age, gender, class),
+ * normalized like `upsert_record`. A lift missing from the row clears it, as
+ * the Python writer's `None` did. Never deletes.
+ */
+export const upsertRecords = internalMutation({
+  args: { rows: v.array(recordRow) },
+  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
+    const outcomes: UpsertOutcome[] = [];
+    for (const row of rows) {
+      const doc = {
+        recordType: row.recordType,
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        snatchRecord: row.snatchRecord,
+        cjRecord: row.cjRecord,
+        totalRecord: row.totalRecord,
+      };
+      const existing = (
+        await ctx.db
+          .query('records')
+          .withIndex('by_type_age_gender', (q) =>
+            q.eq('recordType', doc.recordType).eq('ageCategory', doc.ageCategory).eq('gender', doc.gender),
+          )
+          .collect()
+      ).find((r) => r.weightClass === doc.weightClass);
+      if (!existing) {
+        await ctx.db.insert('records', doc);
+        outcomes.push({ wasInsert: true, wasChanged: true });
+      } else if (
+        existing.snatchRecord !== doc.snatchRecord ||
+        existing.cjRecord !== doc.cjRecord ||
+        existing.totalRecord !== doc.totalRecord
+      ) {
+        await ctx.db.replace(existing._id, doc);
+        outcomes.push({ wasInsert: false, wasChanged: true });
+      } else {
+        outcomes.push({ wasInsert: false, wasChanged: false });
+      }
+    }
+    if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
+    return outcomes;
+  },
+});
