@@ -137,7 +137,7 @@ export const meetSample = internalQuery({
       .collect();
     const sessions = [...new Set(athletes.map((a) => a.sessionNumber).filter((n): n is number => n !== undefined))];
     const platforms = [...new Set(athletes.map((a) => a.sessionPlatform).filter((p): p is string => p !== undefined))];
-    const clubs = [...new Set(athletes.map((a) => a.club))].slice(0, 3);
+    const clubs = [...new Set(athletes.map((a) => a.club).filter((club) => club.trim() !== ''))].slice(0, 3);
     const names = [...new Set(athletes.map((a) => a.name))].slice(0, 100);
     return { sessions: sessions.slice(0, 4), platforms: platforms.slice(0, 2), clubs, names };
   },
