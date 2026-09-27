@@ -37,4 +37,20 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit#gid=0')).toBe('0');
     expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit?usp=sharing')).toBeNull();
   });
+
+  it('reads California South from its "WSO record" column, the class being the upper bound', () => {
+    const csv = [
+      'ageGroup,gender,bodyWeightMin,bodyWeightMax,lift,American Record,WSO record',
+      'U11,F,0,30,Snatch,22,15',
+      'U11,F,0,30,Total,54,37',
+      'U11,F,30,33,Snatch,40,28',
+      'U11,F,30,33,Total,90,63',
+      'U11,F,61,,Total,99,81',
+    ].join('\n');
+    expect(parseFlatSheet(csv, 'California South', 'WSO record')).toEqual([
+      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '30', snatch_record: 15, cj_record: null, total_record: 37 },
+      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '33', snatch_record: 28, cj_record: null, total_record: 63 },
+      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '61+', snatch_record: null, cj_record: null, total_record: 81 },
+    ]);
+  });
 });

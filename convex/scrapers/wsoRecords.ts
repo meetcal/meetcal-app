@@ -33,10 +33,18 @@ const flat = (wso: string, sheetUrl: string): WsoSource => ({
   },
 });
 
+/** California South: the sheet's first tab, the value in "WSO record". */
+const californiaSouth = (sheetUrl: string): WsoSource => ({
+  wso: 'California South',
+  scrape: async () =>
+    parseFlatSheet(await fetchText(`https://docs.google.com/spreadsheets/d/${sheetIdOf(sheetUrl)}/gviz/tq?tqx=out:csv`, 60_000), 'California South', 'WSO record'),
+});
+
 export const WSO_SOURCES: WsoSource[] = [
   flat('Georgia', 'https://docs.google.com/spreadsheets/d/1HM1H51pUmhoWDdSUp2RT-mCaUX2a8NB7aUSYVwWT0AU/edit?gid=908416148#gid=908416148'),
   flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012'),
   flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit?gid=35344992#gid=35344992'),
+  californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 
 const kg = (value: number | null | undefined) => (value ? `${value}kg` : 'None');
