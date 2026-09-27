@@ -110,9 +110,8 @@ export const watchdog = internalAction({
     for (const [job, { schedule }] of Object.entries(JOBS)) {
       const notice = watch(job, statuses.get(job) ?? null, lastScheduled(schedule, now - START_MARGIN_MS), now);
       if (!notice) continue;
-      // Recorded before sending, so a failed send is retried rather than re-detected.
-      await ctx.runMutation(internal.cronStatus.markAlerting, { job, alerting: notice.kind as 'missed' | 'stuck' });
-      await ctx.runMutation(internal.cronStatus.queueAlerts, { job, alerts: [{ kind: notice.kind, detail: notice.detail }] });
+      // Queued before sending, so a failed send is retried rather than re-detected.
+      await ctx.runMutation(internal.cronStatus.raiseAlert, { job, kind: notice.kind as 'missed' | 'stuck', detail: notice.detail });
       pending.push(notice);
     }
     if (pending.length === 0) return [];

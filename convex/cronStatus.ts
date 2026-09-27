@@ -2,8 +2,6 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from './_generated/server';
 import { afterRun, type Alerting, type Notice } from './lib/cronAlerts';
 
-const alertingValue = v.optional(v.union(v.literal('failed'), v.literal('missed'), v.literal('stuck')));
-
 async function statusOf(ctx: Pick<QueryCtx, 'db'>, job: string) {
   return await ctx.db
     .query('cron_status')
@@ -39,12 +37,16 @@ export const finish = internalMutation({
   },
 });
 
-/** Queues alerts for a job (the watchdog's, before it sends them). */
-export const queueAlerts = internalMutation({
-  args: { job: v.string(), alerts: v.array(v.object({ kind: v.string(), detail: v.string() })) },
-  handler: async (ctx, { job, alerts }) => {
+/**
+ * The watchdog raises an incident (missed or stuck): marks the job as alerting
+ * and queues the notice in one write, so the incident is never recorded
+ * without the email that reports it.
+ */
+export const raiseAlert = internalMutation({
+  args: { job: v.string(), kind: v.union(v.literal('missed'), v.literal('stuck')), detail: v.string() },
+  handler: async (ctx, { job, kind, detail }) => {
     const existing = await statusOf(ctx, job);
-    if (existing) await ctx.db.patch(existing._id, { unsent: [...(existing.unsent ?? []), ...alerts] });
+    if (existing) await ctx.db.patch(existing._id, { alerting: kind, unsent: [...(existing.unsent ?? []), { kind, detail }] });
   },
 });
 
@@ -66,13 +68,4 @@ export const markSent = internalMutation({
 export const all = internalQuery({
   args: {},
   handler: async (ctx) => await ctx.db.query('cron_status').collect(),
-});
-
-/** The watchdog marks the alert it sent so it is not sent again. */
-export const markAlerting = internalMutation({
-  args: { job: v.string(), alerting: alertingValue },
-  handler: async (ctx, { job, alerting }) => {
-    const existing = await statusOf(ctx, job);
-    if (existing) await ctx.db.patch(existing._id, { alerting });
-  },
 });

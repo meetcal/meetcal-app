@@ -75,7 +75,10 @@ const TIMELINE_YEARS = 3;
 const REFRESH_DELAY_MS = 5000;
 /** More pending hints than this and a refresh rebuilds everything. */
 const MAX_TARGETED_HINTS = 2000;
-/** A refresh that finds a full rebuild running tries again after this. */
+/**
+ * While a full rebuild is marked running, a refresh stays queued this far
+ * ahead: it waits for the rebuild, and restarts it if its stages stopped.
+ */
 const REBUILD_WAIT_MS = 60 * 1000;
 /**
  * A rebuild stage starts at least every 10 minutes (Convex stops an action
@@ -403,28 +406,39 @@ export const buildSearchShards = internalAction({
   },
 });
 
-/** The pending shard changes (oldest first), a page at a time. */
+/**
+ * The pending shard changes (oldest first), a page at a time. Each name's
+ * presence is read from the directory now rather than taken from the row: the
+ * shards follow the directory, and a full rebuild rewrites the directory
+ * without touching these rows, so a row's own flag can be out of date.
+ */
 export const pendingShardChanges = internalQuery({
   args: {},
-  handler: async (ctx) => (await ctx.db.query('search_shard_pending').take(500)).map(({ _id, name, present }) => ({ id: _id, name, present })),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query('search_shard_pending').take(500);
+    if (rows.length === 0) return [];
+    const directory = new Set(directoryNames((await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? ''));
+    return rows.map(({ _id, name }) => ({ id: _id, name, present: directory.has(name) }));
+  },
 });
 
-/** Deletes pending changes the shards now hold, unless the name changed again meanwhile. */
+/** Deletes pending changes the shards now hold: those whose name the directory still has (or lacks) as applied. */
 export const clearPendingShardChanges = internalMutation({
   args: { applied: v.array(v.object({ id: v.id('search_shard_pending'), present: v.boolean() })) },
   handler: async (ctx, { applied }) => {
+    const directory = new Set(directoryNames((await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? ''));
     for (const { id, present } of applied) {
       const row = await ctx.db.get(id);
-      if (row && row.present === present) await ctx.db.delete(id);
+      if (row && directory.has(row.name) === present) await ctx.db.delete(id);
     }
   },
 });
 
 /**
- * Applies every pending name change (`search_shard_pending`) to the shards it
- * touches, a few shards per mutation, then clears what it applied. Re-applying
- * is harmless (set updates), so a refresh that fails part way leaves the
- * changes for the next one.
+ * Brings the shards of every pending name (`search_shard_pending`) in line
+ * with the directory, a few shards per mutation, then clears what it applied.
+ * Re-applying is harmless (set updates), so a refresh that fails part way
+ * leaves the changes for the next one.
  */
 async function applyPendingShardChanges(ctx: ActionCtx): Promise<void> {
   for (;;) {
@@ -549,10 +563,10 @@ async function refreshState(ctx: QueryCtx) {
 }
 
 /** Schedules a refresh unless one is already waiting (called by every write). */
-export async function scheduleRefresh(ctx: MutationCtx): Promise<void> {
+export async function scheduleRefresh(ctx: MutationCtx, delayMs: number = REFRESH_DELAY_MS): Promise<void> {
   const state = await refreshState(ctx);
   if (state?.scheduled) return;
-  await ctx.scheduler.runAfter(REFRESH_DELAY_MS, internal.views.refresh, {});
+  await ctx.scheduler.runAfter(delayMs, internal.views.refresh, {});
   if (state) await ctx.db.patch(state._id, { scheduled: true });
   else await ctx.db.insert('view_state', { name: 'refresh', scheduled: true, baseline: [] });
 }
@@ -669,6 +683,14 @@ export const textViewAnyAge = internalQuery({
   handler: async (ctx, { key }) => await readViewTextAnyAge(ctx, key),
 });
 
+/** Queues a refresh `delayMs` ahead unless one is already waiting. */
+export const queueRefresh = internalMutation({
+  args: { delayMs: v.number() },
+  handler: async (ctx, { delayMs }) => {
+    await scheduleRefresh(ctx, delayMs);
+  },
+});
+
 /** Marks a rebuild running (and beats its heartbeat) or finished. Each stage calls it with `true` as it starts. */
 export const setRebuilding = internalMutation({
   args: { rebuilding: v.boolean() },
@@ -761,7 +783,8 @@ export const rebuildStage = internalAction({
           restamp: false,
         });
         await ctx.runMutation(internal.views.setRebuilding, { rebuilding: false });
-        if (args.again) await ctx.scheduler.runAfter(0, internal.views.refresh, {});
+        // Joins the probe refresh if one is queued.
+        if (args.again) await ctx.runMutation(internal.views.queueRefresh, { delayMs: 0 });
         return 'done';
       }
     }
@@ -770,6 +793,8 @@ export const rebuildStage = internalAction({
 
 async function startRebuild(ctx: ActionCtx, begin: RefreshBegin, again: boolean): Promise<void> {
   await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true });
+  // The probe that notices if a stage fails (see `refresh`).
+  await ctx.runMutation(internal.views.queueRefresh, { delayMs: REBUILD_WAIT_MS });
   await ctx.scheduler.runAfter(0, internal.views.rebuildStage, {
     stage: 'scan',
     offset: 0,
@@ -815,11 +840,12 @@ export const refresh = internalAction({
     const moved =
       begin.baseline === null ||
       begin.versions.some((v) => v.version !== (begin.baseline!.find((b) => b.table === v.table)?.version ?? 0));
-    if (begin.hints.length === 0 && !moved) return { hints: 0 };
+    // Checked before the no-change return: a rebuild whose stage failed
+    // must be restarted even when nothing else was written.
     const rebuildAlive = begin.rebuildHeartbeat !== null && Date.now() - begin.rebuildHeartbeat < REBUILD_STALE_MS;
     if (begin.rebuilding && rebuildAlive) {
-      // A full rebuild is running and will refresh again when it ends.
-      await ctx.scheduler.runAfter(REBUILD_WAIT_MS, internal.views.refresh, {});
+      // Keeps checking until the rebuild ends (and refreshes after it).
+      await ctx.runMutation(internal.views.queueRefresh, { delayMs: REBUILD_WAIT_MS });
       return { waiting: 1 };
     }
     if (begin.rebuilding) {
@@ -827,6 +853,7 @@ export const refresh = internalAction({
       await startRebuild(ctx, begin, true);
       return { restarted: 1 };
     }
+    if (begin.hints.length === 0 && !moved) return { hints: 0 };
     if (begin.overflow || begin.baseline === null) {
       // Too many changes to target (or no baseline yet): rebuild everything,
       // then refresh again for whatever arrived meanwhile.

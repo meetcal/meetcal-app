@@ -37,6 +37,12 @@ export const HTTP_VALIDATOR_CACHE_LIMIT = 64;
 export type ValidatorEntry<T = unknown> = {
   etag: string;
   value: T;
+  /**
+   * When the request that stored this entry started (a counter, not a
+   * clock). Tags are content hashes with no order, so of two overlapping
+   * requests the one started later is taken as the newer.
+   */
+  started?: number;
 };
 
 /** Insertion-ordered LRU: `Map` keys iterate oldest-first. */

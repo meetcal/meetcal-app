@@ -1735,6 +1735,31 @@ describe('conditional reads for meet queries', () => {
     await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
   });
 
+  it('keeps a slower full answer from replacing the one a later call already stored', async () => {
+    let releaseSlow: (() => void) | undefined;
+    let calls = 0;
+    installTransport(async () => {
+      calls += 1;
+      if (calls === 1) {
+        // The slow call: the server read the data while "v1" was current.
+        await new Promise<void>((resolve) => {
+          releaseSlow = resolve;
+        });
+        return { etag: '"v1"', body: [meetRow('Meet A')] };
+      }
+      if (calls === 2) return { etag: '"v2"', body: [meetRow('Meet B')] };
+      return { etag: '"v2"' };
+    });
+
+    const slow = fetchApiMeets();
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    releaseSlow?.();
+    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
+    // "v2" is still the remembered tag, so the next call revalidates it.
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
+    expect(calls).toBe(3);
+  });
+
   it('retries without a tag when a bodiless answer names a different tag than was sent', async () => {
     const { sentTag, dataCalls } = queueTransport([
       { etag: '"v1"', body: [meetRow('Meet A')] },

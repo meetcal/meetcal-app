@@ -389,6 +389,8 @@ function readConditional(value: unknown, path: string): ConditionalAnswer {
 }
 
 const validatorCache = new ValidatorCache(HTTP_VALIDATOR_CACHE_LIMIT);
+// Orders overlapping revalidations of one key (`ValidatorEntry.started`).
+let revalidationsStarted = 0;
 
 /** Forgets every remembered `etag`/body pair. For tests and sign-out style resets. */
 export function clearHttpValidatorCache(): void {
@@ -414,9 +416,12 @@ function stableKey(fn: string, args: Record<string, unknown>): string {
  * the request is in flight cannot strand a bodiless answer; if a concurrent
  * request replaced that entry meanwhile, the answer resolves to the
  * replacement instead, so a slow revalidation never returns data older than
- * what a faster one already stored. A bodiless answer naming a different tag
- * than we sent is not trusted: the entry is dropped and the request is retried
- * once without a tag.
+ * what a faster one already stored. Likewise a full answer is not stored over
+ * an entry stored (or confirmed) by a request that started after it, and
+ * resolves to that entry instead: the slower response may have read the data
+ * before the faster one did. A bodiless answer naming a different tag than we
+ * sent is not trusted: the entry is dropped and the request is retried once
+ * without a tag.
  */
 async function getRevalidated<T>(
   path: string,
@@ -425,6 +430,8 @@ async function getRevalidated<T>(
   validate: (json: unknown) => T,
 ): Promise<T> {
   const key = stableKey(fn, args);
+  revalidationsStarted += 1;
+  const started = revalidationsStarted;
   const held = validatorCache.get(key) as ValidatorEntry<T> | undefined;
   const call = (ifNoneMatch: string | undefined): Promise<unknown> =>
     request({ path, fn, kind: 'query', args: { ...args, ifNoneMatch }, conditional: true });
@@ -439,7 +446,8 @@ async function getRevalidated<T>(
         // publish the superseded value over it.
         return current.value;
       }
-      if (current === held) validatorCache.set(key, held); // refresh recency
+      // Refreshes recency, and dates the entry to this confirmation.
+      if (current === held) validatorCache.set(key, { ...held, started });
       return held.value;
     }
     validatorCache.delete(key);
@@ -448,9 +456,11 @@ async function getRevalidated<T>(
   }
 
   const value = validate(answer.body);
+  const current = validatorCache.get(key) as ValidatorEntry<T> | undefined;
+  if (current && (current.started ?? 0) > started) return current.value;
   const etag = usableEtag(answer.etag);
   if (etag) {
-    validatorCache.set(key, { etag, value });
+    validatorCache.set(key, { etag, value, started });
   } else {
     validatorCache.delete(key);
   }

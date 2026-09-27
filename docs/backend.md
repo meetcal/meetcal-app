@@ -37,7 +37,7 @@ npx convex run migrations:backfillNameKeys    # fills lifting_results.nameKey, t
 npx convex run migrations:backfillSummaries   # fills athlete_summary from the history documents
 ```
 
-`views:rebuildAll` rebuilds the histories, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
+`views:rebuildAll` rebuilds the histories, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. While it runs, a refresh checks on it every minute and starts it again if a stage stopped for 15 minutes. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
 
 Check the result with `npx convex run parity:run`. It compares every fast path (views, histories, summaries, search shards) with a live computation from the raw tables and should report 0 mismatches. `migrations:countPage` counts a table a page at a time, for checking a load against its source.
 
