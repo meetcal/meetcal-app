@@ -247,10 +247,12 @@ export const upsertMeets = internalMutation({
 const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
 
 /**
- * USA Masters events from usamasters.net, upserted. The site's names differ
- * from the meets already in the table ("2027 National Masters" vs "2027 USA
- * Masters Nationals"), so an event is matched to a USAMW meet whose dates
- * overlap rather than by name. A new event is inserted. A match takes every
+ * USA Masters events from usamasters.net, upserted. An event is matched to
+ * the USAMW meet stored under its name (case and spacing folded); the site's
+ * names often differ from the stored ones ("2027 National Masters" vs "2027
+ * USA Masters Nationals"), so failing that, to the one unclaimed USAMW meet
+ * whose dates overlap. Several overlapping meets is ambiguous and reported,
+ * not guessed. A new event is inserted. A match takes every
  * value the site gives (dates, venue, city, state, time zone); fields the
  * site leaves blank keep what is stored, and a move to another city clears
  * the old venue's street and zip. The stored name is kept: athletes and
@@ -261,13 +263,39 @@ export const syncUsamwEvents = internalMutation({
   handler: async (ctx, { events }) => {
     const now = Date.now();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[] };
-    for (const event of events) {
-      const candidates = await ctx.db
+    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[] };
+    // Every USAMW meet that has not ended before the earliest event.
+    const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
+    const usamw = (
+      await ctx.db
         .query('meets')
-        .withIndex('by_end_date', (q) => q.gte('endDate', event.startDate))
-        .collect();
-      const match = candidates.find((meet) => meet.federation === 'USAMW' && meet.startDate <= event.endDate);
+        .withIndex('by_end_date', (q) => q.gte('endDate', earliest))
+        .collect()
+    ).filter((meet) => meet.federation === 'USAMW');
+    // A meet stored under the event's own name (folded) is that event; those
+    // are claimed first, so a date match never takes another event's meet.
+    const byName = new Map<number, Doc<'meets'>>();
+    const claimed = new Set<string>();
+    events.forEach((event, i) => {
+      const named = usamw.find((meet) => normalizeName(meet.name) === normalizeName(event.name) && !claimed.has(meet._id));
+      if (named) {
+        byName.set(i, named);
+        claimed.add(named._id);
+      }
+    });
+    for (const [i, event] of events.entries()) {
+      let match = byName.get(i);
+      if (!match) {
+        // Otherwise the one unclaimed USAMW meet whose dates overlap; two or
+        // more is ambiguous (two events on one weekend), left for a person.
+        const overlapping = usamw.filter((meet) => !claimed.has(meet._id) && meet.startDate <= event.endDate && meet.endDate >= event.startDate);
+        if (overlapping.length > 1) {
+          result.ambiguous.push(`${event.name}: ${overlapping.map((meet) => meet.name).join(' / ')}`);
+          continue;
+        }
+        match = overlapping[0];
+        if (match) claimed.add(match._id);
+      }
       if (!match) {
         await ctx.db.insert('meets', {
           ...event,

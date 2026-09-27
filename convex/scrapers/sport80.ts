@@ -43,27 +43,25 @@ class Sport80 {
     };
   }
 
-  private async post(url: string, payload?: Dict): Promise<Dict | null> {
+  /** A page of a table; a failed request throws, so a partial table is never taken for a whole one. */
+  private async post(url: string, payload?: Dict): Promise<Dict> {
     const response = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
       body: payload === undefined ? undefined : JSON.stringify(payload),
       signal: AbortSignal.timeout(60_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) throw new Error(`POST ${new URL(url).pathname} failed with ${response.status}`);
     return (await response.json()) as Dict;
   }
 
-  /** Every page's `data`, following `next_page_url` (a failed page ends the walk, as before). */
-  private async collate(first: Dict | null, payload?: Dict): Promise<Dict[]> {
-    if (!first) return [];
+  /** Every page's `data`, following `next_page_url`; any failed page fails the whole table. */
+  private async collate(first: Dict, payload?: Dict): Promise<Dict[]> {
     const rows: Dict[] = [...((first.data as Dict[]) ?? [])];
     let current = first;
     while (typeof current.next_page_url === 'string' && current.next_page_url) {
-      const next = await this.post(current.next_page_url, payload);
-      if (!next) break;
-      rows.push(...((next.data as Dict[]) ?? []));
-      current = next;
+      current = await this.post(current.next_page_url, payload);
+      rows.push(...((current.data as Dict[]) ?? []));
     }
     return rows;
   }
@@ -93,22 +91,25 @@ class Sport80 {
 const INGEST_BATCH = 200;
 
 type MeetOutcome = { meet: string; eventId: string; rows: number; inserted: number; updated: number; unchanged: number; failed: number };
-type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[] }[]; outcomes: MeetOutcome[] };
+type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[] }[]; outcomes: MeetOutcome[]; failed: string[] };
 
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }): Promise<RunResult> => {
     const api = await Sport80.connect();
     const year = new Date().getUTCFullYear();
+    // Everything that could not be read. The rest is still stored, then the
+    // run fails naming these, so the alert fires and the next run retries.
+    const failed: string[] = [];
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
         events.push(...(await api.eventIndex(y)));
       } catch (error) {
-        console.error(`sport80: event index ${y} failed: ${(error as Error).message}`);
+        failed.push(`event index ${y}: ${(error as Error).message}`);
       }
     }
-    if (!events.length) throw new Error('sport80: no events fetched');
+    if (!events.length) throw new Error(`sport80: no events fetched (${failed.join('; ')})`);
 
     const meets: RunResult['meets'] = [];
     const seen = new Set<string>();
@@ -122,12 +123,13 @@ export const run = internalAction({
       try {
         items = await api.eventResults(eventId);
       } catch (error) {
-        console.error(`sport80: results for ${meet} (${eventId}) failed: ${(error as Error).message}`);
+        failed.push(`${meet} (event ${eventId}, ${eventDate(event)}): ${(error as Error).message}`);
         continue;
       }
       if (items.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), items) });
     }
-    if (dryRun) return { meets, outcomes: [] };
+    for (const failure of failed) console.error(`sport80: ${failure}`);
+    if (dryRun) return { meets, outcomes: [], failed };
 
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows } of meets) {
@@ -169,6 +171,7 @@ export const run = internalAction({
     const inserted = outcomes.filter((o) => o.inserted > 0).map((o) => o.meet);
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated`);
-    return { meets, outcomes };
+    if (failed.length) throw new Error(`sport80: ${failed.length} page(s) could not be read, the rest was stored: ${failed.join('; ')}`);
+    return { meets, outcomes, failed };
   },
 });

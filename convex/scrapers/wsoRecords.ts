@@ -266,7 +266,10 @@ export const run = internalAction({
       results.push(result);
       try {
         result.records = await source.scrape();
-        if (!dryRun && result.records.length) {
+        // Every source has records; none means its sheet, tab or layout
+        // changed, which must fail loudly rather than leave the old ones stale.
+        if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
+        if (!dryRun) {
           Object.assign(result, source.replace ? await replaceWso(ctx, source.wso, result.records) : await syncWso(ctx, result.records));
         }
       } catch (error) {
