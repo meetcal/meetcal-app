@@ -7,6 +7,7 @@ import { fetchText } from './lib/http';
 import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
+import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -44,15 +45,27 @@ const californiaSouth = (sheetUrl: string): WsoSource => ({
     }),
 });
 
+type TabParser = (csv: string, wso: string) => WsoRecord[];
+
 /** Sheets with a tab per age group (or stack of them), fetched together. */
-const tabbed = (wso: string, sheetUrl: string, tabs: [gid: string, layout: SideBySide][]): WsoSource => ({
+const tabbed = (wso: string, sheetUrl: string, tabs: [gid: string, parse: TabParser][], finish = (records: WsoRecord[]) => records): WsoSource => ({
   wso,
   scrape: async () => {
     const sheetId = sheetIdOf(sheetUrl);
     const texts = await Promise.all(tabs.map(([gid]) => fetchText(gvizCsvByGid(sheetId, gid), 60_000)));
-    return tabs.flatMap(([, layout], i) => parseSideBySide(texts[i], wso, layout));
+    return finish(tabs.flatMap(([, parse], i) => parse(texts[i], wso)));
   },
 });
+
+const sideBySide =
+  (layout: SideBySide): TabParser =>
+  (csv, wso) =>
+    parseSideBySide(csv, wso, layout);
+
+const newJersey =
+  (age: string): TabParser =>
+  (csv, wso) =>
+    parseNewJerseyTab(csv, wso, age);
 
 const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };
 
@@ -62,30 +75,53 @@ export const WSO_SOURCES: WsoSource[] = [
   flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit?gid=35344992#gid=35344992'),
   flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', DMV_COLUMNS),
   tabbed('Florida', 'https://docs.google.com/spreadsheets/d/16sNrOTnGrGeXE4L5skgCfE5vLTA7ggpaHWfMQNh0DfQ/view?gid=490899077#gid=490899077', [
-    ['490899077', floridaLayout('U13')],
-    ['1300164988', floridaLayout('U15')],
-    ['1950298087', floridaLayout('U17')],
-    ['660284224', floridaLayout('Junior')],
-    ['662417948', floridaLayout('Senior')],
-    ['1222085467', floridaLayout('Masters 35')],
-    ['1267986954', floridaLayout('Masters 40')],
-    ['411054882', floridaLayout('Masters 45')],
-    ['1758139651', floridaLayout('Masters 50')],
-    ['1041309770', floridaLayout('Masters 55')],
-    ['1879007867', floridaLayout('Masters 60')],
-    ['1005330611', floridaLayout('Masters 65')],
-    ['1193133330', floridaLayout('Masters 70')],
-    ['373452428', floridaLayout('Masters 75')],
-    ['851164639', floridaLayout('Masters 80')],
-    ['1894058438', floridaLayout('Masters 85')],
-    ['575067900', floridaLayout('Masters 90')],
+    ['490899077', sideBySide(floridaLayout('U13'))],
+    ['1300164988', sideBySide(floridaLayout('U15'))],
+    ['1950298087', sideBySide(floridaLayout('U17'))],
+    ['660284224', sideBySide(floridaLayout('Junior'))],
+    ['662417948', sideBySide(floridaLayout('Senior'))],
+    ['1222085467', sideBySide(floridaLayout('Masters 35'))],
+    ['1267986954', sideBySide(floridaLayout('Masters 40'))],
+    ['411054882', sideBySide(floridaLayout('Masters 45'))],
+    ['1758139651', sideBySide(floridaLayout('Masters 50'))],
+    ['1041309770', sideBySide(floridaLayout('Masters 55'))],
+    ['1879007867', sideBySide(floridaLayout('Masters 60'))],
+    ['1005330611', sideBySide(floridaLayout('Masters 65'))],
+    ['1193133330', sideBySide(floridaLayout('Masters 70'))],
+    ['373452428', sideBySide(floridaLayout('Masters 75'))],
+    ['851164639', sideBySide(floridaLayout('Masters 80'))],
+    ['1894058438', sideBySide(floridaLayout('Masters 85'))],
+    ['575067900', sideBySide(floridaLayout('Masters 90'))],
   ]),
   tabbed('Carolina', 'https://docs.google.com/spreadsheets/d/1rKFzpkLCT-FE2SzM0qpUOoZ788YHl7dg/view?gid=1785893123#gid=1785893123', [
-    ['1785893123', carolinaLayout('Youth')],
-    ['1157313505', carolinaLayout('Junior')],
-    ['2109027801', carolinaLayout('Senior')],
-    ['448005775', carolinaLayout('Masters')],
+    ['1785893123', sideBySide(carolinaLayout('Youth'))],
+    ['1157313505', sideBySide(carolinaLayout('Junior'))],
+    ['2109027801', sideBySide(carolinaLayout('Senior'))],
+    ['448005775', sideBySide(carolinaLayout('Masters'))],
   ]),
+  tabbed(
+    'New Jersey',
+    'https://docs.google.com/spreadsheets/d/1y8mXDBLfqmszlzWhv-4wkeWQZS5Kb9Aj4RnB39CBJmw/edit?gid=0#gid=0',
+    [
+      ['0', newJersey('Senior')],
+      ['336358523', newJersey('Junior')],
+      ['2116279815', newJersey('U17')],
+      ['1466042495', newJersey('U15')],
+      ['1569406083', newJersey('U13')],
+      ['575793496', newJersey('Masters 35')],
+      ['2006037821', newJersey('Masters 40')],
+      ['1977742090', newJersey('Masters 45')],
+      ['1673511438', newJersey('Masters 50')],
+      ['1894823432', newJersey('Masters 55')],
+      ['1933132040', newJersey('Masters 60')],
+      ['127836685', newJersey('Masters 65')],
+      ['239397826', newJersey('Masters 70')],
+      // 75-79 men, 75+ women. The men's 80+ tab the Python listed (gid
+      // 389932308, all vacant) is gone; that gid is now the welcome page.
+      ['2047529058', newJersey('Masters 75')],
+    ],
+    consolidateRecords,
+  ),
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 
