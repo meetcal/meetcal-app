@@ -29,4 +29,7 @@ crons.daily('usamw national records', { hourUTC: 4, minuteUTC: 5 }, internal.scr
 // VPS: `35 0 * * *` EDT.
 crons.daily('intl rankings', { hourUTC: 4, minuteUTC: 35 }, internal.scrapers.intlRankings.run, {});
 
+// VPS: `5 2 * * *` EDT.
+crons.daily('results (sport80)', { hourUTC: 6, minuteUTC: 5 }, internal.scrapers.sport80.run, {});
+
 export default crons;

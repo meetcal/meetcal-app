@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
-import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
+import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { bumpVersion, type SourceTable } from './lib/views';
@@ -72,8 +72,11 @@ function athleteKeys(hints: WriteHint[]): string[] {
 const liftingResult = v.object(liftingResultsFields);
 
 /**
- * Inserts or updates results, matched on `(eventId, name)` like the scrapers
- * always have. `nameKey` is derived here, never taken from the caller.
+ * Inserts or updates results, matched on (eventId, meet, name) like the
+ * Python writer's natural key. `nameKey` is derived here, never taken from
+ * the caller, and the federation is normalized (`normalize_federation`). A
+ * row whose values are unchanged is not written, so re-syncing an unchanged
+ * meet bumps no version and invalidates no view.
  */
 export const upsertLiftingResults = internalMutation({
   args: { rows: v.array(liftingResult) },
@@ -81,29 +84,53 @@ export const upsertLiftingResults = internalMutation({
     const hints: WriteHint[] = [];
     let inserted = 0;
     let updated = 0;
+    let unchanged = 0;
     for (const row of rows) {
-      const doc = { ...row, nameKey: normalizeName(row.name) };
-      const existing = await ctx.db
-        .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
-        .first();
-      if (existing) {
-        hints.push(...resultHints(existing));
-        await ctx.db.replace(existing._id, doc);
-        updated += 1;
-      } else {
+      const { legacyId: _legacy, nameKey: _key, ...fields } = row;
+      const doc = {
+        ...fields,
+        federation: fields.federation === undefined ? undefined : normalizeFederation(fields.federation),
+        nameKey: normalizeName(row.name),
+      };
+      const existing = (
+        await ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
+          .collect()
+      ).find((r) => r.meet === row.meet);
+      if (!existing) {
         await ctx.db.insert('lifting_results', doc);
         inserted += 1;
+        hints.push(...resultHints(doc));
+        continue;
       }
+      const { _id, _creationTime, ...current } = existing;
+      if (sameValues(current, doc)) {
+        unchanged += 1;
+        continue;
+      }
+      hints.push(...resultHints(existing));
+      await ctx.db.replace(_id, doc);
+      updated += 1;
       hints.push(...resultHints(doc));
     }
-    if (rows.length > 0) {
+    if (hints.length > 0) {
       await writeHistories(ctx, athleteKeys(hints));
       await recordWrite(ctx, 'lifting_results', hints);
     }
-    return { inserted, updated };
+    return { inserted, updated, unchanged };
   },
 });
+
+/** Field-by-field equality of two documents' values (absent and `undefined` are the same). */
+function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] === undefined && b[key] === undefined) continue;
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
 
 export const deleteLiftingResults = internalMutation({
   args: { keys: v.array(v.object({ eventId: v.string(), name: v.string() })) },

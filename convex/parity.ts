@@ -253,3 +253,20 @@ export const run = internalAction({
     return { checks, mismatches: mismatches.slice(0, 50) };
   },
 });
+
+/** Stored `lifting_results` rows of the given events, for comparing a scraper port with Postgres. */
+export const resultRowsForEvents = internalQuery({
+  args: { eventIds: v.array(v.string()) },
+  handler: async (ctx, { eventIds }) => {
+    const rows = [];
+    for (const eventId of eventIds) {
+      rows.push(
+        ...(await ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
+          .collect()),
+      );
+    }
+    return rows.map(({ _id, _creationTime, nameKey, ...row }) => row);
+  },
+});
