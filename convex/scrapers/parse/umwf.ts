@@ -1,3 +1,4 @@
+import type { RecordHolder } from './holder';
 import { parseCsv } from '../lib/csv';
 
 // Pure parsing for `scrapers/umwf.ts` (port of `usaw/records_scraper/umwf_records.py`).
@@ -44,6 +45,9 @@ export type UmwfRecord = {
   snatch_record: number;
   cj_record: number;
   total_record: number;
+  snatch_by?: RecordHolder;
+  cj_by?: RecordHolder;
+  total_by?: RecordHolder;
 };
 
 /** "110+ kg Category" -> "110+kg". */

@@ -1,3 +1,4 @@
+import type { RecordHolder } from './holder';
 import { parseHtml, type HTMLElement } from '../lib/html';
 import { absoluteUrl } from '../lib/http';
 
@@ -11,6 +12,9 @@ export type UsawRecord = {
   snatch_record: number;
   cj_record: number;
   total_record: number;
+  snatch_by?: RecordHolder;
+  cj_by?: RecordHolder;
+  total_by?: RecordHolder;
 };
 
 function isCurrentRecordsText(text: string): boolean {

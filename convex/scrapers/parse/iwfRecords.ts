@@ -12,6 +12,8 @@
 // exactly eight classes per gender, each with all three lifts, fails the run
 // instead of replacing the stored records.
 
+import type { RecordHolder } from './holder';
+
 export const IWF_PAGES = {
   Senior: 'List_of_world_records_in_Olympic_weightlifting',
   Junior: 'List_of_junior_world_records_in_Olympic_weightlifting',
@@ -31,6 +33,9 @@ export type IwfRecord = {
   snatchRecord: number;
   cjRecord: number;
   totalRecord: number;
+  snatchBy?: RecordHolder;
+  cjBy?: RecordHolder;
+  totalBy?: RecordHolder;
 };
 
 const LIFTS: Record<string, 'snatchRecord' | 'cjRecord' | 'totalRecord'> = {

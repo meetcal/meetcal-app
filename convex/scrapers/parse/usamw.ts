@@ -1,3 +1,4 @@
+import type { RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
 
 // Pure parsing for `scrapers/usamw.ts` (port of `usamw/records/national_records.py`).
@@ -12,6 +13,9 @@ export type UsamwRecord = {
   snatchRecord: number | null;
   cjRecord: number | null;
   totalRecord: number | null;
+  snatchBy?: RecordHolder;
+  cjBy?: RecordHolder;
+  totalBy?: RecordHolder;
 };
 
 /**

@@ -1,5 +1,7 @@
 // Shared by the WSO records parsers (ports of `usaw/wso_sheets_scraper`).
 
+import type { RecordHolder } from '../holder';
+
 /** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
   wso: string;
@@ -9,6 +11,10 @@ export type WsoRecord = {
   snatch_record: number | null;
   cj_record: number | null;
   total_record: number | null;
+  /** Who set each lift (see `parse/holder.ts`); absent where the lift has no value. */
+  snatch_by?: RecordHolder;
+  cj_by?: RecordHolder;
+  total_by?: RecordHolder;
 };
 
 /** The spreadsheet id in a Google Sheets URL (`/d/<id>/`). */
