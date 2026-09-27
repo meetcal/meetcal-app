@@ -10,7 +10,6 @@ import {
   athletesFields,
   intlRankingsFields,
   liftingResultsFields,
-  meetsFields,
   qualifyingTotalsFields,
   recordsFields,
   sessionScheduleFields,
@@ -191,19 +190,55 @@ export const replaceMeetSchedule = internalMutation({
   },
 });
 
-/** Inserts or updates a meet, matched on name. */
-export const upsertMeet = internalMutation({
-  args: { row: v.object(meetsFields) },
-  handler: async (ctx, { row }) => {
-    const existing = await ctx.db
-      .query('meets')
-      .withIndex('by_name', (q) => q.eq('name', row.name))
-      .first();
-    if (existing) await ctx.db.replace(existing._id, row);
-    else await ctx.db.insert('meets', row);
-    // The package views embed the meet row.
-    await recordWrite(ctx, 'meets', [{ kind: 'meet', key: row.name }]);
-    return { updated: existing !== null };
+const scrapedMeet = v.object({
+  name: v.string(),
+  venueName: v.string(),
+  venueStreet: v.string(),
+  venueCity: v.string(),
+  venueState: v.string(),
+  venueZip: v.string(),
+  timeZone: v.string(),
+  startDate: v.string(),
+  endDate: v.string(),
+  status: v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed')),
+  federation: v.optional(v.string()),
+});
+
+/**
+ * Inserts or updates meets matched on name (`upsert_meet`). Only the scraped
+ * columns are written: a meet already marked completed stays completed, and
+ * fields the scrapers do not own (venue map links) are kept. A meet whose
+ * scraped values are unchanged is not written; `updatedAt` moves only with a
+ * real change, so the nightly syncs do not invalidate every meet's views.
+ */
+export const upsertMeets = internalMutation({
+  args: { rows: v.array(scrapedMeet) },
+  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
+    const outcomes: UpsertOutcome[] = [];
+    const hints: WriteHint[] = [];
+    const now = Date.now();
+    for (const row of rows) {
+      const values = { ...row, federation: normalizeFederation(row.federation ?? 'USAW') };
+      const existing = await ctx.db
+        .query('meets')
+        .withIndex('by_name', (q) => q.eq('name', row.name))
+        .first();
+      if (!existing) {
+        await ctx.db.insert('meets', { ...values, updatedAt: now });
+        outcomes.push({ wasInsert: true, wasChanged: true });
+        hints.push({ kind: 'meet', key: row.name });
+        continue;
+      }
+      if (existing.status === 'completed') values.status = 'completed';
+      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]);
+      if (changed) {
+        await ctx.db.patch(existing._id, { ...values, updatedAt: now });
+        hints.push({ kind: 'meet', key: row.name });
+      }
+      outcomes.push({ wasInsert: false, wasChanged: changed });
+    }
+    if (hints.length) await recordWrite(ctx, 'meets', hints);
+    return outcomes;
   },
 });
 

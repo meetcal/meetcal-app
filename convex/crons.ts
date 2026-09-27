@@ -29,6 +29,9 @@ crons.daily('usamw national records', { hourUTC: 4, minuteUTC: 5 }, internal.scr
 // VPS: `35 0 * * *` EDT.
 crons.daily('intl rankings', { hourUTC: 4, minuteUTC: 35 }, internal.scrapers.intlRankings.run, {});
 
+// VPS: `5 1 * * *` EDT.
+crons.daily('meet sync', { hourUTC: 5, minuteUTC: 5 }, internal.scrapers.meets.run, {});
+
 // VPS: `5 2 * * *` EDT.
 crons.daily('results (sport80)', { hourUTC: 6, minuteUTC: 5 }, internal.scrapers.sport80.run, {});
 
