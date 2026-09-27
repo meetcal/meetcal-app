@@ -19,18 +19,22 @@ import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
 import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
+import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 
 /**
  * WSO records (port of the `wso-records` job: one scraper per WSO in
  * `usaw/wso_sheets_scraper/auto_scrapers`). Every WSO runs even when an
  * earlier one failed; the run fails at the end if any did, as the shell loop
  * reported it.
+ *
+ * Each WSO's records are synced as an exact set: a class or age group its
+ * file no longer lists (the weight classes it replaced, an age group it
+ * renamed) is deleted, not left beside the new ones. A source that parses to
+ * nothing fails instead, so a broken sheet never empties a WSO.
  */
 type WsoSource = {
   wso: string;
   scrape: () => Promise<WsoRecord[]>;
-  /** Sync the set exactly (delete what the source dropped) instead of upserting. */
-  replace?: boolean;
 };
 
 /**
@@ -158,7 +162,6 @@ export const WSO_SOURCES: WsoSource[] = [
   },
   {
     wso: 'Illinois',
-    replace: true,
     scrape: async () => {
       const page = 'https://www.illinoisweightlifting.com/';
       const pdfUrl = absoluteUrl(illinoisPdfHref(unescapeHtml(await fetchText(page))), page);
@@ -229,30 +232,22 @@ const wsoRows = (records: WsoRecord[]) =>
 
 /**
  * One record per class, the last listed winning, as it did when the Python
- * upserted row by row. Writing both copies (New York's PDF lists Masters Men
- * 80-84 twice) would flip them every run and report changes that aren't.
+ * upserted row by row (New York's PDF lists Masters Men 80-84 twice).
+ * Classes are compared as stored, after age and gender are normalized.
  */
 function lastPerClass(records: WsoRecord[]): WsoRecord[] {
   const byClass = new Map<string, WsoRecord>();
   for (const record of records) {
-    const key = JSON.stringify([record.age_category, record.gender, record.weight_class]);
+    const key = JSON.stringify([normalizeAgeCategory(record.age_category), normalizeGender(record.gender), record.weight_class]);
     byClass.delete(key);
     byClass.set(key, record);
   }
   return [...byClass.values()];
 }
 
-async function syncWso(ctx: ActionCtx, scraped: WsoRecord[]) {
-  const records = lastPerClass(scraped);
-  const outcomes: { wasInsert: boolean; wasChanged: boolean }[] = await ctx.runMutation(internal.ingest.upsertWsoRecords, { rows: wsoRows(records) });
-  const inserted = outcomes.filter((o) => o.wasInsert).length;
-  const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
-  return { inserted, updated, unchanged: records.length - inserted - updated };
-}
-
-/** An exact-set sync (the PDF sources that replaced their whole set). */
+/** Syncs the WSO's records to exactly the scraped set. */
 async function replaceWso(ctx: ActionCtx, wso: string, records: WsoRecord[]): Promise<{ inserted: number; updated: number; deleted: number; unchanged: number }> {
-  return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(records) });
+  return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(lastPerClass(records)) });
 }
 
 type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
@@ -270,7 +265,7 @@ export const run = internalAction({
         // changed, which must fail loudly rather than leave the old ones stale.
         if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
         if (!dryRun) {
-          Object.assign(result, source.replace ? await replaceWso(ctx, source.wso, result.records) : await syncWso(ctx, result.records));
+          Object.assign(result, await replaceWso(ctx, source.wso, result.records));
         }
       } catch (error) {
         result.error = (error as Error).message;
