@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalMutation } from './_generated/server';
+import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import { normalizeName } from './lib/names';
 import { deleteViewsWithPrefix } from './lib/views';
@@ -114,5 +114,33 @@ export const normalizeReferenceCasing = internalMutation({
     }
     if (patched + deleted > 0) await recordWrite(ctx, table, [{ kind: 'table', key: table }]);
     return { rows: rows.length, patched, deleted };
+  },
+});
+
+const COUNTED_TABLES = v.union(
+  v.literal('athletes'),
+  v.literal('lifting_results'),
+  v.literal('meets'),
+  v.literal('wso_records'),
+  v.literal('records'),
+  v.literal('standards'),
+  v.literal('qualifying_totals'),
+  v.literal('intl_rankings'),
+  v.literal('session_schedule'),
+  v.literal('saved_sessions'),
+  v.literal('user_preferences'),
+);
+
+/**
+ * One page of a table's row count, for checking a data load against its
+ * source (the CLI cannot page the large tables):
+ *
+ *   npx convex run migrations:countPage '{"table": "lifting_results"}'   # repeat with the returned cursor
+ */
+export const countPage = internalQuery({
+  args: { table: COUNTED_TABLES, cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, { table, cursor }) => {
+    const page = await ctx.db.query(table).paginate({ cursor: cursor ?? null, numItems: 8000 });
+    return { count: page.page.length, cursor: page.continueCursor, isDone: page.isDone };
   },
 });
