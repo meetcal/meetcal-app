@@ -2,10 +2,11 @@
 //  MeetCalAPI.swift
 //  MeetCal App Intents
 //
-//  Minimal async URLSession client for the public MeetCal REST API.
-//  Request/response shapes mirror lib/api/meetcal-api.ts. Only the fields the
-//  intents actually use are decoded; unknown fields are ignored so server
-//  additions never break the client.
+//  Minimal async URLSession client for MeetCal's Convex queries, called through
+//  Convex's HTTP API (`POST <deployment>/api/query`). The queries are the ones
+//  lib/api/meetcal-api.ts calls and answer the same JSON the old REST routes
+//  did, so the response models are unchanged. Only the fields the intents use
+//  are decoded; unknown fields are ignored so server additions never break it.
 //
 
 import Foundation
@@ -136,13 +137,14 @@ enum APIDateFormat {
 
 // MARK: - Request bodies
 
-/// JSON body for the `POST` name-list endpoints (`/lifting-results/by-names`,
-/// `/lifting-results/recent`, `/lifting-results/bests`). Matches the backend's
-/// `NameListBody`; nil fields are omitted from the JSON.
-struct NameListBody: Encodable {
-    let names: [String]
-    var cutoff_date: String? = nil
-    var limit_per_name: Int? = nil
+/// One athlete's bests as `results:bests` lists them (`[{ name, best_* }]`:
+/// Convex object keys must be ASCII and athlete names are not, so the query
+/// answers a list that `bests(names:)` turns back into a name-keyed map).
+struct APINamedBests: Decodable {
+    let name: String
+    let best_snatch: Double?
+    let best_cj: Double?
+    let best_total: Double?
 }
 
 // MARK: - History cutoff
@@ -195,26 +197,30 @@ enum HistoryCutoff {
 enum MeetCalAPIError: Error {
     case badStatus(Int)
     case invalidURL
+    /// Convex answered, but with an error (`status` other than `success`).
+    case queryFailed
 }
 
 actor MeetCalAPI {
     static let shared = MeetCalAPI()
 
-    private let baseURL = URL(string: "https://api.meetcal.app")!
-    // Same signal the RN app sends; the API gates stricter validation on it.
-    private let appVersion =
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+    /// The Convex deployment, from the `MeetCalConvexURL` Info.plist key that
+    /// app.config.js fills from `EXPO_PUBLIC_CONVEX_URL`; production otherwise.
+    private let convexURL: URL = {
+        let configured = (Bundle.main.infoDictionary?["MeetCalConvexURL"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        return URL(string: configured.isEmpty ? "https://disciplined-hare-790.convex.cloud" : configured)
+            ?? URL(string: "https://disciplined-hare-790.convex.cloud")!
+    }()
     /// Names per name-list request. Matches `NAMES_QUERY_CHUNK_SIZE` in
-    /// lib/api/meetcal-api.ts; the API rejects more than `MAX_NAME_LIST_LEN`
-    /// (100) names in one request.
+    /// lib/api/meetcal-api.ts; the queries reject more than 100 names.
     private static let nameChunkSize = 40
-    /// The API's `MAX_LIMIT_PER_NAME`; a larger `limit_per_name` is a `400`.
+    /// The queries' `MAX_LIMIT_PER_NAME`; a larger `limitPerName` is an error.
     private static let maxLimitPerName = 200
     private let session: URLSession
     private let ttl: TimeInterval = 300 // ~5 minutes
 
-    // In-memory cache: url string -> (timestamp, raw data)
+    // In-memory cache: request key -> (timestamp, raw data)
     private var memoryCache: [String: (Date, Data)] = [:]
 
     private init() {
@@ -227,26 +233,24 @@ actor MeetCalAPI {
     // MARK: Public endpoints
 
     func meets() async throws -> [APIMeet] {
-        try await getDecoded("/meets")
+        // `meets:list` takes the time its upcoming window is measured from,
+        // rounded down to the hour as the app sends it, so answers share a cache.
+        let hourMs = 3_600_000.0
+        let now = (Date().timeIntervalSince1970 * 1000 / hourMs).rounded(.down) * hourMs
+        return try await query("meets:list", args: ["now": now])
     }
 
     func schedule(meet: String) async throws -> [APIScheduleRow] {
-        try await getDecoded("/meets/schedule", query: ["meet": meet])
+        try await query("meets:schedule", args: ["meet": meet])
     }
 
     func athletes(meet: String) async throws -> [APIAthlete] {
-        try await getDecoded("/meets/athletes", query: ["meet": meet])
+        try await query("meets:athletes", args: ["meet": meet])
     }
 
     func search(_ query: String) async throws -> APISearchResponse {
-        // The live API accepts the search term as `query` (see meetcal-api.ts).
-        try await getDecoded("/search", query: ["query": query])
+        try await self.query("results:search", args: ["query": query])
     }
-
-    // Name lists go in a JSON body (`POST`), never a comma-joined query param,
-    // so a name containing a comma stays one name. Mirrors
-    // `fetchApiResultsByNames` / `fetchApiYearBestsByNames` in
-    // lib/api/meetcal-api.ts.
 
     /// Each name's newest `limitPerName` results (newest first), so a long
     /// career is not downloaded and cached just to show a few rows. Ranges
@@ -258,9 +262,9 @@ actor MeetCalAPI {
         let limit = min(max(limitPerName, 1), Self.maxLimitPerName)
         var rows: [APILiftingResult] = []
         for chunk in Self.chunked(cleaned) {
-            let part: [APILiftingResult] = try await postDecoded(
-                "/lifting-results/by-names",
-                body: NameListBody(names: chunk, limit_per_name: limit)
+            let part: [APILiftingResult] = try await query(
+                "results:byNames",
+                args: ["names": chunk, "limitPerName": limit]
             )
             rows.append(contentsOf: part)
         }
@@ -270,21 +274,23 @@ actor MeetCalAPI {
     func bests(names: [String]) async throws -> [String: APIYearBests] {
         let cleaned = Self.cleanNameList(names)
         guard !cleaned.isEmpty else { return [:] }
-        // 6.2.0+ clients must send the window. One cutoff for every chunk.
+        // One cutoff for every chunk, the window the app uses.
         let cutoff = HistoryCutoff.date(yearsAgo: HistoryCutoff.yearBestsYears)
         var merged: [String: APIYearBests] = [:]
         for chunk in Self.chunked(cleaned) {
-            let part: [String: APIYearBests] = try await postDecoded(
-                "/lifting-results/bests",
-                body: NameListBody(names: chunk, cutoff_date: cutoff)
+            let part: [APINamedBests] = try await query(
+                "results:bests",
+                args: ["names": chunk, "cutoffDate": cutoff]
             )
-            merged.merge(part) { _, new in new }
+            for row in part {
+                merged[row.name] = APIYearBests(best_snatch: row.best_snatch, best_cj: row.best_cj, best_total: row.best_total)
+            }
         }
         return merged
     }
 
-    /// Trims each name and drops blanks, as the backend's `clean_name_list`
-    /// does, so an all-blank list short-circuits instead of drawing a `400`.
+    /// Trims each name and drops blanks, as the queries' `cleanNameList`
+    /// does, so an all-blank list short-circuits instead of drawing an error.
     private static func cleanNameList(_ names: [String]) -> [String] {
         names
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -299,86 +305,65 @@ actor MeetCalAPI {
     }
 
     func qualifyingTotals() async throws -> [APIQualifyingTotalRow] {
-        try await getDecoded("/data/qualifying-totals")
+        try await query("reference:qualifyingTotals")
     }
 
     func standards() async throws -> [APIStandardRow] {
-        try await getDecoded("/data/standards")
+        try await query("reference:standards")
     }
 
     func records() async throws -> [APIRecordRow] {
-        try await getDecoded("/data/records")
+        try await query("reference:records")
     }
 
     func intlRankings() async throws -> [APIIntlRankingRow] {
-        try await getDecoded("/data/intl-rankings")
+        try await query("reference:intlRankings")
     }
 
     // MARK: Core request
 
-    private func getDecoded<T: Decodable>(
-        _ path: String,
-        query: [String: String] = [:]
-    ) async throws -> T {
-        let data = try await fetchData(path, query: query, jsonBody: nil)
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func postDecoded<T: Decodable, Body: Encodable>(
-        _ path: String,
-        body: Body
-    ) async throws -> T {
-        let encoder = JSONEncoder()
-        // Stable key order so the same request always hits the same cache key.
-        encoder.outputFormatting = .sortedKeys
-        let bodyData = try encoder.encode(body)
-        let data = try await fetchData(path, query: [:], jsonBody: bodyData)
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    /// `GET` when `jsonBody` is nil, otherwise `POST` with a JSON body.
-    private func fetchData(
-        _ path: String,
-        query: [String: String],
-        jsonBody: Data?
-    ) async throws -> Data {
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent(path),
-            resolvingAgainstBaseURL: false
-        )
-        if !query.isEmpty {
-            components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-        }
-        guard let url = components?.url else { throw MeetCalAPIError.invalidURL }
-        // GET keys stay the bare URL; POST keys add the body, since the URL
-        // alone does not identify the request.
-        var cacheKey = url.absoluteString
-        if let jsonBody {
-            cacheKey = "POST \(cacheKey) \(String(decoding: jsonBody, as: UTF8.self))"
-        }
-
+    /// Runs a Convex query and decodes its answer. Large answers arrive as
+    /// JSON text (`{ "json": "…" }`, or `{ "etag": …, "json": "…" }` from the
+    /// revalidating queries); that text is the payload. Any other value is
+    /// re-encoded and decoded directly.
+    private func query<T: Decodable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
+        let body: [String: Any] = ["path": path, "args": args, "format": "json"]
+        // Sorted keys: the same request always hits the same cache key.
+        let bodyData = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        let cacheKey = "convex \(String(decoding: bodyData, as: UTF8.self))"
+        let data: Data
         if let cached = cachedData(for: cacheKey) {
-            return cached
+            data = cached
+        } else {
+            data = try await post(bodyData)
+            storeData(data, for: cacheKey)
         }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
 
-        var request = URLRequest(url: url)
+    /// POSTs to `/api/query` and returns the answer's JSON payload.
+    private func post(_ bodyData: Data) async throws -> Data {
+        var request = URLRequest(url: convexURL.appendingPathComponent("api/query"))
+        request.httpMethod = "POST"
+        request.httpBody = bodyData
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let jsonBody {
-            request.httpMethod = "POST"
-            request.httpBody = jsonBody
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        if !appVersion.isEmpty {
-            request.setValue(appVersion, forHTTPHeaderField: "X-MeetCal-App")
-        }
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw MeetCalAPIError.badStatus(http.statusCode)
         }
-
-        storeData(data, for: cacheKey)
-        return data
+        guard
+            let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            envelope["status"] as? String == "success"
+        else {
+            throw MeetCalAPIError.queryFailed
+        }
+        let value = envelope["value"] ?? NSNull()
+        if let object = value as? [String: Any], let text = object["json"] as? String {
+            return Data(text.utf8)
+        }
+        return try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
     }
 
     // MARK: TTL cache (memory + UserDefaults)
