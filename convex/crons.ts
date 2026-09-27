@@ -14,6 +14,9 @@ const crons = cronJobs();
 // writes only when one changes.
 crons.hourly('complete ended meets', { minuteUTC: 15 }, internal.ingest.completeEndedMeets);
 
+// urlwatch: the usamasters.net pages followed by hand, hourly; changes go to Slack.
+crons.hourly('urlwatch', { minuteUTC: 0 }, internal.scrapers.urlwatch.run, {});
+
 // VPS: `15 23 * * *` EDT.
 crons.daily('standards', { hourUTC: 3, minuteUTC: 15 }, internal.scrapers.standards.run, {});
 

@@ -224,6 +224,15 @@ export default defineSchema({
 
   // Each athlete's whole history as JSON text, rewritten with every write to
   // their results (`convex/lib/history.ts`).
+  // The last text of each page the urlwatch cron follows (urlwatch's cache.db).
+  watched_pages: defineTable({
+    url: v.string(),
+    text: v.string(),
+    error: v.optional(v.string()),
+    checkedAt: v.number(),
+    changedAt: v.number(),
+  }).index('by_url', ['url']),
+
   // Sport80 entries pages the entries cron scrapes each night (the backend's
   // `entries_targets.json`, edited with `scrapers/entries:addTarget` / `removeTarget`).
   entry_targets: defineTable({
