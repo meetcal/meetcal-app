@@ -243,6 +243,18 @@ export default defineSchema({
 
   // Each athlete's whole history as JSON text, rewritten with every write to
   // their results (`convex/lib/history.ts`).
+  // Each scheduled job's latest run, for the failure / missed-run email alerts
+  // (cronJobs.ts). `alerting` is set while an alert is outstanding, so one
+  // incident sends one email and its recovery another.
+  cron_status: defineTable({
+    job: v.string(),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    status: v.union(v.literal('running'), v.literal('ok'), v.literal('error')),
+    error: v.optional(v.string()),
+    alerting: v.optional(v.union(v.literal('failed'), v.literal('missed'), v.literal('stuck'))),
+  }).index('by_job', ['job']),
+
   // The last text of each page the urlwatch cron follows (urlwatch's cache.db).
   watched_pages: defineTable({
     url: v.string(),

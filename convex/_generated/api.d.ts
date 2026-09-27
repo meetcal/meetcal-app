@@ -9,8 +9,11 @@
  */
 
 import type * as cronJobs from "../cronJobs.js";
+import type * as cronStatus from "../cronStatus.js";
 import type * as crons from "../crons.js";
 import type * as ingest from "../ingest.js";
+import type * as lib_cronAlerts from "../lib/cronAlerts.js";
+import type * as lib_cronSchedule from "../lib/cronSchedule.js";
 import type * as lib_directory from "../lib/directory.js";
 import type * as lib_etag from "../lib/etag.js";
 import type * as lib_history from "../lib/history.js";
@@ -19,7 +22,6 @@ import type * as lib_names from "../lib/names.js";
 import type * as lib_normalize from "../lib/normalize.js";
 import type * as lib_referenceData from "../lib/referenceData.js";
 import type * as lib_results from "../lib/results.js";
-import type * as lib_sentryCrons from "../lib/sentryCrons.js";
 import type * as lib_sort from "../lib/sort.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as lib_viewKeys from "../lib/viewKeys.js";
@@ -89,8 +91,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   cronJobs: typeof cronJobs;
+  cronStatus: typeof cronStatus;
   crons: typeof crons;
   ingest: typeof ingest;
+  "lib/cronAlerts": typeof lib_cronAlerts;
+  "lib/cronSchedule": typeof lib_cronSchedule;
   "lib/directory": typeof lib_directory;
   "lib/etag": typeof lib_etag;
   "lib/history": typeof lib_history;
@@ -99,7 +104,6 @@ declare const fullApi: ApiFromModules<{
   "lib/normalize": typeof lib_normalize;
   "lib/referenceData": typeof lib_referenceData;
   "lib/results": typeof lib_results;
-  "lib/sentryCrons": typeof lib_sentryCrons;
   "lib/sort": typeof lib_sort;
   "lib/validation": typeof lib_validation;
   "lib/viewKeys": typeof lib_viewKeys;

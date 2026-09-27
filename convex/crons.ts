@@ -1,17 +1,17 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
-import { JOBS } from './cronJobs';
+import { JOBS, WATCHDOG_SCHEDULE } from './cronJobs';
 
 /**
- * Every scheduled job, from the table in `cronJobs.ts` (schedules in UTC; the
- * scrapers keep the UTC times the retired VPS crontab ran them at). Each runs
- * through `cronJobs:run`, which checks in with Sentry Crons under the job's
- * name, the monitor slug the backend used.
+ * Every scheduled job, from the table in `cronJobs.ts` (schedules in UTC).
+ * Each runs through `cronJobs:run`, which emails an alert when it fails; the
+ * watchdog emails when one misses its run or never finishes.
  */
 const crons = cronJobs();
 
 for (const [job, { schedule }] of Object.entries(JOBS)) {
   crons.cron(job, schedule, internal.cronJobs.run, { job });
 }
+crons.cron('cron-watchdog', WATCHDOG_SCHEDULE, internal.cronJobs.watchdog, {});
 
 export default crons;
