@@ -1554,7 +1554,7 @@ describe('meetcal API client error and auth boundaries', () => {
 describe('conditional reads for meet queries', () => {
   beforeEach(() => {
     // The meets list's arguments carry the current hour; pin it so every
-    // call in a test shares one cache key.
+    // call in a test asks the same question.
     jest.useFakeTimers({ now: new Date('2026-06-20T12:30:00.000Z') });
   });
 
@@ -1805,11 +1805,11 @@ describe('conditional reads for meet queries', () => {
     expect(sentTag(3)).toBeUndefined();
   });
 
-  it('keys the meets list on the hour it asks about', async () => {
+  it('asks about the current hour but keeps the meets list tag across hours', async () => {
     const { sentTag, dataCalls } = queueTransport([
       { etag: '"v1"', body: [meetRow('Meet A')] },
       { etag: '"v1"' },
-      { etag: '"v1"', body: [meetRow('Meet A')] },
+      { etag: '"v1"' },
     ]);
 
     await fetchApiMeets();
@@ -1824,8 +1824,8 @@ describe('conditional reads for meet queries', () => {
       Date.parse('2026-06-20T13:00:00.000Z'),
     ]);
     expect(sentTag(1)).toBe('"v1"');
-    // A new hour is a new question; the old hour's tag does not answer it.
-    expect(sentTag(2)).toBeUndefined();
+    // The tag hashes the body, so an unchanged list in a new hour costs no body.
+    expect(sentTag(2)).toBe('"v1"');
   });
 });
 

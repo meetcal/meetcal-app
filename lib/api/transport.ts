@@ -97,6 +97,10 @@ function functionReference(fn: string): any {
  *   again" instead of retrying forever;
  * - arguments the function's validator rejects are the Rust API's 400, so a
  *   queued write the server will never accept is dropped, not retried;
+ * - any other 4xx Convex itself answers a signed-in call with (an unknown
+ *   function, a payload over its size limit) keeps its status for the same
+ *   reason. Only Convex's JSON error body counts: a proxy's or captive
+ *   portal's 4xx page is the network, and 408/429 stay retryable;
  * - any other failure of a function that ran (answered with an error, over
  *   HTTP 200 or Convex's 560) is the Rust API's 500: the server was reached,
  *   so a queued write is retried later without holding up the ones behind it,
@@ -116,6 +120,9 @@ function toTransportError(call: ApiCall, error: unknown, httpStatus: number | nu
   if (call.token && (httpStatus === 401 || httpStatus === 403)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 401`, 401, message);
   }
+  if (call.token && httpStatus !== null && isConvexRefusal(httpStatus, message)) {
+    return new TransportRequestError(`${call.kind} ${call.path} failed with ${httpStatus}`, httpStatus, message);
+  }
   if (/\bArgumentValidationError\b/.test(message)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 400`, 400, message);
   }
@@ -128,6 +135,22 @@ function toTransportError(call: ApiCall, error: unknown, httpStatus: number | nu
     return new TransportRequestError(`${call.kind} ${call.path} failed with 500`, 500, message);
   }
   return error;
+}
+
+/**
+ * A 4xx Convex answered with its own `{ code, message }` body, which a retry
+ * cannot change. 401/403 are handled as sign-in failures before this; 408 and
+ * 429 are "try again", not refusals.
+ */
+function isConvexRefusal(status: number, responseText: string): boolean {
+  if (status < 400 || status >= 500 || status === 401 || status === 403 || status === 408 || status === 429) return false;
+  let body: unknown;
+  try {
+    body = JSON.parse(responseText);
+  } catch {
+    return false;
+  }
+  return typeof body === 'object' && body !== null && typeof (body as { code?: unknown }).code === 'string';
 }
 
 /** Convex's "busy, try again" failures (overload, rate limits), left for callers to retry. */

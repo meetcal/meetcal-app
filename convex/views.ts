@@ -14,7 +14,10 @@ import {
   packageAthlete,
   packageStaticText,
   plainRoster,
+  previousBests,
+  statsPreviousBestKeys,
   toApiMeet,
+  type PreviousBest,
   type TimelinesView,
 } from './lib/meetData';
 import { HISTORY_READY, writeHistories } from './lib/history';
@@ -183,20 +186,62 @@ export const buildMeetTimelines = internalMutation({
 /**
  * Every result's club-stats row, and each club's distinct athlete count: one
  * item, `{ rows, club_counts }`, so one meet serves every club's summary.
+ *
+ * Built by `buildStats`: each finisher's previous best reads their earlier
+ * results, which for a national meet is more documents than one transaction
+ * may read, so those are read in batches first (`statsPreviousBests`) and
+ * this mutation only assembles and writes. `sources` is the snapshot taken
+ * before the first of those reads, so data written meanwhile leaves the view
+ * stale for the next refresh rather than silently mixed in.
  */
 export const buildMeetStats = internalMutation({
-  args: { meet: v.string() },
-  handler: async (ctx, { meet }) => {
-    const sources = await snapshotVersions(ctx, VIEW_SOURCES.meetStats);
-    const rows = await computeStatsRows(ctx, meet);
+  args: {
+    meet: v.string(),
+    sources: v.optional(v.array(v.object({ table: v.string(), version: v.number() }))),
+    known: v.optional(v.array(v.object({ key: v.string(), before: v.string(), best: v.union(v.number(), v.null()) }))),
+  },
+  handler: async (ctx, { meet, sources, known }) => {
+    const stamp = sources ?? (await snapshotVersions(ctx, VIEW_SOURCES.meetStats));
+    const rows = await computeStatsRows(ctx, meet, undefined, known ?? []);
     const roster = await ctx.db
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
-    await writeView(ctx, meetKey(meet, 'stats'), jsonChunks([{ rows, club_counts: clubAthleteCounts(roster) }]), sources);
+    await writeView(ctx, meetKey(meet, 'stats'), jsonChunks([{ rows, club_counts: clubAthleteCounts(roster) }]), stamp);
     return rows.length;
   },
 });
+
+/** The stats view's source snapshot, then the previous bests it needs. */
+export const statsBuildPlan = internalQuery({
+  args: { meet: v.string() },
+  handler: async (ctx, { meet }) => {
+    const sources = await snapshotVersions(ctx, VIEW_SOURCES.meetStats);
+    return { sources, wanted: await statsPreviousBestKeys(ctx, meet) };
+  },
+});
+
+/** Previous bests of up to STATS_PREVIOUS_BEST_BATCH athletes. */
+export const statsPreviousBests = internalQuery({
+  args: { wanted: v.array(v.object({ key: v.string(), before: v.string() })) },
+  handler: async (ctx, { wanted }) => await previousBests(ctx, wanted),
+});
+
+/**
+ * Athletes per `statsPreviousBests` call. A veteran has a few dozen earlier
+ * results and most finishers a handful, so a batch stays well under Convex's
+ * per-transaction document read limit.
+ */
+const STATS_PREVIOUS_BEST_BATCH = 200;
+
+async function buildStats(ctx: ActionCtx, meet: string): Promise<void> {
+  const { sources, wanted } = await ctx.runQuery(internal.views.statsBuildPlan, { meet });
+  const known: PreviousBest[] = [];
+  for (let i = 0; i < wanted.length; i += STATS_PREVIOUS_BEST_BATCH) {
+    known.push(...(await ctx.runQuery(internal.views.statsPreviousBests, { wanted: wanted.slice(i, i + STATS_PREVIOUS_BEST_BATCH) })));
+  }
+  await ctx.runMutation(internal.views.buildMeetStats, { meet, sources, known });
+}
 
 async function writeComputed(
   ctx: MutationCtx,
@@ -572,7 +617,7 @@ const HISTORY_BATCH = 250;
 async function rebuildMeet(ctx: ActionCtx, meet: string): Promise<void> {
   await ctx.runMutation(internal.views.buildMeet, { meet });
   await ctx.runMutation(internal.views.buildMeetTimelines, { meet });
-  await ctx.runMutation(internal.views.buildMeetStats, { meet });
+  await buildStats(ctx, meet);
 }
 
 // ---------------------------------------------------------------------------
@@ -1165,7 +1210,7 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
   }
   for (const meet of meetsHistory) {
     await ctx.runMutation(internal.views.buildMeetTimelines, { meet });
-    await ctx.runMutation(internal.views.buildMeetStats, { meet });
+    await buildStats(ctx, meet);
     rebuilt.push(meetKey(meet, 'timelines'), meetKey(meet, 'stats'));
   }
 

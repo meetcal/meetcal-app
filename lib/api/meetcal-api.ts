@@ -436,14 +436,20 @@ function stableKey(fn: string, args: Record<string, unknown>): string {
  * before the faster one did. A bodiless answer naming a different tag than we
  * sent is not trusted: the entry is dropped and the request is retried once
  * without a tag.
+ *
+ * `keyArgs` names the arguments the cache is keyed on when some argument only
+ * moves the question in time (the meets list's hour). The server's tag hashes
+ * the body, so a tag stored for an earlier hour still answers truthfully: an
+ * unchanged list comes back bodiless and a changed one in full.
  */
 async function getRevalidated<T>(
   path: string,
   fn: string,
   args: Record<string, unknown>,
   validate: (json: unknown) => T,
+  keyArgs: Record<string, unknown> = args,
 ): Promise<T> {
-  const key = stableKey(fn, args);
+  const key = stableKey(fn, keyArgs);
   revalidationsStarted += 1;
   const started = revalidationsStarted;
   const held = validatorCache.get(key) as ValidatorEntry<T> | undefined;
@@ -894,7 +900,7 @@ function meetsWindowNow(): number {
 }
 
 export async function fetchApiMeets(): Promise<Meet[]> {
-  const rows = await getRevalidated('/meets', 'meets:list', { now: meetsWindowNow() }, validateApiMeets);
+  const rows = await getRevalidated('/meets', 'meets:list', { now: meetsWindowNow() }, validateApiMeets, {});
   return rows.map((row) => mapApiMeet(row));
 }
 

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
-import { etagOf, revalidated, revalidatedText, type Revalidated } from './lib/etag';
+import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import { clubAthleteCount, clubStats, computeStatsRows, type StatsRow } from './lib/meetData';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
@@ -82,25 +82,13 @@ export const wsoList = query({
 });
 
 /**
- * A WSO's records, and a tag for an answer derived from them: from a fresh
- * view the tag is derived from the view's (no hashing, and a matching client
- * never reads the rows); live, the caller hashes its body.
+ * A WSO's records, from a fresh view or live. Answers derived from them are
+ * tagged with the hash of their body on both paths, so a client's tag
+ * survives the view going stale and being rebuilt.
  */
-async function wsoSource(ctx: QueryCtx, wso: string, derivation: string) {
+async function wsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
   const view = await readFreshView<WsoRecordRow>(ctx, wsoKey(wso));
-  if (view) return { tag: etagOf(`${view.etag}|${derivation}`), rows: view.items };
-  return { tag: null, rows: () => computeWsoRows(ctx, wso) };
-}
-
-async function derivedAnswer(
-  source: { tag: string | null; rows: () => Promise<WsoRecordRow[]> },
-  derive: (rows: WsoRecordRow[]) => unknown,
-  ifNoneMatch: string | undefined,
-): Promise<Revalidated> {
-  if (source.tag) {
-    return await revalidatedText(source.tag, async () => JSON.stringify(derive(await source.rows())), ifNoneMatch);
-  }
-  return revalidated(derive(await source.rows()), ifNoneMatch);
+  return view ? await view.items() : await computeWsoRows(ctx, wso);
 }
 
 /** `GET /data/wso/age-groups` */
@@ -108,7 +96,7 @@ export const wsoAgeGroups = query({
   args: { wso: v.string(), ifNoneMatch },
   handler: async (ctx, args) => {
     requireNonEmpty('wso', args.wso);
-    return await derivedAnswer(await wsoSource(ctx, args.wso, 'age-groups'), ageGroupsOf, args.ifNoneMatch);
+    return revalidated(ageGroupsOf(await wsoRows(ctx, args.wso)), args.ifNoneMatch);
   },
 });
 
@@ -122,8 +110,8 @@ export const wsoRecords = query({
   },
   handler: async (ctx, args) => {
     requireNonEmpty('wso', args.wso);
-    const source = await wsoSource(ctx, args.wso, JSON.stringify(['records', args.ageCategory ?? null, args.gender ?? null]));
-    return await derivedAnswer(source, (rows) => filterWsoRows(rows, args.ageCategory, args.gender), args.ifNoneMatch);
+    const rows = await wsoRows(ctx, args.wso);
+    return revalidated(filterWsoRows(rows, args.ageCategory, args.gender), args.ifNoneMatch);
   },
 });
 

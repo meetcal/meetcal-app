@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
-import { etagOf, revalidated, revalidatedText } from './lib/etag';
+import { etagOf, revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import {
   addMonths,
   athletesWithSessions,
@@ -191,11 +191,10 @@ function closePackage(staticText: string, yearBests: unknown | undefined): strin
  * times), the meet's results, and optionally each athlete's bests over the
  * year after `historyCutoffDate` (as `year_bests`, see `NamedBests`).
  *
- * From views, the package is concatenated from the sections' stored text and
- * its tag is derived from theirs, so a client holding the current package is
- * answered after reading the meet row and the view headers alone. Without a
- * fresh view for every section it is computed live (`livePackageJson`) and
- * the tag is the hash of the whole text.
+ * From views, the package is concatenated from the sections' stored text.
+ * Without a fresh view for every section it is computed live
+ * (`livePackageJson`). Either way the tag is the hash of the whole text, so
+ * a client's tag survives the views going stale and being rebuilt.
  */
 export const packageForMeet = query({
   args: {
@@ -226,43 +225,38 @@ export const packageForMeet = query({
       timelinesView !== null && timelinesView.meta !== undefined && bestsSince !== undefined && timelinesView.meta <= bestsSince;
 
     // A fresh static view implies the meet row exists (the view embeds it).
+    // The tag is the hash of the text served, as on the live path below: a
+    // tag derived from the views' own would change every time the views go
+    // stale and come back, sending every client the unchanged package twice.
     if (staticView && (bestsSince === undefined || timelinesUsable)) {
-      const tag = etagOf(
-        JSON.stringify([
-          staticView.etag,
-          bestsSince === undefined ? null : [timelinesView!.etag, bestsSince],
-          [...sections].sort(),
-        ]),
-      );
-      return await revalidatedText(
-        tag,
-        async () => {
-          const [staticText, timelineItems] = await Promise.all([
-            staticView.text(),
-            bestsSince === undefined ? Promise.resolve(null) : timelinesView!.items(),
-          ]);
-          let yearBests: unknown;
-          if (wantBests) {
-            if (timelineItems === null || bestsSince === undefined) {
-              yearBests = [];
-            } else {
-              const [[, names], ...timelines] = timelineItems as TimelinesView;
-              yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
-            }
-          }
-          return closePackage(staticText, yearBests);
-        },
-        ifNoneMatch,
-      );
+      const [staticText, timelineItems] = await Promise.all([
+        staticView.text(),
+        bestsSince === undefined ? Promise.resolve(null) : timelinesView!.items(),
+      ]);
+      let yearBests: unknown;
+      if (wantBests) {
+        if (timelineItems === null || bestsSince === undefined) {
+          yearBests = [];
+        } else {
+          const [[, names], ...timelines] = timelineItems as TimelinesView;
+          yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
+        }
+      }
+      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
     const meetRow = await meetByName(ctx, meet);
     if (!meetRow) throw apiError(404, 'meet not found');
     const apiMeet = toApiMeet(meetRow);
     const json = await livePackageJson(ctx, meet, apiMeet, bestsSince, wantBests);
-    return await revalidatedText(etagOf(json), async () => json, ifNoneMatch);
+    return textAnswer(json, ifNoneMatch);
   },
 });
+
+/** Answers `json`, tagged with its hash, or the tag alone when the client holds it. */
+function textAnswer(json: string, ifNoneMatch: string | undefined): Promise<Revalidated> {
+  return revalidatedText(etagOf(json), async () => json, ifNoneMatch);
+}
 
 /** The package computed from the tables, without any view. */
 export async function livePackageJson(

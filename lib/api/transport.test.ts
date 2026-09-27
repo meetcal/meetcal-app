@@ -99,6 +99,27 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
     expect((error as TransportRequestError).status).toBe(400);
   });
 
+  it('keeps the status of any other 4xx Convex refuses a signed-in call with, so a queued write is dropped', async () => {
+    responses.push(respond(404, { code: 'FunctionNotFound', message: 'Could not find public function for users:gone' }));
+    const notFound = await failure({ ...signedIn, kind: 'mutation' });
+    expect(notFound).toBeInstanceOf(TransportRequestError);
+    expect((notFound as TransportRequestError).status).toBe(404);
+
+    responses.push(respond(413, { code: 'RequestTooLarge', message: 'Request body too large' }));
+    expect(((await failure({ ...signedIn, kind: 'mutation' })) as TransportRequestError).status).toBe(413);
+  });
+
+  it('leaves a 4xx that is not Convex JSON, and Convex\'s 408 and 429, retryable', async () => {
+    responses.push(respond(407, '<html>Proxy login</html>'));
+    expect(await failure({ ...signedIn, kind: 'mutation' })).not.toBeInstanceOf(TransportRequestError);
+
+    responses.push(respond(429, { code: 'RateLimited', message: 'Too many requests' }));
+    expect(await failure({ ...signedIn, kind: 'mutation' })).not.toBeInstanceOf(TransportRequestError);
+
+    responses.push(respond(408, { code: 'Timeout', message: 'Request timed out' }));
+    expect(await failure({ ...signedIn, kind: 'mutation' })).not.toBeInstanceOf(TransportRequestError);
+  });
+
   it('keeps the status a ConvexError from our functions carries', async () => {
     responses.push(respond(200, { status: 'error', errorMessage: 'not found', errorData: { status: 404, error: 'not found' } }));
     const error = await failure(signedIn);
