@@ -17,7 +17,7 @@
     "maestro:test": "bun run maestro:bootstrap && maestro test -e APP_ID=${APP_ID:-com.memohnsen.meetcal} .maestro",
     "maestro:test:flow": "bun run maestro:bootstrap && maestro test -e APP_ID=${APP_ID:-com.memohnsen.meetcal}",
     "dev": "bunx expo start",
-    "update:prod": "eas update --branch production --non-interactive"
+    "update:prod": "EXPO_PUBLIC_CONVEX_URL=https://disciplined-hare-790.convex.cloud eas update --branch production --non-interactive"
   },
   "jest": {
     "preset": "jest-expo",

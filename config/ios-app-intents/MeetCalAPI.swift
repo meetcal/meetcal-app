@@ -391,7 +391,26 @@ actor MeetCalAPI {
         let now = Date()
         memoryCache[key] = (now, data)
         let defaults = SharedStore.defaults
+        pruneExpiredOnce(defaults, now: now)
         defaults.set(data, forKey: "apiCacheData::\(key)")
         defaults.set(now.timeIntervalSince1970, forKey: "apiCacheTS::\(key)")
+    }
+
+    private var pruned = false
+
+    /// Every distinct request leaves an entry (each search, each hour of
+    /// `meets:list`), and the app group's defaults load whole into every intent
+    /// process, so expired entries are dropped, once per process.
+    private func pruneExpiredOnce(_ defaults: UserDefaults, now: Date) {
+        guard !pruned else { return }
+        pruned = true
+        let prefix = "apiCacheTS::"
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+            let ts = (value as? Double) ?? 0
+            guard now.timeIntervalSince1970 - ts >= ttl else { continue }
+            let requestKey = String(key.dropFirst(prefix.count))
+            defaults.removeObject(forKey: key)
+            defaults.removeObject(forKey: "apiCacheData::\(requestKey)")
+        }
     }
 }

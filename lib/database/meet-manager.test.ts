@@ -1062,6 +1062,14 @@ describe("historyRetryDelayMs", () => {
     expect(historyRetryDelayMs(apiError(500, 1))).toBeNull();
     expect(historyRetryDelayMs(apiError(404))).toBeNull();
     expect(historyRetryDelayMs(new Error("network"))).toBeNull();
+    expect(historyRetryDelayMs(new Error("[Request ID: 1] Server Error\nUncaught Error: bad name"))).toBeNull();
+  });
+
+  it("retries Convex's own overload failures once, after the default wait", () => {
+    expect(historyRetryDelayMs(new Error("Your request couldn't be completed. Try again later."))).toBe(
+      HISTORY_RETRY_AFTER_DEFAULT_MS,
+    );
+    expect(historyRetryDelayMs(new Error("Too many concurrent requests"))).toBe(HISTORY_RETRY_AFTER_DEFAULT_MS);
   });
 });
 

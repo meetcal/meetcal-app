@@ -42,6 +42,7 @@ import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { watchConnectionLifecycle } from "@/lib/api/connection-lifecycle";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
@@ -140,6 +141,9 @@ NetInfo.configure({
   reachabilityShortTimeout: REACHABILITY_TIMEOUT_MS,
   useNativeReachability: true,
 });
+
+// Keeps the shared Convex connection fresh across network changes and resumes.
+watchConnectionLifecycle();
 
 const ONESIGNAL_APP_ID =
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ??

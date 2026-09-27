@@ -100,6 +100,23 @@ export const HISTORY_RETRY_AFTER_DEFAULT_MS = 1000;
 const HISTORY_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
 
 /**
+ * Convex's own "busy, try again" failures (overload, rate limits), its
+ * equivalent of the Rust API's 429/503. They arrive as plain errors with no
+ * status, so they are told apart by message; a function's own errors and a
+ * dropped network do not match and are not retried.
+ */
+const CONVEX_TRANSIENT_MESSAGE = /try again later|too many (?:concurrent )?requests|overloaded|temporarily unavailable/i;
+
+function isConvexTransientError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    !(error instanceof MeetCalApiError) &&
+    !(error instanceof MeetCalApiTimeoutError) &&
+    CONVEX_TRANSIENT_MESSAGE.test(error.message)
+  );
+}
+
+/**
  * How long a history batch should wait before its single retry, or null when
  * the failure is not a rate-limit/unavailable response. The API client does
  * not surface headers yet, so the seconds are read from an optional
@@ -107,6 +124,7 @@ const HISTORY_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
  * default applies when it is absent or unparseable.
  */
 export function historyRetryDelayMs(error: unknown): number | null {
+  if (isConvexTransientError(error)) return HISTORY_RETRY_AFTER_DEFAULT_MS;
   if (!(error instanceof MeetCalApiError) || !HISTORY_RETRYABLE_STATUSES.has(error.status)) {
     return null;
   }
@@ -585,7 +603,7 @@ async function downloadAthleteHistory(
   return complete;
 }
 
-/** One `/by-names` batch, retried once after `Retry-After` on a 429/503. */
+/** One `/by-names` batch, retried once after `Retry-After` on a 429/503, or after a Convex overload. */
 async function fetchHistoryBatch(batch: readonly string[]): Promise<SupabaseLiftResult[]> {
   const names = Array.from(batch);
   try {
