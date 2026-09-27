@@ -73,6 +73,12 @@ const REFRESH_DELAY_MS = 5000;
 const MAX_TARGETED_HINTS = 2000;
 /** A refresh that finds a full rebuild running tries again after this. */
 const REBUILD_WAIT_MS = 60 * 1000;
+/**
+ * A rebuild stage starts at least every 10 minutes (Convex stops an action
+ * there); a rebuild silent for longer than this had a stage fail, and is
+ * started again rather than waited on forever.
+ */
+const REBUILD_STALE_MS = 15 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Builders
@@ -354,6 +360,7 @@ type RefreshBegin = {
   versions: SourceVersion[];
   baseline: SourceVersion[] | null;
   rebuilding: boolean;
+  rebuildHeartbeat: number | null;
 };
 
 async function refreshState(ctx: QueryCtx) {
@@ -391,6 +398,7 @@ export const beginRefresh = internalMutation({
       versions,
       baseline: state && state.baseline.length > 0 ? state.baseline : null,
       rebuilding: state?.rebuilding ?? false,
+      rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
     };
   },
 });
@@ -483,12 +491,14 @@ export const textViewAnyAge = internalQuery({
   handler: async (ctx, { key }) => await readViewTextAnyAge(ctx, key),
 });
 
+/** Marks a rebuild running (and beats its heartbeat) or finished. Each stage calls it with `true` as it starts. */
 export const setRebuilding = internalMutation({
   args: { rebuilding: v.boolean() },
   handler: async (ctx, { rebuilding }) => {
     const state = await refreshState(ctx);
-    if (state) await ctx.db.patch(state._id, { rebuilding });
-    else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], rebuilding });
+    const fields = { rebuilding, rebuildHeartbeat: rebuilding ? Date.now() : undefined };
+    if (state) await ctx.db.patch(state._id, fields);
+    else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], ...fields });
   },
 });
 
@@ -505,6 +515,7 @@ export const rebuildStage = internalAction({
   handler: async (ctx, args): Promise<string> => {
     const startedAt = Date.now();
     const overBudget = () => Date.now() - startedAt > STAGE_BUDGET_MS;
+    await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true });
     const next = async (stage: typeof args.stage, offset: number) => {
       await ctx.scheduler.runAfter(0, internal.views.rebuildStage, { ...args, stage, offset });
       return `${args.stage} -> ${stage}@${offset}`;
@@ -627,10 +638,16 @@ export const refresh = internalAction({
       begin.baseline === null ||
       begin.versions.some((v) => v.version !== (begin.baseline!.find((b) => b.table === v.table)?.version ?? 0));
     if (begin.hints.length === 0 && !moved) return { hints: 0 };
-    if (begin.rebuilding) {
+    const rebuildAlive = begin.rebuildHeartbeat !== null && Date.now() - begin.rebuildHeartbeat < REBUILD_STALE_MS;
+    if (begin.rebuilding && rebuildAlive) {
       // A full rebuild is running and will refresh again when it ends.
       await ctx.scheduler.runAfter(REBUILD_WAIT_MS, internal.views.refresh, {});
       return { waiting: 1 };
+    }
+    if (begin.rebuilding) {
+      console.error(`views: the full rebuild stopped (last stage began ${begin.rebuildHeartbeat === null ? 'never' : new Date(begin.rebuildHeartbeat).toISOString()}); starting it again`);
+      await startRebuild(ctx, begin, true);
+      return { restarted: 1 };
     }
     if (begin.overflow || begin.baseline === null) {
       // Too many changes to target (or no baseline yet): rebuild everything,

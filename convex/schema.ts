@@ -301,6 +301,9 @@ export default defineSchema({
     baseline: v.array(v.object({ table: v.string(), version: v.number() })),
     // A full rebuild (`views:rebuildStage`) is running; refreshes wait for it.
     rebuilding: v.optional(v.boolean()),
+    // When the running rebuild's latest stage started. A rebuild whose stage
+    // failed stops beating, and the next refresh starts a new one.
+    rebuildHeartbeat: v.optional(v.number()),
   }).index('by_name', ['name']),
 
   // A view's text, cut into documents of well under 1 MiB.
