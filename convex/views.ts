@@ -49,7 +49,6 @@ import {
   deleteViewsWithPrefix,
   jsonChunks,
   readViewTextAnyAge,
-  restampViews,
   snapshotVersions,
   SOURCE_TABLES,
   textChunks,
@@ -406,21 +405,28 @@ export const finishRefresh = internalMutation({
     restamp: v.boolean(),
   },
   handler: async (ctx, { hintIds, versions, rebuilt, restamp }) => {
+    // Everything here is one scan per table (headers, hints), never one read
+    // per item: a refresh after a large write handles thousands of hints and
+    // views, and a function may make at most 4,096 reads.
     const state = await refreshState(ctx);
     let restamped = 0;
     if (restamp && state && state.baseline.length > 0) {
       const baseline = new Map(state.baseline.map((s) => [s.table, s.version]));
+      const next = new Map(versions.map((s) => [s.table, s.version]));
       const skip = new Set(rebuilt);
-      const keys: string[] = [];
       for (const header of await ctx.db.query('views').collect()) {
         if (skip.has(header.key) || !header.sources || header.sources.length === 0) continue;
-        if (header.sources.every((s) => s.version >= (baseline.get(s.table) ?? 0))) keys.push(header.key);
+        if (!header.sources.every((s) => s.version >= (baseline.get(s.table) ?? 0))) continue;
+        const stamped = header.sources.map((s) => ({ table: s.table, version: Math.max(s.version, next.get(s.table) ?? s.version) }));
+        if (stamped.some((s, i) => s.version !== header.sources![i].version)) {
+          await ctx.db.patch(header._id, { sources: stamped });
+          restamped += 1;
+        }
       }
-      restamped = await restampViews(ctx, keys, versions);
     }
-    for (const id of hintIds) {
-      const hint = ctx.db.normalizeId('view_hints', id);
-      if (hint && (await ctx.db.get(hint))) await ctx.db.delete(hint);
+    const handled = new Set(hintIds);
+    for (const hint of await ctx.db.query('view_hints').collect()) {
+      if (handled.has(hint._id)) await ctx.db.delete(hint._id);
     }
     if (state) await ctx.db.patch(state._id, { baseline: versions });
     else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: versions });

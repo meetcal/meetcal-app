@@ -215,29 +215,6 @@ export async function writeView(
   return header;
 }
 
-/**
- * Moves the stamp of views whose content the writes since their build cannot
- * have changed (the refresh decided so from the write hints) up to `sources`.
- */
-export async function restampViews(
-  ctx: MutationCtx,
-  keys: readonly string[],
-  sources: readonly SourceVersion[],
-): Promise<number> {
-  let restamped = 0;
-  for (const key of keys) {
-    const header = await viewHeader(ctx, key);
-    if (!header?.sources) continue;
-    const stamped = header.sources.map((s) => {
-      const next = sources.find((n) => n.table === s.table);
-      return next && next.version > s.version ? next : s;
-    });
-    await ctx.db.patch(header._id, { sources: stamped });
-    restamped += 1;
-  }
-  return restamped;
-}
-
 /** Deletes every view whose key starts with `prefix` (headers and chunks). */
 export async function deleteViewsWithPrefix(ctx: MutationCtx, prefix: string): Promise<number> {
   const headers = await ctx.db

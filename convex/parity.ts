@@ -270,3 +270,22 @@ export const resultRowsForEvents = internalQuery({
     return rows.map(({ _id, _creationTime, nameKey, ...row }) => row);
   },
 });
+
+/** How many views are fresh (servable) and which families have stale ones; a quick health check. */
+export const viewFreshness = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const versions = new Map((await ctx.db.query('data_versions').collect()).map((row) => [row.table, row.version]));
+    let fresh = 0;
+    const stale: Record<string, number> = {};
+    for (const header of await ctx.db.query('views').collect()) {
+      if (!header.sources || header.sources.length === 0) continue;
+      if (header.sources.every((s) => s.version === (versions.get(s.table) ?? 0))) fresh += 1;
+      else {
+        const family = header.key.split('|')[0];
+        stale[family] = (stale[family] ?? 0) + 1;
+      }
+    }
+    return { fresh, stale };
+  },
+});
