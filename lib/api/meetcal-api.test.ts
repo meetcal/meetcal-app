@@ -85,7 +85,9 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
     async (call: ApiCall): Promise<unknown> => (isClockCall(call) ? clock(call) : respond(call)),
   );
   setApiTransportForTests(transport);
-  const allCalls = (): ApiCall[] => transport.mock.calls.map(([call]) => call);
+  // Every request carries its timeout's abort signal; the assertions below
+  // are about what was asked, so it is left out of the recorded call.
+  const allCalls = (): ApiCall[] => transport.mock.calls.map(([{ signal: _signal, ...call }]) => call);
   const dataCalls = (): ApiCall[] => allCalls().filter((call) => !isClockCall(call));
   const clockCalls = (): ApiCall[] => allCalls().filter((call) => isClockCall(call));
   const lastCall = (): ApiCall => {
@@ -2566,5 +2568,28 @@ describe('server clock', () => {
       skewMs: 60_000 + MAX_ROUND_TRIP_MS / 2,
       sampledAt: sentAt + MAX_ROUND_TRIP_MS,
     });
+  });
+});
+
+describe('request timeouts', () => {
+  afterEach(() => {
+    setApiTransportForTests(null);
+    jest.useRealTimers();
+  });
+
+  it('aborts a request that times out, so it cannot land after a newer write', async () => {
+    jest.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    setApiTransportForTests(async (call) => {
+      if (call.fn === 'system:serverTime') return Date.now();
+      signal = call.signal;
+      return new Promise(() => {}); // never answers
+    });
+    const pending = deleteSavedSession('token', 'session-1').catch((error: unknown) => error);
+    await Promise.resolve();
+    expect(signal?.aborted).toBe(false);
+    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS + 1);
+    expect(await pending).toBeInstanceOf(MeetCalApiTimeoutError);
+    expect(signal?.aborted).toBe(true);
   });
 });

@@ -502,24 +502,17 @@ export const meetNames = internalQuery({
   },
 });
 
-/** Rebuilds only the search directory (a full scan of `lifting_results`). */
-export const rebuildDirectory = internalAction({
-  args: {},
-  handler: async (ctx): Promise<number> => {
-    const names = new Set<string>();
-    let cursor: string | null = null;
-    for (;;) {
-      const page: { names: string[]; cursor: string; isDone: boolean } = await ctx.runQuery(internal.views.scanResultsPage, {
-        cursor,
-      });
-      page.names.forEach((n) => names.add(n));
-      if (page.isDone) break;
-      cursor = page.cursor;
-    }
-    await ctx.runMutation(internal.views.storeResultNames, {
-      chunks: textChunks(directoryText([...names].sort(compareCollated))),
-    });
-    return names.size;
+/**
+ * Deletes every view of these meets. For meets with results but no meet row
+ * or roster: their views are not rebuilt, and one left behind would be
+ * restamped as fresh by the refresh while its results changed.
+ */
+export const deleteMeetViews = internalMutation({
+  args: { meets: v.array(v.string()) },
+  handler: async (ctx, { meets }) => {
+    let deleted = 0;
+    for (const meet of meets) deleted += await deleteViewsWithPrefix(ctx, `meet|${meet}|`);
+    return deleted;
   },
 });
 
@@ -583,7 +576,16 @@ type RefreshBegin = {
   baseline: SourceVersion[] | null;
   rebuilding: boolean;
   rebuildHeartbeat: number | null;
+  /** This refresh's lease, or null when another refresh holds it (or none was asked for). */
+  lease: number | null;
+  busy: boolean;
 };
+
+/**
+ * A refresh holds the lease for at most this long: longer than an action can
+ * run, so a refresh that died without releasing it is taken over after this.
+ */
+const REFRESH_LEASE_MS = 11 * 60 * 1000;
 
 async function refreshState(ctx: QueryCtx) {
   return await ctx.db
@@ -606,12 +608,26 @@ export async function scheduleRefresh(ctx: MutationCtx, delayMs: number = REFRES
  * schedule another run), and returns the pending hints, the versions now
  * (`versions`, what untouched views are restamped to) and the versions of the
  * last completed refresh (`baseline`: every write since then left a hint).
+ *
+ * With `lease`, the refresh also takes the refresh lease, so two never run
+ * at once (they would redo the same builds and conflict on the same views).
+ * If another holds it, this one is `busy`: it schedules itself again after
+ * REFRESH_DELAY_MS and returns without the hints.
  */
 export const beginRefresh = internalMutation({
-  args: {},
-  handler: async (ctx): Promise<RefreshBegin> => {
+  args: { lease: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<RefreshBegin> => {
     const state = await refreshState(ctx);
-    if (state) await ctx.db.patch(state._id, { scheduled: false });
+    const now = Date.now();
+    const held = state?.refreshLease !== undefined && now - state.refreshLease < REFRESH_LEASE_MS;
+    if (args.lease && held) {
+      await ctx.scheduler.runAfter(REFRESH_DELAY_MS, internal.views.refresh, {});
+      if (state) await ctx.db.patch(state._id, { scheduled: true });
+      return { hints: [], overflow: false, versions: [], baseline: null, rebuilding: false, rebuildHeartbeat: null, lease: null, busy: true };
+    }
+    const lease = args.lease ? now : null;
+    if (state) await ctx.db.patch(state._id, { scheduled: false, ...(lease !== null ? { refreshLease: lease } : {}) });
+    else if (lease !== null) await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], refreshLease: lease });
     const rows = await ctx.db.query('view_hints').take(MAX_TARGETED_HINTS + 1);
     const versions = await snapshotVersions(ctx, SOURCE_TABLES);
     return {
@@ -621,7 +637,18 @@ export const beginRefresh = internalMutation({
       baseline: state && state.baseline.length > 0 ? state.baseline : null,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
+      lease,
+      busy: false,
     };
+  },
+});
+
+/** Releases the refresh lease, if it is still this refresh's. */
+export const releaseRefresh = internalMutation({
+  args: { lease: v.number() },
+  handler: async (ctx, { lease }) => {
+    const state = await refreshState(ctx);
+    if (state?.refreshLease === lease) await ctx.db.patch(state._id, { refreshLease: undefined });
   },
 });
 
@@ -928,8 +955,16 @@ export const rebuildStage = internalAction({
   },
 });
 
+/**
+ * The rebuild's hint sweep leaves hints from this long before it started: a
+ * write whose mutation read the clock just before the rebuild began may commit
+ * after the scan passed its rows. Hints left over only cost a targeted
+ * refresh.
+ */
+const REBUILD_HINT_MARGIN_MS = 60 * 1000;
+
 async function startRebuild(ctx: ActionCtx, begin: RefreshBegin, again: boolean, restarted = false): Promise<void> {
-  const startedAt = Date.now();
+  const startedAt = Date.now() - REBUILD_HINT_MARGIN_MS;
   await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, restarted });
   // The probe that notices if a stage fails (see `refresh`).
   await ctx.runMutation(internal.views.queueRefresh, { delayMs: REBUILD_WAIT_MS });
@@ -1029,7 +1064,16 @@ export const refreshJob = internalAction({
 });
 
 async function runRefresh(ctx: ActionCtx): Promise<Record<string, number>> {
-  const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, {});
+  const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true });
+  if (begin.busy) return { busy: 1 };
+  try {
+    return await refreshWith(ctx, begin);
+  } finally {
+    if (begin.lease !== null) await ctx.runMutation(internal.views.releaseRefresh, { lease: begin.lease });
+  }
+}
+
+async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<string, number>> {
   const moved =
     begin.baseline === null ||
     begin.versions.some((v) => v.version !== (begin.baseline!.find((b) => b.table === v.table)?.version ?? 0));
@@ -1063,11 +1107,22 @@ async function runRefresh(ctx: ActionCtx): Promise<Record<string, number>> {
     rebuilt.push(natKey(federation, ageCategory));
   }
 
-  const meetsFull = new Set(byKind('meet'));
   const athleteKeys = new Set(byKind('athlete'));
+  const hintedMeets = byKind('meet');
+  const knownMeets: string[] = hintedMeets.length > 0 || athleteKeys.size > 0 ? await ctx.runQuery(internal.views.meetNames, {}) : [];
+  // A meet with results but neither a meet row nor a roster (most of what the
+  // nightly results sync writes) has nothing for its views to hold; building
+  // them would only leave six empty views per such meet, every one restamped
+  // on every refresh. Its answers are computed live instead.
+  const known = new Set(knownMeets);
+  const meetsFull = new Set(hintedMeets.filter((meet) => known.has(meet)));
+  const unlisted = hintedMeets.filter((meet) => !known.has(meet));
+  for (let i = 0; i < unlisted.length; i += 50) {
+    await ctx.runMutation(internal.views.deleteMeetViews, { meets: unlisted.slice(i, i + 50) });
+  }
   const meetsHistory = new Set<string>();
   if (athleteKeys.size > 0) {
-    const meets: string[] = (await ctx.runQuery(internal.views.meetNames, {})).filter((meet: string) => !meetsFull.has(meet));
+    const meets = knownMeets.filter((meet) => !meetsFull.has(meet));
     const keys = [...athleteKeys];
     for (let i = 0; i < meets.length; i += MEETS_PER_KEY_CHECK) {
       const listing: string[] = await ctx.runQuery(internal.views.meetsListingAny, { meets: meets.slice(i, i + MEETS_PER_KEY_CHECK), keys });

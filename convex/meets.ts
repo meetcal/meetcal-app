@@ -180,7 +180,6 @@ export async function liveSessionsJson(
 // `GET /meets/package`
 // ---------------------------------------------------------------------------
 
-const PACKAGE_SECTIONS = ['year_bests', 'recent_results', 'attempt_estimates'] as const;
 
 /** Closes a `packageStaticText` with the year bests section when asked for. */
 function closePackage(staticText: string, yearBests: unknown | undefined): string {
@@ -208,7 +207,8 @@ export const packageForMeet = query({
   handler: async (ctx, { meet, historyCutoffDate, include, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
     requireIsoDate('history_cutoff_date', historyCutoffDate);
-    const sections = new Set(include ?? PACKAGE_SECTIONS);
+    // Without `include`, the one section this port serves.
+    const sections = new Set(include ?? ['year_bests']);
     for (const section of sections) {
       // The app asks for `year_bests` only; the attempt estimator and the
       // two-year history were never ported, so asking is a client bug.

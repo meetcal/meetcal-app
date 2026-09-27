@@ -426,7 +426,8 @@ export type SyncErrorKind = 'auth' | 'rejected' | 'retry';
  * - `auth`: 401. The Clerk session no longer authorises writes.
  * - `rejected`: any other 4xx except 429. The server refused the payload, so
  *   sending it again can never succeed; the entry is dropped.
- * - `retry`: timeout (including the server's 408), network, 5xx, 429.
+ * - `retry`: timeout, network, 5xx, 429, and a server fault Convex reports
+ *   without a status.
  */
 export function classifySyncError(error: unknown): SyncErrorKind {
   if (!(error instanceof MeetCalApiError)) return 'retry';

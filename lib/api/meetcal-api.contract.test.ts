@@ -186,7 +186,8 @@ function stubTransport(
   };
   setApiTransportForTests(async (call) => {
     if (isClockCall(call)) return Date.now();
-    calls.push(call);
+    const { signal: _signal, ...asked } = call;
+    calls.push(asked);
     const answer = answerFor(call);
     answers.push(answer);
     return answer;

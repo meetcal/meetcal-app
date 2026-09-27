@@ -39,6 +39,9 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
     });
     expect(rows[1]).toMatchObject({ name: 'No Lifts', age: 'Youth', snatch1: null, total: null });
     expect(formatResults('1', 'M', null, [])).toEqual([]);
-    expect(() => formatResults('1', 'M', null, [{ lifter: 'X', total: 'DNF' }])).toThrow('not a number');
+    // A value that is not a number invalidates its row (no name: not stored), not the meet.
+    const [bad, good] = formatResults('1', 'M', null, [{ lifter: 'X', total: 'DNF' }, { lifter: 'Y', total: '100' }]);
+    expect(bad.name).toBeNull();
+    expect(good).toMatchObject({ name: 'Y', total: 100 });
   });
 });

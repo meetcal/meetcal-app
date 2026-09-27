@@ -34,6 +34,12 @@ export type ApiCall = {
   conditional?: boolean;
   /** Clerk session token for `/users/me/*`. */
   token?: string;
+  /**
+   * Aborts the request (the caller's timeout). A timed-out write must not
+   * stay in flight: it could reach the server after a newer write to the same
+   * row and undo it.
+   */
+  signal?: AbortSignal;
 };
 
 export type Transport = (call: ApiCall) => Promise<unknown>;
@@ -63,12 +69,12 @@ export const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || PRODUCTION_CONVE
  * A client whose requests record the HTTP status they were answered with: the
  * client reports a refused request as a bare `Error` with the response text.
  */
-function httpClient(onStatus: (status: number) => void): ConvexHttpClient {
+function httpClient(onStatus: (status: number) => void, signal: AbortSignal | undefined): ConvexHttpClient {
   return new ConvexHttpClient(CONVEX_URL, {
     // Functions' log lines are for the Convex dashboard, not the app console.
     logger: false,
     fetch: async (input, init) => {
-      const response = await fetch(input, init);
+      const response = await fetch(input, signal ? { ...init, signal } : init);
       onStatus(response.status);
       return response;
     },
@@ -124,7 +130,7 @@ export const convexTransport: Transport = async (call) => {
   let httpStatus: number | null = null;
   const client = httpClient((status) => {
     httpStatus = status;
-  });
+  }, call.signal);
   if (call.token) client.setAuth(call.token);
   try {
     return call.kind === 'query' ? await client.query(ref, args) : await client.mutation(ref, args);

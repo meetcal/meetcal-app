@@ -1,13 +1,13 @@
 /**
- * Validator cache for conditional GETs.
+ * Validator cache for conditional reads.
  *
- * The API tags its read-only JSON (`/meets`, `/meets/details`,
- * `/meets/schedule`, and the `/data/*` / `/clubs` reference tables) with a
- * strong `ETag` and `Cache-Control: no-cache`, and answers `304` with no body
- * when `If-None-Match` names the current tag. The app's refresh loops
- * re-request the meet URLs every few minutes and the reference screens refetch
- * on every visit, so remembering the last tag and the already-validated body
- * per URL turns most of those into a bodiless `304`.
+ * The queries behind the read-only answers (the meets list, meet details and
+ * schedule, the reference tables, clubs) tag each answer and take the tag
+ * the client holds as `ifNoneMatch`, answering with the tag alone when it is
+ * still current (`convex/lib/etag.ts`). The app's refresh loops re-request
+ * the meets every few minutes and the reference screens refetch on every
+ * visit, so remembering the last tag and the already-validated body per
+ * query turns most of those into a bodiless answer.
  *
  * Bounded (see `HTTP_VALIDATOR_CACHE_LIMIT`) and in memory only: a cold start
  * pays one full download per URL, and nothing here can outlive an app update

@@ -104,9 +104,24 @@ export type ResultRow = {
 };
 
 /** The meet's rows as the Python job formatted them. */
+/**
+ * One row per result item. An item with a value that is not a number becomes
+ * a row with no name, which the run counts as failed and does not store: one
+ * bad cell loses that row, not the meet or the night's sync.
+ */
 export function formatResults(eventId: string, meet: string, date: number | null, items: Dict[]): ResultRow[] {
   const day = date === null ? '1970-01-01' : new Date(date).toISOString().slice(0, 10);
-  return items.map((item) => ({
+  return items.map((item) => {
+    try {
+      return formatResult(eventId, meet, day, item);
+    } catch {
+      return { ...formatResult(eventId, meet, day, {}), name: null };
+    }
+  });
+}
+
+function formatResult(eventId: string, meet: string, day: string, item: Dict): ResultRow {
+  return {
     eventId,
     meet,
     date: day,
@@ -124,5 +139,5 @@ export function formatResults(eventId: string, meet: string, date: number | null
     total: toFloat(nested(item, 'total', 'Total')),
     adaptive: false,
     federation: 'USAW',
-  }));
+  };
 }

@@ -20,7 +20,7 @@ let mockServerClock: () => { skewMs: number; sampledAt: number } | null = () => 
 });
 jest.mock("@/lib/api/meetcal-api", () => ({
   fetchUserPreferences: jest.fn(async () => ({ auto_unsave_started_sessions: true })),
-  getServerClockSample: () => mockServerClock(),
+  refreshServerClock: async () => mockServerClock(),
   MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
 }));
 

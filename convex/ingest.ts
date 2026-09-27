@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
@@ -615,6 +615,31 @@ export const upsertRecords = internalMutation({
 });
 
 /**
+ * The exact-set syncs match stored rows to the payload by key. Rows stored
+ * twice under one key (older loads allowed it) would leave all but one copy
+ * out of the match, never updated or deleted, so the extra copies are deleted
+ * here; `deleted` counts them.
+ */
+async function onePerKey<T extends { _id: Id<TableNames> }>(
+  ctx: MutationCtx,
+  rows: readonly T[],
+  keyOf: (row: T) => string,
+): Promise<{ byKey: Map<string, T>; deleted: number }> {
+  const byKey = new Map<string, T>();
+  let deleted = 0;
+  for (const row of rows) {
+    const key = keyOf(row);
+    if (!byKey.has(key)) {
+      byKey.set(key, row);
+      continue;
+    }
+    await ctx.db.delete(row._id);
+    deleted += 1;
+  }
+  return { byKey, deleted };
+}
+
+/**
  * Exact-set sync of one record type (`replace_records`, e.g. IWF world
  * records): classes missing from the payload are deleted, the rest written
  * only where they changed. An empty payload or a duplicate class is refused.
@@ -625,10 +650,12 @@ export const replaceRecordSet = internalMutation({
     if (!recordType) throw new Error('recordType is required');
     if (!rows.length) throw new Error(`refusing to replace ${recordType} records with an empty payload`);
     const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
-    const existing = new Map(
-      (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).map((r) => [keyOf(r), r]),
+    const { byKey: existing, deleted: duplicates } = await onePerKey(
+      ctx,
+      await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect(),
+      keyOf,
     );
-    const counts = { inserted: 0, updated: 0, deleted: 0, unchanged: 0 };
+    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
     const changes: string[] = [];
     const seen = new Set<string>();
     for (const row of rows) {
@@ -706,15 +733,18 @@ export const replaceIntlRankingsGroup = internalMutation({
         .collect()
     ).filter((row) => row.meet === meet);
     const keyOf = (ranking: number | undefined, name: string | undefined) => JSON.stringify([ranking, name]);
-    const existingByKey = new Map(existing.map((row) => [keyOf(row.ranking, row.name), row]));
-
     const incoming = new Set<string>();
     const writes: { id: (typeof existing)[number]['_id'] | null; doc: Omit<(typeof existing)[number], '_id' | '_creationTime'> }[] = [];
-    const counts: SyncCounts = { inserted: 0, updated: 0, unchanged: 0, deleted: 0 };
+    // Checked before any write: a duplicate key in the payload aborts cleanly.
     for (const row of args.rankings) {
       const key = keyOf(row.ranking, row.name);
       if (incoming.has(key)) throw new Error(`Duplicate intl ranking in payload: ${meet}/${gender}/${ageCategory}/${row.ranking}/${row.name}`);
       incoming.add(key);
+    }
+    const { byKey: existingByKey, deleted: duplicates } = await onePerKey(ctx, existing, (row) => keyOf(row.ranking, row.name));
+    const counts: SyncCounts = { inserted: 0, updated: 0, unchanged: 0, deleted: 0 };
+    for (const row of args.rankings) {
+      const key = keyOf(row.ranking, row.name);
       const doc = { meet, ranking: row.ranking, name: row.name, weightClass: row.weightClass, total: row.total, percentA: row.percentA, gender, ageCategory };
       const current = existingByKey.get(key);
       if (!current) {
@@ -733,7 +763,7 @@ export const replaceIntlRankingsGroup = internalMutation({
       }
     }
     const deletions = [...existingByKey.entries()].filter(([key]) => !incoming.has(key)).map(([, row]) => row);
-    counts.deleted = deletions.length;
+    counts.deleted = deletions.length + duplicates;
     for (const row of deletions) await ctx.db.delete(row._id);
     for (const { id, doc } of writes) {
       if (id) await ctx.db.replace(id, doc);
@@ -804,8 +834,12 @@ export const replaceWsoRecordSet = internalMutation({
     if (!wso) throw new Error('wso is required');
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
     const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
-    const existing = new Map((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map((r) => [keyOf(r), r]));
-    const counts = { inserted: 0, updated: 0, deleted: 0, unchanged: 0 };
+    const { byKey: existing, deleted: duplicates } = await onePerKey(
+      ctx,
+      await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect(),
+      keyOf,
+    );
+    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
     const seen = new Set<string>();
     for (const row of rows) {
       const doc = {

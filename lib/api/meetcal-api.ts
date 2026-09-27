@@ -214,6 +214,17 @@ function sampleServerClock(): { done: Promise<void>; started: boolean } {
   return { done: serverClockInFlight, started: true };
 }
 
+/**
+ * Takes a new server clock sample (or joins the one in flight) and returns
+ * the latest sample once it settles. For a decision that needs the server's
+ * time now, not whenever the last request happened to sample it (the prune of
+ * started sessions). Bounded by `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`.
+ */
+export async function refreshServerClock(): Promise<ServerClockSample | null> {
+  await sampleServerClock().done;
+  return serverClockSample;
+}
+
 /** The last server clock sample this process took, or null before any response. */
 export function getServerClockSample(): ServerClockSample | null {
   return serverClockSample;
@@ -306,11 +317,14 @@ function methodLabel(call: ApiCall): string {
 async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  // The timeout also aborts the request, so it never lands later (a stale
+  // save arriving after a newer unsave would bring the session back).
+  const abort = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new MeetCalApiTimeoutError(methodLabel(call), call.path, timeoutMs)),
-      timeoutMs,
-    );
+    timeoutId = setTimeout(() => {
+      reject(new MeetCalApiTimeoutError(methodLabel(call), call.path, timeoutMs));
+      abort?.abort();
+    }, timeoutMs);
   });
   const clock =
     serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS
@@ -318,7 +332,7 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
       : null;
 
   try {
-    const result = await Promise.race([callApi(call), timeout]);
+    const result = await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
     // Only the request that started the process's first sample waits for it;
     // refreshes of an existing sample, and requests that merely find one in
     // flight, never do.

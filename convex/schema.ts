@@ -337,6 +337,9 @@ export default defineSchema({
     // Times the running rebuild was restarted after a stage stopped; the
     // views-refresh job alerts once it keeps failing.
     rebuildRestarts: v.optional(v.number()),
+    // When the running refresh began (its lease). One refresh at a time: a
+    // second finds the lease held and tries again shortly.
+    refreshLease: v.optional(v.number()),
   }).index('by_name', ['name']),
 
   // A view's text, cut into documents of well under 1 MiB.
