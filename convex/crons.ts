@@ -32,6 +32,9 @@ crons.daily('intl rankings', { hourUTC: 4, minuteUTC: 35 }, internal.scrapers.in
 // VPS: `5 1 * * *` EDT.
 crons.daily('meet sync', { hourUTC: 5, minuteUTC: 5 }, internal.scrapers.meets.run, {});
 
+// USA Masters events from usamasters.net (the VPS's usamw-events job).
+crons.daily('usamw events', { hourUTC: 5, minuteUTC: 35 }, internal.scrapers.usamwEvents.run, {});
+
 // VPS: `5 2 * * *` EDT.
 crons.daily('results (sport80)', { hourUTC: 6, minuteUTC: 5 }, internal.scrapers.sport80.run, {});
 

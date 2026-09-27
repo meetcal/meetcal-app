@@ -242,6 +242,64 @@ export const upsertMeets = internalMutation({
   },
 });
 
+const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
+
+/**
+ * USA Masters events from usamasters.net. The site's names differ from the
+ * meets already in the table ("2027 National Masters" vs "2027 USA Masters
+ * Nationals"), so an event is matched to a USAMW meet whose dates overlap
+ * rather than by name. A new event is inserted; for a match the site's dates
+ * win, and venue fields are only filled where they are still placeholders,
+ * so names and venues entered by hand are never overwritten. A location
+ * that disagrees with a filled-in one is reported, not written.
+ */
+export const syncUsamwEvents = internalMutation({
+  args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.string() })) },
+  handler: async (ctx, { events }) => {
+    const now = Date.now();
+    const hints: WriteHint[] = [];
+    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], locationDiffers: [] as string[] };
+    for (const event of events) {
+      const candidates = await ctx.db
+        .query('meets')
+        .withIndex('by_end_date', (q) => q.gte('endDate', event.startDate))
+        .collect();
+      const match = candidates.find((meet) => meet.federation === 'USAMW' && meet.startDate <= event.endDate);
+      if (!match) {
+        await ctx.db.insert('meets', {
+          ...event,
+          venueStreet: 'TBD',
+          venueZip: 'TBD',
+          status: 'upcoming',
+          federation: 'USAMW',
+          updatedAt: now,
+        });
+        hints.push({ kind: 'meet', key: event.name });
+        result.inserted.push(event.name);
+        continue;
+      }
+      const patch: Partial<Doc<'meets'>> = {};
+      if (match.startDate !== event.startDate) patch.startDate = event.startDate;
+      if (match.endDate !== event.endDate) patch.endDate = event.endDate;
+      for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
+        if (PLACEHOLDERS.has(match[field]) && !PLACEHOLDERS.has(event[field])) patch[field] = event[field];
+      }
+      if (patch.venueState && match.timeZone !== event.timeZone) patch.timeZone = event.timeZone;
+      const placed = !PLACEHOLDERS.has(match.venueCity) && !PLACEHOLDERS.has(event.venueCity);
+      if (placed && match.venueCity !== event.venueCity) result.locationDiffers.push(`${match.name}: ${match.venueCity}, ${match.venueState} here, ${event.venueCity}, ${event.venueState} on the site`);
+      if (Object.keys(patch).length === 0) {
+        result.unchanged.push(match.name);
+        continue;
+      }
+      await ctx.db.patch(match._id, { ...patch, updatedAt: now });
+      hints.push({ kind: 'meet', key: match.name });
+      result.updated.push(`${match.name} (${Object.entries(patch).map(([k, value]) => `${k} ${match[k as keyof typeof patch] ?? ''} -> ${value}`).join(', ')})`);
+    }
+    if (hints.length) await recordWrite(ctx, 'meets', hints);
+    return result;
+  },
+});
+
 const referenceTables = {
   records: recordsFields,
   standards: standardsFields,
