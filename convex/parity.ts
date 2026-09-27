@@ -11,7 +11,10 @@ import {
   meetByName,
   toApiMeet,
 } from './lib/meetData';
+import { directoryNames, searchDirectory } from './lib/directory';
 import { distinctNameKeys } from './lib/names';
+import { RESULT_NAMES_VIEW } from './lib/viewKeys';
+import { readViewTextAnyAge } from './lib/views';
 import {
   computeAdaptiveRecords,
   computeClubs,
@@ -48,6 +51,11 @@ export const live = internalQuery({
     switch (endpoint) {
       case 'schedule':
         return JSON.stringify(await computeScheduleRows(ctx, a.meet));
+      case 'searchSuggestions': {
+        // The whole directory, the answer the shards must reproduce.
+        const text = (await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? '';
+        return JSON.stringify({ matched_name: null, suggestions: searchDirectory(text, a.query, 8), results: [] });
+      }
       case 'athletes':
         return await liveAthletesJson(ctx, a.meet);
       case 'sessions':
@@ -256,6 +264,21 @@ export const run = internalAction({
       if (ages[0]) {
         await compare(`wsoRecords ${wso} ${ages[0]} Men`, ctx.runQuery(api.reference.wsoRecords, { wso, ageCategory: ages[0], gender: 'Men' }), 'wsoRecords', { wso, ageCategory: ages[0], gender: 'Men' });
       }
+    }
+    // Search suggestions (two-letter shards) against the whole directory:
+    // fixed queries, then pieces of names spread through it.
+    const directory: string[] = directoryNames((await ctx.runQuery(internal.views.textViewAnyAge, { key: RESULT_NAMES_VIEW })) ?? '');
+    const queries = new Set(['john', 'ann', 'ez', 'mc', "o'", 'van ', 'jr', 'zzqx', 'Ab', 'SMI', 'jos\u00e9', 'x']);
+    for (let i = 0; i < directory.length; i += Math.max(1, Math.floor(directory.length / 25))) {
+      const name = directory[i];
+      const last = name.split(' ').pop() ?? name;
+      queries.add(last.slice(0, 3));
+      queries.add(name.slice(1, 5).toLowerCase());
+      queries.add(name);
+    }
+    for (const query of queries) {
+      if (query.trim().length === 0) continue;
+      await compare(`search ${JSON.stringify(query)}`, ctx.runQuery(api.results.search, { query }), 'searchSuggestions', { query });
     }
     return { checks, mismatches: mismatches.slice(0, 50) };
   },

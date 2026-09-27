@@ -56,3 +56,58 @@ export function searchDirectory(text: string, query: string, limit: number): str
   }
   return names;
 }
+
+// ---------------------------------------------------------------------------
+// Two-letter shards
+// ---------------------------------------------------------------------------
+//
+// Reading the whole directory (~1 MB) for every suggestion query is most of
+// its cost. Each shard lists, in directory order, the names containing one
+// two-letter sequence; a query reads only the shard of its rarest sequence
+// and runs the same match over it. A shard is a subsequence of the directory
+// and holds every name the query can match, so the first matches, and their
+// order, are the directory's.
+//
+// Membership must cover what the case-insensitive (`iu`) match can reach.
+// Shards serve only ASCII queries (anything else reads the directory), and
+// the only non-ASCII characters that fold to ASCII letters are the Kelvin
+// sign (to k) and the long s (to s); names are folded with those too.
+
+/** A name or ASCII query folded the way the `iu` match compares ASCII. */
+export function foldForShards(text: string): string {
+  let folded = '';
+  for (const ch of text) {
+    if (ch === 'K') folded += 'k';
+    else if (ch === 'ſ') folded += 's';
+    else if (ch.charCodeAt(0) < 128) folded += ch.toLowerCase();
+    else folded += ch;
+  }
+  return folded;
+}
+
+/** The distinct two-character sequences of a name (after folding). */
+export function nameBigrams(name: string): Set<string> {
+  const chars = [...foldForShards(name)];
+  const bigrams = new Set<string>();
+  for (let i = 0; i + 1 < chars.length; i++) bigrams.add(chars[i] + chars[i + 1]);
+  return bigrams;
+}
+
+/** The query's two-character sequences, or null when it must read the whole directory (non-ASCII, or one character). */
+export function queryBigrams(query: string): string[] | null {
+  if (query.length < 2 || !/^[\x20-\x7e]+$/.test(query)) return null;
+  return [...nameBigrams(query)];
+}
+
+/** Every shard of a directory, names in directory order. */
+export function shardDirectory(names: readonly string[]): Map<string, string[]> {
+  const shards = new Map<string, string[]>();
+  for (const name of names) {
+    for (const bigram of nameBigrams(name)) {
+      const shard = shards.get(bigram);
+      if (shard) shard.push(name);
+      else shards.set(bigram, [name]);
+    }
+  }
+  return shards;
+}

@@ -1,11 +1,11 @@
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
-import { nameMatcher, searchDirectory } from './lib/directory';
+import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import { ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
 import { compareBytes } from './lib/sort';
-import { RESULT_NAMES_VIEW } from './lib/viewKeys';
+import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
 import { readViewTextAnyAge } from './lib/views';
 import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate } from './lib/validation';
 
@@ -170,6 +170,32 @@ async function directory(ctx: QueryCtx): Promise<string> {
   return text;
 }
 
+/**
+ * The names a query can match: the shard of its rarest two-letter sequence
+ * when it has one (`lib/directory.ts`), otherwise the whole directory. A
+ * sequence no name contains means no match at all.
+ */
+async function searchText(ctx: QueryCtx, query: string): Promise<string> {
+  const bigrams = queryBigrams(query);
+  if (bigrams) {
+    const sizesText = await readViewTextAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
+    if (sizesText !== null) {
+      const sizes = new Map(JSON.parse(sizesText) as [string, number][]);
+      let rarest: string | null = null;
+      for (const bigram of bigrams) {
+        const size = sizes.get(bigram) ?? 0;
+        if (size === 0) return '';
+        if (rarest === null || size < (sizes.get(rarest) ?? 0)) rarest = bigram;
+      }
+      if (rarest !== null) {
+        const shard = await readViewTextAnyAge(ctx, searchShardKey(rarest));
+        if (shard !== null) return shard;
+      }
+    }
+  }
+  return await directory(ctx);
+}
+
 /** Rows dated in `[start, end)`, oldest first. */
 function inRange(history: readonly ApiLiftingResult[], start: string, end: string): ApiLiftingResult[] {
   return history.filter((row) => row.date >= start && row.date < end).reverse();
@@ -190,7 +216,7 @@ export const search = query({
     requireNonEmpty('query', args.query);
     requireIsoDate('start_date', args.startDate);
     requireIsoDate('end_date', args.endDate);
-    const matchingNames = async (limit: number) => searchDirectory(await directory(ctx), args.query, limit);
+    const matchingNames = async (limit: number) => searchDirectory(await searchText(ctx, args.query), args.query, limit);
 
     if (args.startDate === undefined || args.endDate === undefined) {
       return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [] };

@@ -42,6 +42,9 @@ import {
   natKey,
   REF_VIEWS,
   RESULT_NAMES_VIEW,
+  SEARCH_SHARD_PREFIX,
+  SEARCH_SHARD_SIZES_VIEW,
+  searchShardKey,
   VIEW_SOURCES,
   wsoKey,
 } from './lib/viewKeys';
@@ -57,7 +60,7 @@ import {
   type SourceVersion,
   viewKeysWithPrefix as keysWithPrefix,
 } from './lib/views';
-import { directoryNames, directoryText } from './lib/directory';
+import { directoryNames, directoryText, nameBigrams, shardDirectory } from './lib/directory';
 
 // Builders and refresh for the views in `lib/viewKeys.ts`. Every builder is a
 // mutation that reads its source versions first and its rows second, in one
@@ -245,8 +248,8 @@ export const syncResultNames = internalMutation({
   args: { names: v.array(v.string()) },
   handler: async (ctx, { names }) => {
     const directory = new Set(directoryNames((await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? ''));
-    let added = 0;
-    let removed = 0;
+    const added: string[] = [];
+    const removed: string[] = [];
     for (const name of new Set(names)) {
       const hasResult =
         (await ctx.db
@@ -256,16 +259,135 @@ export const syncResultNames = internalMutation({
           .first()) !== null;
       if (hasResult && !directory.has(name)) {
         directory.add(name);
-        added += 1;
+        added.push(name);
       } else if (!hasResult && directory.delete(name)) {
-        removed += 1;
+        removed.push(name);
       }
     }
-    if (added + removed === 0) return { added, removed };
+    if (added.length + removed.length === 0) return { added, removed };
     await writeView(ctx, RESULT_NAMES_VIEW, textChunks(directoryText([...directory].sort(compareCollated))), [], { text: true });
     return { added, removed };
   },
 });
+
+// The directory's two-letter shards (`lib/directory.ts`).
+
+/** Writes whole shards, as the full rebuild computes them. */
+export const storeSearchShards = internalMutation({
+  args: { shards: v.array(v.object({ bigram: v.string(), text: v.string() })) },
+  handler: async (ctx, { shards }) => {
+    for (const { bigram, text } of shards) await writeView(ctx, searchShardKey(bigram), textChunks(text), [], { text: true });
+  },
+});
+
+/** Replaces the shard size table (`[[bigram, names], …]`), which queries use to pick their rarest shard. */
+export const storeSearchShardSizes = internalMutation({
+  args: { sizes: v.array(v.object({ bigram: v.string(), count: v.number() })) },
+  handler: async (ctx, { sizes }) => {
+    await writeView(ctx, SEARCH_SHARD_SIZES_VIEW, jsonChunks(sizes.map(({ bigram, count }) => [bigram, count])), [], { text: true });
+  },
+});
+
+/** Deletes shards whose sequence no name has any more. */
+export const deleteSearchShards = internalMutation({
+  args: { keys: v.array(v.string()) },
+  handler: async (ctx, { keys }) => {
+    for (const key of keys) {
+      if (key.startsWith(SEARCH_SHARD_PREFIX)) await deleteViewsWithPrefix(ctx, key);
+    }
+  },
+});
+
+/**
+ * Adds and removes names in the shards of `bigrams` (the refresh's name
+ * changes), keeping directory order; returns each shard's new size. An empty
+ * shard is deleted.
+ */
+export const patchSearchShards = internalMutation({
+  args: { bigrams: v.array(v.string()), added: v.array(v.string()), removed: v.array(v.string()) },
+  handler: async (ctx, { bigrams, added, removed }) => {
+    const sizes: { bigram: string; count: number }[] = [];
+    for (const bigram of bigrams) {
+      const key = searchShardKey(bigram);
+      const names = new Set(directoryNames((await readViewTextAnyAge(ctx, key)) ?? ''));
+      for (const name of added) if (nameBigrams(name).has(bigram)) names.add(name);
+      for (const name of removed) if (nameBigrams(name).has(bigram)) names.delete(name);
+      if (names.size === 0) await deleteViewsWithPrefix(ctx, key);
+      else await writeView(ctx, key, textChunks(directoryText([...names].sort(compareCollated))), [], { text: true });
+      sizes.push({ bigram, count: names.size });
+    }
+    return sizes;
+  },
+});
+
+/** Merges new sizes into the shard size table (a size of 0 drops the entry). */
+export const patchSearchShardSizes = internalMutation({
+  args: { sizes: v.array(v.object({ bigram: v.string(), count: v.number() })) },
+  handler: async (ctx, { sizes }) => {
+    const table = new Map<string, number>(JSON.parse((await readViewTextAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW)) ?? '[]') as [string, number][]);
+    for (const { bigram, count } of sizes) {
+      if (count > 0) table.set(bigram, count);
+      else table.delete(bigram);
+    }
+    await writeView(ctx, SEARCH_SHARD_SIZES_VIEW, jsonChunks([...table]), [], { text: true });
+  },
+});
+
+/** Shard text per mutation: well inside a function's argument and write limits. */
+const SHARD_BATCH_CHARS = 1_500_000;
+
+/** Rewrites every shard from a sorted directory, then the size table, then drops shards gone from it. */
+async function rebuildSearchShards(ctx: ActionCtx, sortedNames: readonly string[]): Promise<void> {
+  const shards = shardDirectory(sortedNames);
+  let batch: { bigram: string; text: string }[] = [];
+  let batchChars = 0;
+  for (const [bigram, names] of shards) {
+    const text = directoryText(names);
+    if (batch.length > 0 && batchChars + text.length > SHARD_BATCH_CHARS) {
+      await ctx.runMutation(internal.views.storeSearchShards, { shards: batch });
+      batch = [];
+      batchChars = 0;
+    }
+    batch.push({ bigram, text });
+    batchChars += text.length;
+  }
+  if (batch.length > 0) await ctx.runMutation(internal.views.storeSearchShards, { shards: batch });
+  await ctx.runMutation(internal.views.storeSearchShardSizes, {
+    sizes: [...shards].map(([bigram, names]) => ({ bigram, count: names.length })),
+  });
+  const current = new Set([...shards.keys()].map(searchShardKey));
+  const stale = (await ctx.runQuery(internal.views.viewKeysWithPrefix, { prefix: SEARCH_SHARD_PREFIX })).filter((key: string) => !current.has(key));
+  for (let i = 0; i < stale.length; i += 200) await ctx.runMutation(internal.views.deleteSearchShards, { keys: stale.slice(i, i + 200) });
+}
+
+/**
+ * Builds the shards from the stored directory (after a deploy that
+ * introduced them, without a full rebuild):
+ *
+ *   npx convex run views:buildSearchShards
+ */
+export const buildSearchShards = internalAction({
+  args: {},
+  handler: async (ctx): Promise<number> => {
+    const text: string | null = await ctx.runQuery(internal.views.textViewAnyAge, { key: RESULT_NAMES_VIEW });
+    const names = directoryNames(text ?? '');
+    await rebuildSearchShards(ctx, names);
+    return names.length;
+  },
+});
+
+/** Applies a refresh's name changes to the shards they touch, a few shards per mutation. */
+async function patchSearchShardsFor(ctx: ActionCtx, added: readonly string[], removed: readonly string[]): Promise<void> {
+  if (added.length + removed.length === 0) return;
+  const bigrams = new Set<string>();
+  for (const name of [...added, ...removed]) for (const bigram of nameBigrams(name)) bigrams.add(bigram);
+  const list = [...bigrams];
+  const sizes: { bigram: string; count: number }[] = [];
+  for (let i = 0; i < list.length; i += 20) {
+    sizes.push(...(await ctx.runMutation(internal.views.patchSearchShards, { bigrams: list.slice(i, i + 20), added: [...added], removed: [...removed] })));
+  }
+  await ctx.runMutation(internal.views.patchSearchShardSizes, { sizes });
+}
 
 // ---------------------------------------------------------------------------
 // Full rebuild
@@ -536,9 +658,9 @@ export const rebuildStage = internalAction({
           if (page.isDone) break;
           cursor = page.cursor;
         }
-        await ctx.runMutation(internal.views.storeResultNames, {
-          chunks: textChunks(directoryText([...names].sort(compareCollated))),
-        });
+        const sortedNames = [...names].sort(compareCollated);
+        await ctx.runMutation(internal.views.storeResultNames, { chunks: textChunks(directoryText(sortedNames)) });
+        await rebuildSearchShards(ctx, sortedNames);
         await ctx.runMutation(internal.views.storeTextView, {
           key: REBUILD_CLASSES_VIEW,
           chunks: jsonChunks([...classes].sort()),
@@ -711,7 +833,8 @@ export const refresh = internalAction({
     // Each name costs a lookup or two; 500 a batch stays well inside a
     // mutation's read limit.
     for (let i = 0; i < names.length; i += 500) {
-      await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
+      const changed: { added: string[]; removed: string[] } = await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
+      await patchSearchShardsFor(ctx, changed.added, changed.removed);
     }
 
     const restamped: number = await ctx.runMutation(internal.views.finishRefresh, {

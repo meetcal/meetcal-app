@@ -54,6 +54,10 @@ export const adaptiveKey = (gender: string, excludeFederation: string, season: s
 
 /** The search directory; served whatever its age (see `results:search`). */
 export const RESULT_NAMES_VIEW = 'search|names';
+/** The search directory's two-letter shards (`lib/directory.ts`) and their sizes. */
+export const SEARCH_SHARD_PREFIX = 'search|bigram|';
+export const searchShardKey = (bigram: string) => `${SEARCH_SHARD_PREFIX}${encodeURIComponent(bigram)}`;
+export const SEARCH_SHARD_SIZES_VIEW = 'search|bigram-sizes';
 
 export const VIEW_SOURCES = {
   nat: ['lifting_results'],
