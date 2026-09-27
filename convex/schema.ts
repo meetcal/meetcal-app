@@ -16,6 +16,23 @@ import { v } from 'convex/values';
  * Queries convert camelCase documents to the Rust API's snake_case JSON, so
  * `lib/api/meetcal-api.ts` validates and maps them unchanged.
  */
+/**
+ * Who set a record lift: the athlete, or "Standard" while nobody has claimed
+ * it, with the date and where (meet and place) when the source gives them.
+ * Stored beside each lift; the app does not show it yet.
+ */
+export const recordHolder = v.object({
+  name: v.string(),
+  date: v.optional(v.string()),
+  location: v.optional(v.string()),
+});
+
+const holders = {
+  snatchBy: v.optional(recordHolder),
+  cjBy: v.optional(recordHolder),
+  totalBy: v.optional(recordHolder),
+};
+
 const meetStatus = v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed'));
 
 // Field validators of the tables writers fill; `convex/ingest.ts` validates
@@ -102,6 +119,7 @@ export const recordsFields = {
     snatchRecord: v.optional(v.number()),
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
+    ...holders,
 };
 
 export const sessionScheduleFields = {
@@ -130,6 +148,7 @@ export const wsoRecordsFields = {
     snatchRecord: v.optional(v.number()),
     cjRecord: v.optional(v.number()),
     totalRecord: v.optional(v.number()),
+    ...holders,
 };
 
 export default defineSchema({

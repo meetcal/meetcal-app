@@ -1,4 +1,4 @@
-import type { RecordHolder } from './holder';
+import { recordHolder, type RecordHolder } from './holder';
 import { parseHtml, type HTMLElement } from '../lib/html';
 import { absoluteUrl } from '../lib/http';
 
@@ -92,10 +92,35 @@ function genderOf(code: string): string | null {
   return upper === 'M' ? 'men' : upper === 'F' ? 'women' : null;
 }
 
+const DATE = /^(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}\/\d{2,4})$/;
+
+/**
+ * Who set a row's lift, from the words after its value: `Name Date Place
+ * Event` ("HOWARD, Rayya 2026-06-20 Colorado Springs, CO 2026 National Youth
+ * Championships"). The event starts at its year, so the place is what comes
+ * before; without a year the two stay together, as written.
+ */
+function rowHolder(value: number, words: string[]): RecordHolder | undefined {
+  const at = words.findIndex((word) => DATE.test(word));
+  if (at < 0) return recordHolder(value, words.join(' '));
+  const rest = words.slice(at + 1).join(' ');
+  const split = /^(.+?)\s+((?:19|20)\d{2}\s.*)$/.exec(rest);
+  return split
+    ? recordHolder(value, words.slice(0, at).join(' '), words[at], split[2], split[1])
+    : recordHolder(value, words.slice(0, at).join(' '), words[at], rest);
+}
+
+/** Sets a lift's holder, or clears it when the lift has none. */
+function setHolder(record: UsawRecord, key: 'snatch_by' | 'cj_by' | 'total_by', holder: RecordHolder | undefined) {
+  if (holder) record[key] = holder;
+  else delete record[key];
+}
+
 /**
  * Records from the PDF's text lines. Every age code the scraper keeps is one
- * token, so a kept row is `code gender bodyweight lift record …`; rows it
- * drops ("11 & Under", headers, wrapped event names) fail a token check.
+ * token, so a kept row is `code gender bodyweight lift record name date place
+ * event`; rows it drops ("11 & Under", headers, wrapped event names) fail a
+ * token check. Each lift's holder comes from the row that set its value.
  */
 export function parseRecords(pages: string[][]): UsawRecord[] {
   const byKey = new Map<string, UsawRecord>();
@@ -124,9 +149,18 @@ export function parseRecords(pages: string[][]): UsawRecord[] {
         total_record: 0,
       };
       const liftUpper = lift.toUpperCase();
-      if (liftUpper.includes('SNATCH')) record.snatch_record = weight;
-      else if (liftUpper.includes('CLEAN') && liftUpper.includes('JERK')) record.cj_record = weight;
-      else if (liftUpper.includes('TOTAL')) record.total_record = weight;
+      // A 0 kg standard ("W80 F 49 SNATCH 0 Standard") is no lift to hold.
+      const holder = weight === 0 ? undefined : rowHolder(weight, tokens.slice(5));
+      if (liftUpper.includes('SNATCH')) {
+        record.snatch_record = weight;
+        setHolder(record, 'snatch_by', holder);
+      } else if (liftUpper.includes('CLEAN') && liftUpper.includes('JERK')) {
+        record.cj_record = weight;
+        setHolder(record, 'cj_by', holder);
+      } else if (liftUpper.includes('TOTAL')) {
+        record.total_record = weight;
+        setHolder(record, 'total_by', holder);
+      }
       byKey.set(key, record);
     }
   }

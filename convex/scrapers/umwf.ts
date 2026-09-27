@@ -54,6 +54,9 @@ export const run = internalAction({
         snatchRecord: r.snatch_record || undefined,
         cjRecord: r.cj_record || undefined,
         totalRecord: r.total_record || undefined,
+        snatchBy: r.snatch_by,
+        cjBy: r.cj_by,
+        totalBy: r.total_by,
       })),
     });
     const inserted = records.filter((_, i) => outcomes[i].wasInsert);

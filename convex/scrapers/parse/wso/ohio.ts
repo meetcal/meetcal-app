@@ -1,15 +1,21 @@
 import { parseCsv } from '../../lib/csv';
+import { recordHolder, type RecordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Ohio (port of `auto_scrapers/scraper_ohio.py`, its public-sheet path): a
 // tab per age group and gender ("Masters Women"), read down column A:
 // age subdivision rows ("35 - 39"), class rows ("49 kg"), then Snatch, C&J
 // and Total rows with the weight in column D. The first row is a merged
-// title that can carry the first subdivision and class.
+// title that can carry the first subdivision and class. A lift row names
+// its holder: Athlete (B, "WSO Standard" or blank for a standard), Date (E),
+// Meet (F) and Location (G).
 
 export const OHIO_TABS = ['Youth Women', 'Youth Men', 'Junior Women', 'Junior Men', 'Senior Women', 'Senior Men', 'Masters Women', 'Masters Men'] as const;
 
 type OhioTab = (typeof OHIO_TABS)[number];
+
+type Lift = { value: number | null; by?: RecordHolder };
+const NO_LIFT: Lift = { value: null };
 
 const HEADER_WORDS = new Set(['lift', 'athlete', 'team', 'weight', 'date', 'meet', 'location']);
 const LIFTS = new Set(['snatch', 'clean & jerk', 'clean and jerk', 'c&j', 'total']);
@@ -33,14 +39,26 @@ export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[
   const seen = new Set<string>();
   let age: string | null = category === 'Junior' || category === 'Senior' ? category : null;
   let weightClass: string | null = null;
-  let lifts: { snatch: number | null; cj: number | null; total: number | null } = { snatch: null, cj: null, total: null };
+  let lifts: { snatch: Lift; cj: Lift; total: Lift } = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
 
   const save = () => {
     if (!weightClass || !age) return;
     const key = JSON.stringify([age, weightClass]);
     if (seen.has(key)) return;
     seen.add(key);
-    records.push({ wso, age_category: age, gender, weight_class: weightClass, snatch_record: lifts.snatch, cj_record: lifts.cj, total_record: lifts.total });
+    const { snatch, cj, total } = lifts;
+    records.push({
+      wso,
+      age_category: age,
+      gender,
+      weight_class: weightClass,
+      snatch_record: snatch.value,
+      cj_record: cj.value,
+      total_record: total.value,
+      ...(snatch.by && { snatch_by: snatch.by }),
+      ...(cj.by && { cj_by: cj.by }),
+      ...(total.by && { total_by: total.by }),
+    });
   };
 
   parseCsv(csv).forEach((row, i) => {
@@ -65,17 +83,18 @@ export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[
     if (LIFTS.has(lower)) {
       const cell = row.length > 3 ? row[3].trim() : '';
       const value = cell ? intOrNull(cell) : null;
-      if (lower === 'snatch') lifts.snatch = value;
+      const lift: Lift = { value, by: recordHolder(value, row[1], row[4], row[5], row[6]) };
+      if (lower === 'snatch') lifts.snatch = lift;
       else if (lower === 'total') {
-        lifts.total = value;
+        lifts.total = lift;
         save();
         weightClass = null;
-        lifts = { snatch: null, cj: null, total: null };
-      } else lifts.cj = value;
+        lifts = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
+      } else lifts.cj = lift;
     } else if (lower.includes('kg')) {
       save();
       weightClass = first.replaceAll(' kg', '').replaceAll('kg', '').trim();
-      lifts = { snatch: null, cj: null, total: null };
+      lifts = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
     } else if (!second) {
       const parsed = ageSubdivision(first, category);
       if (parsed && parsed !== first) {

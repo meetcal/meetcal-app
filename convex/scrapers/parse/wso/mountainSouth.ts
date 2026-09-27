@@ -1,9 +1,17 @@
+import type { PdfLine } from '../../lib/pdf';
+import { recordHolder, type RecordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Mountain South (port of `manual_scrapers/scraper_pdf_mountainsouth.py` and
 // its auto wrapper): a men's and a women's PDF linked from the records page,
 // sections headed "MASTERS MEN 35-39 - SNATCH", one line per class ("60 Name
 // STATE 120 date event location", or just "60" when vacant).
+//
+// Lines come as text or as positioned runs. The lift values read the text
+// alone; the holders read the runs where there are any, because the text
+// cannot tell where the event ends and the place begins ("WSO Championship
+// Salt Lake City, UT"), and a first name wide enough to touch the last-name
+// column prints without a space ("Jean-JacquesCabou").
 
 /** The current men's and women's PDFs in the page's "MOUNTAIN SOUTH WSO RECORDS" section. */
 export function mountainSouthPdfUrls(html: string): string[] {
@@ -59,15 +67,59 @@ function lift(text: string): number | null {
 }
 
 const FIELDS = { SNATCH: 'snatch_record', CLEAN_JERK: 'cj_record', TOTAL: 'total_record' } as const;
+const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
 
-/** One PDF's records, from its text lines page by page. */
-export function parseMountainSouth(pages: readonly (readonly string[])[], wso: string): WsoRecord[] {
+/** Where the STATE and LOCATION columns start on this page (from the "CAT ATHLETE ..." header's runs). */
+type Columns = { state?: number; location?: number };
+
+/** A word of a line, with where its run starts when the line has positions. */
+type Word = { text: string; x?: number };
+
+const words = (text: string, x?: number): Word[] =>
+  text
+    .split(/\s+/)
+    // Blank cells print as "#N/A" or a dash.
+    .filter((word) => word && word !== '#N/A' && !/^[-–—]+$/.test(word))
+    .map((word) => ({ text: word, x }));
+
+const DATE = /^\d{1,2}\/\d{1,2}\/\d{2}(?:\d{2})?$/;
+const STATE = /^[A-Z]{2}$/;
+
+/**
+ * Who set `value` on a class line: the words before it are the athlete and
+ * their state, then the date, the event and the place. The state column is
+ * the athlete's home, not where the lift was made, so it is left out.
+ */
+function lineHolder(value: number | null, line: string | PdfLine, columns: Columns): RecordHolder | undefined {
+  if (value === null) return undefined;
+  const runs = typeof line === 'string' ? [] : line.runs.flatMap((run) => words(run.text, run.x));
+  // The runs split words the text joins ("Jean-JacquesCabou"); should they
+  // disagree about the value, the text's words are the ones it came from.
+  const first = runs.slice(1).find((word) => lift(word.text) !== null);
+  const all = first && lift(first.text) === value ? runs : words(typeof line === 'string' ? line : line.text);
+  const at = all.findIndex((word, i) => i > 0 && lift(word.text) === value);
+  if (at === -1) return recordHolder(value, null);
+  const before = all.slice(1, at);
+  const after = all.slice(at + 1);
+  const positioned = columns.state !== undefined && before.every((word) => word.x !== undefined);
+  const name = positioned ? before.filter((word) => word.x! < columns.state! - 5) : before.length > 1 && STATE.test(before[before.length - 1].text) ? before.slice(0, -1) : before;
+  const date = after[0] && DATE.test(after[0].text) ? after.shift()!.text : null;
+  const atPlace = columns.location !== undefined && after.every((word) => word.x !== undefined);
+  const event = atPlace ? after.filter((word) => word.x! < columns.location! - 5) : [];
+  const place = atPlace ? after.filter((word) => word.x! >= columns.location! - 5) : after;
+  const join = (list: Word[]) => list.map((word) => word.text).join(' ');
+  return recordHolder(value, join(name), date, join(event), join(place));
+}
+
+/** One PDF's records, from its lines (text, or runs with positions) page by page. */
+export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[])[], wso: string): WsoRecord[] {
   const records = new Map<string, WsoRecord>();
   for (const page of pages) {
     let section: [string, 'Men' | 'Women'] | null = null;
     let field: (typeof FIELDS)[keyof typeof FIELDS] | null = null;
-    for (const raw of page) {
-      const line = raw.trim();
+    let columns: Columns = {};
+    for (const source of page) {
+      const line = (typeof source === 'string' ? source : source.text).trim();
       if (line.includes(' - SNATCH') || line.includes(' - CLEAN & JERK') || line.includes(' - TOTAL')) {
         const parsed = mountainSouthSection(line);
         if (parsed) {
@@ -76,7 +128,13 @@ export function parseMountainSouth(pages: readonly (readonly string[])[], wso: s
         }
         continue;
       }
-      if ((line.includes('CAT') && line.includes('ATHLETE')) || line.includes('Beginning 6/1/2025')) continue;
+      if ((line.includes('CAT') && line.includes('ATHLETE')) || line.includes('Beginning 6/1/2025')) {
+        if (typeof source !== 'string') {
+          const at = (name: string) => source.runs.find((run) => run.text.trim() === name)?.x;
+          columns = { state: at('STATE'), location: at('LOCATION') };
+        }
+        continue;
+      }
       const parts = line.split(/\s+/).filter(Boolean);
       if (!parts.length || !section || !field || !/^\d+$/.test(parts[0].replaceAll('+', ''))) continue;
       const weightClass = parts[0].includes('+') && !parts[0].endsWith('+') ? `${parts[0].replaceAll('+', '')}+` : parts[0];
@@ -90,6 +148,9 @@ export function parseMountainSouth(pages: readonly (readonly string[])[], wso: s
         for (let i = 1; i < Math.min(parts.length, 6) && value === null; i++) value = lift(parts[i]);
       }
       record[field] = value;
+      const by = lineHolder(value, source, columns);
+      if (by) record[HOLDER_FIELDS[field]] = by;
+      else delete record[HOLDER_FIELDS[field]];
     }
   }
   return [...records.values()];

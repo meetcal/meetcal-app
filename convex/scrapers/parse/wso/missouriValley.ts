@@ -1,4 +1,5 @@
 import { parseHtml } from '../../lib/html';
+import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
 
 // Missouri Valley (missourivalleyweightlifting.org/records): one HTML page,
@@ -9,16 +10,26 @@ import type { WsoRecord } from './common';
 // ("45 kg – Lily York", "50 kg –" with the name on the next line, or "TBD").
 // Youth, junior and senior divisions give the age then its classes; masters
 // give each class then its ages, so both headings carry over until replaced.
+// The name after the dash is the holder; the page gives no date or meet.
 
 export const MISSOURI_VALLEY_URL = 'https://missourivalleyweightlifting.org/records/';
 
 const GENDERS: Record<string, 'Men' | 'Women'> = { women: 'Women', girls: 'Women', men: 'Men', boys: 'Men' };
-const LIFTS: Record<string, 'snatch_record' | 'cj_record' | 'total_record'> = {
-  'SNATCH:': 'snatch_record',
-  '5NATCH:': 'snatch_record',
-  'CLEAN & JERK:': 'cj_record',
-  'TOTAL:': 'total_record',
+const LIFTS: Record<string, 'snatch' | 'cj' | 'total'> = {
+  'SNATCH:': 'snatch',
+  '5NATCH:': 'snatch',
+  'CLEAN & JERK:': 'cj',
+  'TOTAL:': 'total',
 };
+
+/** A line the page uses for structure, never a holder's name. */
+function isHeading(line: string): boolean {
+  return (
+    Boolean(GENDERS[line.toLowerCase()] || LIFTS[line.toUpperCase()] || missouriValleyAge(line)) ||
+    /^(\d+\+?)\s*kg$/i.test(line) ||
+    /^(?:no records set|find a club|tbd)$/i.test(line)
+  );
+}
 
 /** "Age 18 – 20" -> Junior, "age 14 - 15" -> U15, "AGE 35 – 39" -> Masters 35, "13 & Under" -> U13. */
 export function missouriValleyAge(line: string): string | null {
@@ -89,9 +100,19 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
       record();
       continue;
     }
-    const kg = /^(\d+(?:\.\d+)?)\s*kg\b/i.exec(value);
+    const kg = /^(\d+(?:\.\d+)?)\s*kg\b\s*(?:[–—-]\s*)?(.*)$/i.exec(value);
     if (!kg) throw new Error(`Missouri Valley: unreadable ${line} value "${value}" (${age} ${gender} ${weightClass})`);
-    record()[lift] = Math.trunc(Number(kg[1]));
+    let name = kg[2];
+    // "50 kg –" with the name wrapped onto the next line.
+    if (!name && /[–—-]\s*$/.test(value) && i + 1 < lines.length && !isHeading(lines[i + 1])) {
+      name = lines[i + 1];
+      i += 1;
+    }
+    const entry = record();
+    const kilos = Math.trunc(Number(kg[1]));
+    entry[`${lift}_record`] = kilos;
+    const by = recordHolder(kilos, name);
+    if (by) entry[`${lift}_by`] = by;
   }
   return [...records.values()];
 }

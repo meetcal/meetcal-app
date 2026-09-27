@@ -36,6 +36,29 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
     ]);
   });
 
+  it('reads who set each lift, less the bodyweight after the name', () => {
+    const page: PdfLine[] = [
+      { text: "13U Youth Men's Records", runs: [{ text: "13U Youth Men's Records", x: 267, end: 526 }] },
+      header,
+      line({ Lift: 'Snatch', Name: 'Cian Whitney (29.70)', Representing: 'Rose Barbell Club', 'Location/Meet': '2025 Bay State Games', Weight: '25', Date: '7/19/2025' }),
+      line({ Class: '40', Lift: 'C&J', Name: 'Standard', Weight: '30' }),
+      line({ Lift: 'Total', Name: 'Beckett Roche (38)', Representing: 'Unaffiliated', 'Location/Meet': "Strength Paddy's Day Classic", Weight: '55', Date: '3/21/2026' }),
+      line({ Lift: 'Snatch', Name: 'Open' }),
+      line({ Class: '44', Lift: 'C&J', Name: 'Sarah StGermain (52.2)', Weight: '66', Date: '4/26/2026' }),
+      line({ Lift: 'Total', Name: 'A Lifter (Jr)', Weight: '100' }),
+    ];
+    const [first, second] = parseNewEngland([page], 'New England');
+    expect(first).toMatchObject({
+      snatch_by: { name: 'Cian Whitney', date: '2025-07-19', location: '2025 Bay State Games' },
+      total_by: { name: 'Beckett Roche', date: '2026-03-21', location: "Strength Paddy's Day Classic" },
+    });
+    expect(first.cj_by).toEqual({ name: 'Standard' });
+    expect(second).not.toHaveProperty('snatch_by');
+    expect(second.cj_by).toEqual({ name: 'Sarah StGermain', date: '2026-04-26' });
+    // Only a number in parentheses is a bodyweight.
+    expect(second.total_by).toEqual({ name: 'A Lifter (Jr)' });
+  });
+
   it('finds every records PDF the page links, once each', () => {
     const pdf = (id: string) => `<a href="https://www.newenglandweightlifting.com/_files/ugd/7cfa8e_${id}.pdf">See Records</a>`;
     expect(newEnglandPdfUrls(pdf('a') + pdf('b') + pdf('a')).map((u) => u.slice(-6))).toEqual(['_a.pdf', '_b.pdf']);

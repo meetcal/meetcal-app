@@ -1,4 +1,4 @@
-import type { RecordHolder } from './holder';
+import { recordHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
 
 // Pure parsing for `scrapers/usamw.ts` (port of `usamw/records/national_records.py`).
@@ -48,14 +48,48 @@ export function ageCategory(text: string): string | null {
 
 const LINE = /^(\d+\+?)\s+(SNA|SNATCH|CNJ|C&J|CLEAN|TOT|TOTAL)\s+(\d+(?:\.\d+)?)\b/i;
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** "12-Sep-25" -> "2025-09-12" (two-digit years up to 50 are 20xx); any other date as written. */
+function recordsDate(text: string): string {
+  const match = /^(\d{1,2})-([A-Za-z]{3})[a-z]*-(\d{2}|\d{4})$/.exec(text);
+  const month = match ? MONTHS.indexOf(match[2].toLowerCase()) + 1 : 0;
+  if (!match || !month) return text;
+  const year = match[3].length === 4 ? Number(match[3]) : Number(match[3]) + (Number(match[3]) <= 50 ? 2000 : 1900);
+  return `${year}-${String(month).padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+}
+
+/**
+ * Who set a line's lift, from what follows its value: `Family Given Date Site
+ * Competition` ("MURRAY George 12-Sep-25 Las Vegas, NV World Masters"). The
+ * site ends at its two-letter state or country code; the name is kept as the
+ * PDF lays it out.
+ */
+function lineHolder(value: number, rest: string): RecordHolder | undefined {
+  const words = rest.trim().split(/\s+/).filter(Boolean);
+  const at = words.findIndex((word) => /^\d{1,2}-[A-Za-z]{3,}-\d{2,4}$/.test(word) || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(word));
+  if (at < 0) return recordHolder(value, words.join(' '));
+  const tail = words.slice(at + 1).join(' ');
+  const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
+  return site
+    ? recordHolder(value, words.slice(0, at).join(' '), recordsDate(words[at]), site[2], site[1])
+    : recordHolder(value, words.slice(0, at).join(' '), recordsDate(words[at]), tail);
+}
+
+/** Sets a lift's holder, or clears it when the lift has none. */
+function setHolder(record: UsamwRecord, key: 'snatchBy' | 'cjBy' | 'totalBy', holder: RecordHolder | undefined) {
+  if (holder) record[key] = holder;
+  else delete record[key];
+}
+
 function weightOrder(weightClass: string): number {
   return Number(weightClass.replace('+kg', '.5').replace('kg', ''));
 }
 
 /**
  * Records from one PDF (one gender): each page names its age group in its
- * first eight lines ("M35-39"), then `class lift record` lines. Sorted by
- * gender, age, then class, as before.
+ * first eight lines ("M35-39"), then `class lift record` lines, each naming
+ * who set it, when and where. Sorted by gender, age, then class, as before.
  */
 export function parseRecordPages(pages: string[][], gender: string): UsamwRecord[] {
   const byKey = new Map<string, UsamwRecord>();
@@ -83,9 +117,17 @@ export function parseRecordPages(pages: string[][], gender: string): UsamwRecord
       };
       const value = Math.trunc(Number(match[3]));
       const lift = match[2].toUpperCase();
-      if (lift.startsWith('SNA')) record.snatchRecord = value;
-      else if (lift === 'CNJ' || lift === 'C&J' || lift.startsWith('CLEAN')) record.cjRecord = value;
-      else if (lift.startsWith('TOT')) record.totalRecord = value;
+      const holder = lineHolder(value, line.slice(match[0].length));
+      if (lift.startsWith('SNA')) {
+        record.snatchRecord = value;
+        setHolder(record, 'snatchBy', holder);
+      } else if (lift === 'CNJ' || lift === 'C&J' || lift.startsWith('CLEAN')) {
+        record.cjRecord = value;
+        setHolder(record, 'cjBy', holder);
+      } else if (lift.startsWith('TOT')) {
+        record.totalRecord = value;
+        setHolder(record, 'totalBy', holder);
+      }
       byKey.set(key, record);
     }
   }

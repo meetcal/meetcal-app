@@ -1,9 +1,12 @@
 import { parseCsv } from '../../lib/csv';
+import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Side-by-side sheets: men on the left, women on the right, each weight class
 // three rows (Snatch, C&J, Total) with the class written in the Snatch row
-// and left blank for the open class above the last one. Ports of
+// and left blank for the open class above the last one. Each lift row also
+// names who set it (Florida: athlete, date; Carolina: athlete, club, date,
+// location). Ports of
 // `auto_scrapers/scraper_florida.py` (a tab per age group) and
 // `scraper_carolinas.py` (Youth and Masters tabs stack several age groups).
 
@@ -18,6 +21,8 @@ export type SideBySide = {
    */
   ageFor: (section: number) => string;
   sections: boolean;
+  /** Columns after a side's first holding the lift's athlete, date and place (none for Florida). */
+  holder: { name: number; date: number; location?: number };
 };
 
 const cell = (row: readonly string[] | undefined, column: number) => (row && row.length > column ? row[column].trim() : '');
@@ -56,31 +61,45 @@ export function parseSideBySide(csv: string, wso: string, layout: SideBySide): W
         if (!lastClass[gender]) continue;
         weightClass = `${lastClass[gender]}+`;
       }
-      records.push({
+      const [snatch, cj, total] = [row, rows[i + 1], rows[i + 2]].map((liftRow) => {
+        const lift = value(liftRow, column + 2);
+        const { name, date, location } = layout.holder;
+        const place = location === undefined ? undefined : cell(liftRow, column + location);
+        return { lift, by: recordHolder(lift, cell(liftRow, column + name), cell(liftRow, column + date), place) };
+      });
+      const record: WsoRecord = {
         wso,
         age_category: age,
         gender,
         weight_class: weightClass,
-        snatch_record: value(row, column + 2),
-        cj_record: value(rows[i + 1], column + 2),
-        total_record: value(rows[i + 2], column + 2),
-      });
+        snatch_record: snatch.lift,
+        cj_record: cj.lift,
+        total_record: total.lift,
+      };
+      if (snatch.by) record.snatch_by = snatch.by;
+      if (cj.by) record.cj_by = cj.by;
+      if (total.by) record.total_by = total.by;
+      records.push(record);
       if (!weightClass.endsWith('+')) lastClass[gender] = weightClass;
     }
   });
   return records;
 }
 
-/** Florida: one tab per age group, the women's side from column 6, 0 meaning no record. */
-export const floridaLayout = (age: string): SideBySide => ({ womenColumn: 6, zeroIsEmpty: true, ageFor: () => age, sections: false });
+/** Florida: one tab per age group, the women's side from column 6, 0 meaning no record; athlete and date beside the value. */
+export const floridaLayout = (age: string): SideBySide => ({ womenColumn: 6, zeroIsEmpty: true, ageFor: () => age, sections: false, holder: { name: 3, date: 4 } });
 
 const CAROLINA_MASTERS = [35, 40, 45, 50, 55, 60, 65, 70, 75];
 
-/** Carolinas: the women's side from column 8; Youth stacks U13, U15, U17 and Masters 35 up to 75. */
+/**
+ * Carolinas: the women's side from column 8, athlete, club, date and location
+ * beside the value; Youth stacks U13, U15, U17 and Masters 35 up to 75.
+ */
 export const carolinaLayout = (tab: 'Youth' | 'Junior' | 'Senior' | 'Masters'): SideBySide => ({
   womenColumn: 8,
   zeroIsEmpty: false,
   sections: true,
+  holder: { name: 3, date: 5, location: 6 },
   ageFor: (section) => {
     if (tab === 'Youth') return section === 0 ? 'U13' : section === 1 ? 'U15' : 'U17';
     if (tab === 'Masters') return `Masters ${CAROLINA_MASTERS[Math.min(section, CAROLINA_MASTERS.length - 1)]}`;

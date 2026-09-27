@@ -54,6 +54,68 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     ]);
   });
 
+  it('records who set each lift, "Standard" when unclaimed, the later row for a lift winning with its holder', () => {
+    const csv = [
+      'ageGroup,gender,bodyWeightMin,bodyWeightMax,lift,record,name,date,place',
+      'U11,F,,36,Snatch,16,Hadley Tillman,2025-06-20,Youth Nationals 2025',
+      'U11,F,,36,Clean & Jerk,20,STANDARD,6/1/2025,',
+      'U11,F,,36,Total,35,,,',
+      'U13,M,,40,Snatch,,Nobody,2025-06-20,Somewhere',
+      'U13,M,,40,Total,50,First,2025-01-01,Meet A',
+      'U13,M,,40,Total,55,"DOE, Jane",08-31-2025,Meet B',
+    ].join('\n');
+    const [u11, u13] = parseFlatSheet(csv, 'Georgia');
+    expect(u11).toEqual({
+      wso: 'Georgia',
+      age_category: 'U11',
+      gender: 'Women',
+      weight_class: '36',
+      snatch_record: 16,
+      cj_record: 20,
+      total_record: 35,
+      snatch_by: { name: 'Hadley Tillman', date: '2025-06-20', location: 'Youth Nationals 2025' },
+      cj_by: { name: 'Standard', date: '2025-06-01' },
+      total_by: { name: 'Standard' },
+    });
+    expect(u13).toEqual({
+      wso: 'Georgia',
+      age_category: 'U13',
+      gender: 'Men',
+      weight_class: '40',
+      snatch_record: null,
+      cj_record: null,
+      total_record: 55,
+      total_by: { name: 'DOE, Jane', date: '2025-08-31', location: 'Meet B' },
+    });
+  });
+
+  it('leaves holders out for a sheet without a name column', () => {
+    const csv = ['ageGroup,gender,bodyWeightMin,bodyWeightMax,lift,record,date', 'U11,F,,36,Snatch,16,2025-06-20'].join('\n');
+    expect(parseFlatSheet(csv, 'Georgia')[0]).not.toHaveProperty('snatch_by');
+  });
+
+  it('reads DMV holders from Name, Date and Event, ignoring Club', () => {
+    const csv = [
+      'Age Group,Gender,bodyWeightMin,Weight Class,Lift,Record,Name,Club,Date,Event',
+      'U15,M,0,79,Snatch,82,"BANU, Jonathan",12 Labours Barbell,12.05.2025,2025 Virus Weightlifting Finals',
+      'U15,M,0,79,Total,141,STANDARD,,06.01.2025,',
+    ].join('\n');
+    const columns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record', name: 'Name', date: 'Date', location: 'Event' };
+    expect(parseFlatSheet(csv, 'DMV', columns)).toEqual([
+      {
+        wso: 'DMV',
+        age_category: 'U15',
+        gender: 'Men',
+        weight_class: '79',
+        snatch_record: 82,
+        cj_record: null,
+        total_record: 141,
+        snatch_by: { name: 'BANU, Jonathan', date: '2025-12-05', location: '2025 Virus Weightlifting Finals' },
+        total_by: { name: 'Standard', date: '2025-06-01' },
+      },
+    ]);
+  });
+
   it('reads DMV under its own column names', () => {
     const csv = ['Age Group,Gender,bodyWeightMin,Weight Class,Lift,Record', 'JR,M,,>110,Snatch,150', 'JR,M,,>110,Total,340', 'W35,F,,58,Clean & Jerk,90'].join('\n');
     const columns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };

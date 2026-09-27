@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as cronJobs from "../cronJobs.js";
 import type * as crons from "../crons.js";
 import type * as ingest from "../ingest.js";
 import type * as lib_directory from "../lib/directory.js";
@@ -18,6 +19,7 @@ import type * as lib_names from "../lib/names.js";
 import type * as lib_normalize from "../lib/normalize.js";
 import type * as lib_referenceData from "../lib/referenceData.js";
 import type * as lib_results from "../lib/results.js";
+import type * as lib_sentryCrons from "../lib/sentryCrons.js";
 import type * as lib_sort from "../lib/sort.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as lib_viewKeys from "../lib/viewKeys.js";
@@ -39,6 +41,7 @@ import type * as scrapers_lib_http from "../scrapers/lib/http.js";
 import type * as scrapers_lib_pdf from "../scrapers/lib/pdf.js";
 import type * as scrapers_meets from "../scrapers/meets.js";
 import type * as scrapers_parse_entries from "../scrapers/parse/entries.js";
+import type * as scrapers_parse_holder from "../scrapers/parse/holder.js";
 import type * as scrapers_parse_intlRankings from "../scrapers/parse/intlRankings.js";
 import type * as scrapers_parse_iwfRecords from "../scrapers/parse/iwfRecords.js";
 import type * as scrapers_parse_meets from "../scrapers/parse/meets.js";
@@ -48,6 +51,7 @@ import type * as scrapers_parse_standards from "../scrapers/parse/standards.js";
 import type * as scrapers_parse_umwf from "../scrapers/parse/umwf.js";
 import type * as scrapers_parse_usamw from "../scrapers/parse/usamw.js";
 import type * as scrapers_parse_usamwEvents from "../scrapers/parse/usamwEvents.js";
+import type * as scrapers_parse_usamwResults from "../scrapers/parse/usamwResults.js";
 import type * as scrapers_parse_watchedPages from "../scrapers/parse/watchedPages.js";
 import type * as scrapers_parse_wso_common from "../scrapers/parse/wso/common.js";
 import type * as scrapers_parse_wso_flat from "../scrapers/parse/wso/flat.js";
@@ -61,6 +65,7 @@ import type * as scrapers_parse_wso_ohio from "../scrapers/parse/wso/ohio.js";
 import type * as scrapers_parse_wso_pawv from "../scrapers/parse/wso/pawv.js";
 import type * as scrapers_parse_wso_sideBySide from "../scrapers/parse/wso/sideBySide.js";
 import type * as scrapers_parse_wso_tnky from "../scrapers/parse/wso/tnky.js";
+import type * as scrapers_parse_wso_usawTemplate from "../scrapers/parse/wso/usawTemplate.js";
 import type * as scrapers_probe from "../scrapers/probe.js";
 import type * as scrapers_queries from "../scrapers/queries.js";
 import type * as scrapers_records from "../scrapers/records.js";
@@ -83,6 +88,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  cronJobs: typeof cronJobs;
   crons: typeof crons;
   ingest: typeof ingest;
   "lib/directory": typeof lib_directory;
@@ -93,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "lib/normalize": typeof lib_normalize;
   "lib/referenceData": typeof lib_referenceData;
   "lib/results": typeof lib_results;
+  "lib/sentryCrons": typeof lib_sentryCrons;
   "lib/sort": typeof lib_sort;
   "lib/validation": typeof lib_validation;
   "lib/viewKeys": typeof lib_viewKeys;
@@ -114,6 +121,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/lib/pdf": typeof scrapers_lib_pdf;
   "scrapers/meets": typeof scrapers_meets;
   "scrapers/parse/entries": typeof scrapers_parse_entries;
+  "scrapers/parse/holder": typeof scrapers_parse_holder;
   "scrapers/parse/intlRankings": typeof scrapers_parse_intlRankings;
   "scrapers/parse/iwfRecords": typeof scrapers_parse_iwfRecords;
   "scrapers/parse/meets": typeof scrapers_parse_meets;
@@ -123,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/parse/umwf": typeof scrapers_parse_umwf;
   "scrapers/parse/usamw": typeof scrapers_parse_usamw;
   "scrapers/parse/usamwEvents": typeof scrapers_parse_usamwEvents;
+  "scrapers/parse/usamwResults": typeof scrapers_parse_usamwResults;
   "scrapers/parse/watchedPages": typeof scrapers_parse_watchedPages;
   "scrapers/parse/wso/common": typeof scrapers_parse_wso_common;
   "scrapers/parse/wso/flat": typeof scrapers_parse_wso_flat;
@@ -136,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/parse/wso/pawv": typeof scrapers_parse_wso_pawv;
   "scrapers/parse/wso/sideBySide": typeof scrapers_parse_wso_sideBySide;
   "scrapers/parse/wso/tnky": typeof scrapers_parse_wso_tnky;
+  "scrapers/parse/wso/usawTemplate": typeof scrapers_parse_wso_usawTemplate;
   "scrapers/probe": typeof scrapers_probe;
   "scrapers/queries": typeof scrapers_queries;
   "scrapers/records": typeof scrapers_records;

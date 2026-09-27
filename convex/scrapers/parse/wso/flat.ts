@@ -1,4 +1,5 @@
 import { parseCsvDicts } from '../../lib/csv';
+import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Flat-format sheets, one lift per row (port of `auto_scrapers/scraper_ga_pnw.py`;
@@ -27,10 +28,23 @@ export function normalizeAgeGroup(raw: string): string {
   return ageGroup;
 }
 
-/** Where a sheet keeps each field. */
-export type FlatColumns = { age: string; gender: string; min: string; max: string; lift: string; record: string };
+/**
+ * Where a sheet keeps each field. `name`, `date` and `location` (the meet)
+ * say who set the lift, when and where; a sheet without one leaves it out.
+ */
+export type FlatColumns = { age: string; gender: string; min: string; max: string; lift: string; record: string; name?: string; date?: string; location?: string };
 
-export const FLAT_COLUMNS: FlatColumns = { age: 'ageGroup', gender: 'gender', min: 'bodyWeightMin', max: 'bodyWeightMax', lift: 'lift', record: 'record' };
+export const FLAT_COLUMNS: FlatColumns = {
+  age: 'ageGroup',
+  gender: 'gender',
+  min: 'bodyWeightMin',
+  max: 'bodyWeightMax',
+  lift: 'lift',
+  record: 'record',
+  name: 'name',
+  date: 'date',
+  location: 'place',
+};
 
 const CJ = new Set(['clean & jerk', 'clean and jerk', 'c&j', 'cleanjerk']);
 
@@ -53,13 +67,20 @@ export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = 
     if (!weightMax && weightMin) weightClass = `${weightMin}+`;
     else if (weightMax) weightClass = weightMax.includes('>') ? `${weightMax.replaceAll('>', '')}+` : weightMax;
     else continue;
-    const field = lift === 'snatch' ? 'snatch_record' : CJ.has(lift) ? 'cj_record' : lift === 'total' ? 'total_record' : null;
+    const field = lift === 'snatch' ? 'snatch' : CJ.has(lift) ? 'cj' : lift === 'total' ? 'total' : null;
     // A row with any other lift never creates its group (Python's defaultdict
     // is only touched in the three branches).
     if (!field) continue;
     const key = JSON.stringify([age, gender, weightClass]);
     const entry = grouped.get(key) ?? { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
-    entry[field] = value ? intOrNull(value) : null;
+    const record = value ? intOrNull(value) : null;
+    entry[`${field}_record`] = record;
+    // The holder goes with the value: a later row for the same lift replaces
+    // both. A sheet without a name column says nothing about who holds it.
+    const at = (column: string | undefined) => (column ? row[column] : undefined);
+    const holder = columns.name && columns.name in row ? recordHolder(record, at(columns.name), at(columns.date), at(columns.location)) : undefined;
+    if (holder) entry[`${field}_by`] = holder;
+    else delete entry[`${field}_by`];
     grouped.set(key, entry);
   }
   return [...grouped.values()];

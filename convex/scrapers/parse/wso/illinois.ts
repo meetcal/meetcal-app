@@ -1,16 +1,19 @@
+import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
 
 // Illinois (port of `manual_scrapers/scraper_pdf_illinois.py` and its auto
 // wrapper): one PDF, one line per lift ("U13 F 37 Snatch 10 STANDARD
-// 2026-08-01"). The set is synced exactly (rows gone from the PDF are
-// deleted), so a parse that looks incomplete fails rather than writing.
+// 2026-08-01": the record, its holder or STANDARD, and the date; the PDF
+// gives no meet or place). The set is synced exactly (rows gone from the PDF
+// are deleted), so a parse that looks incomplete fails rather than writing.
 
-const ROW = /^(U\d+|JR|Open|[WM]\d{2})\s+([FM])\s+((?:>\s*)?\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\d+(?:\.\d+)?)\s+.+?\b\d{4}-\d{2}-\d{2}(?!\d)/i;
+const ROW = /^(U\d+|JR|Open|[WM]\d{2})\s+([FM])\s+((?:>\s*)?\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\d+(?:\.\d+)?)\s+(.+?)\s*\b(\d{4}-\d{2}-\d{2})(?!\d)/i;
 const RECORD_ROW_PREFIX = /^(?:U\d+|JR|Open|[WM]\d{2})\s+[FM]\s+/i;
 const MIN_RECORD_ROWS = 250;
 const MIN_LIFT_VALUES = 750;
 const LIFT_FIELDS = { snatch: 'snatch_record', 'clean&jerk': 'cj_record', total: 'total_record' } as const;
 type LiftField = (typeof LIFT_FIELDS)[keyof typeof LIFT_FIELDS];
+const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
 type Parsed = Omit<WsoRecord, LiftField> & Partial<Record<LiftField, number>>;
 
 /** The page's "View Records" link in its Illinois State Records section. */
@@ -53,7 +56,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
       if (RECORD_ROW_PREFIX.test(line)) unparsed.push(line);
       continue;
     }
-    const [, age, rawGender, weight, lift, value] = match;
+    const [, age, rawGender, weight, lift, value, holder, date] = match;
     const gender = rawGender.toUpperCase() === 'F' ? 'Women' : 'Men';
     const record: Parsed = { wso, age_category: ageCategory(age, rawGender.toUpperCase()), gender, weight_class: weightClass(weight) };
     const key = JSON.stringify([record.age_category, gender, record.weight_class]);
@@ -66,6 +69,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
     if (existing === undefined || (existing === 0 && parsed > 0)) {
       if (existing === 0) warnings.push(`Preferred non-zero duplicate (${parsed}) over zero: ${line}`);
       entry[field] = parsed;
+      entry[HOLDER_FIELDS[field]] = recordHolder(parsed, holder, date);
     } else if (existing !== parsed) {
       if (parsed === 0) warnings.push(`Ignored zero duplicate in favor of ${existing}: ${line}`);
       else throw new Error(`Conflicting Illinois values for ${field}: ${existing} and ${parsed}: ${line}`);

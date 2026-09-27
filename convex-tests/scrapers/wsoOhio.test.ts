@@ -37,4 +37,33 @@ describe('Ohio WSO sheet (port of scraper_ohio.py)', () => {
     const senior = [row('Title Lift 49 kg', 'Athlete'), row('Total', '', '', '150')].join('\n');
     expect(parseOhioTab(senior, 'Ohio', 'Senior Women').map((r) => [r.age_category, r.weight_class, r.total_record])).toEqual([['Senior', '49', 150]]);
   });
+
+  it('names who holds each lift: athlete, date, meet and location, or Standard', () => {
+    const csv = [
+      row('Title Lift 35 - 39 60 kg', 'Athlete ', 'Team ', 'Weight ', 'Date ', 'Meet ', 'Location '),
+      row('Snatch', 'Derick Puff', 'Team Aita', '78', '8/16/2026', '2026 Ohio WSO Championships', 'Columbus, OH'),
+      row('Clean & Jerk', '', '', '88', '8/1/2026', '', ''),
+      row('Total', 'WSO Standard', '', '164', '8/1/2026', '', ''),
+      row('65 kg', '', '', '', '', '', ''),
+      row('Snatch', 'Standard', '', '74', '', '', ''),
+      row('Clean & Jerk', '', '', '', '', '', ''),
+      row('Total', '', '', '', '', '', ''),
+    ].join('\n');
+    const [first, second] = parseOhioTab(csv, 'Ohio', 'Masters Men');
+    expect(first).toEqual({
+      wso: 'Ohio',
+      age_category: 'Masters 35',
+      gender: 'Men',
+      weight_class: '60',
+      snatch_record: 78,
+      cj_record: 88,
+      total_record: 164,
+      snatch_by: { name: 'Derick Puff', date: '2026-08-16', location: '2026 Ohio WSO Championships, Columbus, OH' },
+      cj_by: { name: 'Standard', date: '2026-08-01' },
+      total_by: { name: 'Standard', date: '2026-08-01' },
+    });
+    expect(second).toMatchObject({ weight_class: '65', snatch_record: 74, snatch_by: { name: 'Standard' }, cj_record: null, total_record: null });
+    expect(second).not.toHaveProperty('cj_by');
+    expect(second).not.toHaveProperty('total_by');
+  });
 });

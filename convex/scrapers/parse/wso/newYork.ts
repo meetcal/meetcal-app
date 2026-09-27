@@ -1,3 +1,4 @@
+import { recordHolder, type RecordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // New York (port of `manual_scrapers/scraper_pdf_newyork.py` and its auto
@@ -8,6 +9,9 @@ import { intOrNull, type WsoRecord } from './common';
 // The Python read pdfplumber's table cells; this reads the same pages' text
 // lines, where the class (a cell spanning its three rows) prints on the
 // middle one: "Snatch 46 kg ...", "55 Clean and Jerk 57 kg ...", "Total ...".
+// After the value come Name, Date and Event ("Aaron Li 5/2/2026 Hudson
+// Valley Regional Open", "Record Standard - -"); the date (or the dash left
+// where there is none) is what separates the name from the event.
 
 /** The first five record PDFs in the page's Current Records section (before State Meet Records). */
 export function newYorkPdfUrls(html: string): string[] {
@@ -53,6 +57,19 @@ function liftValue(rest: string): number | null {
   return parsed ? parsed : null;
 }
 
+const DATE = /^\d{1,2}\/\d{1,2}\/\d{2}(?:\d{2})?$/;
+const DASH = /^[-–—]+$/;
+
+/** Who set a lift of `value`, from the words after it: name, date, event (there is no place column). */
+function liftHolder(value: number | null, rest: string): RecordHolder | undefined {
+  if (value === null) return undefined;
+  const words = rest.replace(/^\S+?\s*kg\b/, '').trim().split(/\s+/).filter(Boolean);
+  let at = words.findIndex((word) => DATE.test(word));
+  if (at === -1) at = words.findIndex((word) => DASH.test(word));
+  if (at === -1) return recordHolder(value, words.join(' '));
+  return recordHolder(value, words.slice(0, at).join(' '), words[at], words.slice(at + 1).join(' '));
+}
+
 const weightClass = (raw: string) => (raw.includes('+') && !raw.endsWith('+') ? `${raw.replaceAll('+', '')}+` : raw);
 
 /** One PDF's records, page by page, in the order the Python wrote them (a class listed twice appears twice). */
@@ -83,6 +100,10 @@ export function parseNewYork(pages: readonly (readonly string[])[], wso: string)
       if (lift[2] === 'Snatch') block.snatch_record = value;
       else if (lift[2] === 'Total') block.total_record = value;
       else block.cj_record = value;
+      const field = lift[2] === 'Snatch' ? 'snatch_by' : lift[2] === 'Total' ? 'total_by' : 'cj_by';
+      const by = liftHolder(value, lift[3]);
+      if (by) block[field] = by;
+      else delete block[field];
     }
     records.push(...blocks.filter((b) => b.weight_class && b.age_category));
   }

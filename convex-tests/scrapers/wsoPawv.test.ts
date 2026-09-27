@@ -31,4 +31,27 @@ describe('Pennsylvania-West Virginia WSO sheet (port of scraper_pawv.py)', () =>
       ['U15', '44', null, 70, null],
     ]);
   });
+
+  it('names who holds each lift from the Name, Date, Meet and Location columns, STANDARD as Standard', () => {
+    const csv = [
+      'Lift,Name,Team,Weight,Date,Meet,Location',
+      'Open Men\'s,,,,,,',
+      '65kg,,,,,,',
+      'Snatch,Luke Sterns,,106,2026-06-23,2026 Junior National Championships,"Colorado Springs, CO"',
+      'Clean & Jerk,STANDARD,,125,2025-06-01,,',
+      'Total,,,STANDARD,,,',
+    ].join('\n');
+    const [record] = parsePawvTab(csv, 'PA-WV', { gid: '1', gender: 'Men', base: 'Senior' });
+    expect(record).toEqual({
+      wso: 'PA-WV',
+      age_category: 'Senior',
+      gender: 'Men',
+      weight_class: '65',
+      snatch_record: 106,
+      cj_record: 125,
+      total_record: null,
+      snatch_by: { name: 'Luke Sterns', date: '2026-06-23', location: '2026 Junior National Championships, Colorado Springs, CO' },
+      cj_by: { name: 'Standard', date: '2025-06-01' },
+    });
+  });
 });

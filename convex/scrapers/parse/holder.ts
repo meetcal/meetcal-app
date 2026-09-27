@@ -4,7 +4,7 @@
 // - `name` is the athlete as the source writes them, or "Standard" when the
 //   lift has a value nobody has claimed yet (the sources say "STANDARD",
 //   "World Standard", "Record Standard", "WSO Standard", or leave it blank).
-//   A lift with no value (vacant, TBD, open) has no holder at all.
+//   A lift with no value (vacant, TBD, open, or 0 kg) has no holder at all.
 // - `date` is ISO (YYYY-MM-DD) when the source's date can be read, the
 //   source's text otherwise, and absent when there is none.
 // - `location` is where it was set: the meet and the place, joined with a
@@ -50,7 +50,7 @@ export function recordLocation(...parts: (string | null | undefined)[]): string 
 
 /**
  * The holder of a lift whose value is `value`: undefined when there is no
- * value, "Standard" when the name is blank or a standard marker.
+ * value (or 0 kg), "Standard" when the name is blank or a standard marker.
  */
 export function recordHolder(
   value: number | null | undefined,
@@ -58,7 +58,8 @@ export function recordHolder(
   date?: string | null,
   ...location: (string | null | undefined)[]
 ): RecordHolder | undefined {
-  if (value === null || value === undefined) return undefined;
+  // 0 kg is how several sources list a class nobody has a record in.
+  if (value === null || value === undefined || value <= 0) return undefined;
   const cleaned = (name ?? '').replace(/\s+/g, ' ').trim();
   const holder: RecordHolder = { name: EMPTY.test(cleaned) || STANDARD.test(cleaned) ? 'Standard' : cleaned };
   const when = recordDate(date);

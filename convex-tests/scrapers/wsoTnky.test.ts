@@ -30,4 +30,46 @@ describe('Tennessee-Kentucky WSO sheet (port of scraper_tnky.py)', () => {
       ['Senior', 'Women', '86+', 100, 130, 230],
     ]);
   });
+
+  it('reads who set each lift from the name and date rows, a repeated class keeping the later column with its holder', () => {
+    const csv = [
+      'SENIORS: WOMEN,,15 years old <',
+      ',69 KG,77 KG*,86 KG,77 KG*',
+      'SNATCH,88,90,,124',
+      'Name,Rachael Skinner,Riley Williams,Ghost,Olivia Reeves',
+      'Date,6/25/2025,6/26/2025,1/1/2025,8/30/2025',
+      'C&J,107,105,,153',
+      'Name,Rachael Skinner,Riley Williams,,Olivia Reeves',
+      'Date,6/25/2025,6/26/2025,,12//5/26',
+      'TOTAL,195,195,,',
+      'Name,,Riley Williams,,Olivia Reeves',
+      'Date,,6/26/2025,,',
+      ',,,,*Unsubmitted',
+    ].join('\n');
+    const records = parseTnky(csv, 'Tennessee-Kentucky');
+    expect(records[0]).toEqual({
+      wso: 'Tennessee-Kentucky',
+      age_category: 'Senior',
+      gender: 'Women',
+      weight_class: '69',
+      snatch_record: 88,
+      cj_record: 107,
+      total_record: 195,
+      snatch_by: { name: 'Rachael Skinner', date: '2025-06-25' },
+      cj_by: { name: 'Rachael Skinner', date: '2025-06-25' },
+      total_by: { name: 'Standard' },
+    });
+    // 77 twice: the later column's values and holders; a date that can't be read is kept as written.
+    expect(records[1]).toMatchObject({
+      weight_class: '77',
+      snatch_record: 124,
+      cj_record: 153,
+      total_record: 195,
+      snatch_by: { name: 'Olivia Reeves', date: '2025-08-30' },
+      cj_by: { name: 'Olivia Reeves', date: '12//5/26' },
+      total_by: { name: 'Riley Williams', date: '2025-06-26' },
+    });
+    // No value, no holder, whatever the name row says.
+    expect(records[2]).toEqual({ wso: 'Tennessee-Kentucky', age_category: 'Senior', gender: 'Women', weight_class: '86', snatch_record: null, cj_record: null, total_record: null });
+  });
 });

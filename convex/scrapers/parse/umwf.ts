@@ -1,4 +1,4 @@
-import type { RecordHolder } from './holder';
+import { recordHolder, type RecordHolder } from './holder';
 import { parseCsv } from '../lib/csv';
 
 // Pure parsing for `scrapers/umwf.ts` (port of `usaw/records_scraper/umwf_records.py`).
@@ -62,17 +62,46 @@ function toInt(value: string): number | null {
   return Math.trunc(Number(value));
 }
 
+/** Where a tab keeps a lift's holder; its header row ("… kg Category, Weight, Name, Year Born, Nation, Date, Where, Age") says. */
+type HolderColumns = { name: number; date: number; where: number };
+
+const DEFAULT_COLUMNS: HolderColumns = { name: 3, date: 6, where: 7 };
+
+function holderColumns(row: string[], fallback: HolderColumns): HolderColumns {
+  const at = (label: string) => row.findIndex((cell) => cell.trim().toLowerCase() === label);
+  const name = at('name');
+  if (name < 0) return fallback;
+  const date = at('date');
+  const where = at('where');
+  return { name, date: date < 0 ? fallback.date : date, where: where < 0 ? fallback.where : where };
+}
+
+/** The sheets write dates "07-December-2025" (once "10-June_2026"); read as "07 December 2025" when the year is a real one. */
+function sheetDate(text: string): string {
+  const match = /^(\d{1,2})[-_ ]([A-Za-z]{3,})[-_ ]((?:19|20)\d{2})$/.exec(text.trim());
+  return match ? `${match[1]} ${match[2]} ${match[3]}` : text;
+}
+
+/** Sets a lift's holder, or clears it when the lift has none. */
+function setHolder(record: UmwfRecord, key: 'snatch_by' | 'cj_by' | 'total_by', holder: RecordHolder | undefined) {
+  if (holder) record[key] = holder;
+  else delete record[key];
+}
+
 /**
  * One tab: a `… kg Category` row opens a weight class, then `Snatch`,
  * `Clean & Jerk` and `Total` rows fill it (a `Standard` value leaves a lift
- * at 0).
+ * at 0). A lift's holder is its row's Name ("Standard" when unclaimed), Date
+ * and Where; the sheets name no meet.
  */
 export function parseUmwfSheet(csv: string, ageCategory: string, gender: string): UmwfRecord[] {
   const records: UmwfRecord[] = [];
   let current: UmwfRecord | null = null;
+  let columns = DEFAULT_COLUMNS;
   for (const row of parseCsv(csv)) {
     if (row.length < 3) continue;
     if (row[1].includes('kg Category')) {
+      columns = holderColumns(row, columns);
       if (current) records.push(current);
       const weightClass = formatWeightClass(row[1]);
       current = weightClass
@@ -86,9 +115,18 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     if (!value || value.toUpperCase() === 'STANDARD') continue;
     const weight = toInt(value);
     if (weight === null) continue;
-    if (lift === 'Snatch') current.snatch_record = weight;
-    else if (lift === 'Clean & Jerk') current.cj_record = weight;
-    else if (lift === 'Total') current.total_record = weight;
+    const cell = (index: number) => row[index] ?? '';
+    const holder = weight === 0 ? undefined : recordHolder(weight, cell(columns.name), sheetDate(cell(columns.date)), cell(columns.where));
+    if (lift === 'Snatch') {
+      current.snatch_record = weight;
+      setHolder(current, 'snatch_by', holder);
+    } else if (lift === 'Clean & Jerk') {
+      current.cj_record = weight;
+      setHolder(current, 'cj_by', holder);
+    } else if (lift === 'Total') {
+      current.total_record = weight;
+      setHolder(current, 'total_by', holder);
+    }
   }
   if (current) records.push(current);
   return records;

@@ -31,6 +31,25 @@ describe('Missouri Valley WSO records page', () => {
     ]);
   });
 
+  it('names the holder after the dash, including a name wrapped onto the next line', () => {
+    const lines = ['women', '49 kg', 'AGE 55 – 59', 'SNATCH:', '38 kg – Nancy Taylor', 'CLEAN & JERK:', '50 kg –', 'Nancy Taylor', 'TOTAL:', 'TBD', '53 kg', 'SNATCH:', '40 kg –', 'CLEAN & JERK:', '45 kg', 'TOTAL:', '85 kg – Brody O’Gara'];
+    expect(parseMissouriValley(lines)).toEqual([
+      { wso: 'Missouri Valley', age_category: 'Masters 55', gender: 'Women', weight_class: '49', snatch_record: 38, cj_record: 50, total_record: null, snatch_by: { name: 'Nancy Taylor' }, cj_by: { name: 'Nancy Taylor' } },
+      {
+        wso: 'Missouri Valley',
+        age_category: 'Masters 55',
+        gender: 'Women',
+        weight_class: '53',
+        snatch_record: 40,
+        cj_record: 45,
+        total_record: 85,
+        snatch_by: { name: 'Standard' },
+        cj_by: { name: 'Standard' },
+        total_by: { name: 'Brody O’Gara' },
+      },
+    ]);
+  });
+
   it('fails on a value it cannot read', () => {
     expect(() => parseMissouriValley(['Women', 'Age 21 – 34', '49 kg', 'SNATCH:', 'pending'])).toThrow('unreadable SNATCH: value "pending"');
   });

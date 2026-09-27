@@ -1,11 +1,13 @@
 import { parseCsv } from '../../lib/csv';
+import { recordHolder, type RecordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Pennsylvania-West Virginia (port of `auto_scrapers/scraper_pawv.py`): a
 // published sheet with a tab per age group and gender, read down column A:
 // section headers ("Men's 14-15 Age Group", "Women's Masters (35-39)"), class
 // rows ("40kg", "+65kg"), then Snatch, Clean & Jerk and Total rows with the
-// weight in column D.
+// weight in column D and its holder beside it: Name (B, "STANDARD" for a
+// standard), Date (E), Meet (F) and Location (G).
 //
 // The Python reset the class at each section header without saving it, so
 // the heaviest class of every section but a tab's last was never written
@@ -51,21 +53,40 @@ export function pawvWeightClass(raw: string): string | null {
   return /(\d+)/.exec(text)?.[1] ?? null;
 }
 
-function lift(raw: string): number | null {
+type Lift = { value: number | null; by?: RecordHolder };
+const NO_LIFT: Lift = { value: null };
+
+function liftValue(raw: string): number | null {
   const text = raw.trim();
   if (!text || text.toUpperCase() === 'STANDARD') return null;
   return intOrNull(text);
+}
+
+function lift(row: readonly string[]): Lift {
+  const value = liftValue(row[3]);
+  return { value, by: recordHolder(value, row[1], row[4], row[5], row[6]) };
 }
 
 export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab): WsoRecord[] {
   const records: WsoRecord[] = [];
   let age: string | null = base === 'Junior' || base === 'Senior' ? base : null;
   let weightClass: string | null = null;
-  let lifts: { snatch: number | null; cj: number | null; total: number | null } = { snatch: null, cj: null, total: null };
+  let lifts: { snatch: Lift; cj: Lift; total: Lift } = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
   const save = () => {
-    if (weightClass && age) {
-      records.push({ wso, age_category: age, gender, weight_class: weightClass, snatch_record: lifts.snatch, cj_record: lifts.cj, total_record: lifts.total });
-    }
+    if (!weightClass || !age) return;
+    const { snatch, cj, total } = lifts;
+    records.push({
+      wso,
+      age_category: age,
+      gender,
+      weight_class: weightClass,
+      snatch_record: snatch.value,
+      cj_record: cj.value,
+      total_record: total.value,
+      ...(snatch.by && { snatch_by: snatch.by }),
+      ...(cj.by && { cj_by: cj.by }),
+      ...(total.by && { total_by: total.by }),
+    });
   };
 
   for (const row of parseCsv(csv.trim())) {
@@ -77,7 +98,7 @@ export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab
         save();
         age = section;
         weightClass = null;
-        lifts = { snatch: null, cj: null, total: null };
+        lifts = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
       }
       continue;
     }
@@ -87,13 +108,13 @@ export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab
       const parsed = pawvWeightClass(first);
       if (parsed) {
         weightClass = parsed;
-        lifts = { snatch: null, cj: null, total: null };
+        lifts = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
       }
       continue;
     }
-    if (first === 'Snatch') lifts.snatch = lift(row[3]);
-    else if (first === 'Clean & Jerk') lifts.cj = lift(row[3]);
-    else if (first === 'Total') lifts.total = lift(row[3]);
+    if (first === 'Snatch') lifts.snatch = lift(row);
+    else if (first === 'Clean & Jerk') lifts.cj = lift(row);
+    else if (first === 'Total') lifts.total = lift(row);
   }
   save();
   return records;

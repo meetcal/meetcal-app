@@ -17,6 +17,7 @@ import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSo
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
 import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
 import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
+import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -81,7 +82,7 @@ const newJersey =
   (csv, wso) =>
     parseNewJerseyTab(csv, wso, age);
 
-const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };
+const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record', name: 'Name', date: 'Date', location: 'Event' };
 
 export const WSO_SOURCES: WsoSource[] = [
   flat('Georgia', 'https://docs.google.com/spreadsheets/d/1HM1H51pUmhoWDdSUp2RT-mCaUX2a8NB7aUSYVwWT0AU/edit?gid=908416148#gid=908416148'),
@@ -172,7 +173,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const urls = mountainSouthPdfUrls(await fetchText('https://mountainsouth.org/records/'));
       if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
       return pdfs.flatMap((pages) => parseMountainSouth(pages, 'Mountain South'));
     },
   },
@@ -199,6 +200,17 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => parseMissouriValley(missouriValleyLines(await fetchText(MISSOURI_VALLEY_URL, 45_000))),
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
+  // An uploaded Excel file with one dated tab ("20260627 MN-DAK"): its first sheet.
+  {
+    wso: 'Minnesota-Dakotas',
+    scrape: async () =>
+      parseUsawTemplate(await fetchText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv', 60_000), 'Minnesota-Dakotas'),
+  },
+  // The "Detailed" tab is the current set; TX and OK are the 2025 per-state tabs.
+  {
+    wso: 'Texas-Oklahoma',
+    scrape: async () => parseUsawTemplate(await fetchText(gvizCsvByName('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', 'Detailed'), 60_000), 'Texas-Oklahoma'),
+  },
 ];
 
 const wsoRows = (records: WsoRecord[]) =>
@@ -210,6 +222,9 @@ const wsoRows = (records: WsoRecord[]) =>
     snatchRecord: r.snatch_record ?? undefined,
     cjRecord: r.cj_record ?? undefined,
     totalRecord: r.total_record ?? undefined,
+    snatchBy: r.snatch_by,
+    cjBy: r.cj_by,
+    totalBy: r.total_by,
   }));
 
 /**

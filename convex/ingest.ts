@@ -11,6 +11,7 @@ import {
   intlRankingsFields,
   liftingResultsFields,
   qualifyingTotalsFields,
+  recordHolder,
   recordsFields,
   sessionScheduleFields,
   standardsFields,
@@ -392,7 +393,13 @@ export const upsertEntryAthletes = internalMutation({
       Object.assign(match, values);
       counts.updated += 1;
     }
-    if (counts.inserted + counts.updated > 0) await recordWrite(ctx, 'athletes', [{ kind: 'meet', key: meet }]);
+    // The club list is built from every athlete, so it needs the table hint too.
+    if (counts.inserted + counts.updated > 0) {
+      await recordWrite(ctx, 'athletes', [
+        { kind: 'meet', key: meet },
+        { kind: 'table', key: 'athletes' },
+      ]);
+    }
     return counts;
   },
 });
@@ -500,6 +507,25 @@ export const upsertStandards = internalMutation({
   },
 });
 
+type Holder = { name: string; date?: string; location?: string };
+type Lifts = { snatchRecord?: number; cjRecord?: number; totalRecord?: number; snatchBy?: Holder; cjBy?: Holder; totalBy?: Holder };
+
+const holderKey = (holder: Holder | undefined) => (holder ? JSON.stringify([holder.name, holder.date ?? null, holder.location ?? null]) : '');
+
+/** Whether a record's lifts or their holders differ from what is stored. */
+function liftsChanged(stored: Lifts, next: Lifts): boolean {
+  return (
+    stored.snatchRecord !== next.snatchRecord ||
+    stored.cjRecord !== next.cjRecord ||
+    stored.totalRecord !== next.totalRecord ||
+    holderKey(stored.snatchBy) !== holderKey(next.snatchBy) ||
+    holderKey(stored.cjBy) !== holderKey(next.cjBy) ||
+    holderKey(stored.totalBy) !== holderKey(next.totalBy)
+  );
+}
+
+const holderArgs = { snatchBy: v.optional(recordHolder), cjBy: v.optional(recordHolder), totalBy: v.optional(recordHolder) };
+
 const recordRow = v.object({
   recordType: v.string(),
   ageCategory: v.string(),
@@ -508,6 +534,7 @@ const recordRow = v.object({
   snatchRecord: v.optional(v.number()),
   cjRecord: v.optional(v.number()),
   totalRecord: v.optional(v.number()),
+  ...holderArgs,
 });
 
 /**
@@ -528,6 +555,9 @@ export const upsertRecords = internalMutation({
         snatchRecord: row.snatchRecord,
         cjRecord: row.cjRecord,
         totalRecord: row.totalRecord,
+        snatchBy: row.snatchBy,
+        cjBy: row.cjBy,
+        totalBy: row.totalBy,
       };
       const existing = (
         await ctx.db
@@ -540,11 +570,7 @@ export const upsertRecords = internalMutation({
       if (!existing) {
         await ctx.db.insert('records', doc);
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (
-        existing.snatchRecord !== doc.snatchRecord ||
-        existing.cjRecord !== doc.cjRecord ||
-        existing.totalRecord !== doc.totalRecord
-      ) {
+      } else if (liftsChanged(existing, doc)) {
         await ctx.db.replace(existing._id, doc);
         outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
@@ -583,6 +609,9 @@ export const replaceRecordSet = internalMutation({
         snatchRecord: row.snatchRecord,
         cjRecord: row.cjRecord,
         totalRecord: row.totalRecord,
+        snatchBy: row.snatchBy,
+        cjBy: row.cjBy,
+        totalBy: row.totalBy,
       };
       const key = keyOf(doc);
       if (seen.has(key)) throw new Error(`Duplicate ${recordType} record in payload: ${key}`);
@@ -592,7 +621,7 @@ export const replaceRecordSet = internalMutation({
       if (!current) {
         await ctx.db.insert('records', doc);
         counts.inserted += 1;
-      } else if (current.snatchRecord !== doc.snatchRecord || current.cjRecord !== doc.cjRecord || current.totalRecord !== doc.totalRecord) {
+      } else if (liftsChanged(current, doc)) {
         await ctx.db.replace(current._id, doc);
         counts.updated += 1;
         changes.push(`${label}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`);
@@ -728,6 +757,7 @@ const wsoRecordRow = v.object({
   snatchRecord: v.optional(v.number()),
   cjRecord: v.optional(v.number()),
   totalRecord: v.optional(v.number()),
+  ...holderArgs,
 });
 
 /**
@@ -754,6 +784,9 @@ export const replaceWsoRecordSet = internalMutation({
         snatchRecord: row.snatchRecord,
         cjRecord: row.cjRecord,
         totalRecord: row.totalRecord,
+        snatchBy: row.snatchBy,
+        cjBy: row.cjBy,
+        totalBy: row.totalBy,
       };
       const key = keyOf(doc);
       if (seen.has(key)) throw new Error(`Duplicate WSO record in payload: ${key}`);
@@ -762,7 +795,7 @@ export const replaceWsoRecordSet = internalMutation({
       if (!current) {
         await ctx.db.insert('wso_records', doc);
         counts.inserted += 1;
-      } else if (current.snatchRecord !== doc.snatchRecord || current.cjRecord !== doc.cjRecord || current.totalRecord !== doc.totalRecord) {
+      } else if (liftsChanged(current, doc)) {
         await ctx.db.replace(current._id, doc);
         counts.updated += 1;
       } else counts.unchanged += 1;
@@ -795,6 +828,9 @@ export const upsertWsoRecords = internalMutation({
         snatchRecord: row.snatchRecord,
         cjRecord: row.cjRecord,
         totalRecord: row.totalRecord,
+        snatchBy: row.snatchBy,
+        cjBy: row.cjBy,
+        totalBy: row.totalBy,
       };
       const existing = (
         await ctx.db
@@ -805,7 +841,7 @@ export const upsertWsoRecords = internalMutation({
       if (!existing) {
         await ctx.db.insert('wso_records', doc);
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (existing.snatchRecord !== doc.snatchRecord || existing.cjRecord !== doc.cjRecord || existing.totalRecord !== doc.totalRecord) {
+      } else if (liftsChanged(existing, doc)) {
         await ctx.db.replace(existing._id, doc);
         outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
