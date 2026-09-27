@@ -45,6 +45,7 @@ import type * as scrapers_parse_wso_common from "../scrapers/parse/wso/common.js
 import type * as scrapers_parse_wso_flat from "../scrapers/parse/wso/flat.js";
 import type * as scrapers_parse_wso_newJersey from "../scrapers/parse/wso/newJersey.js";
 import type * as scrapers_parse_wso_sideBySide from "../scrapers/parse/wso/sideBySide.js";
+import type * as scrapers_parse_wso_tnky from "../scrapers/parse/wso/tnky.js";
 import type * as scrapers_probe from "../scrapers/probe.js";
 import type * as scrapers_queries from "../scrapers/queries.js";
 import type * as scrapers_records from "../scrapers/records.js";
@@ -101,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/parse/wso/flat": typeof scrapers_parse_wso_flat;
   "scrapers/parse/wso/newJersey": typeof scrapers_parse_wso_newJersey;
   "scrapers/parse/wso/sideBySide": typeof scrapers_parse_wso_sideBySide;
+  "scrapers/parse/wso/tnky": typeof scrapers_parse_wso_tnky;
   "scrapers/probe": typeof scrapers_probe;
   "scrapers/queries": typeof scrapers_queries;
   "scrapers/records": typeof scrapers_records;

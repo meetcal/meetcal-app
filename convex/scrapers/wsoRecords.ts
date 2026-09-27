@@ -8,6 +8,7 @@ import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
 import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
+import { parseTnky } from './parse/wso/tnky';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -122,6 +123,9 @@ export const WSO_SOURCES: WsoSource[] = [
     ],
     consolidateRecords,
   ),
+  tabbed('Tennessee-Kentucky', 'https://docs.google.com/spreadsheets/d/11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU/view?gid=867133960#gid=867133960', [
+    ['867133960', parseTnky],
+  ]),
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 
