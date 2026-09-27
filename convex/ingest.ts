@@ -245,20 +245,21 @@ export const upsertMeets = internalMutation({
 const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
 
 /**
- * USA Masters events from usamasters.net. The site's names differ from the
- * meets already in the table ("2027 National Masters" vs "2027 USA Masters
- * Nationals"), so an event is matched to a USAMW meet whose dates overlap
- * rather than by name. A new event is inserted; for a match the site's dates
- * win, and venue fields are only filled where they are still placeholders,
- * so names and venues entered by hand are never overwritten. A location
- * that disagrees with a filled-in one is reported, not written.
+ * USA Masters events from usamasters.net, upserted. The site's names differ
+ * from the meets already in the table ("2027 National Masters" vs "2027 USA
+ * Masters Nationals"), so an event is matched to a USAMW meet whose dates
+ * overlap rather than by name. A new event is inserted. A match takes every
+ * value the site gives (dates, venue, city, state, time zone); fields the
+ * site leaves blank keep what is stored, and a move to another city clears
+ * the old venue's street and zip. The stored name is kept: athletes and
+ * results refer to a meet by name.
  */
 export const syncUsamwEvents = internalMutation({
   args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.string() })) },
   handler: async (ctx, { events }) => {
     const now = Date.now();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], locationDiffers: [] as string[] };
+    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[] };
     for (const event of events) {
       const candidates = await ctx.db
         .query('meets')
@@ -278,15 +279,17 @@ export const syncUsamwEvents = internalMutation({
         result.inserted.push(event.name);
         continue;
       }
-      const patch: Partial<Doc<'meets'>> = {};
-      if (match.startDate !== event.startDate) patch.startDate = event.startDate;
-      if (match.endDate !== event.endDate) patch.endDate = event.endDate;
+      const site: Partial<Doc<'meets'>> = { startDate: event.startDate, endDate: event.endDate };
       for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
-        if (PLACEHOLDERS.has(match[field]) && !PLACEHOLDERS.has(event[field])) patch[field] = event[field];
+        if (!PLACEHOLDERS.has(event[field])) site[field] = event[field];
       }
-      if (patch.venueState && match.timeZone !== event.timeZone) patch.timeZone = event.timeZone;
-      const placed = !PLACEHOLDERS.has(match.venueCity) && !PLACEHOLDERS.has(event.venueCity);
-      if (placed && match.venueCity !== event.venueCity) result.locationDiffers.push(`${match.name}: ${match.venueCity}, ${match.venueState} here, ${event.venueCity}, ${event.venueState} on the site`);
+      if (site.venueState) site.timeZone = event.timeZone;
+      if (site.venueCity && site.venueCity !== match.venueCity) {
+        site.venueStreet = 'TBD';
+        site.venueZip = 'TBD';
+        site.venueName ??= 'TBD';
+      }
+      const patch = Object.fromEntries(Object.entries(site).filter(([key, value]) => match[key as keyof typeof site] !== value)) as Partial<Doc<'meets'>>;
       if (Object.keys(patch).length === 0) {
         result.unchanged.push(match.name);
         continue;
