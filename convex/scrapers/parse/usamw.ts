@@ -1,3 +1,5 @@
+import { unescapeHtml } from '../lib/html';
+
 // Pure parsing for `scrapers/usamw.ts` (port of `usamw/records/national_records.py`).
 
 export const PAGE_URL = 'https://usamasters.net/masters-records-grand-slam';
@@ -11,17 +13,6 @@ export type UsamwRecord = {
   cjRecord: number | null;
   totalRecord: number | null;
 };
-
-function unescapeHtml(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
 
 /**
  * The current national records PDFs ("NM<date>-MEN.pdf" / "-WOMEN.pdf" on

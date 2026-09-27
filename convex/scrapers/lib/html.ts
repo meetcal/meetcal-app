@@ -11,3 +11,16 @@ export function parseHtml(html: string): HTMLElement {
 }
 
 export type { HTMLElement };
+
+/** Python's `html.unescape` for the entities these pages use (numeric and the XML five). */
+export function unescapeHtml(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, '\u00a0')
+    .replace(/&amp;/g, '&');
+}

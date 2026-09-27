@@ -338,3 +338,115 @@ export const upsertRecords = internalMutation({
     return outcomes;
   },
 });
+
+const intlRankingRow = v.object({
+  ranking: v.number(),
+  name: v.string(),
+  weightClass: v.optional(v.string()),
+  total: v.optional(v.number()),
+  percentA: v.optional(v.number()),
+});
+
+type SyncCounts = { inserted: number; updated: number; unchanged: number; deleted: number };
+
+/**
+ * Exact-set sync of one international rankings group (meet, gender, age),
+ * `replace_intl_rankings_group` in the Python writer: rows are keyed by
+ * (rank, name); a row missing from the payload is deleted, an unchanged one
+ * left alone. The whole payload is checked before anything is written, so a
+ * duplicate key aborts with no change, and an empty payload (a failed scrape,
+ * not an empty group) is refused.
+ */
+export const replaceIntlRankingsGroup = internalMutation({
+  args: { meet: v.string(), gender: v.string(), ageCategory: v.string(), rankings: v.array(intlRankingRow) },
+  handler: async (ctx, args): Promise<SyncCounts> => {
+    const meet = args.meet;
+    const gender = normalizeGender(args.gender);
+    const ageCategory = normalizeAgeCategory(args.ageCategory);
+    for (const [field, value] of [['meet', meet], ['gender', gender], ['ageCategory', ageCategory]] as const) {
+      if (!value.trim()) throw new Error(`${field} is required`);
+    }
+    if (args.rankings.length === 0) {
+      throw new Error(`refusing to replace intl rankings for ${meet}/${gender}/${ageCategory} with an empty payload`);
+    }
+    const existing = (
+      await ctx.db
+        .query('intl_rankings')
+        .withIndex('by_gender_age', (q) => q.eq('gender', gender).eq('ageCategory', ageCategory))
+        .collect()
+    ).filter((row) => row.meet === meet);
+    const keyOf = (ranking: number | undefined, name: string | undefined) => JSON.stringify([ranking, name]);
+    const existingByKey = new Map(existing.map((row) => [keyOf(row.ranking, row.name), row]));
+
+    const incoming = new Set<string>();
+    const writes: { id: (typeof existing)[number]['_id'] | null; doc: Omit<(typeof existing)[number], '_id' | '_creationTime'> }[] = [];
+    const counts: SyncCounts = { inserted: 0, updated: 0, unchanged: 0, deleted: 0 };
+    for (const row of args.rankings) {
+      const key = keyOf(row.ranking, row.name);
+      if (incoming.has(key)) throw new Error(`Duplicate intl ranking in payload: ${meet}/${gender}/${ageCategory}/${row.ranking}/${row.name}`);
+      incoming.add(key);
+      const doc = { meet, ranking: row.ranking, name: row.name, weightClass: row.weightClass, total: row.total, percentA: row.percentA, gender, ageCategory };
+      const current = existingByKey.get(key);
+      if (!current) {
+        counts.inserted += 1;
+        writes.push({ id: null, doc });
+      } else if (
+        current.legacyId !== undefined ||
+        current.weightClass !== doc.weightClass ||
+        current.total !== doc.total ||
+        current.percentA !== doc.percentA
+      ) {
+        counts.updated += 1;
+        writes.push({ id: current._id, doc });
+      } else {
+        counts.unchanged += 1;
+      }
+    }
+    const deletions = [...existingByKey.entries()].filter(([key]) => !incoming.has(key)).map(([, row]) => row);
+    counts.deleted = deletions.length;
+    for (const row of deletions) await ctx.db.delete(row._id);
+    for (const { id, doc } of writes) {
+      if (id) await ctx.db.replace(id, doc);
+      else await ctx.db.insert('intl_rankings', doc);
+    }
+    if (counts.inserted + counts.updated + counts.deleted > 0) {
+      await recordWrite(ctx, 'intl_rankings', [{ kind: 'table', key: 'intl_rankings' }]);
+    }
+    return counts;
+  },
+});
+
+/**
+ * Deletes every international rankings group not in `groups` (the ones the
+ * page still links), `delete_missing_intl_ranking_groups` in the Python
+ * writer. An empty list deletes nothing.
+ */
+export const deleteMissingIntlRankingGroups = internalMutation({
+  args: { groups: v.array(v.object({ meet: v.string(), gender: v.string(), ageCategory: v.string() })) },
+  handler: async (ctx, { groups }) => {
+    const active = new Set(
+      groups
+        .map((g) => ({ meet: g.meet, gender: normalizeGender(g.gender), ageCategory: normalizeAgeCategory(g.ageCategory) }))
+        .filter((g) => g.meet && g.gender && g.ageCategory)
+        .map((g) => JSON.stringify([g.meet, g.gender, g.ageCategory])),
+    );
+    if (active.size === 0) return { deletedGroups: [], deleted: 0 };
+    const byGroup = new Map<string, { meet: string; gender: string; ageCategory: string; ids: (typeof rows)[number]['_id'][] }>();
+    const rows = await ctx.db.query('intl_rankings').collect();
+    for (const row of rows) {
+      const key = JSON.stringify([row.meet ?? null, row.gender ?? null, row.ageCategory ?? null]);
+      if (active.has(key)) continue;
+      const group = byGroup.get(key) ?? { meet: row.meet ?? '', gender: row.gender ?? '', ageCategory: row.ageCategory ?? '', ids: [] };
+      group.ids.push(row._id);
+      byGroup.set(key, group);
+    }
+    const deletedGroups = [];
+    for (const group of byGroup.values()) {
+      for (const id of group.ids) await ctx.db.delete(id);
+      deletedGroups.push({ meet: group.meet, gender: group.gender, ageCategory: group.ageCategory, deleted: group.ids.length });
+    }
+    const deleted = deletedGroups.reduce((sum, g) => sum + g.deleted, 0);
+    if (deleted > 0) await recordWrite(ctx, 'intl_rankings', [{ kind: 'table', key: 'intl_rankings' }]);
+    return { deletedGroups, deleted };
+  },
+});
