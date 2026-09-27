@@ -105,15 +105,34 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
     expect((error as TransportRequestError).status).toBe(404);
   });
 
-  it('lets a server fault and a network failure through unchanged', async () => {
-    responses.push(respond(500, 'Internal Server Error'));
-    const fault = await failure(signedIn);
-    expect(fault).not.toBeInstanceOf(TransportRequestError);
-    expect((fault as Error).message).toContain('Internal Server Error');
+  it('turns a function that ran and failed into the Rust API\'s 500, and leaves the network and gateways alone', async () => {
+    responses.push(respond(200, { status: 'error', errorMessage: '[Request ID: 1] Server Error' }));
+    const ranAndFailed = await failure(signedIn);
+    expect(ranAndFailed).toBeInstanceOf(TransportRequestError);
+    expect((ranAndFailed as TransportRequestError).status).toBe(500);
+
+    responses.push(respond(560, { status: 'error', errorMessage: '[Request ID: 2] Server Error' }));
+    expect(((await failure({ ...signedIn, kind: 'mutation' })) as TransportRequestError).status).toBe(500);
+
+    responses.push(respond(200, { status: 'error', errorMessage: "Your request couldn't be completed. Try again later." }));
+    expect(await failure(signedIn)).not.toBeInstanceOf(TransportRequestError);
+
+    responses.push(respond(502, 'Bad Gateway'));
+    const gateway = await failure(signedIn);
+    expect(gateway).not.toBeInstanceOf(TransportRequestError);
+    expect((gateway as Error).message).toContain('Bad Gateway');
 
     (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
     const offline = await failure(signedIn);
     expect(offline).toBeInstanceOf(TypeError);
+  });
+
+  it('hands the caller\'s abort signal to fetch, so a timed-out request is cancelled', async () => {
+    const controller = new AbortController();
+    responses.push(respond(200, { status: 'success', value: null }));
+    await convexTransport({ ...signedIn, signal: controller.signal });
+    const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+    expect(init.signal).toBe(controller.signal);
   });
 
   it('rejects a malformed function name before calling anything', async () => {

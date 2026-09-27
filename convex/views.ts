@@ -74,8 +74,19 @@ const PAGE_SIZE = 8000;
 const TIMELINE_YEARS = 3;
 /** Refresh runs this long after the first write of a burst. */
 const REFRESH_DELAY_MS = 5000;
-/** More pending hints than this and a refresh rebuilds everything. */
+/**
+ * More pending hints of the kinds that each cost a view build (a meet, a
+ * ranking class, a table) than this and a refresh rebuilds everything
+ * instead. Athlete and name hints are cheap (checked in batches), so a
+ * national meet's two per new lifter do not count against it; all hints
+ * together are capped at MAX_REFRESH_HINTS, which a refresh reads and deletes
+ * one by one.
+ */
 const MAX_TARGETED_HINTS = 2000;
+const MAX_REFRESH_HINTS = 3500;
+const CHEAP_HINT_KINDS: ReadonlySet<string> = new Set(['athlete', 'name']);
+/** A refresh that finds another running tries again after this. */
+const REFRESH_BUSY_RETRY_MS = 30 * 1000;
 /**
  * While a full rebuild is marked running, a refresh stays queued this far
  * ahead: it waits for the rebuild, and restarts it if its stages stopped.
@@ -612,7 +623,7 @@ export async function scheduleRefresh(ctx: MutationCtx, delayMs: number = REFRES
  * With `lease`, the refresh also takes the refresh lease, so two never run
  * at once (they would redo the same builds and conflict on the same views).
  * If another holds it, this one is `busy`: it schedules itself again after
- * REFRESH_DELAY_MS and returns without the hints.
+ * REFRESH_BUSY_RETRY_MS and returns without the hints.
  */
 export const beginRefresh = internalMutation({
   args: { lease: v.optional(v.boolean()) },
@@ -621,18 +632,20 @@ export const beginRefresh = internalMutation({
     const now = Date.now();
     const held = state?.refreshLease !== undefined && now - state.refreshLease < REFRESH_LEASE_MS;
     if (args.lease && held) {
-      await ctx.scheduler.runAfter(REFRESH_DELAY_MS, internal.views.refresh, {});
+      await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.refresh, {});
       if (state) await ctx.db.patch(state._id, { scheduled: true });
       return { hints: [], overflow: false, versions: [], baseline: null, rebuilding: false, rebuildHeartbeat: null, lease: null, busy: true };
     }
     const lease = args.lease ? now : null;
     if (state) await ctx.db.patch(state._id, { scheduled: false, ...(lease !== null ? { refreshLease: lease } : {}) });
     else if (lease !== null) await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], refreshLease: lease });
-    const rows = await ctx.db.query('view_hints').take(MAX_TARGETED_HINTS + 1);
+    const all = await ctx.db.query('view_hints').take(MAX_REFRESH_HINTS + 1);
+    const rows = all.slice(0, MAX_REFRESH_HINTS);
+    const costly = rows.filter((h) => !CHEAP_HINT_KINDS.has(h.kind)).length;
     const versions = await snapshotVersions(ctx, SOURCE_TABLES);
     return {
-      hints: rows.slice(0, MAX_TARGETED_HINTS).map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0 })),
-      overflow: rows.length > MAX_TARGETED_HINTS,
+      hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0 })),
+      overflow: all.length > MAX_REFRESH_HINTS || costly > MAX_TARGETED_HINTS,
       versions,
       baseline: state && state.baseline.length > 0 ? state.baseline : null,
       rebuilding: state?.rebuilding ?? false,
@@ -718,7 +731,7 @@ export const finishRefresh = internalMutation({
         }
       }
     }
-    // One read per handled hint (at most MAX_TARGETED_HINTS), never a scan
+    // One read per handled hint (at most MAX_REFRESH_HINTS), never a scan
     // of the table, which a large backlog could push past a function's limits.
     for (const { id, seq } of hints) {
       const hintId = ctx.db.normalizeId('view_hints', id);
@@ -937,8 +950,8 @@ export const rebuildStage = internalAction({
           restamp: false,
         });
         // Also every hint updated before the rebuild began, not just the ones
-        // it read: a backlog over MAX_TARGETED_HINTS would otherwise take one
-        // full rebuild per MAX_TARGETED_HINTS hints to clear.
+        // it read: a backlog over MAX_REFRESH_HINTS would otherwise take one
+        // full rebuild per MAX_REFRESH_HINTS hints to clear.
         if (args.startedAt !== undefined) {
           while ((await ctx.runMutation(internal.views.deleteHintsUpdatedBefore, { before: args.startedAt })) === HINT_DELETE_BATCH) {
             // next batch
@@ -988,13 +1001,24 @@ async function startRebuild(ctx: ActionCtx, begin: RefreshBegin, again: boolean,
 export const rebuildAll = internalAction({
   args: {},
   handler: async (ctx): Promise<string> => {
-    const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, {});
-    if (begin.rebuilding && begin.rebuildHeartbeat !== null && Date.now() - begin.rebuildHeartbeat < REBUILD_STALE_MS) {
-      // A second chain would redo the same work alongside the first.
-      return 'already running';
+    // Under the refresh lease, so a refresh cannot start a rebuild of its own
+    // at the same moment.
+    const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true });
+    if (begin.busy) {
+      // Started by a migration as often as by hand: never just dropped.
+      await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.rebuildAll, {});
+      return 'a refresh is running; the rebuild starts when it ends';
     }
-    await startRebuild(ctx, begin, false);
-    return 'scheduled';
+    try {
+      if (begin.rebuilding && begin.rebuildHeartbeat !== null && Date.now() - begin.rebuildHeartbeat < REBUILD_STALE_MS) {
+        // A second chain would redo the same work alongside the first.
+        return 'already running';
+      }
+      await startRebuild(ctx, begin, false);
+      return 'scheduled';
+    } finally {
+      if (begin.lease !== null) await ctx.runMutation(internal.views.releaseRefresh, { lease: begin.lease });
+    }
   },
 });
 

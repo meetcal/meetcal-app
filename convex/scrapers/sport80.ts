@@ -104,7 +104,7 @@ export const run = internalAction({
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
-        events.push(...(await api.eventIndex(y)));
+          events.push(...(await api.eventIndex(y)));
       } catch (error) {
         failed.push(`event index ${y}: ${(error as Error).message}`);
       }
@@ -134,8 +134,12 @@ export const run = internalAction({
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows } of meets) {
       const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0 };
-      const valid = rows.filter((row) => row.name);
+      // Rows with no name or an unreadable value are not stored; they fail
+      // the run (after the rest is stored) so they are not dropped silently.
+      const valid = rows.filter((row) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string'));
       outcome.failed = rows.length - valid.length;
+      if (outcome.failed > 0) failed.push(`${meet} (event ${eventId}): ${outcome.failed} unreadable row(s) not stored`);
+      try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
           internal.ingest.upsertLiftingResults,
@@ -165,13 +169,17 @@ export const run = internalAction({
         outcome.updated += counts.updated;
         outcome.unchanged += counts.unchanged;
       }
+      } catch (error) {
+        // One meet's write failing leaves the other meets to be stored.
+        failed.push(`${meet} (event ${eventId}): not stored: ${(error as Error).message}`);
+      }
       outcomes.push(outcome);
     }
 
     const inserted = outcomes.filter((o) => o.inserted > 0).map((o) => o.meet);
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated`);
-    if (failed.length) throw new Error(`sport80: ${failed.length} page(s) could not be read, the rest was stored: ${failed.join('; ')}`);
+    if (failed.length) throw new Error(`sport80: ${failed.length} problem(s), the rest was stored: ${failed.join('; ')}`);
     return { meets, outcomes, failed };
   },
 });

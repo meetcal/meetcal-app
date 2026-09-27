@@ -18,6 +18,7 @@ import {
   saveMeetSchedule,
 } from './offline-store';
 import { isNetworkAvailable } from '@/lib/networkUtils';
+import { CONVEX_TRANSIENT_MESSAGE } from '@/lib/api/transport';
 import {
   type ApiMeetPackage,
   fetchApiMeetByName,
@@ -105,8 +106,6 @@ const HISTORY_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 503]);
  * status, so they are told apart by message; a function's own errors and a
  * dropped network do not match and are not retried.
  */
-const CONVEX_TRANSIENT_MESSAGE = /try again later|too many (?:concurrent )?requests|overloaded|temporarily unavailable/i;
-
 function isConvexTransientError(error: unknown): boolean {
   return (
     error instanceof Error &&

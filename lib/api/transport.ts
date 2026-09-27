@@ -96,9 +96,14 @@ function functionReference(fn: string): any {
  *   one it cannot verify) is the Rust API's 401, so the app shows "sign in
  *   again" instead of retrying forever;
  * - arguments the function's validator rejects are the Rust API's 400, so a
- *   queued write the server will never accept is dropped, not retried.
+ *   queued write the server will never accept is dropped, not retried;
+ * - any other failure of a function that ran (answered with an error, over
+ *   HTTP 200 or Convex's 560) is the Rust API's 500: the server was reached,
+ *   so a queued write is retried later without holding up the ones behind it,
+ *   rather than treated as the network being down. Convex's own "busy, try
+ *   again" failures stay as they are (callers retry them).
  *
- * Anything else (network, server fault) propagates as is.
+ * Anything else (no network, a gateway error) propagates as is.
  */
 function toTransportError(call: ApiCall, error: unknown, httpStatus: number | null): unknown {
   if (error instanceof ConvexError) {
@@ -114,8 +119,15 @@ function toTransportError(call: ApiCall, error: unknown, httpStatus: number | nu
   if (/\bArgumentValidationError\b/.test(message)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 400`, 400, message);
   }
+  const functionRan = httpStatus !== null && (httpStatus === 560 || (httpStatus >= 200 && httpStatus < 300));
+  if (functionRan && !CONVEX_TRANSIENT_MESSAGE.test(message)) {
+    return new TransportRequestError(`${call.kind} ${call.path} failed with 500`, 500, message);
+  }
   return error;
 }
+
+/** Convex's "busy, try again" failures (overload, rate limits), left for callers to retry. */
+export const CONVEX_TRANSIENT_MESSAGE = /try again later|too many (?:concurrent )?requests|overloaded|temporarily unavailable/i;
 
 /** Convex values have no `undefined`; an absent optional argument is an absent key. */
 function definedArgs(args: Record<string, unknown>): Record<string, unknown> {

@@ -105,11 +105,25 @@ export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): 
  * derived from the history (live before the first build, or from the history
  * document where the summary has not been written yet).
  */
+/**
+ * Reads in flight at once when a caller asks about many athletes (the search
+ * fallback asks about up to 1,000): at the per-function limit on concurrent
+ * reads, not over it.
+ */
+const READ_BATCH = 250;
+
+async function inBatches<T>(keys: readonly string[], read: (key: string) => Promise<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < keys.length; i += READ_BATCH) out.push(...(await Promise.all(keys.slice(i, i + READ_BATCH).map(read))));
+  return out;
+}
+
 export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
   const ready = await historiesReady(ctx);
   const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });
-  const entries = await Promise.all(
-    keys.map(async (key): Promise<[string, Summary]> => {
+  const entries = await inBatches(
+    keys,
+    async (key): Promise<[string, Summary]> => {
       if (ready) {
         const doc = await ctx.db
           .query('athlete_summary')
@@ -120,7 +134,7 @@ export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Pro
       const history = (await readHistories(ctx, [key])).get(key) ?? [];
       const derived = summaryOf(history);
       return [key, parse(derived.latest, derived.marks)];
-    }),
+    },
   );
   return new Map(entries);
 }
@@ -131,15 +145,16 @@ export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Pro
  */
 export async function readHistories(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, ApiLiftingResult[]>> {
   const ready = await historiesReady(ctx);
-  const entries = await Promise.all(
-    keys.map(async (key): Promise<[string, ApiLiftingResult[]]> => {
+  const entries = await inBatches(
+    keys,
+    async (key): Promise<[string, ApiLiftingResult[]]> => {
       if (!ready) return [key, await computeHistory(ctx, key)];
       const doc = await ctx.db
         .query('athlete_history')
         .withIndex('by_nameKey', (q) => q.eq('nameKey', key))
         .unique();
       return [key, doc ? (JSON.parse(doc.json) as ApiLiftingResult[]) : []];
-    }),
+    },
   );
   return new Map(entries);
 }
