@@ -783,8 +783,10 @@ export const rebuildStage = internalAction({
           restamp: false,
         });
         await ctx.runMutation(internal.views.setRebuilding, { rebuilding: false });
-        // Joins the probe refresh if one is queued.
-        if (args.again) await ctx.runMutation(internal.views.queueRefresh, { delayMs: 0 });
+        // Now, not through the queued probe (up to REBUILD_WAIT_MS away): the
+        // writes that arrived during the rebuild are applied at once. The
+        // probe then finds nothing left to do.
+        if (args.again) await ctx.scheduler.runAfter(0, internal.views.refresh, {});
         return 'done';
       }
     }
