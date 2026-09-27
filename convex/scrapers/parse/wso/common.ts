@@ -16,9 +16,12 @@ export function sheetIdOf(url: string): string {
   return url.split('/d/')[1].split('/')[0];
 }
 
-/** The CSV of a sheet tab by name, through Google's visualization endpoint. */
+/**
+ * The CSV of a sheet tab by name, through Google's visualization endpoint.
+ * An unknown name serves the first tab rather than failing.
+ */
 export const gvizCsvByName = (sheetId: string, sheetName: string) =>
-  `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+  `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
 
 /** The CSV of a sheet tab by gid. */
 export const gvizCsvByGid = (sheetId: string, gid: string | number) =>

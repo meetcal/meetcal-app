@@ -9,6 +9,7 @@ import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from '.
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
 import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
 import { parseTnky } from './parse/wso/tnky';
+import { OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -126,6 +127,14 @@ export const WSO_SOURCES: WsoSource[] = [
   tabbed('Tennessee-Kentucky', 'https://docs.google.com/spreadsheets/d/11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU/view?gid=867133960#gid=867133960', [
     ['867133960', parseTnky],
   ]),
+  {
+    wso: 'Ohio',
+    scrape: async () => {
+      const sheetId = sheetIdOf('https://docs.google.com/spreadsheets/d/1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8/view?gid=0#gid=0');
+      const texts = await Promise.all(OHIO_TABS.map((tab) => fetchText(gvizCsvByName(sheetId, tab), 60_000)));
+      return OHIO_TABS.flatMap((tab, i) => parseOhioTab(texts[i], 'Ohio', tab));
+    },
+  },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 
