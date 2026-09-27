@@ -852,7 +852,7 @@ export const replaceWsoRecordSet = internalMutation({
       if (dropped > Math.max(MIN_SHRINK_ALLOWED, stored.size * MAX_SHRINK_SHARE)) {
         throw new Error(
           `refusing to delete ${dropped} of ${wso}'s ${stored.size} WSO record classes (the source may be partly broken). ` +
-            `If it really dropped them: npx convex run --prod scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}'`,
+            `If it really dropped them: npx convex run scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}' (add --prod for production)`,
         );
       }
     }
