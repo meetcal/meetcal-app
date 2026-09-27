@@ -3,7 +3,7 @@ import { internalAction } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { START_MARGIN_MS, watch, type Notice } from './lib/cronAlerts';
+import { START_MARGIN_MS, type Notice } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './scrapers/lib/email';
 
 /**
@@ -108,11 +108,10 @@ export const watchdog = internalAction({
       for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
     }
     for (const [job, { schedule }] of Object.entries(JOBS)) {
-      const notice = watch(job, statuses.get(job) ?? null, lastScheduled(schedule, now - START_MARGIN_MS), now);
-      if (!notice) continue;
-      // Queued before sending, so a failed send is retried rather than re-detected.
-      await ctx.runMutation(internal.cronStatus.raiseAlert, { job, kind: notice.kind as 'missed' | 'stuck', detail: notice.detail });
-      pending.push(notice);
+      // Judged and queued in one mutation, against the job's current row; queued
+      // before sending, so a failed send is retried rather than re-detected.
+      const notice: Notice | null = await ctx.runMutation(internal.cronStatus.raiseAlert, { job, due: lastScheduled(schedule, now - START_MARGIN_MS) });
+      if (notice) pending.push(notice);
     }
     if (pending.length === 0) return [];
     await alert(pending);
