@@ -2,11 +2,11 @@
 
 const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1?p=0&i=20&l=&d=10&f=&s=';
 
-/** The three searches the VPS ran, each with its Slack label; only the WSO one skips completed meets. */
+/** The three searches the VPS ran; only the WSO one skips completed meets. */
 export const MEET_SEARCHES = [
-  { key: 'wso', url: `${WIDGET}WSO`, label: 'WSO', skipCompleted: true },
-  { key: 'nationals', url: `${WIDGET}Nationals`, label: 'Nationals', skipCompleted: false },
-  { key: 'virus', url: `${WIDGET}Virus%20Weightlifting`, label: 'Virus Series', skipCompleted: false },
+  { key: 'wso', url: `${WIDGET}WSO`, skipCompleted: true },
+  { key: 'nationals', url: `${WIDGET}Nationals`, skipCompleted: false },
+  { key: 'virus', url: `${WIDGET}Virus%20Weightlifting`, skipCompleted: false },
 ] as const;
 
 export type ScrapedMeet = {

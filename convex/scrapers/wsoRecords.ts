@@ -6,7 +6,6 @@ import { internal } from '../_generated/api';
 import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
-import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
 import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
@@ -208,37 +207,6 @@ const wsoRows = (records: WsoRecord[]) =>
     totalRecord: r.total_record ?? undefined,
   }));
 
-const kg = (value: number | null | undefined) => (value ? `${value}kg` : 'None');
-
-function slackMessage(wso: string, inserted: WsoRecord[], updated: { record: WsoRecord; previous: Record<string, number | undefined> }[]): string {
-  let message = `*${wso} WSO Records Update*\n\n*Summary:*\n• ${inserted.length} new record(s) inserted\n• ${updated.length} record(s) updated`;
-  if (inserted.length) {
-    message += '\n\n🆕 *New Records*\n';
-    for (const r of inserted.slice(0, 10)) {
-      const lifts = [r.snatch_record && `Snatch: ${r.snatch_record}kg`, r.cj_record && `C&J: ${r.cj_record}kg`, r.total_record && `Total: ${r.total_record}kg`].filter(Boolean);
-      message += `• *${r.age_category}* | ${r.gender} | ${r.weight_class}\n  ${lifts.length ? lifts.join(', ') : 'No records'}\n`;
-    }
-    if (inserted.length > 10) message += `_...and ${inserted.length - 10} more_\n`;
-  }
-  if (updated.length) {
-    message += '\n📝 *Updated Records*\n';
-    for (const { record: r, previous } of updated.slice(0, 10)) {
-      const changes = (
-        [
-          ['Snatch', previous.snatchRecord, r.snatch_record],
-          ['C&J', previous.cjRecord, r.cj_record],
-          ['Total', previous.totalRecord, r.total_record],
-        ] as const
-      )
-        .filter(([, old, now]) => (old ?? null) !== now)
-        .map(([name, old, now]) => `${name}: ${kg(old)} → ${kg(now)}`);
-      message += `• *${r.age_category}* | ${r.gender} | ${r.weight_class}\n  ${changes.join(', ')}\n`;
-    }
-    if (updated.length > 10) message += `_...and ${updated.length - 10} more_\n`;
-  }
-  return message;
-}
-
 /**
  * One record per class, the last listed winning, as it did when the Python
  * upserted row by row. Writing both copies (New York's PDF lists Masters Men
@@ -254,32 +222,17 @@ function lastPerClass(records: WsoRecord[]): WsoRecord[] {
   return [...byClass.values()];
 }
 
-async function syncWso(ctx: ActionCtx, wso: string, scraped: WsoRecord[]) {
+async function syncWso(ctx: ActionCtx, scraped: WsoRecord[]) {
   const records = lastPerClass(scraped);
-  const outcomes: { wasInsert: boolean; wasChanged: boolean; previous?: Record<string, number | undefined> }[] = await ctx.runMutation(
-    internal.ingest.upsertWsoRecords,
-    { rows: wsoRows(records) },
-  );
-  const inserted = records.filter((_, i) => outcomes[i].wasInsert);
-  const updated = records.flatMap((record, i) => (!outcomes[i].wasInsert && outcomes[i].wasChanged ? [{ record, previous: outcomes[i].previous ?? {} }] : []));
-  if (inserted.length || updated.length) await postSlack(process.env.SLACK_WSO_WEBHOOK_URL, `wso ${wso}`, slackMessage(wso, inserted, updated));
-  return { inserted: inserted.length, updated: updated.length, unchanged: records.length - inserted.length - updated.length };
+  const outcomes: { wasInsert: boolean; wasChanged: boolean }[] = await ctx.runMutation(internal.ingest.upsertWsoRecords, { rows: wsoRows(records) });
+  const inserted = outcomes.filter((o) => o.wasInsert).length;
+  const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
+  return { inserted, updated, unchanged: records.length - inserted - updated };
 }
 
-/** An exact-set sync, reported as the Python PDF scraper did. */
-async function replaceWso(ctx: ActionCtx, wso: string, records: WsoRecord[]) {
-  const counts: { inserted: number; updated: number; deleted: number; unchanged: number } = await ctx.runMutation(internal.ingest.replaceWsoRecordSet, {
-    wso,
-    rows: wsoRows(records),
-  });
-  if (counts.inserted + counts.updated + counts.deleted > 0) {
-    await postSlack(
-      process.env.SLACK_WSO_WEBHOOK_URL,
-      `wso ${wso}`,
-      `*${wso} WSO Records Update (PDF)*\n\nProcessed *${records.length}* current record rows\n*${counts.inserted}* inserted, *${counts.updated}* updated, *${counts.deleted}* deleted, *${counts.unchanged}* unchanged`,
-    );
-  }
-  return counts;
+/** An exact-set sync (the PDF sources that replaced their whole set). */
+async function replaceWso(ctx: ActionCtx, wso: string, records: WsoRecord[]): Promise<{ inserted: number; updated: number; deleted: number; unchanged: number }> {
+  return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(records) });
 }
 
 type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
@@ -294,7 +247,7 @@ export const run = internalAction({
       try {
         result.records = await source.scrape();
         if (!dryRun && result.records.length) {
-          Object.assign(result, source.replace ? await replaceWso(ctx, source.wso, result.records) : await syncWso(ctx, source.wso, result.records));
+          Object.assign(result, source.replace ? await replaceWso(ctx, source.wso, result.records) : await syncWso(ctx, result.records));
         }
       } catch (error) {
         result.error = (error as Error).message;

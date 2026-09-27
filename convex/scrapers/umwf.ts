@@ -4,7 +4,6 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchText } from './lib/http';
-import { postSlack } from './lib/slack';
 import {
   MEN_BASE_URL,
   MEN_SHEETS,
@@ -22,23 +21,6 @@ import {
  * missing, as the Python scraper sent `None`. A tab that fails to download is
  * skipped, as before.
  */
-function slackMessage(inserted: UmwfRecord[], updated: UmwfRecord[]): string {
-  let message = `UMWF World Records Update\n*${inserted.length}* new records inserted, *${updated.length}* records updated`;
-  const more = (rows: UmwfRecord[]) => (rows.length > 10 ? `\n... and ${rows.length - 10} more` : '');
-  if (inserted.length) {
-    message += `\n\n*New Records (${inserted.length}):*\n${inserted
-      .slice(0, 10)
-      .map((r) => `- ${r.age_category} ${r.gender} ${r.weight_class} (Snatch=${r.snatch_record}, CJ=${r.cj_record}, Total=${r.total_record})`)
-      .join('\n')}${more(inserted)}`;
-  }
-  if (updated.length) {
-    message += `\n\n*Updated Records (${updated.length}):*\n${updated
-      .slice(0, 10)
-      .map((r) => `- ${r.age_category} ${r.gender} ${r.weight_class}`)
-      .join('\n')}${more(updated)}`;
-  }
-  return message;
-}
 
 type RunResult = { records: UmwfRecord[]; failedTabs: string[]; inserted: number; updated: number };
 
@@ -77,9 +59,6 @@ export const run = internalAction({
     const inserted = records.filter((_, i) => outcomes[i].wasInsert);
     const updated = records.filter((_, i) => !outcomes[i].wasInsert && outcomes[i].wasChanged);
     console.log(`umwf: ${records.length} parsed, ${inserted.length} inserted, ${updated.length} updated`);
-    if (inserted.length || updated.length) {
-      await postSlack(process.env.SLACK_RECORDS_WEBHOOK_URL, 'umwf records', slackMessage(inserted, updated));
-    }
     return { records, failedTabs, inserted: inserted.length, updated: updated.length };
   },
 });

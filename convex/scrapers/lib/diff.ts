@@ -1,6 +1,6 @@
 /**
  * A unified diff of two texts, line by line, with `context` unchanged lines
- * around each change (what urlwatch put in its Slack reports). The pages
+ * around each change (what urlwatch reported). The pages
  * watched are a few hundred lines, so a plain longest-common-subsequence
  * table is fast enough.
  */

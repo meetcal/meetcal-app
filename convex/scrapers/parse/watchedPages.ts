@@ -4,7 +4,7 @@ import { parseHtml, unescapeHtml } from '../lib/html';
 // elements reduced to text the way urlwatch's `css` then `html2text` (method
 // `re`) filters did: block elements on their own lines, tags stripped, blank
 // lines dropped, trailing space trimmed. Unlike urlwatch, entities are decoded and script/style contents
-// dropped, so the Slack diffs read as the page does.
+// dropped, so the emailed diffs read as the page does.
 
 export type WatchedPage = { name: string; url: string; selector: string };
 

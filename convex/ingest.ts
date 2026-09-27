@@ -777,20 +777,15 @@ export const replaceWsoRecordSet = internalMutation({
   },
 });
 
-export type WsoUpsertOutcome = UpsertOutcome & {
-  previous?: { snatchRecord?: number; cjRecord?: number; totalRecord?: number };
-};
-
 /**
  * Inserts or updates WSO records matched on (wso, age, gender, class),
  * normalized like `upsert_wso_record`; a lift missing from the row clears it,
- * as the Python writer's None did. Never deletes. Returns each row's previous
- * lifts when it changed, for the Slack summary.
+ * as the Python writer's None did. Never deletes.
  */
 export const upsertWsoRecords = internalMutation({
   args: { rows: v.array(wsoRecordRow) },
-  handler: async (ctx, { rows }): Promise<WsoUpsertOutcome[]> => {
-    const outcomes: WsoUpsertOutcome[] = [];
+  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
+    const outcomes: UpsertOutcome[] = [];
     for (const row of rows) {
       const doc = {
         wso: row.wso,
@@ -812,11 +807,7 @@ export const upsertWsoRecords = internalMutation({
         outcomes.push({ wasInsert: true, wasChanged: true });
       } else if (existing.snatchRecord !== doc.snatchRecord || existing.cjRecord !== doc.cjRecord || existing.totalRecord !== doc.totalRecord) {
         await ctx.db.replace(existing._id, doc);
-        outcomes.push({
-          wasInsert: false,
-          wasChanged: true,
-          previous: { snatchRecord: existing.snatchRecord, cjRecord: existing.cjRecord, totalRecord: existing.totalRecord },
-        });
+        outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
         outcomes.push({ wasInsert: false, wasChanged: false });
       }

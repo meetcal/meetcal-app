@@ -3,14 +3,13 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { postSlack } from './lib/slack';
 import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
 
 /**
  * IWF world records (replaces `iwf/world-records/scraper.py`, blocked by
  * iwf.sport's Cloudflare challenge): senior, junior and youth records from
  * Wikipedia's lists (see `parse/iwfRecords.ts`), synced as the exact IWF set
- * like `replaceIWFRecords` did. Slack posts when a record changes.
+ * like `replaceIWFRecords` did.
  */
 
 // Wikipedia's API policy asks clients to identify themselves.
@@ -36,14 +35,6 @@ export const run = internalAction({
       recordType: 'IWF',
       rows: records.map((r) => ({ recordType: 'IWF', ...r })),
     });
-    if (result.inserted + result.updated + result.deleted > 0) {
-      const lines = result.changes.map((change) => `• ${change}`).join('\n');
-      await postSlack(
-        process.env.SLACK_IWF_RECORDS_WEBHOOK_URL ?? process.env.SLACK_RECORDS_WEBHOOK_URL,
-        'iwf records',
-        `*IWF World Records Update*\n\n${result.inserted} inserted, ${result.updated} updated, ${result.deleted} deleted${lines ? `\n\n${lines}` : ''}`,
-      );
-    }
     return { records, ...result };
   },
 });

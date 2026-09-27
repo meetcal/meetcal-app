@@ -4,26 +4,46 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { unifiedDiff } from './lib/diff';
+import { escapeHtml, sendEmail } from './lib/email';
 import { fetchText } from './lib/http';
-import { postSlack } from './lib/slack';
 import { pageText, WATCHED_PAGES } from './parse/watchedPages';
 
 /**
  * urlwatch, hourly (replaces the VPS's `urlwatch` job): each watched page's
- * text is compared with the last run's, and a change is posted to Slack as a
- * diff. A page seen for the first time is only recorded. A page that stops
- * loading, or whose selector stops matching (a redesign), is posted once
- * when it starts failing, not every hour, and its last text is kept.
+ * text is compared with the last run's, and the run's changes are emailed
+ * (OneSignal, to `URLWATCH_EMAIL`) as diffs in one message. A page seen for
+ * the first time is only recorded. A page that stops loading, or whose
+ * selector stops matching (a redesign), is reported once, when it starts
+ * failing, and its last text is kept. Snapshots are saved only after the
+ * email went out, so a failed send is retried the next hour.
  */
-type PageResult = { name: string; status: 'new' | 'unchanged' | 'changed' | 'error'; error?: string; diff?: string };
+type PageResult = { name: string; url: string; status: 'new' | 'unchanged' | 'changed' | 'error'; error?: string; diff?: string };
 
-const SLACK_LIMIT = 3500;
+const MAX_DIFF = 60_000;
+
+function emailBody(results: PageResult[]): string {
+  const sections = results.map((r) => {
+    const heading = `<h3 style="margin:16px 0 4px">${escapeHtml(r.name)}${r.status === 'error' ? ' (error)' : ''}</h3><a href="${escapeHtml(r.url)}">${escapeHtml(r.url)}</a>`;
+    if (r.status === 'error') return `${heading}<p>${escapeHtml(r.error ?? '')}</p>`;
+    const diff = (r.diff ?? '').length > MAX_DIFF ? `${r.diff!.slice(0, MAX_DIFF)}\n… (diff truncated)` : (r.diff ?? '');
+    const lines = diff
+      .split('\n')
+      .map((line) => {
+        const colour = line.startsWith('+') ? '#1a7f37' : line.startsWith('-') ? '#cf222e' : line.startsWith('@@') ? '#6e7781' : '#24292f';
+        return `<span style="color:${colour}">${escapeHtml(line)}</span>`;
+      })
+      .join('\n');
+    return `${heading}<pre style="font-size:13px;background:#f6f8fa;padding:8px;white-space:pre-wrap">${lines}</pre>`;
+  });
+  return `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif">${sections.join('')}</div>`;
+}
 
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }): Promise<PageResult[]> => {
     const results: PageResult[] = [];
-    const webhook = process.env.SLACK_URLWATCH_WEBHOOK_URL;
+    const saves: { url: string; text?: string; error?: string }[] = [];
+    const report: PageResult[] = [];
     for (const page of WATCHED_PAGES) {
       const previous = await ctx.runQuery(internal.scrapers.watchedPageState.get, { url: page.url });
       let text: string;
@@ -31,25 +51,31 @@ export const run = internalAction({
         text = pageText(await fetchText(page.url, 30_000), page.selector);
         if (!text) throw new Error(`"${page.selector}" matched nothing`);
       } catch (error) {
-        const message = (error as Error).message;
-        results.push({ name: page.name, status: 'error', error: message });
-        if (dryRun) continue;
-        if (!previous?.error) await postSlack(webhook, 'urlwatch', `*urlwatch: ERROR* ${page.name} (${page.url})\n${message}`);
-        await ctx.runMutation(internal.scrapers.watchedPageState.save, { url: page.url, error: message });
+        const result: PageResult = { name: page.name, url: page.url, status: 'error', error: (error as Error).message };
+        results.push(result);
+        if (!previous?.error) report.push(result);
+        saves.push({ url: page.url, error: result.error });
         continue;
       }
-      if (!previous) {
-        results.push({ name: page.name, status: 'new' });
-      } else if (previous.text === text) {
-        results.push({ name: page.name, status: 'unchanged' });
-      } else {
-        const diff = unifiedDiff(previous.text, text);
-        results.push({ name: page.name, status: 'changed', diff });
-        const body = diff.length > SLACK_LIMIT ? `${diff.slice(0, SLACK_LIMIT)}\n… (diff truncated)` : diff;
-        if (!dryRun) await postSlack(webhook, 'urlwatch', `*urlwatch: CHANGED* ${page.name} (${page.url})\n\`\`\`\n${body}\n\`\`\``);
+      let result: PageResult;
+      if (!previous) result = { name: page.name, url: page.url, status: 'new' };
+      else if (previous.text === text) result = { name: page.name, url: page.url, status: 'unchanged' };
+      else {
+        result = { name: page.name, url: page.url, status: 'changed', diff: unifiedDiff(previous.text, text) };
+        report.push(result);
       }
-      if (!dryRun) await ctx.runMutation(internal.scrapers.watchedPageState.save, { url: page.url, text });
+      results.push(result);
+      saves.push({ url: page.url, text });
     }
+    if (dryRun) return results;
+    if (report.length) {
+      const to = process.env.URLWATCH_EMAIL;
+      if (!to) throw new Error('urlwatch: URLWATCH_EMAIL is not set; not saving, so the changes are reported once it is');
+      const changed = report.filter((r) => r.status === 'changed').length;
+      const subject = changed ? `urlwatch: ${report.map((r) => r.name.replace('USA Masters Weightlifting ', '')).join(', ')} changed` : `urlwatch: ${report[0].name} failed`;
+      await sendEmail(to, subject, emailBody(report));
+    }
+    for (const save of saves) await ctx.runMutation(internal.scrapers.watchedPageState.save, save);
     return results;
   },
 });

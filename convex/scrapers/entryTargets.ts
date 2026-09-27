@@ -3,7 +3,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
 
 /**
  * The Sport80 entries pages the entries cron reads (the backend's
- * `entries_targets.json`, which Slack commands edited on the API server).
+ * `entries_targets.json`).
  *
  *   npx convex run scrapers/entryTargets:add '{"label": "2026 Georgia WSO Championships", "url": "https://usaweightlifting.sport80.com/public/events/15004/entries/21879"}'
  *   npx convex run scrapers/entryTargets:remove '{"url": "..."}'

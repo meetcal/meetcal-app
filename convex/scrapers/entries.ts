@@ -3,15 +3,13 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { postSlack } from './lib/slack';
 import { entriesEndpoint, entryFromRow, meetFromTitle, type Entry, type EntryRow } from './parse/entries';
 
 /**
  * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
  * each target's entries list from Sport80's public entries endpoint, upserted
  * into `athletes`. Targets whose meet is already completed are skipped (the
- * list was pruned by hand before). Slack posts per meet when athletes were
- * added or changed.
+ * list was pruned by hand before).
  */
 async function getJson(url: string): Promise<{ title?: string; total?: number; data?: EntryRow[] }> {
   const response = await fetch(url, {
@@ -62,13 +60,6 @@ export const run = internalAction({
         if (dryRun || entries.length === 0) continue;
         const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number } = await ctx.runMutation(internal.ingest.upsertEntryAthletes, { meet, rows: entries });
         Object.assign(result, counts);
-        if (counts.inserted + counts.updated > 0) {
-          await postSlack(
-            process.env.SLACK_ENTRY_WEBHOOK_URL,
-            `entries ${meet}`,
-            `*Entries Update - ${meet}*\n\n• ${counts.inserted} inserted\n• ${counts.updated} updated\n• ${counts.unchanged} unchanged\n• ${counts.sessionSkipped} skipped (session already set)`,
-          );
-        }
       } catch (error) {
         result.error = (error as Error).message;
         console.error(`entries (${target.label}): ${result.error}`);

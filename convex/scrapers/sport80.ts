@@ -3,7 +3,6 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { postSlack } from './lib/slack';
 import {
   eventDate,
   eventIdOf,
@@ -170,12 +169,6 @@ export const run = internalAction({
     const inserted = outcomes.filter((o) => o.inserted > 0).map((o) => o.meet);
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated`);
-    if (inserted.length || updated.length) {
-      let message = `USAW Meet Results Update\n${inserted.length} new meet result set(s) inserted, ${updated.length} meet result set(s) updated`;
-      if (inserted.length) message += `\n\nNew Meets\n${inserted.map((m) => `• ${m}`).join('\n')}`;
-      if (updated.length) message += `\n\nUpdated Meets\n${updated.map((m) => `• ${m}`).join('\n')}`;
-      await postSlack(process.env.SLACK_RESULTS_WEBHOOK_URL, 'results', message);
-    }
     return { meets, outcomes };
   },
 });

@@ -5,7 +5,6 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchBytes, fetchText } from './lib/http';
 import { pdfLines } from './lib/pdf';
-import { postSlack } from './lib/slack';
 import { findRecordsPdfUrl, parseRecords, type UsawRecord } from './parse/records';
 
 /**
@@ -16,23 +15,6 @@ import { findRecordsPdfUrl, parseRecords, type UsawRecord } from './parse/record
  */
 const PAGE_URL = 'https://www.usaweightlifting.org/american-records';
 
-function slackMessage(inserted: UsawRecord[], updated: UsawRecord[]): string {
-  let message = `USA Weightlifting Records Update\n*${inserted.length}* new records inserted, *${updated.length}* records updated`;
-  const more = (rows: UsawRecord[]) => (rows.length > 10 ? `\n... and ${rows.length - 10} more` : '');
-  if (inserted.length) {
-    message += `\n\n*New Records (${inserted.length}):*\n${inserted
-      .slice(0, 10)
-      .map((r) => `• ${r.age_category} ${r.gender} ${r.weight_class} (Snatch=${r.snatch_record}, CJ=${r.cj_record}, Total=${r.total_record})`)
-      .join('\n')}${more(inserted)}`;
-  }
-  if (updated.length) {
-    message += `\n\n*Updated Records (${updated.length}):*\n${updated
-      .slice(0, 10)
-      .map((r) => `• ${r.age_category} ${r.gender} ${r.weight_class}`)
-      .join('\n')}${more(updated)}`;
-  }
-  return message;
-}
 
 type RunResult = { pdfUrl: string; records: UsawRecord[]; inserted: number; updated: number };
 
@@ -59,9 +41,6 @@ export const run = internalAction({
     const inserted = records.filter((_, i) => outcomes[i].wasInsert);
     const updated = records.filter((_, i) => !outcomes[i].wasInsert && outcomes[i].wasChanged);
     console.log(`records: ${records.length} parsed, ${inserted.length} inserted, ${updated.length} updated`);
-    if (inserted.length || updated.length) {
-      await postSlack(process.env.SLACK_RECORDS_WEBHOOK_URL, 'records', slackMessage(inserted, updated));
-    }
     return { pdfUrl, records, inserted: inserted.length, updated: updated.length };
   },
 });

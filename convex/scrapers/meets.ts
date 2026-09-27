@@ -3,7 +3,6 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { postSlack } from './lib/slack';
 import { MEET_SEARCHES, transformMeets, type ScrapedMeet } from './parse/meets';
 
 /**
@@ -58,13 +57,6 @@ export const run = internalAction({
       result.inserted = toIngest.filter((_, i) => outcomes[i].wasInsert).map((m) => m.name);
       result.updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
       console.log(`meets (${search.key}): ${result.fetched} fetched, ${toIngest.length} synced, ${result.inserted.length} new, ${result.updated} updated`);
-      if (result.inserted.length) {
-        await postSlack(
-          process.env.SLACK_MEET_WEBHOOK_URL,
-          `meets ${search.key}`,
-          `${result.inserted.length} ${search.label} meets inserted\n\nMeets inserted:\n${result.inserted.map((n) => `- ${n}`).join('\n')}`,
-        );
-      }
     }
     const failed = results.filter((r) => r.error);
     if (failed.length) throw new Error(`meets: ${failed.map((r) => `${r.key}: ${r.error}`).join('; ')}`);

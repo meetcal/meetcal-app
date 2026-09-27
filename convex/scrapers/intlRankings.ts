@@ -5,7 +5,6 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchBytes, fetchText } from './lib/http';
 import { pdfLines } from './lib/pdf';
-import { postSlack } from './lib/slack';
 import {
   discoverRankingPdfs,
   parseMeetInfo,
@@ -26,23 +25,6 @@ import {
 type GroupResult = { meet: string; gender: string; ageCategory: string; inserted: number; updated: number; unchanged: number; deleted: number; pruned: boolean };
 type ParsedPdf = { title: string; url: string; info: MeetInfo; rankings: IntlRanking[] };
 type RunResult = { pdfs: ParsedPdf[]; groups: GroupResult[]; failed: string[] };
-
-const label = (g: { meet: string; gender: string; ageCategory: string }) => `${g.meet} / ${g.gender} / ${g.ageCategory}`;
-
-function slackMessage(groups: GroupResult[]): string | null {
-  const changed = groups.filter((g) => g.inserted + g.updated + g.deleted > 0).sort((a, b) => (label(a) < label(b) ? -1 : 1));
-  if (!changed.length) return null;
-  const lines = ['*International rankings update:*'];
-  for (const g of changed) {
-    const count = g.inserted + g.updated + g.deleted;
-    lines.push(
-      g.pruned
-        ? `- ${label(g)}: ${count} removed because the group is no longer on USAW`
-        : `- ${label(g)}: ${count} changed (${g.inserted} inserted, ${g.updated} updated, ${g.deleted} deleted)`,
-    );
-  }
-  return lines.join('\n');
-}
 
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
@@ -88,8 +70,6 @@ export const run = internalAction({
         });
       for (const g of pruned.deletedGroups) groups.push({ ...g, inserted: 0, updated: 0, unchanged: 0, pruned: true });
     }
-    const message = slackMessage(groups);
-    if (message) await postSlack(process.env.SLACK_RANKINGS_WEBHOOK_URL, 'intl rankings', message);
     if (failed.length) {
       // Everything storable is stored; failing the run (the VPS job exited 1)
       // is what surfaces the skipped PDFs in the Convex logs.

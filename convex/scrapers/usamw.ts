@@ -5,14 +5,12 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchBytes, fetchText } from './lib/http';
 import { pdfLines } from './lib/pdf';
-import { postSlack } from './lib/slack';
 import { discoverRecordPdfs, PAGE_URL, parseRecordPages, type UsamwRecord } from './parse/usamw';
 
 /**
  * USA Masters Weightlifting national records (port of
  * `usamw/records/national_records.py`): the current men's and women's
  * national records PDFs from the records page, upserted as record type USAMW.
- * Slack posts only when something changed.
  */
 type RunResult = { urls: { Men: string; Women: string }; records: UsamwRecord[]; inserted: number; updated: number; unchanged: number };
 
@@ -43,14 +41,6 @@ export const run = internalAction({
     const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
     const unchanged = outcomes.length - inserted - updated;
     console.log(`usamw: ${records.length} parsed, ${inserted} inserted, ${updated} updated`);
-    if (inserted + updated > 0) {
-      await postSlack(
-        process.env.SLACK_USAMW_RECORDS_WEBHOOK_URL ?? process.env.SLACK_RECORDS_WEBHOOK_URL,
-        'usamw records',
-        `USAMW national records update complete\n${records.length} parsed records\n` +
-          `convex: ${inserted} inserted, ${updated} updated, ${unchanged} unchanged`,
-      );
-    }
     return { urls, records, inserted, updated, unchanged };
   },
 });
