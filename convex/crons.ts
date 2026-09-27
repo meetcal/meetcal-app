@@ -26,6 +26,9 @@ crons.daily('umwf records', { hourUTC: 3, minuteUTC: 55 }, internal.scrapers.umw
 // VPS: `5 0 * * *` EDT.
 crons.daily('usamw national records', { hourUTC: 4, minuteUTC: 5 }, internal.scrapers.usamw.run, {});
 
+// VPS: `15 0 * * *` EDT (iwf-world-records; Wikipedia's lists, iwf.sport is behind a bot challenge).
+crons.daily('iwf world records', { hourUTC: 4, minuteUTC: 15 }, internal.scrapers.iwfRecords.run, {});
+
 // VPS: `35 0 * * *` EDT.
 crons.daily('intl rankings', { hourUTC: 4, minuteUTC: 35 }, internal.scrapers.intlRankings.run, {});
 

@@ -553,6 +553,58 @@ export const upsertRecords = internalMutation({
   },
 });
 
+/**
+ * Exact-set sync of one record type (`replace_records`, e.g. IWF world
+ * records): classes missing from the payload are deleted, the rest written
+ * only where they changed. An empty payload or a duplicate class is refused.
+ */
+export const replaceRecordSet = internalMutation({
+  args: { recordType: v.string(), rows: v.array(recordRow) },
+  handler: async (ctx, { recordType, rows }) => {
+    if (!recordType) throw new Error('recordType is required');
+    if (!rows.length) throw new Error(`refusing to replace ${recordType} records with an empty payload`);
+    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
+    const existing = new Map(
+      (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).map((r) => [keyOf(r), r]),
+    );
+    const counts = { inserted: 0, updated: 0, deleted: 0, unchanged: 0 };
+    const changes: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (row.recordType !== recordType) throw new Error(`row of type ${row.recordType} in a ${recordType} replace`);
+      const doc = {
+        recordType,
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        snatchRecord: row.snatchRecord,
+        cjRecord: row.cjRecord,
+        totalRecord: row.totalRecord,
+      };
+      const key = keyOf(doc);
+      if (seen.has(key)) throw new Error(`Duplicate ${recordType} record in payload: ${key}`);
+      seen.add(key);
+      const current = existing.get(key);
+      const label = `${doc.ageCategory} ${doc.gender} ${doc.weightClass}`;
+      if (!current) {
+        await ctx.db.insert('records', doc);
+        counts.inserted += 1;
+      } else if (current.snatchRecord !== doc.snatchRecord || current.cjRecord !== doc.cjRecord || current.totalRecord !== doc.totalRecord) {
+        await ctx.db.replace(current._id, doc);
+        counts.updated += 1;
+        changes.push(`${label}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`);
+      } else counts.unchanged += 1;
+    }
+    for (const [key, row] of existing) {
+      if (seen.has(key)) continue;
+      await ctx.db.delete(row._id);
+      counts.deleted += 1;
+    }
+    if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
+    return { ...counts, changes };
+  },
+});
+
 const intlRankingRow = v.object({
   ranking: v.number(),
   name: v.string(),
