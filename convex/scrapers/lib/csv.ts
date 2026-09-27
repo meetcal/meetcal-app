@@ -46,3 +46,16 @@ export function parseCsv(text: string): string[][] {
   if (fieldStarted || field !== '' || row.length > 0) rows.push([...row, field]);
   return rows;
 }
+
+/**
+ * Rows as `csv.DictReader` gives them: the first row names the fields, each
+ * later row maps name to value; a short row reads missing fields as ''
+ * (Python gives None, which every caller here treats as empty).
+ */
+export function parseCsvDicts(text: string): Record<string, string>[] {
+  const [header, ...rows] = parseCsv(text);
+  if (!header) return [];
+  return rows
+    .filter((row) => row.length > 0)
+    .map((row) => Object.fromEntries(header.map((name, i) => [name, row[i] ?? ''])));
+}

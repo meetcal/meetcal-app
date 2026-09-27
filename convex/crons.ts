@@ -35,4 +35,7 @@ crons.daily('meet sync', { hourUTC: 5, minuteUTC: 5 }, internal.scrapers.meets.r
 // VPS: `5 2 * * *` EDT.
 crons.daily('results (sport80)', { hourUTC: 6, minuteUTC: 5 }, internal.scrapers.sport80.run, {});
 
+// VPS: `40 2 * * *` EDT.
+crons.daily('wso records', { hourUTC: 6, minuteUTC: 40 }, internal.scrapers.wsoRecords.run, {});
+
 export default crons;

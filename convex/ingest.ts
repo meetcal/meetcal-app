@@ -512,3 +512,62 @@ export const deleteMissingIntlRankingGroups = internalMutation({
     return { deletedGroups, deleted };
   },
 });
+
+const wsoRecordRow = v.object({
+  wso: v.string(),
+  ageCategory: v.string(),
+  gender: v.string(),
+  weightClass: v.string(),
+  snatchRecord: v.optional(v.number()),
+  cjRecord: v.optional(v.number()),
+  totalRecord: v.optional(v.number()),
+});
+
+export type WsoUpsertOutcome = UpsertOutcome & {
+  previous?: { snatchRecord?: number; cjRecord?: number; totalRecord?: number };
+};
+
+/**
+ * Inserts or updates WSO records matched on (wso, age, gender, class),
+ * normalized like `upsert_wso_record`; a lift missing from the row clears it,
+ * as the Python writer's None did. Never deletes. Returns each row's previous
+ * lifts when it changed, for the Slack summary.
+ */
+export const upsertWsoRecords = internalMutation({
+  args: { rows: v.array(wsoRecordRow) },
+  handler: async (ctx, { rows }): Promise<WsoUpsertOutcome[]> => {
+    const outcomes: WsoUpsertOutcome[] = [];
+    for (const row of rows) {
+      const doc = {
+        wso: row.wso,
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        snatchRecord: row.snatchRecord,
+        cjRecord: row.cjRecord,
+        totalRecord: row.totalRecord,
+      };
+      const existing = (
+        await ctx.db
+          .query('wso_records')
+          .withIndex('by_wso_age_gender', (q) => q.eq('wso', doc.wso).eq('ageCategory', doc.ageCategory).eq('gender', doc.gender))
+          .collect()
+      ).find((r) => r.weightClass === doc.weightClass);
+      if (!existing) {
+        await ctx.db.insert('wso_records', doc);
+        outcomes.push({ wasInsert: true, wasChanged: true });
+      } else if (existing.snatchRecord !== doc.snatchRecord || existing.cjRecord !== doc.cjRecord || existing.totalRecord !== doc.totalRecord) {
+        await ctx.db.replace(existing._id, doc);
+        outcomes.push({
+          wasInsert: false,
+          wasChanged: true,
+          previous: { snatchRecord: existing.snatchRecord, cjRecord: existing.cjRecord, totalRecord: existing.totalRecord },
+        });
+      } else {
+        outcomes.push({ wasInsert: false, wasChanged: false });
+      }
+    }
+    if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'wso_records', [{ kind: 'table', key: 'wso_records' }]);
+    return outcomes;
+  },
+});
