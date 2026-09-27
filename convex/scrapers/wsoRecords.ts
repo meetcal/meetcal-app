@@ -16,6 +16,7 @@ import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
 import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
+import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -192,6 +193,10 @@ export const WSO_SOURCES: WsoSource[] = [
       const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
       return pdfs.flatMap((pages) => parseNewEngland(pages, 'New England'));
     },
+  },
+  {
+    wso: 'Missouri Valley',
+    scrape: async () => parseMissouriValley(missouriValleyLines(await fetchText(MISSOURI_VALLEY_URL, 45_000))),
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
