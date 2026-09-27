@@ -7,17 +7,24 @@ export type PdfLineOptions = {
   xTolerance?: number;
 };
 
+/** A piece of text the PDF drew, with where it starts and ends across the page (points). */
+export type PdfRun = { text: string; x: number; end: number };
+
+/** One line of a page: its runs left to right, and their text joined as `pdfLines` joins it. */
+export type PdfLine = { text: string; runs: PdfRun[] };
+
 /**
- * A PDF's text, page by page, line by line, laid out like pdfplumber's
- * `extract_text`: text runs grouped by baseline (top to bottom), each line
- * left to right, runs joined with a space only where there is a gap wider
- * than `xTolerance`, so a number the PDF drew in two runs stays one word.
+ * A PDF's lines, page by page, laid out like pdfplumber's `extract_text`:
+ * text runs grouped by baseline (top to bottom), each line left to right,
+ * runs joined with a space only where there is a gap wider than
+ * `xTolerance`, so a number the PDF drew in two runs stays one word. Runs
+ * keep their positions, for reading a table by its columns.
  */
-export async function pdfLines(bytes: Uint8Array, options: PdfLineOptions = {}): Promise<string[][]> {
+export async function pdfRunLines(bytes: Uint8Array, options: PdfLineOptions = {}): Promise<PdfLine[][]> {
   const yTolerance = options.yTolerance ?? 3;
   const xTolerance = options.xTolerance ?? 3;
   const pdf = await getDocumentProxy(bytes);
-  const pages: string[][] = [];
+  const pages: PdfLine[][] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
@@ -44,9 +51,14 @@ export async function pdfLines(bytes: Uint8Array, options: PdfLineOptions = {}):
             text += run.text;
             end = Math.max(end, run.x + run.width);
           }
-          return text.replace(/\s+/g, ' ').trim();
+          return { text: text.replace(/\s+/g, ' ').trim(), runs: line.runs.map((run) => ({ text: run.text, x: run.x, end: run.x + run.width })) };
         }),
     );
   }
   return pages;
+}
+
+/** A PDF's text, page by page, line by line (see `pdfRunLines`). */
+export async function pdfLines(bytes: Uint8Array, options: PdfLineOptions = {}): Promise<string[][]> {
+  return (await pdfRunLines(bytes, options)).map((page) => page.map((line) => line.text));
 }

@@ -45,6 +45,7 @@ import type * as scrapers_parse_wso_common from "../scrapers/parse/wso/common.js
 import type * as scrapers_parse_wso_flat from "../scrapers/parse/wso/flat.js";
 import type * as scrapers_parse_wso_illinois from "../scrapers/parse/wso/illinois.js";
 import type * as scrapers_parse_wso_mountainSouth from "../scrapers/parse/wso/mountainSouth.js";
+import type * as scrapers_parse_wso_newEngland from "../scrapers/parse/wso/newEngland.js";
 import type * as scrapers_parse_wso_newJersey from "../scrapers/parse/wso/newJersey.js";
 import type * as scrapers_parse_wso_newYork from "../scrapers/parse/wso/newYork.js";
 import type * as scrapers_parse_wso_ohio from "../scrapers/parse/wso/ohio.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/parse/wso/flat": typeof scrapers_parse_wso_flat;
   "scrapers/parse/wso/illinois": typeof scrapers_parse_wso_illinois;
   "scrapers/parse/wso/mountainSouth": typeof scrapers_parse_wso_mountainSouth;
+  "scrapers/parse/wso/newEngland": typeof scrapers_parse_wso_newEngland;
   "scrapers/parse/wso/newJersey": typeof scrapers_parse_wso_newJersey;
   "scrapers/parse/wso/newYork": typeof scrapers_parse_wso_newYork;
   "scrapers/parse/wso/ohio": typeof scrapers_parse_wso_ohio;

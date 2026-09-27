@@ -5,7 +5,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
 import { unescapeHtml } from './lib/html';
-import { pdfLines } from './lib/pdf';
+import { pdfLines, pdfRunLines } from './lib/pdf';
 import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
@@ -16,6 +16,7 @@ import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
+import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -182,6 +183,15 @@ export const WSO_SOURCES: WsoSource[] = [
       if (!urls.length) throw new Error('No records PDFs found on the New York records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
       return pdfs.flatMap((pages) => parseNewYork(pages, 'New York'));
+    },
+  },
+  {
+    wso: 'New England',
+    scrape: async () => {
+      const urls = newEnglandPdfUrls(await fetchText('https://www.newenglandweightlifting.com/records'));
+      if (!urls.length) throw new Error('No records PDFs found on the New England records page');
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
+      return pdfs.flatMap((pages) => parseNewEngland(pages, 'New England'));
     },
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
