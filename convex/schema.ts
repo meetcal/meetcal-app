@@ -224,6 +224,13 @@ export default defineSchema({
 
   // Each athlete's whole history as JSON text, rewritten with every write to
   // their results (`convex/lib/history.ts`).
+  // Sport80 entries pages the entries cron scrapes each night (the backend's
+  // `entries_targets.json`, edited with `scrapers/entries:addTarget` / `removeTarget`).
+  entry_targets: defineTable({
+    label: v.string(),
+    url: v.string(),
+  }).index('by_url', ['url']),
+
   athlete_history: defineTable({
     nameKey: v.string(),
     json: v.string(),

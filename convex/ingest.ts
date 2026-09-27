@@ -300,6 +300,100 @@ export const syncUsamwEvents = internalMutation({
   },
 });
 
+const entryRow = v.object({
+  memberId: v.string(),
+  name: v.string(),
+  age: v.number(),
+  club: v.string(),
+  gender: v.string(),
+  weightClass: v.string(),
+  entryTotal: v.number(),
+  meet: v.string(),
+});
+
+const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
+
+/**
+ * One meet's Sport80 entries (`upsert_athlete(..., preserve_assigned_session=True)`).
+ * An athlete with a membership number is the row with that number and name
+ * (names compared case- and space-insensitively) at the meet; one without is
+ * the row with the same name and gender carrying a blank or placeholder id,
+ * or an older row with a one-off nine-digit id and the same age (ids the old
+ * scraper minted per run: a real membership number recurs at other meets).
+ * Rows already given a session are left alone, so entries never undo a
+ * published start list. Entries are not deleted when they leave the list.
+ */
+export const upsertEntryAthletes = internalMutation({
+  args: { meet: v.string(), rows: v.array(entryRow) },
+  handler: async (ctx, { meet, rows }) => {
+    if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
+    const existing = await ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .collect();
+    const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0 };
+    const oneOffIds = new Map<string, boolean>();
+    const isOneOff = async (memberId: string) => {
+      if (!/^[1-9]\d{8}$/.test(memberId)) return false;
+      if (!oneOffIds.has(memberId)) {
+        const elsewhere = await ctx.db
+          .query('athletes')
+          .withIndex('by_memberId', (q) => q.eq('memberId', memberId))
+          .filter((q) => q.neq(q.field('meet'), meet))
+          .first();
+        oneOffIds.set(memberId, elsewhere === null);
+      }
+      return oneOffIds.get(memberId)!;
+    };
+    for (const row of rows) {
+      const gender = normalizeGender(row.gender);
+      const nameKey = normalizeName(row.name);
+      const idless = isPlaceholderMemberId(row.memberId);
+      let match: Doc<'athletes'> | undefined;
+      if (idless) {
+        const sameName = existing.filter((a) => normalizeName(a.name) === nameKey && a.gender === gender);
+        match = sameName.find((a) => isPlaceholderMemberId(a.memberId));
+        for (const a of sameName) {
+          if (match) break;
+          if (a.age === row.age && (await isOneOff(a.memberId))) match = a;
+        }
+      } else {
+        match = existing.find((a) => a.memberId === row.memberId && normalizeName(a.name) === nameKey);
+      }
+      const values = {
+        // An adopted older row keeps its id rather than take a placeholder.
+        memberId: idless && match && !isPlaceholderMemberId(match.memberId) ? match.memberId : row.memberId,
+        name: row.name,
+        age: row.age,
+        club: row.club,
+        gender,
+        weightClass: row.weightClass,
+        entryTotal: row.entryTotal,
+      };
+      if (!match) {
+        const doc = { ...values, meet, adaptive: false };
+        existing.push({ ...doc, _id: await ctx.db.insert('athletes', doc), _creationTime: Date.now() });
+        counts.inserted += 1;
+        continue;
+      }
+      if (match.sessionNumber !== undefined || (match.sessionPlatform ?? '').trim() !== '') {
+        counts.sessionSkipped += 1;
+        continue;
+      }
+      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => match[key] !== values[key]);
+      if (!changed) {
+        counts.unchanged += 1;
+        continue;
+      }
+      await ctx.db.patch(match._id, values);
+      Object.assign(match, values);
+      counts.updated += 1;
+    }
+    if (counts.inserted + counts.updated > 0) await recordWrite(ctx, 'athletes', [{ kind: 'meet', key: meet }]);
+    return counts;
+  },
+});
+
 const referenceTables = {
   records: recordsFields,
   standards: standardsFields,

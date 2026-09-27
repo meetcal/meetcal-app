@@ -41,4 +41,7 @@ crons.daily('results (sport80)', { hourUTC: 6, minuteUTC: 5 }, internal.scrapers
 // VPS: `40 2 * * *` EDT.
 crons.daily('wso records', { hourUTC: 6, minuteUTC: 40 }, internal.scrapers.wsoRecords.run, {});
 
+// VPS: `25 3 * * *` EDT (the entries job; Sport80's JSON endpoint instead of a headless browser).
+crons.daily('entries', { hourUTC: 7, minuteUTC: 25 }, internal.scrapers.entries.run, {});
+
 export default crons;
