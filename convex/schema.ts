@@ -280,6 +280,16 @@ export default defineSchema({
   // than the whole history (`convex/lib/history.ts`): the latest meet's rows
   // and each result's bests, both JSON text, newest first. Written with the
   // history document, in the same transaction.
+  // Search-directory name changes not yet applied to the two-letter shards
+  // (`convex/views.ts`). Written with the directory, in the same transaction;
+  // deleted once the shards hold them, so a failed refresh leaves them for
+  // the next one instead of losing them.
+  search_shard_pending: defineTable({
+    name: v.string(),
+    // Whether the directory now has the name (add it) or not (remove it).
+    present: v.boolean(),
+  }).index('by_name', ['name']),
+
   athlete_summary: defineTable({
     nameKey: v.string(),
     latest: v.string(),

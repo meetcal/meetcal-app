@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import {
   athletesWithSessions,
   clubAthleteCounts,
@@ -266,6 +267,21 @@ export const syncResultNames = internalMutation({
     }
     if (added.length + removed.length === 0) return { added, removed };
     await writeView(ctx, RESULT_NAMES_VIEW, textChunks(directoryText([...directory].sort(compareCollated))), [], { text: true });
+    // The shards are patched by later mutations; recording the change here,
+    // in the directory's transaction, means a failure in between cannot lose it.
+    for (const [names, present] of [
+      [added, true],
+      [removed, false],
+    ] as const) {
+      for (const name of names) {
+        const pending = await ctx.db
+          .query('search_shard_pending')
+          .withIndex('by_name', (q) => q.eq('name', name))
+          .unique();
+        if (pending) await ctx.db.patch(pending._id, { present });
+        else await ctx.db.insert('search_shard_pending', { name, present });
+      }
+    }
     return { added, removed };
   },
 });
@@ -310,10 +326,21 @@ export const patchSearchShards = internalMutation({
     for (const bigram of bigrams) {
       const key = searchShardKey(bigram);
       const names = new Set(directoryNames((await readViewTextAnyAge(ctx, key)) ?? ''));
-      for (const name of added) if (nameBigrams(name).has(bigram)) names.add(name);
-      for (const name of removed) if (nameBigrams(name).has(bigram)) names.delete(name);
-      if (names.size === 0) await deleteViewsWithPrefix(ctx, key);
-      else await writeView(ctx, key, textChunks(directoryText([...names].sort(compareCollated))), [], { text: true });
+      const before = names.size;
+      let changed = false;
+      for (const name of added) {
+        if (nameBigrams(name).has(bigram) && !names.has(name)) {
+          names.add(name);
+          changed = true;
+        }
+      }
+      for (const name of removed) {
+        if (nameBigrams(name).has(bigram) && names.delete(name)) changed = true;
+      }
+      if (changed || before === 0) {
+        if (names.size === 0) await deleteViewsWithPrefix(ctx, key);
+        else await writeView(ctx, key, textChunks(directoryText([...names].sort(compareCollated))), [], { text: true });
+      }
       sizes.push({ bigram, count: names.size });
     }
     return sizes;
@@ -376,17 +403,46 @@ export const buildSearchShards = internalAction({
   },
 });
 
-/** Applies a refresh's name changes to the shards they touch, a few shards per mutation. */
-async function patchSearchShardsFor(ctx: ActionCtx, added: readonly string[], removed: readonly string[]): Promise<void> {
-  if (added.length + removed.length === 0) return;
-  const bigrams = new Set<string>();
-  for (const name of [...added, ...removed]) for (const bigram of nameBigrams(name)) bigrams.add(bigram);
-  const list = [...bigrams];
-  const sizes: { bigram: string; count: number }[] = [];
-  for (let i = 0; i < list.length; i += 20) {
-    sizes.push(...(await ctx.runMutation(internal.views.patchSearchShards, { bigrams: list.slice(i, i + 20), added: [...added], removed: [...removed] })));
+/** The pending shard changes (oldest first), a page at a time. */
+export const pendingShardChanges = internalQuery({
+  args: {},
+  handler: async (ctx) => (await ctx.db.query('search_shard_pending').take(500)).map(({ _id, name, present }) => ({ id: _id, name, present })),
+});
+
+/** Deletes pending changes the shards now hold, unless the name changed again meanwhile. */
+export const clearPendingShardChanges = internalMutation({
+  args: { applied: v.array(v.object({ id: v.id('search_shard_pending'), present: v.boolean() })) },
+  handler: async (ctx, { applied }) => {
+    for (const { id, present } of applied) {
+      const row = await ctx.db.get(id);
+      if (row && row.present === present) await ctx.db.delete(id);
+    }
+  },
+});
+
+/**
+ * Applies every pending name change (`search_shard_pending`) to the shards it
+ * touches, a few shards per mutation, then clears what it applied. Re-applying
+ * is harmless (set updates), so a refresh that fails part way leaves the
+ * changes for the next one.
+ */
+async function applyPendingShardChanges(ctx: ActionCtx): Promise<void> {
+  for (;;) {
+    const pending: { id: Id<'search_shard_pending'>; name: string; present: boolean }[] = await ctx.runQuery(internal.views.pendingShardChanges, {});
+    if (pending.length === 0) return;
+    const added = pending.filter((p) => p.present).map((p) => p.name);
+    const removed = pending.filter((p) => !p.present).map((p) => p.name);
+    const bigrams = new Set<string>();
+    for (const { name } of pending) for (const bigram of nameBigrams(name)) bigrams.add(bigram);
+    const list = [...bigrams];
+    const sizes: { bigram: string; count: number }[] = [];
+    for (let i = 0; i < list.length; i += 20) {
+      sizes.push(...(await ctx.runMutation(internal.views.patchSearchShards, { bigrams: list.slice(i, i + 20), added, removed })));
+    }
+    await ctx.runMutation(internal.views.patchSearchShardSizes, { sizes });
+    await ctx.runMutation(internal.views.clearPendingShardChanges, { applied: pending.map(({ id, present }) => ({ id, present })) });
+    if (pending.length < 500) return;
   }
-  await ctx.runMutation(internal.views.patchSearchShardSizes, { sizes });
 }
 
 // ---------------------------------------------------------------------------
@@ -833,9 +889,9 @@ export const refresh = internalAction({
     // Each name costs a lookup or two; 500 a batch stays well inside a
     // mutation's read limit.
     for (let i = 0; i < names.length; i += 500) {
-      const changed: { added: string[]; removed: string[] } = await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
-      await patchSearchShardsFor(ctx, changed.added, changed.removed);
+      await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
     }
+    await applyPendingShardChanges(ctx);
 
     const restamped: number = await ctx.runMutation(internal.views.finishRefresh, {
       hints: begin.hints.map(({ id, seq }) => ({ id, seq })),
