@@ -9,9 +9,9 @@ Run three passes in order against production JS/TS surfaces that ship in the app
 
 `app/`, `components/`, `hooks/`, `lib/`, `utils/`, `contexts/`
 
-Out of scope unless the task names them: `scrapers/`, native `widget/` / `targets/` binaries, generated `ios/` / `android/`, and any Convex-removal work on other branches.
+Out of scope unless the task names them: `convex/scrapers/`, native `widget/` / `targets/` binaries, generated `ios/` / `android/`.
 
-The app talks to Postgres through `https://api.meetcal.app` via `lib/api/meetcal-api.ts`. There is no Convex. Package manager is bun.
+The app reads Convex (`convex/` in this repo) through `lib/api/meetcal-api.ts` and `lib/api/transport.ts`. Package manager is bun.
 
 Do not merge. Do not push to `master`. Open one PR against `master` with evidence.
 
@@ -33,7 +33,7 @@ NASA Power of Ten + TigerStyle from `AGENTS.md` apply.
 
 ## Pass 2 — Performance check
 
-Evidence-based only. Do not invent Convex insights, query planners, or website coverage.
+Evidence-based only. Do not invent query planners or website coverage.
 
 Measure or trace:
 

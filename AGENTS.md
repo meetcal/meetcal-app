@@ -1,8 +1,8 @@
 # MeetCal Mobile
 
-Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The phone talks to a self-hosted Rust + Postgres API at `https://api.meetcal.app` through `lib/api/meetcal-api.ts`. There is no Convex backend in this app.
+Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `lib/api/meetcal-api.ts` (transport in `lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`config/ios-app-intents/MeetCalAPI.swift`).
 
-Sister repos (do not implement them here): `meetcal-backend` (API + Postgres), `meetcal-web`, `meetcal-cli`.
+Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
 
 ## Layout
 
@@ -18,7 +18,7 @@ Sister repos (do not implement them here): `meetcal-backend` (API + Postgres), `
 | `contexts/` | Selected meet, saved sessions, theme, RevenueCat subscription |
 | `types/`, `data/types/` | Shared domain types |
 | `targets/`, `widget/` | Native iOS/Android home-screen widgets |
-| `scrapers/` | Legacy Python/JS scrape trees. Out of scope for app reliability work; do not re-litigate Convex removal here |
+| `convex/` | Backend: queries, ingest mutations, views, crons, scrapers (`convex/scrapers/`). Tests in `convex-tests/`. Deploy with `npx convex deploy` |
 | `.maestro/` | Device smoke flows |
 | `.codex/skills/` | Agent skills, including the three-pass review skill |
 
@@ -105,4 +105,4 @@ Maestro is optional in CI. Run it when a change touches navigation, auth gates, 
 - Width-derived layout must use the *usable* width, not the window. `usePaginatedSchedule` exposes `pageWidth` for this and re-anchors the current page when it changes; new width-derived layout needs the same treatment plus a test.
 - Header buttons are native bar items (`unstable_headerLeftItems` / `unstable_headerRightItems`) on iOS so iOS 27 can move them into iPhone Duo's vertical bar; custom React `headerLeft`/`headerRight` stays stuck in the horizontal bar. Keep the React version for Android.
 - EAS Build has no Xcode 27 image yet, so cloud builds letterbox on Duo. A Duo-optimized store build must come from a local Xcode 27.1 archive.
-- Ignore `scrapers/` unless the task is scrape-specific. The Convex-removal PR is a different branch; do not mix that work here.
+- Ignore `convex/scrapers/` unless the task is scrape-specific.
