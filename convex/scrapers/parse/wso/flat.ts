@@ -3,8 +3,8 @@ import { intOrNull, type WsoRecord } from './common';
 
 // Flat-format sheets, one lift per row (port of `auto_scrapers/scraper_ga_pnw.py`;
 // Georgia, Pacific Northwest, California North; and of
-// `scraper_california_south_auto.py`, the same layout with the value under
-// "WSO record").
+// `scraper_california_south_auto.py` and `scraper_dmv.py`, the same layout
+// under other column names).
 //
 // The class is the body-weight upper bound (`0-30` is 30, `30-33` is 33, an
 // open-ended `61-` is 61+). The California South Python scraper took the
@@ -27,18 +27,23 @@ export function normalizeAgeGroup(raw: string): string {
   return ageGroup;
 }
 
+/** Where a sheet keeps each field. */
+export type FlatColumns = { age: string; gender: string; min: string; max: string; lift: string; record: string };
+
+export const FLAT_COLUMNS: FlatColumns = { age: 'ageGroup', gender: 'gender', min: 'bodyWeightMin', max: 'bodyWeightMax', lift: 'lift', record: 'record' };
+
 const CJ = new Set(['clean & jerk', 'clean and jerk', 'c&j', 'cleanjerk']);
 
 /** Rows grouped by (age, gender, class), adaptive groups skipped, in first-seen order. */
-export function parseFlatSheet(csv: string, wso: string, recordColumn = 'record'): WsoRecord[] {
+export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = FLAT_COLUMNS): WsoRecord[] {
   const grouped = new Map<string, WsoRecord>();
   for (const row of parseCsvDicts(csv)) {
-    const ageRaw = (row.ageGroup ?? '').trim();
-    const genderRaw = (row.gender ?? '').trim();
-    const weightMin = (row.bodyWeightMin ?? '').trim();
-    const weightMax = (row.bodyWeightMax ?? '').trim();
-    const lift = (row.lift ?? '').trim().toLowerCase();
-    const value = (row[recordColumn] ?? '').trim();
+    const ageRaw = (row[columns.age] ?? '').trim();
+    const genderRaw = (row[columns.gender] ?? '').trim();
+    const weightMin = (row[columns.min] ?? '').trim();
+    const weightMax = (row[columns.max] ?? '').trim();
+    const lift = (row[columns.lift] ?? '').trim().toLowerCase();
+    const value = (row[columns.record] ?? '').trim();
     if (!ageRaw || !genderRaw) continue;
     const gender = genderRaw === 'F' ? 'Women' : genderRaw === 'M' ? 'Men' : null;
     if (!gender) continue;

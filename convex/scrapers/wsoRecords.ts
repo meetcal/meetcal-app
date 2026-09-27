@@ -6,7 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchText } from './lib/http';
 import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
-import { FLAT_SHEET_NAME, parseFlatSheet } from './parse/wso/flat';
+import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
  * WSO records (port of the `wso-records` job: one scraper per WSO in
@@ -23,13 +23,13 @@ type WsoSource = { wso: string; scrape: () => Promise<WsoRecord[]> };
  * the parser cannot read: 0 records a night, while the gid tab still holds
  * the flat data.
  */
-const flat = (wso: string, sheetUrl: string): WsoSource => ({
+const flat = (wso: string, sheetUrl: string, columns: FlatColumns = FLAT_COLUMNS): WsoSource => ({
   wso,
   scrape: async () => {
     const sheetId = sheetIdOf(sheetUrl);
     const gid = gidOf(sheetUrl);
     const url = gid ? gvizCsvByGid(sheetId, gid) : gvizCsvByName(sheetId, FLAT_SHEET_NAME);
-    return parseFlatSheet(await fetchText(url, 60_000), wso);
+    return parseFlatSheet(await fetchText(url, 60_000), wso, columns);
   },
 });
 
@@ -37,13 +37,19 @@ const flat = (wso: string, sheetUrl: string): WsoSource => ({
 const californiaSouth = (sheetUrl: string): WsoSource => ({
   wso: 'California South',
   scrape: async () =>
-    parseFlatSheet(await fetchText(`https://docs.google.com/spreadsheets/d/${sheetIdOf(sheetUrl)}/gviz/tq?tqx=out:csv`, 60_000), 'California South', 'WSO record'),
+    parseFlatSheet(await fetchText(`https://docs.google.com/spreadsheets/d/${sheetIdOf(sheetUrl)}/gviz/tq?tqx=out:csv`, 60_000), 'California South', {
+      ...FLAT_COLUMNS,
+      record: 'WSO record',
+    }),
 });
+
+const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };
 
 export const WSO_SOURCES: WsoSource[] = [
   flat('Georgia', 'https://docs.google.com/spreadsheets/d/1HM1H51pUmhoWDdSUp2RT-mCaUX2a8NB7aUSYVwWT0AU/edit?gid=908416148#gid=908416148'),
   flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012'),
   flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit?gid=35344992#gid=35344992'),
+  flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', DMV_COLUMNS),
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 

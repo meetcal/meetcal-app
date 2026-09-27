@@ -1,5 +1,5 @@
 import { gidOf } from '../../convex/scrapers/parse/wso/common';
-import { normalizeAgeGroup, parseFlatSheet } from '../../convex/scrapers/parse/wso/flat';
+import { FLAT_COLUMNS, normalizeAgeGroup, parseFlatSheet } from '../../convex/scrapers/parse/wso/flat';
 
 describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
   it('normalizes age groups', () => {
@@ -47,10 +47,19 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
       'U11,F,30,33,Total,90,63',
       'U11,F,61,,Total,99,81',
     ].join('\n');
-    expect(parseFlatSheet(csv, 'California South', 'WSO record')).toEqual([
+    expect(parseFlatSheet(csv, 'California South', { ...FLAT_COLUMNS, record: 'WSO record' })).toEqual([
       { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '30', snatch_record: 15, cj_record: null, total_record: 37 },
       { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '33', snatch_record: 28, cj_record: null, total_record: 63 },
       { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '61+', snatch_record: null, cj_record: null, total_record: 81 },
+    ]);
+  });
+
+  it('reads DMV under its own column names', () => {
+    const csv = ['Age Group,Gender,bodyWeightMin,Weight Class,Lift,Record', 'JR,M,,>110,Snatch,150', 'JR,M,,>110,Total,340', 'W35,F,,58,Clean & Jerk,90'].join('\n');
+    const columns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };
+    expect(parseFlatSheet(csv, 'DMV', columns)).toEqual([
+      { wso: 'DMV', age_category: 'Junior', gender: 'Men', weight_class: '110+', snatch_record: 150, cj_record: null, total_record: 340 },
+      { wso: 'DMV', age_category: 'Masters 35', gender: 'Women', weight_class: '58', snatch_record: null, cj_record: 90, total_record: null },
     ]);
   });
 });
