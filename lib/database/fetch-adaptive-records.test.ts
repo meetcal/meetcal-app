@@ -1,4 +1,5 @@
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 
 const mockGetJsonArray = jest.fn();
@@ -15,12 +16,11 @@ jest.mock("@/lib/database/offline-cache", () => ({
 }));
 
 // The real API client runs, so its boundary validators see these payloads.
-const originalFetch = global.fetch;
 beforeAll(() => {
-  global.fetch = jsonFetchStub((path, query) => mockGetJsonArray(path, query)) as unknown as typeof fetch;
+  setApiTransportForTests(jsonTransportStub((path, query) => mockGetJsonArray(path, query)));
 });
 afterAll(() => {
-  global.fetch = originalFetch;
+  setApiTransportForTests(null);
 });
 
 const fetchAdaptiveRecords = async () => (await adaptiveRecordsResource.revalidate()).data;

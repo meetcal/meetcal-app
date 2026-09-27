@@ -8,7 +8,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
 import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { downloadStandardsForOffline } from "@/lib/database/fetch-standards";
 import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
@@ -24,12 +25,11 @@ jest.mock("@/lib/networkUtils", () => ({
 }));
 
 const mockRespond = jest.fn<Promise<unknown>, [string, Record<string, string>]>();
-const originalFetch = global.fetch;
 beforeAll(() => {
-  global.fetch = jsonFetchStub((path, query) => mockRespond(path, query)) as unknown as typeof fetch;
+  setApiTransportForTests(jsonTransportStub((path, query) => mockRespond(path, query)));
 });
 afterAll(() => {
-  global.fetch = originalFetch;
+  setApiTransportForTests(null);
 });
 
 const oldEntry = JSON.stringify({ data: { old: true }, lastSynced: 1 });

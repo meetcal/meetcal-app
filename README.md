@@ -6,7 +6,7 @@
 
 A React Native application built with Expo for managing athletic schedules and meet calendars.
 
-All live data goes through the MeetCal backend API (PostgreSQL via the Rust service in [meetcal-backend](https://github.com/meetcal/meetcal-backend)). Scraper ingestion also lives there — this repo is the mobile client only.
+All live data comes from Convex (`convex/` in this repo): the app's queries, the materialized views that make them fast, and the scheduled scrapers that keep the data current (`convex/crons.ts`, `convex/cronJobs.ts`).
 
 [![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
 
@@ -14,7 +14,7 @@ All live data goes through the MeetCal backend API (PostgreSQL via the Rust serv
 
 - Schedule management for athletes and meets
 - Athlete data management
-- Self-hosted MeetCal API (`https://api.meetcal.app`) with offline-first app caching
+- Convex backend with offline-first app caching
 - Cross-platform support (iOS, Android)
 
 ## Tech Stack
@@ -24,7 +24,7 @@ All live data goes through the MeetCal backend API (PostgreSQL via the Rust serv
 | **Framework** | React Native 0.88, React 19 |
 | **Platform** | Expo SDK 58 (preview), Expo Router |
 | **Language** | TypeScript |
-| **Backend** | Self-hosted Rust API, PostgreSQL |
+| **Backend** | Convex (queries, materialized views, scheduled scrapers) |
 | **Authentication** | Clerk (JWT, secure token storage) |
 | **Subscriptions** | RevenueCat (in-app purchases, subscription tiers) |
 | **Analytics** | PostHog & Sentry (event tracking, remote config) |
@@ -52,7 +52,12 @@ All live data goes through the MeetCal backend API (PostgreSQL via the Rust serv
 
 ## Environment
 
-Copy `.env.example` to `.env.local` and fill in values. The app never talks to Convex; `EXPO_PUBLIC_MEETCAL_API_URL` is the only data-backend URL.
+Copy `.env.example` to `.env.local` and fill in values. `EXPO_PUBLIC_CONVEX_URL` is the data backend:
+
+- **Local development:** run `npx convex dev`; it writes the dev deployment's URL (`CONVEX_DEPLOYMENT`, `EXPO_PUBLIC_CONVEX_URL`) into `.env.local`.
+- **EAS builds:** `eas.json` sets it per profile: the dev deployment for `development*`, production for `preview` and `production*`.
+
+Convex deployment variables (set with `npx convex env set … --prod`): `ALERT_EMAIL` (scheduled-job failure emails), `URLWATCH_EMAIL` (usamasters.net page changes), `ONESIGNAL_APP_ID` and `ONESIGNAL_REST_API_KEY` (how those emails are sent), and the Clerk variables for signed-in calls.
 
 ## Native API Integration
 

@@ -12,7 +12,10 @@
         "resourceClass": "m-medium",
         "image": "latest"
       },
-      "channel": "development"
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://utmost-retriever-826.convex.cloud"
+      }
     },
     "development-simulator": {
       "developmentClient": true,
@@ -23,7 +26,10 @@
         "simulator": true,
         "image": "latest"
       },
-      "channel": "development-simulator"
+      "channel": "development-simulator",
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://utmost-retriever-826.convex.cloud"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -33,7 +39,10 @@
         "simulator": true,
         "image": "latest"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://disciplined-hare-790.convex.cloud"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -47,6 +56,9 @@
         "prebuildCommand": "prebuild --clean",
         "resourceClass": "m-medium",
         "image": "latest"
+      },
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://disciplined-hare-790.convex.cloud"
       }
     },
     "production-apk": {
@@ -56,7 +68,10 @@
         "buildType": "apk",
         "image": "ubuntu-24.04-jdk-17-ndk-r27b"
       },
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://disciplined-hare-790.convex.cloud"
+      }
     }
   },
   "submit": {

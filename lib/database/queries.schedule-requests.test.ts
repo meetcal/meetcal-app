@@ -6,7 +6,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 import { fetchSchedule } from "@/lib/database/queries";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 
@@ -61,13 +62,13 @@ beforeEach(async () => {
   requests = [];
   clearHttpValidatorCache();
   await AsyncStorage.clear();
-  const stub = jsonFetchStub((path) => {
+  const stub = jsonTransportStub((path) => {
     requests.push(path);
     if (path === "/meets/details") return API_MEET;
     if (path === "/meets/schedule") return SCHEDULE_ROWS;
     throw new Error(`unexpected ${path}`);
   });
-  global.fetch = jest.fn(stub) as unknown as typeof fetch;
+  setApiTransportForTests(jest.fn(stub));
 });
 
 describe("fetchSchedule request count", () => {
@@ -99,4 +100,8 @@ describe("fetchSchedule request count", () => {
     expect(getItem).not.toHaveBeenCalledWith(MEETS_LIST_CACHE_KEY);
     expect(requests.sort()).toEqual(["/meets/details", "/meets/schedule"]);
   });
+});
+
+afterAll(() => {
+  setApiTransportForTests(null);
 });

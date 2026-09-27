@@ -2,7 +2,7 @@ import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import { MeetName } from '@/data/types/meet';
 import {
   fetchUserPreferences,
-  getServerClockSample,
+  refreshServerClock,
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
 } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
@@ -113,9 +113,10 @@ export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Prom
 
   // "Started two hours ago" on the server's clock, not the device's: a
   // device clock two hours fast deleted today's sessions, notes and server
-  // copy included, before they began. The preferences request just made is
-  // the sample; without one, or with the device implausibly far off, skip.
-  const clock = getServerClockSample();
+  // copy included, before they began. A sample is taken now (requests no
+  // longer carry the server's time); without one, or with the device
+  // implausibly far off, skip.
+  const clock = await refreshServerClock();
   if (!clock || clock.sampledAt < requestedAt) {
     devLog('pruneStartedSessions: no fresh server clock sample, skipping');
     return;

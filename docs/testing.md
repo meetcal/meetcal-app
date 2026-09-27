@@ -44,5 +44,5 @@ Device smoke coverage for routes. See `docs/maestro.md`. Not part of GitHub Acti
 ## What not to do
 
 - Do not pad coverage with screenshot-only tests.
-- Do not call production `https://api.meetcal.app` from Jest; mock `fetch`.
-- Do not exercise `scrapers/` in the app unit gate.
+- Do not call a real Convex deployment from Jest; use the transport stub (`lib/api/json-transport-stub.ts`).
+- Do not exercise `convex/scrapers/` network code in the app unit gate (their parsers are tested in `convex-tests/`).

@@ -1,14 +1,17 @@
 /**
- * The outbox against the real API client, with only `fetch` stubbed.
+ * The outbox against the real API client, with only the transport stubbed.
  *
  * `saved-sessions-outbox.test.ts` mocks the API module (and its error
  * classes) to exercise ordering and bookkeeping. These cases keep
- * `lib/api/meetcal-api.ts` in the path, so what is asserted is the request
- * the server actually receives and how real status codes and bodies are
- * classified. Shapes follow meetcal-backend
- * `app/src/routes/users/saved_sessions.rs`.
+ * `lib/api/meetcal-api.ts` in the path, so what is asserted is the Convex
+ * call the backend actually receives and how real rejections and answers are
+ * classified. Shapes and argument validators follow `convex/users.ts`, which
+ * answers what meetcal-backend `app/src/routes/users/saved_sessions.rs` did.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { resetServerClockForTests } from "@/lib/api/meetcal-api";
+import { isClockCall } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests, TransportRequestError, type ApiCall } from "@/lib/api/transport";
 import type { SavedSession } from "@/lib/saved-sessions-store";
 import {
   countPendingWrites,
@@ -19,15 +22,6 @@ import {
   readOutbox,
 } from "@/lib/saved-sessions-outbox";
 
-jest.mock("expo-constants", () => ({
-  __esModule: true,
-  default: { expoConfig: { version: "6.2.0" } },
-}));
-jest.mock("expo-application", () => ({
-  __esModule: true,
-  nativeApplicationVersion: "6.2.0",
-}));
-
 const USER = "user_1";
 
 function jwtFor(sub: string): string {
@@ -36,17 +30,21 @@ function jwtFor(sub: string): string {
 }
 const TOKEN = jwtFor(USER);
 
-/** `SavedSessionRequest` in the backend; anything else is ignored or rejected there. */
-const BACKEND_PUT_FIELDS = [
-  "meet",
-  "session_number",
-  "platform",
-  "weight_class",
-  "start_time",
-  "date",
-  "notes",
-  "athlete_names",
-];
+/**
+ * `users:putSavedSession`'s argument validator besides `sessionId`. Convex
+ * rejects a call carrying any other key, and a `null` where the validator
+ * says `v.optional(...)`.
+ */
+const PUT_ARG_TYPES: Record<string, "string" | "number" | "string[]"> = {
+  meet: "string",
+  session_number: "number",
+  platform: "string",
+  weight_class: "string",
+  start_time: "string",
+  date: "string",
+  notes: "string",
+  athlete_names: "string[]",
+};
 
 function session(id: string, overrides: Partial<SavedSession> = {}): SavedSession {
   return {
@@ -62,57 +60,61 @@ function session(id: string, overrides: Partial<SavedSession> = {}): SavedSessio
   };
 }
 
-type Reply = { status: number; body: string };
-type Sent = { method: string; url: string; auth: string | undefined; body: unknown };
+/** What a Convex function's `ConvexError({ status, error })` reaches the client as. */
+function rejection(status: number, data: Record<string, unknown>): TransportRequestError {
+  return new TransportRequestError(
+    `mutation failed with ${status}`,
+    status,
+    JSON.stringify({ status, ...data }),
+  );
+}
 
-let sent: Sent[] = [];
-let respond: (request: Sent) => Reply = () => ({ status: 500, body: "" });
-
-const originalFetch = global.fetch;
+let sent: ApiCall[] = [];
+let respond: (call: ApiCall) => unknown = () => {
+  throw rejection(500, { error: "unconfigured" });
+};
+let transport: jest.Mock<Promise<unknown>, [ApiCall]>;
 
 beforeEach(async () => {
   sent = [];
+  resetServerClockForTests();
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest.spyOn(console, "warn").mockImplementation(() => {});
+  // The `__DEV__` slow-request log fires on the timeout case.
+  jest.spyOn(console, "info").mockImplementation(() => {});
   await AsyncStorage.clear();
-  global.fetch = jest.fn(async (url: string, init: RequestInit) => {
-    const headers = init.headers as Record<string, string>;
-    const request: Sent = {
-      method: init.method ?? "GET",
-      url,
-      auth: headers.Authorization,
-      body: init.body === undefined ? undefined : JSON.parse(init.body as string),
-    };
-    sent.push(request);
-    const reply = respond(request);
-    return {
-      ok: reply.status >= 200 && reply.status < 300,
-      status: reply.status,
-      headers: { get: () => null },
-      text: async () => reply.body,
-    };
-  }) as unknown as typeof fetch;
+  transport = jest.fn(async (call: ApiCall): Promise<unknown> => {
+    // The client samples the server clock alongside its first call.
+    if (isClockCall(call)) return Date.now();
+    sent.push(call);
+    return respond(call);
+  });
+  setApiTransportForTests(transport);
 });
 
 afterEach(() => {
-  global.fetch = originalFetch;
+  setApiTransportForTests(null);
+  resetServerClockForTests();
+  jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
-/** The backend's success body for each write route. */
-function backendOk(request: Sent): Reply {
-  if (request.method === "PUT") {
-    const id = decodeURIComponent(request.url.split("/saved-sessions/")[1]);
-    return { status: 200, body: JSON.stringify({ session_id: id, updated_at: 1717171717000 }) };
+/** The backend's success answer for each write. */
+function backendOk(call: ApiCall): unknown {
+  switch (call.fn) {
+    case "users:putSavedSession":
+      return { session_id: call.args.sessionId, updated_at: 1717171717000 };
+    case "users:deleteSavedSession":
+      return { deleted: true };
+    case "users:deleteSavedSessions":
+      return { deleted_count: 2 };
+    default:
+      throw new Error(`unexpected call to ${call.fn}`);
   }
-  if (request.method === "DELETE" && request.url.includes("/saved-sessions/")) {
-    return { status: 200, body: JSON.stringify({ deleted: true }) };
-  }
-  return { status: 200, body: JSON.stringify({ deleted_count: 2 }) };
 }
 
 describe("outbox replay over the real API client", () => {
-  it("sends a reset, a delete and a put in rev order with the owner's bearer token", async () => {
+  it("sends a reset, a delete and a put in rev order with the owner's token", async () => {
     await markResetPending(USER, "Other Meet");
     await markSessionDelete(USER, "Test Meet-2-Red", "Test Meet");
     await markSessionPut(
@@ -123,16 +125,31 @@ describe("outbox replay over the real API client", () => {
 
     const result = await flushOutbox(USER, async () => TOKEN);
 
-    expect(sent.map((r) => `${r.method} ${r.url.replace("https://api.meetcal.app", "")}`)).toEqual([
-      "DELETE /users/me/saved-sessions?meet=Other+Meet",
-      "DELETE /users/me/saved-sessions/Test%20Meet-2-Red",
-      "PUT /users/me/saved-sessions/Test%20Meet%2FFinals-1-Red",
+    expect(sent.map((call) => [call.kind, call.fn])).toEqual([
+      ["mutation", "users:deleteSavedSessions"],
+      ["mutation", "users:deleteSavedSession"],
+      ["mutation", "users:putSavedSession"],
     ]);
-    expect(sent.every((r) => r.auth === `Bearer ${TOKEN}`)).toBe(true);
+    expect(sent[0].args).toEqual({ meet: "Other Meet" });
+    expect(sent[1].args).toEqual({ sessionId: "Test Meet-2-Red" });
+    // A `/` in the meet name is part of the id argument, not a path segment.
+    expect(sent[2].args.sessionId).toBe("Test Meet/Finals-1-Red");
+    expect(sent.every((call) => call.token === TOKEN)).toBe(true);
 
-    const putBody = sent[2].body as Record<string, unknown>;
-    expect(Object.keys(putBody).every((key) => BACKEND_PUT_FIELDS.includes(key))).toBe(true);
-    expect(putBody).toMatchObject({
+    const { sessionId: _id, ...putArgs } = sent[2].args;
+    const violations = Object.entries(putArgs)
+      // An undefined member is dropped before it reaches Convex.
+      .filter(([, value]) => value !== undefined)
+      .filter(([key, value]) => {
+        const type = PUT_ARG_TYPES[key];
+        if (type === "string[]") {
+          return !(Array.isArray(value) && value.every((name) => typeof name === "string"));
+        }
+        return typeof value !== type;
+      })
+      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
+    expect(violations).toEqual([]);
+    expect(putArgs).toMatchObject({
       meet: "Test Meet",
       session_number: 1,
       platform: "Red",
@@ -155,13 +172,17 @@ describe("outbox replay over the real API client", () => {
     });
 
     expect(sent).toEqual([]);
+    // Not even the clock sample: nothing reached the backend.
+    expect(transport).not.toHaveBeenCalled();
     expect(result).toMatchObject({ delivered: 0, remaining: 2, authExpired: false });
     expect(Object.keys((await readOutbox(USER)).sessions).sort()).toEqual(["a", "b"]);
   });
 
   it("flags an expired session on 401 and keeps the write", async () => {
     await markSessionPut(USER, session("a"));
-    respond = () => ({ status: 401, body: '{"error":"unauthorized"}' });
+    respond = () => {
+      throw rejection(401, { error: "unauthorized" });
+    };
 
     const result = await flushOutbox(USER, async () => TOKEN);
 
@@ -169,11 +190,13 @@ describe("outbox replay over the real API client", () => {
     expect((await readOutbox(USER)).sessions.a).toMatchObject({ op: "put" });
   });
 
-  it("retries after the server's own 408 timeout instead of dropping it as a 4xx refusal", async () => {
-    // A 408 is in the 4xx range, and any other 4xx means "never send this
-    // again". It only survives because the client turns it into a timeout.
+  it("retries after a dropped connection instead of dropping the write as a refusal", async () => {
+    // Anything other than a status-carrying rejection means the backend was
+    // not reached; the write must stay queued.
     await markSessionPut(USER, session("a"));
-    respond = () => ({ status: 408, body: '{"error":"timeout"}' });
+    respond = () => {
+      throw new Error("Connection lost while action was in flight");
+    };
 
     const result = await flushOutbox(USER, async () => TOKEN);
 
@@ -182,9 +205,27 @@ describe("outbox replay over the real API client", () => {
     expect((await readOutbox(USER)).sessions.a).toMatchObject({ op: "put" });
   });
 
+  it("retries after the client's own timeout instead of dropping it", async () => {
+    jest.useFakeTimers();
+    await markSessionPut(USER, session("a"));
+    respond = () => new Promise(() => {});
+
+    const flushing = flushOutbox(USER, async () => TOKEN);
+    // The default per-call timeout (`DEFAULT_TIMEOUT_MS`).
+    await jest.advanceTimersByTimeAsync(10_000);
+    const result = await flushing;
+
+    expect(sent.map((call) => call.fn)).toEqual(["users:putSavedSession"]);
+    expect(result.rejected.size).toBe(0);
+    expect(result.remaining).toBe(1);
+    expect((await readOutbox(USER)).sessions.a).toMatchObject({ op: "put" });
+  });
+
   it("drops a PUT the server refuses with 400 and reports its rev", async () => {
     const rev = await markSessionPut(USER, session("a", { notes: "x".repeat(5000) }));
-    respond = () => ({ status: 400, body: '{"error":"notes too long","max":2000}' });
+    respond = () => {
+      throw rejection(400, { error: "notes too long", max: 2000 });
+    };
 
     const result = await flushOutbox(USER, async () => TOKEN);
 
@@ -194,17 +235,22 @@ describe("outbox replay over the real API client", () => {
 
   it("treats a 404 on a single delete as already done", async () => {
     await markSessionDelete(USER, "gone", "Test Meet");
-    respond = () => ({ status: 404, body: '{"error":"not found"}' });
+    respond = () => {
+      throw rejection(404, { error: "not found" });
+    };
 
     const result = await flushOutbox(USER, async () => TOKEN);
 
+    expect(sent.map((call) => [call.fn, call.args])).toEqual([
+      ["users:deleteSavedSession", { sessionId: "gone" }],
+    ]);
     expect(result).toMatchObject({ delivered: 1, remaining: 0 });
   });
 
-  it("keeps a delete queued when the 200 acknowledgement is not the backend's shape", async () => {
+  it("keeps a delete queued when the acknowledgement is not the backend's shape", async () => {
     await markSessionDelete(USER, "a", "Test Meet");
     await markResetPending(USER, "Other Meet");
-    respond = () => ({ status: 200, body: "{}" });
+    respond = () => ({});
 
     const result = await flushOutbox(USER, async () => TOKEN);
 

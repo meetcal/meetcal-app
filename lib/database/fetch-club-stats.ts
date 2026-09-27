@@ -8,7 +8,7 @@ import {
   writeBoundedCacheEntry,
 } from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchApiClubNames, getJsonArray, getJsonObject } from '@/lib/api/meetcal-api';
+import { fetchApiClubAthletes, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/meetcal-api';
 
 /**
  * Clubs whose athlete lists stay cached for offline browsing. A list is one
@@ -163,7 +163,7 @@ async function fetchAllClubsFresh(): Promise<string[]> {
 async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const rows = await getJsonArray<unknown>('/clubs/athletes', { club });
+  const rows = await fetchApiClubAthletes(club);
   const athletes: AthleteClub[] = [];
   for (const value of rows) {
     const row = toApiClubAthlete(value);
@@ -186,10 +186,7 @@ async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
 async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<ClubMeetStats> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const response = await getJsonObject<unknown>('/clubs/meet-stats', {
-    club,
-    meet,
-  });
+  const response = await fetchApiClubMeetStats(club, meet);
   return mapClubMeetStats(toApiClubMeetStats(response));
 }
 

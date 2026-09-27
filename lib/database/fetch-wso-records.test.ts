@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { jsonFetchStub } from "@/lib/api/json-fetch-stub";
+import { jsonTransportStub } from "@/lib/api/json-transport-stub";
+import { setApiTransportForTests } from "@/lib/api/transport";
 import {
   downloadWSORecordsForOffline,
   fetchWSOAgeGroups,
@@ -19,16 +20,17 @@ jest.mock("@/lib/networkUtils", () => ({
 }));
 
 // The real API client runs, so its boundary validators see these payloads.
-const originalFetch = global.fetch;
 beforeAll(() => {
-  global.fetch = jsonFetchStub((path, query) => {
-    if (path === "/data/wso/") return mockFetchApiWsoList();
-    if (path === "/data/wso/age-groups") return mockFetchApiWsoAgeGroups(query.wso);
-    return mockGetJsonArray(path, query);
-  }) as unknown as typeof fetch;
+  setApiTransportForTests(
+    jsonTransportStub((path, query) => {
+      if (path === "/data/wso/") return mockFetchApiWsoList();
+      if (path === "/data/wso/age-groups") return mockFetchApiWsoAgeGroups(query.wso);
+      return mockGetJsonArray(path, query);
+    }),
+  );
 });
 afterAll(() => {
-  global.fetch = originalFetch;
+  setApiTransportForTests(null);
 });
 
 const WSO_KEY = OFFLINE_CACHE_KEYS.wsoRecords;
