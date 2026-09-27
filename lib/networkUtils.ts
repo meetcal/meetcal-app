@@ -18,7 +18,7 @@ import { devLog } from './logger';
  * rows painting immediately. An explicit `isConnected: false` is offline;
  * `null`/`undefined` stays optimistic exactly as before.
  */
-export function isReachable(state: NetInfoState): boolean {
+function isReachable(state: NetInfoState): boolean {
   if (state.isConnected === false) return false;
   return state.isInternetReachable !== false;
 }

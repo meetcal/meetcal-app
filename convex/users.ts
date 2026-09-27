@@ -1,4 +1,3 @@
-import { v } from 'convex/values';
 import { mutation, query, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { compareCollated } from './lib/sort';
@@ -19,6 +18,43 @@ async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw apiError(401, 'unauthorized');
   return identity.subject;
+}
+
+/**
+ * The mutations the app's outbox replays check their arguments here, not with
+ * an `args` validator. A production deployment reports a validator's
+ * rejection as a bare "Server Error", which the app cannot tell from a
+ * passing fault, so a write the server will never accept would be retried
+ * forever and block the writes queued behind it. Thrown from here it is the
+ * Rust API's 400, and the outbox drops it. Unknown fields are ignored, so an
+ * app newer than the deployment still saves; `null` reads as absent.
+ */
+type RawArgs = Record<string, unknown>;
+
+function optionalString(args: RawArgs, key: string): string | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw apiError(400, `${key} must be a string`);
+  return value;
+}
+
+function requiredString(args: RawArgs, key: string): string {
+  const value = optionalString(args, key);
+  if (value === undefined) throw apiError(400, `${key} is required`);
+  return value;
+}
+
+function requiredNumber(args: RawArgs, key: string): number {
+  const value = args[key];
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw apiError(400, `${key} must be a number`);
+  return value;
+}
+
+function optionalStringArray(args: RawArgs, key: string): string[] | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw apiError(400, `${key} must be a list of strings`);
+  return value as string[];
 }
 
 function requireMaxLen(what: string, value: string | undefined, max: number): void {
@@ -77,18 +113,18 @@ export const savedSessions = query({
 
 /** `PUT /users/me/saved-sessions/{session_id}`: upsert, stamped with server time. */
 export const putSavedSession = mutation({
-  args: {
-    sessionId: v.string(),
-    meet: v.string(),
-    session_number: v.number(),
-    platform: v.string(),
-    weight_class: v.optional(v.string()),
-    start_time: v.optional(v.string()),
-    date: v.optional(v.string()),
-    notes: v.optional(v.string()),
-    athlete_names: v.optional(v.array(v.string())),
-  },
-  handler: async (ctx, { sessionId, ...body }) => {
+  handler: async (ctx, args: RawArgs) => {
+    const sessionId = requiredString(args, 'sessionId');
+    const body = {
+      meet: requiredString(args, 'meet'),
+      session_number: requiredNumber(args, 'session_number'),
+      platform: requiredString(args, 'platform'),
+      weight_class: optionalString(args, 'weight_class'),
+      start_time: optionalString(args, 'start_time'),
+      date: optionalString(args, 'date'),
+      notes: optionalString(args, 'notes'),
+      athlete_names: optionalStringArray(args, 'athlete_names'),
+    };
     if (sessionId.trim() === '') throw apiError(400, 'session_id is required');
     requireNonEmpty('meet', body.meet);
     requireNonEmpty('platform', body.platform);
@@ -141,8 +177,8 @@ export const putSavedSession = mutation({
 
 /** `DELETE /users/me/saved-sessions/{session_id}` */
 export const deleteSavedSession = mutation({
-  args: { sessionId: v.string() },
-  handler: async (ctx, { sessionId }) => {
+  handler: async (ctx, args: RawArgs) => {
+    const sessionId = requiredString(args, 'sessionId');
     const userId = await requireUserId(ctx);
     const existing = await savedSessionRow(ctx, userId, sessionId);
     if (existing) await ctx.db.delete(existing._id);
@@ -152,8 +188,8 @@ export const deleteSavedSession = mutation({
 
 /** `DELETE /users/me/saved-sessions[?meet=]` */
 export const deleteSavedSessions = mutation({
-  args: { meet: v.optional(v.string()) },
-  handler: async (ctx, { meet }) => {
+  handler: async (ctx, args: RawArgs) => {
+    const meet = optionalString(args, 'meet');
     const userId = await requireUserId(ctx);
     const rows = (
       await ctx.db
@@ -181,8 +217,9 @@ export const preferences = query({
 
 /** `PATCH /users/me/preferences/auto-unsave` */
 export const setAutoUnsave = mutation({
-  args: { enabled: v.boolean() },
-  handler: async (ctx, { enabled }) => {
+  handler: async (ctx, args: RawArgs) => {
+    const enabled = args.enabled;
+    if (typeof enabled !== 'boolean') throw apiError(400, 'enabled must be true or false');
     const userId = await requireUserId(ctx);
     const existing = await ctx.db
       .query('user_preferences')

@@ -493,6 +493,20 @@ export async function computeStatsRows(ctx: QueryCtx, meet: string, onlyClub?: s
   }
 
   const wanted = onlyClub === undefined ? joined : joined.filter(({ athlete }) => athlete.club === onlyClub);
+  const rows: StatsRow[] = [];
+  // A national meet has well over a thousand athletes; their earlier results
+  // are read TIMELINE_READ_BATCH at a time, not all at once.
+  for (let i = 0; i < wanted.length; i += TIMELINE_READ_BATCH) {
+    rows.push(...(await statsRowsFor(ctx, wanted.slice(i, i + TIMELINE_READ_BATCH), groups)));
+  }
+  return rows;
+}
+
+async function statsRowsFor(
+  ctx: QueryCtx,
+  wanted: readonly { key: string; row: Doc<'lifting_results'>; athlete: Doc<'athletes'>; group: string }[],
+  groups: ReadonlyMap<string, { snatch: number[]; cj: number[]; total: number[] }>,
+): Promise<StatsRow[]> {
   return await Promise.all(
     wanted.map(async ({ key, row, athlete, group }): Promise<StatsRow> => {
       const previous = await ctx.db

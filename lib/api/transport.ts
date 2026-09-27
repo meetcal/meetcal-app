@@ -1,4 +1,4 @@
-import { ConvexClient, ConvexHttpClient } from 'convex/browser';
+import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 import { ConvexError } from 'convex/values';
 
@@ -10,11 +10,15 @@ import { ConvexError } from 'convex/values';
  * function (`fn`): the path keeps logs, errors and test stubs readable, and
  * tests swap the whole transport with `setApiTransportForTests`.
  *
- * Public reads go over one shared WebSocket (`ConvexClient`), so a request
- * costs a frame on an open connection rather than an HTTP round trip.
- * Signed-in calls carry the caller's Clerk token on a short-lived
- * `ConvexHttpClient`, so one user's token is never attached to the shared
- * connection.
+ * Every call is an HTTP request (`ConvexHttpClient`), not a frame on Convex's
+ * WebSocket: iOS's WebSocket (SocketRocket) cannot negotiate compression, so
+ * answers arrived there uncompressed, while the OS's HTTP stack gets them
+ * gzipped, 5-20x smaller (a national meet's package is 978 KB on the socket,
+ * 120 KB over HTTP). HTTP also fails at once when the network is gone,
+ * where a socket that died with the network lingers. Convex serves both from
+ * the same query cache. Signed-in calls carry the caller's Clerk token on a
+ * client of their own, so one user's token is never attached to the shared
+ * one.
  */
 export type ApiCall = {
   /** The Rust route this call replaces, e.g. `/meets/package`. */
@@ -55,25 +59,20 @@ export const PRODUCTION_CONVEX_URL = 'https://disciplined-hare-790.convex.cloud'
 
 export const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || PRODUCTION_CONVEX_URL;
 
-let sharedClient: ConvexClient | null = null;
-
-function publicClient(): ConvexClient {
-  sharedClient ??= new ConvexClient(CONVEX_URL, { unsavedChangesWarning: false });
-  return sharedClient;
-}
-
 /**
- * Drops the shared connection so the next read opens a fresh one. The Convex
- * client only reconnects early on a browser `online` event, which React
- * Native never fires; otherwise a socket that died with the network (a Wi-Fi
- * to cellular switch, a suspended app) is noticed only after a minute of
- * silence, and every read until then waits out its timeout. Reads still in
- * flight on the old connection end with their own timeouts.
+ * A client whose requests record the HTTP status they were answered with: the
+ * client reports a refused request as a bare `Error` with the response text.
  */
-export function recycleConnection(): void {
-  const client = sharedClient;
-  sharedClient = null;
-  if (client) void client.close().catch(() => {});
+function httpClient(onStatus: (status: number) => void): ConvexHttpClient {
+  return new ConvexHttpClient(CONVEX_URL, {
+    // Functions' log lines are for the Convex dashboard, not the app console.
+    logger: false,
+    fetch: async (input, init) => {
+      const response = await fetch(input, init);
+      onStatus(response.status);
+      return response;
+    },
+  });
 }
 
 function functionReference(fn: string): any {
@@ -103,7 +102,7 @@ function toTransportError(call: ApiCall, error: unknown, httpStatus: number | nu
     return new TransportRequestError(`${call.kind} ${call.path} failed with ${status}`, status, body);
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (httpStatus === 401 || httpStatus === 403) {
+  if (call.token && (httpStatus === 401 || httpStatus === 403)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 401`, 401, message);
   }
   if (/\bArgumentValidationError\b/.test(message)) {
@@ -122,22 +121,12 @@ function definedArgs(args: Record<string, unknown>): Record<string, unknown> {
 export const convexTransport: Transport = async (call) => {
   const ref = functionReference(call.fn);
   const args = definedArgs(call.args);
-  // The HTTP client reports a refused request as a bare `Error` with the
-  // response text; the status it came with is kept here.
   let httpStatus: number | null = null;
+  const client = httpClient((status) => {
+    httpStatus = status;
+  });
+  if (call.token) client.setAuth(call.token);
   try {
-    if (call.token) {
-      const http = new ConvexHttpClient(CONVEX_URL, {
-        fetch: async (input, init) => {
-          const response = await fetch(input, init);
-          httpStatus = response.status;
-          return response;
-        },
-      });
-      http.setAuth(call.token);
-      return call.kind === 'query' ? await http.query(ref, args) : await http.mutation(ref, args);
-    }
-    const client = publicClient();
     return call.kind === 'query' ? await client.query(ref, args) : await client.mutation(ref, args);
   } catch (error) {
     throw toTransportError(call, error, httpStatus);

@@ -711,6 +711,8 @@ export const finishRefresh = internalMutation({
 /** Each stage action stops after this long and schedules its continuation. */
 const STAGE_BUDGET_MS = 3 * 60 * 1000;
 const REBUILD_CLASSES_VIEW = 'rebuild|classes';
+const SCAN_NAMES_VIEW = 'rebuild|scan-names';
+const SCAN_CLASSES_VIEW = 'rebuild|scan-classes';
 
 const sourceVersion = v.object({ table: v.string(), version: v.number() });
 const rebuildStageArgs = {
@@ -718,6 +720,9 @@ const rebuildStageArgs = {
   offset: v.number(),
   // The `prune` stage's position: the last summary key it checked.
   after: v.optional(v.string()),
+  // The `scan` stage's position: the page cursor it stopped at. Names and
+  // classes seen before it are kept in the scratch views below.
+  cursor: v.optional(v.string()),
   hints: v.array(v.object({ id: v.string(), seq: v.number() })),
   versions: v.array(sourceVersion),
   again: v.boolean(),
@@ -739,6 +744,14 @@ export const deleteHintsUpdatedBefore = internalMutation({
       .take(HINT_DELETE_BATCH);
     for (const hint of stale) await ctx.db.delete(hint._id);
     return stale.length;
+  },
+});
+
+/** Stores a text view outside the refresh machinery (the scan's progress). */
+export const storeScratchText = internalMutation({
+  args: { key: v.string(), chunks: v.array(v.string()) },
+  handler: async (ctx, { key, chunks }) => {
+    await writeView(ctx, key, chunks, [], { text: true });
   },
 });
 
@@ -798,16 +811,24 @@ export const rebuildStage = internalAction({
     const startedAt = Date.now();
     const overBudget = () => Date.now() - startedAt > STAGE_BUDGET_MS;
     await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true });
-    const next = async (stage: typeof args.stage, offset: number, after?: string) => {
-      await ctx.scheduler.runAfter(0, internal.views.rebuildStage, { ...args, stage, offset, after });
+    const next = async (stage: typeof args.stage, offset: number, position: { after?: string; cursor?: string } = {}) => {
+      await ctx.scheduler.runAfter(0, internal.views.rebuildStage, { ...args, stage, offset, after: position.after, cursor: position.cursor });
       return `${args.stage} -> ${stage}@${offset}`;
     };
 
     switch (args.stage) {
       case 'scan': {
-        const names = new Set<string>();
-        const classes = new Set<string>();
-        let cursor: string | null = null;
+        // A scan too long for one stage continues in the next from its
+        // cursor, carrying what it has seen in the scratch views; a first
+        // stage (no cursor) starts clean whatever an abandoned scan left.
+        const resumed = args.cursor !== undefined;
+        const names = new Set<string>(
+          resumed ? directoryNames((await ctx.runQuery(internal.views.textViewAnyAge, { key: SCAN_NAMES_VIEW })) ?? '') : [],
+        );
+        const classes = new Set<string>(
+          resumed ? (JSON.parse((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SCAN_CLASSES_VIEW })) ?? '[]') as string[]) : [],
+        );
+        let cursor: string | null = args.cursor ?? null;
         for (;;) {
           const page: { names: string[]; classes: string[]; cursor: string; isDone: boolean } = await ctx.runQuery(
             internal.views.scanResultsPage,
@@ -817,6 +838,11 @@ export const rebuildStage = internalAction({
           page.classes.forEach((c) => classes.add(c));
           if (page.isDone) break;
           cursor = page.cursor;
+          if (overBudget()) {
+            await ctx.runMutation(internal.views.storeScratchText, { key: SCAN_NAMES_VIEW, chunks: textChunks(directoryText([...names].sort(compareCollated))) });
+            await ctx.runMutation(internal.views.storeTextView, { key: SCAN_CLASSES_VIEW, chunks: jsonChunks([...classes]) });
+            return await next('scan', 0, { cursor });
+          }
         }
         const sortedNames = [...names].sort(compareCollated);
         await ctx.runMutation(internal.views.storeResultNames, { chunks: textChunks(directoryText(sortedNames)) });
@@ -854,7 +880,7 @@ export const rebuildStage = internalAction({
           }
           if (keys.length < PRUNE_PAGE) return await next('nat', 0);
           after = keys[keys.length - 1];
-          if (overBudget()) return await next('prune', 0, after);
+          if (overBudget()) return await next('prune', 0, { after });
         }
       }
       case 'nat': {

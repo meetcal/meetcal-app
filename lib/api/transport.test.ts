@@ -40,6 +40,32 @@ async function failure(call: ApiCall): Promise<unknown> {
   );
 }
 
+describe('convexTransport (public calls over HTTP)', () => {
+  const publicCall: ApiCall = { path: '/meets', fn: 'meets:list', kind: 'query', args: { now: 0, ifNoneMatch: undefined } };
+
+  it('sends a public read as an HTTP query with no token and absent optional arguments left out', async () => {
+    responses.push(respond(200, { status: 'success', value: { etag: '"v1"', json: '[]' } }));
+    await expect(convexTransport(publicCall)).resolves.toEqual({ etag: '"v1"', json: '[]' });
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/query$/);
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    const body = JSON.parse(String(init.body)) as { path: string; args: Record<string, unknown>[] };
+    expect(body.path).toBe('meets:list');
+    expect(body.args[0]).toEqual({ now: 0 });
+  });
+
+  it('fails at once, as the network error, when there is no network', async () => {
+    (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Network request failed'));
+    await expect(convexTransport(publicCall)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it('does not treat a 401 on a call that sent no token as an expired sign-in', async () => {
+    responses.push(respond(401, 'Unauthorized'));
+    const error = await failure(publicCall);
+    expect(error).not.toBeInstanceOf(TransportRequestError);
+  });
+});
+
 describe('convexTransport (signed-in calls over HTTP)', () => {
   it('returns the value of a successful call, sending the token', async () => {
     responses.push(respond(200, { status: 'success', value: [{ id: 's1' }] }));
