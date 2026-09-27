@@ -1,42 +1,52 @@
 import { getDocumentProxy } from 'unpdf';
 
+export type PdfLineOptions = {
+  /** Baselines this close (points) are one line; pdfplumber's `y_tolerance`, default 3. */
+  yTolerance?: number;
+  /** Runs further apart than this (points) get a space between them; pdfplumber's `x_tolerance`, default 3. */
+  xTolerance?: number;
+};
+
 /**
- * A PDF's text, page by page, line by line: text items grouped by baseline
- * (top to bottom), each line's items left to right and joined by single
- * spaces. The layout pdfplumber's `extract_text` gives the Python scrapers,
- * which is all their table parsing reads.
+ * A PDF's text, page by page, line by line, laid out like pdfplumber's
+ * `extract_text`: text runs grouped by baseline (top to bottom), each line
+ * left to right, runs joined with a space only where there is a gap wider
+ * than `xTolerance`, so a number the PDF drew in two runs stays one word.
  */
-export async function pdfLines(bytes: Uint8Array): Promise<string[][]> {
+export async function pdfLines(bytes: Uint8Array, options: PdfLineOptions = {}): Promise<string[][]> {
+  const yTolerance = options.yTolerance ?? 3;
+  const xTolerance = options.xTolerance ?? 3;
   const pdf = await getDocumentProxy(bytes);
   const pages: string[][] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const items = content.items
-      .filter((item): item is typeof item & { str: string; transform: number[] } => 'str' in item)
-      .map((item) => ({ text: item.str, x: item.transform[4], y: item.transform[5] }))
-      .filter((item) => item.text.trim().length > 0);
-    // Baselines within a couple of points are one line (pdfplumber's default tolerance is 3).
-    items.sort((a, b) => b.y - a.y || a.x - b.x);
-    const lines: { y: number; items: typeof items }[] = [];
-    for (const item of items) {
-      const line = lines.find((l) => Math.abs(l.y - item.y) <= 3);
-      if (line) line.items.push(item);
-      else lines.push({ y: item.y, items: [item] });
+    const runs = content.items
+      .filter((item): item is typeof item & { str: string; transform: number[]; width: number } => 'str' in item)
+      .map((item) => ({ text: item.str, x: item.transform[4], y: item.transform[5], width: item.width ?? 0 }))
+      .filter((run) => run.text.trim().length > 0);
+    runs.sort((a, b) => b.y - a.y || a.x - b.x);
+    const lines: { y: number; runs: typeof runs }[] = [];
+    for (const run of runs) {
+      const line = lines.find((l) => Math.abs(l.y - run.y) <= yTolerance);
+      if (line) line.runs.push(run);
+      else lines.push({ y: run.y, runs: [run] });
     }
     pages.push(
       lines
         .sort((a, b) => b.y - a.y)
-        .map((line) =>
-          line.items
-            .sort((a, b) => a.x - b.x)
-            .map((item) => item.text.trim())
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim(),
-        ),
+        .map((line) => {
+          line.runs.sort((a, b) => a.x - b.x);
+          let text = '';
+          let end = -Infinity;
+          for (const run of line.runs) {
+            if (text && run.x - end > xTolerance) text += ' ';
+            text += run.text;
+            end = Math.max(end, run.x + run.width);
+          }
+          return text.replace(/\s+/g, ' ').trim();
+        }),
     );
   }
   return pages;
 }
-
