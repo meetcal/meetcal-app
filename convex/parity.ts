@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internalAction, internalQuery } from './_generated/server';
 import { api, internal } from './_generated/api';
-import { computeHistory } from './lib/history';
+import { computeHistory, summaryOf } from './lib/history';
 import {
   addMonths,
   clubAthleteCount,
@@ -92,7 +92,14 @@ export const live = internalQuery({
         const histories = new Map(await Promise.all(keys.map(async (k) => [k, await computeHistory(ctx, k)] as const)));
         if (endpoint === 'byNames') return answerByNames(histories, a.latestOnly ?? false, a.limitPerName);
         if (endpoint === 'recent') return answerRecent(histories, a.cutoffDate);
-        return JSON.stringify(answerBests(histories, a.names, a.cutoffDate));
+        // Summaries derived from the live histories: an independent check of the stored ones.
+        const summaries = new Map(
+          [...histories].map(([key, rows]) => {
+            const s = summaryOf(rows);
+            return [key, { latest: JSON.parse(s.latest), marks: JSON.parse(s.marks) }] as const;
+          }),
+        );
+        return JSON.stringify(answerBests(summaries, a.names, a.cutoffDate));
       }
       default:
         throw new Error(`unknown endpoint ${endpoint}`);

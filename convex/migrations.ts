@@ -2,6 +2,8 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import { normalizeName } from './lib/names';
+import { summaryOf } from './lib/history';
+import type { ApiLiftingResult } from './lib/results';
 import { deleteViewsWithPrefix } from './lib/views';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { recordWrite } from './ingest';
@@ -142,5 +144,36 @@ export const countPage = internalQuery({
   handler: async (ctx, { table, cursor }) => {
     const page = await ctx.db.query(table).paginate({ cursor: cursor ?? null, numItems: 8000 });
     return { count: page.page.length, cursor: page.continueCursor, isDone: page.isDone };
+  },
+});
+
+/**
+ * Fills `athlete_summary` from the stored history documents (for histories
+ * written before summaries existed; writes keep both in step after that), a
+ * page per mutation, each scheduling the next. Idempotent.
+ *
+ *   npx convex run migrations:backfillSummaries
+ */
+export const backfillSummaries = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())), written: v.optional(v.number()) },
+  handler: async (ctx, { cursor, written = 0 }) => {
+    const page = await ctx.db.query('athlete_history').paginate({ cursor: cursor ?? null, numItems: 200 });
+    let count = written;
+    for (const history of page.page) {
+      const next = summaryOf(JSON.parse(history.json) as ApiLiftingResult[]);
+      const existing = await ctx.db
+        .query('athlete_summary')
+        .withIndex('by_nameKey', (q) => q.eq('nameKey', history.nameKey))
+        .unique();
+      if (!existing) await ctx.db.insert('athlete_summary', { nameKey: history.nameKey, ...next });
+      else if (existing.latest !== next.latest || existing.marks !== next.marks) await ctx.db.patch(existing._id, next);
+      else continue;
+      count += 1;
+    }
+    if (page.isDone) {
+      console.log(`backfillSummaries: done, ${count} summaries written`);
+      return;
+    }
+    await ctx.scheduler.runAfter(0, internal.migrations.backfillSummaries, { cursor: page.continueCursor, written: count });
   },
 });

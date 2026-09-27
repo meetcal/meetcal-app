@@ -49,10 +49,16 @@ const TWO_YEARS_AGO = isoDaysAgo(730);
 const ONE_YEAR_AGO = isoDaysAgo(365);
 
 const bustEtag = (args: Record<string, unknown>, i: number) => ({ ...args, ifNoneMatch: `"bust-${Date.now()}-${i}"` });
+/**
+ * Swaps the last name for one nobody has, unique per run, so the arguments
+ * are new to Convex's query cache every time (rotating the list repeated
+ * across runs and came back cached). One of the names costs a lookup that
+ * finds nothing; the rest is the same work.
+ */
 const rotateNames = (args: Record<string, unknown>, i: number) => {
   const names = [...(args.names as string[])];
-  const k = (i + 1) % names.length;
-  return { ...args, names: [...names.slice(k), ...names.slice(0, k)] };
+  names[names.length - 1] = `zz bench ${Date.now().toString(36)} ${i}`;
+  return { ...args, names };
 };
 
 /** Answers carrying `json` text are parsed, as the app client does. */

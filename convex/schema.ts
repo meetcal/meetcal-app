@@ -276,6 +276,16 @@ export default defineSchema({
     json: v.string(),
   }).index('by_nameKey', ['nameKey']),
 
+  // A few hundred bytes per athlete for the name-list reads that need less
+  // than the whole history (`convex/lib/history.ts`): the latest meet's rows
+  // and each result's bests, both JSON text, newest first. Written with the
+  // history document, in the same transaction.
+  athlete_summary: defineTable({
+    nameKey: v.string(),
+    latest: v.string(),
+    marks: v.string(),
+  }).index('by_nameKey', ['nameKey']),
+
   // One row per source table, bumped by every write (`convex/ingest.ts`).
   data_versions: defineTable({
     table: v.string(),

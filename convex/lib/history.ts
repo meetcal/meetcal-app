@@ -38,22 +38,58 @@ export async function computeHistory(ctx: QueryCtx, key: string): Promise<ApiLif
   return (await historyRows(ctx, key)).sort(compareNewestFirst).map(toApiLiftingResult);
 }
 
-/** Rewrites the history documents of `keys` from `lifting_results`; returns how many changed. */
+/**
+ * One result's bests, `[date, snatch, clean & jerk, total]`: the same maxima
+ * `results:bests` takes over full rows (a row's best and its attempts).
+ */
+export type Mark = [date: string, snatch: number, cj: number, total: number];
+
+export type Summary = { latest: ApiLiftingResult[]; marks: Mark[] };
+
+/** What the summary document holds for a newest-first history. */
+export function summaryOf(rows: readonly ApiLiftingResult[]): { latest: string; marks: string } {
+  const latestDate = rows[0]?.date;
+  return {
+    latest: JSON.stringify(rows.filter((row) => row.date === latestDate)),
+    marks: JSON.stringify(
+      rows.map((row): Mark => [
+        row.date,
+        Math.max(row.snatch_best, row.snatch1, row.snatch2, row.snatch3),
+        Math.max(row.cj_best, row.cj1, row.cj2, row.cj3),
+        row.total,
+      ]),
+    ),
+  };
+}
+
+/**
+ * Rewrites the history and summary documents of `keys` from
+ * `lifting_results`; returns how many histories changed. A summary missing
+ * beside an unchanged history (written before summaries existed) is filled in.
+ */
 export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): Promise<number> {
   const changed = await Promise.all(
     [...new Set(keys)].map(async (key) => {
-      const [rows, existing] = await Promise.all([
+      const [rows, existing, summary] = await Promise.all([
         computeHistory(ctx, key),
         ctx.db
           .query('athlete_history')
           .withIndex('by_nameKey', (q) => q.eq('nameKey', key))
           .unique(),
+        ctx.db
+          .query('athlete_summary')
+          .withIndex('by_nameKey', (q) => q.eq('nameKey', key))
+          .unique(),
       ]);
       if (rows.length === 0) {
+        if (summary) await ctx.db.delete(summary._id);
         if (!existing) return false;
         await ctx.db.delete(existing._id);
         return true;
       }
+      const next = summaryOf(rows);
+      if (!summary) await ctx.db.insert('athlete_summary', { nameKey: key, ...next });
+      else if (summary.latest !== next.latest || summary.marks !== next.marks) await ctx.db.patch(summary._id, next);
       const json = JSON.stringify(rows);
       if (existing?.json === json) return false;
       if (existing) await ctx.db.patch(existing._id, { json });
@@ -62,6 +98,31 @@ export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): 
     }),
   );
   return changed.filter(Boolean).length;
+}
+
+/**
+ * Each athlete's summary: the summary document when there is one, otherwise
+ * derived from the history (live before the first build, or from the history
+ * document where the summary has not been written yet).
+ */
+export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
+  const ready = await historiesReady(ctx);
+  const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });
+  const entries = await Promise.all(
+    keys.map(async (key): Promise<[string, Summary]> => {
+      if (ready) {
+        const doc = await ctx.db
+          .query('athlete_summary')
+          .withIndex('by_nameKey', (q) => q.eq('nameKey', key))
+          .unique();
+        if (doc) return [key, parse(doc.latest, doc.marks)];
+      }
+      const history = (await readHistories(ctx, [key])).get(key) ?? [];
+      const derived = summaryOf(history);
+      return [key, parse(derived.latest, derived.marks)];
+    }),
+  );
+  return new Map(entries);
 }
 
 /**

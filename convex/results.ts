@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
 import { nameMatcher, searchDirectory } from './lib/directory';
-import { readHistories } from './lib/history';
+import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import { ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
 import { compareBytes } from './lib/sort';
@@ -21,19 +21,6 @@ function newestFirst(rows: ApiLiftingResult[]): ApiLiftingResult[] {
   return rows.sort((a, b) => compareBytes(b.date, a.date));
 }
 
-/** `best_lifts_columns!` over API rows (their nulls already read as 0). */
-function bestsOf(rows: readonly ApiLiftingResult[]): YearBests {
-  let bests = ZERO_BESTS;
-  for (const row of rows) {
-    bests = {
-      best_snatch: Math.max(bests.best_snatch, row.snatch_best, row.snatch1, row.snatch2, row.snatch3),
-      best_cj: Math.max(bests.best_cj, row.cj_best, row.cj1, row.cj2, row.cj3),
-      best_total: Math.max(bests.best_total, row.total),
-    };
-  }
-  return bests;
-}
-
 /** A newest-first history cut at `cutoff` (inclusive). */
 function since(history: readonly ApiLiftingResult[], cutoff: string): ApiLiftingResult[] {
   const rows: ApiLiftingResult[] = [];
@@ -45,6 +32,20 @@ function since(history: readonly ApiLiftingResult[], cutoff: string): ApiLifting
 }
 
 type Histories = Map<string, ApiLiftingResult[]>;
+
+/** Bests over a newest-first mark list cut at `cutoff` (inclusive); the same numbers `bestsOf(since(...))` gives. */
+function bestsOfMarks(marks: readonly Mark[], cutoff: string): YearBests | null {
+  let bests = null as YearBests | null;
+  for (const [date, snatch, cj, total] of marks) {
+    if (date < cutoff) break;
+    bests = {
+      best_snatch: Math.max(bests?.best_snatch ?? 0, snatch),
+      best_cj: Math.max(bests?.best_cj ?? 0, cj),
+      best_total: Math.max(bests?.best_total ?? 0, total),
+    };
+  }
+  return bests;
+}
 
 export function answerByNames(histories: Histories, latestOnly: boolean, limit: number | undefined): string {
   const rows: ApiLiftingResult[] = [];
@@ -63,19 +64,26 @@ export function answerRecent(histories: Histories, cutoff: string): string {
   return JSON.stringify(newestFirst(rows));
 }
 
-export function answerBests(histories: Histories, names: readonly string[], cutoff: string): NamedBests[] {
+export function answerBests(summaries: Map<string, Summary>, names: readonly string[], cutoff: string): NamedBests[] {
   const bestByKey = new Map<string, YearBests>();
-  for (const [key, history] of histories) {
-    const window = since(history, cutoff);
-    if (window.length > 0) bestByKey.set(key, bestsOf(window));
+  for (const [key, { marks }] of summaries) {
+    const bests = bestsOfMarks(marks, cutoff);
+    if (bests) bestByKey.set(key, bests);
   }
   return Array.from(new Set(names))
     .sort(compareBytes)
     .map((name) => ({ name, ...(bestByKey.get(normalizeName(name)) ?? ZERO_BESTS) }));
 }
 
-export function answerYearBests(history: readonly ApiLiftingResult[], cutoff: string): YearBests {
-  return bestsOf(since(history, cutoff));
+export function answerYearBests(marks: readonly Mark[], cutoff: string): YearBests {
+  return bestsOfMarks(marks, cutoff) ?? ZERO_BESTS;
+}
+
+/** `answerByNames` with `latestOnly`, from the summaries' latest rows. */
+export function answerLatest(summaries: Map<string, Summary>, limit: number | undefined): string {
+  const rows: ApiLiftingResult[] = [];
+  for (const { latest } of summaries.values()) rows.push(...(limit === undefined ? latest : latest.slice(0, limit)));
+  return JSON.stringify(newestFirst(rows));
 }
 
 function checkLimit(limit: number | undefined): void {
@@ -99,8 +107,9 @@ export const byNames = query({
     const names = cleanNameList(args.names);
     requireNameList(names);
     checkLimit(args.limitPerName);
-    const histories = await readHistories(ctx, distinctNameKeys(names));
-    return { json: answerByNames(histories, args.latestOnly ?? false, args.limitPerName) };
+    const keys = distinctNameKeys(names);
+    if (args.latestOnly) return { json: answerLatest(await readSummaries(ctx, keys), args.limitPerName) };
+    return { json: answerByNames(await readHistories(ctx, keys), false, args.limitPerName) };
   },
 });
 
@@ -122,7 +131,7 @@ export const yearBests = query({
     requireNonEmpty('name', args.name);
     const cutoff = requirePresentIsoDate('cutoff_date', args.cutoffDate);
     const key = normalizeName(args.name);
-    return answerYearBests((await readHistories(ctx, [key])).get(key) ?? [], cutoff);
+    return answerYearBests((await readSummaries(ctx, [key])).get(key)?.marks ?? [], cutoff);
   },
 });
 
@@ -137,8 +146,8 @@ export const bests = query({
     const names = cleanNameList(args.names);
     requireNameList(names);
     const cutoff = requirePresentIsoDate('cutoff_date', args.cutoffDate);
-    const histories = await readHistories(ctx, [...requestedNamesByKey(names).keys()]);
-    return answerBests(histories, names, cutoff);
+    const summaries = await readSummaries(ctx, [...requestedNamesByKey(names).keys()]);
+    return answerBests(summaries, names, cutoff);
   },
 });
 
