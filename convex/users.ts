@@ -64,15 +64,17 @@ function requireMaxLen(what: string, value: string | undefined, max: number): vo
 }
 
 /**
- * The user's row for a session. `.first()`, not `.unique()`: the pre-port
- * upsert enforced uniqueness in code, and one stray duplicate must not turn
- * every later save of that session into an error.
+ * The user's rows for a session. Normally one, but the pre-port upsert
+ * enforced uniqueness in code, so a stray duplicate can exist: a save keeps
+ * one and deletes the rest, an unsave deletes them all (as Rust's
+ * `DELETE ... WHERE user_id AND session_id` did), so an unsaved session
+ * cannot come back through its twin.
  */
-async function savedSessionRow(ctx: QueryCtx, userId: string, sessionId: string) {
+async function savedSessionRows(ctx: QueryCtx, userId: string, sessionId: string) {
   return await ctx.db
     .query('saved_sessions')
     .withIndex('by_sessionId_and_userId', (q) => q.eq('sessionId', sessionId).eq('userId', userId))
-    .first();
+    .take(MAX_SAVED_SESSIONS_PER_USER);
 }
 
 function toApiSavedSession(row: Doc<'saved_sessions'>) {
@@ -144,7 +146,8 @@ export const putSavedSession = mutation({
     }
 
     const userId = await requireUserId(ctx);
-    const existing = await savedSessionRow(ctx, userId, sessionId);
+    const [existing, ...duplicates] = await savedSessionRows(ctx, userId, sessionId);
+    for (const duplicate of duplicates) await ctx.db.delete(duplicate._id);
     if (!existing) {
       const count = (
         await ctx.db
@@ -180,9 +183,9 @@ export const deleteSavedSession = mutation({
   handler: async (ctx, args: RawArgs) => {
     const sessionId = requiredString(args, 'sessionId');
     const userId = await requireUserId(ctx);
-    const existing = await savedSessionRow(ctx, userId, sessionId);
-    if (existing) await ctx.db.delete(existing._id);
-    return { deleted: existing !== null };
+    const rows = await savedSessionRows(ctx, userId, sessionId);
+    for (const row of rows) await ctx.db.delete(row._id);
+    return { deleted: rows.length > 0 };
   },
 });
 

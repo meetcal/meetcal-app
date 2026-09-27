@@ -626,14 +626,18 @@ export async function scheduleRefresh(ctx: MutationCtx, delayMs: number = REFRES
  * REFRESH_BUSY_RETRY_MS and returns without the hints.
  */
 export const beginRefresh = internalMutation({
-  args: { lease: v.optional(v.boolean()) },
+  // `retry: false`: a caller that retries itself when busy (rebuildAll), so
+  // no refresh is queued for it.
+  args: { lease: v.optional(v.boolean()), retry: v.optional(v.boolean()) },
   handler: async (ctx, args): Promise<RefreshBegin> => {
     const state = await refreshState(ctx);
     const now = Date.now();
     const held = state?.refreshLease !== undefined && now - state.refreshLease < REFRESH_LEASE_MS;
     if (args.lease && held) {
-      await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.refresh, {});
-      if (state) await ctx.db.patch(state._id, { scheduled: true });
+      if (args.retry !== false) {
+        await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.refresh, {});
+        if (state) await ctx.db.patch(state._id, { scheduled: true });
+      }
       return { hints: [], overflow: false, versions: [], baseline: null, rebuilding: false, rebuildHeartbeat: null, lease: null, busy: true };
     }
     const lease = args.lease ? now : null;
@@ -1003,7 +1007,7 @@ export const rebuildAll = internalAction({
   handler: async (ctx): Promise<string> => {
     // Under the refresh lease, so a refresh cannot start a rebuild of its own
     // at the same moment.
-    const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true });
+    const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true, retry: false });
     if (begin.busy) {
       // Started by a migration as often as by hand: never just dropped.
       await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.rebuildAll, {});

@@ -68,8 +68,9 @@ export function summaryOf(rows: readonly ApiLiftingResult[]): { latest: string; 
  * beside an unchanged history (written before summaries existed) is filled in.
  */
 export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): Promise<number> {
-  const changed = await Promise.all(
-    [...new Set(keys)].map(async (key) => {
+  const changed = await inBatches(
+    [...new Set(keys)],
+    async (key) => {
       const [rows, existing, summary] = await Promise.all([
         computeHistory(ctx, key),
         ctx.db
@@ -95,16 +96,11 @@ export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): 
       if (existing) await ctx.db.patch(existing._id, { json });
       else await ctx.db.insert('athlete_history', { nameKey: key, json });
       return true;
-    }),
+    },
   );
   return changed.filter(Boolean).length;
 }
 
-/**
- * Each athlete's summary: the summary document when there is one, otherwise
- * derived from the history (live before the first build, or from the history
- * document where the summary has not been written yet).
- */
 /**
  * Reads in flight at once when a caller asks about many athletes (the search
  * fallback asks about up to 1,000): at the per-function limit on concurrent
@@ -118,6 +114,11 @@ async function inBatches<T>(keys: readonly string[], read: (key: string) => Prom
   return out;
 }
 
+/**
+ * Each athlete's summary: the summary document when there is one, otherwise
+ * derived from the history (live before the first build, or from the history
+ * document where the summary has not been written yet).
+ */
 export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
   const ready = await historiesReady(ctx);
   const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });

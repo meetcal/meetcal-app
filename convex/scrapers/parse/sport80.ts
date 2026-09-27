@@ -103,11 +103,11 @@ export type ResultRow = {
   federation: 'USAW';
 };
 
-/** The meet's rows as the Python job formatted them. */
 /**
- * One row per result item. An item with a value that is not a number becomes
- * a row with no name, which the run counts as failed and does not store: one
- * bad cell loses that row, not the meet or the night's sync.
+ * The meet's rows as the Python job formatted them, one per result item. An
+ * item with a value that is not a number becomes a row with no name, which
+ * the run logs and does not store: one bad cell loses that row, not the meet
+ * or the night's sync.
  */
 export function formatResults(eventId: string, meet: string, date: number | null, items: Dict[]): ResultRow[] {
   const day = date === null ? '1970-01-01' : new Date(date).toISOString().slice(0, 10);

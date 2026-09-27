@@ -448,6 +448,8 @@ function replaceTable<T extends keyof typeof referenceTables>(table: T) {
   return internalMutation({
     args: { rows: v.array(v.object(referenceTables[table])) },
     handler: async (ctx, { rows }) => {
+      // An empty payload is a failed load, not an empty table.
+      if (rows.length === 0) throw new Error(`refusing to replace ${table} with an empty payload`);
       const existing = await ctx.db.query(table).collect();
       for (const row of existing) await ctx.db.delete(row._id);
       for (const row of rows) await ctx.db.insert(table, row as never);
@@ -828,12 +830,32 @@ const wsoRecordRow = v.object({
  * An empty payload or a duplicate class is refused, since either would mean
  * a bad parse rather than a WSO without records.
  */
+/**
+ * A sync may delete up to this share of a WSO's stored rows (and always
+ * MIN_SHRINK_ALLOWED) without `allowShrink`. More looks like a source that
+ * partly broke, not one that changed its classes: refused, so the run fails
+ * and alerts instead of deleting records.
+ */
+const MAX_SHRINK_SHARE = 0.25;
+const MIN_SHRINK_ALLOWED = 20;
+
 export const replaceWsoRecordSet = internalMutation({
-  args: { wso: v.string(), rows: v.array(wsoRecordRow) },
-  handler: async (ctx, { wso, rows }) => {
+  args: { wso: v.string(), rows: v.array(wsoRecordRow), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { wso, rows, allowShrink }) => {
     if (!wso) throw new Error('wso is required');
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
     const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
+    if (!allowShrink) {
+      const incoming = new Set(rows.map((row) => keyOf({ ageCategory: normalizeAgeCategory(row.ageCategory), gender: normalizeGender(row.gender), weightClass: row.weightClass })));
+      const stored = new Set((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map(keyOf));
+      const dropped = [...stored].filter((key) => !incoming.has(key)).length;
+      if (dropped > Math.max(MIN_SHRINK_ALLOWED, stored.size * MAX_SHRINK_SHARE)) {
+        throw new Error(
+          `refusing to delete ${dropped} of ${wso}'s ${stored.size} WSO record classes (the source may be partly broken). ` +
+            `If it really dropped them: npx convex run --prod scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}'`,
+        );
+      }
+    }
     const { byKey: existing, deleted: duplicates } = await onePerKey(
       ctx,
       await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect(),

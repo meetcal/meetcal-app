@@ -66,13 +66,24 @@ const californiaSouth = (sheetUrl: string): WsoSource => ({
 
 type TabParser = (csv: string, wso: string) => WsoRecord[];
 
+/**
+ * The records of a source read in parts (a tab or PDF each), refusing a part
+ * that parsed to nothing: the sync is an exact set, so one broken part would
+ * otherwise delete its age groups while the rest looked fine.
+ */
+function everyPart(wso: string, parts: WsoRecord[][], label: (i: number) => string): WsoRecord[] {
+  const empty = parts.map((records, i) => (records.length === 0 ? label(i) : null)).filter((part) => part !== null);
+  if (empty.length) throw new Error(`${wso}: parsed 0 records from ${empty.join(', ')} (layout changed?)`);
+  return parts.flat();
+}
+
 /** Sheets with a tab per age group (or stack of them), fetched together. */
 const tabbed = (wso: string, sheetUrl: string, tabs: [gid: string, parse: TabParser][], finish = (records: WsoRecord[]) => records): WsoSource => ({
   wso,
   scrape: async () => {
     const sheetId = sheetIdOf(sheetUrl);
     const texts = await Promise.all(tabs.map(([gid]) => fetchText(gvizCsvByGid(sheetId, gid), 60_000)));
-    return finish(tabs.flatMap(([, parse], i) => parse(texts[i], wso)));
+    return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i], wso)), (i) => `tab gid ${tabs[i][0]}`));
   },
 });
 
@@ -149,7 +160,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const sheetId = sheetIdOf('https://docs.google.com/spreadsheets/d/1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8/view?gid=0#gid=0');
       const texts = await Promise.all(OHIO_TABS.map((tab) => fetchText(gvizCsvByName(sheetId, tab), 60_000)));
-      return OHIO_TABS.flatMap((tab, i) => parseOhioTab(texts[i], 'Ohio', tab));
+      return everyPart('Ohio', OHIO_TABS.map((tab, i) => parseOhioTab(texts[i], 'Ohio', tab)), (i) => `tab ${JSON.stringify(OHIO_TABS[i])}`);
     },
   },
   {
@@ -157,7 +168,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const publishedId = '2PACX-1vR8exp9-mwi8dpkZa9-48G-CUVuZ5rAlpOYdMCiNMka25wZ6V2XPLurpgMDtyiarqnQxYrW6dWfQ042';
       const texts = await Promise.all(PAWV_TABS.map((tab) => fetchText(pawvCsvUrl(publishedId, tab.gid), 60_000)));
-      return PAWV_TABS.flatMap((tab, i) => parsePawvTab(texts[i], 'Pennsylvania-West Virginia', tab));
+      return everyPart('Pennsylvania-West Virginia', PAWV_TABS.map((tab, i) => parsePawvTab(texts[i], 'Pennsylvania-West Virginia', tab)), (i) => `tab gid ${PAWV_TABS[i].gid}`);
     },
   },
   {
@@ -177,7 +188,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = mountainSouthPdfUrls(await fetchText('https://mountainsouth.org/records/'));
       if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
-      return pdfs.flatMap((pages) => parseMountainSouth(pages, 'Mountain South'));
+      return everyPart('Mountain South', pdfs.map((pages) => parseMountainSouth(pages, 'Mountain South')), (i) => urls[i]);
     },
   },
   {
@@ -186,7 +197,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = newYorkPdfUrls(await fetchText('https://www.nywso.com/state-records'));
       if (!urls.length) throw new Error('No records PDFs found on the New York records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
-      return pdfs.flatMap((pages) => parseNewYork(pages, 'New York'));
+      return everyPart('New York', pdfs.map((pages) => parseNewYork(pages, 'New York')), (i) => urls[i]);
     },
   },
   {
@@ -195,7 +206,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = newEnglandPdfUrls(await fetchText('https://www.newenglandweightlifting.com/records'));
       if (!urls.length) throw new Error('No records PDFs found on the New England records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
-      return pdfs.flatMap((pages) => parseNewEngland(pages, 'New England'));
+      return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i]);
     },
   },
   {
@@ -246,15 +257,22 @@ function lastPerClass(records: WsoRecord[]): WsoRecord[] {
 }
 
 /** Syncs the WSO's records to exactly the scraped set. */
-async function replaceWso(ctx: ActionCtx, wso: string, records: WsoRecord[]): Promise<{ inserted: number; updated: number; deleted: number; unchanged: number }> {
-  return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(lastPerClass(records)) });
+async function replaceWso(
+  ctx: ActionCtx,
+  wso: string,
+  records: WsoRecord[],
+  allowShrink: boolean,
+): Promise<{ inserted: number; updated: number; deleted: number; unchanged: number }> {
+  return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(lastPerClass(records)), allowShrink });
 }
 
 type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
 
 export const run = internalAction({
-  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())) },
-  handler: async (ctx, { dryRun, only }): Promise<WsoResult[]> => {
+  // `allowShrink`: let a sync delete more than a quarter of a WSO's classes
+  // (a source that really restructured), after checking the source by hand.
+  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, only, allowShrink }): Promise<WsoResult[]> => {
     const results: WsoResult[] = [];
     for (const source of WSO_SOURCES.filter((s) => !only || only.includes(s.wso))) {
       const result: WsoResult = { wso: source.wso, records: [], inserted: 0, updated: 0, unchanged: 0 };
@@ -265,7 +283,7 @@ export const run = internalAction({
         // changed, which must fail loudly rather than leave the old ones stale.
         if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
         if (!dryRun) {
-          Object.assign(result, await replaceWso(ctx, source.wso, result.records));
+          Object.assign(result, await replaceWso(ctx, source.wso, result.records, allowShrink ?? false));
         }
       } catch (error) {
         result.error = (error as Error).message;

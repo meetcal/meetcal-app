@@ -119,7 +119,11 @@ function toTransportError(call: ApiCall, error: unknown, httpStatus: number | nu
   if (/\bArgumentValidationError\b/.test(message)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 400`, 400, message);
   }
-  const functionRan = httpStatus !== null && (httpStatus === 560 || (httpStatus >= 200 && httpStatus < 300));
+  // A body that is not Convex's JSON (a captive portal's login page, a
+  // connection cut mid-body) fails to parse: that is the network, not a
+  // function that ran.
+  const unreadable = error instanceof SyntaxError || error instanceof TypeError;
+  const functionRan = !unreadable && httpStatus !== null && (httpStatus === 560 || (httpStatus >= 200 && httpStatus < 300));
   if (functionRan && !CONVEX_TRANSIENT_MESSAGE.test(message)) {
     return new TransportRequestError(`${call.kind} ${call.path} failed with 500`, 500, message);
   }

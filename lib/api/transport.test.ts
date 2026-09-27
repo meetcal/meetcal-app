@@ -127,6 +127,13 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
     expect(offline).toBeInstanceOf(TypeError);
   });
 
+  it('treats a 200 whose body is not Convex JSON (a captive portal) as the network, not a server fault', async () => {
+    responses.push({ ok: true, status: 200, text: async () => '<html>Log in to Wi-Fi</html>', json: async () => JSON.parse('<html>') });
+    const error = await failure(signedIn);
+    expect(error).not.toBeInstanceOf(TransportRequestError);
+    expect(error).toBeInstanceOf(SyntaxError);
+  });
+
   it('hands the caller\'s abort signal to fetch, so a timed-out request is cancelled', async () => {
     const controller = new AbortController();
     responses.push(respond(200, { status: 'success', value: null }));

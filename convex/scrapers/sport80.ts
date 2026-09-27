@@ -134,11 +134,13 @@ export const run = internalAction({
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows } of meets) {
       const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0 };
-      // Rows with no name or an unreadable value are not stored; they fail
-      // the run (after the rest is stored) so they are not dropped silently.
+      // Rows with no name or an unreadable value are not stored, and are
+      // logged (and returned in `outcomes`). They do not fail the run: a cell
+      // Sport80 keeps sending wrong would keep the job failing, and a job
+      // already failing sends no alert for a real outage.
       const valid = rows.filter((row) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string'));
       outcome.failed = rows.length - valid.length;
-      if (outcome.failed > 0) failed.push(`${meet} (event ${eventId}): ${outcome.failed} unreadable row(s) not stored`);
+      if (outcome.failed > 0) console.warn(`sport80: ${meet} (event ${eventId}): ${outcome.failed} unreadable row(s) not stored`);
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
