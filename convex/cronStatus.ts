@@ -22,16 +22,44 @@ export const start = internalMutation({
   },
 });
 
-/** A run ends: records the outcome and returns the email to send, if any. */
+/**
+ * A run ends: records the outcome, queues its alert (if it earns one) with
+ * any still unsent, and returns them all to send.
+ */
 export const finish = internalMutation({
   args: { job: v.string(), error: v.optional(v.string()) },
-  handler: async (ctx, { job, error }): Promise<Notice | null> => {
+  handler: async (ctx, { job, error }): Promise<Notice[]> => {
     const existing = await statusOf(ctx, job);
     const { alerting, notice } = afterRun(job, existing?.alerting as Alerting | undefined, error === undefined ? { ok: true } : { ok: false, error });
-    const fields = { finishedAt: Date.now(), status: error === undefined ? ('ok' as const) : ('error' as const), error, alerting };
+    const unsent = [...(existing?.unsent ?? []), ...(notice ? [{ kind: notice.kind, detail: notice.detail }] : [])];
+    const fields = { finishedAt: Date.now(), status: error === undefined ? ('ok' as const) : ('error' as const), error, alerting, unsent };
     if (existing) await ctx.db.patch(existing._id, fields);
     else await ctx.db.insert('cron_status', { job, startedAt: Date.now(), ...fields });
-    return notice ?? null;
+    return unsent.map((u) => ({ job, kind: u.kind as Notice['kind'], detail: u.detail }));
+  },
+});
+
+/** Queues alerts for a job (the watchdog's, before it sends them). */
+export const queueAlerts = internalMutation({
+  args: { job: v.string(), alerts: v.array(v.object({ kind: v.string(), detail: v.string() })) },
+  handler: async (ctx, { job, alerts }) => {
+    const existing = await statusOf(ctx, job);
+    if (existing) await ctx.db.patch(existing._id, { unsent: [...(existing.unsent ?? []), ...alerts] });
+  },
+});
+
+/** Drops alerts that were emailed (matched by kind and detail; alerts queued since stay). */
+export const markSent = internalMutation({
+  args: { job: v.string(), sent: v.array(v.object({ kind: v.string(), detail: v.string() })) },
+  handler: async (ctx, { job, sent }) => {
+    const existing = await statusOf(ctx, job);
+    if (!existing?.unsent) return;
+    const remaining = [...existing.unsent];
+    for (const s of sent) {
+      const at = remaining.findIndex((u) => u.kind === s.kind && u.detail === s.detail);
+      if (at !== -1) remaining.splice(at, 1);
+    }
+    await ctx.db.patch(existing._id, { unsent: remaining.length ? remaining : undefined });
   },
 });
 

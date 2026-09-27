@@ -78,11 +78,13 @@ export const run = internalAction({
       failure = error;
     }
     const message = failure === undefined ? undefined : failure instanceof Error ? failure.message : String(failure);
-    const notice = await ctx.runMutation(internal.cronStatus.finish, { job, error: message });
-    if (notice) {
+    const unsent: Notice[] = await ctx.runMutation(internal.cronStatus.finish, { job, error: message });
+    if (unsent.length) {
       try {
-        await alert([notice]);
+        await alert(unsent);
+        await ctx.runMutation(internal.cronStatus.markSent, { job, sent: unsent.map(({ kind, detail }) => ({ kind, detail })) });
       } catch (error) {
+        // Left queued: the watchdog sends it next hour.
         console.error(`cron alert for ${job} could not be sent: ${(error as Error).message}`);
       }
     }
@@ -91,19 +93,33 @@ export const run = internalAction({
   },
 });
 
-/** Hourly: a job whose due run never started, or that is still running long after starting. */
+/**
+ * Hourly: queues an alert for a job whose due run never started or that is
+ * still running long after starting, then sends every queued alert (these,
+ * and any whose email failed earlier), clearing each only once sent.
+ */
 export const watchdog = internalAction({
   args: {},
   handler: async (ctx): Promise<Notice[]> => {
     const now = Date.now();
     const statuses = new Map((await ctx.runQuery(internal.cronStatus.all, {})).map((s) => [s.job, s]));
-    const notices: Notice[] = [];
+    const pending: Notice[] = [];
+    for (const [job, status] of statuses) {
+      for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
+    }
     for (const [job, { schedule }] of Object.entries(JOBS)) {
       const notice = watch(job, statuses.get(job) ?? null, lastScheduled(schedule, now - START_MARGIN_MS), now);
-      if (notice) notices.push(notice);
+      if (!notice) continue;
+      // Recorded before sending, so a failed send is retried rather than re-detected.
+      await ctx.runMutation(internal.cronStatus.markAlerting, { job, alerting: notice.kind as 'missed' | 'stuck' });
+      await ctx.runMutation(internal.cronStatus.queueAlerts, { job, alerts: [{ kind: notice.kind, detail: notice.detail }] });
+      pending.push(notice);
     }
-    await alert(notices);
-    for (const n of notices) await ctx.runMutation(internal.cronStatus.markAlerting, { job: n.job, alerting: n.kind as 'missed' | 'stuck' });
-    return notices;
+    if (pending.length === 0) return [];
+    await alert(pending);
+    const byJob = new Map<string, { kind: string; detail: string }[]>();
+    for (const { job, kind, detail } of pending) byJob.set(job, [...(byJob.get(job) ?? []), { kind, detail }]);
+    for (const [job, sent] of byJob) await ctx.runMutation(internal.cronStatus.markSent, { job, sent });
+    return pending;
   },
 });

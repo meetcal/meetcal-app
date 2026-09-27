@@ -253,6 +253,10 @@ export default defineSchema({
     status: v.union(v.literal('running'), v.literal('ok'), v.literal('error')),
     error: v.optional(v.string()),
     alerting: v.optional(v.union(v.literal('failed'), v.literal('missed'), v.literal('stuck'))),
+    // Alerts decided but not yet emailed. Cleared only after a send
+    // succeeds; the watchdog retries them, so a failed send never hides an
+    // outage.
+    unsent: v.optional(v.array(v.object({ kind: v.string(), detail: v.string() }))),
   }).index('by_job', ['job']),
 
   // The last text of each page the urlwatch cron follows (urlwatch's cache.db).
