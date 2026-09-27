@@ -3,7 +3,9 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { fetchText } from './lib/http';
+import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
+import { unescapeHtml } from './lib/html';
+import { pdfLines } from './lib/pdf';
 import { postSlack } from './lib/slack';
 import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
@@ -11,6 +13,7 @@ import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
 import { parseTnky } from './parse/wso/tnky';
 import { OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
+import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -19,7 +22,12 @@ import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from 
  * earlier one failed; the run fails at the end if any did, as the shell loop
  * reported it.
  */
-type WsoSource = { wso: string; scrape: () => Promise<WsoRecord[]> };
+type WsoSource = {
+  wso: string;
+  scrape: () => Promise<WsoRecord[]>;
+  /** Sync the set exactly (delete what the source dropped) instead of upserting. */
+  replace?: boolean;
+};
 
 /**
  * The tab the configured URL points at (its `gid`), else the one named
@@ -144,8 +152,31 @@ export const WSO_SOURCES: WsoSource[] = [
       return PAWV_TABS.flatMap((tab, i) => parsePawvTab(texts[i], 'Pennsylvania-West Virginia', tab));
     },
   },
+  {
+    wso: 'Illinois',
+    replace: true,
+    scrape: async () => {
+      const page = 'https://www.illinoisweightlifting.com/';
+      const pdfUrl = absoluteUrl(illinoisPdfHref(unescapeHtml(await fetchText(page))), page);
+      const lines = (await pdfLines(await fetchBytes(pdfUrl))).flat();
+      const { records, warnings } = parseIllinois(lines, 'Illinois');
+      for (const warning of warnings) console.log(`wso records (Illinois): ${warning}`);
+      return records;
+    },
+  },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
+
+const wsoRows = (records: WsoRecord[]) =>
+  records.map((r) => ({
+    wso: r.wso,
+    ageCategory: r.age_category,
+    gender: r.gender,
+    weightClass: r.weight_class,
+    snatchRecord: r.snatch_record ?? undefined,
+    cjRecord: r.cj_record ?? undefined,
+    totalRecord: r.total_record ?? undefined,
+  }));
 
 const kg = (value: number | null | undefined) => (value ? `${value}kg` : 'None');
 
@@ -181,17 +212,7 @@ function slackMessage(wso: string, inserted: WsoRecord[], updated: { record: Wso
 async function syncWso(ctx: ActionCtx, wso: string, records: WsoRecord[]) {
   const outcomes: { wasInsert: boolean; wasChanged: boolean; previous?: Record<string, number | undefined> }[] = await ctx.runMutation(
     internal.ingest.upsertWsoRecords,
-    {
-      rows: records.map((r) => ({
-        wso: r.wso,
-        ageCategory: r.age_category,
-        gender: r.gender,
-        weightClass: r.weight_class,
-        snatchRecord: r.snatch_record ?? undefined,
-        cjRecord: r.cj_record ?? undefined,
-        totalRecord: r.total_record ?? undefined,
-      })),
-    },
+    { rows: wsoRows(records) },
   );
   const inserted = records.filter((_, i) => outcomes[i].wasInsert);
   const updated = records.flatMap((record, i) => (!outcomes[i].wasInsert && outcomes[i].wasChanged ? [{ record, previous: outcomes[i].previous ?? {} }] : []));
@@ -199,7 +220,23 @@ async function syncWso(ctx: ActionCtx, wso: string, records: WsoRecord[]) {
   return { inserted: inserted.length, updated: updated.length, unchanged: records.length - inserted.length - updated.length };
 }
 
-type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; error?: string };
+/** An exact-set sync, reported as the Python PDF scraper did. */
+async function replaceWso(ctx: ActionCtx, wso: string, records: WsoRecord[]) {
+  const counts: { inserted: number; updated: number; deleted: number; unchanged: number } = await ctx.runMutation(internal.ingest.replaceWsoRecordSet, {
+    wso,
+    rows: wsoRows(records),
+  });
+  if (counts.inserted + counts.updated + counts.deleted > 0) {
+    await postSlack(
+      process.env.SLACK_WSO_WEBHOOK_URL,
+      `wso ${wso}`,
+      `*${wso} WSO Records Update (PDF)*\n\nProcessed *${records.length}* current record rows\n*${counts.inserted}* inserted, *${counts.updated}* updated, *${counts.deleted}* deleted, *${counts.unchanged}* unchanged`,
+    );
+  }
+  return counts;
+}
+
+type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
 
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())) },
@@ -210,7 +247,9 @@ export const run = internalAction({
       results.push(result);
       try {
         result.records = await source.scrape();
-        if (!dryRun && result.records.length) Object.assign(result, await syncWso(ctx, source.wso, result.records));
+        if (!dryRun && result.records.length) {
+          Object.assign(result, source.replace ? await replaceWso(ctx, source.wso, result.records) : await syncWso(ctx, source.wso, result.records));
+        }
       } catch (error) {
         result.error = (error as Error).message;
         console.error(`wso records (${source.wso}): ${result.error}`);

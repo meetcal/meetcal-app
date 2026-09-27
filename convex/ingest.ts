@@ -523,6 +523,53 @@ const wsoRecordRow = v.object({
   totalRecord: v.optional(v.number()),
 });
 
+/**
+ * Exact-set sync of one WSO's records (`replace_wso_records`): rows missing
+ * from the payload are deleted, the rest written only where they changed.
+ * An empty payload or a duplicate class is refused, since either would mean
+ * a bad parse rather than a WSO without records.
+ */
+export const replaceWsoRecordSet = internalMutation({
+  args: { wso: v.string(), rows: v.array(wsoRecordRow) },
+  handler: async (ctx, { wso, rows }) => {
+    if (!wso) throw new Error('wso is required');
+    if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
+    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
+    const existing = new Map((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map((r) => [keyOf(r), r]));
+    const counts = { inserted: 0, updated: 0, deleted: 0, unchanged: 0 };
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const doc = {
+        wso,
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        snatchRecord: row.snatchRecord,
+        cjRecord: row.cjRecord,
+        totalRecord: row.totalRecord,
+      };
+      const key = keyOf(doc);
+      if (seen.has(key)) throw new Error(`Duplicate WSO record in payload: ${key}`);
+      seen.add(key);
+      const current = existing.get(key);
+      if (!current) {
+        await ctx.db.insert('wso_records', doc);
+        counts.inserted += 1;
+      } else if (current.snatchRecord !== doc.snatchRecord || current.cjRecord !== doc.cjRecord || current.totalRecord !== doc.totalRecord) {
+        await ctx.db.replace(current._id, doc);
+        counts.updated += 1;
+      } else counts.unchanged += 1;
+    }
+    for (const [key, row] of existing) {
+      if (seen.has(key)) continue;
+      await ctx.db.delete(row._id);
+      counts.deleted += 1;
+    }
+    if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'wso_records', [{ kind: 'table', key: 'wso_records' }]);
+    return counts;
+  },
+});
+
 export type WsoUpsertOutcome = UpsertOutcome & {
   previous?: { snatchRecord?: number; cjRecord?: number; totalRecord?: number };
 };
