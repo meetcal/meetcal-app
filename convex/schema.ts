@@ -287,6 +287,10 @@ export default defineSchema({
   view_hints: defineTable({
     kind: v.string(),
     key: v.string(),
+    // Bumped by every write that names this key. A refresh deletes the hint
+    // only if it is unchanged since the refresh read it, so a write landing
+    // mid-refresh keeps its hint for the next one.
+    seq: v.optional(v.number()),
   }).index('by_kind_key', ['kind', 'key']),
 
   // Refresh bookkeeping (`convex/views.ts`): whether a refresh is scheduled,

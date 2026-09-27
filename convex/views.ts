@@ -229,16 +229,35 @@ export const storeResultNames = internalMutation({
 });
 
 /** Adds names to the search directory without a full scan. */
-export const mergeResultNames = internalMutation({
+/**
+ * Brings the search directory up to date for names a write touched (the
+ * `name` hints carry the old name of a deleted or replaced row as well as the
+ * new one): a name that still has a result is added, one with none left is
+ * removed, so suggestions never offer a name that finds nothing.
+ */
+export const syncResultNames = internalMutation({
   args: { names: v.array(v.string()) },
   handler: async (ctx, { names }) => {
-    const existing = directoryNames((await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? '');
-    const merged = new Set(existing);
-    const before = merged.size;
-    for (const name of names) merged.add(name);
-    if (merged.size === before) return 0;
-    await writeView(ctx, RESULT_NAMES_VIEW, textChunks(directoryText([...merged].sort(compareCollated))), [], { text: true });
-    return merged.size - before;
+    const directory = new Set(directoryNames((await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? ''));
+    let added = 0;
+    let removed = 0;
+    for (const name of new Set(names)) {
+      const hasResult =
+        (await ctx.db
+          .query('lifting_results')
+          .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', normalizeName(name)))
+          .filter((q) => q.eq(q.field('name'), name))
+          .first()) !== null;
+      if (hasResult && !directory.has(name)) {
+        directory.add(name);
+        added += 1;
+      } else if (!hasResult && directory.delete(name)) {
+        removed += 1;
+      }
+    }
+    if (added + removed === 0) return { added, removed };
+    await writeView(ctx, RESULT_NAMES_VIEW, textChunks(directoryText([...directory].sort(compareCollated))), [], { text: true });
+    return { added, removed };
   },
 });
 
@@ -328,7 +347,7 @@ async function rebuildMeet(ctx: ActionCtx, meet: string): Promise<void> {
 // Refresh after writes
 // ---------------------------------------------------------------------------
 
-type Hint = { id: string; kind: string; key: string };
+type Hint = { id: string; kind: string; key: string; seq: number };
 type RefreshBegin = {
   hints: Hint[];
   overflow: boolean;
@@ -367,7 +386,7 @@ export const beginRefresh = internalMutation({
     const rows = await ctx.db.query('view_hints').take(MAX_TARGETED_HINTS + 1);
     const versions = await snapshotVersions(ctx, SOURCE_TABLES);
     return {
-      hints: rows.slice(0, MAX_TARGETED_HINTS).map((h) => ({ id: h._id, kind: h.kind, key: h.key })),
+      hints: rows.slice(0, MAX_TARGETED_HINTS).map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0 })),
       overflow: rows.length > MAX_TARGETED_HINTS,
       versions,
       baseline: state && state.baseline.length > 0 ? state.baseline : null,
@@ -387,7 +406,8 @@ export const meetKeysView = internalQuery({
 });
 
 /**
- * Ends a refresh: deletes the hints it handled, and (when `restamp`) moves
+ * Ends a refresh: deletes the hints it handled (those not written again
+ * since it read them: a newer write's hint stays for the next refresh), and (when `restamp`) moves
  * every view that was neither rebuilt nor affected, and whose stamp is not
  * older than the baseline, up to `versions`. Records `versions` as the new
  * baseline.
@@ -399,12 +419,12 @@ export const meetKeysView = internalQuery({
  */
 export const finishRefresh = internalMutation({
   args: {
-    hintIds: v.array(v.string()),
+    hints: v.array(v.object({ id: v.string(), seq: v.number() })),
     versions: v.array(v.object({ table: v.string(), version: v.number() })),
     rebuilt: v.array(v.string()),
     restamp: v.boolean(),
   },
-  handler: async (ctx, { hintIds, versions, rebuilt, restamp }) => {
+  handler: async (ctx, { hints, versions, rebuilt, restamp }) => {
     // Everything here is one scan per table (headers, hints), never one read
     // per item: a refresh after a large write handles thousands of hints and
     // views, and a function may make at most 4,096 reads.
@@ -424,9 +444,9 @@ export const finishRefresh = internalMutation({
         }
       }
     }
-    const handled = new Set(hintIds);
+    const handled = new Map(hints.map((h) => [h.id, h.seq]));
     for (const hint of await ctx.db.query('view_hints').collect()) {
-      if (handled.has(hint._id)) await ctx.db.delete(hint._id);
+      if (handled.get(hint._id) === (hint.seq ?? 0)) await ctx.db.delete(hint._id);
     }
     if (state) await ctx.db.patch(state._id, { baseline: versions });
     else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: versions });
@@ -446,7 +466,7 @@ const sourceVersion = v.object({ table: v.string(), version: v.number() });
 const rebuildStageArgs = {
   stage: v.union(v.literal('scan'), v.literal('histories'), v.literal('nat'), v.literal('meets'), v.literal('reference')),
   offset: v.number(),
-  hintIds: v.array(v.string()),
+  hints: v.array(v.object({ id: v.string(), seq: v.number() })),
   versions: v.array(sourceVersion),
   again: v.boolean(),
 };
@@ -546,7 +566,7 @@ export const rebuildStage = internalAction({
         await ctx.runMutation(internal.views.buildClubs, {});
         await ctx.runMutation(internal.views.buildWso, {});
         await ctx.runMutation(internal.views.finishRefresh, {
-          hintIds: args.hintIds,
+          hints: args.hints,
           versions: args.versions,
           rebuilt: [],
           restamp: false,
@@ -564,7 +584,7 @@ async function startRebuild(ctx: ActionCtx, begin: RefreshBegin, again: boolean)
   await ctx.scheduler.runAfter(0, internal.views.rebuildStage, {
     stage: 'scan',
     offset: 0,
-    hintIds: begin.hints.map((h) => h.id),
+    hints: begin.hints.map(({ id, seq }) => ({ id, seq })),
     versions: begin.versions,
     again,
   });
@@ -671,12 +691,14 @@ export const refresh = internalAction({
     }
 
     const names = byKind('name');
-    for (let i = 0; i < names.length; i += 1000) {
-      await ctx.runMutation(internal.views.mergeResultNames, { names: names.slice(i, i + 1000) });
+    // Each name costs a lookup or two; 500 a batch stays well inside a
+    // mutation's read limit.
+    for (let i = 0; i < names.length; i += 500) {
+      await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
     }
 
     const restamped: number = await ctx.runMutation(internal.views.finishRefresh, {
-      hintIds: begin.hints.map((h) => h.id),
+      hints: begin.hints.map(({ id, seq }) => ({ id, seq })),
       versions: begin.versions,
       rebuilt,
       restamp: true,

@@ -43,7 +43,8 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
       .query('view_hints')
       .withIndex('by_kind_key', (q) => q.eq('kind', hint.kind).eq('key', hint.key))
       .first();
-    if (!existing) await ctx.db.insert('view_hints', hint);
+    if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1 });
+    else await ctx.db.insert('view_hints', { ...hint, seq: 0 });
   }
   await scheduleRefresh(ctx);
 }
