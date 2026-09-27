@@ -15,11 +15,16 @@ describe('international rankings (port of intl_rankings_scraper.py)', () => {
   it('infers meet, gender and age from the card title, then the PDF text', () => {
     expect(inferMeetInfo('2027 Senior Pan American Championships - Women')).toEqual({ meet_name: 'Pan Ams', gender: 'Women', age_category: 'Senior' });
     expect(inferMeetInfo('2026 FISU University Worlds - Men')).toEqual({ meet_name: 'Worlds', gender: 'Men', age_category: 'University' });
-    // An Olympic qualifier names no age group anywhere: the group cannot be stored.
+    // Olympic qualification standings are their own meet, Senior.
     expect(parseMeetInfo(['2026 Olympic Qualifier #1 Rankings'], '2026 Olympic Qualifier #1 - Men', 'https://x/OQ.pdf')).toEqual({
-      meet_name: 'Worlds',
+      meet_name: 'Olympic Qualifier',
       gender: 'Men',
-      age_category: '',
+      age_category: 'Senior',
+    });
+    expect(parseMeetInfo(['2026 Olympic Qualifier #1 Rankings', 'Women'], 'Rankings', 'https://x/OQ.pdf')).toEqual({
+      meet_name: 'Olympic Qualifier',
+      gender: '',
+      age_category: 'Senior',
     });
     expect(parseMeetInfo(['U17 Pan American Championships Rankings'], 'Rankings', 'https://x/r.pdf')).toEqual({
       meet_name: 'Pan Ams',

@@ -51,7 +51,10 @@ export function inferMeetInfo(title: string, url = ''): MeetInfo {
   const combined = `${title} ${url}`.replaceAll('_', ' ');
   const lower = combined.toLowerCase();
   let meet_name = '';
-  if (lower.includes('fisu') || lower.includes('university')) meet_name = 'Worlds';
+  // Olympic qualification standings (from 2026): their own meet, always Senior.
+  const olympicQualifier = lower.includes('olympic qualifier');
+  if (olympicQualifier) meet_name = 'Olympic Qualifier';
+  else if (lower.includes('fisu') || lower.includes('university')) meet_name = 'Worlds';
   else if (lower.includes('pan am') || lower.includes('pan american')) meet_name = 'Pan Ams';
   else if (lower.includes('world')) meet_name = 'Worlds';
 
@@ -65,7 +68,7 @@ export function inferMeetInfo(title: string, url = ''): MeetInfo {
   else if (lower.includes('junior')) age_category = 'Junior';
   else if (lower.includes('youth')) age_category = 'Youth';
   else if (lower.includes('fisu') || lower.includes('university')) age_category = 'University';
-  else if (lower.includes('senior') || lower.includes('world championships')) age_category = 'Senior';
+  else if (lower.includes('senior') || lower.includes('world championships') || olympicQualifier) age_category = 'Senior';
   return { meet_name, gender, age_category };
 }
 
@@ -76,7 +79,8 @@ export function parseMeetInfo(lines: string[], title: string, url: string): Meet
     const line = raw.trim();
     if (!['Championships', 'Olympic', 'Rankings', 'University', 'FISU'].some((k) => line.includes(k))) continue;
     if (!info.meet_name) {
-      if (line.includes('FISU') || line.includes('University')) info.meet_name = 'Worlds';
+      if (line.includes('Olympic Qualifier')) info.meet_name = 'Olympic Qualifier';
+      else if (line.includes('FISU') || line.includes('University')) info.meet_name = 'Worlds';
       else if (line.includes('World')) info.meet_name = 'Worlds';
       else if (line.includes('Pan Am') || line.includes('Pan American')) info.meet_name = 'Pan Ams';
       else info.meet_name = 'Worlds';
@@ -89,7 +93,7 @@ export function parseMeetInfo(lines: string[], title: string, url: string): Meet
       else if (line.includes('Junior')) info.age_category = 'Junior';
       else if (line.includes('Youth')) info.age_category = 'Youth';
       else if (line.includes('University') || line.includes('FISU')) info.age_category = 'University';
-      else if (line.includes('Senior') || line.includes('World Championships')) info.age_category = 'Senior';
+      else if (line.includes('Senior') || line.includes('World Championships') || line.includes('Olympic Qualifier')) info.age_category = 'Senior';
     }
     break;
   }
