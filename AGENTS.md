@@ -1,6 +1,6 @@
 # MeetCal Mobile
 
-Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `lib/api/meetcal-api.ts` (transport in `lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`config/ios-app-intents/MeetCalAPI.swift`).
+Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `lib/api/meetcal-api.ts` (transport in `lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`config/ios-app-intents/MeetCalAPI.swift`). How writes keep the derived data (views, histories, summaries, search) current, and what to run after a write that bypasses `convex/ingest.ts`, is in `docs/backend.md`.
 
 Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
 
@@ -18,7 +18,7 @@ Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetca
 | `contexts/` | Selected meet, saved sessions, theme, RevenueCat subscription |
 | `types/`, `data/types/` | Shared domain types |
 | `targets/`, `widget/` | Native iOS/Android home-screen widgets |
-| `convex/` | Backend: queries, ingest mutations, views, crons, scrapers (`convex/scrapers/`). Tests in `convex-tests/`. Deploy with `npx convex deploy` |
+| `convex/` | Backend: queries, ingest mutations, views, crons, scrapers (`convex/scrapers/`). Tests in `convex-tests/`. Deploy with `npx convex deploy`. See `docs/backend.md` |
 | `.maestro/` | Device smoke flows |
 | `.codex/skills/` | Agent skills, including the three-pass review skill |
 
