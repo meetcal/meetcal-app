@@ -14,6 +14,7 @@ import { parseTnky } from './parse/wso/tnky';
 import { OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
+import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -162,6 +163,15 @@ export const WSO_SOURCES: WsoSource[] = [
       const { records, warnings } = parseIllinois(lines, 'Illinois');
       for (const warning of warnings) console.log(`wso records (Illinois): ${warning}`);
       return records;
+    },
+  },
+  {
+    wso: 'Mountain South',
+    scrape: async () => {
+      const urls = mountainSouthPdfUrls(await fetchText('https://mountainsouth.org/records/'));
+      if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
+      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
+      return pdfs.flatMap((pages) => parseMountainSouth(pages, 'Mountain South'));
     },
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
