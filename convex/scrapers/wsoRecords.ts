@@ -5,7 +5,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchText } from './lib/http';
 import { postSlack } from './lib/slack';
-import { gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
+import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { FLAT_SHEET_NAME, parseFlatSheet } from './parse/wso/flat';
 
 /**
@@ -16,9 +16,21 @@ import { FLAT_SHEET_NAME, parseFlatSheet } from './parse/wso/flat';
  */
 type WsoSource = { wso: string; scrape: () => Promise<WsoRecord[]> };
 
+/**
+ * The tab the configured URL points at (its `gid`), else the one named
+ * "Current Records". The Python scraper always asked for the name, and
+ * California North's tab of that name switched to a human-readable layout
+ * the parser cannot read: 0 records a night, while the gid tab still holds
+ * the flat data.
+ */
 const flat = (wso: string, sheetUrl: string): WsoSource => ({
   wso,
-  scrape: async () => parseFlatSheet(await fetchText(gvizCsvByName(sheetIdOf(sheetUrl), FLAT_SHEET_NAME), 60_000), wso),
+  scrape: async () => {
+    const sheetId = sheetIdOf(sheetUrl);
+    const gid = gidOf(sheetUrl);
+    const url = gid ? gvizCsvByGid(sheetId, gid) : gvizCsvByName(sheetId, FLAT_SHEET_NAME);
+    return parseFlatSheet(await fetchText(url, 60_000), wso);
+  },
 });
 
 export const WSO_SOURCES: WsoSource[] = [

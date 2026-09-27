@@ -1,3 +1,4 @@
+import { gidOf } from '../../convex/scrapers/parse/wso/common';
 import { normalizeAgeGroup, parseFlatSheet } from '../../convex/scrapers/parse/wso/flat';
 
 describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
@@ -29,5 +30,11 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
       { wso: 'Georgia', age_category: 'Senior', gender: 'Men', weight_class: '110+', snatch_record: 140, cj_record: null, total_record: 300 },
       { wso: 'Georgia', age_category: 'Masters 65', gender: 'Women', weight_class: '63', snatch_record: null, cj_record: null, total_record: null },
     ]);
+  });
+
+  it('reads the tab a sheet URL points at', () => {
+    expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit?gid=35344992#gid=35344992')).toBe('35344992');
+    expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit#gid=0')).toBe('0');
+    expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit?usp=sharing')).toBeNull();
   });
 });

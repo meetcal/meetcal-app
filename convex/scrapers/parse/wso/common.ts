@@ -30,3 +30,8 @@ export function intOrNull(value: string): number | null {
   if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) return null;
   return Math.trunc(Number(text));
 }
+
+/** The `gid` (tab) a Google Sheets URL points at, if it names one. */
+export function gidOf(url: string): string | null {
+  return /[?&#]gid=(\d+)/.exec(url)?.[1] ?? null;
+}
