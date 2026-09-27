@@ -81,7 +81,14 @@ export function joinJsonChunks(chunks: readonly string[]): string {
 /** Plain text split into chunks, for views that are not JSON (the search directory). */
 export function textChunks(text: string): string[] {
   const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += MAX_CHUNK_CHARS) chunks.push(text.slice(i, i + MAX_CHUNK_CHARS));
+  for (let i = 0; i < text.length; ) {
+    let end = Math.min(i + MAX_CHUNK_CHARS, text.length);
+    // Never between the two halves of a surrogate pair: a lone half is not a
+    // string Convex can store.
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    chunks.push(text.slice(i, end));
+    i = end;
+  }
   return chunks.length > 0 ? chunks : [''];
 }
 
@@ -166,8 +173,20 @@ export async function readFreshView<T>(ctx: QueryCtx, key: string): Promise<Fres
 }
 
 /**
- * A view's raw text whatever its age, or null if it was never built. Only for
- * views whose staleness is harmless by design (the search directory).
+ * A JSON view's text whatever its age (its chunks joined back into one
+ * array), or null if it was never built. For views written with `jsonChunks`
+ * whose staleness is harmless by design (the shard size table, a meet's
+ * athlete keys, the rebuild's class list).
+ */
+export async function readViewJsonAnyAge(ctx: QueryCtx, key: string): Promise<string | null> {
+  const header = await viewHeader(ctx, key);
+  return header ? joinJsonChunks(await readChunks(ctx, key, header.chunk_count)) : null;
+}
+
+/**
+ * A text view's raw text whatever its age, or null if it was never built.
+ * Only for views whose staleness is harmless by design (the search directory
+ * and its shards); JSON views go through `readViewJsonAnyAge`.
  */
 export async function readViewTextAnyAge(ctx: QueryCtx, key: string): Promise<string | null> {
   const header = await viewHeader(ctx, key);

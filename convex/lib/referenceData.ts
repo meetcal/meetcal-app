@@ -114,10 +114,25 @@ export function distinctCollated(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort(compareCollated);
 }
 
-/** `GET /clubs`: distinct non-empty club names. */
+/**
+ * `GET /clubs`: distinct non-empty club names. Skips along the club index one
+ * read per club rather than reading every roster row: rosters are never
+ * deleted, so the table only grows, while the set of clubs barely does.
+ */
 export async function computeClubs(ctx: QueryCtx): Promise<string[]> {
-  const rows = await ctx.db.query('athletes').collect();
-  return distinctCollated(rows.map((r) => r.club).filter((club) => club !== ''));
+  const clubs: string[] = [];
+  let last: string | null = null;
+  for (;;) {
+    const after: string | null = last;
+    const row = await ctx.db
+      .query('athletes')
+      .withIndex('by_club', (q) => (after === null ? q : q.gt('club', after)))
+      .first();
+    if (!row) break;
+    if (row.club !== '') clubs.push(row.club);
+    last = row.club;
+  }
+  return distinctCollated(clubs);
 }
 
 /** `GET /data/wso/` */

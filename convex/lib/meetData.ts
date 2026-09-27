@@ -357,18 +357,30 @@ function timelinePoint(row: Doc<'lifting_results'>): TimelinePoint {
   return [row.date, bests.best_snatch, bests.best_cj, bests.best_total];
 }
 
+/**
+ * Reads in flight at once: a national meet's roster runs past a thousand
+ * athletes, above the concurrent reads one Convex function may have open.
+ */
+const TIMELINE_READ_BATCH = 250;
+
 /** Each distinct folded name's results since `horizon`, as points. */
 export async function computeTimelines(ctx: QueryCtx, names: readonly string[], horizon: string): Promise<Timeline[]> {
   const keys = Array.from(new Set(names.map(normalizeName))).sort(compareBytes);
-  return await Promise.all(
-    keys.map(async (key): Promise<Timeline> => {
-      const rows = await ctx.db
-        .query('lifting_results')
-        .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon))
-        .collect();
-      return [key, rows.map(timelinePoint)];
-    }),
-  );
+  const timelines: Timeline[] = [];
+  for (let i = 0; i < keys.length; i += TIMELINE_READ_BATCH) {
+    timelines.push(
+      ...(await Promise.all(
+        keys.slice(i, i + TIMELINE_READ_BATCH).map(async (key): Promise<Timeline> => {
+          const rows = await ctx.db
+            .query('lifting_results')
+            .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon))
+            .collect();
+          return [key, rows.map(timelinePoint)];
+        }),
+      )),
+    );
+  }
+  return timelines;
 }
 
 /**

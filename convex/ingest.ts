@@ -43,8 +43,9 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
       .query('view_hints')
       .withIndex('by_kind_key', (q) => q.eq('kind', hint.kind).eq('key', hint.key))
       .first();
-    if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1 });
-    else await ctx.db.insert('view_hints', { ...hint, seq: 0 });
+    const updatedAt = Date.now();
+    if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt });
+    else await ctx.db.insert('view_hints', { ...hint, seq: 0, updatedAt });
   }
   await scheduleRefresh(ctx);
 }
@@ -105,13 +106,15 @@ export const upsertLiftingResults = internalMutation({
         hints.push(...resultHints(doc));
         continue;
       }
-      const { _id, _creationTime, ...current } = existing;
+      // The pre-Convex serial is the row's identity, not a value the scrapers
+      // send: kept, and left out of the comparison.
+      const { _id, _creationTime, legacyId, ...current } = existing;
       if (sameValues(current, doc)) {
         unchanged += 1;
         continue;
       }
       hints.push(...resultHints(existing));
-      await ctx.db.replace(_id, doc);
+      await ctx.db.replace(_id, { ...doc, legacyId });
       updated += 1;
       hints.push(...resultHints(doc));
     }

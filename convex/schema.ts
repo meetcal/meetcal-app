@@ -316,7 +316,12 @@ export default defineSchema({
     // only if it is unchanged since the refresh read it, so a write landing
     // mid-refresh keeps its hint for the next one.
     seq: v.optional(v.number()),
-  }).index('by_kind_key', ['kind', 'key']),
+    // When a write last named this key. A full rebuild clears every hint
+    // updated before it started, however many there are.
+    updatedAt: v.optional(v.number()),
+  })
+    .index('by_kind_key', ['kind', 'key'])
+    .index('by_updatedAt', ['updatedAt']),
 
   // Refresh bookkeeping (`convex/views.ts`): whether a refresh is scheduled,
   // and the source versions of the last completed one.
@@ -329,6 +334,9 @@ export default defineSchema({
     // When the running rebuild's latest stage started. A rebuild whose stage
     // failed stops beating, and the next refresh starts a new one.
     rebuildHeartbeat: v.optional(v.number()),
+    // Times the running rebuild was restarted after a stage stopped; the
+    // views-refresh job alerts once it keeps failing.
+    rebuildRestarts: v.optional(v.number()),
   }).index('by_name', ['name']),
 
   // A view's text, cut into documents of well under 1 MiB.

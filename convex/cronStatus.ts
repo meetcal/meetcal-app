@@ -24,9 +24,16 @@ export const start = internalMutation({
  * A run ends: records the outcome, queues its alert (if it earns one) with
  * any still unsent, and returns them all to send.
  */
+/**
+ * Stored error text is cut to this: a scraper's joined failures can run long,
+ * and the row (with its queued alerts) must stay far below a document's 1 MiB.
+ */
+const MAX_ERROR_CHARS = 4000;
+
 export const finish = internalMutation({
   args: { job: v.string(), error: v.optional(v.string()) },
-  handler: async (ctx, { job, error }): Promise<Notice[]> => {
+  handler: async (ctx, { job, error: fullError }): Promise<Notice[]> => {
+    const error = fullError === undefined || fullError.length <= MAX_ERROR_CHARS ? fullError : `${fullError.slice(0, MAX_ERROR_CHARS)}… (truncated)`;
     const existing = await statusOf(ctx, job);
     const { alerting, notice } = afterRun(job, existing?.alerting as Alerting | undefined, error === undefined ? { ok: true } : { ok: false, error });
     const unsent = [...(existing?.unsent ?? []), ...(notice ? [{ kind: notice.kind, detail: notice.detail }] : [])];

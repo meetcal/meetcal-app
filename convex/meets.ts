@@ -43,9 +43,18 @@ const UPCOMING_WINDOW_MONTHS = 3;
  * clock itself would stay cached past the moment the window moves (Convex
  * re-runs a query when its data changes, never when time passes).
  */
+/**
+ * How far the client's `now` may be from the server's before it is ignored.
+ * The app sends its hour, corrected by a server clock sample once it has one;
+ * the first request of a process has none, and a device clock months off
+ * would otherwise get a short or empty list (Rust always used its own clock).
+ */
+const MAX_CLIENT_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
+
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
-  handler: async (ctx, { now, ifNoneMatch }) => {
+  handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
+    const now = Math.abs(clientNow - Date.now()) > MAX_CLIENT_CLOCK_SKEW_MS ? Date.now() : clientNow;
     const [upcoming, ongoing] = await Promise.all(
       (['upcoming', 'ongoing'] as const).map((status) =>
         ctx.db

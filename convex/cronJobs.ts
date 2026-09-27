@@ -26,6 +26,9 @@ export const JOBS: Record<string, Job> = {
   // checked on its own calendar, so a completion lands within the hour.
   'complete-ended-meets': { schedule: '15 * * * *', run: { kind: 'mutation', fn: internal.ingest.completeEndedMeets } },
   urlwatch: { schedule: '0 * * * *', run: { kind: 'action', fn: internal.scrapers.urlwatch.run } },
+  // Catches views up if a refresh failed or was lost, and alerts when they
+  // fall hours behind (`views:refreshJob`).
+  'views-refresh': { schedule: '50 * * * *', run: { kind: 'action', fn: internal.views.refreshJob } },
   // The daily scrapers keep the UTC times the VPS crontab (US Eastern) ran them at.
   standards: { schedule: '15 3 * * *', run: { kind: 'action', fn: internal.scrapers.standards.run } },
   records: { schedule: '35 3 * * *', run: { kind: 'action', fn: internal.scrapers.records.run } },

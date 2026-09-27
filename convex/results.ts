@@ -6,7 +6,7 @@ import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } f
 import { ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
 import { compareBytes } from './lib/sort';
 import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
-import { readViewTextAnyAge } from './lib/views';
+import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
 import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate } from './lib/validation';
 
 // `/lifting-results/*` and `/search`: each query answers the JSON of the Rust
@@ -178,7 +178,7 @@ async function directory(ctx: QueryCtx): Promise<string> {
 async function searchText(ctx: QueryCtx, query: string): Promise<string> {
   const bigrams = queryBigrams(query);
   if (bigrams) {
-    const sizesText = await readViewTextAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
+    const sizesText = await readViewJsonAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
     if (sizesText !== null) {
       const sizes = new Map(JSON.parse(sizesText) as [string, number][]);
       let rarest: string | null = null;
