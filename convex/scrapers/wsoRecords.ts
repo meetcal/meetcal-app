@@ -15,6 +15,7 @@ import { OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
+import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 
 /**
@@ -174,6 +175,15 @@ export const WSO_SOURCES: WsoSource[] = [
       return pdfs.flatMap((pages) => parseMountainSouth(pages, 'Mountain South'));
     },
   },
+  {
+    wso: 'New York',
+    scrape: async () => {
+      const urls = newYorkPdfUrls(await fetchText('https://www.nywso.com/state-records'));
+      if (!urls.length) throw new Error('No records PDFs found on the New York records page');
+      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
+      return pdfs.flatMap((pages) => parseNewYork(pages, 'New York'));
+    },
+  },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
 ];
 
@@ -219,7 +229,23 @@ function slackMessage(wso: string, inserted: WsoRecord[], updated: { record: Wso
   return message;
 }
 
-async function syncWso(ctx: ActionCtx, wso: string, records: WsoRecord[]) {
+/**
+ * One record per class, the last listed winning, as it did when the Python
+ * upserted row by row. Writing both copies (New York's PDF lists Masters Men
+ * 80-84 twice) would flip them every run and report changes that aren't.
+ */
+function lastPerClass(records: WsoRecord[]): WsoRecord[] {
+  const byClass = new Map<string, WsoRecord>();
+  for (const record of records) {
+    const key = JSON.stringify([record.age_category, record.gender, record.weight_class]);
+    byClass.delete(key);
+    byClass.set(key, record);
+  }
+  return [...byClass.values()];
+}
+
+async function syncWso(ctx: ActionCtx, wso: string, scraped: WsoRecord[]) {
+  const records = lastPerClass(scraped);
   const outcomes: { wasInsert: boolean; wasChanged: boolean; previous?: Record<string, number | undefined> }[] = await ctx.runMutation(
     internal.ingest.upsertWsoRecords,
     { rows: wsoRows(records) },
