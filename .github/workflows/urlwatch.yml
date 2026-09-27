@@ -1,0 +1,67 @@
+name: URL Watch
+
+# Nightly check of the usamasters.net pages MeetCal follows by hand (results,
+# qualifying totals, events, records); a page that changed is posted to Slack
+# with its diff. This replaces the VPS's `urlwatch` cron (23:00 EDT).
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: urlwatch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  urlwatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install urlwatch
+        # The versions the VPS ran.
+        run: pip install urlwatch==2.29 cssselect==1.4.0 lxml==6.1.1 minidb==2.0.8
+
+      # urlwatch keeps each page's last snapshot in cache.db. Each run saves a
+      # new cache entry and the next restores the newest one.
+      - name: Restore snapshots
+        id: restore
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/urlwatch
+          key: urlwatch-cache-${{ github.run_id }}
+          restore-keys: |
+            urlwatch-cache-
+
+      - name: Check pages
+        env:
+          SLACK_URLWATCH_WEBHOOK_URL: ${{ secrets.SLACK_URLWATCH_WEBHOOK_URL }}
+          HAVE_SNAPSHOTS: ${{ steps.restore.outputs.cache-matched-key != '' }}
+        run: |
+          mkdir -p ~/.cache/urlwatch
+          config="$RUNNER_TEMP/urlwatch.yaml"
+          sed "s|\${SLACK_URLWATCH_WEBHOOK_URL}|${SLACK_URLWATCH_WEBHOOK_URL}|g" scrapers/urlwatch/urlwatch.yaml > "$config"
+          # Without earlier snapshots every page would be reported as new:
+          # take a silent baseline instead. Likewise without a webhook.
+          if [ "$HAVE_SNAPSHOTS" != "true" ] || [ -z "$SLACK_URLWATCH_WEBHOOK_URL" ]; then
+            echo "No snapshots or no webhook: not posting to Slack this run."
+            sed -i '/^  slack:/,/^  [a-z]/ s/enabled: true/enabled: false/' "$config"
+          fi
+          urlwatch --config "$config" --urls scrapers/urlwatch/urls.yaml --cache ~/.cache/urlwatch/cache.db
+
+      - name: Save snapshots
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/urlwatch
+          key: urlwatch-cache-${{ github.run_id }}
