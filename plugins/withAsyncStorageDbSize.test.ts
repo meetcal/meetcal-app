@@ -10,7 +10,7 @@ jest.mock("@expo/config-plugins", () => ({
     mockWithGradleProperties(config, mod as GradleMod),
 }));
 
-const withAsyncStorageDbSize = require("@/config/withAsyncStorageDbSize");
+const withAsyncStorageDbSize = require("./withAsyncStorageDbSize");
 
 describe("withAsyncStorageDbSize", () => {
   beforeEach(() => {

@@ -49,13 +49,13 @@ for us — nothing to hand-maintain, as long as `AppDelegate.swift` stays unmodi
   device-level, so it applies to pushed screens with no tab bar too.
 
   Screens apply it at their outermost container via
-  `useScreenHorizontalInsets()` (`hooks/useScreenInsets.ts`), which returns
+  `useScreenHorizontalInsets()` (`src/hooks/useScreenInsets.ts`), which returns
   `{ paddingLeft, paddingRight }`. Inner padding then sits inside the safe band
   the way layout margins do on iOS.
 
 - **Apply it once per subtree.** Chrome rendered *inside* a screen (for example
   `PageIndicator`) inherits the screen's padding and must not add it again, or it
-  ends up off-centre. Chrome mounted in `app/_layout.tsx` above the screens
+  ends up off-centre. Chrome mounted in `src/app/_layout.tsx` above the screens
   (`Toast`, `OfflineIndicator`) spans the whole window and does need it.
 
 - **Anything that measures the window must use the usable width.**
@@ -63,7 +63,7 @@ for us — nothing to hand-maintain, as long as `AppDelegate.swift` stays unmodi
   and the schedule screen sizes its pages and `getItemLayout` from that. Paging off
   the raw window width snaps 466pt at a time through a 382pt viewport and lands
   between days. The hook also re-anchors on the current page whenever that width
-  changes (fold, unfold, Split View); see `hooks/usePaginatedSchedule.test.tsx`.
+  changes (fold, unfold, Split View); see `src/hooks/usePaginatedSchedule.test.tsx`.
 
 - **Clamp anchored overlays to the safe area.** `FilterPillBar` positions its menu
   against `windowWidth - insets.right` rather than the raw window edge.

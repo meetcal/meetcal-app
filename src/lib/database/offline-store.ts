@@ -1415,7 +1415,8 @@ async function readRemainingRosterNames(
  * keyed by name, not by meet, so nothing else ever reclaimed it: a season of
  * downloaded meets left every athlete's history behind after the meet
  * expired, and the Android AsyncStorage database (6 MB by default, raised by
- * `config/withAsyncStorageDbSize`) filled with rows no screen could reach.
+ * the root's `plugins/withAsyncStorageDbSize.js`) filled with rows no screen
+ * could reach.
  *
  * Cheap exit first: a browsed-but-never-downloaded meet has a roster and no
  * history, and must not pay for reading every other roster.

@@ -12,13 +12,13 @@ website and a command line tool, all reading one Convex backend.
 
 | Path | What it is | Built with |
 |---|---|---|
-| `app/`, `components/`, `lib/`, … (the root) | The mobile app | React Native, Expo (Bun) |
+| [`src/`](src/) (with `assets/`, `plugins/`, `targets/` and `widget/` at the root) | The mobile app | React Native, Expo (Bun) |
 | [`convex/`](convex/) | The backend: queries, materialized views, ingest, and the scheduled scrapers that keep the data current | Convex (TypeScript) |
 | [`web/`](web/) | meetcal.app: the marketing site and the competition data pages | Rust, Leptos (WebAssembly), Trunk, deployed on Vercel |
 | [`cli/`](cli/) | `meetcal`, the command line tool | Rust, released through Homebrew |
 
 All live data comes from Convex. The app, the website and the CLI call the same queries (the app
-through `lib/api/meetcal-api.ts`, the website and the CLI over Convex's HTTP API), so a change to a
+through `src/lib/api/meetcal-api.ts`, the website and the CLI over Convex's HTTP API), so a change to a
 query's answer reaches all three. How the backend keeps its derived data current is in
 [docs/backend.md](docs/backend.md).
 

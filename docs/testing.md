@@ -26,7 +26,7 @@ Jest runs every file on a pinned *device* zone, set by `jest/device-timezone-env
 
 Use a US zone to catch UTC midnight read back as local (`new Date("2026-06-20").getDate()` is 19 in Los Angeles) and a far-east zone to catch local midnight read back as UTC. Files that depend on a zone assert it (`Intl.DateTimeFormat().resolvedOptions().timeZone`). To sweep the unpinned files through another zone: `JEST_DEVICE_TIME_ZONE=Asia/Kolkata bunx jest --ci --watchman=false`.
 
-Put tests next to the module they cover (`lib/api/meetcal-api.test.ts`, not a parallel `__tests__` tree). The exception is `app/`: Expo Router turns every file under `app/` into a route, so a test there is bundled into the app along with `react-test-renderer` and its `jest.mock` calls. Screen and route tests live in `components/<feature>/` and import the screen from `@/app/...` (for example `components/athlete-results/attempt-estimator-route.test.tsx`).
+Put tests next to the module they cover (`src/lib/api/meetcal-api.test.ts`, not a parallel `__tests__` tree). The exception is `src/app/`: Expo Router turns every file under `src/app/` into a route, so a test there is bundled into the app along with `react-test-renderer` and its `jest.mock` calls. Screen and route tests live in `src/components/<feature>/` and import the screen from `@/app/...` (for example `src/components/athlete-results/attempt-estimator-route.test.tsx`).
 
 ### Cold-cache timeouts and the UI warm-up
 
@@ -46,5 +46,5 @@ Device smoke coverage for routes. See `docs/maestro.md`. Not part of GitHub Acti
 ## What not to do
 
 - Do not pad coverage with screenshot-only tests.
-- Do not call a real Convex deployment from Jest; use the transport stub (`lib/api/json-transport-stub.ts`).
+- Do not call a real Convex deployment from Jest; use the transport stub (`src/lib/api/json-transport-stub.ts`).
 - Do not exercise `convex/scrapers/` network code in the app unit gate (their parsers are tested in `convex-tests/`).

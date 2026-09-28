@@ -69,7 +69,7 @@ module.exports = defineConfig([
     // configs, the custom Jest environment): `require`, `module`, and
     // `__dirname` are real here.
     files: [
-      "config/**/*.js",
+      "plugins/**/*.js",
       "jest/**/*.js",
       "targets/**/*.js",
       "*.config.js",

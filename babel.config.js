@@ -6,8 +6,11 @@ module.exports = function (api) {
       [
         'babel-plugin-module-resolver',
         {
+          // Same as tsconfig.json's paths: `@/assets/…` is the root assets/
+          // folder, every other `@/…` is src/.
           alias: {
-            '@': '.',
+            '^@/assets/(.+)': './assets/\\1',
+            '^@/(.+)': './src/\\1',
           },
         },
       ],
