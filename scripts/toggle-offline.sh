@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Toggle Offline Mode Script
-# Toggles SIMULATE_OFFLINE in config/development.ts
+# Toggles SIMULATE_OFFLINE in src/config/development.ts
 
-CONFIG_FILE="config/development.ts"
+CONFIG_FILE="src/config/development.ts"
 
 # Check if file exists
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -33,5 +33,5 @@ else
 fi
 
 echo ""
-echo "Current config/development.ts:"
+echo "Current src/config/development.ts:"
 grep "SIMULATE_OFFLINE" "$CONFIG_FILE"

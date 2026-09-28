@@ -6,12 +6,12 @@ const ROOT = process.cwd();
 const LCOV_PATH = process.env.LCOV_PATH ?? join(ROOT, "coverage", "lcov.info");
 
 const SOURCE_ROOTS = [
-  "app",
-  "components",
-  "hooks",
-  "lib",
-  "utils",
-  "contexts",
+  "src/app",
+  "src/components",
+  "src/hooks",
+  "src/lib",
+  "src/utils",
+  "src/contexts",
 ] as const;
 
 const IGNORE_DIR_NAMES = new Set([

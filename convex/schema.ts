@@ -14,7 +14,7 @@ import { v } from 'convex/values';
  * - `views` / `view_chunks` hold materialized views (`convex/lib/views.ts`).
  *
  * Queries convert camelCase documents to the Rust API's snake_case JSON, so
- * `lib/api/meetcal-api.ts` validates and maps them unchanged.
+ * `src/lib/api/meetcal-api.ts` validates and maps them unchanged.
  */
 /**
  * Who set a record lift: the athlete, or "Standard" while nobody has claimed

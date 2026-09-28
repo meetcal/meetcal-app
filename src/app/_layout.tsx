@@ -149,7 +149,7 @@ export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   const [fontsLoaded, fontError] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    SpaceMono: require("@/assets/fonts/SpaceMono-Regular.ttf"),
   });
   // A font that fails to load leaves `fontsLoaded` false forever. Since the
   // splash is only hidden from inside the subtree gated below, that would

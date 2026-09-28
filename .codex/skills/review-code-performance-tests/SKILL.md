@@ -7,11 +7,11 @@ description: Review MeetCal code quality, measured performance, and risk-based t
 
 Run three passes in order. For an ordinary change, scope the review to its diff and affected callers. For a full audit, inspect production JS/TS surfaces that ship in the app:
 
-`app/`, `components/`, `hooks/`, `lib/`, `utils/`, `contexts/`
+`src/app/`, `src/components/`, `src/hooks/`, `src/lib/`, `src/utils/`, `src/contexts/`
 
 Include non-scraper `convex/` functions when the reviewed change touches backend reads or writes. Out of scope unless the task names them: `convex/scrapers/`, native `widget/` / `targets/` binaries, generated `ios/` / `android/`.
 
-The app reads Convex (`convex/` in this repo) through `lib/api/meetcal-api.ts` and `lib/api/transport.ts`. Package manager is bun.
+The app reads Convex (`convex/` in this repo) through `src/lib/api/meetcal-api.ts` and `src/lib/api/transport.ts`. Package manager is bun.
 
 Do not merge or push to `master`. If the task calls for a PR, open or update one against `master` with evidence.
 
@@ -25,7 +25,7 @@ Hunt for:
 
 - Dead code and unused exports on the runtime path
 - Unbounded loops / unbounded `Promise.all` over meet-sized data
-- Hidden policy in screens that belongs in `lib/` or `utils/`
+- Hidden policy in screens that belongs in `src/lib/` or `src/utils/`
 - Unsafe `as T` / `as any` past `JSON.parse` or fetch
 - Missing validation at API and auth boundaries (token, saved sessions, preferences, search, meet package)
 - Duplicated time/timezone/meet-name policy
@@ -47,7 +47,7 @@ Measure or trace:
 - API waterfalls vs batch/package endpoints (`/meets/package`, batched `/lifting-results/by-names`)
 - Name-list URL size (chunk)
 - Offline inflate/deflate and prefetch batching (`HISTORY_DOWNLOAD_BATCH_SIZE`)
-- Auth/network cache stampedes (`inFlight` maps in `lib/authCache.ts`, `lib/networkUtils.ts`, `lib/database/queries.ts`)
+- Auth/network cache stampedes (`inFlight` maps in `src/lib/authCache.ts`, `src/lib/networkUtils.ts`, `src/lib/database/queries.ts`)
 
 Use `__DEV__` slow-API logs (`[perf] slow api request`) and existing in-flight dedupe. Rank hot paths by latency, frequency, payload size, and failure cost. Change only with a before/after story; preserve auth and validation work even when it has a cost.
 

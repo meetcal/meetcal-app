@@ -31,7 +31,7 @@ export default ({ config }) => ({
       NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
       NSLocationWhenInUseUsageDescription: "MeetCal does not use your location, but frameworks we use have location-related things so I have to include this.",
       UIBackgroundModes: ["remote-notification"],
-      // Read by the Siri / App Intents client (config/ios-app-intents/MeetCalAPI.swift).
+      // Read by the Siri / App Intents client (plugins/ios-app-intents/MeetCalAPI.swift).
       MeetCalConvexURL: process.env.EXPO_PUBLIC_CONVEX_URL ?? '',
     },
     icon: './assets/images/liquid-glass.icon',
@@ -51,7 +51,7 @@ export default ({ config }) => ({
   plugins: [
     // Must be first: mods run in reverse plugin order, and this one has to run
     // after @bacons/apple-targets has created the extension targets.
-    './config/withVersionSync',
+    './plugins/withVersionSync',
     [
       'onesignal-expo-plugin',
       { mode: 'production', iPhoneDeploymentTarget: '18.0' }
@@ -85,11 +85,11 @@ export default ({ config }) => ({
       '@bacons/apple-targets/app.plugin',
       { root: 'targets' },
     ],
-    './config/withAndroidSavedWidget',
-    './config/withIOSSavedWidget',
+    './plugins/withAndroidSavedWidget',
+    './plugins/withIOSSavedWidget',
     // Android AsyncStorage defaults to a 6 MB SQLite ceiling; downloaded
     // meets' athlete history does not fit. See the plugin for the budget.
-    './config/withAsyncStorageDbSize',
+    './plugins/withAsyncStorageDbSize',
     [
       '@sentry/react-native',
       {
@@ -98,7 +98,7 @@ export default ({ config }) => ({
         organization: "meetcal-llc"
       }
     ],
-    './config/withIOSAppIntents'
+    './plugins/withIOSAppIntents'
   ],
   experiments: {
     typedRoutes: true,
