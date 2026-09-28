@@ -50,10 +50,10 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
     expect(light.cj_by).toEqual({ name: 'Standard' });
     // "10-June_2026" is still a readable date.
     expect(light.total_by).toEqual({ name: 'YATES, Leora', date: '2026-06-10', location: 'Adelaide, SA' });
-    // No value (blank or "Standard"): no holder; an unreal year stays as written.
+    // No value (blank or "Standard"): no holder; the sheet's "0206" is corrected (`correctRecordDate`).
     expect(retired).not.toHaveProperty('snatch_by');
     expect(retired).not.toHaveProperty('cj_by');
-    expect(retired.total_by).toEqual({ name: 'CASSIDY, Wes', date: '10-June-0206', location: 'Adelaide, SA' });
+    expect(retired.total_by).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
   });
 
   it('formats weight classes like the Python scraper', () => {
