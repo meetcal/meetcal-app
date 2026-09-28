@@ -19,6 +19,8 @@ android/
 ios/
 
 .github/
+# The website; not part of the app build.
+web/
 .idea/
 .vscode/
 .claude/

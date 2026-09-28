@@ -1,11 +1,26 @@
+import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
+import type { recordHolder } from '../schema';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
 // view builders compute them here too, so both paths give the same answer.
 
-/** `GET /data/records`: rows with all three records, by weight class. */
+/** Who set a record lift, when and where; `null` for what the source leaves out. */
+export type ApiRecordHolder = { name: string; date: string | null; location: string | null };
+
+function apiHolder(holder: Infer<typeof recordHolder> | undefined): ApiRecordHolder | null {
+  if (!holder) return null;
+  return { name: holder.name, date: holder.date ?? null, location: holder.location ?? null };
+}
+
+/** Each lift's holder, as `snatch_by`, `cj_by` and `total_by`. */
+function apiHolders(row: { snatchBy?: Infer<typeof recordHolder>; cjBy?: Infer<typeof recordHolder>; totalBy?: Infer<typeof recordHolder> }) {
+  return { snatch_by: apiHolder(row.snatchBy), cj_by: apiHolder(row.cjBy), total_by: apiHolder(row.totalBy) };
+}
+
+/** `GET /data/records`: rows with all three records, by weight class, with their holders. */
 export async function computeRecords(ctx: QueryCtx) {
   const rows = (await ctx.db.query('records').collect()).filter(
     (r) => r.snatchRecord !== undefined && r.cjRecord !== undefined && r.totalRecord !== undefined,
@@ -18,6 +33,7 @@ export async function computeRecords(ctx: QueryCtx) {
     weight_class: r.weightClass,
     gender: r.gender,
     record_type: r.recordType,
+    ...apiHolders(r),
   }));
 }
 
@@ -81,8 +97,8 @@ export type RankedTotal = { name: string; total: number };
  * One row per athlete, their heaviest total; heaviest first, equal totals in
  * name order (`best_total_per_athlete`).
  */
-export function bestTotalPerAthlete(rows: Iterable<RankedTotal>): RankedTotal[] {
-  const best = new Map<string, RankedTotal>();
+export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T[] {
+  const best = new Map<string, T>();
   for (const row of rows) {
     const existing = best.get(row.name);
     if (existing && existing.total >= row.total) continue;
@@ -105,6 +121,32 @@ export async function computeNationalRankings(
   for (const row of rows) {
     if (row.total === undefined || row.total === 0) continue;
     ranked.push({ name: row.name, total: row.total });
+  }
+  return bestTotalPerAthlete(ranked);
+}
+
+export type DatedTotal = RankedTotal & { date: string };
+
+/**
+ * `GET /data/nat-rankings-year`: `/data/nat-rankings` within one calendar
+ * year, each best with the date it was lifted.
+ */
+export async function computeNationalRankingsForYear(
+  ctx: QueryCtx,
+  federation: string,
+  ageCategory: string,
+  year: string,
+): Promise<DatedTotal[]> {
+  const first = `${year}-01-01`;
+  const last = `${year}-12-31`;
+  const rows = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .collect();
+  const ranked: DatedTotal[] = [];
+  for (const row of rows) {
+    if (row.total === undefined || row.total === 0 || row.date < first || row.date > last) continue;
+    ranked.push({ name: row.name, total: row.total, date: row.date });
   }
   return bestTotalPerAthlete(ranked);
 }
@@ -149,6 +191,9 @@ export type WsoRecordRow = {
   total_record: number | null;
   weight_class: string;
   wso: string;
+  snatch_by: ApiRecordHolder | null;
+  cj_by: ApiRecordHolder | null;
+  total_by: ApiRecordHolder | null;
 };
 
 /**
@@ -177,6 +222,7 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
     total_record: r.totalRecord ?? null,
     weight_class: r.weightClass,
     wso: r.wso,
+    ...apiHolders(r),
   }));
 }
 

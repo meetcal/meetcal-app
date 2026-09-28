@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
+import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import { ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
 import { compareBytes } from './lib/sort';
@@ -15,6 +16,15 @@ import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePres
 // result. Row lists travel as JSON text (`{ json }`).
 
 export const MAX_LIMIT_PER_NAME = 200;
+
+/** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
+export const byMeet = query({
+  args: { meet: v.string() },
+  handler: async (ctx, { meet }) => {
+    requireNonEmpty('meet', meet);
+    return { json: JSON.stringify(await computeMeetResults(ctx, meet)) };
+  },
+});
 
 /** Newest first across athletes (a stable sort keeps each athlete's own order). */
 function newestFirst(rows: ApiLiftingResult[]): ApiLiftingResult[] {

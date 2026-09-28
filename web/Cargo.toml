@@ -1,0 +1,16 @@
+[package]
+name = "meetcal-web"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.103"
+js-sys = "0.3.103"
+leptos = { version = "0.8.20", features = ["csr"] }
+leptos_router = "0.8.14"
+reqwest = { version = "0.13", features = ["json"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+wasm-bindgen = "0.2.103"
+wasm-bindgen-futures = "0.4.53"
+web-sys = { version = "0.3.103", features = ["Clipboard", "Document", "Element", "HtmlElement", "Navigator", "Window"] }

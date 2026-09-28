@@ -20,6 +20,7 @@
   ],
   "exclude": [
     "node_modules",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    "web"
   ]
 }

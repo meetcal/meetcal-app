@@ -20,7 +20,9 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 `CLAUDE.md` imports this file for Claude Code. Keep shared repository rules here; the review skill holds its specialized audit procedure.
 
-Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
+The website (meetcal.app, Rust + Leptos compiled to WebAssembly) is in `web/` and reads the same Convex queries over Convex's HTTP API (`web/src/utils/api.rs`). It has its own toolchain and gates (Cargo and Trunk, and npm for its Playwright tests, the one exception to the Bun rule): see `web/TESTING.md` and `web/mise.toml`. The app's lint, typecheck, Jest, Metro and EAS all skip `web/`.
+
+Sister repo (do not implement it here): `meetcal-cli`. `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
 
 ## Layout
 
@@ -37,6 +39,7 @@ Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetca
 | `types/`, `data/types/` | Shared domain types |
 | `targets/`, `widget/` | Native iOS/Android home-screen widgets |
 | `convex/` | Backend: queries, ingest mutations, views, crons, scrapers (`convex/scrapers/`). Tests in `convex-tests/`. Deploy with `npx convex deploy`. See `docs/backend.md` |
+| `web/` | The website: Rust/Leptos (Trunk build, Vercel deploy, Playwright tests). Changing a Convex query's answer changes the site too: check `web/src/pages/comp_data/` |
 | `.maestro/` | Device smoke flows |
 | `.codex/skills/` | Agent skills, including the three-pass review skill |
 

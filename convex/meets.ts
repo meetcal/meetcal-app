@@ -71,6 +71,19 @@ export const list = query({
   },
 });
 
+/** `GET /meets/completed`: completed meets, newest first. */
+export const completed = query({
+  args: { ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { ifNoneMatch }) => {
+    const meets = await ctx.db
+      .query('meets')
+      .withIndex('by_status_and_start_date', (q) => q.eq('status', 'completed'))
+      .order('desc')
+      .collect();
+    return revalidated(meets.map(toApiMeet), ifNoneMatch);
+  },
+});
+
 /** `GET /meets/details`; a missing meet is the Rust API's 404. */
 export const details = query({
   args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },

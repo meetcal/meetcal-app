@@ -1,0 +1,25 @@
+[tools]
+rust = "latest"
+"cargo:cargo-audit" = "latest"
+"cargo:trunk" = "latest"
+"cargo:leptosfmt" = "latest"
+"cargo:wasm-bindgen-cli" = "latest"
+node = "24"
+"npm:prettier" = "latest"
+
+[tasks.run]
+run = "env -u NO_COLOR trunk serve --port 3000 --open"
+[tasks.lint]
+run = "cargo fmt --all -- --check && cargo clippy --all-targets --locked -- -D warnings"
+[tasks.test]
+run = "cargo fmt --all -- --check && cargo test"
+[tasks.fmt]
+run = "cargo leptosfmt"
+[tasks.build]
+run = "env -u NO_COLOR trunk build --release"
+[tasks.audit]
+run = "cargo audit"
+[tasks.clean]
+run = "cargo clean && rm -rf dist"
+[tasks.check-all]
+run = "cargo fmt --all -- --check && cargo clippy --all-targets --locked -- -D warnings && cargo test"

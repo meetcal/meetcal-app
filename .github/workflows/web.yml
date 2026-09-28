@@ -1,0 +1,141 @@
+name: Web CI
+
+# The website in `web/` reads the Convex functions in `convex/`, so a change
+# to either runs it.
+on:
+  push:
+    branches: [main, master]
+    paths: ["web/**", "convex/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "convex/**", ".github/workflows/web.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  quality-and-build:
+    name: Rust quality and production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint all targets
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --locked
+
+      - name: Validate deployment configuration
+        run: |
+          jq empty vercel.json
+          bash -n scripts/vercel-build.sh
+          bash -n scripts/generate-bootstrap.sh
+          shellcheck scripts/vercel-build.sh scripts/generate-bootstrap.sh
+
+      - name: Install Trunk
+        run: cargo install trunk --version 0.21.14 --locked
+
+      - name: Build production site
+        env:
+          NO_COLOR: ""
+          CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+          REVENUECAT_PUBLIC_API_KEY: rcb_ci_placeholder
+        run: env -u NO_COLOR trunk build --release --locked
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meetcal-web-dist
+          path: web/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  browser-tests:
+    name: Browser and mobile layout tests
+    needs: quality-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: meetcal-web-dist
+          path: web/dist
+
+      - name: Install test dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type-check browser tests
+        run: npm run typecheck
+
+      - name: Validate deployment and security configuration
+        run: npm run test:config
+
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Run Chromium, WebKit, and mobile browser tests
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web
+
+      - name: Audit JavaScript dependencies
+        run: npm audit --audit-level=high
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust dependencies
+        run: cargo audit
