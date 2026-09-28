@@ -127,3 +127,11 @@ fn gender_help_lists_both_values() {
     let adaptive = help_for("adaptive-records");
     assert!(adaptive.contains("Gender: Men or Women"));
 }
+
+#[test]
+fn version_is_the_crates() {
+    assert_eq!(
+        Cli::command().get_version(),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+}

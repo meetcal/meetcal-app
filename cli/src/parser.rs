@@ -2,7 +2,7 @@ use crate::commands;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "meetcal", version = "2.0.1", about = "MeetCal CLI")]
+#[command(name = "meetcal", version, about = "MeetCal CLI")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

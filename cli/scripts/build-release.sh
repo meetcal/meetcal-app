@@ -42,8 +42,8 @@ else
 fi
 
 echo
-echo "Release artifacts for v$VERSION:"
+echo "Release artifacts for v$VERSION (local builds, for smoke testing):"
 ls -1 "$DIST"/*.tar.gz
 echo
-echo "Upload with:"
-echo "  gh release create v$VERSION dist/*.tar.gz --repo meetcal/meetcal-cli --title \"meetcal v$VERSION\""
+echo "Releases are published by tagging, not from these files (see BREW.md):"
+echo "  git tag cli-v$VERSION && git push origin cli-v$VERSION"
