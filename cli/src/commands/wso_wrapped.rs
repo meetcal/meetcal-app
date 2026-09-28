@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::Parser;
 
 use crate::commands::group_wrapped::{
-    calculate_group_stats, get_wso_results_since, render_group_wrapped, results_for_year,
+    calculate_group_stats, get_wso_results_since, group_wrapped_report, results_for_year,
 };
 use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
@@ -39,6 +39,6 @@ pub async fn run(args: WsoWrappedArgs) -> Result<()> {
     }
 
     let stats = calculate_group_stats(&results);
-    println!("{}", render_group_wrapped("WSO", &args.wso, year, &stats));
+    crate::utils::output::emit(group_wrapped_report("WSO", &args.wso, year, &stats));
     Ok(())
 }

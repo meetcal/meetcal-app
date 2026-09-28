@@ -8,6 +8,7 @@ use comfy_table::Table;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::backend::{queries, query};
+use crate::utils::output::{self, Report};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -36,7 +37,7 @@ pub async fn run(args: WrappedArgs) -> Result<()> {
 
     let display_name = results[0].name.clone();
     let stats = calculate_wrapped_stats(&results);
-    println!("{}", render_wrapped_report(&display_name, year, &stats));
+    output::emit(wrapped_report(&display_name, year, &stats));
     Ok(())
 }
 
@@ -193,6 +194,10 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
 }
 
 pub fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
+    wrapped_report(name, year, stats).to_text()
+}
+
+pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
     let mut headline = Table::new();
     headline.set_header(vec!["Meets", "Make Rate", "Best Total", "Status"]);
     headline.add_row(vec![
@@ -233,7 +238,11 @@ pub fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Str
             .unwrap_or_else(|| "N/A".to_string()),
     ]);
 
-    format!("{year} WEIGHTLIFTING WRAPPED — {name}\n{headline}\n{volume}\n{journey}")
+    Report::new()
+        .titled(format!("{year} WEIGHTLIFTING WRAPPED — {name}"))
+        .table("headline", headline)
+        .table("volume", volume)
+        .table("journey", journey)
 }
 
 fn percentage(successes: usize, attempts: usize) -> f64 {

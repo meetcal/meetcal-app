@@ -1,6 +1,7 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::format::record_cell;
+use crate::utils::format::{record_cell, record_data_cells, record_data_header};
+use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
 use anyhow::Result;
 use clap::Parser;
@@ -44,17 +45,34 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
 
     let mut table = Table::new();
     table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
+    let mut data = Table::new();
+    data.set_header(record_data_header());
 
     for record in sorted {
-        table.add_row(vec![
-            record.weight_class,
-            record_cell(Some(record.snatch_record), record.snatch_by.as_ref()),
-            record_cell(Some(record.cj_record), record.cj_by.as_ref()),
-            record_cell(Some(record.total_record), record.total_by.as_ref()),
-        ]);
+        let lifts = [
+            (record.snatch_record, record.snatch_by.as_ref()),
+            (record.cj_record, record.cj_by.as_ref()),
+            (record.total_record, record.total_by.as_ref()),
+        ];
+        let mut row = vec![record.weight_class.clone()];
+        row.extend(
+            lifts
+                .iter()
+                .map(|(value, holder)| record_cell(Some(*value), *holder)),
+        );
+        table.add_row(row);
+        let mut data_row = vec![record.weight_class.clone()];
+        for (value, holder) in lifts {
+            data_row.extend(record_data_cells(Some(value), holder));
+        }
+        data.add_row(data_row);
     }
 
-    println!("{table}");
+    output::emit(
+        Report::new()
+            .table_with_data("records", table, data)
+            .when_empty("No records match those filters."),
+    );
 
     Ok(())
 }

@@ -9,6 +9,7 @@ use crate::types::meets::ScheduleRow;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::{us_date, us_time};
 use crate::utils::names::{NameKind, not_found};
+use crate::utils::output::{self, Report};
 
 /// Show a meet's session schedule: each session's date, platform, weigh-in and start times (in
 /// the meet's time zone), and weight classes.
@@ -63,10 +64,6 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
                 .is_none_or(|platform| session.platform.eq_ignore_ascii_case(platform.trim()))
         })
         .collect();
-    if sessions.is_empty() {
-        println!("No sessions match those filters.");
-        return Ok(());
-    }
 
     let mut table = Table::new();
     table.set_header(vec![
@@ -87,7 +84,7 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
             session.weight_classes.join(", "),
         ]);
     }
-    println!("{table}");
+    output::emit(Report::single("sessions", table).when_empty("No sessions match those filters."));
     Ok(())
 }
 

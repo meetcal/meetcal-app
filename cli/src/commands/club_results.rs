@@ -5,6 +5,7 @@ use comfy_table::Table;
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
+use crate::utils::output::{self, Report};
 
 /// Analyze club performance stats for a meet.
 ///
@@ -41,7 +42,7 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
             not_found(NameKind::Meet, &args.meet, message).await
         });
     }
-    println!("{}", render_report(&args.club, &args.meet, &stats));
+    output::emit(report(&args.club, &args.meet, &stats));
     Ok(())
 }
 
@@ -62,6 +63,10 @@ pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<(
 }
 
 pub fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
+    report(club, meet, stats).to_text()
+}
+
+pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
     let mut summary = Table::new();
     summary.set_header(vec!["Club", "Meet", "Athletes", "Results"]);
     summary.add_row(vec![
@@ -98,14 +103,10 @@ pub fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
         stats.gold_medals + stats.silver_medals + stats.bronze_medals,
     ]);
 
-    let mut sections = vec![
-        "PERFORMANCE STATISTICS".to_string(),
-        summary.to_string(),
-        "RESULTS".to_string(),
-        performance.to_string(),
-        "MEDALS".to_string(),
-        medals.to_string(),
-    ];
+    let mut report = Report::new()
+        .headed("summary", "PERFORMANCE STATISTICS", summary)
+        .headed("results", "RESULTS", performance)
+        .headed("medals", "MEDALS", medals);
 
     if !stats.athlete_results.is_empty() {
         let mut athletes = Table::new();
@@ -139,11 +140,10 @@ pub fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
             ]);
         }
 
-        sections.push("ATHLETE RESULTS".to_string());
-        sections.push(athletes.to_string());
+        report = report.headed("athletes", "ATHLETE RESULTS", athletes);
     }
 
-    sections.join("\n")
+    report
 }
 
 fn yes_no(value: bool) -> String {

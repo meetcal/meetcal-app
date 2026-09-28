@@ -7,6 +7,7 @@ use regex::Regex;
 
 use crate::types::lifting_results::AdaptiveRecord;
 use crate::utils::backend::{queries, query};
+use crate::utils::output::{self, Report};
 use serde_json::json;
 
 static MEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bmen\b").unwrap());
@@ -44,7 +45,7 @@ pub async fn run(args: AdaptiveArgs) -> Result<()> {
         ]);
     }
 
-    println!("{table}");
+    output::emit(Report::single("adaptive_records", table));
 
     Ok(())
 }

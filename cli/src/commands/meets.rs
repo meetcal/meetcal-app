@@ -5,6 +5,7 @@ use comfy_table::Table;
 use crate::types::meets::Meet;
 use crate::utils::format::date_range;
 use crate::utils::names::{completed_meets, upcoming_meets};
+use crate::utils::output::{self, Report};
 
 /// List meets: upcoming (starting within three months, or under way), or completed.
 ///
@@ -31,18 +32,15 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
     };
     let meets = matching(meets, args.search.as_deref());
 
-    if meets.is_empty() {
-        let which = if args.completed {
-            "completed"
-        } else {
-            "upcoming"
-        };
-        match args.search {
-            Some(search) => println!("No {which} meets match \"{search}\"."),
-            None => println!("No {which} meets."),
-        }
-        return Ok(());
-    }
+    let which = if args.completed {
+        "completed"
+    } else {
+        "upcoming"
+    };
+    let empty = match &args.search {
+        Some(search) => format!("No {which} meets match \"{search}\"."),
+        None => format!("No {which} meets."),
+    };
 
     let mut table = Table::new();
     table.set_header(vec!["Meet", "Dates", "Location", "Status"]);
@@ -54,7 +52,7 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
             meet.status.clone(),
         ]);
     }
-    println!("{table}");
+    output::emit(Report::single("meets", table).when_empty(empty));
     Ok(())
 }
 

@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use crate::utils::names::{MAX_SUGGESTIONS, clubs};
+use crate::utils::output::{self, Report};
 
 /// List club names, as the other club commands expect them.
 ///
@@ -24,24 +25,26 @@ pub async fn run(args: ClubsArgs) -> Result<()> {
         .map(str::trim)
         .filter(|search| !search.is_empty());
     let Some(search) = search else {
-        println!("{}", clubs.join("\n"));
+        output::emit(Report::single("clubs", output::list("Club", clubs)));
         return Ok(());
     };
 
     let matches = matching(&clubs, search);
-    if matches.is_empty() {
+    let message = if matches.is_empty() {
         let close = crate::utils::names::closest(search, &clubs, MAX_SUGGESTIONS);
         if close.is_empty() {
-            println!("No club names contain \"{search}\".");
+            format!("No club names contain \"{search}\".")
         } else {
-            println!("No club names contain \"{search}\". Did you mean:");
-            for name in close {
-                println!("  {name}");
-            }
+            let list: Vec<String> = close.iter().map(|name| format!("  {name}")).collect();
+            format!(
+                "No club names contain \"{search}\". Did you mean:\n{}",
+                list.join("\n")
+            )
         }
-        return Ok(());
-    }
-    println!("{}", matches.join("\n"));
+    } else {
+        String::new()
+    };
+    output::emit(Report::single("clubs", output::list("Club", matches)).when_empty(message));
     Ok(())
 }
 

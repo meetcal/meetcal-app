@@ -1,3 +1,4 @@
+use crate::utils::output::{self, Report};
 use crate::{
     types::athletes::{Athletes, Platform},
     utils::{
@@ -131,7 +132,7 @@ pub async fn run(args: MeetArgs) -> Result<()> {
         table.add_row(row);
     }
 
-    println!("{table}");
+    output::emit(Report::single("start_list", table));
 
     Ok(())
 }

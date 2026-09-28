@@ -4,7 +4,7 @@ import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
-import { ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
+import { toApiLiftingResult, ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
 import { compareBytes } from './lib/sort';
 import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
 import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
@@ -16,6 +16,43 @@ import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePres
 // result. Row lists travel as JSON text (`{ json }`).
 
 export const MAX_LIMIT_PER_NAME = 200;
+
+/** Rows per `results:page` call, unless the caller asks for fewer. */
+export const RESULTS_PAGE_SIZE = 1000;
+/** The most rows one `results:page` call returns. */
+export const MAX_RESULTS_PAGE_SIZE = 2000;
+
+/**
+ * Every result dated `startDate` to `endDate` (inclusive), oldest first, a page at a time: pass
+ * back `continueCursor` until `isDone`. For clients that compute across all results (the CLI's
+ * leaderboards and exports). Answers `{ json, isDone, continueCursor }`, the rows as JSON text.
+ */
+export const page = query({
+  args: {
+    startDate: v.string(),
+    endDate: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const start = requirePresentIsoDate('start_date', args.startDate);
+    const end = requirePresentIsoDate('end_date', args.endDate);
+    if (end < start) throw apiError(400, 'end_date must not be before start_date');
+    const numItems = args.numItems ?? RESULTS_PAGE_SIZE;
+    if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_RESULTS_PAGE_SIZE) {
+      throw apiError(400, `numItems must be a whole number from 1 to ${MAX_RESULTS_PAGE_SIZE}`);
+    }
+    const result = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_date', (q) => q.gte('date', start).lte('date', end))
+      .paginate({ cursor: args.cursor, numItems });
+    return {
+      json: JSON.stringify(result.page.map(toApiLiftingResult)),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
 
 /** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
 export const byMeet = query({

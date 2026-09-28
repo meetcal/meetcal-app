@@ -105,6 +105,13 @@ pub mod queries {
     pub const MEET_DETAILS: Query = Query::text("meets:details");
     /// `GET /meets/schedule`; takes `meet`.
     pub const MEET_SCHEDULE: Query = Query::text("meets:schedule");
+    /// Distinct meet names in the results or the registrations, a page at a time; takes `source`
+    /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
+    /// `{ json, next }`.
+    pub const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
+    /// Lifters with results and entries registered for up to eight meets; takes `meets`.
+    /// Answers `{ json }`.
+    pub const MEET_ATTENDANCE: Query = Query::value("meets:attendance");
     /// `GET /meets/athletes`; takes `meet`.
     pub const MEET_ATHLETES: Query = Query::text("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
@@ -119,6 +126,9 @@ pub mod queries {
     /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
     /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
     pub const BESTS: Query = Query::value("results:bests");
+    /// Every result in a date range, a page at a time; takes `startDate`, `endDate`, `cursor`
+    /// (null to start) and `numItems` (at most 2000). Answers `{ json, isDone, continueCursor }`.
+    pub const RESULTS_PAGE: Query = Query::value("results:page");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate`.
     pub const SEARCH: Query = Query::value("results:search");
     /// `GET /data/records`

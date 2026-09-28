@@ -54,7 +54,54 @@ Run `meetcal <command> --help` for the complete arguments accepted by any comman
 Meet, club and WSO names must be exact. A command given a name MeetCal does not know suggests the
 closest ones it does; `meets`, `clubs` and `wsos` list them.
 
+### Output formats
+
+Every command prints tables by default. `--format json` or `--format csv` prints the same data for
+other tools: each table's rows keyed by its column headers in snake_case, numbers as numbers (a
+`kg` or `%` unit dropped), and empty or `N/A` cells as null. A command with several tables prints
+a JSON object keyed by table, or CSV sections headed `# <table>`.
+
+```sh
+meetcal leaderboard --by sinclair --format csv > leaderboard.csv
+meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'
+```
+
+Sinclair scores use the IWF's 2021–2024 coefficients, the latest set confirmed published, and are
+labelled `Sinclair (2021-24)`. They are left blank for results with an impossible bodyweight or a
+total that is not the snatch plus the clean & jerk, both source errors.
+
 ### Athlete reports
+
+#### `progress`
+
+An athlete's progression: every meet with its Sinclair and the lifts that were PRs, their trend
+(best total and Sinclair, first-to-latest change, bomb-outs), and their attempt habits (make rate
+by attempt, average jump between attempts, opener as a share of the best lift).
+
+```sh
+meetcal progress "Maddisen Mohnsen"
+meetcal progress "Maddisen Mohnsen" --since 2024
+```
+
+#### `qualify`
+
+How far an athlete's best total over the past year is from the USAW A/B standards and each event's
+qualifying total in their class. Their gender, age category and class come from their latest
+result; `--category` and `--class` check another (Senior standards are always shown too).
+
+```sh
+meetcal qualify "Maddisen Mohnsen"
+meetcal qualify "Maddisen Mohnsen" --category Junior --class 88
+```
+
+#### `h2h`
+
+Two athletes head to head: the meets both entered, who totalled more at each and by how much, and
+their best lifts all time and over the past year.
+
+```sh
+meetcal h2h "Brandon Victorian" "Edward Ginnan"
+```
 
 #### `search`
 
@@ -150,10 +197,63 @@ Options:
 
 #### `meet-results`
 
-Show all lifting results and event statistics for a meet.
+A meet's results and statistics: every result with its Sinclair, a summary (bomb-outs, average
+total, make rate), the heaviest lifts, the top Sinclair lifters, make rates by attempt, and the
+same numbers for the meet's three previous editions (the same name with an earlier year).
 
 ```sh
-meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
+meetcal meet-results "2026 Ohio WSO Championships"
+meetcal meet-results "2026 Ohio WSO Championships" --no-history
+```
+
+#### `attendance`
+
+How many took part in a meet year after year. Its name can change between years, so give the words
+it always has: every meet whose name contains all of them (ignoring the year, "The" and
+punctuation) counts as an edition. Registrations are counted as well as results, so a meet whose
+results are not in yet still shows its entries.
+
+```sh
+meetcal attendance ohio wso
+meetcal attendance florida state championships --exclude "high school"
+```
+
+Options:
+
+- `--exclude`, `-x`: Leave out meets whose name contains this text (repeatable)
+
+### Leaderboards and data
+
+#### `leaderboard`
+
+Rank athletes by their best total, snatch, clean & jerk or Sinclair over a year or date range,
+across every class. Filter by gender, age category, division, federation, WSO or club.
+
+```sh
+meetcal leaderboard --by sinclair --gender women
+meetcal leaderboard --year 2025 --by snatch --category "Masters 45" --limit 10
+meetcal leaderboard --wso Florida --by total
+```
+
+Options:
+
+- `--by`, `-b`: `total` (default), `snatch`, `cj` or `sinclair`
+- `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
+- `--gender`, `-g`; `--category`, `-c` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
+- `--wso`, `-w` or `--club`: only athletes registered with it at the meet
+- `--adaptive`: include adaptive results
+- `--limit`, `-n`: rows to show (default 25)
+
+Without `--wso` or `--club` it reads every result in the range, about 28,000 for a year.
+
+#### `results`
+
+Every result in a year or date range, with every attempt and its Sinclair, for your own analysis.
+Takes the same filters as `leaderboard`.
+
+```sh
+meetcal results --year 2025 --format csv > results-2025.csv
+meetcal results --from 2026-06-01 --to 2026-06-30 --gender women --format json
 ```
 
 ### Club reports
@@ -199,6 +299,20 @@ meetcal club-wrapped "Columbus Weightlifting" --year 2025
 Options:
 
 - `--year`, `-y`: Calendar year to summarize; defaults to the current calendar year
+
+#### `club-trends`
+
+A club's results year by year (athletes, meets, make rate, weight lifted, best total, PRs, and gold,
+silver and bronze totals) and its top lifters of all time. It counts results at meets where the
+athlete registered with the club; PRs are judged against each athlete's whole history.
+
+```sh
+meetcal club-trends "Texas Barbell Club"
+```
+
+Options:
+
+- `--no-medals`: Skip medals (one lookup per meet)
 
 #### `club-compare`
 
@@ -250,6 +364,14 @@ meetcal wso-wrapped Carolina --year 2025
 Options:
 
 - `--year`, `-y`: Calendar year to summarize; defaults to the current calendar year
+
+#### `wso-trends`
+
+A WSO's results year by year and its top lifters of all time, as `club-trends` does for a club.
+
+```sh
+meetcal wso-trends Florida
+```
 
 #### `wso-compare`
 

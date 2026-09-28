@@ -2,7 +2,8 @@ use crate::{
     types::lifting_results::{LiftingResults, PRs},
     utils::{
         backend::{queries, query},
-        make_rate::print_make_rate,
+        make_rate::make_rate_tables,
+        output::{self, Report},
     },
 };
 use anyhow::Result;
@@ -47,8 +48,6 @@ pub async fn run(args: SearchArgs) -> Result<()> {
         ]);
     }
 
-    println!("{meets_table}");
-
     let mut pr_table = Table::new();
 
     pr_table.set_header(vec!["Snatch PR", "CJ PR", "Total PR"]);
@@ -61,9 +60,14 @@ pub async fn run(args: SearchArgs) -> Result<()> {
         prs.total_best.to_string(),
     ]);
 
-    println!("{pr_table}");
-
-    print_make_rate(&results);
+    let (by_attempt, by_lift) = make_rate_tables(&results);
+    output::emit(
+        Report::new()
+            .table("results", meets_table)
+            .table("prs", pr_table)
+            .table("make_rate_by_attempt", by_attempt)
+            .table("make_rate", by_lift),
+    );
 
     Ok(())
 }

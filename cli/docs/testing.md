@@ -28,8 +28,9 @@ feed fixture rows instead of a network.
 ## Against real data
 
 Unit tests use answer shapes written by hand; only a real deployment shows that a command still
-parses what Convex sends and that a query's reads fit production's size. Before a release, and
-after changing a command or the query it reads, run it:
+parses what Convex sends and that a query's reads fit production's size. Every command that is
+new or touched by a change (including through shared code) must be run locally before a PR, in
+all three formats; `AGENTS.md` has the checklist. Run it:
 
 ```sh
 MEETCAL_CONVEX_URL=https://utmost-retriever-826.convex.cloud cargo run -- <command> ...   # dev

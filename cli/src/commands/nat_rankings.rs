@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{queries, query};
+use crate::utils::output::{self, Report};
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +44,7 @@ pub async fn run(args: NatRankingsArgs) -> Result<()> {
         table.add_row(vec![rank.to_string(), row.name, row.total.to_string()]);
     }
 
-    println!("{table}");
+    output::emit(Report::single("national_rankings", table));
 
     Ok(())
 }

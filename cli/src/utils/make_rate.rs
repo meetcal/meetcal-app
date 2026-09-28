@@ -2,7 +2,8 @@ use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
 
-pub fn print_make_rate(vector: &[LiftingResults]) {
+/// Make rates by attempt number, then by lift, as two tables.
+pub fn make_rate_tables(vector: &[LiftingResults]) -> (Table, Table) {
     let mut attempt_make_rate = Table::new();
 
     attempt_make_rate.set_header(vec!["Sn1 Make Rate", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3"]);
@@ -16,8 +17,6 @@ pub fn print_make_rate(vector: &[LiftingResults]) {
         calc_make_rate_by_attempt(vector, "cj", 3),
     ]);
 
-    println!("{attempt_make_rate}");
-
     let mut make_rate = Table::new();
 
     make_rate.set_header(vec!["Snatch Make Rate", "CJ Make Rate", "Total Make Rate"]);
@@ -28,7 +27,7 @@ pub fn print_make_rate(vector: &[LiftingResults]) {
         calc_make_rate(vector, "both"),
     ]);
 
-    println!("{make_rate}");
+    (attempt_make_rate, make_rate)
 }
 
 pub fn calc_make_rate(results: &[LiftingResults], lift: &str) -> String {
