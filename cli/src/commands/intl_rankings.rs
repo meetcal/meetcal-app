@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
 pub struct Rankings {
@@ -63,7 +64,7 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
         ]);
     }
 
-    println!("{table}");
+    output::emit(Report::single("intl_rankings", table));
 
     Ok(())
 }

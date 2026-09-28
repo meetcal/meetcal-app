@@ -39,11 +39,14 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 
 | Group | Commands | Reads |
 |---|---|---|
-| Athletes | `search`, `wrapped`, `compare` | `results:byNames`, `results:search` |
+| Athletes | `search`, `wrapped`, `compare`, `progress`, `h2h` | `results:byNames`, `results:search` |
+| Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
 | Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
+| Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
+| All results | `leaderboard`, `results` | `results:page` (or, with `--wso`/`--club`, the group's registrations and `results:recent`) |
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:wsoList`, `reference:wsoAgeGroups` |
-| Clubs | `club-results`, `club-wrapped`, `club-compare` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent` |
-| WSOs | `wso`, `wso-wrapped`, `wso-compare` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
+| Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
+| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 
 Reference commands fetch the whole table and filter it locally by the flags (`records --age --gender
@@ -84,6 +87,32 @@ shown.
 `meet` shows each athlete's best snatch, clean & jerk and total since the same UTC date a year
 earlier, as the app's start list does (`src/utils/bests.rs`, `results:bests`, 100 names per call).
 
+### Output
+
+Commands print through `src/utils/output.rs`: they build a `Report` of named tables (with an
+optional title, headings, and a message for when there are no rows) and call `output::emit`. The
+global `--format` flag picks tables, JSON or CSV. A table whose display packs several values into
+one cell (a record's holder under its weight) carries a flat `data` table for the machine formats.
+Keep `println!` out of commands, or `--format` stops working for them.
+
+### Statistics
+
+`src/utils/stats.rs` holds what the analysis commands share: parsing a division (`Open Men's
+89kg`, `Women's Masters (40-44) 69kg`) into gender, age category and class; Sinclair (the IWF's
+2021–2024 coefficients, in `SINCLAIR_MEN` / `SINCLAIR_WOMEN`: change them there when a newer set is
+confirmed); attempt habits; bomb-outs; and PR detection over an athlete's history in date order.
+Two guards cover source errors: Sinclair needs a bodyweight of 15–250 kg, and a result whose total
+is not its snatch plus clean & jerk is left out of Sinclair and leaderboards.
+
+### All results, and every meet name
+
+`results:page` returns every result in a date range a page at a time (2000 rows; a year is about
+14 pages), which `leaderboard` and `results` read in full. `meets:namesPage` lists distinct meet
+names in the results or the registrations by skipping along the meet index, one read per meet;
+`attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
+history, then counts each matched edition with `meets:attendance` (eight meets per call). The
+ranges only balance the work: they cover every name whatever the data holds.
+
 ## Adding a command
 
 1. A module in `src/commands/` with an `Args` struct (clap `Parser`, with doc comments; they are
@@ -91,6 +120,7 @@ earlier, as the app's start list does (`src/utils/bests.rs`, `results:bests`, 10
 2. The subcommand in `src/parser.rs` and its arm in `src/main.rs`.
 3. Any new Convex query in `queries` (`src/utils/backend.rs`), with the answer type beside the
    command or in `src/types/`.
-4. Tests: argument parsing in `tests/<command>.rs`, and the command's pure logic (stats,
+4. Output through `output::emit(Report::…)`, never `println!`, so `--format` works.
+5. Tests: argument parsing in `tests/<command>.rs`, and the command's pure logic (stats,
    filtering) in the module's unit tests.
-5. The command's section in `README.md`, and a `CHANGELOG.md` entry.
+6. The command's section in `README.md`, and a `CHANGELOG.md` entry.

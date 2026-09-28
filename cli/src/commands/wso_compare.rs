@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::Parser;
 
 use crate::commands::group_wrapped::{
-    calculate_group_stats, get_wso_results_since, render_group_comparison, split_comparison_years,
+    calculate_group_stats, get_wso_results_since, group_comparison_report, split_comparison_years,
 };
 use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
@@ -40,16 +40,13 @@ pub async fn run(args: WsoCompareArgs) -> Result<()> {
 
     let previous = calculate_group_stats(&previous_results);
     let current = calculate_group_stats(&current_results);
-    println!(
-        "{}",
-        render_group_comparison(
-            "WSO",
-            &args.wso,
-            previous_year,
-            current_year,
-            &previous,
-            &current,
-        )
-    );
+    crate::utils::output::emit(group_comparison_report(
+        "WSO",
+        &args.wso,
+        previous_year,
+        current_year,
+        &previous,
+        &current,
+    ));
     Ok(())
 }

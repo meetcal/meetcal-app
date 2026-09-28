@@ -7,6 +7,7 @@ use crate::types::meets::Meet;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::date_range;
 use crate::utils::names::{NameKind, not_found};
+use crate::utils::output::{self, Report};
 
 /// Show a meet's details: dates, status, venue and address, time zone, and venue maps.
 ///
@@ -28,7 +29,7 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
         }
         Err(error) => return Err(error),
     };
-    println!("{}", render(&meet));
+    output::emit(Report::single("meet", render(&meet)));
     Ok(())
 }
 

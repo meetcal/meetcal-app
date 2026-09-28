@@ -18,6 +18,10 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/commands/` | One module per command (`run(args)`); shared report logic in `group_wrapped.rs` (club and WSO years) and `compare.rs` |
 | `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), and the HTTP call |
 | `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
+| `src/utils/output.rs` | How results print: tables, or `--format json` / `csv` from the same `Report` |
+| `src/utils/stats.rs` | Divisions, Sinclair (and its coefficients), attempt habits, PRs, source-error guards |
+| `src/utils/athletes.rs` | Athletes' full histories, and every result in a date range (`results:page`) |
+| `src/utils/names.rs`, `bests.rs`, `format.rs` | Known names and suggestions, past-year bests, display formats |
 | `src/utils/meet_names.rs` | Matching registration events to results meets (combined national events publish results under separate names) |
 | `src/utils/make_rate.rs`, `sort.rs` | Make-rate tables, weight-class ordering |
 | `src/types/` | Answer types shared across commands |
@@ -50,6 +54,7 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 
 ## Code Quality
 
+- Commands print through `src/utils/output.rs` (`output::emit(Report::…)`), never `println!`: that is what makes `--format json|csv` work for every command.
 - Every data call goes through `src/utils/backend.rs`: add a query to `queries`, never build a Convex URL in a command. Arguments are the query's own, camelCase (`serde_json::json!({ "ageCategory": age })`).
 - Name lists travel as JSON arrays, in batches of at most 100 names (the queries' limit); the commands batch 50.
 - Answer types are `serde` structs. A field that some answers lack (start-list rows carry no meet) is `#[serde(default)]` or an `Option`; free-form values from the data (platform names) are `String`, not enums.
@@ -62,4 +67,7 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 - Convex's HTTP API writes the numbers of a value answer as floats (`2.0`). `backend.rs` turns whole numbers back into integers so integer fields parse; the unit test in `backend.rs` guards it, since fixtures written by hand use integers.
 - A query that reads a whole table or index range can pass on the dev deployment and fail on production, which has far more rows. Check a new or changed command against production before a release.
 - A Convex view is fresh while its source tables are unchanged, whatever code built it: an answer that gains a field serves the old shape until the view is rebuilt (`../docs/backend.md`).
+- The results hold a few source errors: impossible bodyweights (0.9 kg, 12 kg) and totals that are not the snatch plus the clean & jerk. Anything ranking across all results must use `row_sinclair` and `consistent_total` from `stats.rs`, or one bad row tops the list.
+- Sinclair uses the IWF's 2021–2024 coefficients (`SINCLAIR_MEN` / `SINCLAIR_WOMEN` in `stats.rs`), the latest set we could confirm; when the IWF publishes a newer set, change them there and the `SINCLAIR_LABEL`.
+- Reading every result or every meet name is paged on the server (`results:page`, `meets:namesPage`); a single query that scans a large table passes on dev and fails on production.
 - USA Weightlifting publishes some national events' start lists under one combined name and their results under separate ones. Go through `meet_names.rs` (`equivalent_meets`, `result_meet_aliases`) rather than comparing meet names directly.

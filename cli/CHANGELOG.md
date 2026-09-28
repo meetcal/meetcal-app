@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.3.0
+
+Stats across all of MeetCal's data, and output for other tools.
+
+- `--format json` and `--format csv` on every command.
+- `leaderboard` ranks athletes by best total, snatch, clean & jerk or Sinclair over a year or date
+  range, across every class, filtered by gender, age category, division, federation, WSO or club.
+- `results` exports every result in a range with every attempt and its Sinclair.
+- `progress` shows an athlete's meets with Sinclair and PRs, their trend, and their attempt habits
+  (make rate by attempt, jumps between attempts, openers, bomb-outs).
+- `qualify` shows how far an athlete's past-year best is from the A/B standards and each event's
+  qualifying total in their class.
+- `h2h` compares two athletes at the meets they both entered.
+- `attendance` counts a meet's athletes year after year, across the name changes between editions,
+  from registrations as well as results.
+- `club-trends` and `wso-trends` show a club's or WSO's results by year (athletes, meets, make rate,
+  weight lifted, best total, PRs, medals) and its top lifters of all time.
+- `meet-results` adds Sinclair, a summary, the heaviest lifts, the top Sinclair lifters, and a
+  comparison with the meet's previous editions (`--no-history` skips it).
+- Sinclair uses the IWF's 2021–2024 coefficients. Results with an impossible bodyweight or a total
+  that is not the snatch plus clean & jerk (source errors) get no Sinclair and stay off
+  leaderboards.
+
 ## 2.2.0
 
 The CLI now shows the meet and record data the app and meetcal.app do.

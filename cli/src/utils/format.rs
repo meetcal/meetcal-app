@@ -89,6 +89,34 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
     lines.join("\n")
 }
 
+/// A record table's columns for JSON and CSV: the class, then for each lift its weight, holder,
+/// date and place, one column each.
+pub fn record_data_header() -> Vec<&'static str> {
+    let mut header = vec!["Class"];
+    for lift in ["Snatch", "CJ", "Total"] {
+        header.extend(match lift {
+            "Snatch" => ["Snatch", "Snatch Holder", "Snatch Date", "Snatch Location"],
+            "CJ" => ["CJ", "CJ Holder", "CJ Date", "CJ Location"],
+            _ => ["Total", "Total Holder", "Total Date", "Total Location"],
+        });
+    }
+    header
+}
+
+/// One lift's four export columns: weight, holder, date (`YYYY-MM-DD` as stored), place.
+pub fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [String; 4] {
+    [
+        value.map(|value| value.to_string()).unwrap_or_default(),
+        holder.map(|holder| holder.name.clone()).unwrap_or_default(),
+        holder
+            .and_then(|holder| holder.date.clone())
+            .unwrap_or_default(),
+        holder
+            .and_then(|holder| holder.location.clone())
+            .unwrap_or_default(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

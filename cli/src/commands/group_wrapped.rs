@@ -10,6 +10,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
 use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::equivalent_meets;
+use crate::utils::output::Report;
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -155,6 +156,15 @@ pub fn render_group_wrapped(
     year: i32,
     stats: &GroupWrappedStats,
 ) -> String {
+    group_wrapped_report(group_kind, group_name, year, stats).to_text()
+}
+
+pub fn group_wrapped_report(
+    group_kind: &str,
+    group_name: &str,
+    year: i32,
+    stats: &GroupWrappedStats,
+) -> Report {
     let mut overview = Table::new();
     overview.set_header(vec!["Athletes", "Meets", "Make Rate", "Average Total"]);
     overview.add_row(vec![
@@ -188,10 +198,14 @@ pub fn render_group_wrapped(
             .unwrap_or_else(|| "N/A".to_string()),
     ]);
 
-    format!(
-        "{year} {} WRAPPED — {group_name}\n{overview}\n{lifts}\n{top}",
-        group_kind.to_uppercase()
-    )
+    Report::new()
+        .titled(format!(
+            "{year} {} WRAPPED — {group_name}",
+            group_kind.to_uppercase()
+        ))
+        .table("overview", overview)
+        .table("lifts", lifts)
+        .table("top_meet", top)
 }
 
 pub fn group_comparisons(
@@ -220,6 +234,25 @@ pub fn render_group_comparison(
     previous: &GroupWrappedStats,
     current: &GroupWrappedStats,
 ) -> String {
+    group_comparison_report(
+        group_kind,
+        group_name,
+        previous_year,
+        current_year,
+        previous,
+        current,
+    )
+    .to_text()
+}
+
+pub fn group_comparison_report(
+    group_kind: &str,
+    group_name: &str,
+    previous_year: i32,
+    current_year: i32,
+    previous: &GroupWrappedStats,
+    current: &GroupWrappedStats,
+) -> Report {
     let mut table = Table::new();
     table.set_header(vec![
         "Metric".to_string(),
@@ -240,10 +273,10 @@ pub fn render_group_comparison(
         ]);
     }
 
-    format!(
-        "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR\n{table}",
+    Report::single("comparison", table).titled(format!(
+        "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR",
         group_kind.to_uppercase()
-    )
+    ))
 }
 
 fn format_metric(value: f64, unit: MetricUnit) -> String {

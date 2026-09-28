@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
 pub struct QualifyingTotal {
@@ -56,7 +57,7 @@ pub async fn run(args: QualTotalsArgs) -> Result<()> {
         table.add_row(vec![total.weight_class, total.qualifying_total.to_string()]);
     }
 
-    println!("{table}");
+    output::emit(Report::single("qualifying_totals", table));
 
     Ok(())
 }

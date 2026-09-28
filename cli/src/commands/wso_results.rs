@@ -10,6 +10,7 @@ use crate::types::wso::{ClubMedalDetail, ClubPrDetail, Movement};
 use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
 use crate::utils::names::{NameKind, not_found};
+use crate::utils::output::{self, Report};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -76,18 +77,15 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
     let meet_results = get_meet_results(&args.meet).await?;
     let medals = calculate_medal_details(&athletes.names, &meet_results);
 
-    println!(
-        "{}",
-        render_report(
-            &args.wso,
-            &args.meet,
-            athletes.total_athletes,
-            athletes.names.len(),
-            &performance,
-            &pr_stats,
-            &medals,
-        )
-    );
+    output::emit(report(
+        &args.wso,
+        &args.meet,
+        athletes.total_athletes,
+        athletes.names.len(),
+        &performance,
+        &pr_stats,
+        &medals,
+    ));
 
     Ok(())
 }
@@ -402,6 +400,27 @@ pub fn render_report(
     prs: &PrStats<'_>,
     medals: &[ClubMedalDetail],
 ) -> String {
+    report(
+        wso,
+        meet,
+        total_athletes,
+        wso_athletes,
+        performance,
+        prs,
+        medals,
+    )
+    .to_text()
+}
+
+pub fn report(
+    wso: &str,
+    meet: &str,
+    total_athletes: usize,
+    wso_athletes: usize,
+    performance: &PerformanceStats,
+    prs: &PrStats<'_>,
+    medals: &[ClubMedalDetail],
+) -> Report {
     let mut athlete_table = Table::new();
     athlete_table.set_header(vec!["Total Athletes", "WSO Athletes"]);
     athlete_table.add_row(vec![total_athletes, wso_athletes]);
@@ -425,13 +444,12 @@ pub fn render_report(
     pr_table.set_header(vec!["Snatch PRs", "CJ PRs", "Total PRs"]);
     pr_table.add_row(vec![prs.snatch_count, prs.cj_count, prs.total_count]);
 
-    let mut sections = vec![
-        format!("{wso} WSO RESULTS FOR {meet}"),
-        athlete_table.to_string(),
-        make_rate_table.to_string(),
-        volume_table.to_string(),
-        pr_table.to_string(),
-    ];
+    let mut report = Report::new()
+        .titled(format!("{wso} WSO RESULTS FOR {meet}"))
+        .table("athletes", athlete_table)
+        .table("make_rates", make_rate_table)
+        .table("volume", volume_table)
+        .table("prs", pr_table);
 
     if !prs.details.is_empty() {
         let mut table = Table::new();
@@ -444,7 +462,7 @@ pub fn render_report(
                 format_weight(detail.previous_pr),
             ]);
         }
-        sections.push(format!("ATHLETES WITH PRS\n{table}"));
+        report = report.headed("pr_details", "ATHLETES WITH PRS", table);
     }
 
     if !medals.is_empty() {
@@ -459,10 +477,10 @@ pub fn render_report(
                 format_weight(detail.result),
             ]);
         }
-        sections.push(format!("ATHLETES WITH MEDALS\n{table}"));
+        report = report.headed("medals", "ATHLETES WITH MEDALS", table);
     }
 
-    sections.join("\n")
+    report
 }
 
 fn percentage(made: usize, attempts: usize) -> f64 {

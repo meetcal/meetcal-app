@@ -6,6 +6,7 @@ use crate::commands::wrapped::{
     calculate_wrapped_stats, current_year, filter_exact_name, get_athlete_year,
 };
 use crate::types::wrapped::WrappedStats;
+use crate::utils::output::{self, Report};
 
 /// Compare an athlete's current calendar year with the previous calendar year.
 ///
@@ -67,16 +68,13 @@ pub async fn run(args: CompareArgs) -> Result<()> {
         .unwrap_or(&args.name);
     let current_stats = calculate_wrapped_stats(&current_results);
     let previous_stats = calculate_wrapped_stats(&previous_results);
-    println!(
-        "{}",
-        render_comparison(
-            display_name,
-            previous,
-            current,
-            &previous_stats,
-            &current_stats,
-        )
-    );
+    output::emit(comparison_report(
+        display_name,
+        previous,
+        current,
+        &previous_stats,
+        &current_stats,
+    ));
     Ok(())
 }
 
@@ -151,6 +149,16 @@ pub fn render_comparison(
     previous: &WrappedStats,
     current: &WrappedStats,
 ) -> String {
+    comparison_report(name, previous_year, current_year, previous, current).to_text()
+}
+
+pub fn comparison_report(
+    name: &str,
+    previous_year: i32,
+    current_year: i32,
+    previous: &WrappedStats,
+    current: &WrappedStats,
+) -> Report {
     let mut table = Table::new();
     table.set_header(vec![
         "Metric",
@@ -171,7 +179,9 @@ pub fn render_comparison(
         ]);
     }
 
-    format!("{name} — {previous_year} VS {current_year} CALENDAR YEAR\n{table}")
+    Report::single("comparison", table).titled(format!(
+        "{name} — {previous_year} VS {current_year} CALENDAR YEAR"
+    ))
 }
 
 fn format_metric(value: f64, unit: MetricUnit) -> String {

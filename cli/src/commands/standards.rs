@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
 pub struct Standards {
@@ -57,7 +58,7 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
         ]);
     }
 
-    println!("{table}");
+    output::emit(Report::single("standards", table));
 
     Ok(())
 }
