@@ -45,5 +45,5 @@ echo
 echo "Release artifacts for v$VERSION (local builds, for smoke testing):"
 ls -1 "$DIST"/*.tar.gz
 echo
-echo "Releases are published by tagging, not from these files (see BREW.md):"
+echo "Releases are published by tagging, not from these files (see docs/releasing.md):"
 echo "  git tag cli-v$VERSION && git push origin cli-v$VERSION"

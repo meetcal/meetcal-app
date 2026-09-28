@@ -1,4 +1,4 @@
-# Homebrew Release Steps
+# Releasing
 
 The CLI is distributed through the Homebrew tap at https://github.com/meetcal/homebrew-tap.
 Users install it with:

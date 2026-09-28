@@ -119,8 +119,10 @@ mise run run                 # trunk serve on http://localhost:3000
 mise run check-all           # cargo fmt, clippy, tests
 ```
 
-Browser tests (Playwright) and the build's environment variables are in
-[web/TESTING.md](web/TESTING.md) and [web/.env.example](web/.env.example). A build reads the
+How the site fits together (data, sign-in, routes, deploys) is in
+[web/docs/architecture.md](web/docs/architecture.md); browser tests (Playwright) are in
+[web/docs/testing.md](web/docs/testing.md), and the build's environment variables in
+[web/.env.example](web/.env.example). Agents: [web/AGENTS.md](web/AGENTS.md). A build reads the
 production Convex deployment unless `MEETCAL_CONVEX_URL` names another. Vercel builds the site
 from `web/` with `web/vercel.json`, which also holds its security headers and route rewrites.
 
@@ -139,4 +141,7 @@ Development runs from `cli/` (`just check-all`, `cargo run -- <command>`); every
 reads is in [`cli/src/utils/backend.rs`](cli/src/utils/backend.rs), and `MEETCAL_CONVEX_URL`
 points it at another deployment. The full command reference is in [cli/README.md](cli/README.md),
 and releasing a new version (tag `cli-vX.Y.Z`, then update the
-[Homebrew tap](https://github.com/meetcal/homebrew-tap)) is in [cli/BREW.md](cli/BREW.md).
+[Homebrew tap](https://github.com/meetcal/homebrew-tap)) is in
+[cli/docs/releasing.md](cli/docs/releasing.md). How it works is in
+[cli/docs/architecture.md](cli/docs/architecture.md), testing in
+[cli/docs/testing.md](cli/docs/testing.md), and agent guidance in [cli/AGENTS.md](cli/AGENTS.md).

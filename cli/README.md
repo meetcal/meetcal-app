@@ -305,4 +305,6 @@ MEETCAL_CONVEX_URL=https://utmost-retriever-826.convex.cloud cargo run -- record
 
 Every Convex query the CLI reads is listed in `src/utils/backend.rs`.
 
-Release builds and Homebrew publishing steps are documented in [BREW.md](BREW.md).
+How the CLI works is in [docs/architecture.md](docs/architecture.md), testing in
+[docs/testing.md](docs/testing.md), and release builds and Homebrew publishing in
+[docs/releasing.md](docs/releasing.md).

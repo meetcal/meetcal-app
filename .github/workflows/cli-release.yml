@@ -1,7 +1,7 @@
 name: CLI Release
 
 # Tag `cli-vX.Y.Z` on master to publish the CLI's binaries as a release of
-# this repository; then point the Homebrew formula at them (cli/BREW.md).
+# this repository; then point the Homebrew formula at them (cli/docs/releasing.md).
 on:
   push:
     tags:

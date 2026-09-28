@@ -20,9 +20,9 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 `CLAUDE.md` imports this file for Claude Code. Keep shared repository rules here; the review skill holds its specialized audit procedure.
 
-The website (meetcal.app, Rust + Leptos compiled to WebAssembly) is in `web/` and reads the same Convex queries over Convex's HTTP API (`web/src/utils/api.rs`). It has its own toolchain and gates (Cargo and Trunk, and npm for its Playwright tests, the one exception to the Bun rule): see `web/TESTING.md` and `web/mise.toml`. The app's lint, typecheck, Jest, Metro and EAS all skip `web/`.
+The website (meetcal.app, Rust + Leptos compiled to WebAssembly) is in `web/` and reads the same Convex queries over Convex's HTTP API (`web/src/utils/api.rs`). It has its own toolchain and gates (Cargo and Trunk, and npm for its Playwright tests, the one exception to the Bun rule): see `web/AGENTS.md`, which applies with this file for work in `web/`. The app's lint, typecheck, Jest, Metro and EAS all skip `web/`.
 
-The CLI (`meetcal`, distributed through Homebrew) is in `cli/` and reads the same Convex queries over Convex's HTTP API (`cli/src/utils/backend.rs`). It builds with Cargo (`just check-all` from `cli/`) and releases from `cli-vX.Y.Z` tags; `cli/BREW.md` has the release and Homebrew steps. Metro, EAS and the app's CI skip `cli/`.
+The CLI (`meetcal`, distributed through Homebrew) is in `cli/` and reads the same Convex queries over Convex's HTTP API (`cli/src/utils/backend.rs`). It builds with Cargo (`just check-all` from `cli/`) and releases from `cli-vX.Y.Z` tags; `cli/AGENTS.md` applies with this file for work in `cli/`, and `cli/docs/releasing.md` has the release and Homebrew steps. Metro, EAS and the app's CI skip `cli/`.
 
 `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
 
