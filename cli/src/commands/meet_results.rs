@@ -7,6 +7,7 @@ use crate::{
     utils::{
         backend::{queries, query},
         make_rate::print_make_rate,
+        names::{NameKind, not_found},
     },
 };
 
@@ -26,6 +27,10 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
 
     let query_args = serde_json::json!({ "meet": name });
     let mut results: Vec<LiftingResults> = query(queries::MEET_RESULTS, &query_args).await?;
+    if results.is_empty() {
+        let message = format!("No results found for meet \"{name}\"");
+        return Err(not_found(NameKind::Meet, &name, message).await);
+    }
 
     results.sort_by(|a, b| b.total.total_cmp(&a.total));
 

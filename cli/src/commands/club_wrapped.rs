@@ -5,6 +5,7 @@ use crate::commands::group_wrapped::{
     calculate_group_stats, get_club_results_since, render_group_wrapped, results_for_year,
 };
 use crate::commands::wrapped::current_year;
+use crate::utils::names::{NameKind, not_found};
 
 /// Show a club's calendar year in lifting.
 ///
@@ -27,10 +28,11 @@ pub async fn run(args: ClubWrappedArgs) -> Result<()> {
     let (memberships, results) = get_club_results_since(&args.club, &cutoff).await?;
 
     if memberships.is_empty() {
-        bail!(
+        let message = format!(
             "No completed-meet athletes found for club \"{}\"",
             args.club
         );
+        return Err(not_found(NameKind::Club, &args.club, message).await);
     }
 
     let results = results_for_year(results, year);

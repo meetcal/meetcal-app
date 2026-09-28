@@ -5,6 +5,7 @@ use crate::commands::group_wrapped::{
     calculate_group_stats, get_club_results_since, render_group_comparison, split_comparison_years,
 };
 use crate::commands::wrapped::current_year;
+use crate::utils::names::{NameKind, not_found};
 
 /// Compare a club's current calendar year with the previous calendar year.
 ///
@@ -23,10 +24,11 @@ pub async fn run(args: ClubCompareArgs) -> Result<()> {
     let (memberships, results) = get_club_results_since(&args.club, &cutoff).await?;
 
     if memberships.is_empty() {
-        bail!(
+        let message = format!(
             "No completed-meet athletes found for club \"{}\"",
             args.club
         );
+        return Err(not_found(NameKind::Club, &args.club, message).await);
     }
 
     let (previous_results, current_results) =

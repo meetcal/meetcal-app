@@ -9,6 +9,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::{ClubMedalDetail, ClubPrDetail, Movement};
 use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
+use crate::utils::names::{NameKind, not_found};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -94,6 +95,10 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
 pub async fn get_wso_athletes(wso: &str, meet: &str) -> Result<WsoAthletes> {
     let query_args = json!({ "meet": meet });
     let athletes: Vec<Athletes> = query(queries::MEET_ATHLETES, &query_args).await?;
+    if athletes.is_empty() {
+        let message = format!("No athletes found for meet \"{meet}\"");
+        return Err(not_found(NameKind::Meet, meet, message).await);
+    }
 
     select_wso_athletes(&athletes, wso, meet)
 }
@@ -509,6 +514,9 @@ mod tests {
             session_platform: None,
             weight_class: "69".to_string(),
             wso: wso.map(str::to_string),
+            date: None,
+            weigh_in_time: None,
+            start_time: None,
         }
     }
 

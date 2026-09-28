@@ -96,6 +96,15 @@ impl Query {
 pub mod queries {
     use super::Query;
 
+    /// `GET /meets`: meets starting within three months; takes `now` (milliseconds, rounded
+    /// down to the hour so callers share Convex's cached answer).
+    pub const UPCOMING_MEETS: Query = Query::text("meets:list");
+    /// `GET /meets/completed`: completed meets, newest first.
+    pub const COMPLETED_MEETS: Query = Query::text("meets:completed");
+    /// `GET /meets/details`; takes `meet`. An unknown meet is a 404 error.
+    pub const MEET_DETAILS: Query = Query::text("meets:details");
+    /// `GET /meets/schedule`; takes `meet`.
+    pub const MEET_SCHEDULE: Query = Query::text("meets:schedule");
     /// `GET /meets/athletes`; takes `meet`.
     pub const MEET_ATHLETES: Query = Query::text("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
@@ -107,6 +116,9 @@ pub mod queries {
     pub const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
     /// `GET /lifting-results/recent`; takes `names` (at most 100) and `cutoffDate`.
     pub const RECENT_RESULTS: Query = Query::text("results:recent");
+    /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
+    /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
+    pub const BESTS: Query = Query::value("results:bests");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate`.
     pub const SEARCH: Query = Query::value("results:search");
     /// `GET /data/records`
@@ -125,6 +137,12 @@ pub mod queries {
     pub const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
     /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
     pub const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
+    /// `GET /clubs`: every club name.
+    pub const CLUBS: Query = Query::text("reference:clubs");
+    /// `GET /data/wso`: every WSO with records.
+    pub const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
+    pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`.
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.

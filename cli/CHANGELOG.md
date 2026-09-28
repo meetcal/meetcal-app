@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.0
+
+The CLI now shows the meet and record data the app and meetcal.app do.
+
+- `meets` lists upcoming meets, or completed ones with `--completed`, filtered with `--search`.
+- `meet-info` shows a meet's dates, status, venue and address, time zone and venue maps.
+- `schedule` shows a meet's sessions: date, platform, weigh-in and start times, and weight classes.
+- `meet` adds each athlete's session date, weigh-in and start times, and their best snatch, clean
+  & jerk and total over the past year (`--no-bests` leaves those out). The session number and
+  platform now share one column.
+- `records` and `wso-records` show who set each lift, when and where.
+- `clubs` and `wsos` list the names the club and WSO commands expect; `wsos <WSO>` lists the age
+  groups it keeps records for.
+- A command given a meet, club or WSO name MeetCal does not know suggests the closest ones it
+  does; `wso-records` with an age group the WSO does not keep lists the ones it does.
+
 ## 2.1.0
 
 - Reads MeetCal's Convex backend, the same one the app and meetcal.app read, instead of the retired

@@ -1,5 +1,6 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::format::record_cell;
 use crate::utils::sort::sort_by_class;
 use anyhow::Result;
 use clap::Parser;
@@ -47,9 +48,9 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
     for record in sorted {
         table.add_row(vec![
             record.weight_class,
-            record.snatch_record.to_string(),
-            record.cj_record.to_string(),
-            record.total_record.to_string(),
+            record_cell(Some(record.snatch_record), record.snatch_by.as_ref()),
+            record_cell(Some(record.cj_record), record.cj_by.as_ref()),
+            record_cell(Some(record.total_record), record.total_by.as_ref()),
         ]);
     }
 

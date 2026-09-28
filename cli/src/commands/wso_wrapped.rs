@@ -5,6 +5,7 @@ use crate::commands::group_wrapped::{
     calculate_group_stats, get_wso_results_since, render_group_wrapped, results_for_year,
 };
 use crate::commands::wrapped::current_year;
+use crate::utils::names::{NameKind, not_found};
 
 /// Show a WSO's calendar year in lifting.
 ///
@@ -28,7 +29,8 @@ pub async fn run(args: WsoWrappedArgs) -> Result<()> {
     let (memberships, results) = get_wso_results_since(&args.wso, &cutoff).await?;
 
     if memberships.is_empty() {
-        bail!("No meet registrations found for WSO \"{}\"", args.wso);
+        let message = format!("No meet registrations found for WSO \"{}\"", args.wso);
+        return Err(not_found(NameKind::Wso, &args.wso, message).await);
     }
 
     let results = results_for_year(results, year);

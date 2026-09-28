@@ -18,6 +18,14 @@ pub struct Athletes {
     pub session_platform: Option<String>,
     pub weight_class: String,
     pub wso: Option<String>,
+    /// The session's date and times in the meet's time zone, on start-list rows
+    /// (`meets:athletesSessions`) for athletes with a session.
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub weigh_in_time: Option<String>,
+    #[serde(default)]
+    pub start_time: Option<String>,
 }
 
 #[derive(Debug, Clone, ValueEnum, Deserialize)]
