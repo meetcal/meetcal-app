@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main, master]
-    paths-ignore: ["web/**", ".github/workflows/web.yml"]
+    paths-ignore: ["web/**", "cli/**", ".github/workflows/web.yml", ".github/workflows/cli.yml", ".github/workflows/cli-release.yml"]
   pull_request:
-    paths-ignore: ["web/**", ".github/workflows/web.yml"]
+    paths-ignore: ["web/**", "cli/**", ".github/workflows/web.yml", ".github/workflows/cli.yml", ".github/workflows/cli-release.yml"]
   workflow_dispatch:
 
 # Cancel in-progress runs for the same ref to save CI minutes.

@@ -1,9 +1,11 @@
-name: Release
+name: CLI Release
 
+# Tag `cli-vX.Y.Z` on master to publish the CLI's binaries as a release of
+# this repository; then point the Homebrew formula at them (cli/BREW.md).
 on:
   push:
     tags:
-      - "v*"
+      - "cli-v*"
 
 permissions:
   contents: write
@@ -37,11 +39,24 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Check the tag matches the crate version
+        working-directory: cli
+        run: |
+          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
+            exit 1
+          }
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        working-directory: cli
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package
+        working-directory: cli
         run: |
           mkdir -p dist/${{ matrix.artifact }}
           cp target/${{ matrix.target }}/release/meetcal dist/${{ matrix.artifact }}/meetcal
@@ -51,7 +66,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}.tar.gz
+          path: cli/dist/${{ matrix.artifact }}.tar.gz
 
   release:
     needs: build
@@ -67,5 +82,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          name: meetcal CLI ${{ github.ref_name }}
           files: dist/*.tar.gz
-          generate_release_notes: true
+          # Not marked latest: this repository's latest release is not the
+          # CLI's to claim.
+          body: "Install or upgrade with `brew install meetcal/tap/meetcal`. Changes: see cli/CHANGELOG.md."
+          make_latest: false
