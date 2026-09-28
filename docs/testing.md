@@ -7,10 +7,12 @@ Jest uses the `jest-expo` preset, the device-time-zone environment below, and `j
 ```sh
 bunx jest --ci --watchman=false
 bun run test:coverage
-bunx tsx .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts
+bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, `tsc --noEmit`, and `bunx jest --ci`. The npm script `test` is watch mode and is not the CI gate.
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, Jest coverage, and the coverage-gap inventory with the Bun version pinned in `mise.toml`. The `test` script is watch mode and is not the CI gate.
+
+For local PR verification, run `mise run check`. It uses the pinned Bun and Node versions and runs lint, typecheck, Jest coverage, and the coverage-gap report. The report is an inventory to inspect for changed auth, API, and timezone code; it is not a percentage target. `mise run app:test` runs the faster Jest CI suite while iterating. Maestro is a separate device smoke check.
 
 ### Device time zone
 

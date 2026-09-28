@@ -6,6 +6,8 @@
 
 A React Native application built with Expo for managing athletic schedules and meet calendars.
 
+For agent and contributor workflow, see [AGENTS.md](AGENTS.md). Tool versions and local tasks are in [mise.toml](mise.toml): `mise run setup`, `mise run app:start`, and `mise run check` cover the usual setup, development, and verification path.
+
 All live data comes from Convex (`convex/` in this repo): the app's queries, the materialized views that make them fast, and the scheduled scrapers that keep the data current (`convex/crons.ts`, `convex/cronJobs.ts`).
 
 [![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
@@ -54,10 +56,10 @@ All live data comes from Convex (`convex/` in this repo): the app's queries, the
 
 Copy `.env.example` to `.env.local` and fill in values. `EXPO_PUBLIC_CONVEX_URL` is the data backend:
 
-- **Local development:** run `npx convex dev`; it writes the dev deployment's URL (`CONVEX_DEPLOYMENT`, `EXPO_PUBLIC_CONVEX_URL`) into `.env.local`.
+- **Local development:** run `mise run convex:dev`; it writes the dev deployment's URL (`CONVEX_DEPLOYMENT`, `EXPO_PUBLIC_CONVEX_URL`) into `.env.local`.
 - **EAS builds:** `eas.json` sets it per profile: the dev deployment for `development*`, production for `preview` and `production*`.
 
-Convex deployment variables (set with `npx convex env set … --prod`): `ALERT_EMAIL` (scheduled-job failure emails), `URLWATCH_EMAIL` (usamasters.net page changes), `ONESIGNAL_APP_ID` and `ONESIGNAL_REST_API_KEY` (how those emails are sent), and the Clerk variables for signed-in calls.
+Convex deployment variables (set with `bunx convex env set … --prod` when authorized): `ALERT_EMAIL` (scheduled-job failure emails), `URLWATCH_EMAIL` (usamasters.net page changes), `ONESIGNAL_APP_ID` and `ONESIGNAL_REST_API_KEY` (how those emails are sent), and the Clerk variables for signed-in calls.
 
 ## Native API Integration
 

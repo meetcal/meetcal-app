@@ -2,6 +2,24 @@
 
 Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `lib/api/meetcal-api.ts` (transport in `lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`config/ios-app-intents/MeetCalAPI.swift`). How writes keep the derived data (views, histories, summaries, search) current, and what to run after a write that bypasses `convex/ingest.ts`, is in `docs/backend.md`.
 
+## Hard Rules
+
+- Use Bun for JavaScript. Run commands through `mise run <task>` or `mise exec -- <command>` so this repo's Bun and Node versions apply. Never use npm.
+- Do not read `.env*` contents unless the user authorizes it. Do not deploy Convex, publish an OTA, submit a build, or write production data unless the current task authorizes that action.
+- Do not edit generated `ios/` or `android/` trees as a lasting source change. Do not patch dependencies to work around app defects without a documented reason.
+- Work in the session's dedicated worktree. If the session starts in a primary checkout, create a worktree before editing. Preserve unrelated user changes.
+
+## Workflow
+
+1. Read the relevant source, tests, and docs before changing behavior. Check the current branch and worktree state. Sync with the target branch when safe; do not rebase over uncommitted work.
+2. Use the smallest relevant checks while implementing. For UI work, show a running demo or screenshots when requested before the full gate.
+3. For risky changes to auth, subscription gating, writes, navigation, offline data, or native/platform behavior, ask a subagent to review the diff with the `review-code-performance-tests` skill after implementation; fix confirmed findings. Keep the review scoped to the change.
+4. Before opening or updating a PR, run `mise run check`. A documentation-only change may skip it; say so in the PR test plan. Run Maestro for navigation, auth gates, or screens its flows cover when a suitable device is available.
+5. Open or update a PR against `master` when the task calls for one. Use an imperative, user-visible title and `## Summary` and `## Test plan` body sections. Do not merge or push directly to `master`.
+6. Report what changed, verification results, untested devices or flows, data/schema or auth changes, and remaining risks. Leave a harness-created worktree in place.
+
+`CLAUDE.md` imports this file for Claude Code. Keep shared repository rules here; the review skill holds its specialized audit procedure.
+
 Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetcal-backend` (the retired Rust API + Postgres) is being sunset.
 
 ## Layout
@@ -24,35 +42,41 @@ Sister repos (do not implement them here): `meetcal-web`, `meetcal-cli`. `meetca
 
 ## Commands
 
-Package manager is **bun**. Do not use npm.
+Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 
 | Task | Command |
 |---|---|
 | Install | `bun install` |
+| Install from lockfile | `mise run setup` |
+| Full local PR gate | `mise run check` |
 | Dev client | `bun run start` / `bun run dev` |
 | Lint | `bun run lint` |
 | Typecheck | `bun run typecheck` (or `bunx tsc --noEmit`) |
 | Unit tests | `bunx jest --ci --watchman=false` |
 | Watch tests | `bun run test` |
 | Coverage | `bun run test:coverage` |
-| Coverage gaps | `bunx tsx .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts` |
+| Coverage gaps | `bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts` |
 | Maestro | `bun run maestro:test` (needs a booted simulator + Metro; see `docs/testing.md`) |
 | iOS / Android | `bun run ios` / `bun run android` |
 | iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bunx expo run:ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
 | Prod OTA | `bun run update:prod` (production only) |
 
+`mise tasks ls` lists the app, Convex, build, submit, update, and compatibility tasks. Build, submit, deploy, and update tasks have external side effects; run them only when authorized. The EAS iOS build task uses the cloud image; use the local Xcode 27.1 path in `docs/iphone-duo.md` for a Duo-optimized store build.
+
 `runtimeVersion` in `app.config.js` is pinned to the native app version, so an OTA update must be built from the same Expo / React Native preview the shipped binary uses; a bundle built against a different native runtime will not load.
 
 ## Verify
 
-Run this table before opening or updating a PR. Do not merge. Do not push to `master`.
+Run `mise run check` before opening or updating a PR. It runs lint, typecheck, Jest coverage, and the coverage-gap inventory. Do not merge or push to `master`. Use the individual commands below while iterating.
 
 | Gate | Command | Pass when |
 |---|---|---|
 | Lint | `bun run lint` | Exit 0 |
 | Typecheck | `bun run typecheck` | Exit 0 |
 | Unit tests | `bunx jest --ci --watchman=false` | Exit 0 |
-| Coverage inventory | `bun run test:coverage` then the gaps script | Report written; no new untested auth/API/timezone holes in files you touched |
+| Coverage inventory | `bun run test:coverage` then the gaps script | Report printed; no new untested auth/API/timezone holes in files you touched |
+
+Jest includes `convex-tests/`, but its coverage report does not measure `convex/` production functions or native widget binaries. Follow `docs/backend.md` for Convex write verification and `docs/testing.md` for test placement and device-timezone behavior. A green local gate does not prove iOS/Android rendering, push delivery, RevenueCat purchases, or production data migrations.
 
 Maestro is optional in CI. Run it when a change touches navigation, auth gates, or a screen a flow already covers.
 

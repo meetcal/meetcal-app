@@ -1,4 +1,4 @@
 interface:
   display_name: Review code, performance, and tests
-  short_description: Three-pass MeetCal review — architecture, RN/API performance, then risk-based tests. Open a PR; do not merge.
-  default_prompt: Follow .codex/skills/review-code-performance-tests/SKILL.md against app/, components/, hooks/, lib/, utils/, and contexts/. Use bun. The API client is lib/api/meetcal-api.ts over Convex (lib/api/transport.ts). Ignore convex/scrapers/. Do not merge. Open one PR against master with lint, typecheck, and Jest evidence.
+  short_description: Review MeetCal code, measured performance, and risk-based tests.
+  default_prompt: Use $review-code-performance-tests to review the relevant MeetCal change in three passes. Follow AGENTS.md, run the local checks, and report evidence and remaining risks.
