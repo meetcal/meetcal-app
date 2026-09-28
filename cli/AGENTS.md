@@ -48,9 +48,16 @@ Run from this folder.
 | Gate | Command | Pass when |
 |---|---|---|
 | Format, lint, tests | `just check-all` | Exit 0 |
-| Real answers | Run each command you changed against a deployment (dev, or production for reads) | It prints the expected table and exits 0 |
+| Local run of every new or changed command | See below | Every one exits 0 with the expected output in all three formats |
 
-CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings` and `cargo test --locked`. Tests never call a real deployment, so the second gate is the only check that a command still parses the live answer.
+**Before opening or updating a PR, run every command that is new or that the change touches, locally, against a real deployment** (production for reads, or the dev deployment with `MEETCAL_CONVEX_URL`). "Touches" includes commands that share code you changed: a change to `utils/output.rs`, `utils/backend.rs`, `utils/stats.rs` or a shared report module (`group_wrapped.rs`, `wso_results.rs`) means every command using it. For each command:
+
+- run it with real names and its main flags, in `--format table`, `json` and `csv`: it exits 0, the table reads right, the JSON parses, and the CSV has its header;
+- run it with a misspelled meet, club, WSO or athlete name where it takes one, and check the suggestion.
+
+List what you ran in the PR's test plan, and anything you could not run and why. Unit tests use answer shapes written by hand, and CI never calls a deployment, so this local run is the only check that a command still works against live data.
+
+CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings` and `cargo test --locked`.
 
 ## Code Quality
 

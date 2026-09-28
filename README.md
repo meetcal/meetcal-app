@@ -128,8 +128,11 @@ from `web/` with `web/vercel.json`, which also holds its security headers and ro
 
 # The CLI (`cli/`)
 
-`meetcal` answers the same questions from a terminal: athlete search and Wrapped, meet start lists
-and results, club and WSO reports, rankings, records, standards and qualifying totals.
+`meetcal` answers the same questions from a terminal, and goes further with stats across all of
+MeetCal's data: athlete search, progression, head-to-heads, qualifying gaps and Wrapped;
+leaderboards (total, lifts or Sinclair) and meet attendance over the years; meet start lists,
+schedules and results; club and WSO reports and trends; rankings, records, standards and
+qualifying totals. Every command can print JSON or CSV (`--format`) for your own analysis.
 
 ```sh
 brew install meetcal/tap/meetcal

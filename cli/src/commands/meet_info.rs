@@ -29,7 +29,7 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
         }
         Err(error) => return Err(error),
     };
-    output::emit(Report::single("meet", render(&meet)));
+    output::emit(Report::new().table_with_data("meet", render(&meet), data(&meet)));
     Ok(())
 }
 
@@ -55,6 +55,36 @@ pub fn render(meet: &Meet) -> Table {
             table.add_row(vec![label.to_string(), value]);
         }
     }
+    table
+}
+
+/// The details as one row, a column each, for JSON and CSV.
+pub fn data(meet: &Meet) -> Table {
+    let mut table = Table::new();
+    table.set_header(vec![
+        "Meet",
+        "Start Date",
+        "End Date",
+        "Status",
+        "Federation",
+        "Venue",
+        "Address",
+        "Time Zone",
+        "Apple Maps",
+        "Venue Map",
+    ]);
+    table.add_row(vec![
+        meet.name.clone(),
+        meet.start_date.clone(),
+        meet.end_date.clone(),
+        meet.status.clone(),
+        meet.federation.clone(),
+        meet.venue_name.clone(),
+        address(meet),
+        meet.time_zone.clone(),
+        meet.venue_map_apple_url.clone().unwrap_or_default(),
+        meet.venue_map_pdf_url.clone().unwrap_or_default(),
+    ]);
     table
 }
 
@@ -104,5 +134,11 @@ mod tests {
         let table = render(&meet).to_string();
         assert!(table.contains("Oct 3, 2026"));
         assert!(!table.contains("Venue map"));
+        let json = Report::new()
+            .table_with_data("meet", render(&meet), data(&meet))
+            .to_json();
+        assert_eq!(json[0]["meet"], "Test Meet");
+        assert_eq!(json[0]["start_date"], "2026-10-03");
+        assert_eq!(json[0]["venue_map"], serde_json::Value::Null);
     }
 }

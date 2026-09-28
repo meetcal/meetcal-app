@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::SearchResponse;
 use crate::utils::backend::{queries, query};
-use crate::utils::names::MAX_SUGGESTIONS;
+use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
 /// Names per `results:byNames` call (the query takes at most 100).
@@ -34,25 +34,53 @@ pub async fn history(name: &str) -> Result<Vec<LiftingResults>> {
     Err(unknown_athlete(name).await)
 }
 
-/// The error for an athlete with no results: MeetCal's name suggestions for `name`, if any.
+/// The error for an athlete with no results, with the names MeetCal has that are closest to
+/// `name`.
 pub async fn unknown_athlete(name: &str) -> anyhow::Error {
     let message = format!("No results found for athlete \"{name}\"");
-    let Ok(search) = query::<SearchResponse, _>(queries::SEARCH, &json!({ "query": name })).await
-    else {
-        return anyhow!(message);
-    };
-    let suggestions: Vec<String> = search
-        .suggestions
-        .into_iter()
-        .filter(|suggestion| fold(suggestion) != fold(name))
-        .take(MAX_SUGGESTIONS)
-        .map(|suggestion| format!("  {suggestion}"))
-        .collect();
-    if suggestions.is_empty() {
+    let candidates = athlete_candidates(name).await;
+    let close = closest(name, &candidates, MAX_SUGGESTIONS);
+    if close.is_empty() {
         anyhow!(message)
     } else {
-        anyhow!("{message}\nDid you mean:\n{}", suggestions.join("\n"))
+        let list: Vec<String> = close.iter().map(|name| format!("  {name}")).collect();
+        anyhow!("{message}\nDid you mean:\n{}", list.join("\n"))
     }
+}
+
+/// Searches a misspelled name is still likely to match: the whole name, the name up to the last
+/// word's first three letters, and its first and last words alone. MeetCal's name search matches
+/// substrings, so a typo anywhere defeats the whole name but rarely all of these.
+pub fn search_pieces(name: &str) -> Vec<String> {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    let mut pieces = vec![words.join(" ")];
+    if let Some((last, rest)) = words.split_last()
+        && !rest.is_empty()
+    {
+        let prefix: String = last.chars().take(3).collect();
+        pieces.push(format!("{} {prefix}", rest.join(" ")));
+        pieces.push(last.to_string());
+        pieces.push(rest[0].to_string());
+    }
+    pieces.retain(|piece| piece.chars().count() >= 3);
+    pieces.dedup();
+    pieces
+}
+
+async fn athlete_candidates(name: &str) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    for piece in search_pieces(name) {
+        if let Ok(search) =
+            query::<SearchResponse, _>(queries::SEARCH, &json!({ "query": piece })).await
+        {
+            for suggestion in search.suggestions {
+                if fold(&suggestion) != fold(name) && !candidates.contains(&suggestion) {
+                    candidates.push(suggestion);
+                }
+            }
+        }
+    }
+    candidates
 }
 
 /// Every result of each of `names`, keyed by folded name. Names with no results are absent.
@@ -103,5 +131,20 @@ pub async fn results_between(
             return Ok(rows);
         }
         cursor = Some(page.continue_cursor);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_pieces_survive_a_typo_in_any_word() {
+        assert_eq!(
+            search_pieces("Brandon Victorain"),
+            ["Brandon Victorain", "Brandon Vic", "Victorain", "Brandon"]
+        );
+        assert_eq!(search_pieces("Ada"), ["Ada"]);
+        assert!(search_pieces("  ").is_empty());
     }
 }
