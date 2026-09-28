@@ -19,8 +19,9 @@ android/
 ios/
 
 .github/
-# The website; not part of the app build.
+# The website and the CLI; not part of the app build.
 web/
+cli/
 .idea/
 .vscode/
 .claude/

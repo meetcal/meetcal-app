@@ -2,7 +2,7 @@ import { computeNationalRankingsForYear, computeRecords, computeWsoRows } from '
 
 type Row = Record<string, unknown>;
 
-/** Just enough of Convex's `ctx.db` for the reference readers: index equality, then `collect`. */
+/** Just enough of Convex's `ctx.db` for the reference readers: index equality and ranges, then `collect`. */
 function fakeCtx(tables: Record<string, Row[]>) {
   const ctx = {
     db: {
@@ -15,6 +15,14 @@ function fakeCtx(tables: Record<string, Row[]>) {
             const q = {
               eq: (field: string, value: unknown) => {
                 filters.push((row) => row[field] === value);
+                return q;
+              },
+              gte: (field: string, value: string) => {
+                filters.push((row) => String(row[field]) >= value);
+                return q;
+              },
+              lte: (field: string, value: string) => {
+                filters.push((row) => String(row[field]) <= value);
                 return q;
               },
             };

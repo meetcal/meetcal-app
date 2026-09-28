@@ -161,6 +161,7 @@ export default defineSchema({
     .index('by_memberId', ['memberId'])
     .index('by_club', ['club'])
     .index('by_club_and_meet', ['club', 'meet'])
+    .index('by_wso', ['wso'])
     .index('by_meet_and_wso', ['meet', 'wso']),
 
   intl_rankings: defineTable(intlRankingsFields)
@@ -176,6 +177,7 @@ export default defineSchema({
     .index('by_name_and_date', ['name', 'date'])
     .index('by_event_and_name', ['eventId', 'name'])
     .index('by_federation_and_age', ['federation', 'age'])
+    .index('by_federation_age_and_date', ['federation', 'age', 'date'])
     .index('by_adaptive_and_federation', ['adaptive', 'federation'])
     .index('by_meet_and_name', ['meet', 'name'])
     .index('by_nameKey_and_date', ['nameKey', 'date'])

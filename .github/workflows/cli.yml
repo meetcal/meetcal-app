@@ -1,0 +1,46 @@
+name: CLI CI
+
+# The CLI in `cli/` reads the Convex functions in `convex/`, so a change to
+# either runs it.
+on:
+  push:
+    branches: [main, master]
+    paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
+  pull_request:
+    paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: cli
+
+jobs:
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint all targets
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked

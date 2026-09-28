@@ -1,0 +1,60 @@
+use anyhow::Result;
+use clap::Parser;
+use comfy_table::Table;
+use serde::Deserialize;
+
+use crate::utils::backend::{queries, query};
+use serde_json::json;
+
+#[derive(Debug, Deserialize)]
+pub struct NatRankingYear {
+    pub name: String,
+    pub date: String,
+    pub total: f64,
+}
+
+/// Search for National Rankings for a given weight.
+///
+/// Examples:
+///   meetcal nat-rankings "Junior Women's 77kg" --federation USAW --year 2026
+#[derive(Parser)]
+#[command(name = "nat-rankings-year")]
+pub struct NatRankingsYearArgs {
+    /// Weight class to search for
+    pub weight_class: String,
+
+    /// Federation: USAW or USAMW
+    #[arg(long, short = 'f')]
+    pub federation: String,
+
+    #[arg(long, short = 'y')]
+    pub year: String,
+}
+
+pub async fn run(args: NatRankingsYearArgs) -> Result<()> {
+    // assign args to vars
+    let class = args.weight_class;
+    let federation = args.federation.to_ascii_uppercase();
+    let year = args.year;
+
+    let query_args = json!({ "ageCategory": class, "federation": federation, "year": year });
+    let row_array: Vec<NatRankingYear> =
+        query(queries::NATIONAL_RANKINGS_BY_YEAR, &query_args).await?;
+
+    // push to table
+    let mut table = Table::new();
+    table.set_header(vec!["Rank", "Name", "Total", "Meet Date"]);
+
+    for (rank, row) in (1..).zip(row_array) {
+        table.add_row(vec![
+            rank.to_string(),
+            row.name,
+            row.total.to_string(),
+            row.date,
+        ]);
+    }
+
+    println!("{table}");
+
+    Ok(())
+}

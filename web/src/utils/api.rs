@@ -189,6 +189,30 @@ async fn sleep(duration: Duration) {
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
+/// Convex's HTTP API writes every number of a value answer as a float (`2.0`), which an integer
+/// field will not accept; whole numbers become integers again. (JSON text answers are the
+/// server's own `JSON.stringify`, which already writes `2`.)
+fn whole_numbers_as_integers(value: Value) -> Value {
+    match value {
+        Value::Number(number) => match number.as_f64() {
+            Some(float)
+                if number.is_f64()
+                    && float.fract() == 0.0
+                    && (i64::MIN as f64..=i64::MAX as f64).contains(&float) =>
+            {
+                Value::from(float as i64)
+            }
+            _ => Value::Number(number),
+        },
+        Value::Array(items) => items.into_iter().map(whole_numbers_as_integers).collect(),
+        Value::Object(fields) => fields
+            .into_iter()
+            .map(|(key, field)| (key, whole_numbers_as_integers(field)))
+            .collect(),
+        other => other,
+    }
+}
+
 /// The body a query answered, or why it has none.
 fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<T> {
     let value = match response {
@@ -206,7 +230,7 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
         }
     };
     match query.body {
-        Body::Value => serde_json::from_value(value)
+        Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function)),
         Body::JsonText => {
             let text = value
@@ -323,6 +347,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rows, ["a", "b"]);
+    }
+
+    #[test]
+    fn whole_numbers_in_value_answers_fit_integer_fields() {
+        #[derive(Deserialize)]
+        struct Stats {
+            gold_medals: u64,
+            total_weight_lifted: f64,
+            snatch_make_rate: i64,
+        }
+        let stats: Stats = read_response(
+            Query::value("reference:clubMeetStats"),
+            answer(json!({"status": "success", "value": {
+                "gold_medals": 3.0, "total_weight_lifted": 74.5, "snatch_make_rate": 67.0
+            }})),
+        )
+        .unwrap();
+        assert_eq!(stats.gold_medals, 3);
+        assert_eq!(stats.total_weight_lifted, 74.5);
+        assert_eq!(stats.snatch_make_rate, 67);
     }
 
     #[test]

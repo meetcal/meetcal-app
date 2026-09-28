@@ -1,0 +1,90 @@
+name: CLI Release
+
+# Tag `cli-vX.Y.Z` on master to publish the CLI's binaries as a release of
+# this repository; then point the Homebrew formula at them (cli/BREW.md).
+on:
+  push:
+    tags:
+      - "cli-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: darwin-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: darwin-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Check the tag matches the crate version
+        working-directory: cli
+        run: |
+          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
+            exit 1
+          }
+
+      - name: Build
+        working-directory: cli
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        working-directory: cli
+        run: |
+          mkdir -p dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/meetcal dist/${{ matrix.artifact }}/meetcal
+          tar -czf dist/${{ matrix.artifact }}.tar.gz -C dist/${{ matrix.artifact }} meetcal
+          shasum -a 256 dist/${{ matrix.artifact }}.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: cli/dist/${{ matrix.artifact }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Print checksums
+        run: shasum -a 256 dist/*.tar.gz
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: meetcal CLI ${{ github.ref_name }}
+          files: dist/*.tar.gz
+          # Not marked latest: this repository's latest release is not the
+          # CLI's to claim.
+          body: "Install or upgrade with `brew install meetcal/tap/meetcal`. Changes: https://github.com/meetcal/meetcal-app/blob/master/cli/CHANGELOG.md"
+          make_latest: false

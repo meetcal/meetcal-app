@@ -178,6 +178,36 @@ export const clubAthletes = query({
 });
 
 /**
+ * `GET /wsos/athletes`: a WSO's registrations across meets, names descending.
+ * An athlete's WSO is the one they registered under at each meet, since
+ * affiliation can change between meets. Answers `{ json }`: a large WSO has
+ * thousands of registrations.
+ */
+export const wsoAthletes = query({
+  args: { wso: v.string() },
+  handler: async (ctx, args) => {
+    requireNonEmpty('wso', args.wso);
+    const rows = await ctx.db
+      .query('athletes')
+      .withIndex('by_wso', (q) => q.eq('wso', args.wso))
+      .collect();
+    const athletes = rows
+      .sort((a, b) => compareCollated(b.name, a.name))
+      .map((r) => ({
+        name: r.name,
+        meet: r.meet,
+        club: r.club,
+        wso: args.wso,
+        gender: r.gender,
+        weight_class: r.weightClass,
+        entry_total: r.entryTotal,
+        member_id: r.memberId,
+      }));
+    return { json: JSON.stringify(athletes) };
+  },
+});
+
+/**
  * `GET /clubs/meet-stats`: a club's medals, PRs and make rates at one meet,
  * from the meet's stats and roster views when fresh.
  */
