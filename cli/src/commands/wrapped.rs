@@ -7,7 +7,7 @@ use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
-use crate::utils::backend::get_json;
+use crate::utils::backend::{queries, query};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -47,13 +47,9 @@ pub fn current_year() -> i32 {
 pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
     let start_date = format!("{year:04}-01-01");
     let end_date = format!("{:04}-01-01", year + 1);
-    let query = [
-        ("query", name.to_string()),
-        ("start_date", start_date),
-        ("end_date", end_date),
-    ];
+    let args = serde_json::json!({ "query": name, "startDate": start_date, "endDate": end_date });
 
-    get_json("/search", &query).await
+    query(queries::SEARCH, &args).await
 }
 
 pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<LiftingResults>> {

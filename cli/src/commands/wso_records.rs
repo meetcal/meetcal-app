@@ -4,7 +4,10 @@ use comfy_table::Table;
 
 use crate::{
     types::wso::WSORecord,
-    utils::{api::get_api_response_with_query, sort::sort_by_class},
+    utils::{
+        backend::{queries, query},
+        sort::sort_by_class,
+    },
 };
 
 /// Search for WSO Records for a given age, wso, and gender.
@@ -35,9 +38,8 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     let gender = args.gender;
     let wso = args.wso;
 
-    let query_args = [("age_category", age), ("gender", gender), ("wso", wso)];
-    let records: Vec<WSORecord> =
-        get_api_response_with_query("/data/wso/records", &query_args).await?;
+    let query_args = serde_json::json!({ "ageCategory": age, "gender": gender, "wso": wso });
+    let records: Vec<WSORecord> = query(queries::WSO_RECORDS, &query_args).await?;
     let sorted = sort_by_class(records, |r| r.weight_class.as_str());
 
     let mut table = Table::new();

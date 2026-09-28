@@ -7,8 +7,9 @@ use comfy_table::Table;
 use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::{ClubMedalDetail, ClubPrDetail, Movement};
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
+use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
 
@@ -91,9 +92,8 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
 }
 
 pub async fn get_wso_athletes(wso: &str, meet: &str) -> Result<WsoAthletes> {
-    let query_args = [("meet", meet)];
-    let athletes: Vec<Athletes> =
-        get_api_response_with_query("/meets/athletes", &query_args).await?;
+    let query_args = json!({ "meet": meet });
+    let athletes: Vec<Athletes> = query(queries::MEET_ATHLETES, &query_args).await?;
 
     select_wso_athletes(&athletes, wso, meet)
 }
@@ -155,9 +155,9 @@ pub async fn get_lifting_results(
 
     let mut results: HashMap<String, Vec<LiftingResults>> = HashMap::new();
     for names in wso_athlete_names.chunks(RESULTS_REQUEST_BATCH_SIZE) {
-        let query_args = [("names", names.join(","))];
+        let query_args = json!({ "names": names });
         let lifting_results: Vec<LiftingResults> =
-            get_api_response_with_query("/lifting-results/by-names", &query_args).await?;
+            query(queries::RESULTS_BY_NAMES, &query_args).await?;
 
         for result in lifting_results {
             results
@@ -173,8 +173,8 @@ pub async fn get_lifting_results(
 pub async fn get_meet_results(meet: &str) -> Result<Vec<LiftingResults>> {
     let mut results = Vec::new();
     for alias in result_meet_aliases(meet) {
-        let query_args = [("meet", alias)];
-        let mut rows = get_api_response_with_query("/lifting-results", &query_args).await?;
+        let query_args = json!({ "meet": alias });
+        let mut rows = query(queries::MEET_RESULTS, &query_args).await?;
         results.append(&mut rows);
     }
     Ok(results)

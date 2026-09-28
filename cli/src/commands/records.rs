@@ -1,5 +1,6 @@
+use crate::types::records::Record;
+use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::sort::sort_by_class;
-use crate::{types::records::Record, utils::api::get_api_response};
 use anyhow::Result;
 use clap::Parser;
 use comfy_table::Table;
@@ -32,7 +33,7 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
     let gender = args.gender;
     let federation = args.federation.to_ascii_uppercase();
 
-    let records: Vec<Record> = get_api_response("/data/records").await?;
+    let records: Vec<Record> = query(queries::RECORDS, &NoArgs {}).await?;
     let filtered = records.into_iter().filter(|row| {
         row.age_category.eq_ignore_ascii_case(&age)
             && row.gender.eq_ignore_ascii_case(&gender)

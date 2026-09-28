@@ -3,7 +3,7 @@ use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::utils::api::get_api_response;
+use crate::utils::backend::{NoArgs, queries, query};
 
 #[derive(Debug, Deserialize)]
 pub struct Rankings {
@@ -43,7 +43,7 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     let gender = args.gender;
     let meet = args.meet;
 
-    let rankings: Vec<Rankings> = get_api_response("/data/intl-rankings").await?;
+    let rankings: Vec<Rankings> = query(queries::INTL_RANKINGS, &NoArgs {}).await?;
 
     // push to table
     let mut table = Table::new();

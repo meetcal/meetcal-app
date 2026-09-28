@@ -3,7 +3,8 @@ use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::backend::{queries, query};
+use serde_json::json;
 
 #[derive(Debug, Deserialize)]
 pub struct NatRanking {
@@ -31,19 +32,15 @@ pub async fn run(args: NatRankingsArgs) -> Result<()> {
     let class = args.weight_class;
     let federation = args.federation.to_ascii_uppercase();
 
-    let query_args = [("age_category", class), ("federation", federation)];
-    let row_array: Vec<NatRanking> =
-        get_api_response_with_query("/data/nat-rankings", &query_args).await?;
+    let query_args = json!({ "ageCategory": class, "federation": federation });
+    let row_array: Vec<NatRanking> = query(queries::NATIONAL_RANKINGS, &query_args).await?;
 
     // push to table
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Total"]);
 
-    let mut rank = 1;
-
-    for row in row_array {
+    for (rank, row) in (1..).zip(row_array) {
         table.add_row(vec![rank.to_string(), row.name, row.total.to_string()]);
-        rank += 1
     }
 
     println!("{table}");

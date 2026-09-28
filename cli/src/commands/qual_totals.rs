@@ -3,7 +3,7 @@ use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::utils::api::get_api_response;
+use crate::utils::backend::{NoArgs, queries, query};
 
 #[derive(Debug, Deserialize)]
 pub struct QualifyingTotal {
@@ -42,7 +42,7 @@ pub async fn run(args: QualTotalsArgs) -> Result<()> {
     let gender = args.gender;
     let event = args.event;
 
-    let totals: Vec<QualifyingTotal> = get_api_response("/data/qualifying-totals").await?;
+    let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
     // push to table
     let mut table = Table::new();

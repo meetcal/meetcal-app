@@ -4,7 +4,10 @@ use comfy_table::Table;
 
 use crate::{
     types::lifting_results::LiftingResults,
-    utils::{api::get_api_response_with_query, make_rate::print_make_rate},
+    utils::{
+        backend::{queries, query},
+        make_rate::print_make_rate,
+    },
 };
 
 /// Search for results from a meet, returns all athletes' results and event stats.
@@ -21,9 +24,8 @@ pub struct MeetResultsArgs {
 pub async fn run(args: MeetResultsArgs) -> Result<()> {
     let name = args.name;
 
-    let query_args = [("meet", name)];
-    let mut results: Vec<LiftingResults> =
-        get_api_response_with_query("/lifting-results", &query_args).await?;
+    let query_args = serde_json::json!({ "meet": name });
+    let mut results: Vec<LiftingResults> = query(queries::MEET_RESULTS, &query_args).await?;
 
     results.sort_by(|a, b| b.total.total_cmp(&a.total));
 

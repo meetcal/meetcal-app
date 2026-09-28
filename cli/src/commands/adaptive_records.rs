@@ -6,7 +6,8 @@ use comfy_table::Table;
 use regex::Regex;
 
 use crate::types::lifting_results::AdaptiveRecord;
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::backend::{queries, query};
+use serde_json::json;
 
 static MEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bmen\b").unwrap());
 static WOMEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bwomen\b").unwrap());
@@ -27,12 +28,8 @@ pub struct AdaptiveArgs {
 pub async fn run(args: AdaptiveArgs) -> Result<()> {
     let gender = args.gender;
 
-    let query_args = [
-        ("exclude_federation", "BWL".to_string()),
-        ("gender", gender),
-    ];
-    let records: Vec<AdaptiveRecord> =
-        get_api_response_with_query("/data/adaptive", &query_args).await?;
+    let query_args = json!({ "excludeFederation": "BWL", "gender": gender });
+    let records: Vec<AdaptiveRecord> = query(queries::ADAPTIVE_RECORDS, &query_args).await?;
 
     let mut table = Table::new();
 

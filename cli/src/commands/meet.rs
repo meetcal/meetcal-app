@@ -1,11 +1,10 @@
 use crate::{
     types::athletes::{Athletes, Platform},
-    utils::api::get_api_response_with_query,
+    utils::backend::{queries, query},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use comfy_table::Table;
-use std::collections::HashMap;
 
 /// Search for entries for a meet.
 ///
@@ -39,17 +38,18 @@ pub async fn run(args: MeetArgs) -> Result<()> {
         Platform::Rogue => String::from("Rogue"),
     });
 
-    let mut query_args = HashMap::new();
-    query_args.insert("meet", meet_name);
-    if session_number.is_some() {
-        query_args.insert("session_number", session_number.unwrap_or("1".to_string()));
+    let mut query_args = serde_json::json!({ "meet": meet_name });
+    if let Some(session_number) = session_number {
+        let session_number: u32 = session_number.trim().parse().with_context(|| {
+            format!("Session number must be a whole number, not {session_number:?}")
+        })?;
+        query_args["sessionNumber"] = session_number.into();
     }
-    if session_platform.is_some() {
-        query_args.insert("platform", session_platform.unwrap_or("Red".to_string()));
+    if let Some(platform) = session_platform {
+        query_args["platform"] = platform.into();
     }
 
-    let response: Vec<Athletes> =
-        get_api_response_with_query("/meets/athletes-sessions", &query_args).await?;
+    let response: Vec<Athletes> = query(queries::MEET_ATHLETES_SESSIONS, &query_args).await?;
 
     let mut table = Table::new();
     table.set_header(vec![

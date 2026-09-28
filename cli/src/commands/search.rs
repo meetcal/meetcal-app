@@ -1,6 +1,9 @@
 use crate::{
     types::lifting_results::{LiftingResults, PRs},
-    utils::{api::get_api_response_with_query, make_rate::print_make_rate},
+    utils::{
+        backend::{queries, query},
+        make_rate::print_make_rate,
+    },
 };
 use anyhow::Result;
 use clap::Parser;
@@ -20,9 +23,8 @@ pub struct SearchArgs {
 pub async fn run(args: SearchArgs) -> Result<()> {
     let name = args.name;
 
-    let query_args = [("names", name)];
-    let results: Vec<LiftingResults> =
-        get_api_response_with_query("/lifting-results/by-names", &query_args).await?;
+    let query_args = serde_json::json!({ "names": [name] });
+    let results: Vec<LiftingResults> = query(queries::RESULTS_BY_NAMES, &query_args).await?;
 
     let mut meets_table = Table::new();
 

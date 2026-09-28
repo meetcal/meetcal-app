@@ -8,8 +8,9 @@ use crate::commands::compare::{MetricComparison, MetricUnit, percent_change};
 use crate::commands::wrapped::calculate_wrapped_stats;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
-use crate::utils::backend::get_json;
+use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::equivalent_meets;
+use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
 
@@ -31,11 +32,11 @@ pub struct GroupWrappedStats {
 }
 
 pub async fn get_club_memberships(club: &str) -> Result<Vec<ClubMembership>> {
-    get_json("/clubs/athletes", &[("club", club)]).await
+    query(queries::CLUB_ATHLETES, &json!({ "club": club })).await
 }
 
 pub async fn get_wso_memberships(wso: &str) -> Result<Vec<ClubMembership>> {
-    get_json("/wsos/athletes", &[("wso", wso)]).await
+    query(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
 }
 
 pub async fn get_recent_results(
@@ -44,11 +45,8 @@ pub async fn get_recent_results(
 ) -> Result<Vec<LiftingResults>> {
     let mut results = Vec::new();
     for batch in names.chunks(RESULTS_REQUEST_BATCH_SIZE) {
-        let query = [
-            ("names", batch.join(",")),
-            ("cutoff_date", cutoff_date.to_string()),
-        ];
-        let mut rows: Vec<LiftingResults> = get_json("/lifting-results/recent", &query).await?;
+        let args = json!({ "names": batch, "cutoffDate": cutoff_date });
+        let mut rows: Vec<LiftingResults> = query(queries::RECENT_RESULTS, &args).await?;
         results.append(&mut rows);
     }
     Ok(results)

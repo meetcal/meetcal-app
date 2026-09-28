@@ -3,7 +3,7 @@ use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
-use crate::utils::backend::get_json;
+use crate::utils::backend::{queries, query};
 
 /// Analyze club performance stats for a meet.
 ///
@@ -29,7 +29,11 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
 }
 
 pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
-    get_json("/clubs/meet-stats", &[("club", club), ("meet", meet)]).await
+    query(
+        queries::CLUB_MEET_STATS,
+        &serde_json::json!({ "club": club, "meet": meet }),
+    )
+    .await
 }
 
 pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<()> {

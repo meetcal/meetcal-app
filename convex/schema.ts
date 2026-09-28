@@ -161,6 +161,7 @@ export default defineSchema({
     .index('by_memberId', ['memberId'])
     .index('by_club', ['club'])
     .index('by_club_and_meet', ['club', 'meet'])
+    .index('by_wso', ['wso'])
     .index('by_meet_and_wso', ['meet', 'wso']),
 
   intl_rankings: defineTable(intlRankingsFields)

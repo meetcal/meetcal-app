@@ -3,7 +3,7 @@ use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::utils::api::get_api_response;
+use crate::utils::backend::{NoArgs, queries, query};
 
 #[derive(Debug, Deserialize)]
 pub struct Standards {
@@ -34,7 +34,7 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
     // assign args to vars
     let age = args.age;
     let gender = args.gender;
-    let standards: Vec<Standards> = get_api_response("/data/standards").await?;
+    let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
     let mut filtered: Vec<Standards> = standards
         .into_iter()
         .filter(|row| {
