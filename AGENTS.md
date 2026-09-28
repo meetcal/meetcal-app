@@ -1,6 +1,6 @@
 # MeetCal Mobile
 
-Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `lib/api/meetcal-api.ts` (transport in `lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`config/ios-app-intents/MeetCalAPI.swift`). How writes keep the derived data (views, histories, summaries, search) current, and what to run after a write that bypasses `convex/ingest.ts`, is in `docs/backend.md`.
+Expo / React Native app for USA Weightlifting meet schedules, start lists, results, and offline-first companion data. The backend is Convex, in `convex/` in this repo: the app reads it through `src/lib/api/meetcal-api.ts` (transport in `src/lib/api/transport.ts`); materialized views keep answers fast (`convex/lib/views.ts`, `convex/views.ts`); scheduled scrapers keep the data current (`convex/cronJobs.ts`, `convex/scrapers/`). The iOS App Intents call the same queries over Convex's HTTP API (`plugins/ios-app-intents/MeetCalAPI.swift`). How writes keep the derived data (views, histories, summaries, search) current, and what to run after a write that bypasses `convex/ingest.ts`, is in `docs/backend.md`.
 
 ## Hard Rules
 
@@ -28,18 +28,26 @@ The CLI (`meetcal`, distributed through Homebrew) is in `cli/` and reads the sam
 
 ## Layout
 
+The app's code is in `src/`, Expo's project layout; the repository root holds the other projects (`convex/`, `web/`, `cli/`) and the app's build tooling. `@/` imports resolve to `src/` (`@/lib/api/meetcal-api`), except `@/assets/`, which is the root `assets/` folder (`tsconfig.json` and `babel.config.js` declare both). A path named in a comment inside `src/` is relative to `src/`; elsewhere, paths are relative to the repository root.
+
 | Path | Role |
 |---|---|
-| `app/` | Expo Router screens (tabs, auth, shared sheets, competition data) |
-| `components/` | Feature UI. Screens should stay thin and call into `lib/`, `hooks/`, `utils/` |
-| `hooks/` | Data and device hooks (`useSavedSessions`, schedule pagination, OTA) |
-| `lib/api/` | HTTP client, URL building, response mapping, timeouts |
-| `lib/database/` | Offline cache, meet prefetch/warm, query facades over the API |
-| `lib/` | Auth cache, network, start-list helpers, PostHog, estimator |
-| `utils/` | Timezone/date, deep links, notifications, widgets, auth guard |
-| `contexts/` | Selected meet, saved sessions, theme, RevenueCat subscription |
-| `types/`, `data/types/` | Shared domain types |
+| `src/app/` | Expo Router screens (tabs, auth, shared sheets, competition data) |
+| `src/components/` | Feature UI. Screens should stay thin and call into `src/lib/`, `src/hooks/`, `src/utils/` |
+| `src/hooks/` | Data and device hooks (`useSavedSessions`, schedule pagination, OTA) |
+| `src/lib/api/` | HTTP client, URL building, response mapping, timeouts |
+| `src/lib/database/` | Offline cache, meet prefetch/warm, query facades over the API |
+| `src/lib/` | Auth cache, network, start-list helpers, PostHog, estimator |
+| `src/utils/` | Timezone/date, deep links, notifications, widgets, auth guard |
+| `src/contexts/` | Selected meet, saved sessions, theme, RevenueCat subscription |
+| `src/types/`, `src/data/types/` | Shared domain types |
+| `src/data/meets/` | A meet's resolved configuration (time zone, dates) for calendar exports and session notifications |
+| `src/config/` | Development switches (`development.ts`), the dev mock meet, version announcements |
+| `src/constants/` | Colors and palette, layout tokens, platform ordering, ranking and adaptive constants |
+| `assets/` | Images, fonts, app icons (referenced by `app.config.js`) |
+| `plugins/` | Expo config plugins and the native sources they install: iOS App Intents (`plugins/ios-app-intents/`), the saved-sessions widgets, AsyncStorage size, version sync |
 | `targets/`, `widget/` | Native iOS/Android home-screen widgets |
+| `scripts/`, `jest/`, `patches/` | Dev scripts, the Jest device-time-zone environment, dependency patches |
 | `convex/` | Backend: queries, ingest mutations, views, crons, scrapers (`convex/scrapers/`). Tests in `convex-tests/`. Deploy with `npx convex deploy`. See `docs/backend.md` |
 | `web/` | The website: Rust/Leptos (Trunk build, Vercel deploy, Playwright tests). Changing a Convex query's answer changes the site too: check `web/src/pages/comp_data/` |
 | `cli/` | The `meetcal` CLI: Rust, released to Homebrew. Changing a Convex query's answer changes the CLI too: check `cli/src/commands/` |
@@ -88,13 +96,13 @@ Maestro is optional in CI. Run it when a change touches navigation, auth gates, 
 
 ## Code Quality
 
-- Screens orchestrate. Policy, mapping, and fetching live in `lib/` / `utils/` / `hooks/`.
-- Validate at the API boundary (`lib/api/meetcal-api.ts`) before data reaches UI or AsyncStorage.
+- Screens orchestrate. Policy, mapping, and fetching live in `src/lib/` / `src/utils/` / `src/hooks/`.
+- Validate at the API boundary (`src/lib/api/meetcal-api.ts`) before data reaches UI or AsyncStorage.
 - Prefer indexes and batch endpoints over per-row HTTP. Name-list calls must chunk.
 - No unbounded `Promise.all` over meet-sized collections that inflate/deflate offline blobs.
 - `unknown` at parse sites, then narrow. Do not `as T` past a `JSON.parse`.
 - Auth for `/users/me/*` is server-checked via Clerk JWT; every other API endpoint (competition data) is public. The subscription paywall is a client-side soft gate backed by the RevenueCat SDK, and the cached auth/subscription state (SecureStore) is a hint, never a source of truth for writes.
-- Time and dates go through `utils/timezone.ts` / `utils/dateTime.ts`. Do not use the device timezone for meet-local instants.
+- Time and dates go through `src/utils/timezone.ts` / `src/utils/dateTime.ts`. Do not use the device timezone for meet-local instants.
 - Scrapers, native widget binaries, and generated `ios/` `android/` trees are not part of the JS reliability gate.
 
 ## Reliability Guideposts
@@ -127,11 +135,11 @@ Maestro is optional in CI. Run it when a change touches navigation, auth gates, 
 - Device `getTimezoneOffset()` is not the meet offset. Use `getOffsetMinutesAtInstant` / `convertZonedLocalToUTC`.
 - Clerk may still be loading while the user is offline. `useAuthGuard` may trust the 7-day SecureStore cache only for *reads*; it must not skip sign-in for writes when the cache is stale and the network is up.
 - Prefetch of athlete history is sequential on purpose (watchdog / memory). Do not fan out pako inflate with `Promise.all`.
-- `useSavedSessions` is a god-hook. New session policy goes into testable functions (`lib/next-session.ts`, `utils/time.ts`), not another closure inside the hook.
+- `useSavedSessions` is a god-hook. New session policy goes into testable functions (`src/lib/next-session.ts`, `src/utils/time.ts`), not another closure inside the hook.
 - `as any` on `router.push` hides Expo Router param bugs. Prefer typed `Href`.
 - Maestro sets `EXPO_PUBLIC_MAESTRO_E2E=1` and bypasses auth. Never ship that bypass outside `__DEV__`.
 - iPhone Duo / iOS 27: the app is resizable and the inner display ignores `orientation: 'portrait'`. Branch on `useWindowDimensions()` width, never on orientation.
-- The Duo reserves an 84pt side band for status items and the floating tab rail, reported as `insets.left`/`insets.right`. Screens apply it at their outermost container with `useScreenHorizontalInsets()`; only do it once per subtree (chrome inside a screen inherits it, chrome mounted in `app/_layout.tsx` does not). See `docs/iphone-duo.md`.
+- The Duo reserves an 84pt side band for status items and the floating tab rail, reported as `insets.left`/`insets.right`. Screens apply it at their outermost container with `useScreenHorizontalInsets()`; only do it once per subtree (chrome inside a screen inherits it, chrome mounted in `src/app/_layout.tsx` does not). See `docs/iphone-duo.md`.
 - Width-derived layout must use the *usable* width, not the window. `usePaginatedSchedule` exposes `pageWidth` for this and re-anchors the current page when it changes; new width-derived layout needs the same treatment plus a test.
 - Header buttons are native bar items (`unstable_headerLeftItems` / `unstable_headerRightItems`) on iOS so iOS 27 can move them into iPhone Duo's vertical bar; custom React `headerLeft`/`headerRight` stays stuck in the horizontal bar. Keep the React version for Android.
 - EAS Build has no Xcode 27 image yet, so cloud builds letterbox on Duo. A Duo-optimized store build must come from a local Xcode 27.1 archive. Run it with `EXPO_PUBLIC_CONVEX_URL=https://disciplined-hare-790.convex.cloud` in the environment: `.env.local` points at the dev deployment, and a variable already set in the shell wins over it (`bun run update:prod` sets it the same way).

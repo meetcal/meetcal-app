@@ -11,9 +11,9 @@ MeetCal wins on usefulness: schedules, start lists, athlete history, offline-fir
 ## 1. Current-state audit
 
 ### What's strong
-- **Color theming is fully centralized** (`constants/Colors.ts` + `hooks/useAppColors.ts`), with complete light/dark coverage and semantic keys (success, fail, gold/silver/bronze, platform colors).
-- **Weightlifting Wrapped** (`app/comp-data/weightlifting-wrapped.tsx`) proves the app can do delight well: Reanimated springs, animated counters, gradients, staged reveals, shareable output.
-- The **filter subsystem** (`components/ui/filters/`) and **session sort controls** are genuinely polished, with proper iOS/Android platform splits.
+- **Color theming is fully centralized** (`src/constants/Colors.ts` + `src/hooks/useAppColors.ts`), with complete light/dark coverage and semantic keys (success, fail, gold/silver/bronze, platform colors).
+- **Weightlifting Wrapped** (`src/app/comp-data/weightlifting-wrapped.tsx`) proves the app can do delight well: Reanimated springs, animated counters, gradients, staged reveals, shareable output.
+- The **filter subsystem** (`src/components/ui/filters/`) and **session sort controls** are genuinely polished, with proper iOS/Android platform splits.
 - Offline-first architecture, home-screen widgets on both platforms, and a working share pipeline (`react-native-view-shot` → `ImagePreviewModal`).
 
 ### Where the experience is utilitarian
@@ -29,14 +29,14 @@ MeetCal wins on usefulness: schedules, start lists, athlete history, offline-fir
 | Empty states are dead ends | Plain text ("No saved sessions") with no next step offered |
 
 ### Small flags found during the audit
-- `app/shared-screens/paywall.tsx:41` hardcodes the RevenueCat offering id `"new image test"` — likely a leftover experiment name now acting as the production selector.
+- `src/app/shared-screens/paywall.tsx:41` hardcodes the RevenueCat offering id `"new image test"` — likely a leftover experiment name now acting as the production selector.
 - PostHog has no `session_saved` event — the app's single most important engagement action is uninstrumented.
 
 ---
 
 ## 2. Tier 1 — Foundation polish (high value, low risk)
 
-1. **Design tokens + shared primitives.** `constants/Layout.ts` (spacing/radius/shadow/type scale codifying the app's existing de-facto conventions) and `components/ui/` primitives: `Button`, `Card`, `EmptyState`, `Skeleton`. Consolidates the two bespoke skeletons and gives future screens a consistent starting point.
+1. **Design tokens + shared primitives.** `src/constants/Layout.ts` (spacing/radius/shadow/type scale codifying the app's existing de-facto conventions) and `src/components/ui/` primitives: `Button`, `Card`, `EmptyState`, `Skeleton`. Consolidates the two bespoke skeletons and gives future screens a consistent starting point.
 2. **Unified toast.** A Reanimated top banner (modeled on `OfflineIndicator`'s positioning) with success/error/info types, paired haptics, auto-dismiss. Replaces the blocking `Alert.alert` for transient notices — e.g. saving a session shows "Saved · reminder 1hr before" without interrupting flow. Destructive confirmations stay as alerts.
 3. **Haptics at moments of meaning.** Save/unsave, filter apply, add-to-calendar success, share complete. Light impacts only, matching the existing `HapticTab`/`HeaderSection` idioms. Never on scroll.
 4. **Micro-motion.** Bookmark bounce on save, pressed-scale springs on session cards, a layout transition for the expanding start-list `AthleteItem`, animated `PageIndicator` dots, skeleton→content crossfade. Each of these confirms an action or explains a state change — none are decorative.
