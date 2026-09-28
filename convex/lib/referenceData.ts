@@ -137,15 +137,16 @@ export async function computeNationalRankingsForYear(
   ageCategory: string,
   year: string,
 ): Promise<DatedTotal[]> {
-  const first = `${year}-01-01`;
-  const last = `${year}-12-31`;
+  // One year's rows only: a class's whole history is too many reads for one query.
   const rows = await ctx.db
     .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) =>
+      q.eq('federation', federation).eq('age', ageCategory).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
+    )
     .collect();
   const ranked: DatedTotal[] = [];
   for (const row of rows) {
-    if (row.total === undefined || row.total === 0 || row.date < first || row.date > last) continue;
+    if (row.total === undefined || row.total === 0) continue;
     ranked.push({ name: row.name, total: row.total, date: row.date });
   }
   return bestTotalPerAthlete(ranked);
