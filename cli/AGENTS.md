@@ -1,9 +1,65 @@
-You are first and foremost a teacher, a guide, a helper, and a tutor.
+# MeetCal CLI
 
-You're role is to never write code unless explicitly requested.
+`meetcal`, a Rust command line tool for MeetCal's competition data: athlete search and Wrapped reports, meet start lists and results, club and WSO reports, rankings, records, standards and qualifying totals. It reads the Convex queries in `../convex/`, the same ones the app and meetcal.app read, over Convex's HTTP API (`src/utils/backend.rs`), and prints tables. Users install it through Homebrew (`brew install meetcal/tap/meetcal`).
 
-If you have to write code, then that is a failure on both me for my understanding and you for your explanation.
+The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, no production deploys or data writes without authorization, never push to `master`) and its PR workflow. This file adds what is specific to the CLI and names where it differs.
 
-Never provide suggestions without reading the code first.
+## Differences from the root
 
-Never take an action that is not requested, only ever do explicitly as asked.
+- The toolchain is Cargo (and `just`, see `Justfile`), not Bun. The root's `mise run check` does not cover this folder; run the gates in [Verify](#verify).
+- Publishing a release (a `cli-v*` tag) and updating the Homebrew tap are external actions: do them only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
+- A change to a Convex query in `../convex/` can change what a command prints. The CLI CI runs on changes to `convex/` for that reason; when you change a query's answer, check the commands that read it (`src/commands/`).
+
+## Layout
+
+| Path | Role |
+|---|---|
+| `src/main.rs`, `src/parser.rs` | Entry point and the clap command set; `parser.rs` holds every subcommand's arguments and help |
+| `src/commands/` | One module per command (`run(args)`); shared report logic in `group_wrapped.rs` (club and WSO years) and `compare.rs` |
+| `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), and the HTTP call |
+| `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
+| `src/utils/meet_names.rs` | Matching registration events to results meets (combined national events publish results under separate names) |
+| `src/utils/make_rate.rs`, `sort.rs` | Make-rate tables, weight-class ordering |
+| `src/types/` | Answer types shared across commands |
+| `tests/` | Integration tests: argument parsing and help per command, and the retry policy against a local HTTP server |
+| `scripts/build-release.sh` | Local release builds, for smoke testing |
+| `docs/` | [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), [releasing.md](docs/releasing.md) |
+
+## Commands
+
+Run from this folder.
+
+| Task | Command |
+|---|---|
+| Run a command | `cargo run -- <command> [args]`, e.g. `cargo run -- search "Maddisen Mohnsen"` |
+| Against the dev deployment | `MEETCAL_CONVEX_URL=https://utmost-retriever-826.convex.cloud cargo run -- <command>` |
+| Lint | `just lint` (`cargo fmt --check` + `clippy -D warnings`) |
+| Tests | `cargo test` |
+| Full gate | `just check-all` |
+| Release build | `cargo build --release` |
+| Dependency audit | `just audit` |
+
+## Verify
+
+| Gate | Command | Pass when |
+|---|---|---|
+| Format, lint, tests | `just check-all` | Exit 0 |
+| Real answers | Run each command you changed against a deployment (dev, or production for reads) | It prints the expected table and exits 0 |
+
+CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings` and `cargo test --locked`. Tests never call a real deployment, so the second gate is the only check that a command still parses the live answer.
+
+## Code Quality
+
+- Every data call goes through `src/utils/backend.rs`: add a query to `queries`, never build a Convex URL in a command. Arguments are the query's own, camelCase (`serde_json::json!({ "ageCategory": age })`).
+- Name lists travel as JSON arrays, in batches of at most 100 names (the queries' limit); the commands batch 50.
+- Answer types are `serde` structs. A field that some answers lack (start-list rows carry no meet) is `#[serde(default)]` or an `Option`; free-form values from the data (platform names) are `String`, not enums.
+- Keep network code out of report logic: commands fetch, then call pure functions (stats, comparisons, meet matching) that tests can drive with fixture rows.
+- Errors are `anyhow` with context naming the query or the input; a user-facing failure says what to try (`bail!("No athletes found for WSO ...")`).
+- `--version` comes from `Cargo.toml`: bump the version there, never in clap.
+
+## Recurring lessons
+
+- Convex's HTTP API writes the numbers of a value answer as floats (`2.0`). `backend.rs` turns whole numbers back into integers so integer fields parse; the unit test in `backend.rs` guards it, since fixtures written by hand use integers.
+- A query that reads a whole table or index range can pass on the dev deployment and fail on production, which has far more rows. Check a new or changed command against production before a release.
+- A Convex view is fresh while its source tables are unchanged, whatever code built it: an answer that gains a field serves the old shape until the view is rebuilt (`../docs/backend.md`).
+- USA Weightlifting publishes some national events' start lists under one combined name and their results under separate ones. Go through `meet_names.rs` (`equivalent_meets`, `result_meet_aliases`) rather than comparing meet names directly.
