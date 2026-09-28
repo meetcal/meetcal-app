@@ -84,6 +84,95 @@ export const completed = query({
   },
 });
 
+/** Meet names per `meets:namesPage` call, unless the caller asks for fewer. */
+export const MEET_NAMES_PAGE_SIZE = 500;
+/** The most meets `meets:attendance` counts in one call. */
+export const MAX_ATTENDANCE_MEETS = 8;
+
+/**
+ * Every distinct meet name in the results (`source: 'results'`) or the registrations
+ * (`'registrations'`), in name order after `after` and before `before` (when given), a page at a
+ * time: one read per meet, skipping along the meet index, so the whole history is listable however
+ * many rows it holds. Pass back `next` until it is null. Callers can list several name ranges at
+ * once. Results meets carry one of their dates. Answers `{ json, next }`, the meets as JSON text
+ * (`[{ meet, date }]`).
+ */
+export const namesPage = query({
+  args: {
+    source: v.union(v.literal('results'), v.literal('registrations')),
+    after: v.union(v.string(), v.null()),
+    before: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { source, after, before, limit }) => {
+    const pageSize = limit ?? MEET_NAMES_PAGE_SIZE;
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MEET_NAMES_PAGE_SIZE) {
+      throw apiError(400, `limit must be a whole number from 1 to ${MEET_NAMES_PAGE_SIZE}`);
+    }
+    const meets: { meet: string; date: string | null }[] = [];
+    let last = after;
+    while (meets.length < pageSize) {
+      const from = last;
+      const row =
+        source === 'results'
+          ? await ctx.db
+              .query('lifting_results')
+              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
+              .first()
+          : await ctx.db
+              .query('athletes')
+              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
+              .first();
+      if (!row || (before !== undefined && row.meet >= before)) {
+        return { json: JSON.stringify(meets), next: null };
+      }
+      meets.push({ meet: row.meet, date: 'date' in row ? row.date : null });
+      last = row.meet;
+    }
+    return { json: JSON.stringify(meets), next: last };
+  },
+});
+
+/**
+ * How many took part in each of `meets` (at most eight): lifters with results, and entries
+ * registered (a meet can have its roster before its results), with the results' dates and the
+ * meet's own dates and status when MeetCal tracks it.
+ */
+export const attendance = query({
+  args: { meets: v.array(v.string()) },
+  handler: async (ctx, { meets }) => {
+    if (meets.length > MAX_ATTENDANCE_MEETS) {
+      throw apiError(400, `meets exceeds the ${MAX_ATTENDANCE_MEETS}-meet limit`);
+    }
+    const rows = [];
+    for (const meet of meets) {
+      const [results, registrations, meetRow] = await Promise.all([
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_meet', (q) => q.eq('meet', meet))
+          .collect(),
+        ctx.db
+          .query('athletes')
+          .withIndex('by_meet', (q) => q.eq('meet', meet))
+          .collect(),
+        meetByName(ctx, meet),
+      ]);
+      const dates = results.map((r) => r.date).sort(compareBytes);
+      rows.push({
+        meet,
+        lifters: new Set(results.map((r) => normalizeName(r.name))).size,
+        registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
+        first_date: dates[0] ?? null,
+        last_date: dates[dates.length - 1] ?? null,
+        start_date: meetRow?.startDate ?? null,
+        end_date: meetRow?.endDate ?? null,
+        status: meetRow?.status ?? null,
+      });
+    }
+    return { json: JSON.stringify(rows) };
+  },
+});
+
 /** `GET /meets/details`; a missing meet is the Rust API's 404. */
 export const details = query({
   args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
