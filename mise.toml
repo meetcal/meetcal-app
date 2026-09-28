@@ -1,22 +1,97 @@
+min_version = "2024.11.0"
+
 [tools]
-bun = "latest"
+bun = "1.4.0"
 node = "24"
 java = "17"
 ruby = "3.3"
-"npm:typescript" = "latest"
-"npm:eas-cli" = "latest"
+
+[tasks.setup]
+description = "Install dependencies from the lockfile"
+run = "bun install --frozen-lockfile"
+
+[tasks.check]
+description = "Run MeetCal's local pull-request quality gate"
+run = [
+  "bun run lint",
+  "bun run typecheck",
+  "bun run test:coverage",
+  "bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts",
+]
+
+[tasks."app:start"]
+description = "Start the Expo development server"
+run = "bun run start"
+
+[tasks."app:ios"]
+description = "Build and run the iOS development client"
+run = "bun run ios"
+
+[tasks."app:android"]
+description = "Build and run the Android development client"
+run = "bun run android"
+
+[tasks."app:web"]
+description = "Start Expo web"
+run = "bun run web"
+
+[tasks."app:test"]
+description = "Run the Jest CI suite"
+run = "bun run test:ci"
+
+[tasks."app:test:coverage"]
+description = "Run Jest with coverage"
+run = "bun run test:coverage"
+
+[tasks."app:maestro"]
+description = "Run device smoke flows after starting Metro with EXPO_PUBLIC_MAESTRO_E2E=1"
+run = "bun run maestro:test"
+
+[tasks."convex:dev"]
+description = "Start Convex codegen and development watch"
+run = "bunx convex dev"
+
+[tasks."app:build:ios"]
+description = "Create a production iOS EAS build (see docs/iphone-duo.md for Duo builds)"
+run = "bunx eas-cli build --platform ios --profile production"
+
+[tasks."app:build:android"]
+description = "Create a production Android EAS build"
+run = "bunx eas-cli build --platform android --profile production"
+
+[tasks."app:submit:ios"]
+description = "Submit the latest iOS build to App Store Connect"
+run = "bunx eas-cli submit --platform ios --latest"
+
+[tasks."app:submit:android"]
+description = "Submit the latest Android build to Google Play"
+run = "bunx eas-cli submit --platform android --latest"
+
+[tasks."app:update:production"]
+description = "Publish a production OTA with the production Convex URL"
+run = "bun run update:prod"
+
+[tasks."app:update:preview"]
+description = "Publish an OTA to the preview branch"
+run = "bunx eas-cli update --branch preview"
+
+[tasks."app:update:development"]
+description = "Publish an OTA to the development branch"
+run = "bunx eas-cli update --branch development"
 
 [tasks.deploy-ios]
-run = "EXPO_NO_CAPABILITY_SYNC=1 eas build --platform ios --profile production && eas submit --platform ios"
+description = "Legacy build-and-submit task; prefer separate app:build:ios and app:submit:ios"
+run = "EXPO_NO_CAPABILITY_SYNC=1 bunx eas-cli build --platform ios --profile production && bunx eas-cli submit --platform ios"
 [tasks.deploy-android]
-run = "eas build --platform android --profile production && eas submit --platform android"
+description = "Legacy build-and-submit task; prefer separate app:build:android and app:submit:android"
+run = "bunx eas-cli build --platform android --profile production && bunx eas-cli submit --platform android"
 [tasks.update-prod]
-run = "bunx eas update --branch production --message 'Production update'"
+run = "bun run update:prod"
 [tasks.update-preview]
-run = "bunx eas update --branch preview --message 'Production update'"
+run = "bunx eas-cli update --branch preview"
 [tasks.update-dev]
-run = "bunx eas update --branch development --message 'Production update'"
+run = "bunx eas-cli update --branch development"
 [tasks.run]
-run = "bunx expo run:ios"
+run = "bun run ios"
 [tasks.scan]
 run = "bunx rnsec scan && bunx react-doctor"

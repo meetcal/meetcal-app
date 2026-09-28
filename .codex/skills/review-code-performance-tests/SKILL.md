@@ -1,19 +1,23 @@
 ---
 name: review-code-performance-tests
-description: Three ordered passes over MeetCal mobile production surfaces — code, performance, then tests. Use after substantive changes or when asked to harden reliability. Do not merge; open or update a PR only.
+description: Review MeetCal code quality, measured performance, and risk-based test gaps in three ordered passes. Use for repository cleanup, reliability audits, or substantive changes that warrant a focused review.
 ---
 
 # Review: code, performance, tests
 
-Run three passes in order against production JS/TS surfaces that ship in the app:
+Run three passes in order. For an ordinary change, scope the review to its diff and affected callers. For a full audit, inspect production JS/TS surfaces that ship in the app:
 
 `app/`, `components/`, `hooks/`, `lib/`, `utils/`, `contexts/`
 
-Out of scope unless the task names them: `convex/scrapers/`, native `widget/` / `targets/` binaries, generated `ios/` / `android/`.
+Include non-scraper `convex/` functions when the reviewed change touches backend reads or writes. Out of scope unless the task names them: `convex/scrapers/`, native `widget/` / `targets/` binaries, generated `ios/` / `android/`.
 
 The app reads Convex (`convex/` in this repo) through `lib/api/meetcal-api.ts` and `lib/api/transport.ts`. Package manager is bun.
 
-Do not merge. Do not push to `master`. Open one PR against `master` with evidence.
+Do not merge or push to `master`. If the task calls for a PR, open or update one against `master` with evidence.
+
+## Prepare
+
+Read `AGENTS.md`, `docs/testing.md`, relevant source and tests, and task definitions. Work in the session worktree or create one when needed. Preserve unrelated changes and do not inspect `.env*` contents without authorization. Record the risks and checks relevant to the scope.
 
 ## Pass 1 — Code check
 
@@ -26,8 +30,10 @@ Hunt for:
 - Missing validation at API and auth boundaries (token, saved sessions, preferences, search, meet package)
 - Duplicated time/timezone/meet-name policy
 - Control flow that cannot fail closed (empty body treated as success, 404 vs network mixups)
+- Duplicated mutable state, unchecked results, unused wrappers, and validation that exists only in UI code
+- For touched Convex functions: missing `args` validators, scans where an index exists, unbounded reads, write paths that leave materialized views stale, and authorization on `/users/me/*`
 
-Fix what is bounded. Add regression tests next to the change. Defer the rest in the PR body.
+Fix validated, bounded problems. Add a regression test for a corrected behavior when it protects a meaningful boundary. Record remaining risks in the PR body when there is one.
 
 NASA Power of Ten + TigerStyle from `AGENTS.md` apply.
 
@@ -43,13 +49,13 @@ Measure or trace:
 - Offline inflate/deflate and prefetch batching (`HISTORY_DOWNLOAD_BATCH_SIZE`)
 - Auth/network cache stampedes (`inFlight` maps in `lib/authCache.ts`, `lib/networkUtils.ts`, `lib/database/queries.ts`)
 
-Use `__DEV__` slow-API logs (`[perf] slow api request`) and existing in-flight dedupe. Change only with a before/after story.
+Use `__DEV__` slow-API logs (`[perf] slow api request`) and existing in-flight dedupe. Rank hot paths by latency, frequency, payload size, and failure cost. Change only with a before/after story; preserve auth and validation work even when it has a cost.
 
 ## Pass 3 — Test check
 
 1. Run `bun run test:coverage` (creates `coverage/lcov.info`).
-2. Run `bunx tsx .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts`.
-3. Add **risk-based** tests, not percentage padding:
+2. Run `bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts`.
+3. Cross-check the report against existing tests and add **risk-based** tests, not percentage padding:
 
    - Auth boundaries (missing/empty token, malformed saved-session payload, invalid auth cache JSON)
    - Malformed API JSON, empty body, non-array lists, missing fields
@@ -59,16 +65,12 @@ Use `__DEV__` slow-API logs (`[perf] slow api request`) and existing in-flight d
 
 Do not add tests that only snapshot markup to move coverage.
 
-If `tsx` is missing: `bun add -d tsx` is allowed; otherwise run the script with `bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts`.
-
-Skip `/home/maddisen/.codex/...` skill-validate paths; they are not in this environment.
+Assert user-visible results, stored state, requests, and invariants rather than implementation details. Keep time and network behavior deterministic. Stub external services at their boundaries while exercising MeetCal mapping and policy code. For screen logic, test pure helpers and enough route wiring to prove the screen calls them. Do not call a live Convex deployment from Jest.
 
 ## Verify / Deliver
 
-1. `bun run lint`
-2. `bun run typecheck`
-3. `bunx jest --ci --watchman=false`
-4. Open **one** PR against `master`. Do **not** merge. Do **not** close with a merge/worktree ritual.
-5. PR body lists: passes run, fixes landed, new tests, deferred gaps, command evidence.
+1. Run the smallest relevant checks while iterating.
+2. Before opening or updating a PR, run `mise run check`; use `docs/testing.md` for optional device and Maestro checks.
+3. If the task calls for a PR, describe passes run, measured findings, fixes, tests, deferred gaps, and command evidence. Do not merge.
 
-If a pass finds the tree already excellent, say so with evidence (commands + why remaining gaps are deferred).
+If a pass finds no justified change, say so with evidence. Validate this skill after editing with the skill-creator `quick_validate.py` script.

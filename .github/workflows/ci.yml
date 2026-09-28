@@ -21,7 +21,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -32,6 +32,8 @@ jobs:
       - name: Typecheck
         run: bunx tsc --noEmit
 
-      - name: Unit tests
-        # The "test" script runs in --watchAll mode; invoke jest directly in CI.
-        run: bunx jest --ci
+      - name: Unit tests and coverage
+        run: bun run test:coverage
+
+      - name: Coverage inventory
+        run: bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts
