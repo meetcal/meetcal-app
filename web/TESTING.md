@@ -1,6 +1,7 @@
 # Frontend testing
 
-MeetCal Web uses complementary Rust and browser test layers.
+MeetCal Web uses complementary Rust and browser test layers. Run every command
+below from `web/`.
 
 ## Rust checks
 
