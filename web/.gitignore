@@ -1,0 +1,10 @@
+/target
+/dist
+.DS_store
+.env
+.vercel
+.env*
+.direnv/
+/node_modules/
+/playwright-report/
+/test-results/

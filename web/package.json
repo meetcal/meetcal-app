@@ -1,0 +1,18 @@
+{
+  "name": "meetcal-web-tests",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:config": "node --test tests/config/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:desktop": "playwright test --project=desktop-chromium --project=desktop-webkit",
+    "test:e2e:mobile": "playwright test --project=mobile-chromium --project=small-mobile-chromium --project=mobile-webkit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
+    "serve": "14.2.6",
+    "typescript": "7.0.2"
+  }
+}

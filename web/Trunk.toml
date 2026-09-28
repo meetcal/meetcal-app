@@ -1,0 +1,7 @@
+[build]
+inject_scripts = false
+
+[[hooks]]
+stage = "post_build"
+command = "bash"
+command_arguments = ["scripts/generate-bootstrap.sh"]
