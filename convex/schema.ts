@@ -19,7 +19,9 @@ import { v } from 'convex/values';
 /**
  * Who set a record lift: the athlete, or "Standard" while nobody has claimed
  * it, with the date and where (meet and place) when the source gives them.
- * Stored beside each lift; the app does not show it yet.
+ * Stored beside each lift; `/data/records` and `/data/wso/records` answer it
+ * as `snatch_by`, `cj_by` and `total_by`, and the website's record tables
+ * show it (the app does not yet).
  */
 export const recordHolder = v.object({
   name: v.string(),

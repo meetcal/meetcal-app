@@ -8,6 +8,7 @@ import {
   computeClubs,
   computeIntlRankings,
   computeNationalRankings,
+  computeNationalRankingsForYear,
   computeQualifyingTotals,
   computeRecords,
   computeStandards,
@@ -73,6 +74,16 @@ export const nationalRankings = query({
     await viewOrLive(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, () =>
       computeNationalRankings(ctx, args.federation, args.ageCategory),
     ),
+});
+
+/** `GET /data/nat-rankings-year`: `nationalRankings` within one calendar year, with dates. */
+export const nationalRankingsByYear = query({
+  args: { federation: v.string(), ageCategory: v.string(), year: v.string(), ifNoneMatch },
+  handler: async (ctx, args) => {
+    if (!/^\d{4}$/.test(args.year)) throw apiError(400, 'year must be a four-digit year');
+    const rankings = await computeNationalRankingsForYear(ctx, args.federation, args.ageCategory, args.year);
+    return revalidated(rankings, args.ifNoneMatch);
+  },
 });
 
 /** `GET /data/wso/` */
