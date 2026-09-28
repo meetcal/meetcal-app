@@ -1,14 +1,42 @@
 # MeetCal 📅
 
+USA Weightlifting meet schedules, start lists, results, rankings and records, as a mobile app, a
+website and a command line tool, all reading one Convex backend.
+
 - iOS: https://apps.apple.com/us/app/meetcal/id6741133286
-
 - Android: https://play.google.com/store/apps/details?id=com.memohnsen.meetcal
+- Web: https://meetcal.app
+- CLI: `brew install meetcal/tap/meetcal`
 
-A React Native application built with Expo for managing athletic schedules and meet calendars.
+## What's in this repo
 
-For agent and contributor workflow, see [AGENTS.md](AGENTS.md). Tool versions and local tasks are in [mise.toml](mise.toml): `mise run setup`, `mise run app:start`, and `mise run check` cover the usual setup, development, and verification path.
+| Path | What it is | Built with |
+|---|---|---|
+| `app/`, `components/`, `lib/`, … (the root) | The mobile app | React Native, Expo (Bun) |
+| [`convex/`](convex/) | The backend: queries, materialized views, ingest, and the scheduled scrapers that keep the data current | Convex (TypeScript) |
+| [`web/`](web/) | meetcal.app: the marketing site and the competition data pages | Rust, Leptos (WebAssembly), Trunk, deployed on Vercel |
+| [`cli/`](cli/) | `meetcal`, the command line tool | Rust, released through Homebrew |
 
-All live data comes from Convex (`convex/` in this repo): the app's queries, the materialized views that make them fast, and the scheduled scrapers that keep the data current (`convex/crons.ts`, `convex/cronJobs.ts`).
+All live data comes from Convex. The app, the website and the CLI call the same queries (the app
+through `lib/api/meetcal-api.ts`, the website and the CLI over Convex's HTTP API), so a change to a
+query's answer reaches all three. How the backend keeps its derived data current is in
+[docs/backend.md](docs/backend.md).
+
+For agent and contributor workflow, see [AGENTS.md](AGENTS.md). Tool versions and local tasks are in [mise.toml](mise.toml): `mise run setup`, `mise run app:start`, and `mise run check` cover the usual setup, development, and verification path for the app. The website and the CLI have their own toolchains; see their sections below.
+
+## CI and releases
+
+| Workflow | Runs on | Does |
+|---|---|---|
+| `.github/workflows/ci.yml` | App changes | Lint, typecheck, Jest with coverage |
+| `.github/workflows/web.yml` | Changes to `web/` or `convex/` | Rust checks, production build, Playwright (Chromium and WebKit, desktop and mobile) |
+| `.github/workflows/cli.yml` | Changes to `cli/` or `convex/` | `cargo fmt`, `clippy`, tests |
+| `.github/workflows/cli-release.yml` | A `cli-vX.Y.Z` tag | Builds the CLI for macOS and Linux and publishes the release |
+
+Convex deploys with `npx convex deploy`, the website deploys on Vercel from `master` (project root
+`web/`), and the app ships through EAS Build and EAS Update.
+
+# The app
 
 [![MeetCal Demo](https://youtube.com/shorts/4xoIoYox3C0?feature=share)](https://youtube.com/shorts/4xoIoYox3C0?feature=share)
 
@@ -77,3 +105,38 @@ The app leverages several native device capabilities through Expo modules:
 
 The app targets the iOS 27.1 SDK so it runs in full compatibility mode on iPhone Duo's
 inner display. Building it requires Xcode 27.1 locally — see [docs/iphone-duo.md](docs/iphone-duo.md).
+
+# The website (`web/`)
+
+meetcal.app: the marketing pages, and the competition data pages (results, meet center, club and
+WSO dashboards, rankings, records, standards, qualifying totals, Wrapped) behind the subscription.
+Written in Rust with Leptos and compiled to WebAssembly; every data call is in
+[`web/src/utils/api.rs`](web/src/utils/api.rs).
+
+```sh
+cd web
+mise run run                 # trunk serve on http://localhost:3000
+mise run check-all           # cargo fmt, clippy, tests
+```
+
+Browser tests (Playwright) and the build's environment variables are in
+[web/TESTING.md](web/TESTING.md) and [web/.env.example](web/.env.example). A build reads the
+production Convex deployment unless `MEETCAL_CONVEX_URL` names another. Vercel builds the site
+from `web/` with `web/vercel.json`, which also holds its security headers and route rewrites.
+
+# The CLI (`cli/`)
+
+`meetcal` answers the same questions from a terminal: athlete search and Wrapped, meet start lists
+and results, club and WSO reports, rankings, records, standards and qualifying totals.
+
+```sh
+brew install meetcal/tap/meetcal
+meetcal search "Maddisen Mohnsen"
+meetcal --help
+```
+
+Development runs from `cli/` (`just check-all`, `cargo run -- <command>`); every Convex query it
+reads is in [`cli/src/utils/backend.rs`](cli/src/utils/backend.rs), and `MEETCAL_CONVEX_URL`
+points it at another deployment. The full command reference is in [cli/README.md](cli/README.md),
+and releasing a new version (tag `cli-vX.Y.Z`, then update the
+[Homebrew tap](https://github.com/meetcal/homebrew-tap)) is in [cli/BREW.md](cli/BREW.md).
