@@ -1,10 +1,10 @@
 [package]
 name = "meetcal"
-version = "2.0.1"
+version = "2.1.0"
 edition = "2024"
 description = "CLI for querying MeetCal lifting data"
-homepage = "https://github.com/meetcal/meetcal-cli"
-repository = "https://github.com/meetcal/meetcal-cli"
+homepage = "https://github.com/meetcal/meetcal-app/tree/master/cli"
+repository = "https://github.com/meetcal/meetcal-app"
 license = "MIT"
 
 [dependencies]

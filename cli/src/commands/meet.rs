@@ -79,7 +79,6 @@ pub async fn run(args: MeetArgs) -> Result<()> {
                 .unwrap_or_else(|| "Not set".to_string()),
             athlete
                 .session_platform
-                .map(|p| format!("{p:?}"))
                 .unwrap_or_else(|| "Not set".to_string()),
         ]);
     }
@@ -125,8 +124,22 @@ mod tests {
         assert_eq!(row.meet, "American Open Finals");
         assert_eq!(row.member_id, "12345");
         assert_eq!(row.session_number, Some(1.0));
-        assert!(matches!(row.session_platform, Some(Platform::Red)));
+        assert_eq!(row.session_platform.as_deref(), Some("Red"));
         assert_eq!(row.wso, None);
+    }
+
+    #[test]
+    fn parses_start_list_rows_without_a_meet_or_with_other_platforms() {
+        let rows = r#"[{
+            "adaptive": false, "age": 31, "club": "Test Club", "entry_total": 180,
+            "gender": "Women", "member_id": "9", "name": "Ada Lift", "session_number": 4,
+            "session_platform": "Gold", "weight_class": "63kg", "wso": "Florida",
+            "date": "2026-10-03", "start_time": "10:00", "weigh_in_time": "08:00"
+        }]"#;
+        let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
+
+        assert_eq!(athletes[0].meet, "");
+        assert_eq!(athletes[0].session_platform.as_deref(), Some("Gold"));
     }
 
     #[test]

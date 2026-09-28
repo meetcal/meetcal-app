@@ -8,11 +8,14 @@ pub struct Athletes {
     pub club: String,
     pub entry_total: f64,
     pub gender: String,
+    /// Absent from start-list rows (`meets:athletesSessions`), which are all one meet's.
+    #[serde(default)]
     pub meet: String,
     pub member_id: String,
     pub name: String,
     pub session_number: Option<f64>,
-    pub session_platform: Option<Platform>,
+    /// As the meet names it; meets use more platforms than `Platform` lists.
+    pub session_platform: Option<String>,
     pub weight_class: String,
     pub wso: Option<String>,
 }

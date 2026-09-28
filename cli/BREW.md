@@ -1,11 +1,6 @@
 # Homebrew Release Steps
 
-This project is distributed through the Homebrew tap at:
-
-```sh
-https://github.com/meetcal/homebrew-tap
-```
-
+The CLI is distributed through the Homebrew tap at https://github.com/meetcal/homebrew-tap.
 Users install it with:
 
 ```sh
@@ -13,129 +8,64 @@ brew tap meetcal/tap
 brew install meetcal
 ```
 
-## 1. Prepare The Main Repo
+Releases are published from this repository (`meetcal/meetcal-app`) as `cli-vX.Y.Z`, by
+`.github/workflows/cli-release.yml`. The tag must match the version in `cli/Cargo.toml`, or the
+workflow fails before building.
 
-Update the version in `Cargo.toml`.
+## 1. Bump the version
 
-Run checks:
+In `cli/`, set `version` in `Cargo.toml`, add the release to `CHANGELOG.md`, and run the checks:
 
 ```sh
-cargo test
+just check-all
 cargo build --release
 ```
 
-## 2. Build Release Artifacts
+Merge the change to `master` through a pull request.
 
-Build for the current machine:
+## 2. Tag the release
 
-```sh
-chmod +x scripts/build-release.sh
-./scripts/build-release.sh
-```
-
-Expected output files:
+From an up-to-date `master`:
 
 ```sh
-dist/darwin-arm64.tar.gz
-dist/darwin-x64.tar.gz
-dist/linux-arm64.tar.gz
-dist/linux-x64.tar.gz
+git tag cli-v2.1.0
+git push origin cli-v2.1.0
 ```
 
-Each archive contains a single `meetcal` binary.
-
-Generate checksums:
-
-```sh
-shasum -a 256 dist/*.tar.gz
-```
-
-Smoke test the local build:
-
-```sh
-tar -xzf dist/darwin-arm64.tar.gz -C /tmp
-/tmp/meetcal --help
-```
-
-For all four platforms, tag and push to trigger GitHub Actions:
-
-```sh
-git tag v1.0.0
-git push origin master --tags
-```
-
-The workflow uploads all platform archives to the GitHub release and prints checksums in the job log.
-
-## 3. Commit And Push
-
-```sh
-git add .
-git commit -m "Release v1.0.0"
-git push origin master
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-## 4. Create Or Verify The GitHub Release
-
-If you did not use the GitHub Actions workflow, upload manually:
-
-```sh
-gh release create v1.0.0 \
-  dist/darwin-arm64.tar.gz \
-  dist/darwin-x64.tar.gz \
-  dist/linux-arm64.tar.gz \
-  dist/linux-x64.tar.gz \
-  --repo meetcal/meetcal-cli \
-  --title "meetcal v1.0.0"
-```
+The workflow builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and `linux-x64`, each a
+`.tar.gz` holding one `meetcal` binary, and attaches them to the release. It does not mark the
+release as the repository's latest.
 
 Verify:
 
 ```sh
-gh release view v1.0.0 --repo meetcal/meetcal-cli
+gh release view cli-v2.1.0 --repo meetcal/meetcal-app
 ```
 
-## 5. Update The Homebrew Tap
+## 3. Update the Homebrew tap
 
-Open the tap repo:
+Take each archive's checksum from the release:
 
 ```sh
-cd ../homebrew-tap
+for a in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+  curl -sL "https://github.com/meetcal/meetcal-app/releases/download/cli-v2.1.0/$a.tar.gz" | shasum -a 256
+done
 ```
 
-Edit `Formula/meetcal.rb`:
-
-- Set `version "1.0.0"`.
-- Point URLs at `meetcal/meetcal-cli` release assets.
-- Replace each `sha256` with the checksum from `shasum -a 256 dist/*.tar.gz`.
-- Linux checksums come from the GitHub Actions release job log after pushing `v1.0.0`.
-
-Validate Ruby syntax:
+In the tap's `Formula/meetcal.rb`, set `version`, point each `url` at
+`https://github.com/meetcal/meetcal-app/releases/download/cli-vX.Y.Z/<artifact>.tar.gz`, and
+replace each `sha256`. Then:
 
 ```sh
 ruby -c Formula/meetcal.rb
-```
-
-Commit and push:
-
-```sh
-git add Formula/meetcal.rb
-git commit -m "Update meetcal to v1.0.0"
+git commit -am "Update meetcal to vX.Y.Z"
 git push origin main
 ```
 
-## 6. Verify Homebrew Install
+## 4. Verify the install
 
 ```sh
 brew update
-brew upgrade meetcal
-meetcal --help
-```
-
-If testing from a dirty local Homebrew state:
-
-```sh
-brew uninstall meetcal
-brew install meetcal
+brew upgrade meetcal   # or: brew install meetcal/tap/meetcal
+meetcal --version
 ```

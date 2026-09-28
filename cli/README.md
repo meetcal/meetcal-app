@@ -1,6 +1,7 @@
 # MeetCal CLI
 
-Rust command line tool for querying MeetCal lifting data from the MeetCal backend.
+Rust command line tool for querying MeetCal lifting data. It reads the same Convex backend as the
+MeetCal app and meetcal.app, from `convex/` at the root of this repository.
 
 MeetCal CLI 2.0 adds calendar-year Wrapped reports and year-over-year comparisons for athletes,
 clubs, and Weightlifting State Organizations (WSOs).
@@ -26,14 +27,14 @@ brew upgrade meetcal
 Install the latest release from GitHub:
 
 ```sh
-cargo install --git https://github.com/meetcal/meetcal-cli.git meetcal
+cargo install --git https://github.com/meetcal/meetcal-app.git meetcal
 ```
 
 Install from a local checkout:
 
 ```sh
-git clone https://github.com/meetcal/meetcal-cli.git
-cd meetcal-cli
+git clone https://github.com/meetcal/meetcal-app.git
+cd meetcal-app/cli
 cargo install --path .
 ```
 
@@ -101,7 +102,7 @@ meetcal meet "2026 VIRUS Weightlifting Series 1" --session-number 1 --session-pl
 Options:
 
 - `--session-number`, `-s`: Session number
-- `--session-platform`, `-p`: Platform (`red`, `white`, `blue`, `stars`, `stripes`, `rogue`)
+- `--session-platform`, `-p`: Platform to filter by (`red`, `white`, `blue`, `stars`, `stripes`, `rogue`); results show whatever platform the meet uses
 
 #### `meet-results`
 
@@ -287,10 +288,21 @@ meetcal adaptive-records Women
 
 ## Development
 
+Run these from `cli/`:
+
 ```sh
 just check-all
 cargo run -- search "Maddisen Mohnsen"
 cargo build --release
 ```
+
+The CLI reads the production Convex deployment. Point it at another one, such as the dev
+deployment, with `MEETCAL_CONVEX_URL`:
+
+```sh
+MEETCAL_CONVEX_URL=https://utmost-retriever-826.convex.cloud cargo run -- records --age Senior --gender Men --federation USAW
+```
+
+Every Convex query the CLI reads is listed in `src/utils/backend.rs`.
 
 Release builds and Homebrew publishing steps are documented in [BREW.md](BREW.md).
