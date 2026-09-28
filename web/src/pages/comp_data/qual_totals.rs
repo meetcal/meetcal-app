@@ -6,7 +6,7 @@ use super::{
     loading::table_response,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
-use crate::utils::api::get_api_response;
+use crate::utils::api::{queries, query};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -47,7 +47,7 @@ pub fn QualifyingTotals() -> impl IntoView {
     let (sort, set_sort) = signal("total_asc".to_string());
 
     let totals = LocalResource::new(move || async move {
-        get_api_response::<QualifyingTotal>("/data/qualifying-totals").await
+        query::<Vec<QualifyingTotal>>(queries::QUALIFYING_TOTALS).await
     });
 
     view! {

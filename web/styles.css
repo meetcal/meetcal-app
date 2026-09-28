@@ -1964,3 +1964,10 @@ main main:not(.features-page) a:hover {
         animation-duration: 60s;
     }
 }
+
+/* Record tables: each lift cell is the weight, then who set it, when and where. */
+.data-table tr:has(td.record-lift) > td { vertical-align: top; }
+.data-table td.record-lift { min-width: 9rem; max-width: 15rem; white-space: normal; }
+.record-value { display: block; font-weight: 700; }
+.record-holder { display: block; margin-top: 3px; font-size: 0.82rem; }
+.record-holder-detail { display: block; margin-top: 1px; color: var(--text-secondary); font-size: 0.76rem; line-height: 1.35; }

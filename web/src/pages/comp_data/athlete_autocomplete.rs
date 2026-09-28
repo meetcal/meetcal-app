@@ -1,5 +1,5 @@
 use super::models::{AthleteSearchQuery, AthleteSearchResponse};
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::api::{queries, query_with};
 use leptos::leptos_dom::helpers::{TimeoutHandle, set_timeout_with_handle};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -75,8 +75,8 @@ pub(crate) fn AthleteAutocomplete(
 
         let search = move || {
             spawn_local(async move {
-                let response = get_api_response_with_query::<AthleteSearchResponse, _>(
-                    "/search",
+                let response = query_with::<AthleteSearchResponse, _>(
+                    queries::SEARCH,
                     &AthleteSearchQuery::suggestions(query),
                 )
                 .await;

@@ -1,16 +1,18 @@
 use super::models::MeetQuery;
 use super::ui::TableSkeleton;
+use crate::utils::api::{Query, query_with};
 use leptos::prelude::*;
 use std::fmt::Display;
 
+/// One meet's rows from `query`, which takes `meet`; none when no meet is chosen.
 pub(crate) async fn load_meet_data<T: serde::de::DeserializeOwned>(
     meet: String,
-    path: &str,
+    query: Query,
 ) -> Result<Vec<T>, String> {
     if meet.is_empty() {
         return Ok(Vec::new());
     }
-    crate::utils::api::get_api_response_with_query(path, &MeetQuery { meet })
+    query_with(query, &MeetQuery { meet })
         .await
         .map_err(|error| error.to_string())
 }

@@ -3,11 +3,12 @@ use super::{
     loading::load_error,
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct NationalRankingQuery {
     federation: String,
     age_category: String,
@@ -113,12 +114,12 @@ pub fn NationalRankings() -> impl IntoView {
         async move {
             match request {
                 Some(query) => {
-                    let path = if query.year.is_some() {
-                        "/data/nat-rankings-year"
+                    let convex_query = if query.year.is_some() {
+                        queries::NATIONAL_RANKINGS_BY_YEAR
                     } else {
-                        "/data/nat-rankings"
+                        queries::NATIONAL_RANKINGS
                     };
-                    get_api_response_with_query::<Vec<NationalRanking>, _>(path, &query)
+                    query_with::<Vec<NationalRanking>, _>(convex_query, &query)
                         .await
                         .map_err(|error| error.to_string())
                 }
@@ -189,27 +190,30 @@ mod tests {
 
     #[test]
     fn all_time_query_omits_the_year() {
-        let query = serde_urlencoded::to_string(NationalRankingQuery {
+        let query = serde_json::to_value(NationalRankingQuery {
             federation: "USAW".to_owned(),
             age_category: "Open Men's 60kg".to_owned(),
             year: None,
         })
         .unwrap();
 
-        assert_eq!(query, "federation=USAW&age_category=Open+Men%27s+60kg");
+        assert_eq!(
+            query,
+            serde_json::json!({"federation": "USAW", "ageCategory": "Open Men's 60kg"})
+        );
     }
 
     #[test]
     fn seasonal_query_includes_the_year() {
-        let query = serde_urlencoded::to_string(NationalRankingQuery {
+        let query = serde_json::to_value(NationalRankingQuery {
             federation: "USAMW".to_owned(),
             age_category: "Women's Masters (40-44) 69kg".to_owned(),
             year: Some("2026".to_owned()),
         })
         .unwrap();
 
-        assert!(query.contains("federation=USAMW"));
-        assert!(query.contains("year=2026"));
+        assert_eq!(query["federation"], "USAMW");
+        assert_eq!(query["year"], "2026");
     }
 
     #[test]

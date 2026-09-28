@@ -4,7 +4,7 @@ use super::{
     models::{AthleteSearchQuery, AthleteSearchResponse},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
 #[derive(Clone)]
@@ -48,7 +48,7 @@ async fn athlete(name: &str, year: i32) -> Result<(String, WrappedStats), String
         format!("{year:04}-01-01"),
         format!("{:04}-01-01", year + 1),
     );
-    let response: AthleteSearchResponse = get_api_response_with_query("/search", &query)
+    let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
         .await
         .map_err(|error| error.to_string())?;
     if response.results.is_empty() {
@@ -82,12 +82,19 @@ mod tests {
     use super::*;
     #[test]
     fn search_query_uses_exclusive_next_year() {
-        let query = serde_urlencoded::to_string(AthleteSearchQuery::between(
+        let query = serde_json::to_value(AthleteSearchQuery::between(
             "Test Athlete".to_owned(),
             "2026-01-01".to_owned(),
             "2027-01-01".to_owned(),
         ))
         .unwrap();
-        assert!(query.contains("end_date=2027-01-01"));
+        assert_eq!(query["endDate"], "2027-01-01");
+    }
+
+    #[test]
+    fn suggestion_query_omits_the_dates() {
+        let query =
+            serde_json::to_value(AthleteSearchQuery::suggestions("Test".to_owned())).unwrap();
+        assert_eq!(query, serde_json::json!({"query": "Test"}));
     }
 }

@@ -4,24 +4,27 @@ use super::{
     analytics::percentage,
     filters::filter_options,
     loading::{load_error, load_meet_data},
-    models::{Athlete, LiftingResult, Meet, normalize},
+    models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::get_api_response;
+use crate::utils::api::{queries, query, query_with};
 use leptos::prelude::*;
 
 #[component]
 pub fn WsoDashboard() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (wso, set_wso) = signal(String::new());
-    let upcoming = LocalResource::new(|| async { get_api_response::<Meet>("/meets").await });
+    let upcoming = LocalResource::new(|| async {
+        query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()).await
+    });
     let completed =
-        LocalResource::new(|| async { get_api_response::<Meet>("/meets/completed").await });
-    let wsos = LocalResource::new(|| async { get_api_response::<String>("/data/wso").await });
+        LocalResource::new(|| async { query::<Vec<Meet>>(queries::COMPLETED_MEETS).await });
+    let wsos = LocalResource::new(|| async { query::<Vec<String>>(queries::WSO_LIST).await });
     let athletes =
-        LocalResource::new(move || load_meet_data::<Athlete>(meet.get(), "/meets/athletes"));
-    let results =
-        LocalResource::new(move || load_meet_data::<LiftingResult>(meet.get(), "/lifting-results"));
+        LocalResource::new(move || load_meet_data::<Athlete>(meet.get(), queries::MEET_ATHLETES));
+    let results = LocalResource::new(move || {
+        load_meet_data::<LiftingResult>(meet.get(), queries::MEET_RESULTS)
+    });
     view! { <DataPage heading="WSO Meet Dashboard" intro="See participation, make rates, lifted volume, and athlete totals for one WSO at a meet.">
         {move || upcoming.with(|upcoming| completed.with(|completed| match (upcoming, completed) {
             (Some(Ok(upcoming)), Some(Ok(completed))) => {

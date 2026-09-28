@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { jsonResponse, mockSubscribedUser } from "./support/api";
+import { errorAnswer, mockSubscribedUser, routeQuery, textAnswer } from "./support/api";
 import { publicRoutes } from "./support/routes";
 
 test("desktop navigation remains visible and complete", async ({ page, isMobile }) => {
@@ -63,7 +63,7 @@ test("mobile subscription actions are full-width touch targets", async ({ page, 
 test("authenticated mobile headers fit at narrow widths", async ({ page, isMobile }) => {
   test.skip(!isMobile, "Mobile-only authenticated layout assertion");
   await mockSubscribedUser(page);
-  await page.route("**/data/qualifying-totals", async (route) => route.fulfill(jsonResponse([])));
+  await routeQuery(page, "reference:qualifyingTotals", async (route) => route.fulfill(textAnswer([])));
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/qualifying-totals");
   await expect(page.getByRole("heading", { name: "Qualifying Totals" })).toBeVisible();
@@ -84,11 +84,11 @@ test("mobile layouts tolerate landscape and enlarged text", async ({ page, isMob
 test("competition loading and error states stay contained", async ({ page, isMobile }) => {
   test.skip(!isMobile, "Mobile-only data-state layout assertion");
   await mockSubscribedUser(page);
-  await page.route("**/data/qualifying-totals", async (route) => {
+  await routeQuery(page, "reference:qualifyingTotals", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1_500));
-    // A 500 fails without retries; throttled and overloaded responses are
-    // retried and covered in competition.spec.ts.
-    await route.fulfill({ status: 500, ...jsonResponse({ error: "unavailable" }) });
+    // A failed query fails without retries; throttled and overloaded
+    // responses are retried and covered in competition.spec.ts.
+    await route.fulfill(errorAnswer("unavailable"));
   });
   await page.goto("/qualifying-totals");
   await expect(page.locator(".data-table-skeleton")).toBeVisible();

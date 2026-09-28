@@ -1,3 +1,4 @@
+use super::models::RecordHolder;
 use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
@@ -88,6 +89,24 @@ pub(crate) fn SortSelect(
 #[component]
 pub(crate) fn DataMetric(label: &'static str, value: String) -> impl IntoView {
     view! { <div class="data-metric"><span>{label}</span><strong>{value}</strong></div> }
+}
+
+/// A record lift's cell: the weight, then who set it, when and where.
+#[component]
+pub(crate) fn RecordLift(value: String, holder: Option<RecordHolder>) -> impl IntoView {
+    let holder = holder.map(|holder| {
+        let detail = holder.detail();
+        view! {
+            <span class="record-holder">{holder.name}</span>
+            {detail.map(|detail| view! { <span class="record-holder-detail">{detail}</span> })}
+        }
+    });
+    view! {
+        <td class="record-lift">
+            <span class="record-value">{value}</span>
+            {holder}
+        </td>
+    }
 }
 
 #[component]

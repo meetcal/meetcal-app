@@ -6,7 +6,7 @@ use super::{
     models::{AthleteSearchQuery, AthleteSearchResponse, attempt},
     ui::{DataPage, DataStatus, DataTable, SortSelect, TableSkeleton},
 };
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
@@ -54,11 +54,9 @@ pub fn Results() -> impl IntoView {
         let request = request.get();
         async move {
             match request {
-                Some(query) => {
-                    get_api_response_with_query::<AthleteSearchResponse, _>("/search", &query)
-                        .await
-                        .map_err(|error| error.to_string())
-                }
+                Some(query) => query_with::<AthleteSearchResponse, _>(queries::SEARCH, &query)
+                    .await
+                    .map_err(|error| error.to_string()),
                 None => Ok(AthleteSearchResponse {
                     matched_name: None,
                     suggestions: Vec::new(),

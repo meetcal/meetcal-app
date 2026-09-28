@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use super::{
     format::{format_us_date, format_us_time, yes_no},
     loading::{load_error, load_meet_data, table_response},
-    models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
+    models::{Athlete, LiftingResult, Meet, ScheduleRow, UpcomingMeetsQuery, attempt},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow},
 };
-use crate::utils::api::get_api_response;
+use crate::utils::api::{queries, query, query_with};
 use leptos::prelude::*;
 
 fn session(value: Option<f64>) -> String {
@@ -55,16 +55,20 @@ fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
 pub fn MeetCenter() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (meet_search, set_meet_search) = signal(String::new());
-    let upcoming = LocalResource::new(|| async { get_api_response::<Meet>("/meets").await });
-    let completed =
-        LocalResource::new(|| async { get_api_response::<Meet>("/meets/completed").await });
-    let schedule =
-        LocalResource::new(move || load_meet_data::<ScheduleRow>(meet.get(), "/meets/schedule"));
-    let athletes = LocalResource::new(move || {
-        load_meet_data::<Athlete>(meet.get(), "/meets/athletes-sessions")
+    let upcoming = LocalResource::new(|| async {
+        query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()).await
     });
-    let results =
-        LocalResource::new(move || load_meet_data::<LiftingResult>(meet.get(), "/lifting-results"));
+    let completed =
+        LocalResource::new(|| async { query::<Vec<Meet>>(queries::COMPLETED_MEETS).await });
+    let schedule = LocalResource::new(move || {
+        load_meet_data::<ScheduleRow>(meet.get(), queries::MEET_SCHEDULE)
+    });
+    let athletes = LocalResource::new(move || {
+        load_meet_data::<Athlete>(meet.get(), queries::MEET_ATHLETES_SESSIONS)
+    });
+    let results = LocalResource::new(move || {
+        load_meet_data::<LiftingResult>(meet.get(), queries::MEET_RESULTS)
+    });
 
     view! {
         <DataPage

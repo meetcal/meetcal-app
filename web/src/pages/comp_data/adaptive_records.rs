@@ -3,11 +3,12 @@ use super::{
     loading::table_response,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
-use crate::utils::api::get_api_response_with_query;
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AdaptiveQuery {
     exclude_federation: &'static str,
     gender: String,
@@ -38,9 +39,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
             exclude_federation: "BWL",
             gender: gender.get(),
         };
-        async move {
-            get_api_response_with_query::<Vec<AdaptiveRecord>, _>("/data/adaptive", &query).await
-        }
+        async move { query_with::<Vec<AdaptiveRecord>, _>(queries::ADAPTIVE_RECORDS, &query).await }
     });
 
     view! {
@@ -88,13 +87,16 @@ mod tests {
 
     #[test]
     fn adaptive_query_matches_the_backend_contract() {
-        let query = serde_urlencoded::to_string(AdaptiveQuery {
+        let query = serde_json::to_value(AdaptiveQuery {
             exclude_federation: "BWL",
             gender: "Women".to_owned(),
         })
         .unwrap();
 
-        assert_eq!(query, "exclude_federation=BWL&gender=Women");
+        assert_eq!(
+            query,
+            serde_json::json!({"excludeFederation": "BWL", "gender": "Women"})
+        );
     }
 
     #[test]

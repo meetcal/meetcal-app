@@ -4,7 +4,7 @@ use super::{
     loading::{load_error, select_response},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{get_api_response, get_api_response_with_query};
+use crate::utils::api::{queries, query, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -54,18 +54,14 @@ struct AthleteResult {
 pub fn ClubDashboard() -> impl IntoView {
     let (club, set_club) = signal(String::new());
     let (meet, set_meet) = signal(String::new());
-    let clubs = LocalResource::new(|| async { get_api_response::<String>("/clubs").await });
+    let clubs = LocalResource::new(|| async { query::<Vec<String>>(queries::CLUBS).await });
     let athletes = LocalResource::new(move || {
         let club = club.get();
         async move {
             if club.is_empty() {
                 Ok(Vec::new())
             } else {
-                get_api_response_with_query::<Vec<ClubAthlete>, _>(
-                    "/clubs/athletes",
-                    &ClubQuery { club },
-                )
-                .await
+                query_with::<Vec<ClubAthlete>, _>(queries::CLUB_ATHLETES, &ClubQuery { club }).await
             }
         }
     });
@@ -78,7 +74,7 @@ pub fn ClubDashboard() -> impl IntoView {
             if query.club.is_empty() || query.meet.is_empty() {
                 Ok(None)
             } else {
-                get_api_response_with_query::<MeetStats, _>("/clubs/meet-stats", &query)
+                query_with::<MeetStats, _>(queries::CLUB_MEET_STATS, &query)
                     .await
                     .map(Some)
             }

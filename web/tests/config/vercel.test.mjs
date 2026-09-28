@@ -48,7 +48,7 @@ test("CSP preserves the application's existing provider integrations", () => {
     .find((directive) => directive.startsWith("connect-src "));
   for (const source of [
     "https://clerk.meetcal.app",
-    "https://api.meetcal.app",
+    "https://disciplined-hare-790.convex.cloud",
     "https://api.revenuecat.com",
   ]) {
     assert.ok(
@@ -99,10 +99,12 @@ test("production rewrites serve route-specific metadata shells", async () => {
   }
 });
 
-test("preview deployments keep the same-origin API rewrite", () => {
-  // Production origins call https://api.meetcal.app directly (see
-  // src/utils/api.rs); other Vercel origins, which the API's CORS policy
-  // rejects, still proxy through /api.
-  const apiRewrite = config.rewrites.find(({ source }) => source === "/api/:path*");
-  assert.equal(apiRewrite?.destination, "https://api.meetcal.app/:path*");
+test("every deployment reads Convex directly, with no API proxy", () => {
+  // Convex answers any origin, so previews need no same-origin rewrite (see
+  // src/utils/api.rs), and the retired Rust API is not reachable.
+  assert.equal(config.rewrites.find(({ source }) => source.startsWith("/api")), undefined);
+  assert.ok(
+    !globalHeaders["content-security-policy"].includes("api.meetcal.app"),
+    "CSP must not allow the retired Rust API",
+  );
 });

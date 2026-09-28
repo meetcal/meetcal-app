@@ -1,14 +1,16 @@
-use anyhow::{Context, Error, Result, anyhow};
-use reqwest::{StatusCode, Url, header::RETRY_AFTER};
-use serde::{Serialize, de::DeserializeOwned};
+//! The site's one way to read MeetCal data: the Convex queries in `convex/`,
+//! called over Convex's HTTP API (`POST /api/query`), the same queries the app
+//! reads. Every call is a read, so repeating one is safe.
+
+use anyhow::{Context, Result, anyhow};
+use reqwest::{StatusCode, header::RETRY_AFTER};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use std::time::Duration;
 
-const DEFAULT_API_BASE_URL: &str = "https://api.meetcal.app";
-
-/// Page origins the API's CORS policy accepts in production. Browsers on these
-/// origins call the API directly so each visitor is rate limited by their own
-/// IP address instead of sharing the Vercel proxy's.
-const DIRECT_API_ORIGINS: &[&str] = &["https://meetcal.app", "https://www.meetcal.app"];
+/// The production deployment, which the app reads too. A build can read
+/// another deployment (a dev one) by setting `MEETCAL_CONVEX_URL`.
+const PRODUCTION_CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
 
 /// Retries allowed after the first attempt for a throttled or overloaded response.
 pub(crate) const MAX_RETRIES: u32 = 2;
@@ -18,29 +20,126 @@ const DEFAULT_RETRY_DELAY_SECS: u64 = 1;
 const MIN_RETRY_DELAY_SECS: u64 = 1;
 const MAX_RETRY_DELAY_SECS: u64 = 10;
 
+/// Convex answers a function that ran but failed with this status (or 200).
+const FUNCTION_FAILED: u16 = 560;
+
 pub(crate) const RATE_LIMITED_MESSAGE: &str =
     "Too many requests right now; please try again in a moment";
 pub(crate) const OVERLOADED_MESSAGE: &str =
     "MeetCal is busy right now; please try again in a moment";
 
-/// Chooses the API base URL for a page served from `origin`.
-///
-/// Production origins call the API directly. Other origins on a Vercel build,
-/// such as preview deployments that the API's CORS policy rejects, go through
-/// the same-origin `/api` rewrite in `vercel.json`. Everything else, including
-/// local development, calls the API directly.
-pub(crate) fn api_base_url_for(origin: Option<&str>, vercel_build: bool) -> String {
-    match origin {
-        Some(origin) if DIRECT_API_ORIGINS.contains(&origin) => DEFAULT_API_BASE_URL.to_owned(),
-        Some(origin) if vercel_build => format!("{origin}/api"),
-        _ => DEFAULT_API_BASE_URL.to_owned(),
+fn convex_url() -> &'static str {
+    option_env!("MEETCAL_CONVEX_URL")
+        .filter(|url| !url.is_empty())
+        .unwrap_or(PRODUCTION_CONVEX_URL)
+}
+
+/// How a query's answer carries its body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Body {
+    /// The answer is the body.
+    Value,
+    /// The answer is `{ json }` or `{ etag, json }`: the body as JSON text,
+    /// which Convex serves faster than the same rows as values.
+    JsonText,
+}
+
+/// A Convex query the site reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Query {
+    /// `module:function`, e.g. `reference:records` for `convex/reference.ts`.
+    pub function: &'static str,
+    pub body: Body,
+}
+
+impl Query {
+    const fn value(function: &'static str) -> Self {
+        Self {
+            function,
+            body: Body::Value,
+        }
+    }
+
+    const fn text(function: &'static str) -> Self {
+        Self {
+            function,
+            body: Body::JsonText,
+        }
     }
 }
 
-fn api_base_url() -> String {
-    let origin = web_sys::window().and_then(|window| window.location().origin().ok());
-    api_base_url_for(origin.as_deref(), option_env!("VERCEL").is_some())
+/// Every Convex query the site reads, each named for the Rust API route it
+/// replaced. Arguments are the queries' own, in camelCase.
+pub(crate) mod queries {
+    use super::Query;
+
+    /// `GET /meets`; takes `now` (see `UpcomingMeetsQuery`).
+    pub(crate) const UPCOMING_MEETS: Query = Query::text("meets:list");
+    /// `GET /meets/completed`
+    pub(crate) const COMPLETED_MEETS: Query = Query::text("meets:completed");
+    /// `GET /meets/schedule`; takes `meet`.
+    pub(crate) const MEET_SCHEDULE: Query = Query::text("meets:schedule");
+    /// `GET /meets/athletes`; takes `meet`.
+    pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
+    /// `GET /meets/athletes-sessions`; takes `meet`.
+    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
+    /// `GET /lifting-results`; takes `meet`.
+    pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
+    /// `GET /search`; takes `query`, and optionally `startDate` and `endDate`.
+    pub(crate) const SEARCH: Query = Query::value("results:search");
+    /// `GET /data/records`
+    pub(crate) const RECORDS: Query = Query::text("reference:records");
+    /// `GET /data/standards`
+    pub(crate) const STANDARDS: Query = Query::text("reference:standards");
+    /// `GET /data/qualifying-totals`
+    pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
+    /// `GET /data/intl-rankings`
+    pub(crate) const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
+    /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.
+    pub(crate) const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
+    /// `GET /data/nat-rankings-year`; also takes `year`.
+    pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
+        Query::text("reference:nationalRankingsByYear");
+    /// `GET /data/wso`
+    pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// `GET /data/wso/records`; takes `wso`.
+    pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
+    /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
+    pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
+    /// `GET /clubs`
+    pub(crate) const CLUBS: Query = Query::text("reference:clubs");
+    /// `GET /clubs/athletes`; takes `club`.
+    pub(crate) const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
+    /// `GET /clubs/meet-stats`; takes `club` and `meet`.
+    pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
 }
+
+#[derive(Serialize)]
+struct QueryRequest<'a, A: Serialize + ?Sized> {
+    path: &'a str,
+    args: &'a A,
+    format: &'static str,
+}
+
+/// Convex's answer to `POST /api/query`.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+enum QueryResponse {
+    Success {
+        value: Value,
+    },
+    Error {
+        #[serde(rename = "errorMessage")]
+        error_message: String,
+        /// A `ConvexError`'s data: our functions throw `{ status, error }`.
+        #[serde(rename = "errorData", default)]
+        error_data: Option<Value>,
+    },
+}
+
+/// The arguments of a query that takes none.
+#[derive(Serialize)]
+struct NoArgs {}
 
 /// Whether a response status means the request may succeed if repeated later.
 pub(crate) fn is_retryable_status(status: StatusCode) -> bool {
@@ -90,32 +189,59 @@ async fn sleep(duration: Duration) {
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
 
-/// Sends a GET request for `path`, retrying throttled (429) and overloaded (503)
-/// responses. Every API call goes through here; all of them are reads, so
-/// repeating one is safe.
-async fn get_with_retry<Q>(path: &str, query: Option<&Q>) -> Result<reqwest::Response, Error>
+/// The body a query answered, or why it has none.
+fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<T> {
+    let value = match response {
+        QueryResponse::Success { value } => value,
+        QueryResponse::Error {
+            error_message,
+            error_data,
+        } => {
+            let reason = error_data
+                .as_ref()
+                .and_then(|data| data.get("error"))
+                .and_then(Value::as_str)
+                .unwrap_or(&error_message);
+            return Err(anyhow!("MeetCal could not answer: {reason}"));
+        }
+    };
+    match query.body {
+        Body::Value => serde_json::from_value(value)
+            .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function)),
+        Body::JsonText => {
+            let text = value
+                .get("json")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("MeetCal sent {} without its body", query.function))?;
+            serde_json::from_str(text)
+                .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function))
+        }
+    }
+}
+
+/// Runs `query` with `args`, retrying throttled (429) and overloaded (503)
+/// responses.
+pub(crate) async fn query_with<T, A>(query: Query, args: &A) -> Result<T>
 where
-    Q: Serialize + ?Sized,
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
 {
     let client = reqwest::Client::new();
-    let mut url = Url::parse(&format!("{}{path}", api_base_url()))
-        .with_context(|| format!("Invalid MeetCal backend route {path}"))?;
-    if let Some(query) = query {
-        let request = client
-            .get(url)
-            .query(query)
-            .build()
-            .with_context(|| format!("Failed to build MeetCal backend request for {path}"))?;
-        url = request.url().clone();
-    }
+    let url = format!("{}/api/query", convex_url());
+    let request = QueryRequest {
+        path: query.function,
+        args,
+        format: "json",
+    };
 
     let mut retries = 0;
-    loop {
+    let response = loop {
         let response = client
-            .get(url.clone())
+            .post(&url)
+            .json(&request)
             .send()
             .await
-            .with_context(|| format!("Failed to call MeetCal backend route {path}"))?;
+            .with_context(|| format!("Could not reach MeetCal for {}", query.function))?;
         let status = response.status();
 
         if should_retry(status, retries) {
@@ -130,77 +256,122 @@ where
         if is_retryable_status(status) {
             return Err(anyhow!(exhausted_retries_message(status)));
         }
+        if status != StatusCode::OK && status.as_u16() != FUNCTION_FAILED {
+            return Err(anyhow!(
+                "MeetCal could not answer {} (HTTP {status})",
+                query.function
+            ));
+        }
+        break response;
+    };
 
-        return response
-            .error_for_status()
-            .with_context(|| format!("MeetCal backend route {path} returned an error"));
-    }
+    let answer = response
+        .json::<QueryResponse>()
+        .await
+        .with_context(|| format!("MeetCal sent an unreadable answer to {}", query.function))?;
+    read_response(query, answer)
 }
 
-/// path: /route
-pub async fn get_api_response<T>(path: &str) -> Result<Vec<T>, Error>
-where
-    T: DeserializeOwned,
-{
-    get_with_retry::<()>(path, None)
-        .await?
-        .json::<Vec<T>>()
-        .await
-        .with_context(|| format!("Failed to parse MeetCal backend response from {path}"))
-}
-
-/// path: /route
-/// query: array of tuples
-pub async fn get_api_response_with_query<T, Q>(path: &str, query: &Q) -> Result<T, Error>
-where
-    T: DeserializeOwned,
-    Q: Serialize + ?Sized,
-{
-    get_with_retry(path, Some(query))
-        .await?
-        .json::<T>()
-        .await
-        .with_context(|| format!("Failed to parse MeetCal backend response from {path}"))
+/// Runs `query`, which takes no arguments.
+pub(crate) async fn query<T: DeserializeOwned>(query: Query) -> Result<T> {
+    query_with(query, &NoArgs {}).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn answer(value: Value) -> QueryResponse {
+        serde_json::from_value(value).unwrap()
+    }
 
     #[test]
-    fn production_origins_call_the_api_directly() {
-        for origin in ["https://meetcal.app", "https://www.meetcal.app"] {
-            assert_eq!(api_base_url_for(Some(origin), true), DEFAULT_API_BASE_URL);
-            assert_eq!(api_base_url_for(Some(origin), false), DEFAULT_API_BASE_URL);
+    fn production_builds_read_the_production_deployment() {
+        if option_env!("MEETCAL_CONVEX_URL").is_none() {
+            assert_eq!(convex_url(), PRODUCTION_CONVEX_URL);
         }
     }
 
     #[test]
-    fn other_origins_on_vercel_builds_use_the_same_origin_rewrite() {
+    fn requests_name_the_function_and_its_arguments_as_json() {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args {
+            age_category: &'static str,
+        }
+        let body = serde_json::to_value(QueryRequest {
+            path: queries::NATIONAL_RANKINGS.function,
+            args: &Args {
+                age_category: "Open Men's 60kg",
+            },
+            format: "json",
+        })
+        .unwrap();
         assert_eq!(
-            api_base_url_for(Some("https://meetcal-web-git-branch.vercel.app"), true),
-            "https://meetcal-web-git-branch.vercel.app/api"
+            body,
+            json!({"path": "reference:nationalRankings", "args": {"ageCategory": "Open Men's 60kg"}, "format": "json"})
         );
-        for lookalike in [
-            "http://meetcal.app",
-            "https://meetcal.app.example.com",
-            "https://staging.meetcal.app",
+        assert_eq!(serde_json::to_value(NoArgs {}).unwrap(), json!({}));
+    }
+
+    #[test]
+    fn value_answers_are_the_body() {
+        let rows: Vec<String> = read_response(
+            Query::value("test:value"),
+            answer(json!({"status": "success", "value": ["a", "b"], "logLines": []})),
+        )
+        .unwrap();
+        assert_eq!(rows, ["a", "b"]);
+    }
+
+    #[test]
+    fn text_answers_carry_the_body_as_json_text() {
+        for value in [
+            json!({"json": "[1,2]"}),
+            json!({"etag": "\"x\"", "json": "[1,2]"}),
         ] {
-            assert_eq!(
-                api_base_url_for(Some(lookalike), true),
-                format!("{lookalike}/api")
-            );
+            let rows: Vec<u32> = read_response(
+                Query::text("test:text"),
+                answer(json!({"status": "success", "value": value})),
+            )
+            .unwrap();
+            assert_eq!(rows, [1, 2]);
         }
     }
 
     #[test]
-    fn non_vercel_builds_and_unknown_origins_call_the_api_directly() {
+    fn a_text_answer_without_its_body_is_an_error() {
+        let error = read_response::<Vec<u32>>(
+            Query::text("test:text"),
+            answer(json!({"status": "success", "value": {"etag": "\"x\""}})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), "MeetCal sent test:text without its body");
+    }
+
+    #[test]
+    fn function_errors_explain_themselves() {
+        let error = read_response::<Value>(
+            Query::value("test:value"),
+            answer(json!({
+                "status": "error",
+                "errorMessage": "[Request ID: 1] Server Error\nUncaught ConvexError: {\"status\":400}",
+                "errorData": {"status": 400, "error": "year must be a four-digit year"}
+            })),
+        )
+        .unwrap_err();
         assert_eq!(
-            api_base_url_for(Some("http://localhost:3000"), false),
-            DEFAULT_API_BASE_URL
+            error.to_string(),
+            "MeetCal could not answer: year must be a four-digit year"
         );
-        assert_eq!(api_base_url_for(None, true), DEFAULT_API_BASE_URL);
-        assert_eq!(api_base_url_for(None, false), DEFAULT_API_BASE_URL);
+
+        let error = read_response::<Value>(
+            Query::value("test:value"),
+            answer(json!({"status": "error", "errorMessage": "Server Error"})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), "MeetCal could not answer: Server Error");
     }
 
     #[test]

@@ -4,9 +4,10 @@ use super::{
         sort_numeric, weight_class_options,
     },
     loading::table_response,
-    ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
+    models::RecordHolder,
+    ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
 };
-use crate::utils::api::get_api_response;
+use crate::utils::api::{queries, query};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -19,6 +20,12 @@ struct Record {
     snatch_record: f64,
     cj_record: f64,
     total_record: f64,
+    #[serde(default)]
+    snatch_by: Option<RecordHolder>,
+    #[serde(default)]
+    cj_by: Option<RecordHolder>,
+    #[serde(default)]
+    total_by: Option<RecordHolder>,
 }
 
 impl ClassifiedRow for Record {
@@ -49,8 +56,7 @@ pub fn Records() -> impl IntoView {
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("total_desc".to_string());
-    let records =
-        LocalResource::new(|| async { get_api_response::<Record>("/data/records").await });
+    let records = LocalResource::new(|| async { query::<Vec<Record>>(queries::RECORDS).await });
 
     view! {
         <DataPage
@@ -94,9 +100,9 @@ pub fn Records() -> impl IntoView {
                             <td>{record.gender.clone()}</td>
                             <td>{record.age_category.clone()}</td>
                             <td>{record.weight_class.clone()}</td>
-                            <td>{record.snatch_record}</td>
-                            <td>{record.cj_record}</td>
-                            <td>{record.total_record}</td>
+                            <RecordLift value=record.snatch_record.to_string() holder=record.snatch_by.clone() />
+                            <RecordLift value=record.cj_record.to_string() holder=record.cj_by.clone() />
+                            <RecordLift value=record.total_record.to_string() holder=record.total_by.clone() />
                         </tr>
                     })
                     .collect_view();
@@ -140,11 +146,27 @@ mod tests {
     #[test]
     fn record_deserializes_from_the_api_shape() {
         let record: Record = serde_json::from_str(
-            r#"{"age_category":"Senior","gender":"Women","weight_class":"77kg","record_type":"USAW","snatch_record":130.0,"cj_record":160.0,"total_record":287.0}"#,
+            r#"{"age_category":"Senior","gender":"Women","weight_class":"77kg","record_type":"USAW","snatch_record":130.0,"cj_record":160.0,"total_record":287.0,"snatch_by":{"name":"Ada Lift","date":"2025-06-01","location":"Columbus, OH"},"cj_by":{"name":"Standard","date":null,"location":null},"total_by":null}"#,
         )
         .unwrap();
 
         assert_eq!(record.record_type, "USAW");
         assert_eq!(record.total_record, 287.0);
+        assert_eq!(
+            record.snatch_by.map(|holder| holder.name).as_deref(),
+            Some("Ada Lift")
+        );
+        assert_eq!(record.cj_by.and_then(|holder| holder.detail()), None);
+        assert_eq!(record.total_by, None);
+    }
+
+    #[test]
+    fn record_without_holders_still_deserializes() {
+        let record: Record = serde_json::from_str(
+            r#"{"age_category":"Senior","gender":"Women","weight_class":"77kg","record_type":"USAW","snatch_record":130.0,"cj_record":160.0,"total_record":287.0}"#,
+        )
+        .unwrap();
+
+        assert_eq!(record.snatch_by, None);
     }
 }

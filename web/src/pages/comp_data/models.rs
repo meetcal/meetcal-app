@@ -1,3 +1,4 @@
+use super::format::format_us_date;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -74,6 +75,7 @@ impl std::ops::Deref for LiftingResult {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AthleteSearchQuery {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,6 +114,51 @@ pub(crate) struct MeetQuery {
     pub meet: String,
 }
 
+const HOUR_MS: f64 = 60.0 * 60.0 * 1000.0;
+
+/// `meets:list` reads the meets starting within three months of `now`. The
+/// hour is enough, and every visitor within it shares one cached answer.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub(crate) struct UpcomingMeetsQuery {
+    pub now: f64,
+}
+
+impl UpcomingMeetsQuery {
+    pub(crate) fn at(now_ms: f64) -> Self {
+        Self {
+            now: (now_ms / HOUR_MS).floor() * HOUR_MS,
+        }
+    }
+
+    pub(crate) fn current() -> Self {
+        Self::at(js_sys::Date::now())
+    }
+}
+
+/// Who set a record lift, and when and where when the source says.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(crate) struct RecordHolder {
+    pub name: String,
+    pub date: Option<String>,
+    pub location: Option<String>,
+}
+
+impl RecordHolder {
+    /// When and where, e.g. "June 1, 2025 · Columbus, OH"; `None` when the
+    /// source gave neither.
+    pub(crate) fn detail(&self) -> Option<String> {
+        let parts = [
+            self.date.as_deref().map(format_us_date),
+            self.location.clone(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.trim().is_empty())
+        .collect::<Vec<_>>();
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+}
+
 pub(crate) fn normalize(value: &str) -> String {
     value
         .split_whitespace()
@@ -127,5 +174,48 @@ pub(crate) fn attempt(value: f64) -> String {
         format!("{}×", -value)
     } else {
         value.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn holder(date: Option<&str>, location: Option<&str>) -> RecordHolder {
+        RecordHolder {
+            name: "Ada Lift".to_owned(),
+            date: date.map(str::to_owned),
+            location: location.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn holder_detail_joins_the_date_and_place_it_has() {
+        assert_eq!(
+            holder(Some("2025-06-01"), Some("Columbus, OH"))
+                .detail()
+                .as_deref(),
+            Some("June 1, 2025 · Columbus, OH")
+        );
+        assert_eq!(
+            holder(Some("2025-06-01"), None).detail().as_deref(),
+            Some("June 1, 2025")
+        );
+        assert_eq!(
+            holder(None, Some("Columbus, OH")).detail().as_deref(),
+            Some("Columbus, OH")
+        );
+        assert_eq!(holder(None, Some(" ")).detail(), None);
+        assert_eq!(holder(None, None).detail(), None);
+    }
+
+    #[test]
+    fn upcoming_meets_query_rounds_down_to_the_hour() {
+        let hour = 3_600_000.0;
+        assert_eq!(
+            UpcomingMeetsQuery::at(5.0 * hour + 59_999.0).now,
+            5.0 * hour
+        );
+        assert_eq!(UpcomingMeetsQuery::at(5.0 * hour).now, 5.0 * hour);
     }
 }

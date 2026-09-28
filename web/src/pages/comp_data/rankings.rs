@@ -6,7 +6,7 @@ use super::{
     loading::table_response,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
-use crate::utils::api::get_api_response;
+use crate::utils::api::{queries, query};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -51,7 +51,7 @@ pub fn Rankings() -> impl IntoView {
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("rank_asc".to_string());
     let rankings =
-        LocalResource::new(|| async { get_api_response::<Ranking>("/data/intl-rankings").await });
+        LocalResource::new(|| async { query::<Vec<Ranking>>(queries::INTL_RANKINGS).await });
 
     view! {
         <DataPage

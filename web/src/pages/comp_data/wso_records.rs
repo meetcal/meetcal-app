@@ -1,9 +1,10 @@
 use super::{
     filters::{compare_weight_classes, filter_options, matches_filter, weight_class_options},
     loading::{select_response, table_response},
-    ui::{DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, SortSelect},
+    models::RecordHolder,
+    ui::{DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
 };
-use crate::utils::api::{get_api_response, get_api_response_with_query};
+use crate::utils::api::{queries, query, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,12 @@ struct WsoRecord {
     snatch_record: Option<f64>,
     total_record: Option<f64>,
     weight_class: String,
+    #[serde(default)]
+    snatch_by: Option<RecordHolder>,
+    #[serde(default)]
+    cj_by: Option<RecordHolder>,
+    #[serde(default)]
+    total_by: Option<RecordHolder>,
 }
 
 fn lift_value(value: Option<f64>) -> String {
@@ -44,15 +51,15 @@ pub fn WsoRecords() -> impl IntoView {
     let (sort, set_sort) = signal("total_desc".to_owned());
 
     let organizations =
-        LocalResource::new(|| async { get_api_response::<String>("/data/wso").await });
+        LocalResource::new(|| async { query::<Vec<String>>(queries::WSO_LIST).await });
     let records = LocalResource::new(move || {
         let selected_wso = wso.get();
         async move {
             if selected_wso.is_empty() {
                 Ok(Vec::new())
             } else {
-                get_api_response_with_query::<Vec<WsoRecord>, _>(
-                    "/data/wso/records",
+                query_with::<Vec<WsoRecord>, _>(
+                    queries::WSO_RECORDS,
                     &WsoRecordsQuery { wso: selected_wso },
                 )
                 .await
@@ -107,8 +114,10 @@ pub fn WsoRecords() -> impl IntoView {
                     let rows = filtered.into_iter().map(|row| view! {
                         <tr>
                             <td>{row.gender.clone()}</td><td>{row.age_category.clone()}</td>
-                            <td>{row.weight_class.clone()}</td><td>{lift_value(row.snatch_record)}</td>
-                            <td>{lift_value(row.cj_record)}</td><td>{lift_value(row.total_record)}</td>
+                            <td>{row.weight_class.clone()}</td>
+                            <RecordLift value=lift_value(row.snatch_record) holder=row.snatch_by.clone() />
+                            <RecordLift value=lift_value(row.cj_record) holder=row.cj_by.clone() />
+                            <RecordLift value=lift_value(row.total_record) holder=row.total_by.clone() />
                         </tr>
                     }).collect_view();
 
@@ -141,24 +150,32 @@ mod tests {
     }
 
     #[test]
-    fn wso_query_percent_encodes_the_organization() {
-        let query = serde_urlencoded::to_string(WsoRecordsQuery {
+    fn wso_query_names_the_organization() {
+        let query = serde_json::to_value(WsoRecordsQuery {
             wso: "Carolina WSO".to_owned(),
         })
         .unwrap();
 
-        assert_eq!(query, "wso=Carolina+WSO");
+        assert_eq!(query, serde_json::json!({"wso": "Carolina WSO"}));
     }
 
     #[test]
     fn wso_record_accepts_nullable_lifts() {
         let record: WsoRecord = serde_json::from_str(
-            r#"{"age_category":"Senior","cj_record":null,"gender":"Women","snatch_record":80.0,"total_record":null,"weight_class":"58kg","wso":"Carolina"}"#,
+            r#"{"age_category":"Senior","cj_record":null,"gender":"Women","snatch_record":80.0,"total_record":null,"weight_class":"58kg","wso":"Carolina","snatch_by":{"name":"Ada Lift","date":"2024-03-02","location":"Raleigh, NC"},"cj_by":null,"total_by":null}"#,
         )
         .unwrap();
 
         assert_eq!(record.snatch_record, Some(80.0));
         assert_eq!(record.cj_record, None);
         assert_eq!(record.total_record, None);
+        assert_eq!(
+            record
+                .snatch_by
+                .and_then(|holder| holder.detail())
+                .as_deref(),
+            Some("March 2, 2024 · Raleigh, NC")
+        );
+        assert_eq!(record.cj_by, None);
     }
 }
