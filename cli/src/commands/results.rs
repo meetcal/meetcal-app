@@ -8,7 +8,9 @@ use crate::commands::leaderboard::{Filters, range};
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::results_between;
 use crate::utils::output::{self, Format, Report};
-use crate::utils::stats::{Gender, SINCLAIR_LABEL, number, points, row_sinclair};
+use crate::utils::stats::{
+    Gender, QPOINTS_LABEL, SINCLAIR_LABEL, number, points, row_qpoints, row_sinclair,
+};
 
 /// Every result in a year or date range, with every attempt and its Sinclair: the raw data for
 /// your own analysis. Best with --format csv or --format json.
@@ -111,6 +113,7 @@ pub fn table(rows: &[&LiftingResults]) -> Table {
         "C&J",
         "Total",
         SINCLAIR_LABEL,
+        QPOINTS_LABEL,
         "Adaptive",
     ]);
     for row in rows {
@@ -131,6 +134,7 @@ pub fn table(rows: &[&LiftingResults]) -> Table {
             number(row.cj_best),
             number(row.total),
             points(row_sinclair(row)),
+            points(row_qpoints(row)),
             row.adaptive.to_string(),
         ]);
     }

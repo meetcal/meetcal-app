@@ -100,8 +100,10 @@ Keep `println!` out of commands, or `--format` stops working for them.
 `src/utils/stats.rs` holds what the analysis commands share: parsing a division (`Open Men's
 89kg`, `Women's Masters (40-44) 69kg`) into gender, age category and class; Sinclair (the IWF's
 2021–2024 coefficients, in `SINCLAIR_MEN` / `SINCLAIR_WOMEN`: change them there when a newer set is
-confirmed); attempt habits; bomb-outs; and PR detection over an athlete's history in date order.
-Two guards cover source errors: Sinclair needs a bodyweight of 15–250 kg, and a result whose total
+confirmed); Q-points (the authors' published formula, `QPOINTS_MEN` / `QPOINTS_WOMEN`, with its
+50/41 kg bodyweight floor; not computed for youth divisions, which the formula does not cover);
+attempt habits; bomb-outs; and PR detection over an athlete's history in date order.
+Two guards cover source errors: Sinclair and Q-points need a bodyweight of 15–250 kg, and a result whose total
 is not its snatch plus clean & jerk is left out of Sinclair and leaderboards.
 
 ### All results, and every meet name

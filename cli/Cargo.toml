@@ -1,6 +1,6 @@
 [package]
 name = "meetcal"
-version = "2.3.0"
+version = "2.4.0"
 edition = "2024"
 description = "CLI for querying MeetCal lifting data"
 homepage = "https://github.com/meetcal/meetcal-app/tree/master/cli"

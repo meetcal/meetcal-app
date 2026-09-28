@@ -135,6 +135,50 @@ pub fn sinclair(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
     Some(total * coefficient)
 }
 
+/// Q-points (Huebner, Meltzer, Bjarnason and Perperoglou, Med Sci Sports Exerc 2023; the
+/// authors' formula file at https://osf.io/8x3nb/): a total `t` at bodyweight `bw` scores
+/// `t × Tmax / (β0 + β1·(bw/100)^-2 + β2·(bw/100)^2)`, as `(Tmax, β0, β1, β2)`. USA
+/// Weightlifting has used it for best lifters since 2025.
+pub const QPOINTS_MEN: (f64, f64, f64, f64) = (463.26, 416.7, -47.87, 18.93);
+pub const QPOINTS_WOMEN: (f64, f64, f64, f64) = (306.54, 266.5, -19.44, 18.61);
+/// Lighter lifters are scored at these bodyweights: the formula's `(bw/100)^-2` term inflates
+/// scores below them (the rule since November 2025, per the Nordic Weightlifting Federation).
+pub const QPOINTS_MIN_BODY_WEIGHT_MEN: f64 = 50.0;
+pub const QPOINTS_MIN_BODY_WEIGHT_WOMEN: f64 = 41.0;
+pub const QPOINTS_LABEL: &str = "Q-points";
+
+/// A total's Q-points at `body_weight`, or `None` without a total or a plausible bodyweight.
+pub fn qpoints(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
+    if total <= 0.0 || !total.is_finite() || !PLAUSIBLE_BODY_WEIGHT.contains(&body_weight) {
+        return None;
+    }
+    let ((t_max, b0, b1, b2), floor) = match gender {
+        Gender::Men => (QPOINTS_MEN, QPOINTS_MIN_BODY_WEIGHT_MEN),
+        Gender::Women => (QPOINTS_WOMEN, QPOINTS_MIN_BODY_WEIGHT_WOMEN),
+    };
+    let scaled = body_weight.max(floor) / 100.0;
+    Some(total * t_max / (b0 + b1 * scaled.powi(-2) + b2 * scaled.powi(2)))
+}
+
+/// Whether Q-points apply to a division: juniors, seniors and Masters, not youth (the authors'
+/// scope; youth have their own Q-Youth scale).
+pub fn qpoints_apply(division: &Division) -> bool {
+    !matches!(
+        division.category.as_deref(),
+        Some("U17" | "U15" | "U13" | "U11")
+    )
+}
+
+/// A result row's Q-points; `None` for youth divisions and rows whose total is not their snatch
+/// plus clean & jerk.
+pub fn row_qpoints(row: &LiftingResults) -> Option<f64> {
+    let division = Division::parse(&row.age);
+    if !consistent_total(row) || !qpoints_apply(&division) {
+        return None;
+    }
+    qpoints(row.total, row.body_weight, division.gender)
+}
+
 /// A result row's Sinclair score, from its division's gender; `None` for a row whose total is
 /// not its snatch plus clean & jerk.
 pub fn row_sinclair(row: &LiftingResults) -> Option<f64> {
@@ -446,6 +490,62 @@ pub(crate) mod tests {
         shifted.total = 148.0;
         assert!(!consistent_total(&shifted));
         assert_eq!(row_sinclair(&shifted), None);
+    }
+
+    #[test]
+    fn qpoints_match_the_published_formula() {
+        // Men, 300 kg at 89 kg: 300 × 463.26 / (416.7 − 47.87·0.89⁻² + 18.93·0.89²).
+        let score = qpoints(300.0, 89.0, Gender::Men).unwrap();
+        assert!((score - 374.34).abs() < 0.01, "{score}");
+        // Women, 200 kg at 64 kg.
+        let score = qpoints(200.0, 64.0, Gender::Women).unwrap();
+        assert!((score - 270.48).abs() < 0.01, "{score}");
+        // Below the floor, the floor's coefficient.
+        assert_eq!(
+            qpoints(100.0, 45.0, Gender::Men),
+            qpoints(100.0, 50.0, Gender::Men)
+        );
+        assert_eq!(
+            qpoints(100.0, 38.0, Gender::Women),
+            qpoints(100.0, 41.0, Gender::Women)
+        );
+        assert_eq!(qpoints(0.0, 89.0, Gender::Men), None);
+        assert_eq!(qpoints(148.0, 12.0, Gender::Men), None);
+    }
+
+    #[test]
+    fn qpoints_skip_youth_divisions() {
+        let senior = tests::row(
+            "A",
+            "2026-01-01",
+            "M",
+            "Open Men's 89kg",
+            88.0,
+            [140.0, 0.0, 0.0],
+            [170.0, 0.0, 0.0],
+        );
+        let masters = tests::row(
+            "B",
+            "2026-01-01",
+            "M",
+            "Women's Masters (40-44) 69kg",
+            68.0,
+            [70.0, 0.0, 0.0],
+            [90.0, 0.0, 0.0],
+        );
+        let youth = tests::row(
+            "C",
+            "2026-01-01",
+            "M",
+            "Men's 16-17 Age Group 81kg",
+            80.0,
+            [110.0, 0.0, 0.0],
+            [140.0, 0.0, 0.0],
+        );
+        assert!(row_qpoints(&senior).is_some());
+        assert!(row_qpoints(&masters).is_some());
+        assert_eq!(row_qpoints(&youth), None);
+        assert!(row_sinclair(&youth).is_some());
     }
 
     #[test]

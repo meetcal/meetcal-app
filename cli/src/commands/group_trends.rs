@@ -20,7 +20,8 @@ use crate::utils::meet_names::equivalent_meets;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_sinclair,
+    Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
+    row_sinclair,
 };
 
 /// Lifters in the all-time table.
@@ -256,6 +257,13 @@ pub fn report(
             entry.4 = row.date.clone();
         }
     }
+    let mut best_qpoints: HashMap<String, f64> = HashMap::new();
+    for row in group_rows {
+        if let Some(score) = row_qpoints(row) {
+            let entry = best_qpoints.entry(fold(&row.name)).or_insert(score);
+            *entry = entry.max(score);
+        }
+    }
     let mut lifters: Vec<_> = best
         .into_values()
         .filter(|entry| entry.0.total > 0.0)
@@ -273,6 +281,7 @@ pub fn report(
         "Division",
         "Date",
         &format!("Best {SINCLAIR_LABEL}"),
+        "Best Q-points",
         "Results",
         "First",
         "Latest",
@@ -287,6 +296,7 @@ pub fn report(
             row.age.clone(),
             us_date(&row.date),
             points(sinclair),
+            points(best_qpoints.get(&fold(&row.name)).copied()),
             results.to_string(),
             us_date(&first),
             us_date(&last),
