@@ -19,6 +19,8 @@ Stats across all of MeetCal's data, and output for other tools.
   weight lifted, best total, PRs, medals) and its top lifters of all time.
 - `meet-results` adds Sinclair, a summary, the heaviest lifts, the top Sinclair lifters, and a
   comparison with the meet's previous editions (`--no-history` skips it).
+- A misspelled athlete name suggests the closest athletes (`progress`, `h2h`, `qualify`).
+- `meet-info`'s JSON and CSV have one field per column.
 - Sinclair uses the IWF's 2021–2024 coefficients. Results with an impossible bodyweight or a total
   that is not the snatch plus clean & jerk (source errors) get no Sinclair and stay off
   leaderboards.
