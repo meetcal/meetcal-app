@@ -51,6 +51,9 @@ meetcal --version
 
 Run `meetcal <command> --help` for the complete arguments accepted by any command.
 
+Meet, club and WSO names must be exact. A command given a name MeetCal does not know suggests the
+closest ones it does; `meets`, `clubs` and `wsos` list them.
+
 ### Athlete reports
 
 #### `search`
@@ -88,11 +91,51 @@ meetcal compare "Maddisen Mohnsen"
 The comparison years are fixed to the current and previous calendar years. In 2026, for example,
 the command compares 2026 with 2025.
 
-### Meet reports
+### Meets
+
+#### `meets`
+
+List meets: upcoming ones (starting within three months, or under way) by default, or completed
+ones, newest first.
+
+```sh
+meetcal meets
+meetcal meets --completed --search virus
+```
+
+Options:
+
+- `--completed`, `-c`: List completed meets instead
+- `--search`, `-s`: Only meets whose name contains this text
+
+#### `meet-info`
+
+Show a meet's dates, status, federation, venue and address, time zone, and venue map links.
+
+```sh
+meetcal meet-info "2026 Florida State Championships (WSO Championships)"
+```
+
+#### `schedule`
+
+Show a meet's sessions: date, session, platform, weigh-in and start times (in the meet's time
+zone), and the weight classes in each.
+
+```sh
+meetcal schedule "2026 Florida State Championships (WSO Championships)"
+meetcal schedule "2026 Florida State Championships (WSO Championships)" --date 2026-09-26 --platform red
+```
+
+Options:
+
+- `--date`, `-d`: Only this day's sessions (`YYYY-MM-DD`)
+- `--platform`, `-p`: Only this platform's sessions
 
 #### `meet`
 
-Search meet entries by meet name. Optionally filter by session number and platform.
+Show a meet's start list: each athlete's age, club, class and entry total, their session's date,
+weigh-in and start times, and their best snatch, clean & jerk and total over the past year.
+Optionally filter by session number and platform.
 
 ```sh
 meetcal meet "2026 VIRUS Weightlifting Series 1"
@@ -103,6 +146,7 @@ Options:
 
 - `--session-number`, `-s`: Session number
 - `--session-platform`, `-p`: Platform to filter by (`red`, `white`, `blue`, `stars`, `stripes`, `rogue`); results show whatever platform the meet uses
+- `--no-bests`: Leave out the past-year bests
 
 #### `meet-results`
 
@@ -113,6 +157,18 @@ meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
 ```
 
 ### Club reports
+
+#### `clubs`
+
+List club names as the club commands expect them.
+
+```sh
+meetcal clubs --search "texas barbell"
+```
+
+Options:
+
+- `--search`, `-s`: Only clubs whose name contains this text
 
 #### `club-results`
 
@@ -154,6 +210,15 @@ meetcal club-compare "POWER AND GRACE PERFORMANCE."
 ```
 
 ### WSO reports
+
+#### `wsos`
+
+List WSOs, or the age groups one keeps records for (the values `wso-records --age` takes).
+
+```sh
+meetcal wsos
+meetcal wsos Carolina
+```
 
 #### `wso`
 
@@ -199,7 +264,8 @@ meetcal wso-compare Carolina
 
 #### `records`
 
-Search records by age group, gender, and federation.
+Search records by age group, gender, and federation. Each lift shows who set it, and when and
+where when the source says ("Standard" when nobody has claimed it yet).
 
 ```sh
 meetcal records --age Senior --gender Men --federation USAW
@@ -266,7 +332,8 @@ Options:
 
 #### `wso-records`
 
-Search WSO records by age group, gender, and WSO region.
+Search WSO records by age group, gender, and WSO region, with each lift's holder, date and place
+as for `records`.
 
 ```sh
 meetcal wso-records --age Senior --gender Men --wso Carolina

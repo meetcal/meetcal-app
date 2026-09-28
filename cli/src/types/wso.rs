@@ -2,6 +2,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use crate::types::records::RecordHolder;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum Movement {
     Snatch,
@@ -37,6 +39,12 @@ pub struct WSORecord {
     pub total_record: Option<f64>,
     pub gender: String,
     pub age_category: String,
+    #[serde(default)]
+    pub snatch_by: Option<RecordHolder>,
+    #[serde(default)]
+    pub cj_by: Option<RecordHolder>,
+    #[serde(default)]
+    pub total_by: Option<RecordHolder>,
 }
 
 #[derive(Debug, Deserialize)]

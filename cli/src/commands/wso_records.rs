@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -6,6 +6,8 @@ use crate::{
     types::wso::WSORecord,
     utils::{
         backend::{queries, query},
+        format::record_cell,
+        names::{NameKind, not_found, wso_age_groups},
         sort::sort_by_class,
     },
 };
@@ -40,6 +42,17 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
 
     let query_args = serde_json::json!({ "ageCategory": age, "gender": gender, "wso": wso });
     let records: Vec<WSORecord> = query(queries::WSO_RECORDS, &query_args).await?;
+    if records.is_empty() {
+        let groups = wso_age_groups(&wso).await.unwrap_or_default();
+        if groups.is_empty() {
+            let message = format!("No records found for WSO \"{wso}\"");
+            return Err(not_found(NameKind::Wso, &wso, message).await);
+        }
+        bail!(
+            "No {gender} {age} records for WSO \"{wso}\". Its age groups: {}",
+            groups.join(", ")
+        );
+    }
     let sorted = sort_by_class(records, |r| r.weight_class.as_str());
 
     let mut table = Table::new();
@@ -48,18 +61,9 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     for record in sorted {
         table.add_row(vec![
             record.weight_class.to_string(),
-            record
-                .snatch_record
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
-            record
-                .cj_record
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
-            record
-                .total_record
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
+            record_cell(record.snatch_record, record.snatch_by.as_ref()),
+            record_cell(record.cj_record, record.cj_by.as_ref()),
+            record_cell(record.total_record, record.total_by.as_ref()),
         ]);
     }
 

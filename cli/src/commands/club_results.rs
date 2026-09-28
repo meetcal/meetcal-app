@@ -1,9 +1,10 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
+use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 
 /// Analyze club performance stats for a meet.
 ///
@@ -23,7 +24,23 @@ pub struct ClubResultsArgs {
 
 pub async fn run(args: ClubResultsArgs) -> Result<()> {
     let stats = get_club_meet_stats(&args.club, &args.meet).await?;
-    validate_stats(&stats, &args.club, &args.meet)?;
+    if let Err(error) = validate_stats(&stats, &args.club, &args.meet) {
+        let message = error.to_string();
+        let clubs = clubs().await.unwrap_or_default();
+        let club_known = clubs
+            .iter()
+            .any(|club| club.eq_ignore_ascii_case(args.club.trim()));
+        return Err(if !clubs.is_empty() && !club_known {
+            anyhow!(not_found_message(
+                NameKind::Club,
+                &args.club,
+                &clubs,
+                message
+            ))
+        } else {
+            not_found(NameKind::Meet, &args.meet, message).await
+        });
+    }
     println!("{}", render_report(&args.club, &args.meet, &stats));
     Ok(())
 }

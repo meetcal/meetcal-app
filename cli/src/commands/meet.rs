@@ -1,8 +1,15 @@
 use crate::{
     types::athletes::{Athletes, Platform},
-    utils::backend::{queries, query},
+    utils::{
+        backend::{queries, query},
+        bests::{bests_cell, year_bests},
+        format::{us_date, us_time},
+        names::{NameKind, not_found},
+    },
 };
-use anyhow::{Context, Result};
+use std::collections::HashMap;
+
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -24,12 +31,17 @@ pub struct MeetArgs {
     /// Session platform to search for
     #[arg(long, short = 'p')]
     pub session_platform: Option<Platform>,
+
+    /// Leave out each athlete's past-year bests (one fewer lookup per 100 athletes)
+    #[arg(long)]
+    pub no_bests: bool,
 }
 
 pub async fn run(args: MeetArgs) -> Result<()> {
-    let meet_name = args.name;
-    let session_number = args.session_number;
-    let session_platform = args.session_platform.map(|p| match p {
+    let meet_name = args.name.clone();
+    let session_number = args.session_number.clone();
+    let narrowed = session_number.is_some() || args.session_platform.is_some();
+    let session_platform = args.session_platform.clone().map(|p| match p {
         Platform::Red => String::from("Red"),
         Platform::White => String::from("White"),
         Platform::Blue => String::from("Blue"),
@@ -50,9 +62,30 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     }
 
     let response: Vec<Athletes> = query(queries::MEET_ATHLETES_SESSIONS, &query_args).await?;
+    if response.is_empty() {
+        let message = if narrowed {
+            format!("No athletes found in that session of meet \"{meet_name}\"")
+        } else {
+            format!("No athletes found for meet \"{meet_name}\"")
+        };
+        if narrowed {
+            bail!(message);
+        }
+        return Err(not_found(NameKind::Meet, &meet_name, message).await);
+    }
+
+    let bests = if args.no_bests {
+        HashMap::new()
+    } else {
+        let names: Vec<String> = response
+            .iter()
+            .map(|athlete| athlete.name.clone())
+            .collect();
+        year_bests(&names).await?
+    };
 
     let mut table = Table::new();
-    table.set_header(vec![
+    let mut header = vec![
         "Name",
         "Age",
         "Gender",
@@ -60,32 +93,57 @@ pub async fn run(args: MeetArgs) -> Result<()> {
         "Club",
         "Class",
         "Entry Total",
-        "Session Num",
-        "Platform",
-    ]);
+        "Session",
+        "Date",
+        "Weigh-in",
+        "Start",
+    ];
+    if !args.no_bests {
+        header.push("Past-year bests\n(Sn / CJ / Total)");
+    }
+    table.set_header(header);
 
     for athlete in response {
-        table.add_row(vec![
-            athlete.name,
+        let mut row = vec![
+            athlete.name.clone(),
             athlete.age.to_string(),
             athlete.gender,
             athlete.adaptive.to_string(),
             athlete.club,
             athlete.weight_class,
             athlete.entry_total.to_string(),
+            session_label(athlete.session_number, athlete.session_platform.as_deref()),
+            athlete.date.as_deref().map(us_date).unwrap_or_default(),
             athlete
-                .session_number
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "Not set".to_string()),
+                .weigh_in_time
+                .as_deref()
+                .map(us_time)
+                .unwrap_or_default(),
             athlete
-                .session_platform
-                .unwrap_or_else(|| "Not set".to_string()),
-        ]);
+                .start_time
+                .as_deref()
+                .map(us_time)
+                .unwrap_or_default(),
+        ];
+        if !args.no_bests {
+            row.push(bests_cell(bests.get(&athlete.name)));
+        }
+        table.add_row(row);
     }
 
     println!("{table}");
 
     Ok(())
+}
+
+/// `1 · Red`, whichever part the athlete has, or `Not set`.
+pub fn session_label(number: Option<f64>, platform: Option<&str>) -> String {
+    match (number, platform) {
+        (Some(number), Some(platform)) => format!("{number} · {platform}"),
+        (Some(number), None) => number.to_string(),
+        (None, Some(platform)) => platform.to_string(),
+        (None, None) => "Not set".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -140,6 +198,27 @@ mod tests {
 
         assert_eq!(athletes[0].meet, "");
         assert_eq!(athletes[0].session_platform.as_deref(), Some("Gold"));
+    }
+
+    #[test]
+    fn session_label_shows_number_and_platform() {
+        assert_eq!(session_label(Some(1.0), Some("Red")), "1 · Red");
+        assert_eq!(session_label(Some(2.0), None), "2");
+        assert_eq!(session_label(None, None), "Not set");
+    }
+
+    #[test]
+    fn start_list_rows_carry_session_times() {
+        let rows = r#"[{
+            "adaptive": false, "age": 31, "club": "Test Club", "entry_total": 180,
+            "gender": "Women", "member_id": "9", "name": "Ada Lift", "session_number": 4,
+            "session_platform": "Red", "weight_class": "63kg", "wso": "Florida",
+            "date": "2026-10-03", "start_time": "10:00", "weigh_in_time": "08:00"
+        }]"#;
+        let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
+        assert_eq!(athletes[0].date.as_deref(), Some("2026-10-03"));
+        assert_eq!(athletes[0].weigh_in_time.as_deref(), Some("08:00"));
+        assert_eq!(athletes[0].start_time.as_deref(), Some("10:00"));
     }
 
     #[test]

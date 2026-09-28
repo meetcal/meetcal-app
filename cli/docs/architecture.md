@@ -40,7 +40,8 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 | Group | Commands | Reads |
 |---|---|---|
 | Athletes | `search`, `wrapped`, `compare` | `results:byNames`, `results:search` |
-| Meets | `meet`, `meet-results` | `meets:athletesSessions`, `results:byMeet` |
+| Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
+| Names | `clubs`, `wsos` | `reference:clubs`, `reference:wsoList`, `reference:wsoAgeGroups` |
 | Clubs | `club-results`, `club-wrapped`, `club-compare` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent` |
 | WSOs | `wso`, `wso-wrapped`, `wso-compare` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
@@ -68,6 +69,20 @@ national event is never credited to another.
 
 `wso` (one WSO at one meet) reads the meet's roster, the WSO athletes' previous results for PRs,
 and the meet's results under each alias.
+
+### Names and suggestions
+
+Meet, club and WSO names are exact. When a command finds nothing for one, `src/utils/names.rs`
+fetches the names MeetCal knows (`meets:list` and `meets:completed`, `reference:clubs`,
+`reference:wsoList`) and suggests the closest: names containing the input first, then names
+matching most of its words, a word matching when it is the same, a prefix, or a typo or two away.
+If the input is itself a known name (the meet exists but has no results yet), no suggestions are
+shown.
+
+### Past-year bests
+
+`meet` shows each athlete's best snatch, clean & jerk and total since the same UTC date a year
+earlier, as the app's start list does (`src/utils/bests.rs`, `results:bests`, 100 names per call).
 
 ## Adding a command
 
