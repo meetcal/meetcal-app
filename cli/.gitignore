@@ -1,0 +1,6 @@
+/target
+/dist
+/commands
+.DS_Store
+temp.rs
+.direnv/
