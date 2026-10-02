@@ -8,7 +8,9 @@ use crate::utils::athletes::history;
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
-use crate::utils::stats::{SINCLAIR_LABEL, chronological, fold, number, points, row_sinclair};
+use crate::utils::stats::{
+    SINCLAIR_LABEL, chronological, fold, number, points, row_qpoints, row_sinclair,
+};
 
 /// Compare two athletes head to head: the meets they both entered, who totalled more at each, and
 /// their best lifts all time and over the past year.
@@ -103,6 +105,7 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         "Best C&J",
         "Best Total",
         &format!("Best {SINCLAIR_LABEL}"),
+        "Best Q-points",
         "Past-Year Best Total",
     ]);
     for (name, rows, wins) in [
@@ -116,6 +119,12 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
             .fold(None, |best: Option<f64>, s| {
                 Some(best.map_or(s, |b| b.max(s)))
             });
+        let best_qpoints = rows
+            .iter()
+            .filter_map(row_qpoints)
+            .fold(None, |best: Option<f64>, q| {
+                Some(best.map_or(q, |b| b.max(q)))
+            });
         let recent = rows
             .iter()
             .filter(|row| row.date.as_str() >= cutoff)
@@ -128,6 +137,7 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
             number(max(|r| r.cj_best)),
             number(max(|r| r.total)),
             points(best_sinclair),
+            points(best_qpoints),
             number(recent),
         ]);
     }
