@@ -11,12 +11,13 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 ## Workflow
 
-1. Read the relevant source, tests, and docs before changing behavior. Check the current branch and worktree state. Sync with the target branch when safe; do not rebase over uncommitted work.
-2. Use the smallest relevant checks while implementing. For UI work, show a running demo or screenshots when requested before the full gate.
-3. For risky changes to auth, subscription gating, writes, navigation, offline data, or native/platform behavior, ask a subagent to review the diff with the `review-code-performance-tests` skill after implementation; fix confirmed findings. Keep the review scoped to the change.
-4. Before opening or updating a PR, run `mise run check`. A documentation-only change may skip it; say so in the PR test plan. Run Maestro for navigation, auth gates, or screens its flows cover when a suitable device is available.
-5. Open or update a PR against `master` when the task calls for one. Use an imperative, user-visible title and `## Summary` and `## Test plan` body sections. Do not merge or push directly to `master`.
-6. Report what changed, verification results, untested devices or flows, data/schema or auth changes, and remaining risks. Leave a harness-created worktree in place.
+1. Grill the plan first. Before making code edits for a new feature, a change to a core item, or any other large-scale operation, run the `grill-me` skill and do not edit until the user confirms you share an understanding of the plan. `grill-me` is user-invoked only, so an agent loads `grilling`, the skill it delegates to. Tiny code fixes skip this. Both skills are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); refresh them from upstream instead of editing them here.
+2. Read the relevant source, tests, and docs before changing behavior. Check the current branch and worktree state. Sync with the target branch when safe; do not rebase over uncommitted work.
+3. Use the smallest relevant checks while implementing. For UI work, show a running demo or screenshots when requested before the full gate.
+4. For risky changes to auth, subscription gating, writes, navigation, offline data, or native/platform behavior, ask a subagent to review the diff with the `review-code-performance-tests` skill after implementation; fix confirmed findings. Keep the review scoped to the change.
+5. Before opening or updating a PR, run `mise run check`. A documentation-only change may skip it; say so in the PR test plan. Run Maestro for navigation, auth gates, or screens its flows cover when a suitable device is available.
+6. Open or update a PR against `master` when the task calls for one. Use an imperative, user-visible title and `## Summary` and `## Test plan` body sections. Do not merge or push directly to `master`.
+7. Report what changed, verification results, untested devices or flows, data/schema or auth changes, and remaining risks. Leave a harness-created worktree in place.
 
 `CLAUDE.md` imports this file for Claude Code. Keep shared repository rules here; the review skill holds its specialized audit procedure.
 

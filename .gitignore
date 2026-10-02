@@ -21,6 +21,8 @@ android/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/review-code-performance-tests
+!.claude/skills/grill-me
+!.claude/skills/grilling
 .cursor/
 .expo/
 .idea/
