@@ -22,6 +22,8 @@ A few seconds later `views:refresh` uses the hints to rebuild only what those ro
 
 So new athletes, new results, deletions and new meets update everything on their own. Nothing needs to be run by hand.
 
+The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. It keeps the source version from its first page, so a roster write during the scan leaves the view stale for another refresh rather than marking mixed data fresh.
+
 ## Writes that skip the ingest mutations
 
 Anything that changes data another way leaves no hints and rewrites no histories or summaries. That includes:

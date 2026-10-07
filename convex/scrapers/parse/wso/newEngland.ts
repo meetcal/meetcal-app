@@ -31,6 +31,7 @@ export function newEnglandSection(header: string): [age: string, gender: 'Men' |
     if (['16-17', '16/17', 'U17'].some((s) => text.includes(s))) return ['U17', gender];
     if (['14-15', '14/15', 'U15'].some((s) => text.includes(s))) return ['U15', gender];
     if (text.includes('13')) return ['U13', gender];
+    if (text.includes('11U') || text.includes('U11')) return ['U11', gender];
     return null;
   }
   if (text.includes('Masters')) {
