@@ -15,8 +15,27 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
   it('reads titles', () => {
     expect(newEnglandSection("16/17 Youth Men's Records")).toEqual(['U17', 'Men']);
     expect(newEnglandSection("13U Youth Women's Records")).toEqual(['U13', 'Women']);
+    expect(newEnglandSection("11U Youth Men's Records")).toEqual(['U11', 'Men']);
+    expect(newEnglandSection("U11 Youth Women's Records")).toEqual(['U11', 'Women']);
     expect(newEnglandSection("Open Women's Records")).toEqual(['Senior', 'Women']);
     expect(newEnglandSection("35-39 Masters Men's Records")).toEqual(['Masters 35', 'Men']);
+  });
+
+  it.each(['Men', 'Women'])('keeps the new 11U %s classes even when every lift is Open', (gender) => {
+    const page: PdfLine[] = [
+      { text: `11U Youth ${gender}'s Records`, runs: [] },
+      header,
+      line({ Lift: 'Snatch', Name: 'Open' }),
+      line({ Class: '24', Lift: 'C&J', Name: 'Open' }),
+      line({ Lift: 'Total', Name: 'Open' }),
+      line({ Lift: 'Snatch', Name: 'Open' }),
+      line({ Class: '56+', Lift: 'C&J', Name: 'Open' }),
+      line({ Lift: 'Total', Name: 'Open' }),
+    ];
+    expect(parseNewEngland([page], 'New England')).toEqual(['24', '56+'].map((weight_class) => ({
+      wso: 'New England', age_category: 'U11', gender, weight_class,
+      snatch_record: null, cj_record: null, total_record: null,
+    })));
   });
 
   it('reads the Weight column by position, "Open" and "Standard" rows included', () => {

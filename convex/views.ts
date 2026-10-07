@@ -25,7 +25,8 @@ import { normalizeName } from './lib/names';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   computeAdaptiveRecords,
-  computeClubs,
+  clubNamesPage,
+  distinctCollated,
   computeIntlRankings,
   computeNationalRankings,
   computeQualifyingTotals,
@@ -270,10 +271,50 @@ export const buildReferenceTables = internalMutation({
   },
 });
 
-export const buildClubs = internalMutation({
+export const clubsPage = internalQuery({
+  args: { after: v.union(v.string(), v.null()) },
+  returns: v.object({
+    clubs: v.array(v.string()),
+    after: v.union(v.string(), v.null()),
+    sources: v.array(v.object({ table: v.string(), version: v.number() })),
+  }),
+  handler: async (ctx, { after }) => {
+    const sources = await snapshotVersions(ctx, VIEW_SOURCES.clubs);
+    return { ...(await clubNamesPage(ctx, after)), sources };
+  },
+});
+
+export const storeClubs = internalMutation({
+  args: { clubs: v.array(v.string()), sources: v.array(v.object({ table: v.string(), version: v.number() })) },
+  returns: v.null(),
+  handler: async (ctx, { clubs, sources }) => {
+    await writeView(ctx, REF_VIEWS.clubs, jsonChunks(distinctCollated(clubs)), sources);
+    return null;
+  },
+});
+
+/**
+ * One index seek per distinct club exceeded the system-operation timeout in
+ * a single mutation. Read bounded pages, then publish once all succeeded.
+ * Keep the first page's version: a roster write during the scan must leave
+ * this view stale so the next refresh rebuilds it.
+ */
+export const buildClubs = internalAction({
   args: {},
-  handler: async (ctx) => {
-    await writeComputed(ctx, REF_VIEWS.clubs, VIEW_SOURCES.clubs, () => computeClubs(ctx));
+  returns: v.null(),
+  handler: async (ctx): Promise<null> => {
+    const clubs: string[] = [];
+    let sources: SourceVersion[] | null = null;
+    let after: string | null = null;
+    do {
+      const page: { clubs: string[]; after: string | null; sources: SourceVersion[] } =
+        await ctx.runQuery(internal.views.clubsPage, { after });
+      sources ??= page.sources;
+      clubs.push(...page.clubs);
+      after = page.after;
+    } while (after !== null);
+    await ctx.runMutation(internal.views.storeClubs, { clubs, sources });
+    return null;
   },
 });
 
@@ -990,7 +1031,7 @@ export const rebuildStage = internalAction({
       }
       case 'reference': {
         await ctx.runMutation(internal.views.buildReferenceTables, {});
-        await ctx.runMutation(internal.views.buildClubs, {});
+        await ctx.runAction(internal.views.buildClubs, {});
         await ctx.runMutation(internal.views.buildWso, {});
         await ctx.runMutation(internal.views.finishRefresh, {
           hints: args.hints,
@@ -1224,7 +1265,7 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
     }
   }
   if (tables.has('athletes')) {
-    await ctx.runMutation(internal.views.buildClubs, {});
+    await ctx.runAction(internal.views.buildClubs, {});
     rebuilt.push(REF_VIEWS.clubs);
   }
   if (tables.has('wso_records')) {

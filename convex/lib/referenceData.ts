@@ -178,6 +178,23 @@ export async function computeClubs(ctx: QueryCtx): Promise<string[]> {
   return distinctCollated(clubs);
 }
 
+/** Index seeks per transaction when rebuilding the club view. */
+const CLUBS_PER_PAGE = 100;
+
+/** Skips duplicate roster entries without walking every club in one transaction. */
+export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promise<{ clubs: string[]; after: string | null }> {
+  const clubs: string[] = [];
+  let last = after ?? '';
+  for (let i = 0; i < CLUBS_PER_PAGE; i += 1) {
+    const lower = last;
+    const row = await ctx.db.query('athletes').withIndex('by_club', (q) => q.gt('club', lower)).first();
+    if (!row) return { clubs, after: null };
+    clubs.push(row.club);
+    last = row.club;
+  }
+  return { clubs, after: last };
+}
+
 /** `GET /data/wso/` */
 export async function computeWsoList(ctx: QueryCtx): Promise<string[]> {
   const rows = await ctx.db.query('wso_records').collect();
