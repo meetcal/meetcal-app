@@ -14,12 +14,11 @@ import {
 import { directoryNames, searchDirectory } from './lib/directory';
 import { distinctNameKeys } from './lib/names';
 import { RESULT_NAMES_VIEW } from './lib/viewKeys';
-import { readViewTextAnyAge } from './lib/views';
+import { joinJsonChunks, readViewTextAnyAge } from './lib/views';
 import {
   computeAdaptiveRecords,
   computeClubs,
   computeIntlRankings,
-  computeNationalRankings,
   computeQualifyingTotals,
   computeRecords,
   computeStandards,
@@ -66,8 +65,6 @@ export const live = internalQuery({
         const since = a.historyCutoffDate === undefined ? undefined : addMonths(a.historyCutoffDate, 12);
         return await livePackageJson(ctx, a.meet, toApiMeet(meetRow), since, true);
       }
-      case 'nat':
-        return JSON.stringify(await computeNationalRankings(ctx, a.federation, a.ageCategory));
       case 'records':
         return JSON.stringify(await computeRecords(ctx));
       case 'standards':
@@ -191,7 +188,10 @@ export const run = internalAction({
     const compare = async (label: string, fast: Promise<unknown>, endpoint: string, liveArgs: Record<string, unknown>) => {
       checks += 1;
       try {
-        const [f, l] = await Promise.all([fast, ctx.runQuery(internal.parity.live, { endpoint, args: liveArgs })]);
+        const live = endpoint === 'nat' && typeof liveArgs.federation === 'string' && typeof liveArgs.ageCategory === 'string'
+          ? ctx.runAction(internal.views.computeNat, { federation: liveArgs.federation, ageCategory: liveArgs.ageCategory }).then(({ chunks }) => joinJsonChunks(chunks))
+          : ctx.runQuery(internal.parity.live, { endpoint, args: liveArgs });
+        const [f, l] = await Promise.all([fast, live]);
         const diff = firstDifference(decode(f), JSON.parse(l));
         if (diff) mismatches.push(`${label}: ${diff}`);
       } catch (error) {

@@ -16,7 +16,8 @@ import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
 import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
-import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
+import { missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
+import { fetchMissouriValleyPage } from './lib/missouriValley';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
@@ -211,7 +212,7 @@ export const WSO_SOURCES: WsoSource[] = [
   },
   {
     wso: 'Missouri Valley',
-    scrape: async () => parseMissouriValley(missouriValleyLines(await fetchText(MISSOURI_VALLEY_URL, 45_000))),
+    scrape: async () => parseMissouriValley(missouriValleyLines(await fetchMissouriValleyPage())),
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
   // An uploaded Excel file with one dated tab ("20260627 MN-DAK"): its first sheet.

@@ -24,6 +24,8 @@ So new athletes, new results, deletions and new meets update everything on their
 
 The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. It keeps the source version from its first page, so a roster write during the scan leaves the view stale for another refresh rather than marking mixed data fresh.
 
+National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking and keep the first page's source version for the same freshness guarantee.
+
 ## Writes that skip the ingest mutations
 
 Anything that changes data another way leaves no hints and rewrites no histories or summaries. That includes:
