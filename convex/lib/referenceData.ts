@@ -93,6 +93,17 @@ export async function computeIntlRankings(ctx: QueryCtx) {
 
 export type RankedTotal = { name: string; total: number };
 
+/** Source rows per transaction for large historical ranking classes. */
+const NATIONAL_RANKING_PAGE_SIZE = 1000;
+
+export async function nationalRankingPage(ctx: QueryCtx, federation: string, ageCategory: string, cursor: string | null) {
+  const page = await ctx.db.query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
+  const rows = page.page.flatMap((row) => row.total === undefined || row.total === 0 ? [] : [{ name: row.name, total: row.total }]);
+  return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
+}
+
 /**
  * One row per athlete, their heaviest total; heaviest first, equal totals in
  * name order (`best_total_per_athlete`).

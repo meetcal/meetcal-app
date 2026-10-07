@@ -28,7 +28,9 @@ import {
   clubNamesPage,
   distinctCollated,
   computeIntlRankings,
-  computeNationalRankings,
+  bestTotalPerAthlete,
+  nationalRankingPage,
+  type RankedTotal,
   computeQualifyingTotals,
   computeRecords,
   computeStandards,
@@ -107,13 +109,60 @@ const REBUILD_STALE_MS = 15 * 60 * 1000;
 // Builders
 // ---------------------------------------------------------------------------
 
-export const buildNat = internalMutation({
-  args: { federation: v.string(), ageCategory: v.string() },
-  handler: async (ctx, { federation, ageCategory }) => {
+const natArgs = { federation: v.string(), ageCategory: v.string() };
+const sourceVersions = v.array(v.object({ table: v.string(), version: v.number() }));
+const rankedTotals = v.array(v.object({ name: v.string(), total: v.number() }));
+
+export const natPage = internalQuery({
+  args: { ...natArgs, cursor: v.union(v.string(), v.null()) },
+  returns: v.object({ rows: rankedTotals, cursor: v.string(), isDone: v.boolean(), sources: sourceVersions }),
+  handler: async (ctx, { federation, ageCategory, cursor }) => {
     const sources = await snapshotVersions(ctx, VIEW_SOURCES.nat);
-    const rows = await computeNationalRankings(ctx, federation, ageCategory);
-    await writeView(ctx, natKey(federation, ageCategory), jsonChunks(rows), sources);
-    return rows.length;
+    return { ...(await nationalRankingPage(ctx, federation, ageCategory, cursor)), sources };
+  },
+});
+
+async function readNat(ctx: ActionCtx, args: { federation: string; ageCategory: string }): Promise<{ rows: RankedTotal[]; sources: SourceVersion[] }> {
+  const best = new Map<string, RankedTotal>();
+  let cursor: string | null = null;
+  let sources: SourceVersion[] | null = null;
+  for (;;) {
+    const page: { rows: RankedTotal[]; cursor: string; isDone: boolean; sources: SourceVersion[] } =
+      await ctx.runQuery(internal.views.natPage, { ...args, cursor });
+    sources ??= page.sources;
+    for (const row of page.rows) {
+      if ((best.get(row.name)?.total ?? -Infinity) < row.total) best.set(row.name, row);
+    }
+    if (page.isDone) return { rows: bestTotalPerAthlete(best.values()), sources };
+    cursor = page.cursor;
+  }
+}
+
+/** Live reference computation for parity, paged independently of stored views. */
+export const computeNat = internalAction({
+  args: natArgs,
+  returns: v.object({ chunks: v.array(v.string()), sources: sourceVersions }),
+  handler: async (ctx, args): Promise<{ chunks: string[]; sources: SourceVersion[] }> => {
+    const { rows, sources } = await readNat(ctx, args);
+    return { chunks: jsonChunks(rows), sources };
+  },
+});
+
+export const storeNat = internalMutation({
+  args: { ...natArgs, chunks: v.array(v.string()), count: v.number(), sources: sourceVersions },
+  returns: v.number(),
+  handler: async (ctx, { federation, ageCategory, chunks, count, sources }) => {
+    await writeView(ctx, natKey(federation, ageCategory), chunks, sources);
+    return count;
+  },
+});
+
+export const buildNat = internalAction({
+  args: natArgs,
+  returns: v.number(),
+  handler: async (ctx, args): Promise<number> => {
+    const { rows, sources } = await readNat(ctx, args);
+    return await ctx.runMutation(internal.views.storeNat, { ...args, chunks: jsonChunks(rows), count: rows.length, sources });
   },
 });
 
@@ -1019,7 +1068,7 @@ export const rebuildStage = internalAction({
         let i = args.offset;
         for (; i < classes.length && !overBudget(); i += 1) {
           const [federation, ageCategory] = JSON.parse(classes[i]) as [string, string];
-          await ctx.runMutation(internal.views.buildNat, { federation, ageCategory });
+          await ctx.runAction(internal.views.buildNat, { federation, ageCategory });
         }
         return i < classes.length ? await next('nat', i) : await next('meets', 0);
       }
@@ -1217,7 +1266,7 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
 
   for (const entry of byKind('nat')) {
     const [federation, ageCategory] = JSON.parse(entry) as [string, string];
-    await ctx.runMutation(internal.views.buildNat, { federation, ageCategory });
+    await ctx.runAction(internal.views.buildNat, { federation, ageCategory });
     rebuilt.push(natKey(federation, ageCategory));
   }
 

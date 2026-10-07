@@ -40,6 +40,7 @@ import type * as scrapers_lib_diff from "../scrapers/lib/diff.js";
 import type * as scrapers_lib_email from "../scrapers/lib/email.js";
 import type * as scrapers_lib_html from "../scrapers/lib/html.js";
 import type * as scrapers_lib_http from "../scrapers/lib/http.js";
+import type * as scrapers_lib_missouriValley from "../scrapers/lib/missouriValley.js";
 import type * as scrapers_lib_pdf from "../scrapers/lib/pdf.js";
 import type * as scrapers_meets from "../scrapers/meets.js";
 import type * as scrapers_parse_entries from "../scrapers/parse/entries.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/lib/email": typeof scrapers_lib_email;
   "scrapers/lib/html": typeof scrapers_lib_html;
   "scrapers/lib/http": typeof scrapers_lib_http;
+  "scrapers/lib/missouriValley": typeof scrapers_lib_missouriValley;
   "scrapers/lib/pdf": typeof scrapers_lib_pdf;
   "scrapers/meets": typeof scrapers_meets;
   "scrapers/parse/entries": typeof scrapers_parse_entries;
