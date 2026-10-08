@@ -2,29 +2,57 @@ import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
 
 // Illinois (port of `manual_scrapers/scraper_pdf_illinois.py` and its auto
-// wrapper): one PDF, one line per lift ("U13 F 37 Snatch 10 STANDARD
-// 2026-08-01": the record, its holder or STANDARD, and the date; the PDF
-// gives no meet or place). The set is synced exactly (rows gone from the PDF
-// are deleted), so a parse that looks incomplete fails rather than writing.
+// wrapper): one PDF, one line per lift. Since October 2026 a line reads
+// "JR F 61 Snatch 42 kg BAKER, Sophie Oct 3, 2026 2026 Mid American
+// Championships": the record in kg, its holder or STANDARD, the date, and the
+// meet as the place (blank for older records). The earlier PDFs read
+// "U13 F 37 Snatch 10 STANDARD 2026-08-01", with no unit and no place; both
+// are read. A holder's name can run into the date ("CarmenOct 3, 2026").
+//
+// The set is synced exactly (rows gone from the PDF are deleted), and the PDF
+// decides which youth groups exist (the October 2026 one added U11 and
+// dropped U13 and U15). What guards against a parse that looks broken: too
+// few classes or lifts, or an adult group missing (Junior, Senior, Masters
+// 35-90), which is how a page the extraction lost shows up.
 
-const ROW = /^(U\d+|JR|Open|[WM]\d{2})\s+([FM])\s+((?:>\s*)?\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\d+(?:\.\d+)?)\s+(.+?)\s*\b(\d{4}-\d{2}-\d{2})(?!\d)/i;
+// Whole month words only, so a first name run into the date ("BINDER,
+// MarkOct 4, 2026") isn't read as March.
+const MONTH = String.raw`(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)`;
+const MONTH_DATE = String.raw`${MONTH}\.?\s+\d{1,2},?\s+\d{4}`;
+const ROW = new RegExp(
+  String.raw`^(U\d+|JR|Open|[WM]\d{2})\s+([FM])\s+((?:>\s*)?\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\d+(?:\.\d+)?)(?:\s*kg)?\s+(.+?)\s*(\d{4}-\d{2}-\d{2}|${MONTH_DATE})(?!\d)(?:\s+(.+))?`,
+  'i',
+);
 const RECORD_ROW_PREFIX = /^(?:U\d+|JR|Open|[WM]\d{2})\s+[FM]\s+/i;
-const MIN_RECORD_ROWS = 250;
-const MIN_LIFT_VALUES = 750;
+// The October 2026 PDF has 256 classes (768 lifts), 128 a gender; the September one had 282.
+const MIN_RECORD_ROWS = 150;
+const MIN_LIFT_VALUES = 3 * MIN_RECORD_ROWS;
+const ADULT_AGE_GROUPS = ['Junior', 'Senior', ...Array.from({ length: 12 }, (_, i) => `Masters ${35 + i * 5}`)];
 const LIFT_FIELDS = { snatch: 'snatch_record', 'clean&jerk': 'cj_record', total: 'total_record' } as const;
 type LiftField = (typeof LIFT_FIELDS)[keyof typeof LIFT_FIELDS];
 const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
 type Parsed = Omit<WsoRecord, LiftField> & Partial<Record<LiftField, number>>;
 
-/** The page's "View Records" link in its Illinois State Records section. */
+const VIEW_RECORDS_LINK = /<a[^>]+href="([^"]+\.pdf)"[^>]*>\s*View(?:\s+the)?\s+Records\s*<\/a>/gi;
+const PDF_LINK = /href="([^"]+\.pdf)"/gi;
+const RECORDS_FILE = /(?:IL[-_ ]?WSO[-_ ]?Records|Illinois[-_ ]?State[-_ ]?Records)[^/]*\.pdf$/i;
+
+/**
+ * The records PDF the page links: its "View (the) Records" button, the one
+ * whose file is named for the records if there are several, else the first
+ * after the "Illinois State Records" heading. That text also opens a banner
+ * further up ("Illinois State Records are updated!"), so the button can't be
+ * looked for only within a stretch after its first mention.
+ */
 export function illinoisPdfHref(pageHtml: string): string {
-  const start = pageHtml.indexOf('Illinois State Records');
-  const section = start === -1 ? pageHtml : pageHtml.slice(start, start + 25_000);
-  for (const pattern of [/<a[^>]+href="([^"]+\.pdf)"[^>]*>\s*View(?:\s+the)?\s+Records\s*<\/a>/i, /href="([^"]*Illinois_State_Records[^"]+\.pdf)"/i]) {
-    const match = pattern.exec(section);
-    if (match) return match[1];
-  }
-  throw new Error('Could not find the Illinois records PDF URL on the page');
+  const buttons = [...pageHtml.matchAll(VIEW_RECORDS_LINK)].map((m) => ({ href: m[1], at: m.index }));
+  const heading = pageHtml.indexOf('Illinois State Records');
+  const href =
+    buttons.find((b) => RECORDS_FILE.test(b.href))?.href ??
+    buttons.find((b) => b.at > heading)?.href ??
+    [...pageHtml.matchAll(PDF_LINK)].map((m) => m[1]).find((h) => RECORDS_FILE.test(h));
+  if (!href) throw new Error('Could not find the Illinois records PDF URL on the page');
+  return href;
 }
 
 function weightClass(raw: string): string {
@@ -56,7 +84,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
       if (RECORD_ROW_PREFIX.test(line)) unparsed.push(line);
       continue;
     }
-    const [, age, rawGender, weight, lift, value, holder, date] = match;
+    const [, age, rawGender, weight, lift, value, holder, date, place] = match;
     const gender = rawGender.toUpperCase() === 'F' ? 'Women' : 'Men';
     const record: Parsed = { wso, age_category: ageCategory(age, rawGender.toUpperCase()), gender, weight_class: weightClass(weight) };
     const key = JSON.stringify([record.age_category, gender, record.weight_class]);
@@ -69,7 +97,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
     if (existing === undefined || (existing === 0 && parsed > 0)) {
       if (existing === 0) warnings.push(`Preferred non-zero duplicate (${parsed}) over zero: ${line}`);
       entry[field] = parsed;
-      entry[HOLDER_FIELDS[field]] = recordHolder(parsed, holder, date);
+      entry[HOLDER_FIELDS[field]] = recordHolder(parsed, holder, date, place);
     } else if (existing !== parsed) {
       if (parsed === 0) warnings.push(`Ignored zero duplicate in favor of ${existing}: ${line}`);
       else throw new Error(`Conflicting Illinois values for ${field}: ${existing} and ${parsed}: ${line}`);
@@ -83,15 +111,14 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
   return { records, warnings };
 }
 
-function validate(records: readonly Parsed[], warnings: string[]) {
+function validate(records: Parsed[], warnings: string[]) {
   if (records.length < MIN_RECORD_ROWS) throw new Error(`Illinois PDF yielded only ${records.length} record rows; expected at least ${MIN_RECORD_ROWS}`);
   const fields = Object.values(LIFT_FIELDS);
   const liftValues = records.reduce((count, r) => count + fields.filter((f) => r[f] !== undefined).length, 0);
   if (liftValues < MIN_LIFT_VALUES) throw new Error(`Illinois PDF yielded only ${liftValues} lift values; expected at least ${MIN_LIFT_VALUES}`);
-  const expected = ['U13', 'U15', 'U17', 'Junior', 'Senior', ...Array.from({ length: 12 }, (_, i) => `Masters ${35 + i * 5}`)];
   for (const gender of ['Men', 'Women']) {
     const actual = new Set(records.filter((r) => r.gender === gender).map((r) => r.age_category));
-    const missing = expected.filter((age) => !actual.has(age)).sort();
+    const missing = ADULT_AGE_GROUPS.filter((age) => !actual.has(age));
     if (missing.length) throw new Error(`Illinois PDF is missing ${gender} age groups: ${missing.join(', ')}`);
   }
   const labels: [LiftField, string][] = [
@@ -107,5 +134,34 @@ function validate(records: readonly Parsed[], warnings: string[]) {
     if (r.total_record && lifts.length && r.total_record < Math.max(...lifts)) {
       warnings.push(`Source total (${r.total_record}) is below an individual lift (${Math.max(...lifts)}): ${identity}`);
     }
+    checkTotal(r, identity, warnings);
   }
+}
+
+/**
+ * A total above snatch + clean & jerk can't be right, but the PDF doesn't
+ * say which number is wrong, so such a total is kept as written and logged:
+ * William Lund's M50 >110 total of 147 (October 2026) is his meet total, and
+ * the 84 kg clean & jerk beside it is the slip (he made 85). Only a total
+ * that is the sum with one stray digit is stored as the sum: Stephanie
+ * Rosario's W40 69 total, 66 + 84, written 1580. Standards over their lifts'
+ * sum are not logged: the conversion rules set a standard total apart from
+ * its lifts (see the PDF's last page).
+ */
+function checkTotal(r: Parsed, identity: string, warnings: string[]) {
+  const { snatch_record: snatch, cj_record: cj, total_record: total } = r;
+  if (!snatch || !cj || !total || total <= snatch + cj) return;
+  const sum = snatch + cj;
+  if (oneDigitOver(total, sum)) {
+    warnings.push(`Source total (${total}) is snatch + clean & jerk with a stray digit; stored ${sum}: ${identity}`);
+    r.total_record = sum;
+  } else if (r.total_by?.name !== 'Standard') {
+    warnings.push(`Source total (${total}) is above snatch + clean & jerk (${sum}); kept as written: ${identity}`);
+  }
+}
+
+/** Whether deleting one digit from `written` leaves `meant` (1580 and 150). */
+function oneDigitOver(written: number, meant: number): boolean {
+  const digits = String(written);
+  return [...digits].some((_, i) => digits.slice(0, i) + digits.slice(i + 1) === String(meant));
 }
