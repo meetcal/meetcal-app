@@ -5,6 +5,13 @@ import { illinoisPdfHref, parseIllinois } from '../../convex/scrapers/parse/wso/
 /** The lines of IL-WSO-Records-20261004.pdf (revised October 4, 2026) as `pdfLines` reads them. */
 const OCTOBER_2026 = readFileSync(join(__dirname, 'fixtures/illinois-records-20261004.txt'), 'utf8').split('\n');
 
+/** The fixture without page `n`: its lines up to and including its footer ("n of 15 ..."). */
+function withoutPage(n: number): string[] {
+  const footer = (page: number) => OCTOBER_2026.findIndex((line) => line.startsWith(`${page} of 15 `));
+  const start = n === 1 ? 0 : footer(n - 1) + 1;
+  return [...OCTOBER_2026.slice(0, start), ...OCTOBER_2026.slice(footer(n) + 1)];
+}
+
 const AGES = ['U13', 'U15', 'U17', 'JR', 'Open', ...Array.from({ length: 12 }, (_, i) => String(35 + i * 5))];
 
 /** A PDF's worth of lines: every age group for both genders, enough classes to pass the size checks. */
@@ -74,19 +81,31 @@ describe('Illinois WSO PDF (port of scraper_pdf_illinois.py)', () => {
     expect(find('Masters 90', 'Men', '110+')).toBeTruthy();
   });
 
-  it('stores a total that is the lift sum with a stray digit as the sum, and logs any other excess as written', () => {
+  it('corrects only a total checked against results, and logs any other total over the lifts as written', () => {
     const { records, warnings } = parseIllinois(OCTOBER_2026, 'Illinois');
     const find = (age: string, gender: string, weight: string) => records.find((r) => r.age_category === age && r.gender === gender && r.weight_class === weight);
     // Written 1580; she made 66 + 84 = 150 at the 2026 Mid American Championships.
     expect(find('Masters 40', 'Women', '69')).toMatchObject({ snatch_record: 66, cj_record: 84, total_record: 150, total_by: { name: 'ROSARIO, Stephanie', date: '2026-10-03' } });
-    // Kept: the PDF doesn't say whether the total or a lift is the slip.
+    // Kept: the PDF doesn't say whether the total or a lift is the slip (Lund's lift is; Wegrzyn's total is).
     expect(find('Masters 50', 'Men', '110+')).toMatchObject({ snatch_record: 62, cj_record: 84, total_record: 147 });
     expect(find('U17', 'Women', '61')).toMatchObject({ snatch_record: 35, cj_record: 51, total_record: 104 });
     expect(warnings).toEqual([
       'Source total (104) is above snatch + clean & jerk (86); kept as written: U17 Women 61',
-      'Source total (1580) is snatch + clean & jerk with a stray digit; stored 150: Masters 40 Women 69',
+      'Corrected source total 1580 to 150 (checked against results): Masters 40 Women 69',
       'Source total (147) is above snatch + clean & jerk (146); kept as written: Masters 50 Men 110+',
     ]);
+  });
+
+  it('applies a correction only while the PDF still has the value it was checked against', () => {
+    const rosario = (total: string) => {
+      const lines = OCTOBER_2026.map((line) => line.replace(/^(W40 F 69 Total) 1580 kg/, `$1 ${total} kg`));
+      const { records, warnings } = parseIllinois(lines, 'Illinois');
+      return { total: records.find((r) => r.age_category === 'Masters 40' && r.gender === 'Women' && r.weight_class === '69')?.total_record, warnings };
+    };
+    expect(rosario('150')).toMatchObject({ total: 150 });
+    expect(rosario('150').warnings.some((w) => w.includes('Masters 40 Women 69'))).toBe(false);
+    expect(rosario('1590').total).toBe(1590);
+    expect(rosario('1590').warnings).toContain('Source total (1590) is above snatch + clean & jerk (150); kept as written: Masters 40 Women 69');
   });
 
   it('reads one line per lift into records per class (the format before October 2026)', () => {
@@ -132,10 +151,30 @@ describe('Illinois WSO PDF (port of scraper_pdf_illinois.py)', () => {
     const lines = OCTOBER_2026.map((line) => line.replace(/^(M50 M >110 Clean & Jerk) 84 kg/, '$1 8 kg'));
     const lund = parseIllinois(lines, 'Illinois').records.find((r) => r.age_category === 'Masters 50' && r.gender === 'Men' && r.weight_class === '110+');
     expect(lund).toMatchObject({ snatch_record: 62, cj_record: 8, total_record: 147 });
+    // 170 with a digit dropped is 62 + 8: still kept.
+    const jr = OCTOBER_2026.map((line) =>
+      line.replace(/^(JR F 77 Snatch) 92 kg/, '$1 62 kg').replace(/^(JR F 77 Clean & Jerk) 115 kg/, '$1 8 kg').replace(/^(JR F 77 Total) 207 kg/, '$1 170 kg'),
+    );
+    expect(parseIllinois(jr, 'Illinois').records.find((r) => r.age_category === 'Junior' && r.gender === 'Women' && r.weight_class === '77')).toMatchObject({ total_record: 170 });
   });
 
   it('refuses a PDF missing an adult age group, as a lost page reads', () => {
     expect(() => parseIllinois(OCTOBER_2026.filter((line) => !line.startsWith('W55 F ')), 'Illinois')).toThrow('Illinois PDF is missing Women age groups: Masters 55');
+  });
+
+  it('refuses a PDF with a page missing, by its footers', () => {
+    expect(() => parseIllinois(withoutPage(1), 'Illinois')).toThrow('Illinois PDF is missing pages 1 (by its page footers)');
+    expect(() => parseIllinois(withoutPage(4), 'Illinois')).toThrow('Illinois PDF is missing pages 4 (by its page footers)');
+    // The last records page (the end of Men U11, all of Men U17): its footer is the last, so the classes don't match.
+    expect(() => parseIllinois(withoutPage(14), 'Illinois')).toThrow('Illinois PDF has 8 Women and 2 Men U11 classes (part of the PDF not read?)');
+    expect(() => parseIllinois(withoutPage(14).filter((line) => !/^\d+ of 15 /.test(line)), 'Illinois')).toThrow('Men U11 classes');
+  });
+
+  it('refuses an age group read for one gender only, but takes one gone from both as the source dropping it', () => {
+    expect(() => parseIllinois(OCTOBER_2026.filter((line) => !line.startsWith('U11 F ')), 'Illinois')).toThrow('Illinois PDF has 0 Women and 8 Men U11 classes');
+    // How the October PDF dropped U13 and U15.
+    const { records } = parseIllinois(OCTOBER_2026.filter((line) => !line.startsWith('U11 ')), 'Illinois');
+    expect(records).toHaveLength(240);
   });
 
   it('refuses a PDF that looks incomplete, since the set is synced exactly', () => {
@@ -160,5 +199,19 @@ describe('Illinois WSO PDF (port of scraper_pdf_illinois.py)', () => {
     expect(illinoisPdfHref(page('/s/IL-WSO-Records-20261004.pdf'))).toBe('/s/IL-WSO-Records-20261004.pdf');
     // A renamed file: the button after the heading.
     expect(illinoisPdfHref(page('/s/records-oct.pdf'))).toBe('/s/records-oct.pdf');
+  });
+
+  it("reads the records section's buttons only, the newest by its file's date", () => {
+    // Squarespace's page: the banner and each block in its own <section>.
+    const sections = (...bodies: string[]) => bodies.map((body) => `<section class="page-section">${body}</section>`).join('');
+    const banner = '<p>Illinois State Records are updated!</p><a href="/s/club.pdf">View Records</a>';
+    const heading = '<h2>Illinois State Records</h2><h3>Records are updated to reflect the new IWF Categories!</h3>';
+    const button = (href: string) => `<a href="${href}" class="sqs-block-button-element"> View the Records </a>`;
+    expect(illinoisPdfHref(sections(banner, heading + button('/s/records-oct.pdf')))).toBe('/s/records-oct.pdf');
+    expect(illinoisPdfHref(sections(button('/s/IL-WSO-Records-20260913.pdf'), heading + button('/s/records-oct.pdf')))).toBe('/s/records-oct.pdf');
+    expect(illinoisPdfHref(sections(heading + button('/s/IL-WSO-Records-20260913.pdf') + button('/s/IL-WSO-Records-20261004.pdf')))).toBe('/s/IL-WSO-Records-20261004.pdf');
+    // Without sections: from the heading on, so a button above it is not taken.
+    expect(illinoisPdfHref(`${banner}${heading}${button('/s/records-oct.pdf')}`)).toBe('/s/records-oct.pdf');
+    expect(() => illinoisPdfHref(sections(banner, heading))).toThrow('Could not find the Illinois records PDF URL');
   });
 });

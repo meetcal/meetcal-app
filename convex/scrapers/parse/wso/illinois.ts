@@ -11,9 +11,11 @@ import type { WsoRecord } from './common';
 //
 // The set is synced exactly (rows gone from the PDF are deleted), and the PDF
 // decides which youth groups exist (the October 2026 one added U11 and
-// dropped U13 and U15). What guards against a parse that looks broken: too
-// few classes or lifts, or an adult group missing (Junior, Senior, Masters
-// 35-90), which is how a page the extraction lost shows up.
+// dropped U13 and U15), so an age group gone from both genders is taken as
+// the source's choice. What fails instead, as a parse that lost part of the
+// PDF: too few classes or lifts, an adult group missing (Junior, Senior,
+// Masters 35-90), a gap in the pages' footers ("4 of 15"), or an age group
+// with a different number of classes for women than for men.
 
 // Whole month words only, so a first name run into the date ("BINDER,
 // MarkOct 4, 2026") isn't read as March.
@@ -24,35 +26,43 @@ const ROW = new RegExp(
   'i',
 );
 const RECORD_ROW_PREFIX = /^(?:U\d+|JR|Open|[WM]\d{2})\s+[FM]\s+/i;
-// The October 2026 PDF has 256 classes (768 lifts), 128 a gender; the September one had 282.
+// The October 2026 PDF has 256 classes (768 lifts), 128 a gender; the
+// September one had 282. Low enough that Illinois can drop more youth groups;
+// a partial parse is caught by the checks in `validate`, not by this floor.
 const MIN_RECORD_ROWS = 150;
 const MIN_LIFT_VALUES = 3 * MIN_RECORD_ROWS;
 const ADULT_AGE_GROUPS = ['Junior', 'Senior', ...Array.from({ length: 12 }, (_, i) => `Masters ${35 + i * 5}`)];
+// Each page's footer: "1 of 15 IL WSO Records 20261004.xlsx" since October
+// 2026, "Page 1 of 27" before. The notes pages at the end have none.
+const PAGE_FOOTER = /^(?:Page\s+)?(\d{1,3})\s+of\s+\d{1,3}(?:\s|$)/i;
 const LIFT_FIELDS = { snatch: 'snatch_record', 'clean&jerk': 'cj_record', total: 'total_record' } as const;
 type LiftField = (typeof LIFT_FIELDS)[keyof typeof LIFT_FIELDS];
 const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
 type Parsed = Omit<WsoRecord, LiftField> & Partial<Record<LiftField, number>>;
 
 const VIEW_RECORDS_LINK = /<a[^>]+href="([^"]+\.pdf)"[^>]*>\s*View(?:\s+the)?\s+Records\s*<\/a>/gi;
-const PDF_LINK = /href="([^"]+\.pdf)"/gi;
-const RECORDS_FILE = /(?:IL[-_ ]?WSO[-_ ]?Records|Illinois[-_ ]?State[-_ ]?Records)[^/]*\.pdf$/i;
+const RECORDS_HEADING = /<h[1-6][^>]*>\s*Illinois State Records\s*<\/h[1-6]>/i;
+const FILE_DATE = /(20\d{6})[^/]*\.pdf$/i;
 
 /**
- * The records PDF the page links: its "View (the) Records" button, the one
- * whose file is named for the records if there are several, else the first
- * after the "Illinois State Records" heading. That text also opens a banner
- * further up ("Illinois State Records are updated!"), so the button can't be
- * looked for only within a stretch after its first mention.
+ * The records PDF: the "View (the) Records" button in the page section (the
+ * `<section>`, or the rest of the page after the heading if there is none)
+ * that holds the "Illinois State Records" heading; the newest by the date in
+ * its file name if there are several. The same words open a banner in
+ * another section ("Illinois State Records are updated!"), so the heading is
+ * the heading element, or else the words' last mention. No button there
+ * fails rather than guessing at the page's other PDFs.
  */
 export function illinoisPdfHref(pageHtml: string): string {
-  const buttons = [...pageHtml.matchAll(VIEW_RECORDS_LINK)].map((m) => ({ href: m[1], at: m.index }));
-  const heading = pageHtml.indexOf('Illinois State Records');
-  const href =
-    buttons.find((b) => RECORDS_FILE.test(b.href))?.href ??
-    buttons.find((b) => b.at > heading)?.href ??
-    [...pageHtml.matchAll(PDF_LINK)].map((m) => m[1]).find((h) => RECORDS_FILE.test(h));
-  if (!href) throw new Error('Could not find the Illinois records PDF URL on the page');
-  return href;
+  const heading = RECORDS_HEADING.exec(pageHtml)?.index ?? pageHtml.lastIndexOf('Illinois State Records');
+  if (heading === -1) throw new Error('Could not find the Illinois State Records section on the page');
+  const open = pageHtml.lastIndexOf('<section', heading);
+  const close = pageHtml.indexOf('</section>', heading);
+  const section = pageHtml.slice(open === -1 ? heading : open, close === -1 ? undefined : close);
+  const hrefs = [...section.matchAll(VIEW_RECORDS_LINK)].map((m) => m[1]);
+  if (!hrefs.length) throw new Error('Could not find the Illinois records PDF URL on the page');
+  const dateOf = (href: string) => FILE_DATE.exec(href)?.[1] ?? '';
+  return hrefs.reduce((newest, href) => (dateOf(href) > dateOf(newest) ? href : newest));
 }
 
 function weightClass(raw: string): string {
@@ -77,8 +87,14 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
   const warnings: string[] = [];
   const grouped = new Map<string, Parsed>();
   const unparsed: string[] = [];
+  const pages: number[] = [];
   for (const raw of lines) {
     const line = raw.trim();
+    const footer = PAGE_FOOTER.exec(line);
+    if (footer) {
+      pages.push(Number(footer[1]));
+      continue;
+    }
     const match = ROW.exec(line);
     if (!match) {
       if (RECORD_ROW_PREFIX.test(line)) unparsed.push(line);
@@ -106,12 +122,16 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
   if (unparsed.length) throw new Error(`Could not parse ${unparsed.length} Illinois record rows:\n${unparsed.slice(0, 5).join('\n')}`);
 
   const parsedRecords = [...grouped.values()];
-  validate(parsedRecords, warnings);
+  validate(parsedRecords, pages, warnings);
   const records = parsedRecords.map((r) => ({ ...r, snatch_record: r.snatch_record ?? null, cj_record: r.cj_record ?? null, total_record: r.total_record ?? null }));
   return { records, warnings };
 }
 
-function validate(records: Parsed[], warnings: string[]) {
+function validate(records: Parsed[], pages: readonly number[], warnings: string[]) {
+  // A page the extraction lost leaves a gap in the footers' page numbers.
+  const seen = new Set(pages);
+  const gaps = Array.from({ length: Math.max(0, ...pages) }, (_, i) => i + 1).filter((page) => !seen.has(page));
+  if (gaps.length) throw new Error(`Illinois PDF is missing pages ${gaps.join(', ')} (by its page footers)`);
   if (records.length < MIN_RECORD_ROWS) throw new Error(`Illinois PDF yielded only ${records.length} record rows; expected at least ${MIN_RECORD_ROWS}`);
   const fields = Object.values(LIFT_FIELDS);
   const liftValues = records.reduce((count, r) => count + fields.filter((f) => r[f] !== undefined).length, 0);
@@ -120,6 +140,17 @@ function validate(records: Parsed[], warnings: string[]) {
     const actual = new Set(records.filter((r) => r.gender === gender).map((r) => r.age_category));
     const missing = ADULT_AGE_GROUPS.filter((age) => !actual.has(age));
     if (missing.length) throw new Error(`Illinois PDF is missing ${gender} age groups: ${missing.join(', ')}`);
+  }
+  // Illinois lists as many classes for women as for men in every age group
+  // (both PDFs so far), so a group short for one gender lost rows.
+  const classes = new Map<string, { Women: number; Men: number }>();
+  for (const r of records) {
+    const counts = classes.get(r.age_category) ?? { Women: 0, Men: 0 };
+    counts[r.gender as 'Women' | 'Men'] += 1;
+    classes.set(r.age_category, counts);
+  }
+  for (const [age, { Women, Men }] of classes) {
+    if (Women !== Men) throw new Error(`Illinois PDF has ${Women} Women and ${Men} Men ${age} classes (part of the PDF not read?)`);
   }
   const labels: [LiftField, string][] = [
     ['snatch_record', 'snatch'],
@@ -139,29 +170,35 @@ function validate(records: Parsed[], warnings: string[]) {
 }
 
 /**
- * A total above snatch + clean & jerk can't be right, but the PDF doesn't
- * say which number is wrong, so such a total is kept as written and logged:
- * William Lund's M50 >110 total of 147 (October 2026) is his meet total, and
- * the 84 kg clean & jerk beside it is the slip (he made 85). Only a total
- * that is the sum with one stray digit is stored as the sum: Stephanie
- * Rosario's W40 69 total, 66 + 84, written 1580. Standards over their lifts'
- * sum are not logged: the conversion rules set a standard total apart from
- * its lifts (see the PDF's last page).
+ * Totals the PDF has wrong, each checked against the athlete's meet results.
+ * One applies only while the PDF still says what it was checked against, so
+ * a corrected (or changed) PDF wins.
+ */
+const TOTAL_CORRECTIONS: readonly { age_category: string; gender: string; weight_class: string; written: number; total: number }[] = [
+  // Stephanie Rosario, 2026 Mid American Championships: 66 + 84 = 150.
+  { age_category: 'Masters 40', gender: 'Women', weight_class: '69', written: 1580, total: 150 },
+];
+
+/**
+ * A total above snatch + clean & jerk can't be right, but the three numbers
+ * don't say which one is wrong: William Lund's M50 >110 total of 147
+ * (October 2026) is his meet total, and the 84 kg clean & jerk beside it is
+ * the slip (he made 85). A rule that guessed would overwrite a right total
+ * whenever a lift was the typo, so such a total is kept as written and
+ * logged, and corrected only once checked (`TOTAL_CORRECTIONS`). Standards
+ * over their lifts' sum are not logged: the conversion rules set a standard
+ * total apart from its lifts (see the PDF's last page).
  */
 function checkTotal(r: Parsed, identity: string, warnings: string[]) {
-  const { snatch_record: snatch, cj_record: cj, total_record: total } = r;
-  if (!snatch || !cj || !total || total <= snatch + cj) return;
-  const sum = snatch + cj;
-  if (oneDigitOver(total, sum)) {
-    warnings.push(`Source total (${total}) is snatch + clean & jerk with a stray digit; stored ${sum}: ${identity}`);
-    r.total_record = sum;
-  } else if (r.total_by?.name !== 'Standard') {
-    warnings.push(`Source total (${total}) is above snatch + clean & jerk (${sum}); kept as written: ${identity}`);
+  const correction = TOTAL_CORRECTIONS.find(
+    (c) => c.age_category === r.age_category && c.gender === r.gender && c.weight_class === r.weight_class && c.written === r.total_record,
+  );
+  if (correction) {
+    warnings.push(`Corrected source total ${correction.written} to ${correction.total} (checked against results): ${identity}`);
+    r.total_record = correction.total;
+    return;
   }
-}
-
-/** Whether deleting one digit from `written` leaves `meant` (1580 and 150). */
-function oneDigitOver(written: number, meant: number): boolean {
-  const digits = String(written);
-  return [...digits].some((_, i) => digits.slice(0, i) + digits.slice(i + 1) === String(meant));
+  const { snatch_record: snatch, cj_record: cj, total_record: total } = r;
+  if (!snatch || !cj || !total || total <= snatch + cj || r.total_by?.name === 'Standard') return;
+  warnings.push(`Source total (${total}) is above snatch + clean & jerk (${snatch + cj}); kept as written: ${identity}`);
 }
