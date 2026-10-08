@@ -98,6 +98,13 @@ const newJersey =
   (csv, wso) =>
     parseNewJerseyTab(csv, wso, age);
 
+/** A sheet in USAW's record template, its warnings logged. */
+function usawTemplate(csv: string, wso: string): WsoRecord[] {
+  const { records, warnings } = parseUsawTemplate(csv, wso);
+  for (const warning of warnings) console.log(`wso records (${wso}): ${warning}`);
+  return records;
+}
+
 const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record', name: 'Name', date: 'Date', location: 'Event' };
 
 export const WSO_SOURCES: WsoSource[] = [
@@ -219,12 +226,12 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'Minnesota-Dakotas',
     scrape: async () =>
-      parseUsawTemplate(await fetchText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv', 60_000), 'Minnesota-Dakotas'),
+      usawTemplate(await fetchText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv', 60_000), 'Minnesota-Dakotas'),
   },
   // The "Detailed" tab is the current set; TX and OK are the 2025 per-state tabs.
   {
     wso: 'Texas-Oklahoma',
-    scrape: async () => parseUsawTemplate(await fetchText(gvizCsvByName('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', 'Detailed'), 60_000), 'Texas-Oklahoma'),
+    scrape: async () => usawTemplate(await fetchText(gvizCsvByName('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', 'Detailed'), 60_000), 'Texas-Oklahoma'),
   },
 ];
 
