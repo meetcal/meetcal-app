@@ -10,8 +10,8 @@ use crate::{
         names::{NameKind, not_found},
         output::{self, Report},
         stats::{
-            Lift, SINCLAIR_LABEL, attempt_habits, average, bombed_out, number, percent, points,
-            row_sinclair,
+            Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average, bombed_out, number,
+            percent, points, row_qpoints, row_sinclair,
         },
     },
 };
@@ -96,6 +96,7 @@ pub struct MeetSummary {
     pub average_total: Option<f64>,
     pub make_rate: Option<f64>,
     pub best_sinclair: Option<(f64, String)>,
+    pub best_qpoints: Option<(f64, String)>,
 }
 
 pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
@@ -115,13 +116,44 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
         .iter()
         .filter_map(|row| row_sinclair(row).map(|score| (score, row.name.clone())))
         .max_by(|a, b| a.0.total_cmp(&b.0));
+    let best_qpoints = rows
+        .iter()
+        .filter_map(|row| row_qpoints(row).map(|score| (score, row.name.clone())))
+        .max_by(|a, b| a.0.total_cmp(&b.0));
     MeetSummary {
         athletes: rows.len(),
         bomb_outs: rows.iter().filter(|row| bombed_out(row)).count(),
         average_total: average(&totals),
         make_rate: (taken > 0).then(|| made as f64 * 100.0 / taken as f64),
         best_sinclair,
+        best_qpoints,
     }
+}
+
+/// The meet's best lifters by `score`, best first.
+fn top_table(
+    results: &[LiftingResults],
+    score: fn(&LiftingResults) -> Option<f64>,
+    label: &str,
+) -> Table {
+    let mut ranked: Vec<(&LiftingResults, f64)> = results
+        .iter()
+        .filter_map(|row| score(row).map(|value| (row, value)))
+        .collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let mut top = Table::new();
+    top.set_header(vec!["Rank", "Athlete", "Division", "BW", "Total", label]);
+    for (rank, (row, value)) in (1..).zip(ranked.into_iter().take(TOP_SINCLAIR)) {
+        top.add_row(vec![
+            rank.to_string(),
+            row.name.clone(),
+            row.age.clone(),
+            number(row.body_weight),
+            number(row.total),
+            format!("{value:.2}"),
+        ]);
+    }
+    top
 }
 
 pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) -> Report {
@@ -142,6 +174,7 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
         "CJ3",
         "Total",
         SINCLAIR_LABEL,
+        QPOINTS_LABEL,
     ]);
     for result in &sorted {
         meet_table.add_row(vec![
@@ -157,6 +190,7 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
             result.cj3.to_string(),
             result.total.to_string(),
             points(row_sinclair(result)),
+            points(row_qpoints(result)),
         ]);
     }
 
@@ -207,37 +241,20 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
         }
     }
 
-    let mut ranked: Vec<(&LiftingResults, f64)> = results
-        .iter()
-        .filter_map(|row| row_sinclair(row).map(|score| (row, score)))
-        .collect();
-    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let mut top = Table::new();
-    top.set_header(vec![
-        "Rank",
-        "Athlete",
-        "Division",
-        "BW",
-        "Total",
-        SINCLAIR_LABEL,
-    ]);
-    for (rank, (row, score)) in (1..).zip(ranked.into_iter().take(TOP_SINCLAIR)) {
-        top.add_row(vec![
-            rank.to_string(),
-            row.name.clone(),
-            row.age.clone(),
-            number(row.body_weight),
-            number(row.total),
-            format!("{score:.2}"),
-        ]);
-    }
+    let top_qpoints = top_table(results, row_qpoints, QPOINTS_LABEL);
+    let top_sinclair = top_table(results, row_sinclair, SINCLAIR_LABEL);
 
     let (by_attempt, by_lift) = make_rate_tables(results);
     let mut report = Report::new()
         .table("results", meet_table)
         .headed("summary", "SUMMARY", summary_table)
         .headed("heaviest_lifts", "HEAVIEST LIFTS", heaviest)
-        .headed("top_sinclair", "TOP SINCLAIR", top)
+        .headed(
+            "top_qpoints",
+            "TOP Q-POINTS (USAW BEST LIFTER)",
+            top_qpoints,
+        )
+        .headed("top_sinclair", "TOP SINCLAIR", top_sinclair)
         .headed("make_rate_by_attempt", "MAKE RATES", by_attempt)
         .table("make_rate", by_lift);
 
@@ -251,6 +268,8 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
             "Bomb-outs",
             "Best Sinclair",
             "Best Sinclair Athlete",
+            "Best Q-points",
+            "Best Q-points Athlete",
         ]);
         for (meet, summary) in editions {
             history.add_row(vec![
@@ -265,6 +284,12 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
                 points(summary.best_sinclair.as_ref().map(|(score, _)| *score)),
                 summary
                     .best_sinclair
+                    .as_ref()
+                    .map(|(_, name)| name.clone())
+                    .unwrap_or_default(),
+                points(summary.best_qpoints.as_ref().map(|(score, _)| *score)),
+                summary
+                    .best_qpoints
                     .as_ref()
                     .map(|(_, name)| name.clone())
                     .unwrap_or_default(),

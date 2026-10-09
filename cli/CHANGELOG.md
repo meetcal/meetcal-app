@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.0
+
+- Q-points, which USA Weightlifting has used for best lifters since 2025, alongside Sinclair:
+  `leaderboard --by qpoints`, and a Q-points column in `progress`, `h2h`, `meet-results`, `results`,
+  `club-trends` and `wso-trends`.
+- `meet-results` ranks its best lifters by Q-points first, then Sinclair, and compares the best
+  Q-points across the meet's editions.
+- Q-points follow the published formula (Huebner, Meltzer, Bjarnason and Perperoglou, 2023): for
+  juniors, seniors and Masters, not youth divisions; lifters under 50 kg (men) or 41 kg (women)
+  are scored at that bodyweight.
+
 ## 2.3.0
 
 Stats across all of MeetCal's data, and output for other tools.

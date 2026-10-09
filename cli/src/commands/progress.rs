@@ -7,8 +7,8 @@ use crate::utils::athletes::history;
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Lift, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, number, percent, points,
-    pr_flags, row_sinclair, signed_kg,
+    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, number,
+    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg,
 };
 
 /// Show an athlete's progression: every meet with its Sinclair and PRs, their trend, and their
@@ -61,6 +61,7 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         "C&J",
         "Total",
         SINCLAIR_LABEL,
+        QPOINTS_LABEL,
         "PRs",
     ]);
     for (row, flags) in &shown {
@@ -73,6 +74,7 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
             number(row.cj_best),
             number(row.total),
             points(row_sinclair(row)),
+            points(row_qpoints(row)),
             flags.marks(),
         ]);
     }
@@ -92,6 +94,10 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         .iter()
         .filter_map(|row| row_sinclair(row).map(|score| (score, row)))
         .max_by(|a, b| a.0.total_cmp(&b.0));
+    let best_qpoints = rows
+        .iter()
+        .filter_map(|row| row_qpoints(row))
+        .max_by(|a, b| a.total_cmp(b));
     let change = match (totals.first(), totals.last()) {
         (Some(first), Some(last)) if totals.len() > 1 => Some(last.total - first.total),
         _ => None,
@@ -106,6 +112,7 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         "Best Total",
         "Best Total Date",
         "Best Sinclair",
+        "Best Q-points",
         "First-to-Latest Total",
         "Bomb-outs",
     ]);
@@ -121,6 +128,7 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         best.map(|row| number(row.total)).unwrap_or_default(),
         best.map(|row| us_date(&row.date)).unwrap_or_default(),
         points(best_sinclair.map(|(score, _)| score)),
+        points(best_qpoints),
         signed_kg(change),
         format!("{bombs} of {}", rows.len()),
     ]);

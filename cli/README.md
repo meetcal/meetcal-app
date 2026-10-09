@@ -67,7 +67,10 @@ meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'
 ```
 
 Sinclair scores use the IWF's 2021–2024 coefficients, the latest set confirmed published, and are
-labelled `Sinclair (2021-24)`. They are left blank for results with an impossible bodyweight or a
+labelled `Sinclair (2021-24)`. Q-points, which USA Weightlifting has used for best lifters since
+2025, use the published formula (Huebner, Meltzer, Bjarnason and Perperoglou, 2023); they apply to
+juniors, seniors and Masters, not youth divisions, and lifters under 50 kg (men) or 41 kg (women)
+are scored at that bodyweight. Both are left blank for results with an impossible bodyweight or a
 total that is not the snatch plus the clean & jerk, both source errors.
 
 ### Athlete reports
@@ -197,8 +200,9 @@ Options:
 
 #### `meet-results`
 
-A meet's results and statistics: every result with its Sinclair, a summary (bomb-outs, average
-total, make rate), the heaviest lifts, the top Sinclair lifters, make rates by attempt, and the
+A meet's results and statistics: every result with its Sinclair and Q-points, a summary (bomb-outs,
+average total, make rate), the heaviest lifts, the top Q-points lifters (USAW's best-lifter
+measure) and top Sinclair lifters, make rates by attempt, and the
 same numbers for the meet's three previous editions (the same name with an earlier year).
 
 ```sh
@@ -226,18 +230,18 @@ Options:
 
 #### `leaderboard`
 
-Rank athletes by their best total, snatch, clean & jerk or Sinclair over a year or date range,
-across every class. Filter by gender, age category, division, federation, WSO or club.
+Rank athletes by their best total, snatch, clean & jerk, Sinclair or Q-points over a year or date
+range, across every class. Filter by gender, age category, division, federation, WSO or club.
 
 ```sh
-meetcal leaderboard --by sinclair --gender women
+meetcal leaderboard --by qpoints --gender women
 meetcal leaderboard --year 2025 --by snatch --category "Masters 45" --limit 10
 meetcal leaderboard --wso Florida --by total
 ```
 
 Options:
 
-- `--by`, `-b`: `total` (default), `snatch`, `cj` or `sinclair`
+- `--by`, `-b`: `total` (default), `snatch`, `cj`, `sinclair` or `qpoints`
 - `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
 - `--gender`, `-g`; `--category`, `-c` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet

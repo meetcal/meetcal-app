@@ -16,7 +16,8 @@ use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Division, Gender, SINCLAIR_LABEL, consistent_total, fold, number, points, row_sinclair,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, consistent_total, fold, number, points,
+    row_qpoints, row_sinclair,
 };
 
 /// What a leaderboard ranks by.
@@ -27,6 +28,8 @@ pub enum Metric {
     Snatch,
     Cj,
     Sinclair,
+    /// Q-points (juniors, seniors and Masters; youth divisions have none)
+    Qpoints,
 }
 
 impl Metric {
@@ -39,12 +42,14 @@ impl Metric {
             Metric::Snatch => row.snatch_best,
             Metric::Cj => row.cj_best,
             Metric::Sinclair => row_sinclair(row)?,
+            Metric::Qpoints => row_qpoints(row)?,
         };
         (value > 0.0).then_some(value)
     }
 }
 
-/// Rank athletes by their best total, snatch, clean & jerk or Sinclair over a year or date range,
+/// Rank athletes by their best total, snatch, clean & jerk, Sinclair or Q-points over a year or
+/// date range,
 /// across every class, filtered by gender, age category, division, federation, WSO or club.
 ///
 /// Without --club or --wso it reads every result in the range (a year is about 28,000). Results
@@ -242,6 +247,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         Metric::Snatch => "snatch",
         Metric::Cj => "clean & jerk",
         Metric::Sinclair => "Sinclair (2021-24 coefficients)",
+        Metric::Qpoints => "Q-points",
     };
     let title = format!(
         "LEADERBOARD — best {metric}, {} to {}, {scope}",
@@ -289,6 +295,7 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
         "C&J",
         "Total",
         SINCLAIR_LABEL,
+        QPOINTS_LABEL,
         "Date",
         "Meet",
     ]);
@@ -302,6 +309,7 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
             number(row.cj_best),
             number(row.total),
             points(row_sinclair(row)),
+            points(row_qpoints(row)),
             us_date(&row.date),
             row.meet.clone(),
         ]);
@@ -390,6 +398,24 @@ mod tests {
         let ranked = rank(&rows, Metric::Sinclair, &Filters::default(), 1);
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].0.name, "Bo");
+    }
+
+    #[test]
+    fn qpoints_rank_juniors_seniors_and_masters() {
+        let mut rows = rows();
+        rows.push(row(
+            "Yu",
+            "2026-04-01",
+            "M1",
+            "Men's 16-17 Age Group 81kg",
+            80.0,
+            [150.0, 0.0, 0.0],
+            [190.0, 0.0, 0.0],
+        ));
+        let ranked = rank(&rows, Metric::Qpoints, &Filters::default(), 10);
+        let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
+        assert!(!names.contains(&"Yu"), "youth divisions have no Q-points");
+        assert_eq!(names.len(), 3);
     }
 
     #[test]
