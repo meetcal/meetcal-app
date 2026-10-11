@@ -1632,56 +1632,6 @@ main > div:has(> h4) > p {
     line-height: 1.15;
 }
 
-.atlas-hero h1 {
-    max-width: 18ch;
-}
-
-.atlas-feature-grid {
-    text-align: left;
-}
-
-.atlas-integrations {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    width: min(1120px, calc(100% - 40px));
-    margin: 0 auto 40px;
-    text-align: left;
-}
-
-.atlas-integrations .section-eyebrow {
-    margin-bottom: 24px;
-    color: var(--accent);
-    font-size: 0.78rem;
-}
-
-.atlas-closing {
-    width: min(1120px, calc(100% - 40px));
-    margin: 0 auto clamp(80px, 12vh, 130px);
-    padding: clamp(40px, 7vw, 72px) 24px;
-    border-radius: 24px;
-    background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 10%, var(--card)), var(--card) 65%);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
-    text-align: center;
-}
-
-.atlas-closing h2 {
-    margin: 0 0 12px;
-    font-size: clamp(2rem, 4.5vw, 3.35rem);
-    letter-spacing: -0.045em;
-    line-height: 1.08;
-}
-
-.atlas-closing > p:not(.section-eyebrow) {
-    margin: 0 0 28px;
-    color: var(--text-secondary);
-}
-
-.atlas-closing .store-links {
-    justify-content: center;
-}
-
 .feature-card p {
     margin: 0;
     color: var(--text-secondary);
@@ -1808,14 +1758,8 @@ main main:not(.features-page) a:hover {
 
     .hero-section,
     .download-section,
-    .interaction-section,
-    .atlas-integrations,
-    .atlas-closing {
+    .interaction-section {
         width: 100%;
-    }
-
-    .atlas-integrations {
-        grid-template-columns: 1fr;
     }
 
     .hero-section {

@@ -20,7 +20,7 @@ pub fn Header() -> impl IntoView {
                     <button class="nav-menu-trigger" type="button" aria-haspopup="true">"Products"</button>
                     <div class="nav-menu-panel">
                         <a href="https://wargames.meetcal.app">"War Games"</a>
-                        <A href="/atlas">"Atlas"</A>
+                        <a href="https://atlas.meetcal.app/">"Atlas"</a>
                     </div>
                 </div>
                 <div class="nav-menu">
@@ -44,7 +44,7 @@ pub fn Header() -> impl IntoView {
                 <nav class="mobile-nav-panel" aria-label="Mobile navigation">
                     <span class="mobile-nav-heading">"Products"</span>
                     <a href="https://wargames.meetcal.app">"War Games"</a>
-                    <A href="/atlas">"Atlas"</A>
+                    <a href="https://atlas.meetcal.app/">"Atlas"</a>
                     <A href="/comp-data">"Competition Data"</A>
                     <A href="/features">"Features"</A>
                     <A href="/privacy">"Privacy"</A>

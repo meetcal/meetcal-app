@@ -18,7 +18,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/utils/api.rs` | The only data access: every Convex query the site reads (`queries::*`), and the HTTP call with its retries |
 | `src/auth.rs`, `src/auth_bridge.js` | Clerk sign-in and the RevenueCat entitlement check, through a small JavaScript bridge to the providers' web SDKs |
 | `src/components/` | Header, footer, feature cards, route metadata (`seo.rs`), the subscription gate |
-| `src/pages/` | Public pages (home, Atlas, features, privacy, terms) |
+| `src/pages/` | Public pages (home, features, privacy, terms). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |
 | `src/pages/comp_data/` | The competition data pages, one file each, plus their shared pieces: `models.rs` (answer types), `loading.rs`, `filters.rs`, `format.rs`, `ui.rs`, `catalog.rs` (the data page list) |
 | `styles.css` | All styling |
 | `index.html`, `scripts/generate-bootstrap.sh` | The page shell, and the post-build hook that writes the Wasm bootstrap and one metadata shell per route under `dist/seo/` |
