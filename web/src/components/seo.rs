@@ -28,11 +28,6 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             description: "See how MeetCal helps athletes, coaches, and fans navigate weightlifting schedules, start lists, rankings, reminders, and meet-day details.",
             indexable: true,
         },
-        "/atlas" => PageMetadata {
-            title: "Atlas — Weightlifting Coaching Platform | MeetCal",
-            description: "Get full MeetCal meet history in Atlas. Analyze readiness before and after lifting alongside sleep, nutrition, and training data for a complete view of your athlete.",
-            indexable: true,
-        },
         "/privacy" => PageMetadata {
             title: "Privacy Policy — MeetCal",
             description: "Learn how MeetCal collects, uses, shares, and protects information across its apps, website, and related services.",
@@ -118,7 +113,7 @@ mod tests {
 
     #[test]
     fn public_pages_are_indexable_with_distinct_titles() {
-        let public = ["/", "/atlas", "/features", "/privacy", "/terms"];
+        let public = ["/", "/features", "/privacy", "/terms"];
         let mut titles = public
             .into_iter()
             .map(metadata_for_path)

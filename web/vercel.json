@@ -27,11 +27,14 @@
       ]
     }
   ],
-  "rewrites": [
+  "redirects": [
     {
       "source": "/atlas",
-      "destination": "/seo/atlas.html"
-    },
+      "destination": "https://atlas.meetcal.app/",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
     {
       "source": "/features",
       "destination": "/seo/features.html"
