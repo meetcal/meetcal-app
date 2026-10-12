@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use comfy_table::Table;
@@ -93,19 +93,25 @@ pub fn filter_membership_results(
     memberships: &[ClubMembership],
     results: Vec<LiftingResults>,
 ) -> Vec<LiftingResults> {
-    let represented_athletes: HashSet<_> = memberships
-        .iter()
-        .map(|membership| normalize(&membership.name))
-        .collect();
+    // Each athlete's registered meets, built once: a lookup per result instead of a scan of
+    // every registration (a large WSO has tens of thousands of both).
+    let mut meets_by_athlete: HashMap<String, HashSet<&str>> = HashMap::new();
+    for membership in memberships {
+        meets_by_athlete
+            .entry(normalize(&membership.name))
+            .or_default()
+            .insert(membership.meet.as_str());
+    }
 
     results
         .into_iter()
         .filter(|result| {
-            let name = normalize(&result.name);
-            represented_athletes.contains(&name)
-                && memberships.iter().any(|membership| {
-                    normalize(&membership.name) == name
-                        && equivalent_meets(&membership.meet, &result.meet)
+            meets_by_athlete
+                .get(&normalize(&result.name))
+                .is_some_and(|meets| {
+                    meets
+                        .iter()
+                        .any(|meet| equivalent_meets(meet, &result.meet))
                 })
         })
         .collect()
@@ -362,6 +368,26 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].total, 170.0);
+    }
+
+    #[test]
+    fn matches_each_meet_an_athlete_registered_at() {
+        let memberships = vec![
+            membership("Jane Doe", "Meet One"),
+            membership("Other Athlete", "Meet Three"),
+            membership(" jane  DOE", "Meet Two"),
+        ];
+        let results = vec![
+            result("Jane Doe", "Meet One", "2026-01-01", 170.0),
+            result("Jane Doe", "Meet Two", "2026-02-01", 175.0),
+            result("Jane Doe", "Meet Three", "2026-03-01", 180.0),
+            result("Other Athlete", "Meet Three", "2026-03-01", 185.0),
+        ];
+
+        let filtered = filter_membership_results(&memberships, results);
+
+        let totals: Vec<_> = filtered.iter().map(|result| result.total).collect();
+        assert_eq!(totals, vec![170.0, 175.0, 185.0]);
     }
 
     #[test]
