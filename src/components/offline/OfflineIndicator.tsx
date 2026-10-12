@@ -1,6 +1,8 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { getLastSyncTime } from '@/lib/database/offline-store';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
+import { offlineBannerText } from '@/utils/offlineBanner';
 import React, { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,10 +14,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  */
 const BANNER_MIN_DELAY_MS = 8000;
 
+/**
+ * Slides in while the device is offline, with how old the selected meet's
+ * data on the device is. It used to also show online whenever the
+ * subscription cache was over a week old ("Using Cached Data"), which said
+ * nothing about the meet data; that staleness stays inside
+ * `SubscriptionContext`.
+ */
 export function OfflineIndicator() {
   const insets = useSafeAreaInsets();
-  const { isUsingStaleCache, lastSyncTimestamp } = useSubscription();
+  const { selectedMeet } = useSelectedMeet();
   const [isOffline, setIsOffline] = useState(false);
+  const [meetSyncedAt, setMeetSyncedAt] = useState<number | null>(null);
   const [slideAnim] = useState(new Animated.Value(-100));
   const [hasCheckedNetwork, setHasCheckedNetwork] = useState(false);
   const [minDelayPassed, setMinDelayPassed] = useState(false);
@@ -59,9 +69,29 @@ export function OfflineIndicator() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Read when the device goes offline (nothing syncs while it is) and when
+  // the selected meet changes.
+  useEffect(() => {
+    if (!isOffline || !selectedMeet) {
+      setMeetSyncedAt(null);
+      return;
+    }
+    let cancelled = false;
+    getLastSyncTime(selectedMeet)
+      .then((syncedAt) => {
+        if (!cancelled) setMeetSyncedAt(syncedAt);
+      })
+      .catch(() => {
+        if (!cancelled) setMeetSyncedAt(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline, selectedMeet]);
+
   // Show/hide animation
   useEffect(() => {
-    if (isOffline || isUsingStaleCache) {
+    if (isOffline) {
       // Slide in
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -77,28 +107,11 @@ export function OfflineIndicator() {
         useNativeDriver: true,
       }).start();
     }
-  }, [isOffline, isUsingStaleCache, slideAnim]);
+  }, [isOffline, slideAnim]);
 
   const colors = {
     background: '#FF9500',
     text: '#FFFFFF',
-  };
-
-  const getTimeSinceSync = () => {
-    if (!lastSyncTimestamp) return 'unknown';
-
-    const now = Date.now();
-    const diff = now - lastSyncTimestamp;
-    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
-    const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-
-    if (days > 0) {
-      return `${days}d ago`;
-    } else if (hours > 0) {
-      return `${hours}h ago`;
-    } else {
-      return 'recently';
-    }
   };
 
   if (!hasCheckedNetwork || !minDelayPassed) {
@@ -107,7 +120,9 @@ export function OfflineIndicator() {
 
   return (
     <Animated.View
-      pointerEvents={isOffline || isUsingStaleCache ? 'auto' : 'none'}
+      // Never interactive: the banner sits over the top of the header, and
+      // with `auto` it swallowed taps on the header buttons while visible.
+      pointerEvents="none"
       style={[
         styles.container,
         {
@@ -121,8 +136,7 @@ export function OfflineIndicator() {
     >
       <IconSymbol name="wifi.slash" size={16} color={colors.text} />
       <Text style={[styles.text, { color: colors.text }]}>
-        {isOffline ? 'Offline Mode' : 'Using Cached Data'}
-        {isUsingStaleCache && lastSyncTimestamp && ` • Last synced ${getTimeSinceSync()}`}
+        {isOffline ? offlineBannerText(meetSyncedAt, Date.now()) : null}
       </Text>
     </Animated.View>
   );
