@@ -275,6 +275,50 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     );
   });
 
+  it("offers a cut search's one athlete to pick instead of building their Wrapped", async () => {
+    rangedSearchAnswers({
+      matchedName: null,
+      suggestions: ["Jane Doe"],
+      truncated: true,
+      results: [liftRow("Jane Doe", "2025-03-01", 200)],
+    });
+    await submit("an");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(texts()).toEqual(expect.arrayContaining(["DID YOU MEAN…", "Jane Doe"]));
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
+    );
+  });
+
+  it("asks for more of the name, not \"no results\", when a cut search found nobody", async () => {
+    rangedSearchAnswers({ matchedName: null, suggestions: ["Ann Lee"], truncated: true, results: [] });
+    await submit("an");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("Type more of the name") }),
+    );
+    expect(jest.mocked(showToast)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("No results") }),
+    );
+  });
+
+  it("does not build a Wrapped from an exact match whose year was cut", async () => {
+    rangedSearchAnswers({
+      matchedName: "john smith",
+      suggestions: [],
+      truncated: true,
+      results: [liftRow("John Smith", "2025-03-01", 300)],
+    });
+    await submit("john smith");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("more") }),
+    );
+  });
+
   it("builds the Wrapped of an exact match under the athlete's name", async () => {
     rangedSearchAnswers({
       matchedName: "john smith",

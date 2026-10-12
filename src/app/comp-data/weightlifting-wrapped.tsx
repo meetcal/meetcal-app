@@ -250,6 +250,20 @@ export default function WeightliftingWrappedScreen() {
         });
         return;
       }
+      if (selection.kind === "narrow") {
+        showToast({
+          type: "info",
+          message: `Too many athletes match ${normalizedName}. Type more of the name.`,
+        });
+        return;
+      }
+      if (selection.kind === "tooManyResults") {
+        showToast({
+          type: "error",
+          message: `${selection.name} has more ${selectedYear} results than a Wrapped can hold.`,
+        });
+        return;
+      }
       if (selection.kind === "ambiguous") {
         presentSuggestions(selection.names);
         setDidYouMean(true);
