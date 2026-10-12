@@ -481,9 +481,11 @@ const BODY_WEIGHT_TIE_BREAK_BEFORE = '2017-01-01';
  * no lifting order, so "first" is read from the attempts: within a session
  * the bar only goes up, so the lighter deciding bar (for a total, the clean &
  * jerk that made it) came first, and at the same weight the lower attempt
- * number lifts first. Since 2017 a tie that leaves is decided by the lighter
- * body weight, a stand-in for the real decider (the order of the lifts, which
- * is not published). An unknown attempt or body weight counts last.
+ * number lifts first. Since 2017, lifters still tied after that (the same
+ * weight on the same attempt) share the placing: who lifted first then
+ * depends on the order of the lifts, which is not published, and body weight
+ * is not the rule. An unknown attempt, or before 2017 an unknown body weight,
+ * counts last.
  */
 export type LiftKey = readonly [lift: number, ...tieBreaks: number[]];
 
@@ -496,12 +498,13 @@ function attemptOf(best: number, attempts: readonly (number | undefined)[]): num
 export function liftKey(row: RankedResult, lift: RankedLift): LiftKey {
   const snatch = row.snatchBest ?? 0;
   const cj = row.cjBest ?? 0;
-  const bodyWeight = row.bodyWeight !== undefined && row.bodyWeight > 0 ? row.bodyWeight : Infinity;
   const [value, bar, attempt] =
     lift === 'snatch'
       ? [snatch, snatch, attemptOf(snatch, [row.snatch1, row.snatch2, row.snatch3])]
       : [lift === 'cj' ? cj : (row.total ?? 0), cj, attemptOf(cj, [row.cj1, row.cj2, row.cj3])];
-  return row.date < BODY_WEIGHT_TIE_BREAK_BEFORE ? [value, bodyWeight, bar, attempt] : [value, bar, attempt, bodyWeight];
+  if (row.date >= BODY_WEIGHT_TIE_BREAK_BEFORE) return [value, bar, attempt];
+  const bodyWeight = row.bodyWeight !== undefined && row.bodyWeight > 0 ? row.bodyWeight : Infinity;
+  return [value, bodyWeight, bar, attempt];
 }
 
 function ranksAhead(a: LiftKey, b: LiftKey): boolean {

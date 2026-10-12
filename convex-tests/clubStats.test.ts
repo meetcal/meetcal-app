@@ -158,7 +158,7 @@ describe('club meet stats tie-breaks', () => {
     expect(placings).toEqual({ Ann: [1, 2, 1], Bea: [2, 1, 2] });
   });
 
-  it('place the same weight by the lower attempt number, then the lighter body weight', async () => {
+  it('place the same weight by the lower attempt number, and share it on the same attempt', async () => {
     const placings = await placingsOf({
       athletes: [athlete('Ann', 'North'), athlete('Bea', 'South'), athlete('Cat', 'South')],
       lifting_results: [
@@ -168,8 +168,31 @@ describe('club meet stats tie-breaks', () => {
         lifted('Cat', W71, [94, 98, -101], [124, 129, -133], 70.1),
       ],
     });
-    // Snatch: all on attempt 2, so body weight decides. C&J and total: Ann's attempt 1 first, then body weight.
-    expect(placings).toEqual({ Ann: [2, 1, 1], Bea: [3, 3, 3], Cat: [1, 2, 2] });
+    // Snatch: all on attempt 2, so all share first. C&J and total: Ann's attempt 1
+    // came first; Bea and Cat share second, whatever their body weights.
+    expect(placings).toEqual({ Ann: [1, 1, 1], Bea: [1, 2, 2], Cat: [1, 2, 2] });
+  });
+
+  it('give every lifter sharing gold a gold medal, and the next lifter bronze', async () => {
+    const rows = await computeStatsRows(
+      fakeCtx({
+        athletes: [athlete('Ann', 'North'), athlete('Bea', 'South'), athlete('Cat', 'South')],
+        lifting_results: [
+          // Ann and Bea make the same weights on the same attempts; Bea is lighter.
+          lifted('Ann', W71, [80, -85, -85], [100, -105, -105], 70.8),
+          lifted('Bea', W71, [80, -85, -85], [100, -105, -105], 68.2),
+          lifted('Cat', W71, [75, -80, -80], [95, -100, -100], 69),
+        ],
+      }),
+      'Open',
+    );
+    expect(Object.fromEntries(rows.map((row) => [row.name, row.placings]))).toEqual({
+      Ann: [1, 1, 1],
+      Bea: [1, 1, 1],
+      Cat: [3, 3, 3],
+    });
+    expect(clubStats(rows, 'North', 1)).toMatchObject({ gold_medals: 3, silver_medals: 0, bronze_medals: 0 });
+    expect(clubStats(rows, 'South', 2)).toMatchObject({ gold_medals: 3, silver_medals: 0, bronze_medals: 3 });
   });
 
   it('let results equal on every field share a placing', async () => {
@@ -183,14 +206,29 @@ describe('club meet stats tie-breaks', () => {
     expect(placings).toEqual({ Ann: [1, 1, 1], Bea: [1, 1, 1] });
   });
 
-  it('count a missing attempt or body weight last', () => {
+  it('count a missing attempt, or before 2017 a missing body weight, last', () => {
     const date = '2026-06-20';
     const known = liftKey({ date, snatchBest: 80, snatch1: 80, bodyWeight: 70 }, 'snatch');
     const unknown = liftKey({ date, snatchBest: 80, bodyWeight: 0 }, 'snatch');
-    expect(known).toEqual([80, 80, 1, 70]);
-    expect(unknown).toEqual([80, 80, 4, Infinity]);
+    expect(known).toEqual([80, 80, 1]);
+    expect(unknown).toEqual([80, 80, 4]);
     expect(rankOf(unknown, [known, unknown])).toBe(2);
-    expect(liftKey({ date, cjBest: 120, cj1: -120, cj2: 120, total: 200 }, 'total')).toEqual([200, 120, 2, Infinity]);
+    expect(liftKey({ date, cjBest: 120, cj1: -120, cj2: 120, total: 200 }, 'total')).toEqual([200, 120, 2]);
+
+    const before = '2016-06-20';
+    const weighed = liftKey({ date: before, snatchBest: 80, snatch1: 80, bodyWeight: 70 }, 'snatch');
+    const unweighed = liftKey({ date: before, snatchBest: 80, snatch1: 80, bodyWeight: 0 }, 'snatch');
+    expect(weighed).toEqual([80, 70, 80, 1]);
+    expect(unweighed).toEqual([80, Infinity, 80, 1]);
+    expect(rankOf(unweighed, [weighed, unweighed])).toBe(2);
+  });
+
+  it('not use body weight to break a tie from 2017 on', () => {
+    // The same 80 on the same attempt: Bea is lighter, but who lifted first is not published.
+    const ann = { date: '2017-01-01', snatchBest: 80, snatch1: 80, bodyWeight: 70.8 };
+    const bea = { ...ann, bodyWeight: 68.2 };
+    const keys = [liftKey(ann, 'snatch'), liftKey(bea, 'snatch')];
+    expect(keys.map((key) => rankOf(key, keys))).toEqual([1, 1]);
   });
 
   it('break a tie by the lighter body weight first before 2017', () => {
@@ -314,14 +352,15 @@ describe('club meet stats from Sport80 rows', () => {
     );
     expect(Object.fromEntries(rows.map((row) => [row.name, row.placings]))).toEqual({
       'Grant Miller': [2, 2, 2],
-      // Both total 227 from 98 and 129, both snatching 98 on attempt 2 (the
-      // lighter body weight decides). Westley made 129 on his first clean &
+      // Both total 227 from 98 and 129, both snatching 98 on attempt 2, so
+      // they share the snatch placing. Westley made 129 on his first clean &
       // jerk, Pidaparti on his second.
       'Alfred Westley': [3, 3, 3],
-      'Ashvin Pidaparti': [4, 4, 4],
+      'Ashvin Pidaparti': [3, 4, 4],
       // Ranked in the Masters (35-39) 95kg, not the Open.
       'Keith Wright': [2, 2, 2],
     });
     expect(clubStats(rows, 'North', 2)).toMatchObject({ gold_medals: 0, silver_medals: 3, bronze_medals: 3 });
+    expect(clubStats(rows, 'South', 2)).toMatchObject({ gold_medals: 0, silver_medals: 3, bronze_medals: 1 });
   });
 });
