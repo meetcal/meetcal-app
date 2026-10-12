@@ -83,6 +83,26 @@ describe('meet status from dates (#158, #160)', () => {
     expect(meetStatusAt({ ...meet, timeZone: 'America/Los_Angeles' }, Date.UTC(2026, 9, 10, 6))).toBe('upcoming');
   });
 
+  it('reads a meet with no zone, or an unreadable one, on the calendar of UTC-12, never the UTC date', () => {
+    const formatters = new Map();
+    const noZone = [{ ...meet }, { ...meet, timeZone: '' }, { ...meet, timeZone: '  ' }, { ...meet, timeZone: 'Not/AZone' }];
+    const statusesAt = (instant: number) => noZone.map((m) => meetStatusAt(m, instant, formatters));
+    // 06:00 UTC on the 10th: the UTC date is the first day, but it has not
+    // begun in UTC-12 (still 18:00 on the 9th), so the meet is not ongoing.
+    expect(statusesAt(Date.UTC(2026, 9, 10, 6))).toEqual(['upcoming', 'upcoming', 'upcoming', 'upcoming']);
+    // 12:00 UTC on the 10th: the first day has begun everywhere.
+    expect(statusesAt(Date.UTC(2026, 9, 10, 12))).toEqual(['ongoing', 'ongoing', 'ongoing', 'ongoing']);
+    // 03:00 UTC on the 13th: the UTC date is past the end, but it is still
+    // the 12th west of UTC (20:00 in Los Angeles), so the meet is not completed.
+    expect(statusesAt(Date.UTC(2026, 9, 13, 3))).toEqual(['ongoing', 'ongoing', 'ongoing', 'ongoing']);
+    // 11:59 UTC on the 13th: the last day is still under way in UTC-12.
+    expect(statusesAt(Date.UTC(2026, 9, 13, 11, 59))).toEqual(['ongoing', 'ongoing', 'ongoing', 'ongoing']);
+    // 12:00 UTC on the 13th: the last day has ended everywhere.
+    expect(statusesAt(Date.UTC(2026, 9, 13, 12))).toEqual(['completed', 'completed', 'completed', 'completed']);
+    // A readable zone sharing the formatter cache is still read on its own calendar.
+    expect(meetStatusAt({ ...meet, timeZone: 'Europe/London' }, Date.UTC(2026, 9, 13, 3), formatters)).toBe('completed');
+  });
+
   it('reads unpadded dates in calendar order', () => {
     // "2026-9-25" sorts after "2026-10-12" as text.
     expect(meetStatusOn({ startDate: '2026-9-24', endDate: '2026-9-25' }, '2026-10-12')).toBe('completed');

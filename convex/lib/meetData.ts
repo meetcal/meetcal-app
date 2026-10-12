@@ -98,9 +98,22 @@ export type ZoneFormatters = Map<string, Intl.DateTimeFormat | null>;
 /**
  * `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone`: the Rust
  * backend's `meet_local_date(time_zone)`, including its fallback to the UTC
- * date for a blank or unknown zone.
+ * date for a blank or unknown zone (meet status does not use that fallback:
+ * see `meetStatusAt`).
  */
 export function meetLocalDate(instant: number, timeZone: string, formatters: ZoneFormatters = new Map()): string {
+  const formatter = zoneFormatter(timeZone, formatters);
+  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
+  const parts = formatter.formatToParts(instant);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/**
+ * The `YYYY-MM-DD` formatter for `timeZone`, built once per `formatters`:
+ * null for a blank zone or one this runtime cannot read.
+ */
+export function zoneFormatter(timeZone: string, formatters: ZoneFormatters): Intl.DateTimeFormat | null {
   if (!formatters.has(timeZone)) {
     let formatter: Intl.DateTimeFormat | null;
     try {
@@ -112,11 +125,7 @@ export function meetLocalDate(instant: number, timeZone: string, formatters: Zon
     }
     formatters.set(timeZone, formatter);
   }
-  const formatter = formatters.get(timeZone);
-  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
-  const parts = formatter.formatToParts(instant);
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
+  return formatters.get(timeZone) ?? null;
 }
 
 /** Postgres `date + INTERVAL 'n months'`: same day, clamped to the month's end. */

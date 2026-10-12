@@ -289,6 +289,29 @@ describe('meet writes', () => {
       expect(rows('view_hints').map((h) => h.key).sort()).toEqual(['London ended', 'Moved by hand', 'Starts today', 'Unpadded']);
       expect(await update(ctx, {})).toBe(0);
     });
+
+    it('never moves a meet with no zone, or an unreadable one, before UTC-12 does', async () => {
+      const zoneless = (name: string, timeZone: string, extra: Row) => ({ ...meetRow(name, { timeZone, ...extra }), updatedAt: 1 });
+      const { ctx, rows } = fakeMutationCtx({
+        meets: [
+          zoneless('Blank ends', '', { startDate: '2026-10-11', endDate: '2026-10-12', status: 'ongoing' }),
+          zoneless('Unreadable ends', 'Not/AZone', { startDate: '2026-10-11', endDate: '2026-10-12', status: 'ongoing' }),
+          zoneless('Blank starts', '', { startDate: '2026-10-13', endDate: '2026-10-14' }),
+        ],
+      });
+      // 03:00 UTC on Oct 13: the UTC date has passed the end of the first two
+      // and reached the start of the third, but UTC-12 is still on the 12th.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 13, 3));
+      expect(await update(ctx, {})).toBe(0);
+      // 12:00 UTC on Oct 13: the 13th everywhere.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 13, 12));
+      expect(await update(ctx, {})).toBe(3);
+      expect(rows('meets').map((m) => [m.name, m.status])).toEqual([
+        ['Blank ends', 'completed'],
+        ['Unreadable ends', 'completed'],
+        ['Blank starts', 'ongoing'],
+      ]);
+    });
   });
 });
 

@@ -696,7 +696,8 @@ export const upsertEntryAthletes = internalMutation({
  * date has passed (`complete_ended_meets.sql` in the Rust backend), and back
  * to `upcoming` if its dates were moved into the future by hand. A meet
  * ending tonight in Los Angeles is not completed at 17:00 Pacific just
- * because the UTC date rolled over. Run hourly by `convex/crons.ts` (the
+ * because the UTC date rolled over, and a meet with no zone is read on
+ * UTC-12's calendar, so it is never ongoing or completed early. Run hourly by `convex/crons.ts` (the
  * `complete-ended-meets` job); writes only when a meet actually changes,
  * through `recordWrite` like every other write. Returns how many changed.
  */
