@@ -181,5 +181,23 @@ describe('isInternalRoutePath', () => {
     expect(isInternalRoutePath('https://example.com')).toBe(false);
     expect(isInternalRoutePath('//example.com')).toBe(false);
     expect(isInternalRoutePath('meetcal://meet/x')).toBe(false);
+    // Browsers read `\\` as `/` and drop tabs and newlines: all `//evil.example`.
+    expect(isInternalRoutePath('/\\evil.example')).toBe(false);
+    expect(isInternalRoutePath('/\t/evil.example')).toBe(false);
+    expect(isInternalRoutePath('/\n/evil.example')).toBe(false);
+  });
+
+  it('accepts every return path the app sends', () => {
+    for (const from of [
+      '/',
+      '/(tabs)',
+      '/(tabs)/(start-list)',
+      '/(tabs)/(saved)',
+      '/schedule-toolbar/profile',
+      '/schedule-toolbar/offline-data',
+      '/shared-screens/schedule-details?meet=A%5CB%09Meet&sessionNumber=3&platform=Red',
+    ]) {
+      expect(isInternalRoutePath(from)).toBe(true);
+    }
   });
 });
