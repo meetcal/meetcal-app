@@ -39,7 +39,7 @@ export const SESSION_REMINDER_KIND = 'session-reminder';
 /**
  * A meet-local date older than this many days before today (UTC) cannot
  * start in the future in any time zone, so a meet whose sessions are all
- * older is skipped without looking up its zone or schedule.
+ * older (on its current schedule) is skipped without looking up its zone.
  */
 const PAST_DATE_SLACK_DAYS = 1;
 
@@ -205,14 +205,17 @@ export async function resolveDesiredReminders(
   }
 
   for (const [meet, meetSessions] of byMeet) {
-    if (meetSessions.every((session) => session.date && session.date < cutoff)) continue;
-
+    // The schedule is read before the past-date check: a saved row keeps the
+    // date it was saved with, so a session moved from an old day to an
+    // upcoming one would otherwise be skipped and lose its reminder.
     const schedule = await deps.readSchedule(meet).catch(() => [] as ScheduleType);
     const lookup = schedule.length > 0 ? buildSessionScheduleLookup(schedule) : null;
+    const timedSessions = meetSessions.map((saved) => withScheduleTimes(saved, lookup));
+    if (timedSessions.every((session) => session.date && session.date < cutoff)) continue;
+
     const timeZone = await deps.timeZoneFor(meet);
 
-    for (const saved of meetSessions) {
-      const session = withScheduleTimes(saved, lookup);
+    for (const session of timedSessions) {
       if (!timeZone || !session.date || !session.startTime) {
         unresolvedIds.add(session.id);
         continue;

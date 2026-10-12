@@ -225,7 +225,7 @@ describe("resolveDesiredReminders", () => {
     }
   });
 
-  it("skips meets whose sessions are all in the past without looking anything up", async () => {
+  it("skips meets whose sessions are all in the past without looking up the zone", async () => {
     const d = deps();
     const { desired } = await resolveDesiredReminders(
       [saved("old", { meet: "Old Meet" as never, date: "2098-01-01" })],
@@ -233,7 +233,15 @@ describe("resolveDesiredReminders", () => {
     );
     expect(desired.size).toBe(0);
     expect(d.timeZoneFor).not.toHaveBeenCalled();
-    expect(d.readSchedule).not.toHaveBeenCalled();
+  });
+
+  it("reminds a session whose saved day is past but whose schedule moved it ahead", async () => {
+    const { desired } = await resolveDesiredReminders(
+      [saved("a", { date: "2099-06-17" })],
+      deps({ readSchedule: jest.fn(async () => MOVED_SCHEDULE) }),
+    );
+    expect(desired.get("a")?.triggerAtMs).toBe(Date.parse("2099-06-20T13:00:00.000Z"));
+    expect(desired.get("a")?.session.date).toBe("2099-06-20");
   });
 });
 
