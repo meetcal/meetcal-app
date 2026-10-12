@@ -3,9 +3,8 @@
 //  MeetCal App Intents
 //
 //  AppEntity types surfaced to Siri / Shortcuts / Spotlight. Deep-link URLs
-//  match exactly what the widget builds (scheme `meetcal://`, see
-//  targets/SavedWidget/SavedWidget.swift `sessionDeepLink` and
-//  utils/deepLinks.ts).
+//  come from `MeetCalDeepLinks` (targets/SavedWidget/MeetCalSharedModels.swift),
+//  the same builder the widget uses.
 //
 
 import Foundation
@@ -13,47 +12,8 @@ import AppIntents
 
 // MARK: - Deep links
 
-enum MeetCalDeepLinks {
-    static let scheme = "meetcal"
-
-    static let saved = URL(string: "meetcal:///open/saved")!
-    static let qualifyingTotals = URL(string: "meetcal:///comp-data/new-qualifying-totals")!
-    static let standards = URL(string: "meetcal:///comp-data/new-standards")!
-    static let rankings = URL(string: "meetcal:///comp-data/rankings")!
-    static let records = URL(string: "meetcal:///comp-data/records")!
-
-    /// Mirrors the widget's `sessionDeepLink(...)`:
-    /// `meetcal:///shared-screens/schedule-details?...`
-    static func sessionDetails(
-        id: String?,
-        meet: String?,
-        sessionNumber: Int,
-        platform: String,
-        weightClass: String?,
-        startTime: String?,
-        weighInTime: String?,
-        date: String?
-    ) -> URL? {
-        var components = URLComponents()
-        components.scheme = scheme
-        components.host = ""
-        components.path = "/shared-screens/schedule-details"
-        components.queryItems = [
-            URLQueryItem(name: "id", value: id),
-            URLQueryItem(name: "meet", value: meet),
-            URLQueryItem(name: "sessionNumber", value: String(sessionNumber)),
-            URLQueryItem(name: "platform", value: platform),
-            URLQueryItem(name: "weightClass", value: weightClass),
-            URLQueryItem(name: "startTime", value: startTime),
-            URLQueryItem(name: "weighInTime", value: weighInTime),
-            URLQueryItem(name: "date", value: date),
-        ].filter { item in
-            guard let value = item.value else { return false }
-            return !value.isEmpty
-        }
-        return components.url
-    }
-}
+// `MeetCalDeepLinks` lives in MeetCalSharedModels.swift, compiled into both
+// this target and the widget extension, so the two cannot drift.
 
 // MARK: - CompDataDestination
 

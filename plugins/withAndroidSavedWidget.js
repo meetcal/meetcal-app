@@ -68,8 +68,21 @@ const withAndroidSavedWidget = config => {
 
     application.receiver = application.receiver || [];
 
+    // The saved widget hides sessions once they start, so it also redraws when
+    // the clock or zone changes. Both broadcasts are exempt from Android 8's
+    // implicit-broadcast limits for manifest receivers.
+    const clockChangeActions = [
+      'android.intent.action.TIME_SET',
+      'android.intent.action.TIMEZONE_CHANGED',
+    ];
+
     const widgets = [
-      { className: 'SavedWidgetProvider', label: 'Saved Sessions', info: 'saved_widget_info' },
+      {
+        className: 'SavedWidgetProvider',
+        label: 'Saved Sessions',
+        info: 'saved_widget_info',
+        extraActions: clockChangeActions,
+      },
       { className: 'QualifyingTotalsWidgetProvider', label: 'Qualifying Totals', info: 'qualifying_totals_widget_info' },
       { className: 'StandardsWidgetProvider', label: 'A/B Standards', info: 'standards_widget_info' },
       { className: 'IntlRankingsWidgetProvider', label: 'International Rankings', info: 'intl_rankings_widget_info' }
@@ -77,8 +90,21 @@ const withAndroidSavedWidget = config => {
 
     for (const widget of widgets) {
       const receiverName = `${packageName}.widget.${widget.className}`;
+      const intentFilter = [
+        {
+          action: [
+            'android.appwidget.action.APPWIDGET_UPDATE',
+            'android.appwidget.action.APPWIDGET_ENABLED',
+            ...(widget.extraActions ?? []),
+          ].map(name => ({ $: { 'android:name': name } })),
+        },
+      ];
       const existing = application.receiver.find(r => r?.$?.['android:name'] === receiverName);
-      if (existing) continue;
+      if (existing) {
+        // Keep a non-clean prebuild's receiver in step with the action list.
+        existing['intent-filter'] = intentFilter;
+        continue;
+      }
 
       application.receiver.push({
         $: {
@@ -86,14 +112,7 @@ const withAndroidSavedWidget = config => {
           'android:exported': 'true',
           'android:label': widget.label
         },
-        'intent-filter': [
-          {
-            action: [
-              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } },
-              { $: { 'android:name': 'android.appwidget.action.APPWIDGET_ENABLED' } }
-            ]
-          }
-        ],
+        'intent-filter': intentFilter,
         'meta-data': [
           {
             $: {

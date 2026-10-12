@@ -1,5 +1,9 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
+import { lowerNameMatchesSearchWords, searchWords } from '@/lib/name-search';
+import type { YearBests } from '@/lib/start-list-api';
+import type { Schedule } from '@/types/schedule';
+import type { SessionDetails } from '@/types/start-list';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 
 const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
@@ -172,18 +176,326 @@ export function getAgeCategory(age: number): string {
   return `Masters ${mastersStart}`;
 }
 
+/**
+ * The weight classes in an athlete's `weightClass` field, normalized to
+ * `NNkg` / `NN+kg`. Start lists write the unlimited class both ways round
+ * (`110+` and `+110`); both normalize to `110+kg`, so one option matches
+ * either. Anything else (an adaptive "K44", free text) is dropped.
+ */
 export function parseWeightClasses(weightClass: string): string[] {
   if (!weightClass) return [];
   const classes = weightClass.split(' / ');
   const weightClasses = new Set<string>();
   classes.forEach(classStr => {
     const trimmedClass = classStr.trim();
-    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
-    if (match && match[1]) {
-      const number = match[1];
-      const plus = match[2] ? '+' : '';
-      weightClasses.add(`${number}${plus}kg`);
+    const match = trimmedClass.match(/^(\+)?(\d+)(\+)?\s*(?:kg)?$/i);
+    if (match && match[2]) {
+      const plus = match[1] || match[3] ? '+' : '';
+      weightClasses.add(`${match[2]}${plus}kg`);
     }
   });
   return Array.from(weightClasses);
+}
+
+export type AthleteSortOption =
+  | 'alphabetical'
+  | 'entryTotal'
+  | 'bestTotal'
+  | 'bestSnatch'
+  | 'bestCJ';
+
+export const ATHLETE_SORT_OPTIONS: readonly { value: AthleteSortOption; label: string }[] = [
+  { value: 'alphabetical', label: 'A-Z' },
+  { value: 'entryTotal', label: 'Entry Total' },
+  { value: 'bestTotal', label: 'Best Total' },
+  { value: 'bestSnatch', label: 'Best Sn' },
+  { value: 'bestCJ', label: 'Best CJ' },
+];
+
+export function isAthleteSortOption(value: string): value is AthleteSortOption {
+  return ATHLETE_SORT_OPTIONS.some((option) => option.value === value);
+}
+
+/** The sorts that order athletes by their bests from the last year. */
+export function isBestLiftSort(sort: string): boolean {
+  return sort === 'bestTotal' || sort === 'bestSnatch' || sort === 'bestCJ';
+}
+
+/**
+ * Whether picking `value` in pill `id` needs a subscription.
+ *
+ * Best-lift sorts are premium, as they are in session details: the bests
+ * themselves are premium everywhere (the row's "Bests From The Last Year",
+ * session details' bests), and a free sort by them would expose the ranking
+ * the paywall sells. Entry Total and A-Z stay free.
+ */
+export function isPremiumStartListPill(id: string, value: string): boolean {
+  return id === 'sort' && isBestLiftSort(value);
+}
+
+/**
+ * The sort the list actually applies. A best-lift sort picked while
+ * subscribed falls back to A-Z whenever `isSubscribed` is not `true` (the
+ * subscription lapsed, or its status is not known yet), instead of showing
+ * a premium order.
+ */
+export function effectiveStartListSort(
+  sort: AthleteSortOption,
+  isSubscribed: boolean | null,
+): AthleteSortOption {
+  return isBestLiftSort(sort) && isSubscribed !== true ? 'alphabetical' : sort;
+}
+
+/** Everything the Start List's search box and filter pills hold. */
+export interface StartListFilters {
+  weightClass: string;
+  club: string;
+  ageGroup: string;
+  adaptive: string;
+  gender: string;
+  wso: string;
+  sort: AthleteSortOption;
+  search: string;
+}
+
+export const DEFAULT_START_LIST_FILTERS: Readonly<StartListFilters> = Object.freeze({
+  weightClass: '',
+  club: '',
+  ageGroup: '',
+  adaptive: '',
+  gender: '',
+  wso: '',
+  sort: 'alphabetical',
+  search: '',
+});
+
+/** Whether any pill (not the search box) differs from its default. */
+export function hasActiveStartListFilters(filters: StartListFilters): boolean {
+  return Boolean(
+    filters.weightClass ||
+      filters.club ||
+      filters.ageGroup ||
+      filters.adaptive ||
+      filters.gender ||
+      filters.wso ||
+      filters.sort !== 'alphabetical',
+  );
+}
+
+/**
+ * The filters after picking `value` in pill `id` ("" is the pill's "all"
+ * option). Gender, age group and adaptive change which weight classes are on
+ * offer, so picking one of them clears the weight class.
+ */
+export function applyStartListPillSelection(
+  filters: StartListFilters,
+  id: string,
+  value: string,
+): StartListFilters {
+  switch (id) {
+    case 'sort':
+      return { ...filters, sort: isAthleteSortOption(value) ? value : 'alphabetical' };
+    case 'gender':
+      return { ...filters, gender: value, weightClass: '' };
+    case 'ageGroup':
+      return { ...filters, ageGroup: value, weightClass: '' };
+    case 'adaptiveAthlete':
+      return { ...filters, adaptive: value, weightClass: '' };
+    case 'weightClass':
+      return { ...filters, weightClass: value };
+    case 'wso':
+      return { ...filters, wso: value };
+    default:
+      return filters;
+  }
+}
+
+export const ADAPTIVE_ATHLETES_FILTER = 'Adaptive Athletes';
+export const NON_ADAPTIVE_ATHLETES_FILTER = 'Non-Adaptive Athletes';
+
+/** Whether an athlete passes the Adaptive pill ("" lets everyone through). */
+export function matchesAdaptiveFilter(
+  athlete: Pick<LiftResult, 'adaptive'>,
+  adaptiveFilter: string,
+): boolean {
+  if (adaptiveFilter === ADAPTIVE_ATHLETES_FILTER) return athlete.adaptive === true;
+  if (adaptiveFilter === NON_ADAPTIVE_ATHLETES_FILTER) return athlete.adaptive === false;
+  return true;
+}
+
+export interface WeightClassOptionFilters {
+  gender: string;
+  ageGroup: string;
+  adaptive: string;
+}
+
+/**
+ * The Weight Class pill's options: every class the athletes still in view
+ * (after the gender, age-group and adaptive pills) are entered in, lightest
+ * first, exactly as the filter matches them.
+ *
+ * This used to relabel the heaviest class present per gender as a "+" class
+ * and drop the real one. Whenever nobody was in the unlimited class (a WSO or
+ * local meet, or any age-group filter) the menu offered "110+", which matched
+ * nobody, and no "110", so those lifters could not be filtered at all. A "+"
+ * option now appears only when the data has a "+" class.
+ */
+export function buildWeightClassOptions(
+  athletes: readonly LiftResult[],
+  filters: WeightClassOptionFilters,
+): string[] {
+  const gender = filters.gender.toLowerCase();
+  const weightClasses = new Set<string>();
+  for (const athlete of athletes) {
+    if (gender && athlete.gender.toLowerCase() !== gender) continue;
+    if (filters.ageGroup && getAgeCategory(athlete.age) !== filters.ageGroup) continue;
+    if (!matchesAdaptiveFilter(athlete, filters.adaptive)) continue;
+    for (const weightClass of parseWeightClasses(athlete.weightClass)) {
+      weightClasses.add(weightClass);
+    }
+  }
+  return Array.from(weightClasses).sort(sortWeightClasses);
+}
+
+export const AGE_GROUP_OPTIONS: readonly string[] = [
+  'U13',
+  'U15',
+  'U17',
+  'Junior',
+  'Senior',
+  'Masters 35',
+  'Masters 40',
+  'Masters 45',
+  'Masters 50',
+  'Masters 55',
+  'Masters 60',
+  'Masters 65',
+  'Masters 70',
+  'Masters 75',
+  'Masters 80',
+  'Masters 85',
+  'Masters 90+',
+];
+
+/** The Age Group pill's options: the age groups present, youngest first. */
+export function buildAgeGroupOptions(athletes: readonly LiftResult[]): string[] {
+  const present = new Set(athletes.map((athlete) => getAgeCategory(athlete.age)));
+  return AGE_GROUP_OPTIONS.filter((ageGroup) => present.has(ageGroup));
+}
+
+/** The WSO pill's options: the athletes' WSOs, trimmed, deduplicated, A-Z. */
+export function buildWsoOptions(athletes: readonly LiftResult[]): string[] {
+  return Array.from(
+    new Set(
+      athletes
+        .map((athlete) => athlete.wso?.trim())
+        .filter((wso): wso is string => Boolean(wso)),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+/** Per-athlete values the filters compare against, derived once per roster. */
+export interface NormalizedStartListAthlete {
+  athlete: LiftResult;
+  weightClasses: string[];
+  ageCategory: string;
+  nameLower: string;
+  genderLower: string;
+  wso: string;
+}
+
+/**
+ * Parses each athlete's filter fields once per roster, so a pill change or a
+ * keystroke in the search box re-runs only the comparisons.
+ */
+export function normalizeStartListAthletes(
+  athletes: readonly LiftResult[],
+): NormalizedStartListAthlete[] {
+  return athletes.map((athlete) => ({
+    athlete,
+    weightClasses: parseWeightClasses(athlete.weightClass),
+    ageCategory: getAgeCategory(athlete.age),
+    nameLower: athlete.name.toLowerCase(),
+    genderLower: athlete.gender.toLowerCase(),
+    wso: athlete.wso?.trim() || '',
+  }));
+}
+
+/** The athletes that pass every pill and the search box, in roster order. */
+export function filterStartListAthletes(
+  normalized: readonly NormalizedStartListAthlete[],
+  filters: StartListFilters,
+  starredClubs: readonly string[],
+): LiftResult[] {
+  const words = searchWords(filters.search);
+  const gender = filters.gender.toLowerCase();
+  const result: LiftResult[] = [];
+  for (const { athlete, nameLower, weightClasses, ageCategory, genderLower, wso } of normalized) {
+    if (filters.weightClass && !weightClasses.includes(filters.weightClass)) continue;
+    if (filters.club) {
+      const inClub =
+        filters.club === STARRED_CLUBS_FILTER
+          ? starredClubs.includes(athlete.club)
+          : athlete.club === filters.club;
+      if (!inClub) continue;
+    }
+    if (!lowerNameMatchesSearchWords(nameLower, words)) continue;
+    if (filters.ageGroup && ageCategory !== filters.ageGroup) continue;
+    if (!matchesAdaptiveFilter(athlete, filters.adaptive)) continue;
+    if (gender && genderLower !== gender) continue;
+    if (filters.wso && wso !== filters.wso) continue;
+    result.push(athlete);
+  }
+  return result;
+}
+
+/**
+ * The comparator for a Start List sort: highest first for the numeric sorts,
+ * A-Z within ties. An athlete with no bests counts as 0, so sorts last.
+ */
+export function compareStartListAthletes(
+  sort: AthleteSortOption,
+  bestsByName: Readonly<Record<string, YearBests | undefined>>,
+): (left: LiftResult, right: LiftResult) => number {
+  if (sort === 'alphabetical') return sortAthletes;
+  const valueOf = (athlete: LiftResult): number => {
+    if (sort === 'entryTotal') return athlete.entryTotal || 0;
+    const bests = bestsByName[athlete.name];
+    if (sort === 'bestTotal') return bests?.bestTotal || 0;
+    if (sort === 'bestSnatch') return bests?.bestSnatch || 0;
+    return bests?.bestCJ || 0;
+  };
+  return (left, right) => {
+    const difference = valueOf(right) - valueOf(left);
+    return difference !== 0 ? difference : sortAthletes(left, right);
+  };
+}
+
+/**
+ * The group a shareable schedule (image or CSV) is made for: the picked club,
+ * else the picked WSO, else "" (none; the share actions ask for one). The
+ * Favorites filter is several clubs, so it is not a group.
+ */
+export function getShareGroup(filters: Pick<StartListFilters, 'club' | 'wso'>): string {
+  if (filters.club && filters.club !== STARRED_CLUBS_FILTER) return filters.club;
+  return filters.wso;
+}
+
+/** A session-number lookup over a meet schedule, built once per schedule. */
+export function buildSessionDetailsLookup(
+  schedule: Schedule,
+): (sessionNumber: number) => SessionDetails | null {
+  const index = new Map<number, SessionDetails>();
+  for (const day of schedule) {
+    for (const session of day.sessions) {
+      index.set(session.number, {
+        date: day.fullDate,
+        startTime: session.startTime,
+        weighInTime: session.weighInTime,
+        displayDate: day.date,
+        platforms: session.platforms,
+      });
+    }
+  }
+  return (sessionNumber) => index.get(sessionNumber) ?? null;
 }

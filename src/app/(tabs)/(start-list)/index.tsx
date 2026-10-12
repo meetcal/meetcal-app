@@ -3,7 +3,9 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Suspense, lazy } from "react";
 import { ActivityIndicator, StyleSheet } from "react-native";
 
-const StartListContent = lazy(() => import("./StartListContent"));
+const LazyStartListScreen = lazy(
+  () => import("@/components/start-list/StartListScreen"),
+);
 
 function StartListFallback() {
   const { currentTheme } = useTheme();
@@ -18,7 +20,7 @@ function StartListFallback() {
 export default function StartListScreen() {
   return (
     <Suspense fallback={<StartListFallback />}>
-      <StartListContent />
+      <LazyStartListScreen />
     </Suspense>
   );
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-mode overrides for widget_colors.xml (iOS system dark colors, to
+     match the iOS widgets). Chip colors stay as they are: white text on a
+     saturated chip reads in both modes, except the black Rogue chip, which
+     would vanish on a dark background. -->
+<resources>
+  <color name="widget_blue">#0A84FF</color>
+  <color name="widget_text_primary">#FFFFFF</color>
+  <color name="widget_text_secondary">#AEAEB2</color>
+  <color name="widget_divider">#38383A</color>
+  <color name="widget_bg">#1C1C1E</color>
+  <color name="widget_chip_black">#48484A</color>
+  <color name="widget_chip_blue">#0A84FF</color>
+</resources>

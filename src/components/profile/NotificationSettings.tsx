@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
+import { premiumPendingToast } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import { setRemindersEnabled } from "@/lib/reminder-preference";
 import {
@@ -134,7 +135,12 @@ export function NotificationSettings({
       return;
     }
 
-    // 2. Check subscription
+    // 2. Check subscription. "unknown" is not "free": a subscriber offline
+    // with no cached entitlement was told to upgrade.
+    if (subscriptionStatus === "unknown") {
+      showToast(premiumPendingToast("unknown"));
+      return;
+    }
     if (!isSubscribed) {
       Alert.alert(
         "Premium Feature",

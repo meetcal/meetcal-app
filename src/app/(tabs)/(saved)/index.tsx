@@ -38,6 +38,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
+import { premiumActionFor, resolvePremiumAccess } from "@/lib/premium-access";
 
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
@@ -61,7 +62,7 @@ export default function SavedScreen() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const colors = useAppColors();
   const { exportSessions: exportToCalendar, picker: calendarPicker } =
@@ -171,9 +172,16 @@ export default function SavedScreen() {
       return;
     }
 
-    // 2. Then check subscription. `null` is "unknown yet": do nothing rather
-    // than bounce a paying user to the paywall.
-    if (isSubscribed === false) {
+    // 2. Then check subscription. Unknown says so; it never opens the
+    // paywall in front of a subscriber whose entitlement can't be confirmed.
+    const premium = premiumActionFor(
+      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+    );
+    if (premium.kind === "notify") {
+      showToast(premium.toast);
+      return;
+    }
+    if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {
@@ -183,7 +191,6 @@ export default function SavedScreen() {
       });
       return;
     }
-    if (isSubscribed !== true) return;
 
     if (filteredSessions.length === 0) {
       showToast({ type: "info", message: "There are no sessions to add to calendar." });
@@ -204,7 +211,7 @@ export default function SavedScreen() {
       allowedMeetNames,
     );
     exportToCalendar(sessions, { skipped });
-  }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames, exportToCalendar]);
+  }, [requireAuth, isSubscribed, isSubscriptionLoading, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames, exportToCalendar]);
 
   const forceLoadSessions = useCallback(async () => {
     if (refreshing) return;

@@ -16,17 +16,33 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import PaywallScreen from "../shared-screens/paywall";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const OFFLINE_DATA_ROUTE = "/schedule-toolbar/offline-data";
 
+/**
+ * Gated by the shared `SubscriptionGate`, like every other premium screen.
+ * This screen used to gate itself: an unknown entitlement showed the paywall
+ * to a subscriber offline, and every background refresh (`isLoading` on the
+ * post-launch check, each reconnect and CustomerInfo update) blanked it
+ * behind a full-screen spinner, losing the scroll position mid-use. The
+ * paywall renders inline, so it cannot read `from` from the route; without
+ * it a signed-out user signing in (or closing the paywall) lands on the
+ * schedule tab instead of back here.
+ */
 export default function OfflineDataScreen() {
+  return (
+    <SubscriptionGate from={OFFLINE_DATA_ROUTE} feature="offline-data">
+      <OfflineDataContent />
+    </SubscriptionGate>
+  );
+}
+
+function OfflineDataContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const {
-    isSubscribed,
-    isSubscriptionLoading,
     isMeetLoading,
     filteredMeets,
     downloadingItems,
@@ -41,7 +57,7 @@ export default function OfflineDataScreen() {
     confirmDeleteAll,
   } = useOfflineData();
 
-  if (isSubscriptionLoading || isMeetLoading) {
+  if (isMeetLoading) {
     return (
       <ThemedView
         style={[
@@ -56,13 +72,6 @@ export default function OfflineDataScreen() {
         <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
-  }
-
-  // The paywall renders inline, so it cannot read `from` from the route;
-  // without it a signed-out user signing in (or closing the paywall) lands
-  // on the schedule tab instead of back here.
-  if (!isSubscribed) {
-    return <PaywallScreen from={OFFLINE_DATA_ROUTE} feature="offline-data" />;
   }
 
   return (

@@ -8,6 +8,7 @@ import {
 } from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
 import { isMaestroE2E } from "@/lib/e2e";
+import { markVersionAnnouncementSeen } from "@/lib/onboarding";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
 import {
@@ -61,15 +62,7 @@ export function VersionAnnouncement() {
 
   const handleDismiss = async () => {
     try {
-      const stored = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
-      const seenVersions = parseSeenVersions(stored);
-
-      if (!seenVersions.includes(CURRENT_VERSION)) {
-        await AsyncStorage.setItem(
-          VERSION_ANNOUNCEMENT_KEY,
-          JSON.stringify([...seenVersions, CURRENT_VERSION]),
-        );
-      }
+      await markVersionAnnouncementSeen(CURRENT_VERSION);
     } catch (error) {
       console.error("Error dismissing version announcement:", error);
     } finally {

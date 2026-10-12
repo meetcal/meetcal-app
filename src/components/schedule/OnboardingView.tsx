@@ -11,9 +11,16 @@ import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import { devLog } from "@/lib/logger";
+import {
+  completeOnboarding,
+  ONBOARDING_PAGE_COUNT,
+  onboardingSkipAction,
+} from "@/lib/onboarding";
 import { BlackAlpha, Palette } from "@/constants/Palette";
 
-const ONBOARDING_COMPLETED_KEY = "@onboarding_completed";
+// Moved to `lib/onboarding.ts` so the root layout can read them without
+// loading this view; re-exported for the screens that import them here.
+export { checkOnboardingComplete, resetOnboarding } from "@/lib/onboarding";
 
 function OnboardingPage({ pageCounter }: { pageCounter: number }) {
   const colors = useAppColors();
@@ -25,8 +32,8 @@ function OnboardingPage({ pageCounter }: { pageCounter: number }) {
             👋 Welcome to MeetCal!
           </ThemedText>
           <ThemedText style={[styles.description, { color: colors.text }]}>
-            We have 6 main features that help you have as much data as
-            possible to compete and coach your best at meets.
+            Here&apos;s a quick tour of the features that give you as much
+            data as possible to compete and coach your best at meets.
           </ThemedText>
         </View>
       );
@@ -63,9 +70,9 @@ function OnboardingPage({ pageCounter }: { pageCounter: number }) {
             🥇 Start List
           </ThemedText>
           <ThemedText style={[styles.description, { color: colors.text }]}>
-            Click the search button in the bottom right to see the entire
-            Start List. In here you can filter through the start list to get
-            all the info you need.
+            Tap the Start List tab (the list icon) to see the entire Start
+            List. In here you can filter through the start list to get all
+            the info you need.
           </ThemedText>
         </View>
       );
@@ -89,10 +96,10 @@ function OnboardingPage({ pageCounter }: { pageCounter: number }) {
             🏋️‍♀️ Competition Data
           </ThemedText>
           <ThemedText style={[styles.description, { color: colors.text }]}>
-            Click the tab in the bottom right and you&apos;ll have all the
-            pertinent competition data you&apos;ll need such as: Qualifying
-            Totals, A/B Standards, American and WSO Records, and International
-            Rankings.
+            Tap the Info tab (the &quot;i&quot; icon) and you&apos;ll have all
+            the pertinent competition data you&apos;ll need such as:
+            Qualifying Totals, A/B Standards, American and WSO Records, and
+            International Rankings.
           </ThemedText>
         </View>
       );
@@ -194,18 +201,39 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
     }
   };
 
-  const requestPermissions = async () => {
-    await Promise.all([requestCalendarAccess(), requestNotificationAccess()]);
-    await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, "true");
+  const finish = async () => {
+    try {
+      await completeOnboarding();
+    } catch (error) {
+      console.error("Error saving onboarding status:", error);
+    }
     onComplete();
   };
+
+  const requestPermissions = async () => {
+    await Promise.all([requestCalendarAccess(), requestNotificationAccess()]);
+    await finish();
+  };
+
+  // Skip and Android back: there was no way out of nine pages, and back was
+  // swallowed.
+  const skip = () => {
+    const action = onboardingSkipAction(pageCounter);
+    if (action.kind === "page") {
+      setPageCounter(action.page);
+    } else {
+      void finish();
+    }
+  };
+
+  const isLastPage = pageCounter === ONBOARDING_PAGE_COUNT;
 
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={() => {}}
+      onRequestClose={skip}
     >
       <Pressable style={styles.modalOverlay}>
         <Pressable
@@ -220,7 +248,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
-              if (pageCounter === 9) {
+              if (isLastPage) {
                 requestPermissions();
               } else {
                 setPageCounter(prev => prev + 1);
@@ -228,9 +256,26 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
             }}
           >
             <ThemedText style={styles.buttonText}>
-              {pageCounter === 9 ? "Done" : "Next"}
+              {isLastPage ? "Done" : "Next"}
             </ThemedText>
           </Pressable>
+
+          {!isLastPage && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.skipButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={skip}
+              accessibilityRole="button"
+              accessibilityLabel="Skip the tour"
+              hitSlop={8}
+            >
+              <ThemedText style={[styles.skipButtonText, { color: colors.secondaryText }]}>
+                Skip
+              </ThemedText>
+            </Pressable>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -290,22 +335,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "600",
   },
+  skipButton: {
+    alignSelf: "center",
+    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+  },
+  skipButtonText: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
 });
-
-export async function checkOnboardingComplete(): Promise<boolean> {
-  try {
-    const completed = await AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY);
-    return completed === "true";
-  } catch (error) {
-    console.error("Error checking onboarding status:", error);
-    return false;
-  }
-}
-
-export async function resetOnboarding(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(ONBOARDING_COMPLETED_KEY);
-  } catch (error) {
-    console.error("Error resetting onboarding:", error);
-  }
-}

@@ -4,12 +4,12 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { isSamePlatform } from "@/lib/athletes";
+import { requestReviewAfterFirstSave } from "@/lib/review-prompt";
 import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
-import { useAuthGuard } from "@/utils/authGuard";
 import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import {
@@ -17,9 +17,7 @@ import {
   normalizeDeepLinkHref,
 } from "@/utils/deepLinks";
 import { calculateWeighInTime } from "@/utils/time";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import * as StoreReview from "expo-store-review";
 import React, { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
@@ -42,8 +40,8 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const colors = useAppColors();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { meetDetails, availableMeets } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  const { requirePremium, requireAuth, access } = useRequirePremium();
+  const isSubscribed = access === "granted";
   const calendarExport = useCalendarSessionsExport();
 
   // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
@@ -149,31 +147,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         return;
       }
       showSaveAlert("save");
-      checkAndShowReviewPrompt();
-    }
-  };
-
-  const checkAndShowReviewPrompt = async () => {
-    try {
-      const hasShownReview = await AsyncStorage.getItem("hasShownReview");
-      const hasSavedBefore = await AsyncStorage.getItem("hasSavedBefore");
-
-      if (!hasSavedBefore && !hasShownReview) {
-        // Mark that user has saved a session
-        await AsyncStorage.setItem("hasSavedBefore", "true");
-        // Use native store review prompt
-        try {
-          const isAvailable = await StoreReview.isAvailableAsync();
-          if (isAvailable) {
-            await StoreReview.requestReview();
-            await AsyncStorage.setItem("hasShownReview", "true");
-          }
-        } catch (error) {
-          console.warn("ScheduleDetails: Store review unavailable", error);
-        }
-      }
-    } catch (error) {
-      console.error("Error checking review status:", error);
+      void requestReviewAfterFirstSave();
     }
   };
 
@@ -294,32 +268,23 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
-              const authResult = requireAuth({
-                feature: "qualifying-totals",
-                message: "Sign in to access premium features.",
-                returnPath,
-              });
-              if (authResult === null || authResult === false) {
+              if (
+                !requirePremium({
+                  feature: "qualifying-totals",
+                  message: "Sign in to access premium features.",
+                  returnPath,
+                })
+              ) {
                 return;
               }
-              if (isSubscribed === true) {
-                router.push({
-                  pathname: "/comp-data/new-qualifying-totals",
-                  params: {
-                    sessionNumber: sessionNumber,
-                    platform: platform,
-                    meet: meet,
-                  },
-                });
-              } else if (isSubscribed === false) {
-                router.push({
-                  pathname: "/shared-screens/paywall",
-                  params: {
-                    from: returnPath,
-                    feature: "qualifying-totals",
-                  },
-                });
-              }
+              router.push({
+                pathname: "/comp-data/new-qualifying-totals",
+                params: {
+                  sessionNumber: sessionNumber,
+                  platform: platform,
+                  meet: meet,
+                },
+              });
             }}
           >
             <ThemedText
@@ -348,32 +313,23 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
-              const authResult = requireAuth({
-                feature: "attempt-estimator",
-                message: "Sign in to access premium features.",
-                returnPath,
-              });
-              if (authResult === null || authResult === false) {
+              if (
+                !requirePremium({
+                  feature: "attempt-estimator",
+                  message: "Sign in to access premium features.",
+                  returnPath,
+                })
+              ) {
                 return;
               }
-              if (isSubscribed === true) {
-                router.push({
-                  pathname: "/shared-screens/attempt-estimator",
-                  params: {
-                    sessionNumber: sessionNumber,
-                    platform: platform,
-                    meet: meet,
-                  },
-                });
-              } else if (isSubscribed === false) {
-                router.push({
-                  pathname: "/shared-screens/paywall",
-                  params: {
-                    from: returnPath,
-                    feature: "attempt-estimator",
-                  },
-                });
-              }
+              router.push({
+                pathname: "/shared-screens/attempt-estimator",
+                params: {
+                  sessionNumber: sessionNumber,
+                  platform: platform,
+                  meet: meet,
+                },
+              });
             }}
           >
             <ThemedText

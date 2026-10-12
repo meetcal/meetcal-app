@@ -64,6 +64,9 @@ class SavedWidgetModule(private val reactContext: ReactApplicationContext) : Rea
     DataWidgetProvider.updateAllWidgets(reactContext, IntlRankingsWidgetProvider::class.java)
   }
 
+  // Clears only the saved-sessions widget (the signed-in user's data). The data
+  // widget payloads are public reference data, need no sign-in, and are only
+  // rewritten when the app refreshes them, so sign-out leaves them in place.
   @ReactMethod
   fun clearSavedWidget() {
     val prefs = reactContext.getSharedPreferences(
@@ -73,9 +76,6 @@ class SavedWidgetModule(private val reactContext: ReactApplicationContext) : Rea
     prefs.edit()
       .remove(SavedWidgetProvider.KEY_SELECTED_MEET)
       .remove(SavedWidgetProvider.KEY_SESSIONS_JSON)
-      .remove(DataWidgetProvider.KEY_QUALIFYING)
-      .remove(DataWidgetProvider.KEY_STANDARDS)
-      .remove(DataWidgetProvider.KEY_INTL)
       .apply()
 
     val appWidgetManager = AppWidgetManager.getInstance(reactContext)
@@ -84,9 +84,5 @@ class SavedWidgetModule(private val reactContext: ReactApplicationContext) : Rea
     if (widgetIds.isNotEmpty()) {
       SavedWidgetProvider.updateAllWidgets(reactContext)
     }
-
-    DataWidgetProvider.updateAllWidgets(reactContext, QualifyingTotalsWidgetProvider::class.java)
-    DataWidgetProvider.updateAllWidgets(reactContext, StandardsWidgetProvider::class.java)
-    DataWidgetProvider.updateAllWidgets(reactContext, IntlRankingsWidgetProvider::class.java)
   }
 }

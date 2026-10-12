@@ -8,7 +8,8 @@
  *
  * PDFs may be Google Drive links. `--dry-run` prints what would be written;
  * `--prod` writes to the production deployment (otherwise the dev one).
- * Rows are upserted on (event, meet, name), so a re-run updates in place.
+ * Rows are upserted on (event, meet, folded name, age category), so a re-run
+ * updates in place.
  */
 import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
