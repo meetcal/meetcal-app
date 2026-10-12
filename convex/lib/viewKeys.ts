@@ -14,14 +14,17 @@ import type { SourceTable } from './views';
  * `A`'s views, never those of a meet named `A|session|1` (issue #192).
  *
  * A part with neither character keeps the key it had before parts were
- * escaped, byte for byte, so no stored view moved. A part holding `%` has a
- * new key: its view under the old key is never read again (a reader misses
- * and computes the answer live until the next build writes the new key), and
- * `views:rebuildAll`'s sweep deletes it as a view it did not rebuild
- * (`buildWso` deletes an old WSO key itself, as a key of no current WSO). No
- * rebuild is needed for the deploy: the orphan is unread, not wrong. The one
- * exception, an old key of a name holding `%7C` or `%25` literally (`A%7CB`)
- * that is also the new key of another name (`A|B`), needs both names stored.
+ * escaped, byte for byte, so no stored view moved and, while no stored name
+ * holds `%`, no rebuild is needed for the deploy. A part holding `%` has a
+ * new key. Its view under the old key is not read by its own name again: a
+ * reader misses and computes the answer live (a national ranking over one
+ * page answers "being built") until the next build writes the new key.
+ * `views:rebuildAll`'s sweep deletes the old view as one it did not rebuild,
+ * and `buildWso` deletes an old WSO key itself as a key of no current WSO.
+ * Until then, an old key whose name holds `%7C` or `%25` literally
+ * (`meet|A%7CB|…`) is also the new key of another name (`A|B`) and answers
+ * for it. So if a stored name holds `%`, run `views:rebuildAll` right after
+ * the deploy.
  */
 export const escapeKeyPart = (part: string) => part.replace(/%/g, '%25').replace(/\|/g, '%7C');
 /** The part `escapeKeyPart` was given, from what it returned. */
