@@ -23,12 +23,60 @@ export interface OTAUpdateActions {
 
 const FOREGROUND_CHECK_THROTTLE_MS = 5 * 60 * 1000;
 
+/**
+ * The update the user said "Later" to this session. `null` id: the check
+ * reported no manifest id, so the dismissal covers any update. Module state,
+ * so a remount of the root (sign-out) does not forget it.
+ */
+let dismissedUpdate: { id: string | null } | null = null;
+
+/** Test seam: module state outlives a test otherwise. */
+export function resetOTADismissalForTests(): void {
+  dismissedUpdate = null;
+}
+
+/**
+ * Whether a check result should put the update prompt on screen.
+ *
+ * `app.config.js` checks `ON_LOAD` with `fallbackToCacheTimeout: 0`, so
+ * expo-updates already downloads a new update in the background and applies
+ * it on the next launch; the prompt only offers to apply it sooner. It used
+ * to reappear on every foreground more than five minutes apart, all through a
+ * meet day, because `checkForUpdateAsync` keeps reporting the update until
+ * the app restarts. Not once the update is downloaded (it applies on the next
+ * launch anyway), and not again for an update the user put off.
+ */
+export function shouldPromptForUpdate({
+  isAvailable,
+  updateId,
+  isUpdatePending,
+  dismissed,
+}: {
+  isAvailable: boolean;
+  updateId: string | null;
+  isUpdatePending: boolean;
+  dismissed: { id: string | null } | null;
+}): boolean {
+  if (!isAvailable || isUpdatePending) return false;
+  if (dismissed && (dismissed.id === null || dismissed.id === updateId)) return false;
+  return true;
+}
+
 export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
   const [state, setState] = useState<OTAUpdateState>({
     isDownloading: false,
     isUpdateAvailable: false,
     error: null,
   });
+  // Read from the check callback without re-creating it on every native
+  // state change.
+  const { isUpdatePending } = Updates.useUpdates();
+  const isUpdatePendingRef = useRef(isUpdatePending);
+  useEffect(() => {
+    isUpdatePendingRef.current = isUpdatePending;
+  }, [isUpdatePending]);
+  // The id of the update the prompt is showing, for "Later".
+  const promptedUpdateIdRef = useRef<string | null>(null);
 
   // The launch check and every foreground check await the network probe and
   // then expo-updates. Without this the resolution lands on an unmounted
@@ -74,9 +122,20 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
       const update = await Updates.checkForUpdateAsync();
       if (!isMountedRef.current) return;
 
-      if (update.isAvailable) {
+      const updateId = update.isAvailable ? update.manifest.id ?? null : null;
+      if (
+        shouldPromptForUpdate({
+          isAvailable: update.isAvailable,
+          updateId,
+          isUpdatePending: isUpdatePendingRef.current,
+          dismissed: dismissedUpdate,
+        })
+      ) {
         devLog('[OTA] Update available');
+        promptedUpdateIdRef.current = updateId;
         setState(prev => ({ ...prev, isUpdateAvailable: true }));
+      } else if (update.isAvailable) {
+        devLog('[OTA] Update available but already downloaded or put off');
       } else {
         devLog('[OTA] No update available');
         resetState();
@@ -92,6 +151,19 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
     }
   }, [resetState]);
 
+  // "Later", from the prompt or from the restart alert: take the prompt down
+  // and do not raise it again this session for the same update.
+  const dismissUpdate = useCallback(() => {
+    dismissedUpdate = { id: promptedUpdateIdRef.current };
+    if (!isMountedRef.current) return;
+    setState(prev => ({
+      ...prev,
+      isUpdateAvailable: false,
+      isDownloading: false,
+      error: null,
+    }));
+  }, []);
+
   const downloadAndRestart = useCallback(async () => {
     if (!state.isUpdateAvailable) return;
 
@@ -106,9 +178,12 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
         'The app needs to restart to apply the update. Continue?',
         [
           {
+            // `resetState` left `isUpdateAvailable` true, so the update
+            // modal stayed up behind the alert and needed a second dismiss.
+            // The downloaded update applies on the next launch.
             text: 'Later',
             style: 'cancel',
-            onPress: () => resetState(),
+            onPress: () => dismissUpdate(),
           },
           {
             text: 'Restart Now',
@@ -135,15 +210,7 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
         error: error instanceof Error ? error.message : 'Failed to download update'
       }));
     }
-  }, [state.isUpdateAvailable, resetState]);
-
-  const dismissUpdate = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isUpdateAvailable: false,
-      error: null
-    }));
-  }, []);
+  }, [state.isUpdateAvailable, dismissUpdate]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
