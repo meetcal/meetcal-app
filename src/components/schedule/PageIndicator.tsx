@@ -61,6 +61,13 @@ export function PageIndicator({
   const activeDotShadow =
     currentTheme === "dark" ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.2)";
 
+  // Screen readers get one adjustable control, like a native page control:
+  // "Page 2 of 5", swipe up or down to change day. The dots are too small
+  // and too close together to be useful targets one by one.
+  const goTo = (page: number) => {
+    if (page >= 0 && page < count) onPageChange?.(page);
+  };
+
   return (
     <View
       style={[
@@ -79,12 +86,23 @@ export function PageIndicator({
             borderColor: containerBorder,
           },
         ]}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel="Day"
+        accessibilityValue={{ text: `Page ${currentPage + 1} of ${count}` }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "increment") goTo(currentPage + 1);
+          if (event.nativeEvent.actionName === "decrement") goTo(currentPage - 1);
+        }}
       >
         {Array.from({ length: count }).map((_, index) => (
           <Pressable
             key={index}
             onPress={() => onPageChange?.(index)}
-            hitSlop={8}
+            // 44pt tall. Sideways the dots are 13pt apart, so a wider slop
+            // would steal taps from the neighbouring dot.
+            hitSlop={{ top: 19, bottom: 19, left: 3, right: 3 }}
           >
             <Dot active={index === currentPage} activeShadow={activeDotShadow} />
           </Pressable>

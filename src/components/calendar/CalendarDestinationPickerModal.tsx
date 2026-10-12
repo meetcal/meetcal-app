@@ -60,6 +60,9 @@ export function CalendarDestinationPickerModal({
             <Pressable
               style={({ pressed }) => [styles.closeButton, pressed && { opacity: 0.7 }]}
               onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol name="xmark" size={20} color={colors.secondaryText} />
             </Pressable>
@@ -92,6 +95,8 @@ export function CalendarDestinationPickerModal({
                         pressed && { backgroundColor: colors.pressed },
                       ]}
                       onPress={() => onSelect(destination)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View style={styles.optionText}>
                         <ThemedText

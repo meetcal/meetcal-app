@@ -34,6 +34,14 @@ export const Colors = {
     gold: "#FFD700",
     silver: "#C0C0C0",
     bronze: "#CD7F32",
+    // Text versions of the PR and medal colors. The bright fills above are
+    // 1.3–2.2:1 on white; these clear 4.5:1 on a card and on the medal tints.
+    prText: "#B25000",
+    goldText: "#7A5F00",
+    silverText: "#636366",
+    bronzeText: "#8B4A1C",
+    // Fill behind white "PR" badge text (5.2:1).
+    prBadge: "#B25000",
     danger: '#FF3B30',
     wrappedPrimary: '#1DB954',
     wrappedAccent: '#FF6B6B',
@@ -63,6 +71,13 @@ export const Colors = {
     gold: "#FFD700",
     silver: "#C0C0C0",
     bronze: "#CD7F32",
+    // The bright colors already read on dark surfaces.
+    prText: "#FF9500",
+    goldText: "#FFD700",
+    silverText: "#C0C0C0",
+    bronzeText: "#CD7F32",
+    // White text on #FF9500 is 2.2:1 in either theme.
+    prBadge: "#B25000",
     danger: '#FF3B30',
     wrappedPrimary: '#1DB954',
     wrappedAccent: '#FF6B6B',

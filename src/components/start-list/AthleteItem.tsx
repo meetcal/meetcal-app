@@ -183,6 +183,8 @@ export const AthleteItem = React.memo(function AthleteItem({
           pressed && { backgroundColor: colors.pressed },
         ]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
       >
         <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
         <IconSymbol

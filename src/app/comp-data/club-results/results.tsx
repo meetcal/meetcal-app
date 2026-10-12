@@ -166,6 +166,8 @@ function MeetResultsByClubScreenContent() {
           pressed && { opacity: 0.6 },
         ]}
         hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
       >
         <IconSymbol
           name={Platform.OS === "ios" ? "chevron.left" : "arrow.back"}
@@ -215,6 +217,7 @@ function MeetResultsByClubScreenContent() {
             <Pressable
               style={[styles.retryButton, { backgroundColor: colors.link }]}
               onPress={loadStats}
+              accessibilityRole="button"
             >
               <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
             </Pressable>
@@ -256,7 +259,7 @@ function MeetResultsByClubScreenContent() {
                 {clubStats.goldMedals > 0 && (
                   <View style={[styles.medalChip, { backgroundColor: MedalTint.gold }]}>
                     <Text style={styles.medalChipEmoji}>🥇</Text>
-                    <ThemedText style={[styles.medalChipCount, { color: colors.gold }]}>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.goldText }]}>
                       {clubStats.goldMedals}
                     </ThemedText>
                     <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
@@ -267,7 +270,7 @@ function MeetResultsByClubScreenContent() {
                 {clubStats.silverMedals > 0 && (
                   <View style={[styles.medalChip, { backgroundColor: MedalTint.silver }]}>
                     <Text style={styles.medalChipEmoji}>🥈</Text>
-                    <ThemedText style={[styles.medalChipCount, { color: colors.silver }]}>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.silverText }]}>
                       {clubStats.silverMedals}
                     </ThemedText>
                     <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
@@ -278,7 +281,7 @@ function MeetResultsByClubScreenContent() {
                 {clubStats.bronzeMedals > 0 && (
                   <View style={[styles.medalChip, { backgroundColor: MedalTint.bronze }]}>
                     <Text style={styles.medalChipEmoji}>🥉</Text>
-                    <ThemedText style={[styles.medalChipCount, { color: colors.bronze }]}>
+                    <ThemedText style={[styles.medalChipCount, { color: colors.bronzeText }]}>
                       {clubStats.bronzeMedals}
                     </ThemedText>
                     <ThemedText style={[styles.medalChipLabel, { color: colors.secondaryText }]}>
@@ -361,6 +364,12 @@ function MeetResultsByClubScreenContent() {
             <Pressable
               onPress={generateImage}
               disabled={isGeneratingImage || clubStats.totalAthletes === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Share Meet Recap"
+              accessibilityState={{
+                busy: isGeneratingImage,
+                disabled: isGeneratingImage || clubStats.totalAthletes === 0,
+              }}
               style={({ pressed }) => [
                 styles.mainShareButton,
                 {

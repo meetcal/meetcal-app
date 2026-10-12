@@ -110,6 +110,10 @@ export function MeetSelectionModal({
                 testID={`meet-option-${meet.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
                 accessibilityRole="button"
                 accessibilityLabel={`Select ${meet.name}`}
+                accessibilityState={{
+                  selected: selectedMeet === meet.name,
+                  disabled: isSelecting,
+                }}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },

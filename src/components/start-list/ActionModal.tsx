@@ -59,6 +59,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 pressed && { opacity: 0.8 },
               ]}
               onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol
                 name={getCloseIcon()}

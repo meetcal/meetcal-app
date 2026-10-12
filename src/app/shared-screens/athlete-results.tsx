@@ -217,7 +217,7 @@ const MeetResultCard = React.memo(function MeetResultCard({
             {result.meet}
           </ThemedText>
           {isSnatchPR || isCJPR || isTotalPR ? (
-            <View style={[styles.prBadge, { backgroundColor: colors.prColor }]}>
+            <View style={[styles.prBadge, { backgroundColor: colors.prBadge }]}>
               <ThemedText style={styles.prBadgeText}>PR</ThemedText>
             </View>
           ) : null}
@@ -261,19 +261,19 @@ const MeetResultCard = React.memo(function MeetResultCard({
       <View style={styles.section}>
         <ThemedText style={styles.total}>
           <ThemedText
-            style={[styles.total, isSnatchPR && { color: colors.prColor }]}
+            style={[styles.total, isSnatchPR && { color: colors.prText }]}
           >
             {result.snatch_best ?? "—"}
           </ThemedText>
           /
           <ThemedText
-            style={[styles.total, isCJPR && { color: colors.prColor }]}
+            style={[styles.total, isCJPR && { color: colors.prText }]}
           >
             {result.cj_best ?? "—"}
           </ThemedText>
           /
           <ThemedText
-            style={[styles.total, isTotalPR && { color: colors.prColor }]}
+            style={[styles.total, isTotalPR && { color: colors.prText }]}
           >
             {result.total ?? "—"}
           </ThemedText>

@@ -1590,6 +1590,9 @@ export default function StartListScreen() {
                   styles.clearButton,
                   pressed && { opacity: 0.7 },
                 ]}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
               >
                 <IconSymbol
                   name={

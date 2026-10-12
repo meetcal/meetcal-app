@@ -391,7 +391,16 @@ export default function WeightliftingWrappedScreen() {
           ]}
         >
           {Array.from({ length: SLIDE_COUNT }, (_, i) => (
-            <Pressable key={i} onPress={() => goToSlide(i)}>
+            <Pressable
+              key={i}
+              onPress={() => goToSlide(i)}
+              // 44pt tall; the dots sit too close together to go wider
+              // without spreading them out, and swiping changes slides too.
+              hitSlop={{ top: 18, bottom: 18 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Slide ${i + 1} of ${SLIDE_COUNT}`}
+              accessibilityState={{ selected: currentSlide === i }}
+            >
               <PulsingDot active={currentSlide === i} />
             </Pressable>
           ))}
@@ -404,6 +413,8 @@ export default function WeightliftingWrappedScreen() {
             setCurrentSlide(0);
           }}
           hitSlop={16}
+          accessibilityRole="button"
+          accessibilityLabel="Close Wrapped"
         >
           <View style={styles.closeButtonBg}>
             <IconSymbol name="xmark" size={18} color="#FFFFFF" />
@@ -424,6 +435,8 @@ export default function WeightliftingWrappedScreen() {
             <Pressable
               style={({ pressed }) => [styles.shareActionButton, pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] }]}
               onPress={shareWrapped}
+              accessibilityRole="button"
+              accessibilityLabel="Share your Wrapped"
             >
               <LinearGradient
                 colors={["#1DB954", "#1ed760"]}
@@ -441,6 +454,7 @@ export default function WeightliftingWrappedScreen() {
                 setShowStats(false);
                 setCurrentSlide(0);
               }}
+              accessibilityRole="button"
             >
               <Text style={styles.searchAgainText}>Search Another Athlete</Text>
             </Pressable>
@@ -468,6 +482,8 @@ export default function WeightliftingWrappedScreen() {
         style={[styles.backNavButton, { top: insets.top + 8, left: insets.left + 16 }]}
         onPress={() => router.back()}
         hitSlop={16}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
       >
         <View style={styles.backNavButtonBg}>
           <IconSymbol name="chevron.left" size={20} color="#FFFFFF" />
@@ -533,6 +549,8 @@ LIFTING
                   key={name}
                   style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionRowPressed]}
                   onPress={() => selectSuggestion(name)}
+                  accessibilityRole="button"
+                  accessibilityLabel={name}
                 >
                   <IconSymbol name="magnifyingglass" size={14} color="rgba(255,255,255,0.35)" />
                   <Text style={styles.suggestionText} numberOfLines={1}>{name}</Text>
@@ -555,6 +573,9 @@ LIFTING
                   key={year}
                   onPress={() => setSelectedYear(year)}
                   style={[styles.yearPill, isSelected && styles.yearPillActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={String(year)}
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[styles.yearPillText, isSelected && styles.yearPillTextActive]}>
                     {year}
@@ -568,6 +589,9 @@ LIFTING
             style={({ pressed }) => [styles.unwrapButton, pressed && { opacity: 0.85 }]}
             onPress={searchAthlete}
             disabled={loading || isOffline}
+            accessibilityRole="button"
+            accessibilityLabel="Unwrap my year"
+            accessibilityState={{ busy: loading, disabled: loading || isOffline }}
           >
             <LinearGradient
               colors={["#1DB954", "#1ed760"]}
