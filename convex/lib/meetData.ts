@@ -432,12 +432,19 @@ export type StatsRow = {
   snatch_best: number;
   cj_best: number;
   total: number;
-  placings: [number, number, number];
+  /** Snatch, clean & jerk and total placings; null for a lift of 0 (a bomb-out), which places nowhere. */
+  placings: [Placing, Placing, Placing];
   previous_best: number | null;
 };
 
-/** SQL `RANK()`: one more than the number of strictly better values. */
-function rankOf(value: number, group: number[]): number {
+export type Placing = number | null;
+
+/**
+ * SQL `RANK()`: one more than the number of strictly better values. A lift or
+ * total of 0 or less is a bomb-out, not a result, so it gets no placing.
+ */
+export function rankOf(value: number, group: readonly number[]): Placing {
+  if (!(value > 0)) return null;
   let better = 0;
   for (const other of group) if (other > value) better += 1;
   return better + 1;
@@ -585,7 +592,15 @@ function statsRow({ key, row, athlete, group }: StatsEntry, groups: StatsGroups,
   };
 }
 
-function medalFor(placing: number): string | null {
+type Medal = 'gold' | 'silver' | 'bronze';
+
+/**
+ * The medal a placing earns. The lift is checked as well as the placing: a
+ * stats view built before bomb-outs went unplaced still holds a placing for a
+ * lift of 0, and a bomb-out never medals.
+ */
+export function medalFor(placing: Placing, lift: number): Medal | null {
+  if (!(lift > 0)) return null;
   return placing === 1 ? 'gold' : placing === 2 ? 'silver' : placing === 3 ? 'bronze' : null;
 }
 
@@ -605,14 +620,17 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
   const snatchAttempts: number[] = [];
   const cjAttempts: number[] = [];
   const athleteResults = clubRows.map((r) => {
-    for (const placing of r.placings) {
-      if (placing === 1) gold += 1;
-      else if (placing === 2) silver += 1;
-      else if (placing === 3) bronze += 1;
+    const [snatchPlacing, cjPlacing, totalPlacing] = r.placings;
+    const snatchMedal = medalFor(snatchPlacing, r.snatch_best);
+    const cjMedal = medalFor(cjPlacing, r.cj_best);
+    const totalMedal = medalFor(totalPlacing, r.total);
+    for (const medal of [snatchMedal, cjMedal, totalMedal]) {
+      if (medal === 'gold') gold += 1;
+      else if (medal === 'silver') silver += 1;
+      else if (medal === 'bronze') bronze += 1;
     }
     snatchAttempts.push(...r.attempts.slice(0, 3));
     cjAttempts.push(...r.attempts.slice(3));
-    const [snatchPlacing, cjPlacing, totalPlacing] = r.placings;
     return {
       name: r.name,
       weight_class: r.weight_class,
@@ -620,10 +638,10 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
       cj_best: r.cj_best,
       total: r.total,
       body_weight: r.body_weight,
-      medal: medalFor(totalPlacing),
-      snatch_medal: medalFor(snatchPlacing),
-      cj_medal: medalFor(cjPlacing),
-      total_medal: medalFor(totalPlacing),
+      medal: totalMedal,
+      snatch_medal: snatchMedal,
+      cj_medal: cjMedal,
+      total_medal: totalMedal,
       is_pr: r.previous_best !== null && r.total > r.previous_best,
       perfect_lifts: r.attempts.every((a) => a > 0),
     };
