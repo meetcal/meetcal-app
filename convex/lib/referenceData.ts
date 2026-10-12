@@ -164,18 +164,53 @@ export async function computeNationalRankingsForYear(
   return bestTotalPerAthlete(ranked);
 }
 
+type RankingGender = 'Men' | 'Women';
+
+/** Senior, junior and masters weight classes (`getWeightClasses` in the app, `division_options` on the website). */
+const SENIOR_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
+  Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
+};
+const UNDER_13_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['40', '44', '48', '52', '56', '60', '65', '65+'],
+  Women: ['36', '40', '44', '48', '53', '58', '63', '63+'],
+};
+const YOUTH_WEIGHTS: Record<string, Record<RankingGender, readonly string[]>> = {
+  '11 Under Age Group': UNDER_13_WEIGHTS,
+  '13 Under Age Group': UNDER_13_WEIGHTS,
+  '14-15 Age Group': {
+    Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
+    Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+  },
+  '16-17 Age Group': {
+    Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
+    Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+  },
+};
+const MASTERS_BANDS = ['35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80-84', '85-89', '90+'];
+
 /**
- * A current ranking division as the app and the website spell it (`Open
- * Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39) 79kg`).
- * Such a class is real even before anyone has a result in it.
+ * Every current ranking division, spelled as the app and the website send it
+ * (`Open Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39)
+ * 79kg`). Such a class is real even before anyone has a result in it.
  */
-const RANKING_DIVISION = new RegExp(
-  "^(?:(?:Open|Junior) (?:Men|Women)'s|(?:Men|Women)'s (?:11 Under Age Group|13 Under Age Group|14-15 Age Group|16-17 Age Group|" +
-    'Masters \\((?:35-39|40-44|45-49|50-54|55-59|60-64|65-69|70-74|75-79|80-84|85-89|90\\+)\\))) \\d+\\+?kg$',
-);
+export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
+  const divisions = new Set<string>();
+  for (const gender of ['Men', 'Women'] as const) {
+    for (const weight of SENIOR_WEIGHTS[gender]) {
+      divisions.add(`Open ${gender}'s ${weight}kg`);
+      divisions.add(`Junior ${gender}'s ${weight}kg`);
+      for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
+    }
+    for (const [group, weights] of Object.entries(YOUTH_WEIGHTS)) {
+      for (const weight of weights[gender]) divisions.add(`${gender}'s ${group} ${weight}kg`);
+    }
+  }
+  return divisions;
+})();
 
 export function isRankingDivision(ageCategory: string): boolean {
-  return RANKING_DIVISION.test(ageCategory);
+  return RANKING_DIVISIONS.has(ageCategory);
 }
 
 /** Federations the app, the website and the CLI rank; known whatever the data holds. */

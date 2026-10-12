@@ -3,7 +3,7 @@ import { AGE_GROUPS } from '../src/constants/nat-rankings';
 import { getWeightClasses } from '../src/utils/nat-rankings';
 import { list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/meets';
 import { adaptiveRecords, nationalRankings, nationalRankingsByYear } from '../convex/reference';
-import { isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
+import { RANKING_DIVISIONS, isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
 import { requireSavedSessionWhen } from '../convex/users';
 import { toSavedSessionBody } from '../src/lib/saved-sessions-outbox';
 import type { SavedSession } from '../src/lib/saved-sessions-store';
@@ -86,7 +86,22 @@ describe('national ranking classes', () => {
     }
   });
 
-  it.each(["open men's 60kg", "Open Mens 60kg", "Open Men's 60", "Men's Masters (36-40) 79kg", "Open Men's 60kg "])(
+  it('know no division beyond the ones the app offers', () => {
+    const offered = (['Men', 'Women'] as const).flatMap((gender) => AGE_GROUPS.flatMap((ageGroup) => getWeightClasses(gender, ageGroup)));
+    expect([...RANKING_DIVISIONS].sort()).toEqual([...new Set(offered)].sort());
+  });
+
+  it.each([
+    "open men's 60kg",
+    "Open Mens 60kg",
+    "Open Men's 60",
+    "Men's Masters (36-40) 79kg",
+    "Open Men's 60kg ",
+    "Open Men's 999kg",
+    "Open Men's 0kg",
+    "Open Women's 60kg",
+    "Men's 16-17 Age Group 110kg",
+  ])(
     'do not take %p for a division',
     (ageCategory) => {
       expect(isRankingDivision(ageCategory)).toBe(false);
@@ -119,6 +134,7 @@ describe('national ranking classes', () => {
   it('answer 404 for an unknown federation or a misspelled class', async () => {
     expect(await statusOf(requireKnownRankingClass(fakeCtx(tables).ctx, 'usaw', "Open Men's 60kg"))).toBe(404);
     expect(await statusOf(requireKnownRankingClass(fakeCtx(tables).ctx, 'USAW', "open men's 60kg"))).toBe(404);
+    expect(await statusOf(requireKnownRankingClass(fakeCtx(tables).ctx, 'USAW', "Open Men's 999kg"))).toBe(404);
     expect(await statusOf(handlerOf(nationalRankings)(fakeCtx(tables).ctx, { federation: 'USAW', ageCategory: 'Open Men 60' }))).toBe(404);
     expect(
       await statusOf(
