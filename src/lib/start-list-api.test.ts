@@ -21,6 +21,9 @@ jest.mock("@/lib/database/offline-store", () => ({
   getStoredAthleteBestsForNames: (...args: any[]) =>
     mockGetStoredAthleteBestsForNames(...args),
   saveAthleteBestsBatch: (...args: any[]) => mockSaveAthleteBestsBatch(...args),
+  // The real freshness rule, so the in-memory cache expires on it too.
+  isAthleteBestsFresh: (...args: any[]) =>
+    jest.requireActual("@/lib/database/offline-store").isAthleteBestsFresh(...args),
 }));
 
 /** A stored bests entry as `getStoredAthleteBestsForNames` reports it. */
@@ -425,6 +428,63 @@ describe("in-memory bests cache bound", () => {
     await startListApi.getLastYearBestsBatch(["A"]);
 
     expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+  });
+
+  // The memory cache had no expiry, so a running app kept an answer past
+  // the TTL its stored copy has.
+  it("looks a memoized \"no results\" up again once a day has passed", async () => {
+    const start = Date.UTC(2026, 9, 12, 12);
+    const now = jest.spyOn(Date, "now").mockReturnValue(start);
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      A: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+
+    try {
+      await startListApi.getLastYearBestsBatch(["A"]);
+      now.mockReturnValue(start + 23 * 60 * 60 * 1000);
+      await startListApi.getLastYearBestsBatch(["A"]);
+      expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(start + 25 * 60 * 60 * 1000);
+      await startListApi.getLastYearBestsBatch(["A"]);
+      expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("expires a memoized answer read from storage with the stored entry's age", async () => {
+    const start = Date.UTC(2026, 9, 12, 12);
+    const now = jest.spyOn(Date, "now").mockReturnValue(start);
+    const sixDaysAgo = start - 6 * 24 * 60 * 60 * 1000;
+    mockGetStoredAthleteBestsForNames.mockResolvedValueOnce({
+      A: {
+        bests: { snatch_best: 100, cj_best: 120, total: 220 },
+        fetchedAt: sixDaysAgo,
+        isFresh: true,
+      },
+    });
+    mockFetchApiYearBests.mockResolvedValue([
+      { bestSnatch: 105, bestCJ: 125, bestTotal: 230 },
+    ]);
+
+    try {
+      await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
+        bestSnatch: 100,
+        bestCJ: 120,
+        bestTotal: 220,
+      });
+      // A day and a half later the stored answer is 7.5 days old.
+      now.mockReturnValue(start + 36 * 60 * 60 * 1000);
+      await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
+        bestSnatch: 105,
+        bestCJ: 125,
+        bestTotal: 230,
+      });
+      expect(mockFetchApiYearBests).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("evicts the oldest names once the cap is exceeded", async () => {

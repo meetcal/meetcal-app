@@ -8,6 +8,7 @@ import { normalizeAthleteName } from '@/lib/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getStoredAthleteBestsForNames,
+  isAthleteBestsFresh,
   saveAthleteBestsBatch,
   type StoredAthleteBests,
 } from '@/lib/database/offline-store';
@@ -28,18 +29,37 @@ export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number 
  */
 export const YEAR_BESTS_CACHE_LIMIT = 2000;
 
-const cache = new Map<string, YearBests>();
+/**
+ * Each entry keeps when its answer was fetched, so it expires on the same
+ * rule as the stored copy (`isAthleteBestsFresh`). Without it a running app
+ * kept a "no results" or last week's bests for as long as it stayed open.
+ */
+const cache = new Map<string, { bests: YearBests; fetchedAt: number }>();
 const inFlight = new Map<string, Promise<YearBests>>();
 
-/** Insertion-ordered eviction: `Map` keys iterate oldest-first. */
-function cacheBests(name: string, bests: YearBests): void {
+/**
+ * Insertion-ordered eviction: `Map` keys iterate oldest-first. `fetchedAt`
+ * is when the answer came from the API: now, or a stored entry's own time.
+ */
+function cacheBests(name: string, bests: YearBests, fetchedAt: number = Date.now()): void {
   cache.delete(name);
-  cache.set(name, bests);
+  cache.set(name, { bests, fetchedAt });
   while (cache.size > YEAR_BESTS_CACHE_LIMIT) {
     const oldest = cache.keys().next();
     if (oldest.done) break;
     cache.delete(oldest.value);
   }
+}
+
+/** The memoized answer while it is fresh; an expired one is dropped. */
+function getCachedBests(name: string): YearBests | null {
+  const entry = cache.get(name);
+  if (!entry) return null;
+  if (isAthleteBestsFresh(toStoredBests(entry.bests), entry.fetchedAt, Date.now())) {
+    return entry.bests;
+  }
+  cache.delete(name);
+  return null;
 }
 
 const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
@@ -160,7 +180,7 @@ async function getOfflineFallback(athleteName: string): Promise<YearBests> {
 }
 
 export async function getLastYearBests(athleteName: string): Promise<YearBests> {
-  const cached = cache.get(athleteName);
+  const cached = getCachedBests(athleteName);
   if (cached != null) return cached;
   const active = inFlight.get(athleteName);
   if (active) return active;
@@ -201,7 +221,7 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
   const stored = (await getStoredAthleteBestsForNames([athleteName]))[athleteName];
   if (stored?.isFresh) {
     const result = fromStoredBests(stored.bests);
-    cacheBests(athleteName, result);
+    cacheBests(athleteName, result, stored.fetchedAt);
     return result;
   }
 
@@ -247,7 +267,7 @@ export async function getLastYearBestsBatch(
   const byName: Record<string, YearBests> = {};
 
   uniqueNames.forEach((name) => {
-    const cached = cache.get(name);
+    const cached = getCachedBests(name);
     if (cached) {
       byName[name] = cached;
     }
@@ -266,7 +286,7 @@ export async function getLastYearBestsBatch(
       // stored before entries carried a time another chance.
       if (entry.isFresh) {
         const result = fromStoredBests(entry.bests);
-        cacheBests(name, result);
+        cacheBests(name, result, entry.fetchedAt);
         byName[name] = result;
         return;
       }
