@@ -16,9 +16,15 @@ function distinct(values: readonly string[]): string[] {
  * the first load took the first meet in data order and Reset the first meet
  * in alphabetical order.
  *
- * The meet is the first in data order. The age category and gender come
- * from that meet's rows, so the defaults never combine into an empty table:
- * Senior and Men when the meet has them, else the first in display order.
+ * Every default is taken from rows that exist, so the three together always
+ * match at least one row.
+ *
+ * The meet is the first in data order. The age category comes from that
+ * meet's rows: Senior when it has any, else the first in display order. The
+ * gender comes from the rows of that meet *and* age category: Men when there
+ * are any, else the first alphabetically. Choosing the gender from the whole
+ * meet could pair Senior with Men at a meet that has Senior women and Junior
+ * men only, and the screen would open on an empty table.
  */
 export function computeDefaultRankingFilters(
   rankings: readonly IntlRanking[],
@@ -30,15 +36,19 @@ export function computeDefaultRankingFilters(
     distinct(meetRows.map((ranking) => ranking.ageCategory)),
     { includeExtended: true },
   );
-  const genders = distinct(meetRows.map((ranking) => ranking.gender)).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' }),
-  );
+  const ageCategory = ageCategories.includes(PREFERRED_AGE_CATEGORY)
+    ? PREFERRED_AGE_CATEGORY
+    : ageCategories[0] ?? '';
+
+  const genders = distinct(
+    meetRows
+      .filter((ranking) => ranking.ageCategory === ageCategory)
+      .map((ranking) => ranking.gender),
+  ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
   return {
     meet,
-    age_category: ageCategories.includes(PREFERRED_AGE_CATEGORY)
-      ? PREFERRED_AGE_CATEGORY
-      : ageCategories[0] ?? '',
+    age_category: ageCategory,
     gender: genders.includes(PREFERRED_GENDER) ? PREFERRED_GENDER : genders[0] ?? '',
   };
 }

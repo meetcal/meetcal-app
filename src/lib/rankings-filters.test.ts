@@ -58,6 +58,21 @@ describe('computeDefaultRankingFilters', () => {
     });
   });
 
+  it('picks a gender that exists for the chosen age category', () => {
+    // The meet has Senior and it has Men, but no Senior men. Senior/Men
+    // matches no row.
+    const filters = computeDefaultRankingFilters([
+      ranking({ ageCategory: 'Senior', gender: 'Women' }),
+      ranking({ ageCategory: 'Junior', gender: 'Men' }),
+    ]);
+
+    expect(filters).toEqual({
+      meet: 'World Championships',
+      age_category: 'Senior',
+      gender: 'Women',
+    });
+  });
+
   it('prefers Senior and Men when the meet has them', () => {
     const filters = computeDefaultRankingFilters([
       ranking({ ageCategory: 'Junior', gender: 'Women' }),
