@@ -1,10 +1,12 @@
-import { TransportRequestError, type ApiCall, type Transport } from '@/lib/api/transport';
+import type { ApiCall, Transport } from '@/lib/api/transport';
+import { TransportRequestError } from '@/lib/api/transport-error';
 
 /**
  * Ways a call through the transport can go wrong, applied in front of a real
  * (or stub) transport. One definition of each failure, so the property and
- * chaos tests (`test-support/chaos.ts`) inject the same faults the network
- * produces:
+ * chaos tests (`test-support/chaos.ts`) and the development switch
+ * `DEV_CONFIG.CHAOS` (`lib/api/dev-chaos.ts`) inject the same faults the
+ * network produces:
  *
  * - `network`: fetch's `TypeError` (offline, DNS, a reset connection);
  * - `hang`: no answer at all; settles only when the caller aborts;

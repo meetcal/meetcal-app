@@ -41,6 +41,8 @@ Name them `<module>.property.test.ts` and `<module>.chaos.test.ts`, next to the 
 - `arbitraries.ts`: meet time zones (DST, half-hour offsets, both sides of the date line), calendar dates biased to DST changes and leap days, clock strings, hostile strings and values, and `corruptedArb(valid)`, which breaks one node of a valid payload.
 - `chaos.ts`: `installChaosTransport` (faults from `src/lib/api/chaos-transport.ts`: network failure, hang until aborted, delay, HTTP status, Convex "try again later", garbage answer, truncated JSON), `installStorageChaos` (AsyncStorage: rejection, full disk, lost write, corrupted read), `createChaosSecureStore`, `chaosGetToken` (Clerk returns null, empty or throws) and `setNetInfoState`. A plan is a list of faults used one per call; once it runs out, calls pass, so a flow always gets a healthy tail to recover on. Plans with `hang` or `delay` need fake timers; `settlingTransportFaultArb` leaves them out.
 
+To watch the real app degrade under the same transport faults on a simulator, set `DEV_CONFIG.CHAOS` in `src/config/development.ts` (documented there): a development build then fails a share of backend calls at random and logs each fault as `[chaos]`. It never touches a release build, Maestro runs, the server-clock sample or a transport installed with `setApiTransportForTests`.
+
 Each run uses fast-check's 100 cases and a fresh seed, so the gate keeps exploring. A failure prints the shrunk counterexample with its seed and path; replay it exactly, then keep the counterexample as an example test next to the property:
 
 ```sh
