@@ -47,14 +47,14 @@ describe('backfillNameKeys (#166)', () => {
   });
 });
 
-describe('dedupeLiftingResults (#132)', () => {
+describe('dedupeLiftingResults (#132, #369)', () => {
   it('keeps the newest row of each identity across pages, events read once, and rewrites histories', async () => {
     const seed: Row[] = [];
     // 600 events of one athlete each; an event of copies sorting across the
     // first page's end (e498, then e498a); an event with one athlete in two
     // age categories (not copies).
     for (let i = 0; i < 600; i++) seed.push(result(`Athlete ${i}`, `e${String(i).padStart(3, '0')}`));
-    seed.push(result('John Smith', 'e498a'), result('JOHN  SMITH', 'e498a', { total: 210 }), result('john smith', 'e498a', { total: 220 }));
+    seed.push(result('John Smith', 'e498a', { total: 220 }), result('JOHN  SMITH', 'e498a', { total: 220 }), result('john smith', 'e498a', { total: 220 }));
     seed.push(result('Ann Lee', 'x2', { age: 'Open' }), result('Ann Lee', 'x2', { age: 'Masters 35' }));
     const store = fakeMutationCtx({ lifting_results: seed });
     const calls = await runPaged('migrations:dedupeLiftingResults', handlerOf<Paged, void>(dedupeLiftingResults), store);
@@ -68,6 +68,57 @@ describe('dedupeLiftingResults (#132)', () => {
     const before = store.rows('lifting_results').length;
     await runPaged('migrations:dedupeLiftingResults', handlerOf<Paged, void>(dedupeLiftingResults), store);
     expect(store.rows('lifting_results')).toHaveLength(before);
+  });
+
+  it("never deletes another edition's result under a reused event id, or a copy whose values differ", async () => {
+    const lifts = { bodyWeight: 80.4, snatchBest: 120, cjBest: 155, total: 275 };
+    const store = fakeMutationCtx({
+      lifting_results: [
+        // Event 4598: the 2020 Dallas result stored twice, and the 2021 one.
+        result('Brandon Victorian', '4598', { meet: 'Dallas', date: '2020-10-31', legacyId: 108136, ...lifts }),
+        result('Brandon Victorian', '4598', { meet: 'Dallas', date: '2020-10-31', ...lifts }),
+        result('Brandon Victorian', '4598', { meet: 'Dallas', date: '2021-10-24', bodyWeight: 80.9, total: 310 }),
+        // Two sets of values for one result: left for a person.
+        result('Antonio Quinones', '4600', { total: 153 }),
+        result('Antonio Quinones', '4600', { total: 160 }),
+        // One edition stamped a day apart, the same lifts: copies.
+        result('Matthew Tung', '7000', { date: '2026-05-16', ...lifts }),
+        result('Matthew Tung', '7000', { date: '2026-05-17', ...lifts }),
+      ],
+    });
+    await runPaged('migrations:dedupeLiftingResults', handlerOf<Paged, void>(dedupeLiftingResults), store);
+    const remaining = store.rows('lifting_results');
+    expect(remaining.filter((r) => r.eventId === '4598').map((r) => [r.date, r.total, r.legacyId])).toEqual([
+      ['2020-10-31', 275, 108136],
+      ['2021-10-24', 310, undefined],
+    ]);
+    expect(remaining.filter((r) => r.eventId === '4600').map((r) => r.total)).toEqual([153, 160]);
+    expect(remaining.filter((r) => r.eventId === '7000').map((r) => r.date)).toEqual(['2026-05-17']);
+    const logged = jest.mocked(console.log).mock.calls.map(([line]) => String(line));
+    // Both on one line: a page's unresolved identities are logged together.
+    const left = logged.filter((line) => line.startsWith('dedupeLiftingResults: left'));
+    expect(left).toHaveLength(1);
+    expect(left[0].split('\n').slice(1)).toEqual([expect.stringContaining('event 4598 "Dallas" "Brandon Victorian"'), expect.stringContaining('event 4600')]);
+    expect(logged.at(-1)).toContain('2 duplicate rows deleted, 2 identities left');
+  });
+
+  it('deletes nothing on a dry run across pages, and counts what it would', async () => {
+    const seed: Row[] = [];
+    for (let i = 0; i < 600; i++) seed.push(result(`Athlete ${i}`, `e${String(i).padStart(3, '0')}`));
+    seed.push(result('JOHN  SMITH', 'e001'), result('John Smith', 'e001'), result('John Smith', 'e550'), result('john smith', 'e550'));
+    const store = fakeMutationCtx({ lifting_results: seed });
+    const handler = handlerOf<Paged, void>(dedupeLiftingResults);
+    let args: Paged = { dryRun: true };
+    for (;;) {
+      const before = store.scheduled.length;
+      await handler(store.ctx, args);
+      const next = store.scheduled.slice(before).find((s) => s.name === 'migrations:dedupeLiftingResults');
+      if (!next) break;
+      expect(next.args).toMatchObject({ dryRun: true });
+      args = next.args as Paged;
+    }
+    expect(store.rows('lifting_results')).toHaveLength(604);
+    expect(jest.mocked(console.log).mock.calls.at(-1)?.[0]).toContain('done (dry run), 2 duplicate rows to delete');
   });
 
   it('deletes a heavily duplicated event over several mutations, the same page again each time', async () => {

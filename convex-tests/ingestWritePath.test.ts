@@ -114,11 +114,65 @@ describe('result identity: event, meet, folded name, age category (#132)', () =>
     const { ctx, rows } = fakeMutationCtx({
       lifting_results: [...names.map((name) => result(name, { age: 'Open' })), result('John  Smith', { age: 'Open' }), result('Ann Lee', { age: 'Junior' })],
     });
-    const keep = [...names, 'John Smith'].map((name) => ({ meet: 'Open', name, age: 'Open' })).concat([{ meet: 'Open', name: 'Ann Lee', age: 'Open' }]);
+    const keep = [...names, 'John Smith'].map((name) => ({ meet: 'Open', name, age: 'Open', date: '2026-09-01' })).concat([{ meet: 'Open', name: 'Ann Lee', age: 'Open', date: '2026-09-01' }]);
     // Ann Lee's Junior row is stale (she is Open now) but retitled, not dropped.
     expect(await prune(ctx, { eventId: '100', keep })).toEqual({ deleted: 1, remaining: 0 });
     expect(rows('lifting_results').some((r) => r.name === 'John  Smith')).toBe(true);
     expect(rows('lifting_results').some((r) => r.name === 'Ann Lee')).toBe(false);
+  });
+});
+
+describe("an event id holding two of a meet's editions (#369)", () => {
+  const dallas = (date: string, total: number, extra: Row = {}) => result('Brandon Victorian', { eventId: '4598', meet: 'Dallas', date, total, ...extra });
+
+  it("updates this year's row and leaves another year's result under the same identity alone", async () => {
+    const { ctx, rows } = fakeMutationCtx({ lifting_results: [dallas('2020-10-31', 275), dallas('2021-10-24', 310)] });
+    expect(await upsertResults(ctx, { rows: [dallas('2021-10-24', 312)] })).toMatchObject({ updated: 1, duplicates: 0 });
+    expect(rows('lifting_results').map((r) => [r.date, r.total])).toEqual([
+      ['2020-10-31', 275],
+      ['2021-10-24', 312],
+    ]);
+    // A year with no row is a new result, not the other edition's.
+    expect(await upsertResults(ctx, { rows: [dallas('2022-10-22', 300)] })).toMatchObject({ inserted: 1, updated: 0 });
+    expect(rows('lifting_results')).toHaveLength(3);
+  });
+
+  it('takes the same result stored under a wrong date for this one, and fixes its date', async () => {
+    const { ctx, rows } = fakeMutationCtx({ lifting_results: [dallas('2012-06-15', 275, { bodyWeight: 80.4 })] });
+    expect(await upsertResults(ctx, { rows: [dallas('2025-03-01', 275, { bodyWeight: 80.4 })] })).toMatchObject({ inserted: 0, updated: 1 });
+    expect(rows('lifting_results').map((r) => r.date)).toEqual(['2025-03-01']);
+  });
+
+  it('takes a row dated across New Year as the same edition', async () => {
+    const { ctx, rows } = fakeMutationCtx({ lifting_results: [dallas('2023-01-05', 200)] });
+    expect(await upsertResults(ctx, { rows: [dallas('2022-12-31', 200)] })).toMatchObject({ inserted: 0, updated: 1 });
+    expect(rows('lifting_results').map((r) => r.date)).toEqual(['2022-12-31']);
+  });
+
+  it("updates this edition's row even when another edition's holds the same values", async () => {
+    const { ctx, rows } = fakeMutationCtx({
+      lifting_results: [dallas('2020-10-31', 275, { bodyWeight: 80.4 }), dallas('2021-10-24', 310, { bodyWeight: 80.9 })],
+    });
+    expect(await upsertResults(ctx, { rows: [dallas('2021-10-24', 275, { bodyWeight: 80.4 })] })).toMatchObject({ updated: 1, duplicates: 0 });
+    expect(rows('lifting_results').map((r) => [r.date, r.total])).toEqual([
+      ['2020-10-31', 275],
+      ['2021-10-24', 275],
+    ]);
+  });
+
+  it("prunes only the payload's edition", async () => {
+    const prune = handlerOf<{ eventId: string; keep: Row[] }, { deleted: number; remaining: number }>(pruneEventResults);
+    const { ctx, rows } = fakeMutationCtx({
+      lifting_results: [dallas('2020-10-31', 275), dallas('2021-10-24', 310), result('Withdrawn', { eventId: '4598', meet: 'Dallas', date: '2021-10-24' })],
+    });
+    expect(await prune(ctx, { eventId: '4598', keep: [{ meet: 'Dallas', name: 'Brandon Victorian', age: null, date: '2021-10-24' }] })).toEqual({
+      deleted: 1,
+      remaining: 0,
+    });
+    expect(rows('lifting_results').map((r) => [r.name, r.date])).toEqual([
+      ['Brandon Victorian', '2020-10-31'],
+      ['Brandon Victorian', '2021-10-24'],
+    ]);
   });
 });
 
