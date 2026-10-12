@@ -1,5 +1,5 @@
 import { recordHolder, type RecordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './common';
 
 // New York (port of `manual_scrapers/scraper_pdf_newyork.py` and its auto
 // wrapper): five PDFs (Youth, Junior, Senior, Masters Men, Masters Women), a
@@ -70,8 +70,6 @@ function liftHolder(value: number | null, rest: string): RecordHolder | undefine
   return recordHolder(value, words.slice(0, at).join(' '), words[at], words.slice(at + 1).join(' '));
 }
 
-const weightClass = (raw: string) => (raw.includes('+') && !raw.endsWith('+') ? `${raw.replaceAll('+', '')}+` : raw);
-
 /** One PDF's records, page by page, in the order the Python wrote them (a class listed twice appears twice). */
 export function parseNewYork(pages: readonly (readonly string[])[], wso: string): WsoRecord[] {
   const records: WsoRecord[] = [];
@@ -90,20 +88,14 @@ export function parseNewYork(pages: readonly (readonly string[])[], wso: string)
       const bareClass = /^\+?\d+\+?$/.exec(line)?.[0];
       if (!lift && !bareClass) continue;
       if (!block || lift?.[2] === 'Snatch') {
-        block = { wso, age_category: section?.[0] ?? '', gender: section?.[1] ?? 'Men', weight_class: '', snatch_record: null, cj_record: null, total_record: null };
+        block = blankRecord(wso, section?.[0] ?? '', section?.[1] ?? 'Men');
         blocks.push(block);
       }
       const label = lift?.[1] ?? bareClass;
-      if (label) block.weight_class = weightClass(label);
+      if (label) block.weight_class = plusLast(label);
       if (!lift) continue;
       const value = liftValue(lift[3]);
-      if (lift[2] === 'Snatch') block.snatch_record = value;
-      else if (lift[2] === 'Total') block.total_record = value;
-      else block.cj_record = value;
-      const field = lift[2] === 'Snatch' ? 'snatch_by' : lift[2] === 'Total' ? 'total_by' : 'cj_by';
-      const by = liftHolder(value, lift[3]);
-      if (by) block[field] = by;
-      else delete block[field];
+      setLift(block, lift[2] === 'Snatch' ? 'snatch' : lift[2] === 'Total' ? 'total' : 'cj', value, liftHolder(value, lift[3]));
     }
     records.push(...blocks.filter((b) => b.weight_class && b.age_category));
   }

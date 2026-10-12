@@ -1,7 +1,7 @@
 import { fetchText } from '../../convex/scrapers/lib/http';
 import { fetchMissouriValleyPage } from '../../convex/scrapers/lib/missouriValley';
 
-jest.mock('../../convex/scrapers/lib/http', () => ({ fetchText: jest.fn() }));
+jest.mock('../../convex/scrapers/lib/http', () => ({ ...jest.requireActual('../../convex/scrapers/lib/http'), fetchText: jest.fn() }));
 const fetchMock = jest.mocked(fetchText);
 const socketFailure = (code: string) => new TypeError('fetch failed', { cause: Object.assign(new Error(code), { code }) });
 

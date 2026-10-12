@@ -6,6 +6,8 @@
 // QMasters attempt table (age group only; the class is inferred from body
 // weight), and a looser word-by-word reading.
 
+import { pyInt } from '../lib/numbers';
+
 /** One word on a page: its text, left edge and top (points), and whether any of it is red. */
 export type PdfWord = { text: string; x: number; y: number; isRed: boolean };
 
@@ -64,8 +66,9 @@ export function normalizeResultName(raw: string): string | null {
 
 /** Python's `int(float(text))`; throws where that raises. */
 function whole(text: string): number {
-  if (!/^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$/.test(text)) throw new Error(`not a number: ${text}`);
-  return Math.trunc(Number(text));
+  const value = pyInt(text);
+  if (value === null) throw new Error(`not a number: ${text}`);
+  return value;
 }
 
 const attempt = (text: string, isRed: boolean) => (isRed ? -whole(text) : whole(text));

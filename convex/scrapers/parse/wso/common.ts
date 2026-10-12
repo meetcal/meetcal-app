@@ -1,6 +1,7 @@
 // Shared by the WSO records parsers (ports of `usaw/wso_sheets_scraper`).
 
-import type { RecordHolder } from '../holder';
+import { pyInt } from '../../lib/numbers';
+import { recordHolder, setHolder, type RecordHolder } from '../holder';
 
 /** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
@@ -68,10 +69,54 @@ export function copiedTabs(gids: readonly string[], texts: readonly string[], fi
 }
 
 /** Python's `int(float(s))`, or null where that raises. */
-export function intOrNull(value: string): number | null {
-  const text = value.trim();
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) return null;
-  return Math.trunc(Number(text));
+export const intOrNull = pyInt;
+
+/** A class's record before its lifts are read: every lift missing. */
+export function blankRecord(wso: string, age: string, gender: string, weightClass = ''): WsoRecord {
+  return { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+}
+
+export type LiftName = 'snatch' | 'cj' | 'total';
+
+/** Sets a lift's value and its holder (cleared when there is none). */
+export function setLift(record: WsoRecord, lift: LiftName, value: number | null, holder: RecordHolder | undefined): void {
+  record[`${lift}_record`] = value;
+  setHolder(record, `${lift}_by`, holder);
+}
+
+/** "+87" -> "87+": the heaviest class with its plus last, as stored. */
+export const plusLast = (weightClass: string) =>
+  weightClass.includes('+') && !weightClass.endsWith('+') ? `${weightClass.replaceAll('+', '')}+` : weightClass;
+
+/** A lift and who set it, read off one sheet row. */
+export type Lift = { value: number | null; by?: RecordHolder };
+export const NO_LIFT: Lift = { value: null };
+
+/**
+ * The lift on an Ohio or Pennsylvania-West Virginia row: the weight in
+ * column D (blank or "STANDARD" is none), its holder's name in B, the date
+ * in E, the meet in F and the place in G.
+ */
+export function columnDLift(row: readonly string[]): Lift {
+  const value = intOrNull(row[3] ?? '');
+  return { value, by: recordHolder(value, row[1], row[4], row[5], row[6]) };
+}
+
+/** A class's record from its three lifts, holders kept only where set. */
+export function liftsRecord(wso: string, age: string, gender: string, weightClass: string, lifts: { snatch: Lift; cj: Lift; total: Lift }): WsoRecord {
+  const { snatch, cj, total } = lifts;
+  return {
+    wso,
+    age_category: age,
+    gender,
+    weight_class: weightClass,
+    snatch_record: snatch.value,
+    cj_record: cj.value,
+    total_record: total.value,
+    ...(snatch.by && { snatch_by: snatch.by }),
+    ...(cj.by && { cj_by: cj.by }),
+    ...(total.by && { total_by: total.by }),
+  };
 }
 
 /** The `gid` (tab) a Google Sheets URL points at, if it names one. */

@@ -1,5 +1,7 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
+import { pyFloat } from '../lib/numbers';
+
 export const USAW_DOMAIN = 'https://usaweightlifting.sport80.com';
 export const RECENT_EVENTS = 30;
 
@@ -91,9 +93,9 @@ function toFloat(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
-  const text = String(value).trim();
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) throw new Error(`not a number: ${JSON.stringify(value)}`);
-  return Number(text);
+  const number = pyFloat(String(value));
+  if (number === null) throw new Error(`not a number: ${JSON.stringify(value)}`);
+  return number;
 }
 
 export type ResultRow = {

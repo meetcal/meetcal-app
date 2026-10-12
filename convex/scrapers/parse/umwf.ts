@@ -1,4 +1,5 @@
-import { recordHolder, type RecordHolder } from './holder';
+import { recordHolder, setHolder, type RecordHolder } from './holder';
+import { pyInt } from '../lib/numbers';
 import { parseCsv } from '../lib/csv';
 
 // Pure parsing for `scrapers/umwf.ts` (port of `usaw/records_scraper/umwf_records.py`).
@@ -56,12 +57,6 @@ export function formatWeightClass(text: string): string | null {
   return match ? `${match[1]}${match[2] ?? ''}kg` : null;
 }
 
-/** Python's `int(float(s))` for the lift cells; null where that would raise. */
-function toInt(value: string): number | null {
-  if (!/^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$/.test(value)) return null;
-  return Math.trunc(Number(value));
-}
-
 /** Where a tab keeps a lift's holder; its header row ("… kg Category, Weight, Name, Year Born, Nation, Date, Where, Age") says. */
 type HolderColumns = { name: number; date: number; where: number };
 
@@ -80,12 +75,6 @@ function holderColumns(row: string[], fallback: HolderColumns): HolderColumns {
 function sheetDate(text: string): string {
   const match = /^(\d{1,2})[-_ ]([A-Za-z]{3,})[-_ ]((?:19|20)\d{2})$/.exec(text.trim());
   return match ? `${match[1]} ${match[2]} ${match[3]}` : text;
-}
-
-/** Sets a lift's holder, or clears it when the lift has none. */
-function setHolder(record: UmwfRecord, key: 'snatch_by' | 'cj_by' | 'total_by', holder: RecordHolder | undefined) {
-  if (holder) record[key] = holder;
-  else delete record[key];
 }
 
 /**
@@ -113,7 +102,7 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     const lift = row[1].trim();
     const value = row[2].trim();
     if (!value || value.toUpperCase() === 'STANDARD') continue;
-    const weight = toInt(value);
+    const weight = pyInt(value);
     if (weight === null) continue;
     const cell = (index: number) => row[index] ?? '';
     const holder = weight === 0 ? undefined : recordHolder(weight, cell(columns.name), sheetDate(cell(columns.date)), cell(columns.where));

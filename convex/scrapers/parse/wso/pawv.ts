@@ -1,6 +1,5 @@
 import { parseCsv } from '../../lib/csv';
-import { recordHolder, type RecordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { columnDLift, liftsRecord, NO_LIFT, type Lift, type WsoRecord } from './common';
 
 // Pennsylvania-West Virginia (port of `auto_scrapers/scraper_pawv.py`): a
 // published sheet with a tab per age group and gender, read down column A:
@@ -53,20 +52,6 @@ export function pawvWeightClass(raw: string): string | null {
   return /(\d+)/.exec(text)?.[1] ?? null;
 }
 
-type Lift = { value: number | null; by?: RecordHolder };
-const NO_LIFT: Lift = { value: null };
-
-function liftValue(raw: string): number | null {
-  const text = raw.trim();
-  if (!text || text.toUpperCase() === 'STANDARD') return null;
-  return intOrNull(text);
-}
-
-function lift(row: readonly string[]): Lift {
-  const value = liftValue(row[3]);
-  return { value, by: recordHolder(value, row[1], row[4], row[5], row[6]) };
-}
-
 export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab): WsoRecord[] {
   const records: WsoRecord[] = [];
   let age: string | null = base === 'Junior' || base === 'Senior' ? base : null;
@@ -74,19 +59,7 @@ export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab
   let lifts: { snatch: Lift; cj: Lift; total: Lift } = { snatch: NO_LIFT, cj: NO_LIFT, total: NO_LIFT };
   const save = () => {
     if (!weightClass || !age) return;
-    const { snatch, cj, total } = lifts;
-    records.push({
-      wso,
-      age_category: age,
-      gender,
-      weight_class: weightClass,
-      snatch_record: snatch.value,
-      cj_record: cj.value,
-      total_record: total.value,
-      ...(snatch.by && { snatch_by: snatch.by }),
-      ...(cj.by && { cj_by: cj.by }),
-      ...(total.by && { total_by: total.by }),
-    });
+    records.push(liftsRecord(wso, age, gender, weightClass, lifts));
   };
 
   for (const row of parseCsv(csv.trim())) {
@@ -112,9 +85,9 @@ export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab
       }
       continue;
     }
-    if (first === 'Snatch') lifts.snatch = lift(row);
-    else if (first === 'Clean & Jerk') lifts.cj = lift(row);
-    else if (first === 'Total') lifts.total = lift(row);
+    if (first === 'Snatch') lifts.snatch = columnDLift(row);
+    else if (first === 'Clean & Jerk') lifts.cj = columnDLift(row);
+    else if (first === 'Total') lifts.total = columnDLift(row);
   }
   save();
   return records;

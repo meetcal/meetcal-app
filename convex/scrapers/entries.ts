@@ -3,6 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { fetchJson } from './lib/http';
 import { entriesEndpoint, entryFromRow, meetFromTitle, type Entry, type EntryRow } from './parse/entries';
 
 /**
@@ -12,12 +13,7 @@ import { entriesEndpoint, entryFromRow, meetFromTitle, type Entry, type EntryRow
  * list was pruned by hand before).
  */
 async function getJson(url: string): Promise<{ title?: string; total?: number; data?: EntryRow[] }> {
-  const response = await fetch(url, {
-    headers: { accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok) throw new Error(`GET ${url} failed with ${response.status}`);
-  return (await response.json()) as { title?: string; total?: number; data?: EntryRow[] };
+  return (await fetchJson(url, { timeoutMs: 60_000 })) as { title?: string; total?: number; data?: EntryRow[] };
 }
 
 /** A target's meet name and every entry, all pages, checked against the list's total. */

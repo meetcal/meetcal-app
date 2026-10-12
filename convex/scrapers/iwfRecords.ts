@@ -3,6 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { fetchJson } from './lib/http';
 import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
 
 /**
@@ -16,9 +17,7 @@ import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord }
 const USER_AGENT = 'MeetCal/1.0 (https://github.com/meetcal/meetcal-app; IWF world records sync)';
 
 async function wikitext(page: string): Promise<string> {
-  const response = await fetch(wikitextUrl(page), { headers: { 'User-Agent': USER_AGENT, accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Wikipedia ${page} failed with ${response.status}`);
-  const body = (await response.json()) as { parse?: { wikitext?: string }; error?: { info?: string } };
+  const body = (await fetchJson(wikitextUrl(page), { headers: { 'User-Agent': USER_AGENT } })) as { parse?: { wikitext?: string }; error?: { info?: string } };
   if (!body.parse?.wikitext) throw new Error(`Wikipedia ${page}: ${body.error?.info ?? 'no wikitext'}`);
   return body.parse.wikitext;
 }

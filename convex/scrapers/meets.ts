@@ -3,6 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { fetchJson, withRetries } from './lib/http';
 import { MEET_SEARCHES, readAllWidgetPages, transformMeets, widgetPageUrl, type ScrapedMeet } from './parse/meets';
 
 /**
@@ -12,18 +13,8 @@ import { MEET_SEARCHES, readAllWidgetPages, transformMeets, widgetPageUrl, type 
  * name. The WSO search skips meets already completed, as before; a meet
  * marked completed is never reopened either way.
  */
-async function fetchWidgetPage(url: string): Promise<unknown> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error(`status ${response.status}`);
-      return (await response.json()) as unknown;
-    } catch (error) {
-      if (attempt >= 3) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
-    }
-  }
-}
+const fetchWidgetPage = (url: string): Promise<unknown> =>
+  withRetries(() => fetchJson(url, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });
 
 type SearchResult = {
   key: string;
