@@ -5,7 +5,7 @@ import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
-import { isKnownTimeZone } from './lib/validation';
+import { APP_TIME_ZONES } from './lib/validation';
 import { bumpVersion, type SourceTable } from './lib/views';
 import {
   athletesFields,
@@ -287,13 +287,16 @@ export const upsertMeets = internalMutation({
  * overwrite it (the state-based guess is wrong for a few places, see
  * `scrapers/lib/states.ts`): `npx convex run ingest:setMeetTimeZone
  * '{"name":"…","timeZone":"America/New_York"}'`. Pass `locked: false` to hand
- * the zone back to the syncs. Goes through `recordWrite` like every write, so
- * the meet's views follow.
+ * the zone back to the syncs. Only the zones the app can show are accepted
+ * (`APP_TIME_ZONES`): it would show any other in New York time. Goes through
+ * `recordWrite` like every write, so the meet's views follow.
  */
 export const setMeetTimeZone = internalMutation({
   args: { name: v.string(), timeZone: v.string(), locked: v.optional(v.boolean()) },
   handler: async (ctx, { name, timeZone, locked }) => {
-    if (!isKnownTimeZone(timeZone)) throw new Error(`not an IANA time zone: ${JSON.stringify(timeZone)}`);
+    if (!APP_TIME_ZONES.includes(timeZone)) {
+      throw new Error(`not a time zone the app can show: ${JSON.stringify(timeZone)} (one of ${APP_TIME_ZONES.join(', ')})`);
+    }
     const meet = await ctx.db
       .query('meets')
       .withIndex('by_name', (q) => q.eq('name', name))

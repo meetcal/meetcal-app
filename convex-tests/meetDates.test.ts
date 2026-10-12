@@ -1,8 +1,9 @@
-import { completeEndedMeets, scrapedMeetValues } from '../convex/ingest';
+import { completeEndedMeets, scrapedMeetValues, setMeetTimeZone, upsertMeets } from '../convex/ingest';
 import { padMeetDates } from '../convex/migrations';
-import { canonicalMeetDate, isKnownTimeZone } from '../convex/lib/validation';
+import { APP_TIME_ZONES, canonicalMeetDate, isKnownTimeZone } from '../convex/lib/validation';
 import { meetDataProblems } from '../convex/scrapers/queries';
 import type { Doc, Id } from '../convex/_generated/dataModel';
+import { timezoneOffsets } from '../src/data/types/meet';
 
 // Convex attaches the handler at runtime but omits it from its public types.
 function handlerOf(registered: unknown): (ctx: unknown, args: unknown) => Promise<unknown> {
@@ -137,6 +138,70 @@ describe('scraped meet values', () => {
 
   it('keeps a completed meet completed', () => {
     expect(scrapedMeetValues(scraped, meet({ status: 'completed' })).status).toBe('completed');
+  });
+
+  describe('a meet scraped without an address', () => {
+    const { venueName: _n, venueStreet: _s, venueCity: _c, venueState: _st, venueZip: _z, timeZone: _tz, ...noVenue } = scraped;
+    /** `upsertMeets` over `stored` (null for none), with the db calls it made. */
+    async function upsert(stored: Doc<'meets'> | null, row: object) {
+      const patch = jest.fn();
+      const insert = jest.fn();
+      const ctx = {
+        db: {
+          query: (table: string) => ({ withIndex: () => ({ first: async () => (table === 'meets' ? stored : null), unique: async () => null }) }),
+          patch,
+          insert,
+        },
+        scheduler: { runAfter: jest.fn() },
+      };
+      const outcomes = await handlerOf(upsertMeets)(ctx, { rows: [row] });
+      return { outcomes, patch, insert };
+    }
+
+    it('keeps the stored venue and zone', async () => {
+      const unchanged = await upsert(meet(), noVenue);
+      expect(unchanged.outcomes).toEqual([{ wasInsert: false, wasChanged: false }]);
+      expect(unchanged.patch).not.toHaveBeenCalled();
+      const moved = await upsert(meet(), { ...noVenue, endDate: '2026-10-18' });
+      expect(moved.outcomes).toEqual([{ wasInsert: false, wasChanged: true }]);
+      const [[, values]] = moved.patch.mock.calls.filter(([id]) => id === 'meet1');
+      expect(values).toMatchObject({ endDate: '2026-10-18' });
+      for (const key of ['venueName', 'venueStreet', 'venueCity', 'venueState', 'venueZip', 'timeZone']) expect(values).not.toHaveProperty(key);
+    });
+
+    it('stores a new one with placeholders', async () => {
+      const { insert } = await upsert(null, noVenue);
+      expect(insert).toHaveBeenCalledWith('meets', expect.objectContaining({
+        name: 'Meet', venueName: 'Meet', venueStreet: '', venueCity: 'Unknown', venueState: 'Unknown', venueZip: 'Unknown', timeZone: '',
+      }));
+    });
+  });
+});
+
+describe('setting a meet time zone by hand', () => {
+  it('accepts exactly the zones the app can show', () => {
+    expect([...APP_TIME_ZONES].sort()).toEqual(Object.keys(timezoneOffsets).sort());
+  });
+
+  it('refuses a zone the app would show in New York time', async () => {
+    const ctx = { db: { query: jest.fn(), patch: jest.fn() } };
+    await expect(handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'Europe/Madrid' })).rejects.toThrow('not a time zone the app can show');
+    await expect(handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'Not/AZone' })).rejects.toThrow('not a time zone the app can show');
+    expect(ctx.db.patch).not.toHaveBeenCalled();
+  });
+
+  it('locks an app zone on the meet', async () => {
+    const patch = jest.fn();
+    const ctx = {
+      db: {
+        query: (table: string) => ({ withIndex: () => ({ first: async () => (table === 'meets' ? meet() : null), unique: async () => null }) }),
+        patch,
+        insert: jest.fn(),
+      },
+      scheduler: { runAfter: jest.fn() },
+    };
+    expect(await handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'America/New_York' })).toEqual({ changed: true });
+    expect(patch).toHaveBeenCalledWith('meet1', expect.objectContaining({ timeZone: 'America/New_York', timeZoneLocked: true }));
   });
 });
 

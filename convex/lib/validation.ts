@@ -53,6 +53,20 @@ export function isKnownTimeZone(timeZone: string): boolean {
   }
 }
 
+/**
+ * The zones the app can show a meet in (`timezoneOffsets` in
+ * `src/data/types/meet.ts`); it shows any other zone in New York time.
+ */
+export const APP_TIME_ZONES: readonly string[] = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+];
+
 export function requireIsoDate(field: string, value: string | undefined): void {
   if (value !== undefined && !isValidIsoDate(value)) {
     throw apiError(400, `${field} must be a valid YYYY-MM-DD date`);

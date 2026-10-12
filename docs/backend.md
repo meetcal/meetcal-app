@@ -49,7 +49,7 @@ Check the result with `npx convex run parity:run`. It compares every fast path (
 
 ## Meet time zones and dates
 
-The meet scrapers take a meet's time zone from its state, or its city in a state that spans two zones (`convex/scrapers/lib/states.ts`). A meet in a state they do not know keeps the zone it has, or gets a blank one if new. To set a zone by hand, use `npx convex run ingest:setMeetTimeZone '{"name":"…","timeZone":"America/New_York"}'`. This locks the zone so the nightly syncs leave it alone. Pass `"locked":false` to hand it back to them. `npx convex run scrapers/queries:meetDataProblems` lists blank or unknown zones, zones the state and city now place elsewhere, and dates that are not padded `YYYY-MM-DD`. `npx convex run migrations:padMeetDates` pads the unpadded dates.
+The meet scrapers take a meet's time zone from its state, or its city in a state that spans two zones (`convex/scrapers/lib/states.ts`). A meet in a state they do not know keeps the zone it has, or gets a blank one if new. To set a zone by hand, use `npx convex run ingest:setMeetTimeZone '{"name":"…","timeZone":"America/New_York"}'`. It accepts only the seven US zones the app can show (`APP_TIME_ZONES` in `convex/lib/validation.ts`); the app shows any other zone in New York time. This locks the zone so the nightly syncs leave it alone. Pass `"locked":false` to hand it back to them. `npx convex run scrapers/queries:meetDataProblems` lists blank or unknown zones, zones the state and city now place elsewhere, and dates that are not padded `YYYY-MM-DD`. `npx convex run migrations:padMeetDates` pads the unpadded dates.
 
 ## Scheduled jobs and alerts
 
