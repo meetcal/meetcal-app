@@ -19,20 +19,21 @@ export function titleCase(value: string): string {
  * writer kept `Male` / `Female` as written, so older rows (athletes, mostly)
  * still hold those until `migrations:normalizeAthleteGenders` and
  * `migrations:normalizeReferenceCasing` rewrite them: compare stored genders
- * through `normalizeGender`, never as stored.
+ * through `normalizeGender`, never as stored. A Map, not an object literal,
+ * so a lookup cannot reach `Object.prototype` ('constructor', '__proto__').
  */
-const GENDERS: Record<string, string> = {
-  men: 'Men',
-  women: 'Women',
-  male: 'Men',
-  female: 'Women',
-  m: 'Men',
-  f: 'Women',
-};
+const GENDERS = new Map([
+  ['men', 'Men'],
+  ['women', 'Women'],
+  ['male', 'Men'],
+  ['female', 'Women'],
+  ['m', 'Men'],
+  ['f', 'Women'],
+]);
 
 export function normalizeGender(value: string): string {
   const normalized = value.trim();
-  return GENDERS[normalized.toLowerCase()] ?? titleCase(normalized);
+  return GENDERS.get(normalized.toLowerCase()) ?? titleCase(normalized);
 }
 
 /** Every spelling a stored row of this (normalized) gender may still hold, for index lookups. */
@@ -54,11 +55,17 @@ export function athleteGenderLabel(stored: string): string {
   return gender;
 }
 
-const AGE_CODES: Record<string, string> = { u13: 'U13', u15: 'U15', u17: 'U17', u20: 'U20', u25: 'U25' };
+const AGE_CODES = new Map([
+  ['u13', 'U13'],
+  ['u15', 'U15'],
+  ['u17', 'U17'],
+  ['u20', 'U20'],
+  ['u25', 'U25'],
+]);
 
 export function normalizeAgeCategory(value: string): string {
   const normalized = titleCase(value);
-  return AGE_CODES[normalized.toLowerCase()] ?? normalized;
+  return AGE_CODES.get(normalized.toLowerCase()) ?? normalized;
 }
 
 export function normalizeFederation(value: string): string {
