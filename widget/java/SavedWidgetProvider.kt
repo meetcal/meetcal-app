@@ -1,5 +1,6 @@
 package __PACKAGE_NAME__.widget
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -11,20 +12,24 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.RemoteViews
 import __PACKAGE_NAME__.R
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
+// Row fields are a contract with JS: SAVED_WIDGET_ROW_FIELDS in
+// src/utils/widgetContract.ts (src/utils/widgetContract.test.ts reads this
+// file). `start_at_ms` is the session's start instant, computed by the app in
+// the meet's zone and absent when that zone is unknown; `start_time` is the
+// meet-local display time and is never parsed here.
 class SavedWidgetProvider : AppWidgetProvider() {
   override fun onReceive(context: Context, intent: Intent) {
     Log.d(TAG, "onReceive: ${intent.action}")
     super.onReceive(context, intent)
+    when (intent.action) {
+      ACTION_REFRESH,
+      Intent.ACTION_TIME_CHANGED,
+      Intent.ACTION_TIMEZONE_CHANGED,
+      Intent.ACTION_DATE_CHANGED -> updateAllWidgets(context)
+    }
   }
 
   override fun onUpdate(
@@ -40,6 +45,12 @@ class SavedWidgetProvider : AppWidgetProvider() {
         showMinimalWidget(context, appWidgetManager, appWidgetId)
       }
     }
+    scheduleNextRefresh(context)
+  }
+
+  override fun onDisabled(context: Context) {
+    super.onDisabled(context)
+    cancelScheduledRefresh(context)
   }
 
   override fun onAppWidgetOptionsChanged(
@@ -62,6 +73,11 @@ class SavedWidgetProvider : AppWidgetProvider() {
     const val KEY_SELECTED_MEET = "selectedMeet"
     const val KEY_SESSIONS_JSON = "savedSessions"
     private const val SAVED_DEEP_LINK = "meetcal:///open/saved"
+    /** Broadcast the refresh alarm sends; redraws so started sessions drop off. */
+    private const val ACTION_REFRESH = "__PACKAGE_NAME__.widget.SAVED_WIDGET_REFRESH"
+    private const val REFRESH_REQUEST_CODE = 7301
+    /** Fire just after the start instant so the session already reads as started. */
+    private const val REFRESH_DELAY_AFTER_START_MS = 1_000L
 
     private fun deepLinkPendingIntent(
       context: Context,
@@ -96,6 +112,64 @@ class SavedWidgetProvider : AppWidgetProvider() {
           Log.e(TAG, "SavedWidget updateAllWidgets failed", e)
           showMinimalWidget(context, appWidgetManager, appWidgetId)
         }
+      }
+      scheduleNextRefresh(context)
+    }
+
+    private fun refreshPendingIntent(context: Context): PendingIntent {
+      val intent = Intent(context, SavedWidgetProvider::class.java).apply {
+        action = ACTION_REFRESH
+      }
+      return PendingIntent.getBroadcast(
+        context,
+        REFRESH_REQUEST_CODE,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+      )
+    }
+
+    private fun cancelScheduledRefresh(context: Context) {
+      try {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.cancel(refreshPendingIntent(context))
+      } catch (e: Exception) {
+        Log.e(TAG, "SavedWidget cancelScheduledRefresh failed", e)
+      }
+    }
+
+    /**
+     * Schedules one inexact alarm just after the next session start, so the
+     * widget redraws and drops that session without the app being opened.
+     * Inexact (`set`, not `setExact`) needs no exact-alarm permission; a late
+     * delivery only delays the redraw. Cancelled when there is nothing to
+     * wait for or no widget on the home screen.
+     */
+    private fun scheduleNextRefresh(context: Context) {
+      try {
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val componentName = ComponentName(context, SavedWidgetProvider::class.java)
+        if (appWidgetManager.getAppWidgetIds(componentName).isEmpty()) {
+          cancelScheduledRefresh(context)
+          return
+        }
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val nextStart = parseSessions(prefs.getString(KEY_SESSIONS_JSON, "[]") ?: "[]")
+          .mapNotNull { it.startAtMs }
+          .filter { it > now }
+          .minOrNull()
+        if (nextStart == null) {
+          cancelScheduledRefresh(context)
+          return
+        }
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.set(
+          AlarmManager.RTC,
+          nextStart + REFRESH_DELAY_AFTER_START_MS,
+          refreshPendingIntent(context)
+        )
+      } catch (e: Exception) {
+        Log.e(TAG, "SavedWidget scheduleNextRefresh failed", e)
       }
     }
 
@@ -146,7 +220,8 @@ class SavedWidgetProvider : AppWidgetProvider() {
       val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
       val selectedMeet = prefs.getString(KEY_SELECTED_MEET, "") ?: ""
       val sessionsJson = prefs.getString(KEY_SESSIONS_JSON, "[]") ?: "[]"
-      val sessions = parseSessions(sessionsJson).filter { !it.isPast() }
+      val now = System.currentTimeMillis()
+      val sessions = parseSessions(sessionsJson).filter { !it.hasStarted(now) }
 
       views.setTextViewText(
         R.id.widget_title,
@@ -185,9 +260,9 @@ class SavedWidgetProvider : AppWidgetProvider() {
             )
             views.setTextViewText(
               titleIds[i],
-              "Session ${session.sessionNumber} • ${session.formattedStartTime()}"
+              "Session ${session.sessionNumber} • ${session.startTime}"
             )
-            views.setTextViewText(subtitleIds[i], session.weightClass)
+            views.setTextViewText(subtitleIds[i], session.detailLine())
             val rowIntent =
               deepLinkPendingIntent(context, session.url, appWidgetId * 100 + i + 1)
             if (rowIntent != null) {
@@ -211,18 +286,21 @@ class SavedWidgetProvider : AppWidgetProvider() {
           val platform = obj.optString("platform", "")
           val sessionNumber = obj.optInt("session_number", 0)
           val startTime = obj.optString("start_time", "")
+          val startAtRaw = obj.optDouble("start_at_ms", Double.NaN)
+          val startAtMs = if (startAtRaw.isNaN()) null else startAtRaw.toLong()
           val weightClass = obj.optString("weight_class", "")
           val date = obj.optString("date", "")
-          val eventTimezone = obj.optString("time_zone", ZoneId.systemDefault().id)
+          val dayLabel = obj.optString("day_label", "")
           val url = obj.optString("url", "")
           sessions.add(
             WidgetSession(
               platform = platform,
               sessionNumber = sessionNumber,
               startTime = startTime,
+              startAtMs = startAtMs,
               weightClass = weightClass,
               date = date,
-              eventTimezone = eventTimezone,
+              dayLabel = dayLabel,
               url = url
             )
           )
@@ -249,34 +327,23 @@ class SavedWidgetProvider : AppWidgetProvider() {
 private data class WidgetSession(
   val platform: String,
   val sessionNumber: Int,
+  /** Meet-local display time ("9:00 AM"), shown as the app shows it. */
   val startTime: String,
+  /** Start instant (epoch ms); null when the app could not resolve the meet's zone. */
+  val startAtMs: Long?,
   val weightClass: String,
   val date: String,
-  val eventTimezone: String = ZoneId.systemDefault().id,
+  val dayLabel: String = "",
   val url: String = ""
 ) {
-  fun formattedStartTime(): String {
-    return try {
-      val parsed = LocalTime.parse(startTime, DateTimeFormatter.ofPattern("HH:mm:ss"))
-      parsed.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.getDefault()))
-    } catch (_: Exception) {
-      startTime
-    }
+  /** A row without a start instant is kept rather than guessed at. */
+  fun hasStarted(now: Long): Boolean {
+    val start = startAtMs ?: return false
+    return start <= now
   }
 
-  fun isPast(): Boolean {
-    return try {
-      val zone = try {
-        ZoneId.of(eventTimezone)
-      } catch (_: Exception) {
-        ZoneId.systemDefault()
-      }
-      val parsedDate = LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE)
-      val parsedTime = LocalTime.parse(startTime, DateTimeFormatter.ofPattern("HH:mm:ss"))
-      val sessionZoned = ZonedDateTime.of(parsedDate, parsedTime, zone)
-      sessionZoned.isBefore(ZonedDateTime.now(zone))
-    } catch (_: Exception) {
-      false
-    }
+  /** "Sat, Jun 20 • 89kg": the meet-local day, then the weight classes. */
+  fun detailLine(): String {
+    return listOf(dayLabel, weightClass).filter { it.isNotBlank() }.joinToString(" • ")
   }
 }

@@ -120,7 +120,9 @@ export function useSavedSessions() {
     // meet or a session the user had already moved away from.
     let cancelled = false;
     getMeetConfig(selectedMeet)
-      .then(config => config?.time?.timeZoneIdentifier ?? 'UTC', () => 'UTC')
+      // No UTC fallback: an unknown zone omits the widget's start instants
+      // rather than hiding sessions hours early (see utils/savedWidget.ts).
+      .then(config => config?.time?.timeZoneIdentifier || undefined, () => undefined)
       .then(timeZone => {
         if (cancelled) return;
         syncSavedWidget(selectedMeet, savedSessions, timeZone);
