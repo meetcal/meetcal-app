@@ -41,6 +41,7 @@ import {
 import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
+import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import {
   confirmRevenueCatIdentity,
@@ -222,6 +223,10 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     isLoaded: isUserLoaded,
     user,
   } = useUser();
+
+  // The data widgets hold public reference data; keep them current without
+  // the Widget Settings screen being open.
+  useDataWidgetRefresh();
 
   // Keep the offline auth hint's seven-day window sliding for every verified
   // session, not only on screens that happen to mount `useAuthGuard`.

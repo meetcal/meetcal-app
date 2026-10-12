@@ -10,9 +10,11 @@ import {
   FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Share,
   Text,
   TextInput,
 } from "react-native";
+import { captureViewAsPng } from "@/lib/share-image";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import WeightliftingWrappedScreen from "@/app/comp-data/weightlifting-wrapped";
 import { searchApi } from "@/lib/api/meetcal-api";
@@ -330,6 +332,83 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     expect(tree.root.findAllByType(FlatList)).toHaveLength(1);
     // The title slide upper-cases the name.
     expect(texts()).toContain("JOHN SMITH");
+  });
+});
+
+describe("WeightliftingWrappedScreen search submit", () => {
+  it("ignores the return key while a search is already running", async () => {
+    let finish!: (response: SearchResponse) => void;
+    jest.mocked(searchApi).mockImplementation((_query: string, startDate?: string) =>
+      startDate
+        ? new Promise<SearchResponse>((resolve) => (finish = resolve))
+        : Promise.resolve(suggestionResponse([])),
+    );
+    act(() => {
+      input().props.onChangeText("John Smith");
+    });
+    await act(async () => {
+      void input().props.onSubmitEditing();
+      void input().props.onSubmitEditing();
+    });
+    await act(async () => {
+      void input().props.onSubmitEditing();
+    });
+
+    const rangedCalls = jest.mocked(searchApi).mock.calls.filter(([, startDate]) => startDate);
+    expect(rangedCalls).toHaveLength(1);
+
+    await act(async () => {
+      finish({ matchedName: null, suggestions: [], results: [] });
+    });
+    // Once it lands, the next submit goes through again (and stays pending).
+    await act(async () => {
+      void input().props.onSubmitEditing();
+    });
+    expect(
+      jest.mocked(searchApi).mock.calls.filter(([, startDate]) => startDate),
+    ).toHaveLength(2);
+  });
+});
+
+describe("WeightliftingWrappedScreen share", () => {
+  it("shows a toast when both the image share and the text fallback fail", async () => {
+    rangedSearchAnswers({
+      matchedName: "John Smith",
+      suggestions: [],
+      results: [liftRow("John Smith", "2025-03-01", 300)],
+    });
+    await submit("John Smith");
+    // The share button sits on the last slide.
+    act(() => {
+      tree.root.findByType(FlatList).props.onMomentumScrollEnd({
+        nativeEvent: { contentOffset: { x: 6 * 466, y: 0 } },
+      } as NativeSyntheticEvent<NativeScrollEvent>);
+    });
+    jest.mocked(captureViewAsPng).mockRejectedValueOnce(new Error("capture failed"));
+    const share = jest.spyOn(Share, "share").mockRejectedValueOnce(new Error("share failed"));
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    // `LinearGradient` is mocked to render nothing, so the label is only in
+    // the gradient's (unrendered) children.
+    const isShareLabel = (child: unknown) =>
+      React.isValidElement<{ children?: unknown }>(child) &&
+      child.props.children === "SHARE YOUR WRAPPED";
+    const [shareButton] = tree.root.findAll(
+      (n) =>
+        typeof n.props.onPress === "function" &&
+        n.findAll((c) => React.Children.toArray(c.props.children).some(isShareLabel)).length > 0,
+    );
+    expect(shareButton).toBeDefined();
+    await act(async () => {
+      await shareButton.props.onPress();
+    });
+
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error" }),
+    );
+    warn.mockRestore();
+    share.mockRestore();
   });
 });
 
