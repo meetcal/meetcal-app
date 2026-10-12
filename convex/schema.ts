@@ -211,6 +211,33 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_sessionId_and_userId', ['sessionId', 'userId']),
 
+  // Write ordering for saved sessions (`convex/users.ts`). The app's outbox
+  // numbers its writes per install (`device`, `rev`); a write that arrives
+  // after a newer one from the same install (a request delivered after the
+  // client timed out) is ignored. These remember, per install, the last
+  // write applied to a session (kept after a delete, so a late save is still
+  // recognized) and the last reset of a meet (`meet: null` for every meet).
+  // Kept for days, not forever: see `pruneWriteOrder`.
+  saved_session_revisions: defineTable({
+    userId: v.string(),
+    sessionId: v.string(),
+    device: v.string(),
+    rev: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId_and_sessionId_and_device', ['userId', 'sessionId', 'device'])
+    .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
+
+  saved_session_resets: defineTable({
+    userId: v.string(),
+    device: v.string(),
+    meet: v.union(v.string(), v.null()),
+    rev: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId_and_device_and_meet', ['userId', 'device', 'meet'])
+    .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
+
   session_schedule: defineTable(sessionScheduleFields).index('by_meet', ['meet']),
 
   standards: defineTable(standardsFields).index('by_age_gender', ['ageCategory', 'gender']),

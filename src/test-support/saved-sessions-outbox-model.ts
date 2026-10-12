@@ -37,6 +37,11 @@ import {
  * server has it, and storage that lies (a lost write, a corrupted read, which
  * the module documents as reading empty) leaves the affected sessions
  * unconstrained. Every other session must match the model.
+ *
+ * A write can land on the server after the client gave up on it (timed out,
+ * or lost the connection), even after later writes. The fake server orders
+ * writes as `convex/users.ts` does, so such a late write must never undo a
+ * later one.
  */
 
 export type OutboxModule = typeof import('@/lib/saved-sessions-outbox');
@@ -50,6 +55,8 @@ const RESET_ALL_KEY = '*';
 
 /** How long a request that outlives the client's timeout takes to land (the `late` answer). */
 export const LATE_LANDING_MS = 15_000;
+/** The latest a `late` answer lands; the client's timeout is 10s. */
+const MAX_LATE_LANDING_MS = 60_000;
 /** Healthy flushes the final convergence may take; one is enough when nothing fails. */
 const MAX_CONVERGENCE_FLUSHES = 3;
 const SETTLE_STEP_MS = 1_000;
@@ -118,9 +125,33 @@ export function wireOf(outbox: OutboxModule, session: SavedSession): Wire {
 
 type Row = Record<string, unknown>;
 
-/** `users:*` saved-session mutations over an in-memory table per account. */
+/**
+ * `users:*` saved-session mutations over an in-memory table per account,
+ * ordered per install as `convex/users.ts` orders them: a write carrying
+ * `{ device, rev }` is ignored (and answered as a success) when the same
+ * install already applied a write to the session with a rev at least as
+ * high, or reset its meet (or every meet) with a higher rev; a reset leaves
+ * the sessions the same install saved after it. Another install's write, or
+ * one without a revision, applies as it arrives. Implemented here from those
+ * rules, not by calling the Convex code.
+ */
 export class FakeServer {
   readonly accounts = new Map<string, Map<string, Row>>();
+  /** User, session, install → the last rev applied (kept after a delete). */
+  private readonly revisions = new Map<string, number>();
+  /** User, install, meet (or `*`) → the last reset's rev. */
+  private readonly resets = new Map<string, number>();
+
+  private static key(...parts: string[]): string {
+    return JSON.stringify(parts);
+  }
+
+  private superseded(user: string, id: string, meets: unknown[], device: string, rev: number): boolean {
+    if ((this.revisions.get(FakeServer.key(user, id, device)) ?? 0) >= rev) return true;
+    return [...meets.map(String), RESET_ALL_KEY].some(
+      (meet) => (this.resets.get(FakeServer.key(user, device, meet)) ?? 0) > rev,
+    );
+  }
 
   rowsOf(user: string): Map<string, Row> {
     let rows = this.accounts.get(user);
@@ -137,23 +168,43 @@ export class FakeServer {
       throw new TransportRequestError(`${call.fn} unauthorized`, 401, JSON.stringify({ status: 401, error: 'unauthorized' }));
     }
     const rows = this.rowsOf(user);
-    const { sessionId, ...rest } = call.args;
+    const { sessionId, device, rev, ...rest } = call.args;
+    const ordered = typeof device === 'string' && typeof rev === 'number' ? { device, rev } : null;
+    const id = String(sessionId);
+    const remember = () => {
+      if (ordered) this.revisions.set(FakeServer.key(user, id, ordered.device), ordered.rev);
+    };
     switch (call.fn) {
       case 'users:putSavedSession': {
+        if (ordered && this.superseded(user, id, [rest.meet], ordered.device, ordered.rev)) {
+          return { session_id: sessionId, updated_at: Date.now(), superseded: true };
+        }
         const row: Row = {};
         for (const [key, value] of Object.entries(rest)) if (value !== undefined) row[key] = value;
-        rows.set(String(sessionId), row);
+        rows.set(id, row);
+        remember();
         return { session_id: sessionId, updated_at: Date.now() };
       }
-      case 'users:deleteSavedSession':
-        return { deleted: rows.delete(String(sessionId)) };
+      case 'users:deleteSavedSession': {
+        const meets = rows.has(id) ? [rows.get(id)?.meet] : [];
+        if (ordered && this.superseded(user, id, meets, ordered.device, ordered.rev)) {
+          return { deleted: false, superseded: true };
+        }
+        const deleted = rows.delete(id);
+        remember();
+        return { deleted };
+      }
       case 'users:deleteSavedSessions': {
         let deleted = 0;
-        for (const [id, row] of rows) {
-          if (call.args.meet === undefined || row.meet === call.args.meet) {
-            rows.delete(id);
-            deleted += 1;
-          }
+        for (const [rowId, row] of rows) {
+          if (call.args.meet !== undefined && row.meet !== call.args.meet) continue;
+          if (ordered && (this.revisions.get(FakeServer.key(user, rowId, ordered.device)) ?? 0) > ordered.rev) continue;
+          rows.delete(rowId);
+          deleted += 1;
+        }
+        if (ordered) {
+          const key = FakeServer.key(user, ordered.device, typeof call.args.meet === 'string' ? call.args.meet : RESET_ALL_KEY);
+          this.resets.set(key, Math.max(this.resets.get(key) ?? 0, ordered.rev));
         }
         return { deleted_count: deleted };
       }
@@ -185,16 +236,21 @@ export class FakeServer {
 }
 
 /**
- * What happens after the server has applied a write: the answer arrives, or
- * it is lost (dropped connection, a body that is not the answer, a proxy's
- * 502, no answer until the client's timeout), so the write landed but the
- * client cannot know. `late` is the one fault the property leaves out: the
- * request lands only after the client has timed out (see the FINDING test).
+ * What happens to a write that reached the transport: the server applies it
+ * and the answer arrives, or the answer is lost (dropped connection, a body
+ * that is not the answer, a proxy's 502, no answer until the client's
+ * timeout), so the write landed but the client cannot know; or it is `late`:
+ * the request lands only `delayMs` later, after the client timed out (or, in
+ * a burst, lost the connection), possibly after later writes.
  */
 export type AnswerFault =
   | { kind: 'answer' }
   | { kind: 'lost'; how: 'network' | 'garbage' | 'bad-gateway' | 'timeout' }
-  | { kind: 'late' };
+  | { kind: 'late'; delayMs: number };
+
+const lateArb: fc.Arbitrary<AnswerFault> = fc
+  .integer({ min: 10_001, max: MAX_LATE_LANDING_MS })
+  .map((delayMs): AnswerFault => ({ kind: 'late', delayMs }));
 
 export const answerFaultArb: fc.Arbitrary<AnswerFault> = fc.oneof(
   { weight: 4, arbitrary: fc.constant<AnswerFault>({ kind: 'answer' }) },
@@ -204,15 +260,20 @@ export const answerFaultArb: fc.Arbitrary<AnswerFault> = fc.oneof(
       .constantFrom('network', 'garbage', 'bad-gateway', 'timeout')
       .map((how): AnswerFault => ({ kind: 'lost', how })),
   },
+  { weight: 1, arbitrary: lateArb },
 );
 
-/** For the scheduled burst, which runs without advancing timers: no `timeout`. */
+/**
+ * For the scheduled burst, which runs without advancing timers: no `timeout`,
+ * and a `late` write lands when the scheduler says, not after a delay.
+ */
 const settlingAnswerFaultArb: fc.Arbitrary<AnswerFault> = fc.oneof(
   { weight: 4, arbitrary: fc.constant<AnswerFault>({ kind: 'answer' }) },
   {
     weight: 2,
     arbitrary: fc.constantFrom('network', 'garbage', 'bad-gateway').map((how): AnswerFault => ({ kind: 'lost', how })),
   },
+  { weight: 1, arbitrary: lateArb },
 );
 
 function abortError(): Error {
@@ -228,24 +289,48 @@ function untilAborted(signal: AbortSignal | undefined): Promise<never> {
   });
 }
 
+/** A write still on its way to the server after the client gave up on it. */
+interface Landing {
+  call: ApiCall;
+  /**
+   * Sent under an install id the outbox has since lost (storage read back
+   * corrupt, so the next write started a new id and counter): the server
+   * cannot order it against the new id's writes.
+   */
+  orphaned: boolean;
+}
+
 export interface Harness {
   server: FakeServer;
   /** The outbox module of the current app process. */
   outbox: OutboxModule;
   online: boolean;
+  /** Late writes not yet landed. */
+  inFlight: Set<Landing>;
+  /** Late writes that landed and that the model has not accounted for yet. */
+  landed: (Landing & { applied: boolean })[];
+}
+
+/** Applies a late write now, and records it for `processLandings`. */
+function land(h: Harness, landing: Landing): void {
+  if (!h.inFlight.delete(landing)) return;
+  const result = h.server.apply(landing.call) as { superseded?: unknown };
+  h.landed.push({ ...landing, applied: result.superseded !== true });
 }
 
 /**
  * The server as the transport sees it: offline fails every call before it
  * leaves the device; otherwise the write is applied, then `answers` decide
  * whether its answer gets back. `gate` holds a call until a scheduler lets it
- * reach the server.
+ * reach the server. A `late` write lands after its delay, or, given `defer`,
+ * when `defer` runs it (the client sees a dropped connection at once).
  */
 export function serverTransport(
   h: Harness,
   answers: readonly AnswerFault[],
   gate?: (call: ApiCall) => Promise<unknown>,
   answered: AnswerFault[] = [],
+  defer?: (landing: () => void) => void,
 ): Transport {
   let next = 0;
   return async (call) => {
@@ -256,7 +341,13 @@ export function serverTransport(
     answered.push(answer);
     if (answer.kind === 'late') {
       // Already on the wire: the client's abort cannot recall it.
-      setTimeout(() => h.server.apply(call), LATE_LANDING_MS);
+      const landing: Landing = { call, orphaned: false };
+      h.inFlight.add(landing);
+      if (defer) {
+        defer(() => land(h, landing));
+        throw new TypeError('Network request failed');
+      }
+      setTimeout(() => land(h, landing), answer.delayMs);
       return untilAborted(call.signal);
     }
     const result = h.server.apply(call);
@@ -339,10 +430,15 @@ export interface Model {
   lastReset: Map<string, string>;
   /** Highest `nextRev` seen; revisions only move forward. 0 after corruption. */
   revFloor: number;
+  /**
+   * Install id → highest `nextRev` seen under it. Never moves back, even
+   * across corruption: the server ignores a rev it has seen from that id.
+   */
+  deviceRevFloor: Map<string, number>;
 }
 
 export function emptyModel(): Model {
-  return { intended: new Map(), excused: new Map(), lastReset: new Map(), revFloor: 0 };
+  return { intended: new Map(), excused: new Map(), lastReset: new Map(), revFloor: 0, deviceRevFloor: new Map() };
 }
 
 export type Intent =
@@ -388,6 +484,29 @@ function excuse(m: Model, id: string, reason: Excuse): void {
   m.excused.set(id, reason);
 }
 
+function idsWrittenBy(call: ApiCall): string[] {
+  if (call.fn !== 'users:deleteSavedSessions') return [String(call.args.sessionId)];
+  return SESSION_IDS.filter((id) => call.args.meet === undefined || meetOf(id) === call.args.meet);
+}
+
+/**
+ * Accounts for the late writes that landed since the last call. One sent
+ * under an install id the outbox lost to corruption is unordered against the
+ * new id's writes, so it leaves its sessions unconstrained. One that applied
+ * moves the server row a refused write's excuse allows: the refused write
+ * never landed, so whatever earlier write lands last is the server's word.
+ */
+export function processLandings(m: Model, h: Harness): void {
+  if (h.landed.length === 0) return;
+  const rows = h.server.wires(OWNER);
+  for (const landing of h.landed.splice(0)) {
+    for (const id of idsWrittenBy(landing.call)) {
+      if (landing.orphaned) excuse(m, id, { kind: 'any' });
+      else if (landing.applied && m.excused.get(id)?.kind === 'server') m.excused.set(id, { kind: 'server', wire: rows.get(id) });
+    }
+  }
+}
+
 /** A status the outbox treats as final for this call: it drops the entry. */
 function isFinalStatus(status: number): boolean {
   return status >= 400 && status < 500 && status !== 401 && status !== 429;
@@ -414,6 +533,7 @@ export function processRefusals(m: Model, h: Harness, calls: ChaosTransport['cal
       excuse(m, id, { kind: 'server', wire: rows.get(id) });
     }
   }
+  processLandings(m, h);
 }
 
 // ---------------------------------------------------------------------------
@@ -454,10 +574,17 @@ export function expectWellFormed(outbox: OutboxState, m: Model): void {
   const fail = (why: string) => {
     throw new Error(`malformed outbox (${why}): ${JSON.stringify(outbox)}`);
   };
-  const { nextRev } = outbox;
+  const { nextRev, device } = outbox;
   if (!Number.isInteger(nextRev) || nextRev < 1) fail('nextRev');
   if (nextRev < m.revFloor) fail(`nextRev went back from ${m.revFloor}`);
   m.revFloor = nextRev;
+  if (device !== undefined) {
+    if (typeof device !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(device)) fail('device');
+    // A rev the server has seen under this id must never be handed out again.
+    const floor = m.deviceRevFloor.get(device) ?? 0;
+    if (nextRev < floor) fail(`nextRev went back from ${floor} under the same install id`);
+    m.deviceRevFloor.set(device, nextRev);
+  }
   const revs = new Set<number>();
   const checkRev = (rev: number) => {
     if (!Number.isInteger(rev) || rev < 1 || rev >= nextRev) fail(`rev ${rev} outside [1, ${nextRev})`);
@@ -488,6 +615,7 @@ export function expectWellFormed(outbox: OutboxState, m: Model): void {
  * pending write vanished; and no other account was written to.
  */
 export async function checkInvariants(m: Model, h: Harness): Promise<void> {
+  processLandings(m, h);
   const outbox = await h.outbox.readOutbox(OWNER);
   expectWellFormed(outbox, m);
   const merged = h.outbox.mergeServerSessions(h.server.sessions(OWNER), outbox);
@@ -642,8 +770,11 @@ export class StorageFaultCommand implements Command {
     }
     if (consumed.has('corrupt-read')) {
       // Documented: a stored value that parses badly reads as empty, and the
-      // next write replaces it, queue and revision counter included.
+      // next write replaces it, queue, revision counter and install id
+      // included. A late write sent under the old id is unordered against
+      // the new id's writes.
       for (const id of SESSION_IDS) excuse(m, id, { kind: 'any' });
+      for (const landing of h.inFlight) landing.orphaned = true;
       m.revFloor = 0;
     }
     await checkInvariants(m, h);
@@ -681,7 +812,9 @@ export class RestartCommand implements Command {
       }
     }
     // The old process's timers die with it; its stuck flush never resumes.
+    // Its late writes are already on the network and still land.
     jest.clearAllTimers();
+    for (const landing of h.inFlight) setTimeout(() => land(h, landing), LATE_LANDING_MS);
     h.outbox = loadOutbox();
     await checkInvariants(m, h);
   }
@@ -738,12 +871,16 @@ export class BurstCommand implements Command {
     const cursor = { seen: 0 };
     const target = (call: ApiCall) => String(call.args.sessionId ?? call.args.meet ?? 'all');
     const answered: AnswerFault[] = [];
+    const landings: Promise<void>[] = [];
     const chaos = installChaosTransport(
       serverTransport(
         h,
         h.online ? this.answers : [],
         (call) => s.schedule(Promise.resolve(), `server ${call.fn} ${target(call)}`),
         answered,
+        (landing) => {
+          landings.push(s.schedule(Promise.resolve(), 'late landing').then(landing));
+        },
       ),
       h.online ? this.faults : [],
     );
@@ -792,6 +929,8 @@ export class BurstCommand implements Command {
     try {
       const tasks = this.ops.map((op) => s.schedule(Promise.resolve(), `user ${describeOp(op)}`).then(() => runOp(op)));
       await s.waitFor(Promise.all(tasks));
+      // Late writes still on the wire land before the burst ends.
+      await s.waitFor(Promise.all(landings));
       processRefusals(m, h, chaos.calls, cursor);
     } finally {
       storage.restore();
@@ -913,7 +1052,7 @@ export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () =>
   jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
   await AsyncStorage.clear();
   api.resetServerClockForTests();
-  const h: Harness = { server: new FakeServer(), outbox: loadOutbox(), online: true };
+  const h: Harness = { server: new FakeServer(), outbox: loadOutbox(), online: true, inFlight: new Set(), landed: [] };
   setOnline(h, true);
   return {
     m: emptyModel(),
@@ -929,8 +1068,9 @@ export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () =>
 
 /**
  * With a healthy network, a valid token and honest storage, the outbox
- * empties within a few flushes, and the server then holds exactly what the
- * user meant: no lost saves, no unsave undone by a stale save, no stray rows.
+ * empties within a few flushes, and once every late write has landed the
+ * server holds exactly what the user meant: no lost saves, no unsave undone
+ * by a stale save, no stray rows.
  */
 export async function converge(m: Model, h: Harness): Promise<void> {
   setOnline(h, true);
@@ -941,10 +1081,11 @@ export async function converge(m: Model, h: Harness): Promise<void> {
       if (result.remaining === 0) break;
     }
     // Anything still on the wire lands now.
-    await jest.advanceTimersByTimeAsync(LATE_LANDING_MS * 2);
+    await jest.advanceTimersByTimeAsync(MAX_LATE_LANDING_MS + SETTLE_STEP_MS);
   } finally {
     chaos.restore();
   }
+  processLandings(m, h);
   const outbox = await h.outbox.readOutbox(OWNER);
   if (h.outbox.countPendingWrites(outbox) !== 0) {
     throw new Error(`outbox not empty after ${MAX_CONVERGENCE_FLUSHES} healthy flushes: ${JSON.stringify(outbox)}`);

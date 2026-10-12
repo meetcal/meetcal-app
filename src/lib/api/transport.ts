@@ -43,9 +43,10 @@ export type ApiCall = {
   /** Clerk session token for `/users/me/*`. */
   token?: string;
   /**
-   * Aborts the request (the caller's timeout). A timed-out write must not
-   * stay in flight: it could reach the server after a newer write to the same
-   * row and undo it.
+   * Aborts the request (the caller's timeout). Aborting cannot recall bytes
+   * already sent, so a timed-out write may still reach the server, after a
+   * newer write to the same row. Saved-session writes carry their outbox
+   * revision so the server ignores such a late one (`convex/users.ts`).
    */
   signal?: AbortSignal;
 };

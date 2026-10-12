@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 import type { SavedSession } from "@/hooks/useSavedSessions";
 import {
   deleteSavedSession,
@@ -20,6 +21,7 @@ import {
   markSessionPut,
   MAX_SAVED_SESSION_ATHLETE_NAMES,
   mergeServerSessions,
+  newDeviceId,
   readOutbox,
   RESET_ALL_MEETS,
   tokenBelongsTo,
@@ -187,6 +189,111 @@ describe("outbox bookkeeping", () => {
   ])("treats malformed storage %s as empty", async (raw) => {
     await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), raw);
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
+});
+
+describe("install id for the server's write ordering", () => {
+  const DEVICE = /^[A-Za-z0-9_-]{8,64}$/;
+
+  it("uses the platform's secure UUID when it has one", () => {
+    jest.spyOn(Crypto, "randomUUID").mockReturnValue("5b1f3c1e-8f0a-4c55-9d43-2b6f8f6e9a10");
+    expect(newDeviceId()).toBe("5b1f3c1e-8f0a-4c55-9d43-2b6f8f6e9a10");
+  });
+
+  it.each([undefined, "", "not a uuid!", () => { throw new Error("no native module"); }])(
+    "falls back to Math.random when the UUID is %p",
+    (answer) => {
+      const spy = jest.spyOn(Crypto, "randomUUID");
+      if (typeof answer === "function") spy.mockImplementation(answer);
+      else spy.mockReturnValue(answer as never);
+      expect(newDeviceId()).toMatch(/^[0-9a-f]{32}$/);
+    },
+  );
+
+  it("makes a random id of the allowed shape", () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newDeviceId()));
+    expect(ids.size).toBe(50);
+    for (const id of ids) expect(id).toMatch(DEVICE);
+  });
+
+  it("is stored by the first write and kept through later writes and clears", async () => {
+    expect((await readOutbox(USER)).device).toBeUndefined();
+    const rev = await markSessionPut(USER, session("a"));
+    const { device } = await readOutbox(USER);
+    expect(device).toMatch(DEVICE);
+
+    await clearSessionPending(USER, "a", rev);
+    await markResetPending(USER, null);
+    expect((await readOutbox(USER)).device).toBe(device);
+    // Another user's outbox has its own.
+    await markSessionPut("user_2", session("b"));
+    expect((await readOutbox("user_2")).device).not.toBe(device);
+  });
+
+  it("sends every write with the id and the entry's own rev", async () => {
+    const put = await markSessionPut(USER, session("put-me"));
+    const reset = await markResetPending(USER, OTHER);
+    const del = await markSessionDelete(USER, "delete-me", "Test Meet");
+    const { device } = await readOutbox(USER);
+
+    await flushOutbox(USER, getToken);
+
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "put-me", expect.anything(), { device, rev: put });
+    expect(mockDeleteAll).toHaveBeenCalledWith(TOKEN, OTHER, { device, rev: reset });
+    expect(mockDelete).toHaveBeenCalledWith(TOKEN, "delete-me", { device, rev: del });
+  });
+
+  it("starts a new id with the counter when the stored outbox reads as empty", async () => {
+    await markSessionPut(USER, session("a"));
+    const before = await readOutbox(USER);
+    await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), "{corrupt");
+
+    const rev = await markSessionPut(USER, session("b"));
+
+    const after = await readOutbox(USER);
+    expect(rev).toBe(1);
+    expect(after.device).toMatch(DEVICE);
+    expect(after.device).not.toBe(before.device);
+  });
+
+  it("stores an id before sending an outbox an older build wrote", async () => {
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({ sessions: { a: { op: "delete", rev: 4, meet: "Test Meet" } }, resets: {}, nextRev: 5 }),
+    );
+
+    await flushOutbox(USER, getToken);
+
+    const { device } = await readOutbox(USER);
+    expect(device).toMatch(DEVICE);
+    expect(mockDelete).toHaveBeenCalledWith(TOKEN, "a", { device, rev: 4 });
+  });
+
+  it("holds the queue when storage will not keep the id", async () => {
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({ sessions: { a: { op: "delete", rev: 4, meet: "Test Meet" } }, resets: {}, nextRev: 5 }),
+    );
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    setItem.mockImplementationOnce(async () => undefined);
+
+    const result = await flushOutbox(USER, getToken);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(result.remaining).toBe(1);
+  });
+
+  it("ignores a stored id of the wrong shape, and sends a rev the server cannot take unordered", async () => {
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({ sessions: { a: { op: "delete", rev: 0, meet: "Test Meet" } }, resets: {}, nextRev: 1, device: "has spaces!" }),
+    );
+    expect((await readOutbox(USER)).device).toBeUndefined();
+
+    await flushOutbox(USER, getToken);
+
+    expect((await readOutbox(USER)).device).toMatch(DEVICE);
+    expect(mockDelete).toHaveBeenCalledWith(TOKEN, "a", undefined);
   });
 });
 
@@ -388,7 +495,7 @@ describe("flushOutbox", () => {
       mockDelete.mock.invocationCallOrder[0],
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(mockDeleteAll).toHaveBeenCalledWith(TOKEN, OTHER);
+    expect(mockDeleteAll).toHaveBeenCalledWith(TOKEN, OTHER, expect.anything());
   });
 
   it("holds later writes for a meet whose reset failed, so the reset cannot delete them", async () => {
@@ -401,7 +508,7 @@ describe("flushOutbox", () => {
 
     // The other meet is independent and goes through; the held PUT waits.
     expect(mockPut).toHaveBeenCalledTimes(1);
-    expect(mockPut).toHaveBeenCalledWith(TOKEN, "other-meet", expect.anything());
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "other-meet", expect.anything(), expect.anything());
     expect(result.remaining).toBe(2);
 
     // Next flush: reset first, then the PUT, which therefore survives.
@@ -458,7 +565,7 @@ describe("flushOutbox", () => {
     const result = await flushOutbox(USER, getToken);
 
     // The refused reset is dropped, so nothing holds the save any more.
-    expect(mockPut).toHaveBeenCalledWith(TOKEN, "saved-after", expect.anything());
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "saved-after", expect.anything(), expect.anything());
     expect(result.remaining).toBe(0);
   });
 
@@ -503,7 +610,7 @@ describe("flushOutbox", () => {
     await Promise.all([flushing, joined]);
 
     expect(mockDelete).not.toHaveBeenCalled();
-    expect(mockPut).toHaveBeenCalledWith(TOKEN, "resaved", expect.anything());
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "resaved", expect.anything(), expect.anything());
   });
 
   it("keeps an entry the network could not deliver and stops", async () => {

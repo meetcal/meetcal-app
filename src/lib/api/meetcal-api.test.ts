@@ -1434,6 +1434,57 @@ describe('meetcal API client error and auth boundaries', () => {
       expect(lastCall().args.meet).toBeUndefined();
     });
 
+    it('sends a write revision with every saved-session write, and none when not given', async () => {
+      const revision = { device: '5b1f3c1e-8f0a-4c55-9d43-2b6f8f6e9a10', rev: 42 };
+      let installed = installTransport(answer({ session_id: 's1', updated_at: 1 }));
+      await putSavedSession('clerk-token', 's1', body, revision);
+      expect(installed.lastCall().args).toEqual({ sessionId: 's1', ...body, ...revision });
+
+      installed = installTransport(answer({ deleted: true }));
+      await deleteSavedSession('clerk-token', 's1', revision);
+      expect(installed.lastCall().args).toEqual({ sessionId: 's1', ...revision });
+
+      installed = installTransport(answer({ deleted_count: 1 }));
+      await deleteSavedSessions('clerk-token', 'Meet', revision);
+      expect(installed.lastCall().args).toEqual({ meet: 'Meet', ...revision });
+      await deleteSavedSessions('clerk-token', undefined, revision);
+      expect(installed.lastCall().args).toEqual(revision);
+
+      // An older caller (or a damaged rev) sends none: the server applies it unordered.
+      await deleteSavedSessions('clerk-token', 'Meet');
+      expect(installed.lastCall().args).toEqual({ meet: 'Meet' });
+    });
+
+    it('reads a superseded write (one the server ignored as older) as success', async () => {
+      // The server answers a write it ignored as stale with its usual shape
+      // plus `superseded`, so the outbox clears it like any delivered write.
+      installTransport(answer({ session_id: 's1', updated_at: 1, superseded: true }));
+      await expect(putSavedSession('clerk-token', 's1', body, { device: 'device-1', rev: 1 })).resolves.toEqual({
+        session_id: 's1',
+        updated_at: 1,
+      });
+      installTransport(answer({ deleted: false, superseded: true }));
+      await expect(deleteSavedSession('clerk-token', 's1', { device: 'device-1', rev: 1 })).resolves.toEqual({
+        deleted: false,
+      });
+    });
+
+    it.each([
+      ['a blank device', { device: ' ', rev: 1 }],
+      ['a device over 64 characters', { device: 'x'.repeat(65), rev: 1 }],
+      ['a device that is not text', { device: 7 as unknown as string, rev: 1 }],
+      ['a rev of 0', { device: 'device-1', rev: 0 }],
+      ['a fractional rev', { device: 'device-1', rev: 1.5 }],
+      ['an unsafe rev', { device: 'device-1', rev: Number.MAX_SAFE_INTEGER + 1 }],
+      ['a rev that is not a number', { device: 'device-1', rev: '1' as unknown as number }],
+    ])('refuses to send %s as a write revision', async (_, revision) => {
+      const { transport } = installTransport(answer({}));
+      await expect(putSavedSession('clerk-token', 's1', body, revision)).rejects.toThrow('putSavedSession requires');
+      await expect(deleteSavedSession('clerk-token', 's1', revision)).rejects.toThrow('deleteSavedSession requires');
+      await expect(deleteSavedSessions('clerk-token', 'Meet', revision)).rejects.toThrow('deleteSavedSessions requires');
+      expect(transport).not.toHaveBeenCalled();
+    });
+
     it('does not read a malformed delete acknowledgement as success', async () => {
       // The outbox clears a pending delete once this resolves. An answer that
       // is not the backend's shape (an older envelope, a function that
