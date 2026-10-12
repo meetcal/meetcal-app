@@ -8,7 +8,7 @@ import {
   computeMeetResults,
   computeRoster,
   computeScheduleRows,
-  computeStatsRows,
+  computeStats,
   computeTimelines,
   meetByName,
   packageAthlete,
@@ -16,6 +16,7 @@ import {
   plainRoster,
   previousBests,
   statsPreviousBestKeys,
+  statsViewItems,
   toApiMeet,
   type PreviousBest,
   type TimelinesView,
@@ -41,8 +42,11 @@ import { compareBytes, compareCollated } from './lib/sort';
 import {
   adaptiveKey,
   ADAPTIVE_VIEW_ARGS,
+  athleteChangeAffects,
+  earliestSince,
+  INTERNAL_VIEW_PREFIXES,
+  MEET_INDEX_VIEW,
   MEET_PART_SOURCES,
-  MEET_VIEW_PARTS,
   meetKey,
   meetSessionKey,
   meetSessionPrefix,
@@ -53,16 +57,19 @@ import {
   SEARCH_SHARD_SIZES_VIEW,
   searchShardKey,
   VIEW_SOURCES,
+  viewDependencies,
   wsoKey,
 } from './lib/viewKeys';
 import {
+  deleteHeaderAndChunks,
+  deleteView,
   deleteViewsWithPrefix,
   jsonChunks,
   readViewJsonAnyAge,
   readViewTextAnyAge,
   snapshotVersions,
-  SOURCE_TABLES,
   textChunks,
+  viewHeader,
   writeView,
   type SourceTable,
   type SourceVersion,
@@ -190,7 +197,7 @@ export const buildMeet = internalMutation({
       await deleteViewsWithPrefix(ctx, meetKey(meet, 'package_static'));
     }
     // Per-session start lists: cleared first, so a session that no longer
-    // exists leaves no view behind to be restamped.
+    // exists leaves no view behind to be served.
     await deleteViewsWithPrefix(ctx, meetSessionPrefix(meet));
     const bySession = new Map<number, ReturnType<typeof athletesWithSessions>>();
     for (const row of athletesWithSessions(roster)) {
@@ -234,8 +241,11 @@ export const buildMeetTimelines = internalMutation({
 });
 
 /**
- * Every result's club-stats row, and each club's distinct athlete count: one
- * item, `{ rows, club_counts }`, so one meet serves every club's summary.
+ * Every result's club-stats row, and each club's distinct athlete count
+ * (`statsViewItems`: the counts, then one item per row, so a national meet's
+ * rows can span chunks), so one meet serves every club's summary. Its `meta`
+ * is the latest finisher date, which tells a refresh which result changes
+ * cannot reach it.
  *
  * Built by `buildStats`: each finisher's previous best reads their earlier
  * results, which for a national meet is more documents than one transaction
@@ -252,12 +262,12 @@ export const buildMeetStats = internalMutation({
   },
   handler: async (ctx, { meet, sources, known }) => {
     const stamp = sources ?? (await snapshotVersions(ctx, VIEW_SOURCES.meetStats));
-    const rows = await computeStatsRows(ctx, meet, undefined, known ?? []);
+    const { rows, latest } = await computeStats(ctx, meet, undefined, known ?? []);
     const roster = await ctx.db
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
-    await writeView(ctx, meetKey(meet, 'stats'), jsonChunks([{ rows, club_counts: clubAthleteCounts(roster) }]), stamp);
+    await writeView(ctx, meetKey(meet, 'stats'), jsonChunks(statsViewItems(rows, clubAthleteCounts(roster))), stamp, { meta: latest });
     return rows.length;
   },
 });
@@ -352,19 +362,31 @@ export const buildClubs = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx): Promise<null> => {
-    const clubs: string[] = [];
-    let sources: SourceVersion[] | null = null;
-    let after: string | null = null;
-    do {
-      const page: { clubs: string[]; after: string | null; sources: SourceVersion[] } =
-        await ctx.runQuery(internal.views.clubsPage, { after });
-      sources ??= page.sources;
-      clubs.push(...page.clubs);
-      after = page.after;
-    } while (after !== null);
+    const { clubs, sources } = await readClubs(ctx);
     await ctx.runMutation(internal.views.storeClubs, { clubs, sources });
     return null;
   },
+});
+
+async function readClubs(ctx: ActionCtx): Promise<{ clubs: string[]; sources: SourceVersion[] }> {
+  const clubs: string[] = [];
+  let sources: SourceVersion[] | null = null;
+  let after: string | null = null;
+  do {
+    const page: { clubs: string[]; after: string | null; sources: SourceVersion[] } =
+      await ctx.runQuery(internal.views.clubsPage, { after });
+    sources ??= page.sources;
+    clubs.push(...page.clubs);
+    after = page.after;
+  } while (after !== null);
+  return { clubs, sources };
+}
+
+/** `GET /clubs` computed live, paged like the builder, for parity. JSON text: the list is unbounded. */
+export const computeClubs = internalAction({
+  args: {},
+  returns: v.string(),
+  handler: async (ctx): Promise<string> => JSON.stringify(distinctCollated((await readClubs(ctx)).clubs)),
 });
 
 export const buildWso = internalMutation({
@@ -375,6 +397,11 @@ export const buildWso = internalMutation({
     await writeView(ctx, REF_VIEWS.wso_list, jsonChunks(wsos), sources);
     for (const wso of wsos) {
       await writeView(ctx, wsoKey(wso), jsonChunks(await computeWsoRows(ctx, wso)), sources);
+    }
+    // A WSO gone from the table leaves no view to be served as fresh.
+    const current = new Set(wsos.map(wsoKey));
+    for (const key of await keysWithPrefix(ctx, 'wso|')) {
+      if (!current.has(key)) await deleteView(ctx, key);
     }
     return wsos.length;
   },
@@ -626,32 +653,114 @@ export const scanResultsPage = internalQuery({
   },
 });
 
-export const meetNames = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const names = new Set((await ctx.db.query('meets').collect()).map((m) => m.name));
-    // Rosters can arrive before their meet row; their start lists still
-    // resolve. One read per roster's meet (a skip along the index), not one
-    // per roster row: rosters are never deleted.
-    let last: string | null = null;
-    for (;;) {
-      const after: string | null = last;
+// The meet index (`MEET_INDEX_VIEW`): every meet that has views, kept so a
+// refresh never rediscovers it from the tables.
+
+/** Distinct roster meets per `rosterMeetsPage` query, one index seek each. */
+const ROSTER_MEETS_PER_PAGE = 500;
+
+/**
+ * The next roster meets after `after`: one read per meet (a skip along the
+ * index), not one per roster row, since rosters are never deleted.
+ */
+export const rosterMeetsPage = internalQuery({
+  args: { after: v.union(v.string(), v.null()) },
+  handler: async (ctx, { after }): Promise<{ meets: string[]; after: string | null }> => {
+    const meets: string[] = [];
+    let last = after;
+    for (let i = 0; i < ROSTER_MEETS_PER_PAGE; i += 1) {
+      const lower = last;
       const athlete = await ctx.db
         .query('athletes')
-        .withIndex('by_meet', (q) => (after === null ? q : q.gt('meet', after)))
+        .withIndex('by_meet', (q) => (lower === null ? q : q.gt('meet', lower)))
         .first();
-      if (!athlete) break;
-      names.add(athlete.meet);
+      if (!athlete) return { meets, after: null };
+      meets.push(athlete.meet);
       last = athlete.meet;
     }
-    return [...names];
+    return { meets, after: last };
+  },
+});
+
+/** Every meet row's name, as JSON text (the list may pass Convex's array limit). */
+export const meetRowNames = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<string> => JSON.stringify((await ctx.db.query('meets').collect()).map((m) => m.name)),
+});
+
+/**
+ * Every meet with a meet row or a roster, sorted, read from the tables.
+ * Rosters can arrive before their meet row; their start lists still resolve.
+ */
+async function discoverMeets(ctx: ActionCtx): Promise<string[]> {
+  const names = new Set(JSON.parse(await ctx.runQuery(internal.views.meetRowNames, {})) as string[]);
+  let after: string | null = null;
+  do {
+    const page: { meets: string[]; after: string | null } = await ctx.runQuery(internal.views.rosterMeetsPage, { after });
+    for (const meet of page.meets) names.add(meet);
+    after = page.after;
+  } while (after !== null);
+  return [...names].sort(compareBytes);
+}
+
+export const storeMeetIndex = internalMutation({
+  args: { chunks: v.array(v.string()) },
+  handler: async (ctx, { chunks }) => {
+    await writeView(ctx, MEET_INDEX_VIEW, chunks, []);
+  },
+});
+
+/** Adds and removes meets in the index; never creates it (a partial index would hide meets). */
+export const patchMeetIndex = internalMutation({
+  args: { add: v.array(v.string()), remove: v.array(v.string()) },
+  handler: async (ctx, { add, remove }) => {
+    const text = await readViewJsonAnyAge(ctx, MEET_INDEX_VIEW);
+    if (text === null) return;
+    const meets = new Set(JSON.parse(text) as string[]);
+    for (const meet of add) meets.add(meet);
+    for (const meet of remove) meets.delete(meet);
+    await writeView(ctx, MEET_INDEX_VIEW, jsonChunks([...meets].sort(compareBytes)), []);
+  },
+});
+
+/** The meet index, built from the tables the first time it is needed. */
+async function loadMeetIndex(ctx: ActionCtx): Promise<string[]> {
+  const text: string | null = await ctx.runQuery(internal.views.jsonViewAnyAge, { key: MEET_INDEX_VIEW });
+  if (text !== null) return JSON.parse(text) as string[];
+  const meets = await discoverMeets(ctx);
+  await ctx.runMutation(internal.views.storeMeetIndex, { chunks: jsonChunks(meets) });
+  return meets;
+}
+
+/** Meets checked per `meetsWithViews` query (two index seeks each at most). */
+const MEETS_PER_EXISTENCE_CHECK = 200;
+
+/** Of `meets`, those with a meet row or a roster: the ones that have views. */
+export const meetsWithViews = internalQuery({
+  args: { meets: v.array(v.string()) },
+  handler: async (ctx, { meets }) => {
+    const found = await Promise.all(
+      meets.map(async (meet) => {
+        const row = await ctx.db
+          .query('meets')
+          .withIndex('by_name', (q) => q.eq('name', meet))
+          .first();
+        if (row) return meet;
+        const athlete = await ctx.db
+          .query('athletes')
+          .withIndex('by_meet', (q) => q.eq('meet', meet))
+          .first();
+        return athlete ? meet : null;
+      }),
+    );
+    return found.filter((meet): meet is string => meet !== null);
   },
 });
 
 /**
  * Deletes every view of these meets. For meets with results but no meet row
- * or roster: their views are not rebuilt, and one left behind would be
- * restamped as fresh by the refresh while its results changed.
+ * or roster: their views are not rebuilt, and one left behind would be served
+ * as fresh once the meet's hint was gone, while its results changed.
  */
 export const deleteMeetViews = internalMutation({
   args: { meets: v.array(v.string()) },
@@ -714,14 +823,27 @@ async function rebuildMeet(ctx: ActionCtx, meet: string): Promise<void> {
 // Refresh after writes
 // ---------------------------------------------------------------------------
 
-type Hint = { id: string; kind: string; key: string; seq: number };
+type Hint = { id: string; kind: string; key: string; seq: number; since?: string };
+
+const REBUILD_STAGES = ['scan', 'histories', 'prune', 'nat', 'meets', 'reference', 'sweep'] as const;
+type RebuildStage = (typeof REBUILD_STAGES)[number];
+
+/** Where a rebuild stage started: what a rebuild that stopped resumes from. */
+type RebuildPosition = {
+  stage: RebuildStage;
+  offset: number;
+  after?: string;
+  cursor?: string;
+  startedAt: number;
+  again: boolean;
+};
+
 type RefreshBegin = {
   hints: Hint[];
   overflow: boolean;
-  versions: SourceVersion[];
-  baseline: SourceVersion[] | null;
   rebuilding: boolean;
   rebuildHeartbeat: number | null;
+  rebuildPosition: RebuildPosition | null;
   /** This refresh's lease, or null when another refresh holds it (or none was asked for). */
   lease: number | null;
   busy: boolean;
@@ -749,11 +871,16 @@ export async function scheduleRefresh(ctx: MutationCtx, delayMs: number = REFRES
   else await ctx.db.insert('view_state', { name: 'refresh', scheduled: true, baseline: [] });
 }
 
+function storedPosition(position: { stage: string; offset: number; after?: string; cursor?: string; startedAt?: number; again: boolean } | undefined): RebuildPosition | null {
+  if (!position || position.startedAt === undefined) return null;
+  const stage = REBUILD_STAGES.find((s) => s === position.stage);
+  return stage === undefined ? null : { ...position, stage, startedAt: position.startedAt };
+}
+
 /**
  * Starts a refresh: clears the "scheduled" flag (so writes from here on
- * schedule another run), and returns the pending hints, the versions now
- * (`versions`, what untouched views are restamped to) and the versions of the
- * last completed refresh (`baseline`: every write since then left a hint).
+ * schedule another run), and returns the pending hints and the state of the
+ * full rebuild.
  *
  * With `lease`, the refresh also takes the refresh lease, so two never run
  * at once (they would redo the same builds and conflict on the same views).
@@ -773,7 +900,7 @@ export const beginRefresh = internalMutation({
         await ctx.scheduler.runAfter(REFRESH_BUSY_RETRY_MS, internal.views.refresh, {});
         if (state) await ctx.db.patch(state._id, { scheduled: true });
       }
-      return { hints: [], overflow: false, versions: [], baseline: null, rebuilding: false, rebuildHeartbeat: null, lease: null, busy: true };
+      return { hints: [], overflow: false, rebuilding: false, rebuildHeartbeat: null, rebuildPosition: null, lease: null, busy: true };
     }
     const lease = args.lease ? now : null;
     if (state) await ctx.db.patch(state._id, { scheduled: false, ...(lease !== null ? { refreshLease: lease } : {}) });
@@ -781,14 +908,12 @@ export const beginRefresh = internalMutation({
     const all = await ctx.db.query('view_hints').take(MAX_REFRESH_HINTS + 1);
     const rows = all.slice(0, MAX_REFRESH_HINTS);
     const costly = rows.filter((h) => !CHEAP_HINT_KINDS.has(h.kind)).length;
-    const versions = await snapshotVersions(ctx, SOURCE_TABLES);
     return {
-      hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0 })),
+      hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
       overflow: all.length > MAX_REFRESH_HINTS || costly > MAX_TARGETED_HINTS,
-      versions,
-      baseline: state && state.baseline.length > 0 ? state.baseline : null,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
+      rebuildPosition: storedPosition(state?.rebuildPosition),
       lease,
       busy: false,
     };
@@ -804,90 +929,90 @@ export const releaseRefresh = internalMutation({
   },
 });
 
-export const viewKeys = internalQuery({
-  args: {},
-  handler: async (ctx) => (await ctx.db.query('views').collect()).map((h) => h.key),
-});
-
 /** Meets checked per query when a refresh looks for rosters listing written athletes. */
 const MEETS_PER_KEY_CHECK = 100;
 
+/** A meet whose roster lists some written athletes, and its stats view's `meta`. */
+type RosterListing = { meet: string; keys: string[]; statsMeta: string | null };
+
 /**
- * Of `meets`, those whose roster (the `keys` view) lists any of `keys`. One
- * query per batch of meets, not one per meet: every refresh after a result
- * write asks this of every meet, and the list only grows.
+ * Of `meets`, those whose roster (the `keys` view) lists any of `keys`, with
+ * the keys listed. One query per batch of meets, not one per meet.
  */
 export const meetsListingAny = internalQuery({
   args: { meets: v.array(v.string()), keys: v.array(v.string()) },
-  handler: async (ctx, { meets, keys }) => {
+  handler: async (ctx, { meets, keys }): Promise<RosterListing[]> => {
     const wanted = new Set(keys);
     const listed = await Promise.all(
       meets.map(async (meet) => {
         const roster = JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[];
-        return roster.some((key) => wanted.has(key)) ? meet : null;
+        const matched = roster.filter((key) => wanted.has(key));
+        if (matched.length === 0) return null;
+        const stats = await viewHeader(ctx, meetKey(meet, 'stats'));
+        return { meet, keys: matched, statsMeta: stats?.meta ?? null };
       }),
     );
-    return listed.filter((meet): meet is string => meet !== null);
+    return listed.filter((listing): listing is RosterListing => listing !== null);
+  },
+});
+
+/** Hints deleted (or requeued) per mutation. */
+const HINT_DELETE_BATCH = 1000;
+
+/**
+ * Deletes the hints a refresh handled, each only if no write named it again
+ * since the refresh read it (a newer write's hint stays for the next one).
+ * One read per hint, never a scan of the table.
+ */
+export const deleteHints = internalMutation({
+  args: { hints: v.array(v.object({ id: v.string(), seq: v.number() })) },
+  handler: async (ctx, { hints }) => {
+    let deleted = 0;
+    for (const { id, seq } of hints) {
+      const hintId = ctx.db.normalizeId('view_hints', id);
+      const hint = hintId ? await ctx.db.get(hintId) : null;
+      if (hint && (hint.seq ?? 0) === seq) {
+        await ctx.db.delete(hint._id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   },
 });
 
 /**
- * Ends a refresh: deletes the hints it handled (those not written again
- * since it read them: a newer write's hint stays for the next refresh), and (when `restamp`) moves
- * every view that was neither rebuilt nor affected, and whose stamp is not
- * older than the baseline, up to `versions`. Records `versions` as the new
- * baseline.
- *
- * Why restamping is safe: every write after the baseline left a hint, the
- * refresh rebuilt every view those hints can affect, so a view stamped at or
- * after the baseline and not rebuilt reflects all writes up to `versions`.
- * Writes after `versions` leave hints for the next refresh.
+ * Leaves (or renews) hints for views a full rebuild failed to build, so they
+ * stay stale, survive the rebuild's sweeps, and the next refresh retries them.
  */
-export const finishRefresh = internalMutation({
-  args: {
-    hints: v.array(v.object({ id: v.string(), seq: v.number() })),
-    versions: v.array(v.object({ table: v.string(), version: v.number() })),
-    rebuilt: v.array(v.string()),
-    restamp: v.boolean(),
-  },
-  handler: async (ctx, { hints, versions, rebuilt, restamp }) => {
-    // Everything here is one scan per table (headers, hints), never one read
-    // per item: a refresh after a large write handles thousands of hints and
-    // views, and a function may make at most 4,096 reads.
-    const state = await refreshState(ctx);
-    let restamped = 0;
-    if (restamp && state && state.baseline.length > 0) {
-      const baseline = new Map(state.baseline.map((s) => [s.table, s.version]));
-      const next = new Map(versions.map((s) => [s.table, s.version]));
-      const skip = new Set(rebuilt);
-      for (const header of await ctx.db.query('views').collect()) {
-        if (skip.has(header.key) || !header.sources || header.sources.length === 0) continue;
-        if (!header.sources.every((s) => s.version >= (baseline.get(s.table) ?? 0))) continue;
-        const stamped = header.sources.map((s) => ({ table: s.table, version: Math.max(s.version, next.get(s.table) ?? s.version) }));
-        if (stamped.some((s, i) => s.version !== header.sources![i].version)) {
-          await ctx.db.patch(header._id, { sources: stamped });
-          restamped += 1;
-        }
-      }
+export const requeueHints = internalMutation({
+  args: { hints: v.array(v.object({ kind: v.string(), key: v.string() })) },
+  handler: async (ctx, { hints }) => {
+    const updatedAt = Date.now();
+    for (const { kind, key } of hints) {
+      const existing = await ctx.db
+        .query('view_hints')
+        .withIndex('by_kind_key', (q) => q.eq('kind', kind).eq('key', key))
+        .first();
+      if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt });
+      else await ctx.db.insert('view_hints', { kind, key, seq: 0, updatedAt });
     }
-    // One read per handled hint (at most MAX_REFRESH_HINTS), never a scan
-    // of the table, which a large backlog could push past a function's limits.
-    for (const { id, seq } of hints) {
-      const hintId = ctx.db.normalizeId('view_hints', id);
-      const hint = hintId ? await ctx.db.get(hintId) : null;
-      if (hint && (hint.seq ?? 0) === seq) await ctx.db.delete(hint._id);
-    }
-    if (state) await ctx.db.patch(state._id, { baseline: versions });
-    else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: versions });
-    return restamped;
   },
 });
+
+async function deleteHandled(ctx: ActionCtx, hints: readonly Hint[]): Promise<number> {
+  let deleted = 0;
+  for (let i = 0; i < hints.length; i += HINT_DELETE_BATCH) {
+    const batch = hints.slice(i, i + HINT_DELETE_BATCH).map(({ id, seq }) => ({ id, seq }));
+    deleted += await ctx.runMutation(internal.views.deleteHints, { hints: batch });
+  }
+  return deleted;
+}
 
 // ---------------------------------------------------------------------------
 // Full rebuild, in stages
 // ---------------------------------------------------------------------------
 
-/** Each stage action stops after this long and schedules its continuation. */
+/** Each stage action, and each refresh, stops after this long and schedules its continuation. */
 const STAGE_BUDGET_MS = 3 * 60 * 1000;
 const REBUILD_CLASSES_VIEW = 'rebuild|classes';
 const SCAN_NAMES_VIEW = 'rebuild|scan-names';
@@ -895,23 +1020,23 @@ const SCAN_CLASSES_VIEW = 'rebuild|scan-classes';
 
 const sourceVersion = v.object({ table: v.string(), version: v.number() });
 const rebuildStageArgs = {
-  stage: v.union(v.literal('scan'), v.literal('histories'), v.literal('prune'), v.literal('nat'), v.literal('meets'), v.literal('reference')),
+  stage: v.union(...REBUILD_STAGES.map((stage) => v.literal(stage))),
   offset: v.number(),
-  // The `prune` stage's position: the last summary key it checked.
+  // The `prune` and `sweep` stages' position: the last key they checked.
   after: v.optional(v.string()),
   // The `scan` stage's position: the page cursor it stopped at. Names and
   // classes seen before it are kept in the scratch views below.
   cursor: v.optional(v.string()),
-  hints: v.array(v.object({ id: v.string(), seq: v.number() })),
-  versions: v.array(sourceVersion),
+  // What a refresh read when it started the rebuild, from when the rebuild
+  // consumed exactly those hints; only stages scheduled before then carry them.
+  hints: v.optional(v.array(v.object({ id: v.string(), seq: v.number() }))),
+  versions: v.optional(v.array(sourceVersion)),
   again: v.boolean(),
-  // When the rebuild began: every hint last updated before then is covered.
+  // When the rebuild began: every hint last updated before then is covered,
+  // and every view built before then that it did not rebuild is an orphan.
   // Optional only for stages scheduled before this field existed.
   startedAt: v.optional(v.number()),
 };
-
-/** Hints deleted per mutation when a rebuild clears the backlog it covered. */
-const HINT_DELETE_BATCH = 1000;
 
 /** Deletes up to a batch of hints last updated before `before`; returns how many. */
 export const deleteHintsUpdatedBefore = internalMutation({
@@ -923,6 +1048,48 @@ export const deleteHintsUpdatedBefore = internalMutation({
       .take(HINT_DELETE_BATCH);
     for (const hint of stale) await ctx.db.delete(hint._id);
     return stale.length;
+  },
+});
+
+/** View headers checked per `sweepViewsPage` mutation. */
+const SWEEP_PAGE = 200;
+
+/**
+ * Whether a write (or a failed build, see `requeueHints`) named something
+ * `key` reads at or after `since`.
+ */
+async function changedSince(ctx: QueryCtx, key: string, since: number): Promise<boolean> {
+  for (const { kind, key: hintKey } of viewDependencies(key)?.hints ?? []) {
+    const hint = await ctx.db
+      .query('view_hints')
+      .withIndex('by_kind_key', (q) => q.eq('kind', kind).eq('key', hintKey))
+      .first();
+    if (hint && (hint.updatedAt ?? 0) >= since) return true;
+  }
+  return false;
+}
+
+/**
+ * The rebuild's last pass: deletes the views after `after` that it did not
+ * rebuild (built before `before`) and that no later write names, so a deleted
+ * meet, ranking class or WSO, or a key of a retired layout, is not left
+ * behind to be served as fresh. The refresh machinery's own views are kept.
+ */
+export const sweepViewsPage = internalMutation({
+  args: { after: v.string(), before: v.number() },
+  handler: async (ctx, { after, before }) => {
+    const headers = await ctx.db
+      .query('views')
+      .withIndex('by_key', (q) => q.gt('key', after))
+      .take(SWEEP_PAGE);
+    let deleted = 0;
+    for (const header of headers) {
+      if (header.built_at >= before || INTERNAL_VIEW_PREFIXES.some((prefix) => header.key.startsWith(prefix))) continue;
+      if (await changedSince(ctx, header.key, before)) continue;
+      await deleteHeaderAndChunks(ctx, header);
+      deleted += 1;
+    }
+    return { after: headers.length < SWEEP_PAGE ? null : headers[headers.length - 1].key, deleted };
   },
 });
 
@@ -959,16 +1126,30 @@ export const queueRefresh = internalMutation({
   },
 });
 
-/** Marks a rebuild running (and beats its heartbeat) or finished. Each stage calls it with `true` as it starts. */
+const rebuildPosition = v.object({
+  stage: v.string(),
+  offset: v.number(),
+  after: v.optional(v.string()),
+  cursor: v.optional(v.string()),
+  startedAt: v.optional(v.number()),
+  again: v.boolean(),
+});
+
+/**
+ * Marks a rebuild running (and beats its heartbeat, recording where the
+ * stage starting now begins) or finished. Each stage calls it with `true` as
+ * it starts.
+ */
 export const setRebuilding = internalMutation({
-  args: { rebuilding: v.boolean(), restarted: v.optional(v.boolean()) },
-  handler: async (ctx, { rebuilding, restarted }) => {
+  args: { rebuilding: v.boolean(), restarted: v.optional(v.boolean()), position: v.optional(rebuildPosition) },
+  handler: async (ctx, { rebuilding, restarted, position }) => {
     const state = await refreshState(ctx);
     const fields = {
       rebuilding,
       rebuildHeartbeat: rebuilding ? Date.now() : undefined,
       // Counted while a rebuild keeps stopping; cleared when one finishes.
       ...(restarted ? { rebuildRestarts: (state?.rebuildRestarts ?? 0) + 1 } : rebuilding ? {} : { rebuildRestarts: undefined }),
+      ...(position ? { rebuildPosition: position } : rebuilding ? {} : { rebuildPosition: undefined }),
     };
     if (state) await ctx.db.patch(state._id, fields);
     else await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], ...fields });
@@ -976,22 +1157,42 @@ export const setRebuilding = internalMutation({
 });
 
 /**
+ * Runs one of a rebuild's builds. A build that throws (a malformed row, a
+ * meet past a read limit) is logged and left a hint, so its views stay stale
+ * and a later refresh retries it, rather than stopping the whole rebuild.
+ */
+async function rebuildTarget(ctx: ActionCtx, label: string, hints: { kind: string; key: string }[], build: () => Promise<unknown>): Promise<void> {
+  try {
+    await build();
+  } catch (error) {
+    console.error(`views: the full rebuild could not build ${label}; left pending for the refresh`, error);
+    await ctx.runMutation(internal.views.requeueHints, { hints });
+  }
+}
+
+const REFERENCE_TABLE_HINTS = ['records', 'standards', 'qualifying_totals', 'intl_rankings'].map((key) => ({ kind: 'table', key }));
+
+/**
  * One stage of a full rebuild: `scan` (search directory and ranking classes),
  * `histories`, `prune` (histories of names left with no results), `nat`,
- * `meets`, `reference`. Each works for at most
- * `STAGE_BUDGET_MS` and schedules its own continuation or the next stage, so
- * no action comes near the runtime limit; the last stage records the
- * versions read at the start as the refresh baseline and consumes the hints
- * pending then.
+ * `meets`, `reference`, `sweep` (views of what no longer exists). Each works
+ * for at most `STAGE_BUDGET_MS` and schedules its own continuation or the
+ * next stage, so no action comes near the runtime limit. Each records where
+ * it started, so a rebuild whose stage failed resumes there. The last stage
+ * consumes every hint updated before the rebuild began.
  */
 export const rebuildStage = internalAction({
   args: rebuildStageArgs,
   handler: async (ctx, args): Promise<string> => {
     const startedAt = Date.now();
     const overBudget = () => Date.now() - startedAt > STAGE_BUDGET_MS;
-    await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true });
-    const next = async (stage: typeof args.stage, offset: number, position: { after?: string; cursor?: string } = {}) => {
-      await ctx.scheduler.runAfter(0, internal.views.rebuildStage, { ...args, stage, offset, after: position.after, cursor: position.cursor });
+    const position =
+      args.startedAt === undefined
+        ? undefined
+        : { stage: args.stage, offset: args.offset, after: args.after, cursor: args.cursor, startedAt: args.startedAt, again: args.again };
+    await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, position });
+    const next = async (stage: RebuildStage, offset: number, at: { after?: string; cursor?: string } = {}) => {
+      await ctx.scheduler.runAfter(0, internal.views.rebuildStage, { ...args, stage, offset, after: at.after, cursor: at.cursor });
       return `${args.stage} -> ${stage}@${offset}`;
     };
 
@@ -1068,32 +1269,59 @@ export const rebuildStage = internalAction({
         let i = args.offset;
         for (; i < classes.length && !overBudget(); i += 1) {
           const [federation, ageCategory] = JSON.parse(classes[i]) as [string, string];
-          await ctx.runAction(internal.views.buildNat, { federation, ageCategory });
+          await rebuildTarget(ctx, natKey(federation, ageCategory), [{ kind: 'nat', key: classes[i] }], () =>
+            ctx.runAction(internal.views.buildNat, { federation, ageCategory }),
+          );
         }
         return i < classes.length ? await next('nat', i) : await next('meets', 0);
       }
       case 'meets': {
-        const meets: string[] = (await ctx.runQuery(internal.views.meetNames, {})).sort(compareBytes);
+        // The stage's first run rewrites the meet index from the tables; its
+        // continuations walk that list.
+        let meets: string[];
+        if (args.offset === 0) {
+          meets = await discoverMeets(ctx);
+          await ctx.runMutation(internal.views.storeMeetIndex, { chunks: jsonChunks(meets) });
+        } else {
+          meets = await loadMeetIndex(ctx);
+        }
         let i = args.offset;
-        for (; i < meets.length && !overBudget(); i += 1) await rebuildMeet(ctx, meets[i]);
+        for (; i < meets.length && !overBudget(); i += 1) {
+          const meet = meets[i];
+          await rebuildTarget(ctx, `meet ${meet}`, [{ kind: 'meet', key: meet }], () => rebuildMeet(ctx, meet));
+        }
         return i < meets.length ? await next('meets', i) : await next('reference', 0);
       }
       case 'reference': {
-        await ctx.runMutation(internal.views.buildReferenceTables, {});
-        await ctx.runAction(internal.views.buildClubs, {});
-        await ctx.runMutation(internal.views.buildWso, {});
-        await ctx.runMutation(internal.views.finishRefresh, {
-          hints: args.hints,
-          versions: args.versions,
-          rebuilt: [],
-          restamp: false,
-        });
-        // Also every hint updated before the rebuild began, not just the ones
-        // it read: a backlog over MAX_REFRESH_HINTS would otherwise take one
-        // full rebuild per MAX_REFRESH_HINTS hints to clear.
+        await rebuildTarget(ctx, 'reference tables', [...REFERENCE_TABLE_HINTS, { kind: 'adaptive', key: '1' }], () =>
+          ctx.runMutation(internal.views.buildReferenceTables, {}),
+        );
+        await rebuildTarget(ctx, 'club list', [{ kind: 'table', key: 'athletes' }], () => ctx.runAction(internal.views.buildClubs, {}));
+        await rebuildTarget(ctx, 'WSO records', [{ kind: 'table', key: 'wso_records' }], () => ctx.runMutation(internal.views.buildWso, {}));
+        return await next('sweep', 0);
+      }
+      case 'sweep': {
         if (args.startedAt !== undefined) {
+          let after = args.after ?? '';
+          for (;;) {
+            const page: { after: string | null; deleted: number } = await ctx.runMutation(internal.views.sweepViewsPage, {
+              after,
+              before: args.startedAt,
+            });
+            if (page.after === null) break;
+            after = page.after;
+            if (overBudget()) return await next('sweep', 0, { after });
+          }
+          // Every hint updated before the rebuild began, not just those a
+          // refresh read: a backlog over MAX_REFRESH_HINTS would otherwise
+          // take one full rebuild per MAX_REFRESH_HINTS hints to clear.
           while ((await ctx.runMutation(internal.views.deleteHintsUpdatedBefore, { before: args.startedAt })) === HINT_DELETE_BATCH) {
             // next batch
+          }
+        } else if (args.hints) {
+          // A rebuild started before the sweep existed: the hints it read.
+          for (let i = 0; i < args.hints.length; i += HINT_DELETE_BATCH) {
+            await ctx.runMutation(internal.views.deleteHints, { hints: args.hints.slice(i, i + HINT_DELETE_BATCH) });
           }
         }
         await ctx.runMutation(internal.views.setRebuilding, { rebuilding: false });
@@ -1115,25 +1343,25 @@ export const rebuildStage = internalAction({
  */
 const REBUILD_HINT_MARGIN_MS = 60 * 1000;
 
-async function startRebuild(ctx: ActionCtx, begin: RefreshBegin, again: boolean, restarted = false): Promise<void> {
-  const startedAt = Date.now() - REBUILD_HINT_MARGIN_MS;
-  await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, restarted });
+/**
+ * Starts a rebuild, or resumes one at `from` (where its last stage started,
+ * so a stage that failed does not send it back to the scan).
+ */
+async function startRebuild(ctx: ActionCtx, options: { again: boolean; restarted?: boolean; from?: RebuildPosition | null }): Promise<void> {
+  await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, restarted: options.restarted });
   // The probe that notices if a stage fails (see `refresh`).
   await ctx.runMutation(internal.views.queueRefresh, { delayMs: REBUILD_WAIT_MS });
-  await ctx.scheduler.runAfter(0, internal.views.rebuildStage, {
-    stage: 'scan',
-    offset: 0,
-    hints: begin.hints.map(({ id, seq }) => ({ id, seq })),
-    versions: begin.versions,
-    again,
-    startedAt,
-  });
+  const from = options.from ?? null;
+  const position = from
+    ? { ...from, again: from.again || options.again }
+    : { stage: 'scan' as const, offset: 0, again: options.again, startedAt: Date.now() - REBUILD_HINT_MARGIN_MS };
+  await ctx.scheduler.runAfter(0, internal.views.rebuildStage, position);
 }
 
 /**
  * Rebuilds every view and history document, in stages (`rebuildStage`); run
- * after a bulk load. Returns once the first stage is scheduled; ordinary
- * writes are handled by `refresh`.
+ * after a bulk load or any write that skipped `ingest.ts`. Returns once the
+ * first stage is scheduled; ordinary writes are handled by `refresh`.
  *
  *   npx convex run views:rebuildAll
  */
@@ -1153,7 +1381,7 @@ export const rebuildAll = internalAction({
         // A second chain would redo the same work alongside the first.
         return 'already running';
       }
-      await startRebuild(ctx, begin, false);
+      await startRebuild(ctx, { again: false });
       return 'scheduled';
     } finally {
       if (begin.lease !== null) await ctx.runMutation(internal.views.releaseRefresh, { lease: begin.lease });
@@ -1162,14 +1390,14 @@ export const rebuildAll = internalAction({
 });
 
 /**
- * Rebuilds the views the pending writes can have changed and restamps the
- * rest.
+ * Rebuilds the views the pending writes can have changed (see `refreshTargets`).
  *
  * Hint kinds (written by `ingest.recordWrite`):
- * - `nat` `fed|age`: a result in that ranking class changed.
+ * - `nat` `[fed, age]`: a result in that ranking class changed.
  * - `meet` name: a roster, schedule or result row of that meet changed.
- * - `athlete` folded name: that athlete's results changed (their bests, PR
- *   baseline and timeline, in every meet whose roster lists them).
+ * - `athlete` folded name (and `since`, the earliest result date changed):
+ *   that athlete's results changed (their bests, PR baseline and timeline, in
+ *   every meet whose roster lists them).
  * - `table` name: a reference table, or `athletes` (the club list), changed.
  * - `adaptive`: an adaptive result changed.
  * - `name` raw name: a result row carries this name (search directory).
@@ -1207,7 +1435,8 @@ export const refreshHealth = internalQuery({
  * The hourly `views-refresh` job (`cronJobs.ts`): runs a refresh whether or
  * not one is scheduled, so views catch up even when a refresh failed or was
  * lost with nothing written since, then fails (and so emails an alert) when
- * writes have been waiting for hours or the full rebuild keeps stopping.
+ * one of its builds failed, writes have been waiting for hours, or the full
+ * rebuild keeps stopping.
  */
 export const refreshJob = internalAction({
   args: {},
@@ -1215,6 +1444,9 @@ export const refreshJob = internalAction({
     const result = await runRefresh(ctx);
     const health: { oldestHintAt: number | null; rebuildRestarts: number } = await ctx.runQuery(internal.views.refreshHealth, {});
     const problems: string[] = [];
+    if ((result.failed ?? 0) > 0) {
+      problems.push(`${result.failed} view build(s) failed and stay pending`);
+    }
     if (health.oldestHintAt !== null && Date.now() - health.oldestHintAt > HINT_BACKLOG_ALERT_MS) {
       problems.push(`a write has waited ${Math.round((Date.now() - health.oldestHintAt) / 60_000)} minutes for its views to refresh`);
     }
@@ -1237,11 +1469,8 @@ async function runRefresh(ctx: ActionCtx): Promise<Record<string, number>> {
 }
 
 async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<string, number>> {
-  const moved =
-    begin.baseline === null ||
-    begin.versions.some((v) => v.version !== (begin.baseline!.find((b) => b.table === v.table)?.version ?? 0));
   // Checked before the no-change return: a rebuild whose stage failed
-  // must be restarted even when nothing else was written.
+  // must be resumed even when nothing else was written.
   const rebuildAlive = begin.rebuildHeartbeat !== null && Date.now() - begin.rebuildHeartbeat < REBUILD_STALE_MS;
   if (begin.rebuilding && rebuildAlive) {
     // Keeps checking until the rebuild ends (and refreshes after it).
@@ -1249,93 +1478,176 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
     return { waiting: 1 };
   }
   if (begin.rebuilding) {
-    console.error(`views: the full rebuild stopped (last stage began ${begin.rebuildHeartbeat === null ? 'never' : new Date(begin.rebuildHeartbeat).toISOString()}); starting it again`);
-    await startRebuild(ctx, begin, true, true);
+    const from = begin.rebuildPosition;
+    console.error(
+      `views: the full rebuild stopped (last stage began ${begin.rebuildHeartbeat === null ? 'never' : new Date(begin.rebuildHeartbeat).toISOString()}); ` +
+        (from ? `resuming it at ${from.stage}@${from.offset}${from.after !== undefined ? ` after ${from.after}` : ''}` : 'starting it again'),
+    );
+    await startRebuild(ctx, { again: true, restarted: true, from });
     return { restarted: 1 };
   }
-  if (begin.hints.length === 0 && !moved) return { hints: 0 };
-  if (begin.overflow || begin.baseline === null) {
-    // Too many changes to target (or no baseline yet): rebuild everything,
-    // then refresh again for whatever arrived meanwhile.
-    await startRebuild(ctx, begin, true);
+  if (begin.hints.length === 0) return { hints: 0 };
+  if (begin.overflow) {
+    // Too many changes to target: rebuild everything, then refresh again for
+    // whatever arrived meanwhile.
+    await startRebuild(ctx, { again: true });
     return { full: 1 };
   }
+  return await refreshTargets(ctx, begin.hints);
+}
 
-  const byKind = (kind: string) => [...new Set(begin.hints.filter((h) => h.kind === kind).map((h) => h.key))];
-  const rebuilt: string[] = [];
+const REFERENCE_TABLES: ReadonlySet<string> = new Set(['records', 'standards', 'qualifying_totals', 'intl_rankings']);
 
-  for (const entry of byKind('nat')) {
-    const [federation, ageCategory] = JSON.parse(entry) as [string, string];
-    await ctx.runAction(internal.views.buildNat, { federation, ageCategory });
-    rebuilt.push(natKey(federation, ageCategory));
-  }
+/**
+ * Rebuilds what `hints` name, a group at a time (ranking classes, meets,
+ * athletes' meets, reference tables, the search directory), deleting each
+ * group's hints as soon as its builds succeed. A build that throws is logged
+ * and keeps its hints: with freshness per key only the views it names stay
+ * stale, and the next refresh retries it. Past STAGE_BUDGET_MS the remaining
+ * groups keep their hints for a refresh queued at once, so no refresh nears
+ * the action time limit.
+ */
+async function refreshTargets(ctx: ActionCtx, hints: readonly Hint[]): Promise<Record<string, number>> {
+  const started = Date.now();
+  const overBudget = () => Date.now() - started > STAGE_BUDGET_MS;
+  let deferred = false;
+  let rebuilt = 0;
+  let handled = 0;
+  const failed: string[] = [];
+  const build = async (label: string, run: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await run();
+      rebuilt += 1;
+      return true;
+    } catch (error) {
+      console.error(`views: could not rebuild ${label}; its changes stay pending`, error);
+      failed.push(label);
+      return false;
+    }
+  };
+  const done = async (covered: readonly Hint[]) => {
+    handled += await deleteHandled(ctx, covered);
+  };
+  /** False, and the rest deferred, once the budget is spent. */
+  const inBudget = () => {
+    if (!deferred && overBudget()) deferred = true;
+    return !deferred;
+  };
+  const ofKind = (kind: string) => hints.filter((h) => h.kind === kind);
 
-  const athleteKeys = new Set(byKind('athlete'));
-  const hintedMeets = byKind('meet');
-  const knownMeets: string[] = hintedMeets.length > 0 || athleteKeys.size > 0 ? await ctx.runQuery(internal.views.meetNames, {}) : [];
-  // A meet with results but neither a meet row nor a roster (most of what the
-  // nightly results sync writes) has nothing for its views to hold; building
-  // them would only leave six empty views per such meet, every one restamped
-  // on every refresh. Its answers are computed live instead.
-  const known = new Set(knownMeets);
-  const meetsFull = new Set(hintedMeets.filter((meet) => known.has(meet)));
-  const unlisted = hintedMeets.filter((meet) => !known.has(meet));
-  for (let i = 0; i < unlisted.length; i += 50) {
-    await ctx.runMutation(internal.views.deleteMeetViews, { meets: unlisted.slice(i, i + 50) });
-  }
-  const meetsHistory = new Set<string>();
-  if (athleteKeys.size > 0) {
-    const meets = knownMeets.filter((meet) => !meetsFull.has(meet));
-    const keys = [...athleteKeys];
-    for (let i = 0; i < meets.length; i += MEETS_PER_KEY_CHECK) {
-      const listing: string[] = await ctx.runQuery(internal.views.meetsListingAny, { meets: meets.slice(i, i + MEETS_PER_KEY_CHECK), keys });
-      for (const meet of listing) meetsHistory.add(meet);
+  const natCovered: Hint[] = [];
+  for (const hint of ofKind('nat')) {
+    if (!inBudget()) break;
+    const [federation, ageCategory] = JSON.parse(hint.key) as [string, string];
+    if (await build(natKey(federation, ageCategory), () => ctx.runAction(internal.views.buildNat, { federation, ageCategory }))) {
+      natCovered.push(hint);
     }
   }
-  for (const meet of meetsFull) {
-    await rebuildMeet(ctx, meet);
-    for (const part of MEET_VIEW_PARTS) rebuilt.push(meetKey(meet, part));
-    const sessionKeys: string[] = await ctx.runQuery(internal.views.viewKeysWithPrefix, { prefix: meetSessionPrefix(meet) });
-    rebuilt.push(...sessionKeys);
-  }
-  for (const meet of meetsHistory) {
-    await ctx.runMutation(internal.views.buildMeetTimelines, { meet });
-    await buildStats(ctx, meet);
-    rebuilt.push(meetKey(meet, 'timelines'), meetKey(meet, 'stats'));
+  await done(natCovered);
+
+  const meetHints = ofKind('meet');
+  const athleteHints = ofKind('athlete');
+  const index = meetHints.length + athleteHints.length > 0 && inBudget() ? await loadMeetIndex(ctx) : [];
+  const failedMeets = new Set<string>();
+  const hintedMeets = new Set(meetHints.map((h) => h.key));
+  if (meetHints.length > 0 && inBudget()) {
+    const hinted = [...hintedMeets].sort(compareBytes);
+    const known = new Set<string>();
+    for (let i = 0; i < hinted.length; i += MEETS_PER_EXISTENCE_CHECK) {
+      const found: string[] = await ctx.runQuery(internal.views.meetsWithViews, { meets: hinted.slice(i, i + MEETS_PER_EXISTENCE_CHECK) });
+      for (const meet of found) known.add(meet);
+    }
+    // A meet with results but neither a meet row nor a roster (most of what
+    // the nightly results sync writes) has nothing for its views to hold;
+    // its answers are computed live, and any views it had are dropped.
+    const unlisted = hinted.filter((meet) => !known.has(meet));
+    const indexed = new Set(index);
+    const add = [...known].filter((meet) => !indexed.has(meet));
+    const remove = unlisted.filter((meet) => indexed.has(meet));
+    if (add.length + remove.length > 0) await ctx.runMutation(internal.views.patchMeetIndex, { add, remove });
+    const covered = new Set<string>();
+    for (let i = 0; i < unlisted.length; i += 50) {
+      const batch = unlisted.slice(i, i + 50);
+      if (await build(`views of ${batch.length} meet(s) with no row or roster`, () => ctx.runMutation(internal.views.deleteMeetViews, { meets: batch }))) {
+        batch.forEach((meet) => covered.add(meet));
+      }
+    }
+    for (const meet of hinted) {
+      if (!known.has(meet)) continue;
+      if (!inBudget()) break;
+      if (await build(`meet ${meet}`, () => rebuildMeet(ctx, meet))) covered.add(meet);
+      else failedMeets.add(meet);
+    }
+    await done(meetHints.filter((h) => covered.has(h.key)));
   }
 
-  const tables = new Set(byKind('table'));
-  const refTables = ['records', 'standards', 'qualifying_totals', 'intl_rankings'];
-  if (refTables.some((t) => tables.has(t)) || byKind('adaptive').length > 0) {
-    await ctx.runMutation(internal.views.buildReferenceTables, {});
-    rebuilt.push(REF_VIEWS.records, REF_VIEWS.standards, REF_VIEWS.qualifying_totals, REF_VIEWS.intl_rankings);
-    for (const { gender, excludeFederation } of ADAPTIVE_VIEW_ARGS) {
-      rebuilt.push(adaptiveKey(gender, excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
+  if (athleteHints.length > 0 && inBudget()) {
+    const since = new Map<string, string | undefined>();
+    for (const hint of athleteHints) since.set(hint.key, since.has(hint.key) ? earliestSince(since.get(hint.key), hint.since) : hint.since);
+    const keys = [...since.keys()];
+    const listings: RosterListing[] = [];
+    for (let i = 0; i < index.length && inBudget(); i += MEETS_PER_KEY_CHECK) {
+      listings.push(...(await ctx.runQuery(internal.views.meetsListingAny, { meets: index.slice(i, i + MEETS_PER_KEY_CHECK), keys })));
+    }
+    if (!deferred) {
+      // Athletes listed by a meet whose views were not rebuilt keep their hints.
+      const blocked = new Set<string>();
+      for (const listing of listings) {
+        if (hintedMeets.has(listing.meet)) {
+          // Rebuilt in full above, or left pending there.
+          if (failedMeets.has(listing.meet) || deferred) listing.keys.forEach((key) => blocked.add(key));
+          continue;
+        }
+        if (!inBudget()) {
+          listing.keys.forEach((key) => blocked.add(key));
+          continue;
+        }
+        // Stats change only for results dated before the meet's finishers'
+        // (`athleteChangeAffects`); timelines for any.
+        const stats = listing.keys.some((key) => athleteChangeAffects('stats', since.get(key), listing.statsMeta ?? undefined));
+        const ok = await build(`${stats ? 'timelines and stats' : 'timelines'} of ${listing.meet}`, async () => {
+          await ctx.runMutation(internal.views.buildMeetTimelines, { meet: listing.meet });
+          if (stats) await buildStats(ctx, listing.meet);
+        });
+        if (!ok) listing.keys.forEach((key) => blocked.add(key));
+      }
+      await done(athleteHints.filter((h) => !blocked.has(h.key)));
     }
   }
-  if (tables.has('athletes')) {
-    await ctx.runAction(internal.views.buildClubs, {});
-    rebuilt.push(REF_VIEWS.clubs);
+
+  const tableHints = ofKind('table');
+  const referenceHints = [...tableHints.filter((h) => REFERENCE_TABLES.has(h.key)), ...ofKind('adaptive')];
+  if (referenceHints.length > 0 && inBudget()) {
+    if (await build('reference tables', () => ctx.runMutation(internal.views.buildReferenceTables, {}))) await done(referenceHints);
   }
-  if (tables.has('wso_records')) {
-    await ctx.runMutation(internal.views.buildWso, {});
-    const keys: string[] = await ctx.runQuery(internal.views.viewKeys, {});
-    rebuilt.push(...keys.filter((k) => k === REF_VIEWS.wso_list || k.startsWith('wso|')));
+  const clubHints = tableHints.filter((h) => h.key === 'athletes');
+  if (clubHints.length > 0 && inBudget()) {
+    if (await build('club list', () => ctx.runAction(internal.views.buildClubs, {}))) await done(clubHints);
+  }
+  const wsoHints = tableHints.filter((h) => h.key === 'wso_records');
+  if (wsoHints.length > 0 && inBudget()) {
+    if (await build('WSO records', () => ctx.runMutation(internal.views.buildWso, {}))) await done(wsoHints);
   }
 
-  const names = byKind('name');
-  // Each name costs a lookup or two; 500 a batch stays well inside a
-  // mutation's read limit.
-  for (let i = 0; i < names.length; i += 500) {
-    await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
+  const nameHints = ofKind('name');
+  if (nameHints.length > 0 && inBudget()) {
+    const names = [...new Set(nameHints.map((h) => h.key))];
+    const ok = await build('search directory', async () => {
+      // Each name costs a lookup or two; 500 a batch stays well inside a
+      // mutation's read limit.
+      for (let i = 0; i < names.length; i += 500) {
+        await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
+      }
+      await applyPendingShardChanges(ctx);
+    });
+    if (ok) await done(nameHints);
   }
-  await applyPendingShardChanges(ctx);
 
-  const restamped: number = await ctx.runMutation(internal.views.finishRefresh, {
-    hints: begin.hints.map(({ id, seq }) => ({ id, seq })),
-    versions: begin.versions,
-    rebuilt,
-    restamp: true,
-  });
-  return { hints: begin.hints.length, rebuilt: rebuilt.length, restamped };
+  // Hints nothing reads (a table no view is built from, a retired kind).
+  const readKinds = new Set(['nat', 'meet', 'athlete', 'adaptive', 'name']);
+  const builtTables = new Set([...REFERENCE_TABLES, 'athletes', 'wso_records']);
+  await done(hints.filter((h) => (h.kind === 'table' ? !builtTables.has(h.key) : !readKinds.has(h.kind))));
+
+  if (deferred) await ctx.runMutation(internal.views.queueRefresh, { delayMs: REFRESH_DELAY_MS });
+  return { hints: hints.length, handled, rebuilt, failed: failed.length, deferred: deferred ? 1 : 0 };
 }

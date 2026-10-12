@@ -118,24 +118,6 @@ export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T
   return Array.from(best.values()).sort((a, b) => b.total - a.total || compareBytes(a.name, b.name));
 }
 
-/** `GET /data/nat-rankings` */
-export async function computeNationalRankings(
-  ctx: QueryCtx,
-  federation: string,
-  ageCategory: string,
-): Promise<RankedTotal[]> {
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
-    .collect();
-  const ranked: RankedTotal[] = [];
-  for (const row of rows) {
-    if (row.total === undefined || row.total === 0) continue;
-    ranked.push({ name: row.name, total: row.total });
-  }
-  return bestTotalPerAthlete(ranked);
-}
-
 export type DatedTotal = RankedTotal & { date: string };
 
 /**
@@ -168,31 +150,16 @@ export function distinctCollated(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort(compareCollated);
 }
 
-/**
- * `GET /clubs`: distinct non-empty club names. Skips along the club index one
- * read per club rather than reading every roster row: rosters are never
- * deleted, so the table only grows, while the set of clubs barely does.
- */
-export async function computeClubs(ctx: QueryCtx): Promise<string[]> {
-  const clubs: string[] = [];
-  let last: string | null = null;
-  for (;;) {
-    const after: string | null = last;
-    const row = await ctx.db
-      .query('athletes')
-      .withIndex('by_club', (q) => (after === null ? q : q.gt('club', after)))
-      .first();
-    if (!row) break;
-    if (row.club !== '') clubs.push(row.club);
-    last = row.club;
-  }
-  return distinctCollated(clubs);
-}
-
 /** Index seeks per transaction when rebuilding the club view. */
 const CLUBS_PER_PAGE = 100;
 
-/** Skips duplicate roster entries without walking every club in one transaction. */
+/**
+ * `GET /clubs` (distinct non-empty club names) a page at a time: the next
+ * clubs after `after` (the empty club sorts first and is never listed), one
+ * index seek per club, so duplicate roster entries are skipped without being
+ * read. Rosters are never deleted, so the table only grows while the set of
+ * clubs barely does.
+ */
 export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promise<{ clubs: string[]; after: string | null }> {
   const clubs: string[] = [];
   let last = after ?? '';
@@ -273,17 +240,11 @@ export const ADAPTIVE_RECORDS_SEASON_START = '2026';
 
 const MEN = /\bmen\b/i;
 const WOMEN = /\bwomen\b/i;
-const YEAR = /\b\d{4}\b/;
 const WEIGHT_CLASS = /\b(\d+\+?)kg/gi;
 
 function matchesGender(age: string, gender: string): boolean {
   if (gender.toLowerCase() === 'men') return MEN.test(age) && !WOMEN.test(age);
   return WOMEN.test(age);
-}
-
-function yearOf(date: string): number {
-  const match = YEAR.exec(date);
-  return match ? Number(match[0]) : 0;
 }
 
 function isInsideParens(text: string, index: number): boolean {
@@ -310,20 +271,17 @@ export async function computeAdaptiveRecords(
   excludeFederation: string,
   season: string,
 ): Promise<AdaptiveRecord[]> {
-  const seasonStart = Number(season);
-  const seasonStartDate = `${season}-01-01`;
+  // The season's results only: every adaptive result ever grows each year.
   const rows = await ctx.db
     .query('lifting_results')
-    .withIndex('by_adaptive', (q) => q.eq('adaptive', true))
+    .withIndex('by_adaptive_and_date', (q) => q.eq('adaptive', true).gte('date', `${season}-01-01`))
     .collect();
 
   const byClass = new Map<string, AdaptiveRecord>();
   for (const row of rows) {
-    if (row.date < seasonStartDate) continue;
     if (row.federation !== undefined && row.federation === excludeFederation) continue;
     const age = row.age ?? '';
     if (!matchesGender(age, gender)) continue;
-    if (yearOf(row.date) < seasonStart) continue;
     const weightClass = classOf(age);
     if (weightClass === null) continue;
     const current = byClass.get(weightClass) ?? { weight_class: weightClass, snatch: 0, cj: 0, total: 0 };

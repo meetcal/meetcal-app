@@ -1,26 +1,28 @@
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
-import { clubAthleteCount, clubStats, computeStatsRows, type StatsRow } from './lib/meetData';
+import type { Doc } from './_generated/dataModel';
+import { clubAthleteCount, clubStats, computeStatsRows, readStatsViewItems } from './lib/meetData';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
+  clubNamesPage,
   computeAdaptiveRecords,
-  computeClubs,
   computeIntlRankings,
-  computeNationalRankings,
   computeNationalRankingsForYear,
   computeQualifyingTotals,
   computeRecords,
   computeStandards,
   computeWsoList,
   computeWsoRows,
+  distinctCollated,
   filterWsoRows,
+  nationalRankingPage,
   wsoAgeGroups as ageGroupsOf,
   type WsoRecordRow,
 } from './lib/referenceData';
 import { compareCollated } from './lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, meetKey, natKey, REF_VIEWS, wsoKey } from './lib/viewKeys';
-import { readFreshView } from './lib/views';
+import { readFreshView, readViewAnyAge } from './lib/views';
 import { apiError, requireNonEmpty } from './lib/validation';
 
 // Reference data and clubs: each query answers the JSON of the Rust route of
@@ -67,13 +69,36 @@ export const intlRankings = query({
     await viewOrLive(ctx, REF_VIEWS.intl_rankings, args.ifNoneMatch, () => computeIntlRankings(ctx)),
 });
 
+/**
+ * The view's text whatever its age; without one, `compute()` when it fits
+ * one query (null when it does not). For answers whose live computation can
+ * be more than one query may read: the last complete build, at most a
+ * refresh behind, beats an error.
+ */
+async function viewAnyAgeOrBounded(
+  ctx: QueryCtx,
+  key: string,
+  ifNoneMatch: string | undefined,
+  compute: () => Promise<unknown | null>,
+): Promise<Revalidated> {
+  const view = await readViewAnyAge(ctx, key);
+  if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+  const answer = await compute();
+  // Only a large answer the refresh has not built yet (seconds after its
+  // first rows were written).
+  if (answer === null) throw apiError(503, 'this list is being built; try again in a minute');
+  return revalidated(answer, ifNoneMatch);
+}
+
 /** `GET /data/nat-rankings`: each athlete's best total in the class, heaviest first. */
 export const nationalRankings = query({
   args: { federation: v.string(), ageCategory: v.string(), ifNoneMatch },
   handler: async (ctx, args) =>
-    await viewOrLive(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, () =>
-      computeNationalRankings(ctx, args.federation, args.ageCategory),
-    ),
+    await viewAnyAgeOrBounded(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, async () => {
+      // A class with no view has no results, or is new: one page answers it.
+      const page = await nationalRankingPage(ctx, args.federation, args.ageCategory, null);
+      return page.isDone ? page.rows : null;
+    }),
 });
 
 /** `GET /data/nat-rankings-year`: `nationalRankings` within one calendar year, with dates. */
@@ -151,29 +176,58 @@ export const adaptiveRecords = query({
 /** `GET /clubs`: distinct non-empty club names. */
 export const clubs = query({
   args: { ifNoneMatch },
-  handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.clubs, args.ifNoneMatch, () => computeClubs(ctx)),
+  handler: async (ctx, args) =>
+    await viewAnyAgeOrBounded(ctx, REF_VIEWS.clubs, args.ifNoneMatch, async () => {
+      const page = await clubNamesPage(ctx, null);
+      return page.after === null ? distinctCollated(page.clubs) : null;
+    }),
 });
 
-/** `GET /clubs/athletes`: a club's entries across meets, names descending. */
+/** Registrations per page of `clubAthletes` / `wsoAthletes`. */
+const ATHLETE_PAGE_SIZE = 2000;
+/**
+ * Registrations answered to a client that does not page (the app, site and
+ * CLI before paging), the most recent first: under Convex's 8,192-element
+ * array limit, and a bounded read.
+ */
+const UNPAGED_ATHLETE_LIMIT = 8000;
+
+const athleteCursor = v.optional(v.union(v.string(), v.null()));
+
+function clubAthleteRow(r: Doc<'athletes'>) {
+  return {
+    name: r.name,
+    meet: r.meet,
+    club: r.club,
+    gender: r.gender,
+    weight_class: r.weightClass,
+    entry_total: r.entryTotal,
+    member_id: r.memberId,
+  };
+}
+
+const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareCollated(b.name, a.name);
+
+/**
+ * `GET /clubs/athletes`: a club's entries across meets, names descending.
+ *
+ * With `cursor` (null for the first page) it answers a page,
+ * `{ json, cursor, isDone }`: call again with `cursor` until `isDone`. Each
+ * page is in name order; pages are not merged, and a roster replaced while a
+ * client pages can appear twice. Without it (clients that predate paging),
+ * the plain array of the club's UNPAGED_ATHLETE_LIMIT most recent entries.
+ */
 export const clubAthletes = query({
-  args: { club: v.string() },
+  args: { club: v.string(), cursor: athleteCursor },
   handler: async (ctx, args) => {
     requireNonEmpty('club', args.club);
-    const rows = await ctx.db
-      .query('athletes')
-      .withIndex('by_club', (q) => q.eq('club', args.club))
-      .collect();
-    return rows
-      .sort((a, b) => compareCollated(b.name, a.name))
-      .map((r) => ({
-        name: r.name,
-        meet: r.meet,
-        club: r.club,
-        gender: r.gender,
-        weight_class: r.weightClass,
-        entry_total: r.entryTotal,
-        member_id: r.memberId,
-      }));
+    const rows = ctx.db.query('athletes').withIndex('by_club', (q) => q.eq('club', args.club));
+    if (args.cursor !== undefined) {
+      const page = await rows.paginate({ cursor: args.cursor, numItems: ATHLETE_PAGE_SIZE });
+      const json = JSON.stringify(page.page.sort(namesDescending).map(clubAthleteRow));
+      return { json, cursor: page.continueCursor, isDone: page.isDone };
+    }
+    return (await rows.order('desc').take(UNPAGED_ATHLETE_LIMIT)).sort(namesDescending).map(clubAthleteRow);
   },
 });
 
@@ -181,29 +235,20 @@ export const clubAthletes = query({
  * `GET /wsos/athletes`: a WSO's registrations across meets, names descending.
  * An athlete's WSO is the one they registered under at each meet, since
  * affiliation can change between meets. Answers `{ json }`: a large WSO has
- * thousands of registrations.
+ * thousands of registrations. Paged with `cursor` as `clubAthletes` is.
  */
 export const wsoAthletes = query({
-  args: { wso: v.string() },
+  args: { wso: v.string(), cursor: athleteCursor },
   handler: async (ctx, args) => {
     requireNonEmpty('wso', args.wso);
-    const rows = await ctx.db
-      .query('athletes')
-      .withIndex('by_wso', (q) => q.eq('wso', args.wso))
-      .collect();
-    const athletes = rows
-      .sort((a, b) => compareCollated(b.name, a.name))
-      .map((r) => ({
-        name: r.name,
-        meet: r.meet,
-        club: r.club,
-        wso: args.wso,
-        gender: r.gender,
-        weight_class: r.weightClass,
-        entry_total: r.entryTotal,
-        member_id: r.memberId,
-      }));
-    return { json: JSON.stringify(athletes) };
+    const row = (r: Doc<'athletes'>) => ({ ...clubAthleteRow(r), wso: args.wso });
+    const rows = ctx.db.query('athletes').withIndex('by_wso', (q) => q.eq('wso', args.wso));
+    if (args.cursor !== undefined) {
+      const page = await rows.paginate({ cursor: args.cursor, numItems: ATHLETE_PAGE_SIZE });
+      return { json: JSON.stringify(page.page.sort(namesDescending).map(row)), cursor: page.continueCursor, isDone: page.isDone };
+    }
+    const recent = await rows.order('desc').take(UNPAGED_ATHLETE_LIMIT);
+    return { json: JSON.stringify(recent.sort(namesDescending).map(row)) };
   },
 });
 
@@ -216,12 +261,9 @@ export const clubMeetStats = query({
   handler: async (ctx, { club, meet }) => {
     requireNonEmpty('club', club);
     requireNonEmpty('meet', meet);
-    const statsView = await readFreshView<{ rows: StatsRow[]; club_counts: [string, number][] }>(
-      ctx,
-      meetKey(meet, 'stats'),
-    );
+    const statsView = await readFreshView(ctx, meetKey(meet, 'stats'));
     if (statsView) {
-      const [{ rows, club_counts }] = await statsView.items();
+      const { rows, club_counts } = readStatsViewItems(await statsView.items());
       return clubStats(rows, club, club_counts.find(([name]) => name === club)?.[1] ?? 0);
     }
     const [rows, roster] = await Promise.all([

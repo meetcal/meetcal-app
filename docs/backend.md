@@ -13,18 +13,22 @@ Every write to competition data goes through the internal mutations in `convex/i
 
 1. writes the rows;
 2. rewrites the touched athletes' **history** (`athlete_history`) and **summary** (`athlete_summary`) documents in the same transaction, so those can never lag behind `lifting_results`;
-3. bumps the table's version and leaves **hints** naming what changed, then schedules a refresh.
+3. leaves **hints** naming what changed (a meet, a ranking class, an athlete, a reference table), then schedules a refresh.
 
-A few seconds later `views:refresh` uses the hints to rebuild only what those rows feed:
+Freshness is tracked per view: while a hint a view depends on is pending, that view is not served as fresh, and every other view is. A few seconds later `views:refresh` uses the hints to rebuild only what those rows feed:
 
 - the materialized views (meet packages, rankings, reference tables, clubs, WSO records);
 - the search **directory** and its two-letter **shards**, adding names that gained results and removing names left with none.
 
 So new athletes, new results, deletions and new meets update everything on their own. Nothing needs to be run by hand.
 
-The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. It keeps the source version from its first page, so a roster write during the scan leaves the view stale for another refresh rather than marking mixed data fresh.
+The refresh deletes each group's hints as soon as its builds succeed. A build that throws (a malformed row, a meet past a read limit) is logged and keeps its hints, so only the views it names stay stale and the next refresh retries it; the hourly `views-refresh` job fails, and so alerts, while one does. A refresh stops after three minutes and queues another for what is left. Athlete hints carry the earliest result date they changed, so a meet's club stats (which depend only on earlier results) are rebuilt only when that date comes before the meet; its year-best timelines always are. The meets a refresh checks rosters of come from a maintained meet index (`index|meets`), not a scan of the tables.
 
-National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking and keep the first page's source version for the same freshness guarantee.
+The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. A roster write during the scan renews the club hint, so the view stays stale for another refresh rather than marking mixed data fresh.
+
+National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking, with the same freshness guarantee.
+
+National rankings and the club list are served from their last build even while a change to them is pending: computing them live is more than one query may read. A ranking class or club list with no view yet is answered live only when it fits one page, and otherwise fails with "being built" until the refresh builds it.
 
 ## Writes that skip the ingest mutations
 
@@ -41,9 +45,9 @@ npx convex run migrations:backfillNameKeys    # fills lifting_results.nameKey, t
 npx convex run migrations:backfillSummaries   # fills athlete_summary from the history documents
 ```
 
-`views:rebuildAll` rebuilds the histories, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. It also deletes the history and summary documents of names left with no results, and clears every pending change written before it started. While it runs, a refresh checks on it every minute and starts it again if a stage stopped for 15 minutes. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
+`views:rebuildAll` rebuilds the histories, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. It also deletes the history and summary documents of names left with no results, deletes every view it did not rebuild and no later write names (a deleted meet, ranking class or WSO, an old adaptive season), and clears every pending change written before it started. A build that fails is logged and left pending for the refresh instead of stopping the rebuild. While it runs, a refresh checks on it every minute and, if a stage stopped for 15 minutes, resumes it where that stage started. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
 
-A view is fresh while its source tables are unchanged, whatever the code that built it. So a deploy that changes what a view holds (a field added to `/data/records`, say) serves the old answer until the view is rebuilt: rebuild the views built by the function you changed, such as `npx convex run views:buildReferenceTables` (records, standards, qualifying totals, international rankings, adaptive records) or `npx convex run views:buildWso` (WSO records), or start `views:rebuildAll`.
+A view is fresh while no change it reads is pending, whatever the code that built it. So a deploy that changes what a view holds (a field added to `/data/records`, say) serves the old answer until the view is rebuilt: rebuild the views built by the function you changed, such as `npx convex run views:buildReferenceTables` (records, standards, qualifying totals, international rankings, adaptive records) or `npx convex run views:buildWso` (WSO records), or start `views:rebuildAll`.
 
 Check the result with `npx convex run parity:run`. It compares every fast path (views, histories, summaries, search shards) with a live computation from the raw tables and should report 0 mismatches. `migrations:countPage` counts a table a page at a time, for checking a load against its source.
 

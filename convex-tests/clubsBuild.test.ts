@@ -1,4 +1,4 @@
-import { clubNamesPage, computeClubs, distinctCollated } from '../convex/lib/referenceData';
+import { clubNamesPage, distinctCollated } from '../convex/lib/referenceData';
 import { buildClubs } from '../convex/views';
 
 // Convex attaches the handler at runtime but omits it from its public types.
@@ -47,7 +47,7 @@ describe('bounded club rebuild', () => {
       clubs.push(...page.clubs);
       after = page.after;
     } while (after !== null);
-    expect(distinctCollated(clubs)).toEqual(await computeClubs(rosterCtx(roster).ctx));
+    expect(distinctCollated(clubs)).toEqual(distinctCollated(roster.filter((club) => club !== '')));
     expect(new Set(clubs).size).toBe(names.length - 1);
     expect(clubs).not.toContain('');
   });

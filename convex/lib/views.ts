@@ -1,5 +1,7 @@
+import type { Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { etagOf } from './etag';
+import { athleteChangeAffects, meetKey, viewDependencies, type HintId, type ViewDependencies } from './viewKeys';
 
 /**
  * Materialized views: an answer computed from many rows, stored ready to send
@@ -14,19 +16,25 @@ import { etagOf } from './etag';
  * API's response bodies. This is the Convex spelling of the Rust API's cached
  * response bytes.
  *
- * Correctness rests on version stamps, not on remembering to invalidate:
+ * Freshness is tracked per key, by the pending changes themselves:
  *
  * - Every write to a source table goes through `recordWrite` (`convex/ingest.ts`),
- *   which bumps that table's row in `data_versions`.
- * - A view's header records the version of each source table it was built
- *   from. `readFreshView` compares them with the current versions and treats
- *   any difference as a miss, so callers fall back to computing live. A view
- *   is therefore never served past a write, only rebuilt some seconds later.
- * - Builders stamp the versions they read before reading any rows, in the
- *   same transaction, so a stamp always describes exactly the data read.
+ *   which leaves hints naming exactly what changed (a meet, a ranking class,
+ *   an athlete, a reference table) in the write's own transaction.
+ * - A view depends on the hints of what it reads (`viewDependencies` in
+ *   `lib/viewKeys.ts`, from its key). `readFreshView` treats a view with any
+ *   of them pending as a miss, so callers fall back to computing live: a view
+ *   is never served past a write, only rebuilt some seconds later.
+ * - The refresh deletes a hint only after rebuilding every view it names, and
+ *   only if no write named it again meanwhile. So a write to one meet leaves
+ *   every other meet's views fresh, and nothing has to restamp them.
  *
- * Headers also carry the answer's tag (`etag`), computed once at build time,
- * so a client that already holds the current version is answered from the
+ * - A failed build keeps its hints, so only the views it names stay stale.
+ *
+ * Headers still record the source table versions their builder read
+ * (`sources`); a header without them predates versioning and is never fresh.
+ * They also carry the answer's tag (`etag`), computed once at build time, so
+ * a client that already holds the current version is answered from the
  * header alone.
  */
 
@@ -105,7 +113,7 @@ export async function snapshotVersions(ctx: QueryCtx, tables: readonly SourceTab
   return await Promise.all(tables.map(async (table) => ({ table, version: await versionOf(ctx, table) })));
 }
 
-/** Marks `table` as changed; every view built from it becomes stale. */
+/** Counts a write to `table`, for the stamps builders record (freshness itself is per key, by hints). */
 export async function bumpVersion(ctx: MutationCtx, table: SourceTable): Promise<number> {
   const row = await ctx.db
     .query('data_versions')
@@ -128,7 +136,7 @@ export type FreshView<T> = {
   text: () => Promise<string>;
 };
 
-async function viewHeader(ctx: QueryCtx, key: string) {
+export async function viewHeader(ctx: QueryCtx, key: string) {
   return await ctx.db
     .query('views')
     .withIndex('by_key', (q) => q.eq('key', key))
@@ -157,19 +165,68 @@ function freshView<T>(ctx: QueryCtx, key: string, header: { etag: string; meta?:
 }
 
 /**
- * The view if it exists and no source table has changed since it was built;
- * null otherwise (the caller computes the answer live). Chunks are read only
- * when asked for, so a caller whose client holds `etag` reads the header and
- * the version rows alone.
+ * Pending athlete hints a freshness check compares with a roster; with more
+ * pending than this (a national meet's results just landed), every view that
+ * reads roster athletes' results counts as stale until the refresh catches up.
+ */
+const MAX_ATHLETE_HINTS_CHECKED = 200;
+
+async function hintPending(ctx: QueryCtx, { kind, key }: HintId): Promise<boolean> {
+  const hint = await ctx.db
+    .query('view_hints')
+    .withIndex('by_kind_key', (q) => q.eq('kind', kind).eq('key', key))
+    .first();
+  return hint !== null;
+}
+
+/**
+ * Whether a pending athlete hint can change a meet's timelines or stats view
+ * (`meta` from its header): one range read when none is pending, as almost
+ * always, and the meet's roster keys only when some are.
+ */
+async function rosterChangePending(
+  ctx: QueryCtx,
+  { meet, part }: NonNullable<ViewDependencies['roster']>,
+  meta: string | undefined,
+): Promise<boolean> {
+  const pending = await ctx.db
+    .query('view_hints')
+    .withIndex('by_kind_key', (q) => q.eq('kind', 'athlete'))
+    .take(MAX_ATHLETE_HINTS_CHECKED + 1);
+  // Past the cap, the unread hints could be anyone's.
+  if (pending.length > MAX_ATHLETE_HINTS_CHECKED) return true;
+  const relevant = pending.filter((hint) => athleteChangeAffects(part, hint.since, meta));
+  if (relevant.length === 0) return false;
+  const roster = new Set(JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[]);
+  return relevant.some((hint) => roster.has(hint.key));
+}
+
+/**
+ * The view if it exists and no change to what it reads is pending (see the
+ * top of this file); null otherwise (the caller computes the answer live).
+ * Chunks are read only when asked for, so a caller whose client holds `etag`
+ * reads the header and a hint lookup or two alone.
  */
 export async function readFreshView<T>(ctx: QueryCtx, key: string): Promise<FreshView<T> | null> {
-  // The header and every version row in parallel: `data_versions` is a
-  // handful of rows, one range read.
-  const [header, versions] = await Promise.all([viewHeader(ctx, key), ctx.db.query('data_versions').collect()]);
-  if (!header?.sources) return null;
-  const current = new Map(versions.map((row) => [row.table, row.version]));
-  if (header.sources.some((s) => s.version !== (current.get(s.table) ?? 0))) return null;
+  const dependencies = viewDependencies(key);
+  if (dependencies === null) return null;
+  const [header, pending] = await Promise.all([
+    viewHeader(ctx, key),
+    Promise.all(dependencies.hints.map((hint) => hintPending(ctx, hint))),
+  ]);
+  if (!header?.sources || pending.some(Boolean)) return null;
+  if (dependencies.roster && (await rosterChangePending(ctx, dependencies.roster, header.meta))) return null;
   return freshView<T>(ctx, key, header);
+}
+
+/**
+ * The view whatever its age, or null if it was never built. For answers
+ * where the last complete build beats computing live (national rankings and
+ * the club list, whose live computations are more than one query may read).
+ */
+export async function readViewAnyAge<T>(ctx: QueryCtx, key: string): Promise<FreshView<T> | null> {
+  const header = await viewHeader(ctx, key);
+  return header ? freshView<T>(ctx, key, header) : null;
 }
 
 /**
@@ -234,21 +291,30 @@ export async function writeView(
   return header;
 }
 
+export async function deleteHeaderAndChunks(ctx: MutationCtx, header: { _id: Id<'views'>; key: string }): Promise<void> {
+  const chunks = await ctx.db
+    .query('view_chunks')
+    .withIndex('by_key_index', (q) => q.eq('key', header.key))
+    .collect();
+  for (const chunk of chunks) await ctx.db.delete(chunk._id);
+  await ctx.db.delete(header._id);
+}
+
 /** Deletes every view whose key starts with `prefix` (headers and chunks). */
 export async function deleteViewsWithPrefix(ctx: MutationCtx, prefix: string): Promise<number> {
   const headers = await ctx.db
     .query('views')
     .withIndex('by_key', (q) => q.gte('key', prefix).lt('key', `${prefix}\uffff`))
     .collect();
-  for (const header of headers) {
-    const chunks = await ctx.db
-      .query('view_chunks')
-      .withIndex('by_key_index', (q) => q.eq('key', header.key))
-      .collect();
-    for (const chunk of chunks) await ctx.db.delete(chunk._id);
-    await ctx.db.delete(header._id);
-  }
+  for (const header of headers) await deleteHeaderAndChunks(ctx, header);
   return headers.length;
+}
+
+/** Deletes the view with exactly this key, if there is one; never one it is a prefix of. */
+export async function deleteView(ctx: MutationCtx, key: string): Promise<boolean> {
+  const header = await viewHeader(ctx, key);
+  if (header) await deleteHeaderAndChunks(ctx, header);
+  return header !== null;
 }
 
 /** Keys of every view whose key starts with `prefix`. */

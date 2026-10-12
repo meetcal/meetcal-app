@@ -5,6 +5,7 @@ import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
+import { earliestSince } from './lib/viewKeys';
 import { bumpVersion, type SourceTable } from './lib/views';
 import {
   athletesFields,
@@ -25,38 +26,46 @@ import { scheduleRefresh } from './views';
  * because every write here does three things the materialized views rely on
  * (`convex/lib/views.ts`):
  *
- * 1. bumps the table's version, so every view built from it stops being
- *    served until rebuilt (result writes also rewrite the touched athletes'
- *    history documents, in the same transaction);
- * 2. leaves hints naming what changed (old and new values of each row), so
- *    the refresh rebuilds only the views those rows feed;
+ * 1. leaves hints naming what changed (old and new values of each row): the
+ *    views those rows feed stop being served until the refresh has rebuilt
+ *    them, and only those are rebuilt (result writes also rewrite the touched
+ *    athletes' history documents, in the same transaction);
+ * 2. bumps the table's version (the stamp builders record);
  * 3. schedules that refresh.
  */
 
-type WriteHint = { kind: string; key: string };
+/** `since`: the earliest date of the results an `athlete` hint's write changed. */
+type WriteHint = { kind: string; key: string; since?: string };
 
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
-  const unique = new Map(hints.map((h) => [`${h.kind}\u0000${h.key}`, h]));
+  const unique = new Map<string, WriteHint>();
+  for (const hint of hints) {
+    const id = `${hint.kind}\u0000${hint.key}`;
+    const seen = unique.get(id);
+    unique.set(id, seen ? { ...hint, since: earliestSince(seen.since, hint.since) } : hint);
+  }
   for (const hint of unique.values()) {
     const existing = await ctx.db
       .query('view_hints')
       .withIndex('by_kind_key', (q) => q.eq('kind', hint.kind).eq('key', hint.key))
       .first();
     const updatedAt = Date.now();
-    if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt });
+    // A pending hint's date only moves earlier, so it still covers the write
+    // a refresh may be handling now.
+    if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt, since: earliestSince(existing.since, hint.since) });
     else await ctx.db.insert('view_hints', { ...hint, seq: 0, updatedAt });
   }
   await scheduleRefresh(ctx);
 }
 
-type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive'>;
+type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
 
 /** Everything a result row feeds: its ranking class, meet, athlete, name. */
 function resultHints(row: ResultFields): WriteHint[] {
   const hints: WriteHint[] = [
     { kind: 'meet', key: row.meet },
-    { kind: 'athlete', key: normalizeName(row.name) },
+    { kind: 'athlete', key: normalizeName(row.name), since: row.date },
     { kind: 'name', key: row.name },
   ];
   if (row.federation !== undefined && row.age !== undefined) {
