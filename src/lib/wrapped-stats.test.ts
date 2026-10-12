@@ -1,5 +1,9 @@
 import type { SupabaseLiftResult } from '@/data/types/athletes';
-import { calculateWrappedStats } from '@/lib/wrapped-stats';
+import {
+  buildWrappedShareText,
+  calculateWrappedStats,
+  formatImprovement,
+} from '@/lib/wrapped-stats';
 
 function row(overrides: Partial<SupabaseLiftResult> = {}): SupabaseLiftResult {
   return {
@@ -130,6 +134,38 @@ describe('calculateWrappedStats', () => {
     expect(stats.improvementFromFirst).toBe(25);
   });
 
+  it('ignores a bomb-out at the end of the year', () => {
+    // A 0 / missing total used to be read as the last total: "-200kg".
+    const stats = calculateWrappedStats([
+      row({ date: '2026-01-10', total: 200 }),
+      row({ date: '2026-04-10', total: 210 }),
+      row({ date: '2026-09-10', total: 0 }),
+    ]);
+
+    expect(stats.improvementFromFirst).toBe(10);
+  });
+
+  it('ignores a bomb-out at the start of the year', () => {
+    const stats = calculateWrappedStats([
+      row({ date: '2026-01-10', total: null }),
+      row({ date: '2026-04-10', total: 200 }),
+      row({ date: '2026-09-10', total: 195 }),
+    ]);
+
+    expect(stats.improvementFromFirst).toBe(-5);
+  });
+
+  it('has no improvement with fewer than two meets that have a total', () => {
+    expect(
+      calculateWrappedStats([
+        row({ date: '2026-01-10', total: 0 }),
+        row({ date: '2026-06-10', total: 200 }),
+      ]).improvementFromFirst,
+    ).toBeNull();
+    expect(calculateWrappedStats([row({ total: 200 })]).improvementFromFirst).toBeNull();
+    expect(calculateWrappedStats([]).improvementFromFirst).toBeNull();
+  });
+
   it('names the attempt number made most often', () => {
     const stats = calculateWrappedStats([
       row({ snatch2: 105, cj2: 125, snatch1: -100, cj1: -120 }),
@@ -152,5 +188,29 @@ describe('calculateWrappedStats', () => {
 
     expect(stats.makePercentage).toBe(50);
     expect(stats.yearRank).toBe('Heavy Hitter');
+  });
+});
+
+describe('formatImprovement', () => {
+  it('signs a change, calls no change Steady, and hides an unknown one', () => {
+    expect(formatImprovement(12)).toBe('+12kg');
+    expect(formatImprovement(-5)).toBe('-5kg');
+    expect(formatImprovement(0)).toBe('Steady');
+    expect(formatImprovement(null)).toBeNull();
+  });
+});
+
+describe('buildWrappedShareText', () => {
+  it('labels the bests as the year\'s, never as PRs', () => {
+    const stats = calculateWrappedStats([
+      row({ snatch1: 100, snatch_best: 100, cj1: 120, cj_best: 120, total: 220 }),
+    ]);
+    const text = buildWrappedShareText(stats, 2025);
+
+    expect(text).toContain('My 2025 Weightlifting Wrapped!');
+    expect(text).toContain('Best Snatch of 2025: 100kg');
+    expect(text).toContain('Best Clean & Jerk of 2025: 120kg');
+    expect(text).toContain('Best Total of 2025: 220kg');
+    expect(text).not.toMatch(/\bPR\b/);
   });
 });

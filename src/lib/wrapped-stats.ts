@@ -90,9 +90,14 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
     meetNames[0] || 'N/A',
   );
 
-  const firstTotal = data[0]?.total || 0;
-  const lastTotal = data[data.length - 1]?.total || 0;
-  const improvement = lastTotal - firstTotal;
+  // First to last meet with a total. A bomb-out (no total, or 0) is not a
+  // data point: counting one as 0 turned a 200kg lifter's year into "-200kg"
+  // (or "+200kg" when the bomb-out came first).
+  const totals = data
+    .map((r) => r.total)
+    .filter((total): total is number => typeof total === 'number' && total > 0);
+  const improvement =
+    totals.length >= 2 ? totals[totals.length - 1] - totals[0] : null;
 
   const attemptCounts = { '1st': 0, '2nd': 0, '3rd': 0 };
   for (const result of data) {
@@ -126,4 +131,38 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
     favoriteAttempt,
     yearRank,
   };
+}
+
+/**
+ * The improvement stat as shown: "+12kg", "-5kg", "Steady" for no change, or
+ * `null` when the year has fewer than two meets with a total and there is
+ * nothing to compare.
+ */
+export function formatImprovement(improvement: number | null): string | null {
+  if (improvement === null) return null;
+  if (improvement > 0) return `+${improvement}kg`;
+  if (improvement < 0) return `${improvement}kg`;
+  return 'Steady';
+}
+
+/**
+ * The plain-text Wrapped, shared when the image share fails.
+ *
+ * The bests are the best of the selected calendar year, not lifetime records,
+ * so they are labelled as such: a down year must not share "PRs" that aren't.
+ */
+export function buildWrappedShareText(stats: WrappedStats, year: number): string {
+  return [
+    `My ${year} Weightlifting Wrapped!`,
+    '',
+    `Total Weight Lifted: ${stats.totalWeightLifted.toLocaleString()}kg`,
+    `Make Percentage: ${stats.makePercentage.toFixed(1)}%`,
+    `Best Total of ${year}: ${stats.bestTotal}kg`,
+    `Best Snatch of ${year}: ${stats.bestSnatch}kg`,
+    `Best Clean & Jerk of ${year}: ${stats.bestCleanJerk}kg`,
+    `Competed in ${stats.totalMeets} meets`,
+    `Status: ${stats.yearRank}`,
+    '',
+    '#WeightliftingWrapped',
+  ].join('\n');
 }

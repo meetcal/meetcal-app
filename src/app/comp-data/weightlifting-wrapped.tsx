@@ -4,7 +4,11 @@ import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
-import { calculateWrappedStats } from "@/lib/wrapped-stats";
+import {
+  buildWrappedShareText,
+  calculateWrappedStats,
+  formatImprovement,
+} from "@/lib/wrapped-stats";
 import { selectWrappedRows } from "@/lib/wrapped-search";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
@@ -294,7 +298,7 @@ export default function WeightliftingWrappedScreen() {
       await shareImageFile(uri, `My ${selectedYear} Weightlifting Wrapped!`);
     } catch {
       if (!wrappedStats) return;
-      const shareText = `My ${selectedYear} Weightlifting Wrapped!\n\nTotal Weight Lifted: ${wrappedStats.totalWeightLifted.toLocaleString()}kg\nMake Percentage: ${wrappedStats.makePercentage.toFixed(1)}%\nBest Total: ${wrappedStats.bestTotal}kg\nSnatch PR: ${wrappedStats.bestSnatch}kg\nClean & Jerk PR: ${wrappedStats.bestCleanJerk}kg\nCompeted in ${wrappedStats.totalMeets} meets\nStatus: ${wrappedStats.yearRank}\n\n#WeightliftingWrapped`;
+      const shareText = buildWrappedShareText(wrappedStats, selectedYear);
       await Share.share({ message: shareText });
     }
   };
@@ -343,7 +347,7 @@ export default function WeightliftingWrappedScreen() {
               />
             )}
             {index === 1 && <TotalWeightSlide stats={wrappedStats} active={isActive} />}
-            {index === 2 && <PersonalRecordsSlide stats={wrappedStats} active={isActive} />}
+            {index === 2 && <YearBestsSlide stats={wrappedStats} year={selectedYear} active={isActive} />}
             {index === 3 && <ConsistencySlide stats={wrappedStats} active={isActive} />}
             {index === 4 && <MeetJourneySlide stats={wrappedStats} year={selectedYear} active={isActive} />}
             {index === 5 && <FavoriteAttemptSlide stats={wrappedStats} />}
@@ -688,10 +692,13 @@ function TotalWeightSlide({ stats, active }: { stats: WrappedStats; active: bool
   );
 }
 
-function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: boolean }) {
+// The selected calendar year's bests. Not labelled "personal records": they
+// are not compared with the athlete's lifetime history, and a down year must
+// not share a card claiming PRs that aren't.
+function YearBestsSlide({ stats, year, active }: { stats: WrappedStats; year: number; active: boolean }) {
   return (
     <View style={styles.slideInner}>
-      <Text style={styles.slideTopLabel}>PERSONAL RECORDS</Text>
+      <Text style={styles.slideTopLabel}>{`BEST OF ${year}`}</Text>
       <View style={styles.prCenter}>
         <View style={styles.prCard}>
           <Text style={styles.prLabel}>SNATCH</Text>
@@ -789,11 +796,9 @@ TIER
 }
 
 function MeetJourneySlide({ stats, year, active }: { stats: WrappedStats; year: number; active: boolean }) {
-  const improvementText = stats.improvementFromFirst > 0
-    ? `+${stats.improvementFromFirst}kg`
-    : stats.improvementFromFirst < 0
-      ? `${stats.improvementFromFirst}kg`
-      : "Steady";
+  // `null` with fewer than two meets that have a total: nothing to compare,
+  // so the stat is left out rather than shown as a swing to or from zero.
+  const improvementText = formatImprovement(stats.improvementFromFirst);
 
   return (
     <View style={styles.slideInner}>
@@ -826,12 +831,19 @@ kg
 </Text>
             <Text style={styles.journeyStatLabel}>AVG TOTAL</Text>
           </View>
-          <View style={styles.journeyStat}>
-            <Text style={[styles.journeyStatNumber, stats.improvementFromFirst > 0 && styles.positiveText]}>
-              {improvementText}
-            </Text>
-            <Text style={styles.journeyStatLabel}>IMPROVEMENT</Text>
-          </View>
+          {improvementText !== null && (
+            <View style={styles.journeyStat}>
+              <Text
+                style={[
+                  styles.journeyStatNumber,
+                  (stats.improvementFromFirst ?? 0) > 0 && styles.positiveText,
+                ]}
+              >
+                {improvementText}
+              </Text>
+              <Text style={styles.journeyStatLabel}>IMPROVEMENT</Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
