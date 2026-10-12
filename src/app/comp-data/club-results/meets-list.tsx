@@ -71,9 +71,10 @@ function ClubMeetsListScreenContent() {
   ).sort();
 
   // Filter meets based on search query
-  const uniqueMeets = searchQuery
+  const meetQuery = searchQuery.trim();
+  const uniqueMeets = meetQuery
     ? allMeets.filter((meet) =>
-        meet.toLowerCase().includes(searchQuery.toLowerCase()),
+        meet.toLowerCase().includes(meetQuery.toLowerCase()),
       )
     : allMeets;
 
@@ -141,7 +142,7 @@ function ClubMeetsListScreenContent() {
       return (
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
-            {`No meets match "${searchQuery.trim()}"`}
+            {`No meets match "${meetQuery}"`}
           </ThemedText>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}

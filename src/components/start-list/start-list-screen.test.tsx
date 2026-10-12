@@ -33,7 +33,13 @@ type ClubModalProps = {
 const mockPillBar = jest.fn((_props: PillBarProps) => null);
 const mockActionModal = jest.fn((_props: ActionModalProps) => null);
 const mockClubModal = jest.fn((_props: ClubModalProps) => null);
-const mockFlashList = jest.fn((_props: { data: LiftResult[] }) => null);
+type FlashListProps = {
+  data: LiftResult[];
+  renderItem: (info: { item: LiftResult; index: number }) => React.ReactElement<{
+    onSeeAllResults: (name: string) => void;
+  }>;
+};
+const mockFlashList = jest.fn((_props: FlashListProps) => null);
 const mockRequireAuth = jest.fn((_options: { feature: string }) => true as boolean | null);
 const mockSaveSessions = jest.fn(async () => true);
 const mockPush = jest.fn();
@@ -49,7 +55,7 @@ jest.mock("@/components/start-list/ActionModal", () => ({
   default: (props: ActionModalProps) => mockActionModal(props),
 }));
 jest.mock("@shopify/flash-list", () => ({
-  FlashList: (props: { data: LiftResult[] }) => mockFlashList(props),
+  FlashList: (props: FlashListProps) => mockFlashList(props),
 }));
 // Rows are covered by AthleteItem.test.tsx; the list mock renders none.
 jest.mock("@/components/start-list/AthleteItem", () => ({ AthleteItem: () => null }));
@@ -393,6 +399,55 @@ describe("Start List premium actions", () => {
       type: "info",
       message: "There are no sessions to add to calendar.",
     });
+  });
+});
+
+describe("Start List row results link", () => {
+  const seeAllResults = (name: string) => {
+    const { data, renderItem } = lastCall(mockFlashList);
+    const index = data.findIndex((a) => a.name === name);
+    act(() => renderItem({ item: data[index], index }).props.onSeeAllResults(name));
+  };
+
+  it("opens a subscriber's results", async () => {
+    await mount();
+    seeAllResults("Jane Doe");
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/shared-screens/athlete-results",
+      params: { name: "Jane Doe" },
+    });
+  });
+
+  it("sends a free user to the paywall and a signed-out user nowhere", async () => {
+    mockSubscription.isSubscribed = false;
+    await mount();
+    seeAllResults("Jane Doe");
+    expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/shared-screens/paywall",
+      params: { from: "/(tabs)/(start-list)", feature: "athlete-results" },
+    });
+
+    mockPush.mockClear();
+    mockRequireAuth.mockImplementation(() => false);
+    seeAllResults("Jane Doe");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("Start List best-lift sort after a lapse", () => {
+  it("falls back to A-Z when the subscription is no longer confirmed", async () => {
+    jest.mocked(getLastYearBestsBatch).mockResolvedValue({
+      "John Smith": { bestSnatch: 150, bestCJ: 180, bestTotal: 330 },
+    });
+    await mount();
+    act(() => pillBar().onSelect("sort", "bestSnatch"));
+    await flush();
+    expect(shownNames()[0]).toBe("John Smith");
+
+    mockSubscription.isSubscribed = false;
+    act(() => tree.update(<StartListScreen />));
+    expect(pill("sort").value).toBe("");
+    expect(shownNames()).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
   });
 });
 

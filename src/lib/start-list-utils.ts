@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
-import { nameMatchesSearchWords, searchWords } from '@/lib/name-search';
+import { lowerNameMatchesSearchWords, searchWords } from '@/lib/name-search';
 import type { YearBests } from '@/lib/start-list-api';
 import type { Schedule } from '@/types/schedule';
 import type { SessionDetails } from '@/types/start-list';
@@ -235,8 +235,9 @@ export function isPremiumStartListPill(id: string, value: string): boolean {
 
 /**
  * The sort the list actually applies. A best-lift sort picked while
- * subscribed falls back to A-Z once the subscription is not confirmed (it
- * lapsed, or the user signed out), instead of showing a premium order.
+ * subscribed falls back to A-Z whenever `isSubscribed` is not `true` (the
+ * subscription lapsed, or its status is not known yet), instead of showing
+ * a premium order.
  */
 export function effectiveStartListSort(
   sort: AthleteSortOption,
@@ -398,6 +399,7 @@ export interface NormalizedStartListAthlete {
   athlete: LiftResult;
   weightClasses: string[];
   ageCategory: string;
+  nameLower: string;
   genderLower: string;
   wso: string;
 }
@@ -413,6 +415,7 @@ export function normalizeStartListAthletes(
     athlete,
     weightClasses: parseWeightClasses(athlete.weightClass),
     ageCategory: getAgeCategory(athlete.age),
+    nameLower: athlete.name.toLowerCase(),
     genderLower: athlete.gender.toLowerCase(),
     wso: athlete.wso?.trim() || '',
   }));
@@ -427,7 +430,7 @@ export function filterStartListAthletes(
   const words = searchWords(filters.search);
   const gender = filters.gender.toLowerCase();
   const result: LiftResult[] = [];
-  for (const { athlete, weightClasses, ageCategory, genderLower, wso } of normalized) {
+  for (const { athlete, nameLower, weightClasses, ageCategory, genderLower, wso } of normalized) {
     if (filters.weightClass && !weightClasses.includes(filters.weightClass)) continue;
     if (filters.club) {
       const inClub =
@@ -436,7 +439,7 @@ export function filterStartListAthletes(
           : athlete.club === filters.club;
       if (!inClub) continue;
     }
-    if (!nameMatchesSearchWords(athlete.name, words)) continue;
+    if (!lowerNameMatchesSearchWords(nameLower, words)) continue;
     if (filters.ageGroup && ageCategory !== filters.ageGroup) continue;
     if (!matchesAdaptiveFilter(athlete, filters.adaptive)) continue;
     if (gender && genderLower !== gender) continue;

@@ -15,7 +15,16 @@ export function searchWords(query: string): string[] {
 
 /** Whether `name` contains every word in `words` (from `searchWords`). */
 export function nameMatchesSearchWords(name: string, words: readonly string[]): boolean {
-  if (words.length === 0) return true;
-  const lower = name.toLowerCase();
-  return words.every((word) => lower.includes(word));
+  return lowerNameMatchesSearchWords(name.toLowerCase(), words);
+}
+
+/**
+ * `nameMatchesSearchWords` for a name already lowercased, so a list filtered
+ * on every keystroke can lowercase its names once.
+ */
+export function lowerNameMatchesSearchWords(
+  lowerName: string,
+  words: readonly string[],
+): boolean {
+  return words.every((word) => lowerName.includes(word));
 }

@@ -27,12 +27,15 @@ export function useStarredClubs() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   // The latest list, so a toggle never builds on a stale render's copy.
   const starredRef = useRef<string[]>([]);
+  // Set by the first toggle: a stored list read back after it would put the
+  // screen out of step with what the toggle just wrote.
+  const toggledRef = useRef(false);
 
   useEffect(() => {
     let isCancelled = false;
     AsyncStorage.getItem(STARRED_CLUBS_KEY)
       .then((stored) => {
-        if (isCancelled || !stored) return;
+        if (isCancelled || toggledRef.current || !stored) return;
         const parsed = parseStarredClubs(stored);
         starredRef.current = parsed;
         setStarredClubs(parsed);
@@ -47,6 +50,7 @@ export function useStarredClubs() {
 
   /** Stars or unstars `club` and returns the new list (persisted in the background). */
   const toggleStarredClub = useCallback((club: string): string[] => {
+    toggledRef.current = true;
     const current = starredRef.current;
     const next = current.includes(club)
       ? current.filter((c) => c !== club)

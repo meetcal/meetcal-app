@@ -62,4 +62,17 @@ describe("useStarredClubs", () => {
     expect(hook.starredClubs).toEqual(["B"]);
     expect(await AsyncStorage.getItem(STARRED_CLUBS_KEY)).toBe('["B"]');
   });
+
+  it("keeps a toggle made before the stored list was read", async () => {
+    await AsyncStorage.setItem(STARRED_CLUBS_KEY, '["A"]');
+    act(() => {
+      tree = create(<Harness />);
+    });
+    act(() => {
+      hook.toggleStarredClub("B");
+    });
+    await flush();
+    expect(hook.starredClubs).toEqual(["B"]);
+    expect(await AsyncStorage.getItem(STARRED_CLUBS_KEY)).toBe('["B"]');
+  });
 });
