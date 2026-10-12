@@ -1428,9 +1428,47 @@ export async function fetchApiClubNames(): Promise<string[]> {
   ];
 }
 
+/**
+ * Most pages a paged query may take before the client gives up. A club's
+ * entries arrive 2,000 rows a page, so this allows 200,000 rows; an answer
+ * that never reports `isDone` fails here instead of looping forever.
+ */
+export const MAX_QUERY_PAGES = 100;
+
+type JsonTextPage = { rows: unknown[]; cursor: string; isDone: boolean };
+
+/** One `{ json, cursor, isDone }` page of a paged query, checked before anything reads it. */
+function decodeJsonTextPage(value: unknown, path: string): JsonTextPage {
+  assertObject(value, path);
+  if (typeof value.json !== 'string') throw new Error(`${path} returned a non-text json field`);
+  if (typeof value.cursor !== 'string') throw new Error(`${path} returned a non-string cursor`);
+  if (typeof value.isDone !== 'boolean') throw new Error(`${path} returned a non-boolean isDone`);
+  const rows = assertArray<unknown>(parseJsonText(value.json, path), path);
+  return { rows, cursor: value.cursor, isDone: value.isDone };
+}
+
+/**
+ * Every row of a paged query: the first call sends `cursor: null`, each later
+ * one the cursor the previous page returned, until a page reports `isDone`.
+ * Rows are concatenated in page order; the server sorts within a page only,
+ * and a list replaced while paging can repeat a row, so callers must not rely
+ * on order or uniqueness.
+ */
+async function readAllPages(path: string, fn: string, args: Record<string, unknown>): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_QUERY_PAGES; page += 1) {
+    const answer = decodeJsonTextPage(await readQuery(path, fn, { ...args, cursor }), path);
+    rows.push(...answer.rows);
+    if (answer.isDone) return rows;
+    cursor = answer.cursor;
+  }
+  throw new Error(`${path} did not finish within ${MAX_QUERY_PAGES} pages`);
+}
+
 /** A club's entries across meets; `lib/database/fetch-club-stats` validates the rows. */
 export async function fetchApiClubAthletes(club: string): Promise<unknown[]> {
-  return assertArray<unknown>(await readQuery('/clubs/athletes', 'reference:clubAthletes', { club }), '/clubs/athletes');
+  return readAllPages('/clubs/athletes', 'reference:clubAthletes', { club });
 }
 
 /** A club's results at one meet; `lib/database/fetch-club-stats` validates the shape. */

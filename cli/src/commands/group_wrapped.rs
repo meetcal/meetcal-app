@@ -8,7 +8,7 @@ use crate::commands::compare::{MetricComparison, MetricUnit, percent_change};
 use crate::commands::wrapped::calculate_wrapped_stats;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{queries, query, query_all_pages};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use serde_json::json;
@@ -32,12 +32,15 @@ pub struct GroupWrappedStats {
     pub wrapped: WrappedStats,
 }
 
+/// Every registration of the club's athletes. Read in pages, so rows are in no particular order
+/// and may repeat; the reports dedupe names and match meets, so neither matters.
 pub async fn get_club_memberships(club: &str) -> Result<Vec<ClubMembership>> {
-    query(queries::CLUB_ATHLETES, &json!({ "club": club })).await
+    query_all_pages(queries::CLUB_ATHLETES, &json!({ "club": club })).await
 }
 
+/// Every registration of the WSO's athletes; read in pages like [`get_club_memberships`].
 pub async fn get_wso_memberships(wso: &str) -> Result<Vec<ClubMembership>> {
-    query(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
+    query_all_pages(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
 }
 
 pub async fn get_recent_results(

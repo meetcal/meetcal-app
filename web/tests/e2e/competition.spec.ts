@@ -269,10 +269,17 @@ test("meet center joins details, schedule, start list, and full results", async 
 test("club and WSO dashboards expose meet performance metrics", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "reference:clubs", (route) => route.fulfill(textAnswer(["Test Barbell"])));
-  await routeQuery(page, "reference:clubAthletes", (route) => route.fulfill(valueAnswer([{ meet: "Test Meet" }])));
+  // Paged when a cursor is sent: two pages, so the second meet only shows if the site reads past the first.
+  await routeQuery(page, "reference:clubAthletes", (route, args) => {
+    if (!("cursor" in args)) return route.fulfill(valueAnswer([{ meet: "Test Meet" }]));
+    if (args.cursor === null) return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Test Meet" }]), cursor: "page-2", isDone: false }));
+    return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Older Meet" }, { meet: "Test Meet" }]), cursor: "end", isDone: true }));
+  });
   await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69kg", snatch_best: 100, cj_best: 125, total: 225, body_weight: 70.5, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
+  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option", { hasText: "Older Meet" })).toHaveCount(1);
+  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option", { hasText: "Test Meet" })).toHaveCount(1);
   await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
   await expect(page.getByText("Gold medals")).toBeVisible();
   await expect(page.locator("tbody")).toContainText("Test Athlete");

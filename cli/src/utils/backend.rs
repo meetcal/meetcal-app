@@ -32,6 +32,11 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
 
+/// Most pages [`query_all_pages`] reads before giving up. A club's or WSO's entries arrive 2,000
+/// rows a page, so this allows 200,000 rows; an answer that never reports `isDone` fails here
+/// instead of looping forever.
+pub const MAX_PAGES: usize = 100;
+
 static CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// The HTTP client shared by every request.
@@ -153,12 +158,14 @@ pub mod queries {
     pub const WSO_LIST: Query = Query::text("reference:wsoList");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
     pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
-    /// `GET /clubs/athletes`; takes `club`.
+    /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
+    /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
-    /// `GET /wsos/athletes`; takes `wso`.
-    pub const WSO_ATHLETES: Query = Query::text("reference:wsoAthletes");
+    /// `GET /wsos/athletes`; takes `wso`, and `cursor` (null to start) to page. Read it with
+    /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
+    pub const WSO_ATHLETES: Query = Query::value("reference:wsoAthletes");
 }
 
 #[derive(Serialize)]
@@ -187,6 +194,23 @@ enum QueryResponse {
 /// The arguments of a query that takes none.
 #[derive(Serialize)]
 pub struct NoArgs {}
+
+/// A paged query's own arguments plus `cursor`: `None` (sent as `null`) asks for the first page.
+#[derive(Serialize)]
+struct PagedArgs<'a, A: Serialize + ?Sized> {
+    #[serde(flatten)]
+    args: &'a A,
+    cursor: Option<&'a str>,
+}
+
+/// One page of a paged query: its rows as JSON text, and where the next page starts.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Page {
+    json: String,
+    cursor: String,
+    is_done: bool,
+}
 
 /// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`).
 pub async fn query<T, A>(query: Query, args: &A) -> Result<T>
@@ -224,6 +248,60 @@ where
         .await
         .with_context(|| format!("Failed to parse MeetCal's answer to {}", query.function))?;
     read_answer(query, answer)
+}
+
+/// Every row of the paged `query` with `args`, on the production deployment (or
+/// `MEETCAL_CONVEX_URL`). See [`query_all_pages_from`].
+pub async fn query_all_pages<T, A>(query: Query, args: &A) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    query_all_pages_from(&convex_url(), query, args).await
+}
+
+/// Every row of the paged `query` with `args`, on the deployment at `base_url`: the first call
+/// sends `cursor: null`, each later one the cursor the previous page returned, until a page
+/// reports `isDone`. Rows come in page order; the server sorts within a page only, and a list
+/// replaced while paging can repeat a row, so callers must not rely on order or uniqueness.
+pub async fn query_all_pages_from<T, A>(base_url: &str, query: Query, args: &A) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    collect_pages(query.function, |cursor| async move {
+        let args = PagedArgs {
+            args,
+            cursor: cursor.as_deref(),
+        };
+        query_from::<Page, _>(base_url, query, &args).await
+    })
+    .await
+}
+
+/// The paging loop of [`query_all_pages_from`], over any page source: `fetch` gets `None` first,
+/// then each cursor a page returned, at most [`MAX_PAGES`] times.
+async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<Page>>,
+{
+    let mut rows = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        let page = fetch(cursor.take()).await?;
+        let mut batch: Vec<T> = serde_json::from_str(&page.json)
+            .with_context(|| format!("Unexpected answer from MeetCal query {function}"))?;
+        rows.append(&mut batch);
+        if page.is_done {
+            return Ok(rows);
+        }
+        cursor = Some(page.cursor);
+    }
+    Err(anyhow!(
+        "MeetCal query {function} did not finish within {MAX_PAGES} pages"
+    ))
 }
 
 /// Convex's HTTP API writes every number of a value answer as a float (`2.0`), which an integer
@@ -415,6 +493,157 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "MeetCal query test:text answered without its body"
+        );
+    }
+
+    fn page(rows: &[u32], cursor: &str, is_done: bool) -> Page {
+        Page {
+            json: serde_json::to_string(rows).unwrap(),
+            cursor: cursor.to_string(),
+            is_done,
+        }
+    }
+
+    #[test]
+    fn paged_requests_add_the_cursor_to_the_arguments() {
+        let args = json!({ "club": "Test Barbell" });
+        let first = PagedArgs {
+            args: &args,
+            cursor: None,
+        };
+        let later = PagedArgs {
+            args: &args,
+            cursor: Some("c1"),
+        };
+        assert_eq!(
+            serde_json::to_value(first).unwrap(),
+            json!({"club": "Test Barbell", "cursor": null})
+        );
+        assert_eq!(
+            serde_json::to_value(later).unwrap(),
+            json!({"club": "Test Barbell", "cursor": "c1"})
+        );
+    }
+
+    #[test]
+    fn a_page_is_a_value_answer_carrying_its_rows_as_json_text() {
+        let page: Page = read_answer(
+            queries::CLUB_ATHLETES,
+            answer(json!({"status": "success", "value": {
+                "json": "[1,2]", "cursor": "c1", "isDone": false
+            }})),
+        )
+        .unwrap();
+        assert_eq!(page.json, "[1,2]");
+        assert_eq!(page.cursor, "c1");
+        assert!(!page.is_done);
+
+        for value in [
+            json!([1, 2]),
+            json!({"json": "[]", "isDone": true}),
+            json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
+            json!({"json": [], "cursor": "c", "isDone": true}),
+        ] {
+            let error = read_answer::<Page>(
+                queries::WSO_ATHLETES,
+                answer(json!({"status": "success", "value": value})),
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "Unexpected answer from MeetCal query reference:wsoAthletes"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pages_are_read_from_a_null_cursor_until_one_is_done() {
+        let mut pages = vec![
+            page(&[3], "c1", false),
+            page(&[], "c2", false),
+            page(&[2, 1], "c3", true),
+        ]
+        .into_iter();
+        let mut cursors = Vec::new();
+        let rows: Vec<u32> = collect_pages("test:paged", |cursor| {
+            cursors.push(cursor);
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(rows, [3, 2, 1]);
+        assert_eq!(
+            cursors,
+            [None, Some("c1".to_string()), Some("c2".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn paging_stops_at_the_page_limit() {
+        let mut calls = 0;
+        let error = collect_pages::<u32, _, _>("test:paged", |_| {
+            calls += 1;
+            let next = page(&[calls], &format!("c{calls}"), false);
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(calls as usize, MAX_PAGES);
+        assert_eq!(
+            error.to_string(),
+            format!("MeetCal query test:paged did not finish within {MAX_PAGES} pages")
+        );
+
+        let mut calls = 0;
+        let rows: Vec<u32> = collect_pages("test:paged", |_| {
+            calls += 1;
+            let next = page(&[calls], "c", calls as usize == MAX_PAGES);
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), MAX_PAGES);
+    }
+
+    #[tokio::test]
+    async fn a_malformed_or_failed_page_fails_the_whole_read() {
+        let mut pages = vec![
+            page(&[1], "c1", false),
+            Page {
+                json: "{}".to_string(),
+                cursor: "c2".to_string(),
+                is_done: true,
+            },
+        ]
+        .into_iter();
+        let error = collect_pages::<u32, _, _>("test:paged", |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Unexpected answer from MeetCal query test:paged"
+        );
+
+        let mut calls = 0;
+        let error = collect_pages::<u32, _, _>("test:paged", |_| {
+            calls += 1;
+            let result = if calls == 1 {
+                Ok(page(&[1], "c1", false))
+            } else {
+                Err(anyhow!("MeetCal could not answer test:paged: boom"))
+            };
+            async move { result }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(calls, 2);
+        assert_eq!(
+            error.to_string(),
+            "MeetCal could not answer test:paged: boom"
         );
     }
 

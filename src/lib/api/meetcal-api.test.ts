@@ -43,6 +43,7 @@ import {
   getServerClockSkewMs,
   getTrustedNow,
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+  MAX_QUERY_PAGES,
   MeetCalApiError,
   resetServerClockForTests,
   MeetCalApiTimeoutError,
@@ -348,8 +349,8 @@ describe('meetcal API client', () => {
     [
       'fetchApiClubAthletes',
       () => fetchApiClubAthletes('Club A'),
-      { path: '/clubs/athletes', fn: 'reference:clubAthletes', args: { club: 'Club A' } },
-      [],
+      { path: '/clubs/athletes', fn: 'reference:clubAthletes', args: { club: 'Club A', cursor: null } },
+      { json: '[]', cursor: 'end', isDone: true },
     ],
     [
       'fetchApiClubMeetStats',
@@ -1102,7 +1103,7 @@ describe('meetcal API client error and auth boundaries', () => {
 
     const pending = fetchApiClubAthletes('Club A');
     jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS - 1);
-    reply.resolve([{ name: 'Athlete A' }]);
+    reply.resolve({ json: JSON.stringify([{ name: 'Athlete A' }]), cursor: 'end', isDone: true });
 
     await expect(pending).resolves.toEqual([{ name: 'Athlete A' }]);
     expect(jest.getTimerCount()).toBe(0);
@@ -1531,15 +1532,11 @@ describe('meetcal API client error and auth boundaries', () => {
     // surface as "rows.filter is not a function" inside a fetcher rather than
     // naming the query.
     installTransport(answer({ rows: [] }));
-    await expect(fetchApiClubAthletes('Club A')).rejects.toThrow(
-      '/clubs/athletes expected an array response',
-    );
     await expect(fetchApiRecords()).rejects.toThrow('/data/records expected an array response');
   });
 
   it('accepts an empty row array', async () => {
     installTransport(answer([]));
-    await expect(fetchApiClubAthletes('Club A')).resolves.toEqual([]);
     await expect(fetchApiRecords()).resolves.toEqual([]);
   });
 
@@ -2282,6 +2279,84 @@ describe('JSON text answers', () => {
       B: { best_snatch: 0, best_cj: 0, best_total: 7 },
       C: { best_snatch: 0, best_cj: 0, best_total: 205.5 },
     });
+  });
+});
+
+describe('paged club athletes', () => {
+  /** One `{ json, cursor, isDone }` page as `reference:clubAthletes` answers with a cursor. */
+  function page(rows: unknown[], cursor: string, isDone: boolean) {
+    return { json: JSON.stringify(rows), cursor, isDone };
+  }
+
+  it('starts with a null cursor, passes each returned cursor back, and concatenates the pages', async () => {
+    const pages = [
+      page([{ name: 'Athlete C', meet: 'Meet 2' }], 'c1', false),
+      page([], 'c2', false),
+      page([{ name: 'Athlete B', meet: 'Meet 1' }, { name: 'Athlete A', meet: 'Meet 1' }], 'c3', true),
+    ];
+    const { dataCalls } = installTransport(() => {
+      const next = pages.shift();
+      if (!next) throw new Error('unexpected call');
+      return next;
+    });
+
+    const rows = await fetchApiClubAthletes('Club A');
+
+    expect(rows).toEqual([
+      { name: 'Athlete C', meet: 'Meet 2' },
+      { name: 'Athlete B', meet: 'Meet 1' },
+      { name: 'Athlete A', meet: 'Meet 1' },
+    ]);
+    expect(dataCalls().map((call) => call.args)).toEqual([
+      { club: 'Club A', cursor: null },
+      { club: 'Club A', cursor: 'c1' },
+      { club: 'Club A', cursor: 'c2' },
+    ]);
+    expect(dataCalls().every((call) => call.fn === 'reference:clubAthletes')).toBe(true);
+  });
+
+  it.each([
+    ['a plain row array (the uncursored answer)', [], '/clubs/athletes expected an object response'],
+    ['a non-text json field', { json: [], cursor: 'c', isDone: true }, '/clubs/athletes returned a non-text json field'],
+    ['a missing cursor', { json: '[]', isDone: true }, '/clubs/athletes returned a non-string cursor'],
+    ['a non-boolean isDone', { json: '[]', cursor: 'c', isDone: 'yes' }, '/clubs/athletes returned a non-boolean isDone'],
+    ['invalid JSON text', { json: '[{', cursor: 'c', isDone: true }, '/clubs/athletes returned invalid JSON'],
+    ['empty JSON text', { json: '', cursor: 'c', isDone: true }, '/clubs/athletes returned an empty body'],
+    ['JSON text that is not an array', { json: '{}', cursor: 'c', isDone: true }, '/clubs/athletes expected an array response'],
+  ])('rejects a page with %s', async (_name, body, message) => {
+    installTransport(() => body);
+    await expect(fetchApiClubAthletes('Club A')).rejects.toThrow(message);
+  });
+
+  it('rejects a malformed page after good ones instead of returning a partial list', async () => {
+    const pages: unknown[] = [page([{ name: 'Athlete A' }], 'c1', false), { json: '[]', cursor: 'c2' }];
+    installTransport(() => pages.shift());
+    await expect(fetchApiClubAthletes('Club A')).rejects.toThrow(
+      '/clubs/athletes returned a non-boolean isDone',
+    );
+  });
+
+  it(`stops after ${MAX_QUERY_PAGES} pages when the server never reports isDone`, async () => {
+    let served = 0;
+    const { dataCalls } = installTransport(() => {
+      served += 1;
+      return page([{ name: `Athlete ${served}` }], `c${served}`, false);
+    });
+
+    await expect(fetchApiClubAthletes('Club A')).rejects.toThrow(
+      `/clubs/athletes did not finish within ${MAX_QUERY_PAGES} pages`,
+    );
+    expect(dataCalls()).toHaveLength(MAX_QUERY_PAGES);
+  });
+
+  it(`accepts an answer that finishes on page ${MAX_QUERY_PAGES}`, async () => {
+    let served = 0;
+    installTransport(() => {
+      served += 1;
+      return page([{ name: `Athlete ${served}` }], `c${served}`, served === MAX_QUERY_PAGES);
+    });
+
+    await expect(fetchApiClubAthletes('Club A')).resolves.toHaveLength(MAX_QUERY_PAGES);
   });
 });
 

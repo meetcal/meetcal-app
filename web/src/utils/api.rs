@@ -23,6 +23,11 @@ const MAX_RETRY_DELAY_SECS: u64 = 10;
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
 
+/// Most pages `query_all_pages` reads before giving up. A club's entries
+/// arrive 2,000 rows a page, so this allows 200,000 rows; an answer that never
+/// reports `isDone` fails here instead of looping forever.
+pub(crate) const MAX_PAGES: usize = 100;
+
 pub(crate) const RATE_LIMITED_MESSAGE: &str =
     "Too many requests right now; please try again in a moment";
 pub(crate) const OVERLOADED_MESSAGE: &str =
@@ -108,8 +113,8 @@ pub(crate) mod queries {
     pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
     /// `GET /clubs`
     pub(crate) const CLUBS: Query = Query::text("reference:clubs");
-    /// `GET /clubs/athletes`; takes `club`.
-    pub(crate) const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
+    /// `GET /clubs/athletes`; takes `club`. Paged: read it with `query_all_pages`.
+    pub(crate) const CLUB_ATHLETES: Query = Query::text("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
 }
@@ -140,6 +145,23 @@ enum QueryResponse {
 /// The arguments of a query that takes none.
 #[derive(Serialize)]
 struct NoArgs {}
+
+/// A paged query's own arguments plus `cursor`: `None` (sent as `null`) asks
+/// for the first page.
+#[derive(Serialize)]
+struct PagedArgs<'a, A: Serialize + ?Sized> {
+    #[serde(flatten)]
+    args: &'a A,
+    cursor: Option<&'a str>,
+}
+
+/// One page of a paged query: its rows, and where the next page starts.
+#[derive(Debug)]
+struct Page<T> {
+    rows: Vec<T>,
+    cursor: String,
+    is_done: bool,
+}
 
 /// Whether a response status means the request may succeed if repeated later.
 pub(crate) fn is_retryable_status(status: StatusCode) -> bool {
@@ -213,10 +235,10 @@ fn whole_numbers_as_integers(value: Value) -> Value {
     }
 }
 
-/// The body a query answered, or why it has none.
-fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<T> {
-    let value = match response {
-        QueryResponse::Success { value } => value,
+/// The value a query answered, or why it has none.
+fn answer_value(response: QueryResponse) -> Result<Value> {
+    match response {
+        QueryResponse::Success { value } => Ok(value),
         QueryResponse::Error {
             error_message,
             error_data,
@@ -226,9 +248,18 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
                 .and_then(|data| data.get("error"))
                 .and_then(Value::as_str)
                 .unwrap_or(&error_message);
-            return Err(anyhow!("MeetCal could not answer: {reason}"));
+            Err(anyhow!("MeetCal could not answer: {reason}"))
         }
-    };
+    }
+}
+
+/// The body a query answered, or why it has none.
+fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<T> {
+    read_body(query, answer_value(response)?)
+}
+
+/// The body inside a query's answer value.
+fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function)),
@@ -243,11 +274,87 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
     }
 }
 
+/// One page of a paged query's answer, `{ json, cursor, isDone }`.
+fn read_page<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<Page<T>> {
+    let value = answer_value(response)?;
+    let cursor = value
+        .get("cursor")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "MeetCal sent a page of {} without its cursor",
+                query.function
+            )
+        })?
+        .to_owned();
+    let is_done = value
+        .get("isDone")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| anyhow!("MeetCal sent a page of {} without isDone", query.function))?;
+    let rows = read_body(query, value)?;
+    Ok(Page {
+        rows,
+        cursor,
+        is_done,
+    })
+}
+
 /// Runs `query` with `args`, retrying throttled (429) and overloaded (503)
 /// responses.
 pub(crate) async fn query_with<T, A>(query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    read_response(query, send(query, args).await?)
+}
+
+/// Every row of a paged query: the first call sends `cursor: null`, each later
+/// one the cursor the previous page returned, until a page reports `isDone`.
+/// Rows come in page order; the server sorts within a page only, and a list
+/// replaced while paging can repeat a row, so callers must not rely on order
+/// or uniqueness.
+pub(crate) async fn query_all_pages<T, A>(query: Query, args: &A) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    collect_pages(query.function, |cursor| async move {
+        let args = PagedArgs {
+            args,
+            cursor: cursor.as_deref(),
+        };
+        read_page(query, send(query, &args).await?)
+    })
+    .await
+}
+
+/// The paging loop of `query_all_pages`, over any page source: `fetch` gets
+/// `None` first, then each cursor a page returned, at most `MAX_PAGES` times.
+async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+where
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<Page<T>>>,
+{
+    let mut rows = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        let page = fetch(cursor.take()).await?;
+        rows.extend(page.rows);
+        if page.is_done {
+            return Ok(rows);
+        }
+        cursor = Some(page.cursor);
+    }
+    Err(anyhow!(
+        "MeetCal sent {function} in more than {MAX_PAGES} pages"
+    ))
+}
+
+/// Sends `query` with `args`, retrying throttled (429) and overloaded (503)
+/// responses, and returns Convex's answer.
+async fn send<A>(query: Query, args: &A) -> Result<QueryResponse>
+where
     A: Serialize + ?Sized,
 {
     let client = reqwest::Client::new();
@@ -289,11 +396,10 @@ where
         break response;
     };
 
-    let answer = response
+    response
         .json::<QueryResponse>()
         .await
-        .with_context(|| format!("MeetCal sent an unreadable answer to {}", query.function))?;
-    read_response(query, answer)
+        .with_context(|| format!("MeetCal sent an unreadable answer to {}", query.function))
 }
 
 /// Runs `query`, which takes no arguments.
@@ -392,6 +498,159 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.to_string(), "MeetCal sent test:text without its body");
+    }
+
+    /// Runs a future that never waits, as every page source in these tests is.
+    fn ready<F: Future>(future: F) -> F::Output {
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match std::pin::pin!(future).poll(&mut context) {
+            std::task::Poll::Ready(output) => output,
+            std::task::Poll::Pending => panic!("the page source waited"),
+        }
+    }
+
+    fn page(rows: &[u32], cursor: &str, is_done: bool) -> Page<u32> {
+        Page {
+            rows: rows.to_vec(),
+            cursor: cursor.to_owned(),
+            is_done,
+        }
+    }
+
+    #[test]
+    fn paged_requests_add_the_cursor_to_the_arguments() {
+        #[derive(Serialize)]
+        struct Args {
+            club: &'static str,
+        }
+        let args = Args {
+            club: "Test Barbell",
+        };
+        let first = PagedArgs {
+            args: &args,
+            cursor: None,
+        };
+        let later = PagedArgs {
+            args: &args,
+            cursor: Some("c1"),
+        };
+        assert_eq!(
+            serde_json::to_value(first).unwrap(),
+            json!({"club": "Test Barbell", "cursor": null})
+        );
+        assert_eq!(
+            serde_json::to_value(later).unwrap(),
+            json!({"club": "Test Barbell", "cursor": "c1"})
+        );
+    }
+
+    #[test]
+    fn a_page_carries_its_rows_as_json_text_with_its_cursor() {
+        let page: Page<u32> = read_page(
+            queries::CLUB_ATHLETES,
+            answer(json!({"status": "success", "value": {"json": "[1,2]", "cursor": "c1", "isDone": false}})),
+        )
+        .unwrap();
+        assert_eq!(page.rows, [1, 2]);
+        assert_eq!(page.cursor, "c1");
+        assert!(!page.is_done);
+    }
+
+    #[test]
+    fn a_malformed_page_is_an_error() {
+        for (value, message) in [
+            (
+                json!([1, 2]),
+                "MeetCal sent a page of reference:clubAthletes without its cursor",
+            ),
+            (
+                json!({"json": "[]", "isDone": true}),
+                "MeetCal sent a page of reference:clubAthletes without its cursor",
+            ),
+            (
+                json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
+                "MeetCal sent a page of reference:clubAthletes without isDone",
+            ),
+            (
+                json!({"cursor": "c", "isDone": true}),
+                "MeetCal sent reference:clubAthletes without its body",
+            ),
+            (
+                json!({"json": "{}", "cursor": "c", "isDone": true}),
+                "MeetCal sent an unexpected answer to reference:clubAthletes",
+            ),
+        ] {
+            let error = read_page::<u32>(
+                queries::CLUB_ATHLETES,
+                answer(json!({"status": "success", "value": value})),
+            )
+            .unwrap_err();
+            assert_eq!(error.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn pages_are_read_from_a_null_cursor_until_one_is_done() {
+        let mut pages = vec![
+            page(&[3], "c1", false),
+            page(&[], "c2", false),
+            page(&[2, 1], "c3", true),
+        ]
+        .into_iter();
+        let mut cursors = Vec::new();
+        let rows = ready(collect_pages("test:paged", |cursor| {
+            cursors.push(cursor);
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        }))
+        .unwrap();
+        assert_eq!(rows, [3, 2, 1]);
+        assert_eq!(
+            cursors,
+            [None, Some("c1".to_owned()), Some("c2".to_owned())]
+        );
+    }
+
+    #[test]
+    fn paging_stops_at_the_page_limit() {
+        let mut calls = 0;
+        let error = ready(collect_pages("test:paged", |_| {
+            calls += 1;
+            let next = page(&[calls], &format!("c{calls}"), false);
+            async move { Ok(next) }
+        }))
+        .unwrap_err();
+        assert_eq!(calls as usize, MAX_PAGES);
+        assert_eq!(
+            error.to_string(),
+            format!("MeetCal sent test:paged in more than {MAX_PAGES} pages")
+        );
+
+        let mut calls = 0;
+        let rows = ready(collect_pages("test:paged", |_| {
+            calls += 1;
+            let next = page(&[calls], "c", calls as usize == MAX_PAGES);
+            async move { Ok(next) }
+        }))
+        .unwrap();
+        assert_eq!(rows.len(), MAX_PAGES);
+    }
+
+    #[test]
+    fn a_failed_page_fails_the_whole_read() {
+        let mut calls = 0;
+        let error = ready(collect_pages::<u32, _, _>("test:paged", |_| {
+            calls += 1;
+            let result = if calls == 1 {
+                Ok(page(&[1], "c1", false))
+            } else {
+                Err(anyhow!("MeetCal could not answer: boom"))
+            };
+            async move { result }
+        }))
+        .unwrap_err();
+        assert_eq!(calls, 2);
+        assert_eq!(error.to_string(), "MeetCal could not answer: boom");
     }
 
     #[test]
