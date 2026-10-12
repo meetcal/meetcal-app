@@ -1,5 +1,7 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
+import { pyFloat } from '../lib/numbers';
+
 export const USAW_DOMAIN = 'https://usaweightlifting.sport80.com';
 export const RECENT_EVENTS = 30;
 
@@ -28,20 +30,33 @@ function utc(year: number, month: number, day: number): number | null {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.getTime() : null;
 }
 
+/** The event's start date as sent, or null when it has none. */
+function rawEventDate(event: Dict): string | null {
+  const raw = or(nested(event, 'date', 'Start Date'), nested(event, 'start_date'));
+  return raw ? String(raw) : null;
+}
+
 /**
- * `parse_event_date`: the first space-separated token of the start date in
- * the first format that parses (ISO, then day/month, then month/day), or
- * null (Python's `datetime.min`).
+ * `parse_event_date`: the start date's first space-separated token as an ISO
+ * date (`2026-10-04`, the one format the event index sends), or null.
+ *
+ * The Python also read slash dates, day/month first, which would swap the
+ * month and day of a US `MM/DD/YYYY` date whose day is 12 or less (the site
+ * is set to US dates). Sport80 has not been seen sending one (every event of
+ * 2025 and 2026 checked in October 2026 was ISO), so any other format is not
+ * guessed at: see `unreadableEventDate`.
  */
 export function eventDate(event: Dict): number | null {
-  const raw = or(nested(event, 'date', 'Start Date'), nested(event, 'start_date'));
+  const raw = rawEventDate(event);
   if (!raw) return null;
-  const token = String(raw).split(' ')[0];
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(token);
-  if (iso) return utc(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(token);
-  if (slash) return utc(Number(slash[3]), Number(slash[2]), Number(slash[1])) ?? utc(Number(slash[3]), Number(slash[1]), Number(slash[2]));
-  return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0]);
+  return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
+}
+
+/** The start date as sent when the event has one `eventDate` cannot read, else null. */
+export function unreadableEventDate(event: Dict): string | null {
+  const raw = rawEventDate(event);
+  return raw !== null && eventDate(event) === null ? raw : null;
 }
 
 /**
@@ -50,8 +65,9 @@ export function eventDate(event: Dict): number | null {
  * between requests, which made the Python job's cut at 30 events pick
  * different meets from one run to the next.
  */
+const idNumber = (event: Dict) => Number(eventIdOf(event) ?? 0) || 0;
+
 export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
-  const idNumber = (event: Dict) => Number(eventIdOf(event) ?? 0) || 0;
   return events
     .map((event) => ({ event, date: eventDate(event), id: idNumber(event) }))
     .sort((a, b) => (b.date ?? -Infinity) - (a.date ?? -Infinity) || b.id - a.id)
@@ -78,9 +94,9 @@ function toFloat(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return value;
   if (typeof value === 'boolean') return value ? 1 : 0;
-  const text = String(value).trim();
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) throw new Error(`not a number: ${JSON.stringify(value)}`);
-  return Number(text);
+  const number = pyFloat(String(value));
+  if (number === null) throw new Error(`not a number: ${JSON.stringify(value)}`);
+  return number;
 }
 
 export type ResultRow = {
@@ -140,4 +156,26 @@ function formatResult(eventId: string, meet: string, day: string, item: Dict): R
     adaptive: false,
     federation: 'USAW',
   };
+}
+
+/**
+ * The newest events among those with a readable date (`newestEvents`), and
+ * the events whose date `eventDate` cannot read. Those are left out, not
+ * guessed at; one is `recent` when it could belong among the newest (its id
+ * is above the oldest picked one's, ids rising with time, or fewer than
+ * `count` were picked), which the sync fails on. An older one is only
+ * logged: failing on it would keep the job failing for as long as the index
+ * lists it, and a failing job sends no alert for a real outage.
+ */
+export function pickNewestEvents(events: Dict[], count = RECENT_EVENTS): { newest: Dict[]; unreadable: { event: Dict; date: string; recent: boolean }[] } {
+  const dated: Dict[] = [];
+  const undated: { event: Dict; date: string }[] = [];
+  for (const event of events) {
+    const date = unreadableEventDate(event);
+    if (date === null) dated.push(event);
+    else undated.push({ event, date });
+  }
+  const newest = newestEvents(dated, count);
+  const oldestPicked = newest.length < count ? -Infinity : Math.min(...newest.map(idNumber));
+  return { newest, unreadable: undated.map((entry) => ({ ...entry, recent: idNumber(entry.event) > oldestPicked })) };
 }

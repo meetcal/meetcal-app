@@ -1,9 +1,10 @@
 import { DaySchedule, Schedule } from "@/types/schedule";
+import { getOffsetMinutesAtInstant } from "@/utils/timezone";
 
 /**
- * How many timezone formatters stay resident. US meets span a handful of
- * zones, so this never fills in practice; it is the bound that keeps a
- * malformed feed from growing the map without limit.
+ * How many timezone formatters stay resident. Meets span a handful of zones,
+ * so this never fills in practice; it is the bound that keeps a malformed
+ * feed from growing the map without limit.
  */
 const ABBREVIATION_FORMATTER_CACHE_LIMIT = 32;
 
@@ -39,21 +40,42 @@ function getAbbreviationFormatter(timeZoneIdentifier: string): Intl.DateTimeForm
   return formatter;
 }
 
+/** A zone name made of letters only ("EDT", "HST", "GMT", "UTC"). */
+const LETTER_ZONE_NAME = /^[A-Z]{2,5}$/;
+
 /**
- * Gets the abbreviated timezone name for a given timezone identifier
+ * "GMT+9", "GMT+5:30", "GMT-3" or "GMT" for an offset east of UTC in minutes.
+ * The en-US short name of most zones outside North America is already this
+ * shape, but engines spell it differently (V8 "GMT+5:30", others "GMT+05:30"
+ * or "UTC+5:30"), so the app builds it from the offset itself.
+ */
+export function formatGmtOffset(offsetMinutes: number): string {
+  if (offsetMinutes === 0) return "GMT";
+  const sign = offsetMinutes > 0 ? "+" : "-";
+  const hours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const minutes = Math.abs(offsetMinutes) % 60;
+  return `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""}`;
+}
+
+/**
+ * The label shown after a meet-local time: the zone's en-US short name when
+ * it has a lettered one (US zones: "EDT", "MST", "HST"; also "GMT", "UTC"),
+ * otherwise its offset at `instant` ("GMT+9" for Tokyo, "GMT+5:30" for
+ * Kolkata, "GMT+11" for Sydney in January). Either way it is read at
+ * `instant`, so daylight time is the one in force then.
  * @param timeZoneIdentifier - IANA timezone identifier (e.g., "America/New_York")
- * @returns Abbreviated timezone (e.g., "EST", "PST") or "Local" if unavailable
+ * @returns The label, or "Local" when the zone is not one the device knows
  */
 export function getTimeZoneAbbreviation(
   timeZoneIdentifier: string,
   instant: Date = new Date(),
 ): string {
   try {
-    return (
-      getAbbreviationFormatter(timeZoneIdentifier)
-        .formatToParts(instant)
-        .find((part) => part.type === "timeZoneName")?.value || "Local"
-    );
+    const name = getAbbreviationFormatter(timeZoneIdentifier)
+      .formatToParts(instant)
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (name && LETTER_ZONE_NAME.test(name)) return name;
+    return formatGmtOffset(getOffsetMinutesAtInstant(timeZoneIdentifier, instant));
   } catch {
     return "Local";
   }
@@ -104,14 +126,14 @@ export function formatDayTitle(day: DaySchedule): string {
 }
 
 /**
- * An instant that reads back as `dateIso` in any US meet timezone: noon UTC on
- * that calendar date.
+ * An instant for a calendar date: noon UTC on it. Format it with
+ * `timeZone: "UTC"` to read the date back.
  *
  * Meet dates carry no time. Anchoring at local midnight (`new Date(
- * "2026-06-20T12:00:00")` uses the *device* zone) and then rendering in the
- * *meet* zone flips the day whenever the two are more than 12 hours apart;
- * anchoring at UTC midnight loses a day everywhere west of Greenwich. Noon UTC
- * survives both.
+ * "2026-06-20T12:00:00")` uses the *device* zone) flips the day for a device
+ * far from the meet; anchoring at UTC midnight loses a day everywhere west of
+ * Greenwich. Do not format the anchor in the *meet* zone either: noon UTC is
+ * already the next day from UTC+12 (Auckland, Fiji) eastward.
  *
  * @returns null when `dateIso` is not a calendar date. That includes a date
  * that does not exist (`2026-02-30`, `2026-13-01`, `2027-02-29`): `Date.UTC`
@@ -238,6 +260,20 @@ export function toMeetCalendarDate(value: string | null | undefined): string {
   return ISO_DATE_REGEX.test(datePart ?? "") && meetCalendarDateAnchor(datePart)
     ? datePart
     : "";
+}
+
+/** The latest offset on Earth: UTC-12 ("Anywhere on Earth"). */
+const ANYWHERE_ON_EARTH_OFFSET_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Today's calendar date (`YYYY-MM-DD`) in the last zone a day ends in
+ * (UTC-12). A meet whose end date is before it has finished everywhere,
+ * whatever its zone. Plain arithmetic, so no engine has to know `Etc/GMT+12`.
+ */
+export function getAnywhereOnEarthDate(now: Date = new Date()): string {
+  return new Date(now.getTime() - ANYWHERE_ON_EARTH_OFFSET_MS)
+    .toISOString()
+    .split("T")[0];
 }
 
 /**

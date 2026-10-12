@@ -241,13 +241,11 @@ describe('meetcal API contract (serde output through the real client)', () => {
   });
 
   it('fetchApiSchedule: f64 session_id and HH:MM:SS times become one session with two platforms', async () => {
-    stubTransport({ 'meets:list': MEETS_JSON });
-    const [meet] = await fetchApiMeets();
     const calls = stubTransport({ 'meets:schedule': SCHEDULE_JSON });
 
-    const schedule = await fetchApiSchedule(MEET, meet);
+    const schedule = await fetchApiSchedule(MEET);
 
-    // The meet was supplied, so only the schedule round trip happens.
+    // Only the schedule round trip happens: day titles need no meet details.
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ path: '/meets/schedule', fn: 'meets:schedule', conditional: true });
     // The meet name, commas and all, is one argument.
@@ -613,7 +611,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
   it.each<[string, Record<string, string>, () => Promise<unknown>]>([
     ['the meet package', { 'meets:packageForMeet': PACKAGE_JSON }, () => fetchApiMeetPackageConditional(MEET, '2024-01-01', null)],
     ['the meets list', { 'meets:list': MEETS_JSON }, () => fetchApiMeets()],
-    ['a schedule', { 'meets:schedule': SCHEDULE_JSON, 'meets:details': MEETS_JSON.slice(1, -1) }, () => fetchApiSchedule(MEET)],
+    ['a schedule', { 'meets:schedule': SCHEDULE_JSON }, () => fetchApiSchedule(MEET)],
     ['athletes with sessions', { 'meets:athletesSessions': ATHLETES_SESSIONS_JSON }, () => fetchApiAthletesWithSession(MEET)],
     [
       'results by names',

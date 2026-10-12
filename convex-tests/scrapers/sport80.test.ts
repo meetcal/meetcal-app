@@ -1,4 +1,13 @@
-import { eventDate, eventIdOf, formatResults, nested, newestEvents } from '../../convex/scrapers/parse/sport80';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+
+// The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
+// event of 2025 and 2026 had an ISO date).
+const INDEX_BODY: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-event-index-20261011.json'), 'utf8'));
+const INDEX_DATA: unknown = typeof INDEX_BODY === 'object' && INDEX_BODY !== null && 'data' in INDEX_BODY ? INDEX_BODY.data : null;
+if (!Array.isArray(INDEX_DATA)) throw new Error('fixture has no data array');
+const INDEX_EVENTS: Record<string, unknown>[] = INDEX_DATA;
 
 const event = (id: string, date: string | null, meet = `Meet ${id}`) => ({
   meet,
@@ -13,18 +22,43 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
     expect(nested({ lifter: 'Bob' }, 'lifter', 'Athlete')).toBe('Bob');
   });
 
-  it('parses event dates in the Python formats, day/month before month/day', () => {
+  it('parses ISO event dates, the format the event index sends', () => {
     expect(eventDate({ date: '2026-09-13 00:00:00' })).toBe(Date.UTC(2026, 8, 13));
-    expect(eventDate({ date: '13/09/2026' })).toBe(Date.UTC(2026, 8, 13));
-    expect(eventDate({ date: '09/13/2026' })).toBe(Date.UTC(2026, 8, 13));
-    expect(eventDate({ date: 'soon' })).toBeNull();
     expect(eventDate({ columns: { 'Start Date': { value: '2026-01-02' } } })).toBe(Date.UTC(2026, 0, 2));
+    expect(eventDate({ date: '2026-02-30' })).toBeNull();
+    expect(eventDate({ date: null })).toBeNull();
+    expect(unreadableEventDate({ date: '2026-09-13' })).toBeNull();
+    expect(unreadableEventDate({})).toBeNull();
+    for (const event of INDEX_EVENTS) {
+      expect(eventDate(event)).not.toBeNull();
+      expect(unreadableEventDate(event)).toBeNull();
+    }
+  });
+
+  it('does not guess at slash dates, which could swap month and day', () => {
+    // 05/09/2026 is 9 May in the site's US format; the Python read 5 September.
+    for (const date of ['05/09/2026', '13/09/2026', '09/13/2026', 'soon']) {
+      expect(eventDate({ date })).toBeNull();
+      expect(unreadableEventDate({ date })).toBe(date);
+    }
   });
 
   it('keeps the newest events, same-date ones by event id, undated last', () => {
     const events = [event('7498', '2026-09-13'), event('7400', null), event('7505', '2026-09-13'), event('7507', '2026-09-20')];
     expect(newestEvents(events, 3).map(eventIdOf)).toEqual(['7507', '7505', '7498']);
     expect(eventIdOf({ id: 42 })).toBe('42');
+  });
+
+  it('leaves out events with unreadable dates, failing only on ones that could be among the newest', () => {
+    const events = [event('7498', '2026-09-13'), event('7505', '2026-9-20'), event('7507', '2026-09-27'), event('7300', '05/09/2025'), event('7510', '10/04/2026')];
+    const { newest, unreadable } = pickNewestEvents(events, 2);
+    expect(newest.map(eventIdOf)).toEqual(['7507', '7505']);
+    expect(unreadable.map(({ event: e, date, recent }) => [eventIdOf(e), date, recent])).toEqual([
+      ['7300', '05/09/2025', false],
+      ['7510', '10/04/2026', true],
+    ]);
+    // Fewer readable events than wanted: any unreadable one could be among them.
+    expect(pickNewestEvents([event('7300', '05/09/2025')], 2).unreadable[0].recent).toBe(true);
   });
 
   it('formats result rows with the Python fallbacks and float conversion', () => {

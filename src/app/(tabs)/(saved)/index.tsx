@@ -256,7 +256,6 @@ export default function SavedScreen() {
           onPress={handleSessionPress}
           sessionLookupByMeet={sessionLookupByMeet}
           allowedMeetNames={allowedMeetNames}
-          timeZoneIdentifier={meetDetails?.time.timeZoneIdentifier}
           timeZoneAbbr={timeZoneAbbr}
         />
       );
@@ -266,7 +265,6 @@ export default function SavedScreen() {
       handleSessionPress,
       sessionLookupByMeet,
       allowedMeetNames,
-      meetDetails?.time.timeZoneIdentifier,
       timeZoneAbbr,
     ],
   );

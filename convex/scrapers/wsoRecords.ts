@@ -6,11 +6,11 @@ import { internal } from '../_generated/api';
 import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
-import { gidOf, gvizCsvByGid, gvizCsvByName, sheetIdOf, type WsoRecord } from './parse/wso/common';
+import { copiedTabs, gidOf, gvizCsvByGid, gvizCsvFirstTab, sheetIdOf, type WsoRecord } from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
 import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
 import { parseTnky } from './parse/wso/tnky';
-import { OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
+import { OHIO_SHEET_ID, OHIO_TAB_GIDS, OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
@@ -19,7 +19,7 @@ import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
 import { missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
 import { fetchMissouriValleyPage } from './lib/missouriValley';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
-import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
+import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
 
@@ -40,19 +40,38 @@ type WsoSource = {
 };
 
 /**
- * The tab the configured URL points at (its `gid`), else the one named
- * "Current Records". The Python scraper always asked for the name, and
- * California North's tab of that name switched to a human-readable layout
- * the parser cannot read: 0 records a night, while the gid tab still holds
- * the flat data.
+ * The tabs' CSVs by gid, refusing any that came back as Google's fallback
+ * for a tab that is gone (see `copiedTabs`), which would otherwise replace a
+ * WSO's records with whatever the first tab holds. `firstTab` is the gid of
+ * the sheet's first tab when it is one of `gids` (as the sources below were
+ * in October 2026); otherwise the first tab is fetched too, to compare
+ * against. A tab moved to first place fails until its source says so.
  */
-const flat = (wso: string, sheetUrl: string, columns: FlatColumns = FLAT_COLUMNS): WsoSource => ({
+async function fetchTabs(sheetId: string, gids: readonly string[], firstTab?: string): Promise<string[]> {
+  const urls = gids.map((gid) => gvizCsvByGid(sheetId, gid));
+  if (firstTab === undefined) urls.push(gvizCsvFirstTab(sheetId));
+  const texts = await Promise.all(urls.map((url) => fetchText(url, 60_000)));
+  const tabs = texts.slice(0, gids.length);
+  const problem = copiedTabs(gids, tabs, firstTab === undefined ? { csv: texts[gids.length] } : { gid: firstTab });
+  if (problem) throw new Error(problem);
+  return tabs;
+}
+
+/**
+ * The tab the configured URL points at (its `gid`; `isFirstTab` when that is
+ * the sheet's first tab). The Python scraper asked for the tab named
+ * "Current Records", and California North's tab of that name switched to a
+ * human-readable layout the parser cannot read: 0 records a night, while the
+ * gid tab still holds the flat data. A name Google does not know serves the
+ * first tab, so a URL without a gid is refused rather than read by name.
+ */
+const flat = (wso: string, sheetUrl: string, { columns = FLAT_COLUMNS, isFirstTab = false }: { columns?: FlatColumns; isFirstTab?: boolean } = {}): WsoSource => ({
   wso,
   scrape: async () => {
-    const sheetId = sheetIdOf(sheetUrl);
     const gid = gidOf(sheetUrl);
-    const url = gid ? gvizCsvByGid(sheetId, gid) : gvizCsvByName(sheetId, FLAT_SHEET_NAME);
-    return parseFlatSheet(await fetchText(url, 60_000), wso, columns);
+    if (!gid) throw new Error(`${wso}: the sheet URL names no tab (gid)`);
+    const [csv] = await fetchTabs(sheetIdOf(sheetUrl), [gid], isFirstTab ? gid : undefined);
+    return parseFlatSheet(csv, wso, columns);
   },
 });
 
@@ -60,7 +79,7 @@ const flat = (wso: string, sheetUrl: string, columns: FlatColumns = FLAT_COLUMNS
 const californiaSouth = (sheetUrl: string): WsoSource => ({
   wso: 'California South',
   scrape: async () =>
-    parseFlatSheet(await fetchText(`https://docs.google.com/spreadsheets/d/${sheetIdOf(sheetUrl)}/gviz/tq?tqx=out:csv`, 60_000), 'California South', {
+    parseFlatSheet(await fetchText(gvizCsvFirstTab(sheetIdOf(sheetUrl)), 60_000), 'California South', {
       ...FLAT_COLUMNS,
       record: 'WSO record',
     }),
@@ -79,12 +98,19 @@ function everyPart(wso: string, parts: WsoRecord[][], label: (i: number) => stri
   return parts.flat();
 }
 
-/** Sheets with a tab per age group (or stack of them), fetched together. */
-const tabbed = (wso: string, sheetUrl: string, tabs: [gid: string, parse: TabParser][], finish = (records: WsoRecord[]) => records): WsoSource => ({
+/**
+ * Sheets with a tab per age group (or stack of them), fetched together;
+ * `firstTab` is the gid of the sheet's first tab when it is one of them.
+ */
+const tabbed = (
+  wso: string,
+  sheetUrl: string,
+  tabs: [gid: string, parse: TabParser][],
+  { finish = (records: WsoRecord[]) => records, firstTab }: { finish?: (records: WsoRecord[]) => WsoRecord[]; firstTab?: string } = {},
+): WsoSource => ({
   wso,
   scrape: async () => {
-    const sheetId = sheetIdOf(sheetUrl);
-    const texts = await Promise.all(tabs.map(([gid]) => fetchText(gvizCsvByGid(sheetId, gid), 60_000)));
+    const texts = await fetchTabs(sheetIdOf(sheetUrl), tabs.map(([gid]) => gid), firstTab);
     return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i], wso)), (i) => `tab gid ${tabs[i][0]}`));
   },
 });
@@ -110,9 +136,9 @@ const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bod
 
 export const WSO_SOURCES: WsoSource[] = [
   flat('Georgia', 'https://docs.google.com/spreadsheets/d/1HM1H51pUmhoWDdSUp2RT-mCaUX2a8NB7aUSYVwWT0AU/edit?gid=908416148#gid=908416148'),
-  flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012'),
+  flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012', { isFirstTab: true }),
   flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit?gid=35344992#gid=35344992'),
-  flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', DMV_COLUMNS),
+  flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', { columns: DMV_COLUMNS, isFirstTab: true }),
   tabbed('Florida', 'https://docs.google.com/spreadsheets/d/16sNrOTnGrGeXE4L5skgCfE5vLTA7ggpaHWfMQNh0DfQ/view?gid=490899077#gid=490899077', [
     ['490899077', sideBySide(floridaLayout('U13'))],
     ['1300164988', sideBySide(floridaLayout('U15'))],
@@ -137,7 +163,7 @@ export const WSO_SOURCES: WsoSource[] = [
     ['1157313505', sideBySide(carolinaLayout('Junior'))],
     ['2109027801', sideBySide(carolinaLayout('Senior'))],
     ['448005775', sideBySide(carolinaLayout('Masters'))],
-  ]),
+  ], { firstTab: '1785893123' }),
   tabbed(
     'New Jersey',
     'https://docs.google.com/spreadsheets/d/1y8mXDBLfqmszlzWhv-4wkeWQZS5Kb9Aj4RnB39CBJmw/edit?gid=0#gid=0',
@@ -159,16 +185,15 @@ export const WSO_SOURCES: WsoSource[] = [
       // 389932308, all vacant) is gone; that gid is now the welcome page.
       ['2047529058', newJersey('Masters 75')],
     ],
-    consolidateRecords,
+    { finish: consolidateRecords },
   ),
   tabbed('Tennessee-Kentucky', 'https://docs.google.com/spreadsheets/d/11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU/view?gid=867133960#gid=867133960', [
     ['867133960', parseTnky],
-  ]),
+  ], { firstTab: '867133960' }),
   {
     wso: 'Ohio',
     scrape: async () => {
-      const sheetId = sheetIdOf('https://docs.google.com/spreadsheets/d/1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8/view?gid=0#gid=0');
-      const texts = await Promise.all(OHIO_TABS.map((tab) => fetchText(gvizCsvByName(sheetId, tab), 60_000)));
+      const texts = await fetchTabs(OHIO_SHEET_ID, OHIO_TABS.map((tab) => OHIO_TAB_GIDS[tab]), OHIO_TAB_GIDS['Youth Women']);
       return everyPart('Ohio', OHIO_TABS.map((tab, i) => parseOhioTab(texts[i], 'Ohio', tab)), (i) => `tab ${JSON.stringify(OHIO_TABS[i])}`);
     },
   },
@@ -229,10 +254,14 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () =>
       usawTemplate(await fetchText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv', 60_000), 'Minnesota-Dakotas'),
   },
-  // The "Detailed" tab is the current set; TX and OK are the 2025 per-state tabs.
+  // The "Detailed" tab (gid 1649080864) is the current set; TX and OK are
+  // the 2025 per-state tabs. Read by gid: the Python asked for the name.
   {
     wso: 'Texas-Oklahoma',
-    scrape: async () => usawTemplate(await fetchText(gvizCsvByName('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', 'Detailed'), 60_000), 'Texas-Oklahoma'),
+    scrape: async () => {
+      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', ['1649080864']);
+      return usawTemplate(detailed, 'Texas-Oklahoma');
+    },
   },
 ];
 

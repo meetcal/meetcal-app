@@ -1,6 +1,5 @@
 import { parseCsv } from '../../lib/csv';
-import { recordHolder, type RecordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { columnDLift, liftsRecord, NO_LIFT, type Lift, type WsoRecord } from './common';
 
 // Ohio (port of `auto_scrapers/scraper_ohio.py`, its public-sheet path): a
 // tab per age group and gender ("Masters Women"), read down column A:
@@ -10,12 +9,26 @@ import { intOrNull, type WsoRecord } from './common';
 // its holder: Athlete (B, "WSO Standard" or blank for a standard), Date (E),
 // Meet (F) and Location (G).
 
+export const OHIO_SHEET_ID = '1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8';
+
 export const OHIO_TABS = ['Youth Women', 'Youth Men', 'Junior Women', 'Junior Men', 'Senior Women', 'Senior Men', 'Masters Women', 'Masters Men'] as const;
 
 type OhioTab = (typeof OHIO_TABS)[number];
 
-type Lift = { value: number | null; by?: RecordHolder };
-const NO_LIFT: Lift = { value: null };
+/**
+ * Each tab's gid (looked up October 2026). The Python fetched the tabs by
+ * name, which Google answers with the first tab when the name is gone.
+ */
+export const OHIO_TAB_GIDS: Record<OhioTab, string> = {
+  'Youth Women': '0',
+  'Youth Men': '746965671',
+  'Junior Women': '1263051690',
+  'Junior Men': '2144687196',
+  'Senior Women': '727485978',
+  'Senior Men': '1922990492',
+  'Masters Women': '277965842',
+  'Masters Men': '2131432096',
+};
 
 const HEADER_WORDS = new Set(['lift', 'athlete', 'team', 'weight', 'date', 'meet', 'location']);
 const LIFTS = new Set(['snatch', 'clean & jerk', 'clean and jerk', 'c&j', 'total']);
@@ -46,19 +59,7 @@ export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[
     const key = JSON.stringify([age, weightClass]);
     if (seen.has(key)) return;
     seen.add(key);
-    const { snatch, cj, total } = lifts;
-    records.push({
-      wso,
-      age_category: age,
-      gender,
-      weight_class: weightClass,
-      snatch_record: snatch.value,
-      cj_record: cj.value,
-      total_record: total.value,
-      ...(snatch.by && { snatch_by: snatch.by }),
-      ...(cj.by && { cj_by: cj.by }),
-      ...(total.by && { total_by: total.by }),
-    });
+    records.push(liftsRecord(wso, age, gender, weightClass, lifts));
   };
 
   parseCsv(csv).forEach((row, i) => {
@@ -81,9 +82,7 @@ export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[
     if (HEADER_WORDS.has(lower)) return;
 
     if (LIFTS.has(lower)) {
-      const cell = row.length > 3 ? row[3].trim() : '';
-      const value = cell ? intOrNull(cell) : null;
-      const lift: Lift = { value, by: recordHolder(value, row[1], row[4], row[5], row[6]) };
+      const lift = columnDLift(row);
       if (lower === 'snatch') lifts.snatch = lift;
       else if (lower === 'total') {
         lifts.total = lift;

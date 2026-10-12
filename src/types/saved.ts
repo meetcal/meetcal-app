@@ -27,6 +27,5 @@ export interface SessionCardProps {
   onPress: (session: LegacySavedSession) => void;
   sessionLookupByMeet: Map<MeetName, Map<string, SessionScheduleLookup>>;
   allowedMeetNames: ReadonlySet<string>;
-  timeZoneIdentifier?: string;
   timeZoneAbbr: string;
 }

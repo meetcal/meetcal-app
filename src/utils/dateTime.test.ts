@@ -3,6 +3,8 @@
  */
 import {
   getTimeZoneAbbreviation,
+  formatGmtOffset,
+  getAnywhereOnEarthDate,
   formatDayTitle,
   formatIsoDateTitle,
   calculateInitialPage,
@@ -60,6 +62,34 @@ describe("getTimeZoneAbbreviation", () => {
       expect(getTimeZoneAbbreviation("America/Los_Angeles", winter)).toBe("PST");
       expect(getTimeZoneAbbreviation("America/Chicago", winter)).toBe("CST");
     }
+  });
+
+  it("labels a zone with no lettered en-US name by its offset at the instant", () => {
+    const january = new Date("2026-01-15T03:00:00.000Z");
+    const july = new Date("2026-07-15T03:00:00.000Z");
+    expect(getTimeZoneAbbreviation("Asia/Tokyo", july)).toBe("GMT+9");
+    expect(getTimeZoneAbbreviation("Asia/Kolkata", july)).toBe("GMT+5:30");
+    expect(getTimeZoneAbbreviation("Asia/Kathmandu", july)).toBe("GMT+5:45");
+    // Southern hemisphere: daylight time in January, standard in July.
+    expect(getTimeZoneAbbreviation("Australia/Sydney", january)).toBe("GMT+11");
+    expect(getTimeZoneAbbreviation("Australia/Sydney", july)).toBe("GMT+10");
+    expect(getTimeZoneAbbreviation("Pacific/Auckland", january)).toBe("GMT+13");
+    expect(getTimeZoneAbbreviation("America/St_Johns", january)).toBe("GMT-3:30");
+    expect(getTimeZoneAbbreviation("Europe/London", july)).toBe("GMT+1");
+    expect(getTimeZoneAbbreviation("Europe/London", january)).toBe("GMT");
+    // A lettered name is kept, inside the US or not.
+    expect(getTimeZoneAbbreviation("America/Puerto_Rico", july)).toBe("AST");
+    expect(getTimeZoneAbbreviation("Pacific/Honolulu", july)).toBe("HST");
+    expect(getTimeZoneAbbreviation("UTC", july)).toBe("UTC");
+  });
+
+  it("builds the offset label itself rather than trusting the engine's spelling", () => {
+    expect(formatGmtOffset(0)).toBe("GMT");
+    expect(formatGmtOffset(540)).toBe("GMT+9");
+    expect(formatGmtOffset(330)).toBe("GMT+5:30");
+    expect(formatGmtOffset(-210)).toBe("GMT-3:30");
+    expect(formatGmtOffset(-660)).toBe("GMT-11");
+    expect(formatGmtOffset(840)).toBe("GMT+14");
   });
 
   it("still resolves a valid zone after an invalid one", () => {
@@ -194,6 +224,35 @@ describe("calculateInitialPage in the meet timezone", () => {
     // 00:30 on 2026-06-21 in Los Angeles.
     jest.setSystemTime(new Date("2026-06-21T07:30:00Z"));
     expect(calculateInitialPage(schedule, "America/Los_Angeles")).toBe(1);
+  });
+});
+
+describe("calculateInitialPage for a meet east of the date line", () => {
+  const schedule = [
+    day({ date: "d1", fullDate: "2026-06-20" }),
+    day({ date: "d2", fullDate: "2026-06-21" }),
+  ] as Schedule;
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("opens on the meet's day in Tokyo while it is still the day before here", () => {
+    // 5:30pm on 2026-06-20 in Los Angeles (this device) is 9:30am on
+    // 2026-06-21 in Tokyo: day two of the meet.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-21T00:30:00Z"));
+    expect(calculateInitialPage(schedule, "Asia/Tokyo")).toBe(1);
+    expect(calculateInitialPage(schedule, "America/Los_Angeles")).toBe(0);
+  });
+});
+
+describe("getAnywhereOnEarthDate", () => {
+  it("is the calendar date at UTC-12, the last zone a day ends in", () => {
+    expect(getAnywhereOnEarthDate(new Date("2026-06-21T11:59:00Z"))).toBe("2026-06-20");
+    expect(getAnywhereOnEarthDate(new Date("2026-06-21T12:00:00Z"))).toBe("2026-06-21");
+    // Still 2026-06-20 in American Samoa (UTC-11) at 10:59 UTC on the 21st.
+    expect(getAnywhereOnEarthDate(new Date("2026-06-21T10:59:00Z"))).toBe("2026-06-20");
   });
 });
 

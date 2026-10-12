@@ -1,4 +1,4 @@
-import { recordHolder, recordLift, type RecordHolder } from './holder';
+import { recordHolder, recordLift, setHolder, type RecordHolder } from './holder';
 import { parseCsv } from '../lib/csv';
 
 // Pure parsing for `scrapers/umwf.ts` (port of `usaw/records_scraper/umwf_records.py`).
@@ -74,12 +74,6 @@ function holderColumns(row: string[], fallback: HolderColumns): HolderColumns {
 function sheetDate(text: string): string {
   const match = /^(\d{1,2})[-_ ]([A-Za-z]{3,})[-_ ]((?:19|20)\d{2})$/.exec(text.trim());
   return match ? `${match[1]} ${match[2]} ${match[3]}` : text;
-}
-
-/** Sets a lift's holder, or clears it when the lift has none. */
-function setHolder(record: UmwfRecord, key: 'snatch_by' | 'cj_by' | 'total_by', holder: RecordHolder | undefined) {
-  if (holder) record[key] = holder;
-  else delete record[key];
 }
 
 /**

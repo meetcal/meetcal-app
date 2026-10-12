@@ -1,6 +1,6 @@
 import type { PdfLine } from '../../lib/pdf';
 import { recordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './common';
 
 // New England (port of `manual_scrapers/scraper_pdf_newengland.py` and its
 // auto wrapper): every records PDF linked from the records page, a table per
@@ -49,8 +49,6 @@ const centre = (run: { x: number; end: number }) => (run.x + run.end) / 2;
 /** "Cian Whitney (29.70)" -> "Cian Whitney": a trailing parenthesised number is the lifter's bodyweight. */
 const athlete = (name: string) => name.replace(/\s*\(\s*\d+(?:\.\d+)?\s*(?:kg)?\s*\)$/i, '');
 
-const weightClass = (raw: string) => (raw.includes('+') && !raw.endsWith('+') ? `${raw.replaceAll('+', '')}+` : raw);
-
 /** One PDF's records, page by page, in the order the Python wrote them. */
 export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: string): WsoRecord[] {
   const records: WsoRecord[] = [];
@@ -78,24 +76,17 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
       const classCell = cells.Class && /^\d+$/.test(cells.Class.replaceAll('+', '').replaceAll(' ', '')) ? cells.Class : null;
       if (!/Snatch|C&J|Clean|Total/.test(lift) && !classCell) continue;
       if (!block || lift.includes('Snatch')) {
-        block = { wso, age_category: section?.[0] ?? '', gender: section?.[1] ?? 'Men', weight_class: '', snatch_record: null, cj_record: null, total_record: null };
+        block = blankRecord(wso, section?.[0] ?? '', section?.[1] ?? 'Men');
         blocks.push(block);
       }
-      if (classCell) block.weight_class = weightClass(classCell);
+      if (classCell) block.weight_class = plusLast(classCell);
       const name = cells.Name ?? '';
       const weight = cells.Weight ?? '';
       // "Open" is a class with no record yet; 0 or a non-number is none either.
       const parsed = name.toUpperCase() === 'OPEN' || !weight ? null : intOrNull(weight);
       const value = parsed ? parsed : null;
       const field = lift.includes('Snatch') ? 'snatch' : lift.includes('C&J') || lift.includes('Clean') ? 'cj' : lift.includes('Total') ? 'total' : null;
-      if (field === 'snatch') block.snatch_record = value;
-      else if (field === 'cj') block.cj_record = value;
-      else if (field === 'total') block.total_record = value;
-      if (field) {
-        const by = recordHolder(value, athlete(name), cells.Date, cells['Location/Meet']);
-        if (by) block[`${field}_by`] = by;
-        else delete block[`${field}_by`];
-      }
+      if (field) setLift(block, field, value, recordHolder(value, athlete(name), cells.Date, cells['Location/Meet']));
     }
     records.push(...blocks.filter((b) => b.weight_class && b.age_category));
   }

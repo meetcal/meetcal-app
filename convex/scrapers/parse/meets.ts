@@ -1,22 +1,87 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
-const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1?p=0&i=20&l=&d=10&f=&s=';
+import { isValidIsoDate } from '../../lib/validation';
+import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
+import { stateCode, usTimeZone } from '../lib/states';
+
+const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1';
+
+/** Meets per widget page: the page size the Node scripts asked for. */
+export const WIDGET_PAGE_SIZE = 20;
+/** Pages read per search at most; a search matching more fails rather than drop the rest. */
+export const MAX_WIDGET_PAGES = 10;
 
 /** The three searches the VPS ran; only the WSO one skips completed meets. */
 export const MEET_SEARCHES = [
-  { key: 'wso', url: `${WIDGET}WSO`, skipCompleted: true },
-  { key: 'nationals', url: `${WIDGET}Nationals`, skipCompleted: false },
-  { key: 'virus', url: `${WIDGET}Virus%20Weightlifting`, skipCompleted: false },
+  { key: 'wso', search: 'WSO', skipCompleted: true },
+  { key: 'nationals', search: 'Nationals', skipCompleted: false },
+  { key: 'virus', search: 'Virus Weightlifting', skipCompleted: false },
 ] as const;
 
-export type ScrapedMeet = {
+/** One page (from 0) of a widget search, upcoming meets soonest first. */
+export function widgetPageUrl(search: string, page: number): string {
+  return `${WIDGET}?p=${page}&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=${encodeURIComponent(search)}`;
+}
+
+/** A widget row; `address` and `subtitle` are null when the row has no such text. */
+export type WidgetRow = { id: string | null; name: string; address: string | null; subtitle: string | null };
+
+const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+/**
+ * A widget page's rows and the search's total match count (the widget sends
+ * the count as a string). Anything else is an error, never an empty page.
+ */
+export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[] } {
+  if (typeof body !== 'object' || body === null) throw new Error('widget: response is not an object');
+  const { total, data } = body as { total?: unknown; data?: unknown };
+  const count = typeof total === 'number' ? total : typeof total === 'string' && /^\d+$/.test(total.trim()) ? Number(total) : NaN;
+  if (!Number.isInteger(count)) throw new Error(`widget: no match count (total ${JSON.stringify(total)})`);
+  if (!Array.isArray(data)) throw new Error('widget: no data array');
+  const rows = data.map((item: unknown, i): WidgetRow => {
+    const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const name = (text(row.name) ?? '').trim();
+    if (!name) throw new Error(`widget: row ${i} has no name`);
+    const id = row.id === undefined || row.id === null ? null : String(row.id);
+    return { id, name, address: text(row.address), subtitle: text(row.subtitle) };
+  });
+  return { total: count, rows };
+}
+
+/**
+ * Every meet a search matches, once each, a page at a time until the widget's
+ * count is reached (or a page comes back short or empty). A meet repeated on a
+ * later page (the listing shifted between reads) is kept once. A search still
+ * short of its count after `MAX_WIDGET_PAGES`, or that read fewer distinct
+ * meets than the count, fails: a partial list would silently leave meets out.
+ */
+export async function readAllWidgetPages(fetchPage: (page: number) => Promise<unknown>): Promise<WidgetRow[]> {
+  const rows: WidgetRow[] = [];
+  const seen = new Set<string>();
+  let total = 0;
+  for (let page = 0; page < MAX_WIDGET_PAGES; page++) {
+    const result = readWidgetPage(await fetchPage(page));
+    total = result.total;
+    for (const row of result.rows) {
+      if (row.id !== null) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+      }
+      rows.push(row);
+    }
+    if (rows.length >= total || result.rows.length < WIDGET_PAGE_SIZE) break;
+  }
+  if (rows.length < total) throw new Error(`widget: read ${rows.length} distinct meets of ${total} (${MAX_WIDGET_PAGES} pages of ${WIDGET_PAGE_SIZE} at most)`);
+  return rows;
+}
+
+/** The venue fields; absent together when the widget gave no address, so the stored venue stays. */
+type ScrapedVenue = { venueName: string; venueStreet: string; venueCity: string; venueState: string; venueZip: string };
+
+export type ScrapedMeet = Partial<ScrapedVenue> & {
   name: string;
-  venueName: string;
-  venueStreet: string;
-  venueCity: string;
-  venueState: string;
-  venueZip: string;
-  timeZone: string;
+  /** Absent when neither the state nor the country tells it: reported, not guessed. */
+  timeZone?: string;
   startDate: string;
   endDate: string;
   status: 'upcoming';
@@ -61,58 +126,112 @@ export function parseAddress(raw: string): Address {
   }
 }
 
-/** `parseDateRange`: "MM/DD/YYYY - MM/DD/YYYY" (escaped slashes allowed) to ISO dates. */
-export function parseDateRange(range: string): { startDate: string | null; endDate: string | null } {
-  try {
-    const dates = range.replace(/\\\//g, '/').split(' - ');
-    const start = dates[0].split('/');
-    const end = dates[1] ? dates[1].split('/') : start;
-    return { startDate: `${start[2]}-${start[0]}-${start[1]}`, endDate: `${end[2]}-${end[0]}-${end[1]}` };
-  } catch {
-    return { startDate: null, endDate: null };
-  }
+const SLASH_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/** "9/5/2026" -> "2026-09-05"; null for anything else or a date that does not exist. */
+function isoFromSlash(text: string): string | null {
+  const match = SLASH_DATE.exec(text.trim());
+  if (!match) return null;
+  const iso = `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+  return isValidIsoDate(iso) ? iso : null;
 }
 
-const STATES: Record<string, [string, string]> = {
-  Alabama: ['AL', 'America/Chicago'], Alaska: ['AK', 'America/Anchorage'], Arizona: ['AZ', 'America/Phoenix'],
-  Arkansas: ['AR', 'America/Chicago'], California: ['CA', 'America/Los_Angeles'], Colorado: ['CO', 'America/Denver'],
-  Connecticut: ['CT', 'America/New_York'], Delaware: ['DE', 'America/New_York'], Florida: ['FL', 'America/New_York'],
-  Georgia: ['GA', 'America/New_York'], Hawaii: ['HI', 'Pacific/Honolulu'], Idaho: ['ID', 'America/Denver'],
-  Illinois: ['IL', 'America/Chicago'], Indiana: ['IN', 'America/New_York'], Iowa: ['IA', 'America/Chicago'],
-  Kansas: ['KS', 'America/Chicago'], Kentucky: ['KY', 'America/New_York'], Louisiana: ['LA', 'America/Chicago'],
-  Maine: ['ME', 'America/New_York'], Maryland: ['MD', 'America/New_York'], Massachusetts: ['MA', 'America/New_York'],
-  Michigan: ['MI', 'America/New_York'], Minnesota: ['MN', 'America/Chicago'], Mississippi: ['MS', 'America/Chicago'],
-  Missouri: ['MO', 'America/Chicago'], Montana: ['MT', 'America/Denver'], Nebraska: ['NE', 'America/Chicago'],
-  Nevada: ['NV', 'America/Los_Angeles'], 'New Hampshire': ['NH', 'America/New_York'], 'New Jersey': ['NJ', 'America/New_York'],
-  'New Mexico': ['NM', 'America/Denver'], 'New York': ['NY', 'America/New_York'], 'North Carolina': ['NC', 'America/New_York'],
-  'North Dakota': ['ND', 'America/Chicago'], Ohio: ['OH', 'America/New_York'], Oklahoma: ['OK', 'America/Chicago'],
-  Oregon: ['OR', 'America/Los_Angeles'], Pennsylvania: ['PA', 'America/New_York'], 'Rhode Island': ['RI', 'America/New_York'],
-  'South Carolina': ['SC', 'America/New_York'], 'South Dakota': ['SD', 'America/Chicago'], Tennessee: ['TN', 'America/Chicago'],
-  Texas: ['TX', 'America/Chicago'], Utah: ['UT', 'America/Denver'], Vermont: ['VT', 'America/New_York'],
-  Virginia: ['VA', 'America/New_York'], Washington: ['WA', 'America/Los_Angeles'], 'West Virginia': ['WV', 'America/New_York'],
-  Wisconsin: ['WI', 'America/Chicago'], Wyoming: ['WY', 'America/Denver'], 'District of Columbia': ['DC', 'America/New_York'],
+/**
+ * `parseDateRange`: "MM/DD/YYYY - MM/DD/YYYY" or one "MM/DD/YYYY" (escaped
+ * slashes allowed) to ISO dates, zero-padded. Null for anything else ("TBD",
+ * a date that does not exist, an end before the start): meet dates are
+ * compared as text, so a malformed one ("undefined-TBD-undefined",
+ * "2026-9-5") would sort in the wrong place and never complete.
+ */
+export function parseDateRange(range: string): { startDate: string; endDate: string } | null {
+  const sides = range.replace(/\\\//g, '/').split(/\s+-\s+/);
+  if (sides.length > 2) return null;
+  const startDate = isoFromSlash(sides[0]);
+  const endDate = sides.length === 2 ? isoFromSlash(sides[1]) : startDate;
+  if (!startDate || !endDate || endDate < startDate) return null;
+  return { startDate, endDate };
+}
+
+/** A subtitle for dates not set yet. */
+const UNSET_DATES = /^\s*(?:TBD|TBA)?\s*$/i;
+
+export type TransformedMeets = {
+  meets: ScrapedMeet[];
+  /** Meets left out because their dates could not be read, with the text. */
+  rejected: string[];
+  /** Meets left out because their dates are not set yet ("TBD"): not an error. */
+  undated: string[];
+  /** Meets synced without a time zone (an unknown state or country, a country with several zones, or no address). */
+  unknownZone: string[];
 };
 
-/** `transformMeetsData`: widget rows to meets, dropping undated and adaptive ones. */
-export function transformMeets(rows: { name: string; address: string; subtitle: string }[]): ScrapedMeet[] {
-  const meets: ScrapedMeet[] = [];
+/**
+ * A meet's zone from its widget address, or why there is none. A US address
+ * (it names the United States) takes its state's zone, or a territory's. An
+ * address abroad names its country last, or last before a postcode (a part
+ * with a digit): a country on one clock gives its zone, one with several gives
+ * none. Anything else is read as a US address, as before, so "…, Lebanon,
+ * Ohio" with no postcode is an unknown state, not Lebanon.
+ */
+export function addressTimeZone(raw: string, state: string, city: string): { zone: string } | { problem: string } {
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  if (!parts.some(isUnitedStates)) {
+    let at = parts.length - 1;
+    if (at > 0 && /\d/.test(parts[at])) at -= 1;
+    // The city and region before the country, read for outlying islands.
+    const country = at >= 0 ? countryTimeZone([parts[at]], parts.slice(Math.max(0, at - 2), at).join(', ')) : null;
+    if (country !== null) return country.zone === null ? { problem: `${country.country} spans several time zones` } : { zone: country.zone };
+  }
+  const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);
+  return zone === null ? { problem: `state ${JSON.stringify(state)}` } : { zone };
+}
+
+/**
+ * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
+ * whose dates cannot be read (or that has no dates field at all) is left out
+ * and reported, never stored with made-up dates; one whose dates are still
+ * "TBD" (or blank) is left out until they are set, without failing the run,
+ * which would mask a real outage while the meet stays listed. The zone comes
+ * from the state and, in a state that spans two zones, the city
+ * (`lib/states.ts`), or from the country abroad (`lib/countries.ts`,
+ * `addressTimeZone`). A meet with no address is synced without venue or zone,
+ * so the stored ones stay.
+ */
+export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subtitle'>[]): TransformedMeets {
+  const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {
+    if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
+    if (row.subtitle === null) {
+      result.rejected.push(`${row.name}: no dates`);
+      continue;
+    }
+    const dates = parseDateRange(row.subtitle);
+    if (!dates) {
+      if (UNSET_DATES.test(row.subtitle)) result.undated.push(row.name);
+      else result.rejected.push(`${row.name}: unreadable dates ${JSON.stringify(row.subtitle)}`);
+      continue;
+    }
+    if (row.address === null || !row.address.trim()) {
+      result.unknownZone.push(`${row.name}: no address`);
+      result.meets.push({ name: row.name, ...dates, status: 'upcoming', federation: 'USAW' });
+      continue;
+    }
     const { venueName, street, city, state, zip } = parseAddress(row.address);
-    const { startDate, endDate } = parseDateRange(row.subtitle);
-    if (!startDate || !endDate || row.name.toUpperCase().includes('ADAPTIVE')) continue;
-    meets.push({
+    const zone = addressTimeZone(row.address, state, city);
+    const timeZone = 'zone' in zone ? zone.zone : null;
+    if ('problem' in zone) result.unknownZone.push(`${row.name}: ${zone.problem}`);
+    result.meets.push({
       name: row.name,
       venueName: venueName || row.name,
       venueStreet: street,
       venueCity: city,
-      venueState: STATES[state]?.[0] ?? state,
+      venueState: stateCode(state) ?? state,
       venueZip: zip,
-      timeZone: STATES[state]?.[1] ?? 'America/New_York',
-      startDate,
-      endDate,
+      ...(timeZone === null ? {} : { timeZone }),
+      ...dates,
       status: 'upcoming',
       federation: 'USAW',
     });
   }
-  return meets;
+  return result;
 }

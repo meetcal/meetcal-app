@@ -1,6 +1,6 @@
 import type { PdfLine } from '../../lib/pdf';
-import { recordHolder, type RecordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { recordHolder, setHolder, type RecordHolder } from '../holder';
+import { blankRecord, intOrNull, plusLast, type WsoRecord } from './common';
 
 // Mountain South (port of `manual_scrapers/scraper_pdf_mountainsouth.py` and
 // its auto wrapper): a men's and a women's PDF linked from the records page,
@@ -152,15 +152,13 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
       }
       const parts = line.split(/\s+/).filter(Boolean);
       if (!parts.length || !section || !field || !/^\d+$/.test(parts[0].replaceAll('+', ''))) continue;
-      const weightClass = parts[0].includes('+') && !parts[0].endsWith('+') ? `${parts[0].replaceAll('+', '')}+` : parts[0];
+      const weightClass = plusLast(parts[0]);
       const key = JSON.stringify([section[0], section[1], weightClass]);
-      const record = records.get(key) ?? { wso, age_category: section[0], gender: section[1], weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+      const record = records.get(key) ?? blankRecord(wso, section[0], section[1], weightClass);
       records.set(key, record);
       const value = parts.length >= 4 ? classLineValue(parts) : null;
       record[field] = value;
-      const by = lineHolder(value, source, columns);
-      if (by) record[HOLDER_FIELDS[field]] = by;
-      else delete record[HOLDER_FIELDS[field]];
+      setHolder(record, HOLDER_FIELDS[field], lineHolder(value, source, columns));
     }
   }
   return [...records.values()];

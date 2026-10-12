@@ -59,17 +59,12 @@ describe("fetchSchedule", () => {
     jest.restoreAllMocks();
   });
 
-  it("forwards a known meet so the API client can skip the details request", async () => {
+  it("asks the API for the schedule alone", async () => {
     mockFetchApiSchedule.mockResolvedValue([]);
-    const meet = { name: "Test Meet" };
 
-    await fetchSchedule("Test Meet", meet as never);
-
-    expect(mockFetchApiSchedule).toHaveBeenCalledWith("Test Meet", meet);
-    // Not passed: resolved from the cached meets list, here empty, so the API
-    // client is told nothing is known and fetches the details itself.
     await fetchSchedule("Test Meet");
-    expect(mockFetchApiSchedule).toHaveBeenLastCalledWith("Test Meet", null);
+
+    expect(mockFetchApiSchedule).toHaveBeenCalledWith("Test Meet");
   });
 
   it("joins an in-flight request for the same meet and releases it afterwards", async () => {

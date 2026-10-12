@@ -2,7 +2,6 @@ import { SyncManager } from "@/lib/database/sync-manager";
 
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
 const mockFetchSchedule = jest.fn();
-const mockGetCachedMeetByName = jest.fn(async (): Promise<unknown> => null);
 const mockIsNetworkAvailable = jest.fn(async () => true);
 
 jest.mock("@/lib/database/offline-store", () => ({
@@ -10,9 +9,6 @@ jest.mock("@/lib/database/offline-store", () => ({
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),
-}));
-jest.mock("@/lib/database/meet-manager", () => ({
-  getCachedMeetByName: (...args: unknown[]) => mockGetCachedMeetByName(...(args as [])),
 }));
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: () => mockIsNetworkAvailable(),
@@ -25,7 +21,6 @@ describe("SyncManager", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsNetworkAvailable.mockResolvedValue(true);
-    mockGetCachedMeetByName.mockResolvedValue(null);
     jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -34,15 +29,13 @@ describe("SyncManager", () => {
     jest.useRealTimers();
   });
 
-  it("refreshes the schedule with the cached meet so no details request rides along", async () => {
-    const cachedMeet = { name: "Test Meet" };
-    mockGetCachedMeetByName.mockResolvedValue(cachedMeet);
+  it("refreshes and saves the schedule", async () => {
     const schedule = [{ date: "d", fullDate: "2099-01-01", sessions: [] }];
     mockFetchSchedule.mockResolvedValue(schedule);
 
     await new SyncManager("Test Meet").syncIfNeeded();
 
-    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet", cachedMeet);
+    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet");
     expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Test Meet", schedule);
   });
 

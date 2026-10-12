@@ -1,4 +1,4 @@
-import { recordHolder, type RecordHolder } from './holder';
+import { recordHolder, setHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
 
 // Pure parsing for `scrapers/usamw.ts` (port of `usamw/records/national_records.py`).
@@ -74,12 +74,6 @@ function lineHolder(value: number, rest: string): RecordHolder | undefined {
   return site
     ? recordHolder(value, words.slice(0, at).join(' '), recordsDate(words[at]), site[2], site[1])
     : recordHolder(value, words.slice(0, at).join(' '), recordsDate(words[at]), tail);
-}
-
-/** Sets a lift's holder, or clears it when the lift has none. */
-function setHolder(record: UsamwRecord, key: 'snatchBy' | 'cjBy' | 'totalBy', holder: RecordHolder | undefined) {
-  if (holder) record[key] = holder;
-  else delete record[key];
 }
 
 function weightOrder(weightClass: string): number {

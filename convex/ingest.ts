@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
@@ -6,6 +6,7 @@ import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGende
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
 import { earliestLocalDate, meetStatusAt, type MeetStatus } from './lib/meetStatus';
 import { normalizeName } from './lib/names';
+import { isMeetTimeZone } from './lib/validation';
 import { earliestSince } from './lib/viewKeys';
 import { bumpVersion, type SourceTable } from './lib/views';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
@@ -377,11 +378,13 @@ export const replaceMeetSchedule = internalMutation({
 
 const scrapedMeet = v.object({
   name: v.string(),
-  venueName: v.string(),
-  venueStreet: v.string(),
-  venueCity: v.string(),
-  venueState: v.string(),
-  venueZip: v.string(),
+  // Absent together when the scraper got no address: a stored meet keeps its
+  // venue, a new one gets the meet's name and `NO_VENUE`.
+  venueName: v.optional(v.string()),
+  venueStreet: v.optional(v.string()),
+  venueCity: v.optional(v.string()),
+  venueState: v.optional(v.string()),
+  venueZip: v.optional(v.string()),
   // Absent (or blank) when the scraper could not tell the zone: a stored
   // meet keeps its own, a new one is stored with a blank one.
   timeZone: v.optional(v.string()),
@@ -390,6 +393,35 @@ const scrapedMeet = v.object({
   status: v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed')),
   federation: v.optional(v.string()),
 });
+
+/** A meet stored without a known zone: every reader treats a blank zone as unknown. */
+const UNKNOWN_TIME_ZONE = '';
+/** The venue of a new meet scraped without an address (what `parseAddress('')` gave). */
+const NO_VENUE = { venueStreet: '', venueCity: 'Unknown', venueState: 'Unknown', venueZip: 'Unknown' };
+
+type ScrapedMeetRow = Infer<typeof scrapedMeet>;
+
+/**
+ * The scraped values a meet writes over the stored one (`existing`, null for
+ * a new meet); `upsertMeets` adds its stored name and its status, which
+ * follows the dates (`meetStatusAt`). The time zone is left alone when the
+ * scraper could not tell it (absent or blank), or when someone set it by hand
+ * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
+ * a correction; a new meet with no zone is stored with a blank one. Likewise
+ * the venue is left alone when the scraper got no address (`upsertMeets`
+ * gives a new meet placeholders).
+ */
+export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'timeZoneLocked'> | null) {
+  const { timeZone, ...rest } = row;
+  const scrapedZone = timeZone?.trim() ? timeZone : undefined;
+  const values: Omit<ScrapedMeetRow, 'timeZone'> & { federation: string; timeZone?: string } = {
+    ...rest,
+    federation: normalizeFederation(row.federation ?? 'USAW'),
+  };
+  if (!existing) values.timeZone = scrapedZone ?? UNKNOWN_TIME_ZONE;
+  else if (scrapedZone !== undefined && !existing.timeZoneLocked) values.timeZone = scrapedZone;
+  return values;
+}
 
 /** A stored meet's federation; rows from before the column was filled are USAW's. */
 const meetFederation = (meet: Pick<Doc<'meets'>, 'federation'>) => normalizeFederation(meet.federation ?? 'USAW');
@@ -443,10 +475,10 @@ function newMeetName(name: string, federation: string, { taken, freeName }: { ta
  * meet whose name another meet has is stored under a free
  * `disambiguatedMeetName` (and reported in `storedAs`), since the name is
  * the meet's identity everywhere; stored names never change. Only the
- * scraped columns are written, and the status follows the dates
- * (`meetStatusAt`): a completed meet whose dates move into the future is
- * upcoming again. A row without a zone keeps the stored one (a new meet's is
- * blank). Fields the scrapers do not own (venue map links) are kept.
+ * scraped columns are written (`scrapedMeetValues`), and the status follows
+ * the dates (`meetStatusAt`, on the zone the meet ends up with): a completed
+ * meet whose dates move into the future is upcoming again. Fields the
+ * scrapers do not own (venue map links, a locked time zone) are kept.
  * A meet whose scraped values are unchanged is not written; `updatedAt`
  * moves only with a real change, so the nightly syncs do not invalidate
  * every meet's views.
@@ -463,10 +495,20 @@ export const upsertMeets = internalMutation({
       const lookup = await meetOfFederation(ctx, row.name, federation);
       const existing = lookup.match;
       const name = existing?.name ?? newMeetName(row.name, federation, lookup);
-      const timeZone = row.timeZone?.trim() ? row.timeZone : (existing?.timeZone ?? '');
-      const values = { ...row, name, federation, timeZone, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
+      const scraped = scrapedMeetValues(row, existing);
+      // Read on the zone the meet ends up with, so a row without one is read
+      // on the stored zone.
+      const timeZone = scraped.timeZone ?? existing?.timeZone;
+      const values = { ...scraped, name, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
       if (!existing) {
-        await ctx.db.insert('meets', { ...values, ...(name !== row.name ? { sourceName: row.name } : {}), updatedAt: now });
+        await ctx.db.insert('meets', {
+          venueName: row.name,
+          ...NO_VENUE,
+          ...values,
+          timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE,
+          ...(name !== row.name ? { sourceName: row.name } : {}),
+          updatedAt: now,
+        });
         if (name !== row.name) console.warn(`upsertMeets: another meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
         outcomes.push({ wasInsert: true, wasChanged: true, ...(name !== row.name ? { storedAs: name } : {}) });
         hints.push({ kind: 'meet', key: name });
@@ -481,6 +523,35 @@ export const upsertMeets = internalMutation({
     }
     if (hints.length) await recordWrite(ctx, 'meets', hints);
     return outcomes;
+  },
+});
+
+/**
+ * Sets a meet's time zone by hand, locked by default so the meet syncs never
+ * overwrite it (the state-based guess is wrong for a few places, see
+ * `scrapers/lib/states.ts`): `npx convex run ingest:setMeetTimeZone
+ * '{"name":"…","timeZone":"America/New_York"}'`. Pass `locked: false` to hand
+ * the zone back to the syncs. Any IANA zone is accepted ("Asia/Tokyo",
+ * "Europe/Madrid"): every client shows a meet's times in its own zone. Names
+ * that are not IANA zones are refused (`isMeetTimeZone`). Goes through
+ * `recordWrite` like every write, so the meet's views follow.
+ */
+export const setMeetTimeZone = internalMutation({
+  args: { name: v.string(), timeZone: v.string(), locked: v.optional(v.boolean()) },
+  handler: async (ctx, { name, timeZone, locked }) => {
+    if (!isMeetTimeZone(timeZone)) {
+      throw new Error(`not an IANA time zone: ${JSON.stringify(timeZone)} (spell it as the database does, e.g. "America/Chicago" or "Asia/Tokyo")`);
+    }
+    const meet = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', name))
+      .first();
+    if (!meet) throw new Error(`no meet named ${JSON.stringify(name)}`);
+    const timeZoneLocked = locked ?? true;
+    if (meet.timeZone === timeZone && (meet.timeZoneLocked ?? false) === timeZoneLocked) return { changed: false };
+    await ctx.db.patch(meet._id, { timeZone, timeZoneLocked, updatedAt: Date.now() });
+    await recordWrite(ctx, 'meets', [{ kind: 'meet', key: name }]);
+    return { changed: true };
   },
 });
 
@@ -557,7 +628,7 @@ export const syncUsamwEvents = internalMutation({
         const name = newMeetName(event.name, 'USAMW', lookups.get(i)!);
         await ctx.db.insert('meets', {
           ...event,
-          timeZone: event.timeZone?.trim() ? event.timeZone : '',
+          timeZone: event.timeZone?.trim() ? event.timeZone : UNKNOWN_TIME_ZONE,
           name,
           ...(name !== event.name ? { sourceName: event.name } : {}),
           venueStreet: 'TBD',
@@ -575,11 +646,12 @@ export const syncUsamwEvents = internalMutation({
       for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
         if (!PLACEHOLDERS.has(event[field])) site[field] = event[field];
       }
-      if (site.venueState) {
+      // A zone set by hand is kept. Otherwise the site's zone is taken; moved
+      // to a place the site names no zone for, the old place's zone would be
+      // wrong there, so it is unknown (blank). Same state, kept.
+      if (site.venueState && !match.timeZoneLocked) {
         if (event.timeZone?.trim()) site.timeZone = event.timeZone;
-        // Moved to a place the site names no zone for: the old place's zone
-        // would be wrong there, so it is unknown (blank). Same state, kept.
-        else if (site.venueState !== match.venueState) site.timeZone = '';
+        else if (site.venueState !== match.venueState) site.timeZone = UNKNOWN_TIME_ZONE;
       }
       if (site.venueCity && site.venueCity !== match.venueCity) {
         site.venueStreet = 'TBD';
@@ -619,6 +691,32 @@ const hasSession = (athlete: Pick<Doc<'athletes'>, 'sessionNumber' | 'sessionPla
   athlete.sessionNumber !== undefined || (athlete.sessionPlatform ?? '').trim() !== '';
 
 /**
+ * The one stored athlete whose folded name is a leading run of whole words of
+ * the entrant's (`nameKey`) with the same membership number, or, for an
+ * entrant without one, a placeholder id, the same gender (either stored
+ * spelling, `normalizeGender`) and age: the row the old
+ * entries scraper wrote after cutting the surname at its first space. A name
+ * the incoming list still carries as an entrant of its own is never taken.
+ */
+export function truncatedEntryRow<T extends { memberId: string; name: string; gender: string; age: number }>(
+  existing: readonly T[],
+  row: { memberId: string; age: number },
+  nameKey: string,
+  gender: string,
+  incomingKeys: ReadonlySet<string>,
+): T | undefined {
+  const idless = isPlaceholderMemberId(row.memberId);
+  const candidates = existing.filter((a) => {
+    // The cheap checks first: this runs for each new entrant over the meet's rows.
+    const same = idless ? isPlaceholderMemberId(a.memberId) && normalizeGender(a.gender) === gender && a.age === row.age : a.memberId === row.memberId;
+    if (!same) return false;
+    const key = normalizeName(a.name);
+    return key !== '' && nameKey.startsWith(`${key} `) && !incomingKeys.has(key);
+  });
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+/**
  * One meet's Sport80 entries (`upsert_athlete(..., preserve_assigned_session=True)`).
  * An athlete with a membership number is the row with that number and name
  * (names compared case- and space-insensitively) at the meet; one without is
@@ -641,6 +739,7 @@ export const upsertEntryAthletes = internalMutation({
       .collect();
     const published = existing.some(hasSession);
     const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0 };
+    const incomingKeys = new Set(rows.map((row) => normalizeName(row.name)));
     const oneOffIds = new Map<string, boolean>();
     const isOneOff = async (memberId: string) => {
       if (!/^[1-9]\d{8}$/.test(memberId)) return false;
@@ -669,6 +768,10 @@ export const upsertEntryAthletes = internalMutation({
       } else {
         match = existing.find((a) => a.memberId === row.memberId && normalizeName(a.name) === nameKey);
       }
+      // A row the old scraper stored with the surname cut at its first space
+      // ("Maria De" for "Maria De La Cruz", its placeholder id minted from
+      // that name) is this entrant: repair it rather than add a second row.
+      match ??= truncatedEntryRow(existing, row, nameKey, gender, incomingKeys);
       const values = {
         // An adopted older row keeps its id rather than take a placeholder.
         memberId: idless && match && !isPlaceholderMemberId(match.memberId) ? match.memberId : row.memberId,

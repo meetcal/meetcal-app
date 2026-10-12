@@ -80,7 +80,6 @@ function makeProps(overrides: Partial<AthleteRowProps> = {}): AthleteRowProps {
     currentTheme: "light",
     validMeet: "Test Meet",
     timeZoneAbbr: "MDT",
-    timeZoneIdentifier: "America/Denver",
     isSubscribed: false,
     onSeeAllResults: jest.fn(),
     ...overrides,

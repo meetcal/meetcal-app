@@ -17,7 +17,6 @@ const SessionCard = React.memo<SessionCardProps>(
     onPress,
     sessionLookupByMeet,
     allowedMeetNames,
-    timeZoneIdentifier,
     timeZoneAbbr,
   }) => {
     const colors = useAppColors();
@@ -45,7 +44,8 @@ const SessionCard = React.memo<SessionCardProps>(
       lookup?.weighInTime || calculateWeighInTime(startTime) || item.weighInTime || "";
     // `new Date(`${date}T12:00:00`)` is *device*-local noon; rendering that in
     // the meet's timezone flips the calendar day whenever the two zones are
-    // more than 12 hours apart. Anchor at noon UTC instead.
+    // more than 12 hours apart. Anchor at noon UTC and read it back in UTC:
+    // in the meet's zone it is the next day from UTC+12 (Auckland) eastward.
     const dateAnchor = meetCalendarDateAnchor(item.date);
     const displayDate =
       lookup?.displayDate ||
@@ -54,7 +54,7 @@ const SessionCard = React.memo<SessionCardProps>(
             month: "long",
             day: "numeric",
             year: "numeric",
-            timeZone: timeZoneIdentifier || "UTC",
+            timeZone: "UTC",
           })
         : "Date TBD");
 

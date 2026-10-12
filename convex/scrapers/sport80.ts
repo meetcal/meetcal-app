@@ -9,7 +9,7 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
-  newestEvents,
+  pickNewestEvents,
   USAW_DOMAIN,
   type ResultRow,
 } from './parse/sport80';
@@ -62,7 +62,10 @@ class Sport80 {
   private constructor(private readonly env: Record<string, string>) {}
 
   static async connect(): Promise<Sport80> {
-    const page = await (await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) })).text();
+    const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
+    // A 5xx page has no `window.env` either: say what really failed.
+    if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
+    const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
     if (!match) throw new Error('sport80: window.env not found on the rankings page');
     return new Sport80(JSON.parse(match[1]));
@@ -172,9 +175,23 @@ export const run = internalAction({
     }
     if (!events.length) throw sourcesFailed('sport80: no events fetched', failures);
 
+    // A date in a format not seen before is not guessed at (month and day
+    // could be swapped): the event is left out, and the run fails naming it
+    // when it could be among the newest (`pickNewestEvents`).
+    const { newest, unreadable } = pickNewestEvents(events);
+    const reported = new Set<string>();
+    for (const { event, date, recent } of unreadable) {
+      const source = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'})`;
+      const error = `unreadable date ${JSON.stringify(date)}, not synced`;
+      if (reported.has(source)) continue;
+      reported.add(source);
+      if (recent) failures.push({ source, error });
+      else console.warn(`sport80: ${source}: ${error}`);
+    }
+
     const meets: RunResult['meets'] = [];
     const seen = new Set<string>();
-    for (const event of newestEvents(events)) {
+    for (const event of newest) {
       const eventId = eventIdOf(event);
       const meet = nested(event, 'meet') as string | null;
       if (!eventId || !meet || seen.has(eventId)) continue;

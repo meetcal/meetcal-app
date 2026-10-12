@@ -24,7 +24,7 @@ import {
   listStoredMeets,
 } from "@/lib/database/offline-store";
 import {
-  getCalendarDateInTimeZone,
+  getAnywhereOnEarthDate,
   toMeetCalendarDate,
 } from "@/utils/dateTime";
 import {
@@ -64,13 +64,6 @@ type DownloadItem = {
  * How far ahead a meet may start and still be offered for offline download.
  */
 const DOWNLOADABLE_MEET_WINDOW_DAYS = 21;
-
-/**
- * The timezone the download window is anchored in. Meet dates are calendar
- * dates with no zone of their own, and Pacific is the latest US zone, so a
- * meet stays offered until it has finished everywhere in the country.
- */
-const DOWNLOAD_WINDOW_TIME_ZONE = "America/Los_Angeles";
 
 /** `YYYY-MM-DD`, `days` after `from`. */
 function shiftCalendarDate(from: string, days: number): string {
@@ -143,7 +136,9 @@ export const useOfflineData = () => {
     () =>
       selectDownloadableMeets(
         availableMeets,
-        getCalendarDateInTimeZone(DOWNLOAD_WINDOW_TIME_ZONE),
+        // Anchored in the last zone a day ends in (UTC-12), so a meet stays
+        // offered until it has finished everywhere on Earth, whatever its zone.
+        getAnywhereOnEarthDate(),
       ),
     [availableMeets],
   );

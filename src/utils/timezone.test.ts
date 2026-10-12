@@ -1,7 +1,7 @@
 import {
   convertZonedLocalToUTC,
   getOffsetMinutesAtInstant,
-  isSupportedTimeZone,
+  isValidTimeZone,
   parseClockTime,
 } from "@/utils/timezone";
 
@@ -231,13 +231,13 @@ describe("timezone input assertions", () => {
   });
 
   it.each(["America/New_York", "Pacific/Honolulu", "UTC"])("accepts the zone %p", (zone) => {
-    expect(isSupportedTimeZone(zone)).toBe(true);
+    expect(isValidTimeZone(zone)).toBe(true);
   });
 
   it.each([undefined, null, 5, "", "   ", "Mars/Olympus", "__proto__"])(
     "rejects %p as a zone instead of throwing",
     (zone) => {
-      expect(isSupportedTimeZone(zone)).toBe(false);
+      expect(isValidTimeZone(zone)).toBe(false);
     },
   );
 });
@@ -277,5 +277,66 @@ describe("parts formatter cache", () => {
     expect(constructed).toBe(zones.length);
     tz.getOffsetMinutesAtInstant(zones[0], instant);
     expect(constructed).toBe(zones.length + 1);
+  });
+});
+
+// Meets outside the US carry their own IANA zone. This file runs on the
+// default Pacific/Auckland device zone (jest/device-timezone-environment.js),
+// so none of these can pass by reading the device's offset.
+describe("zones outside the US", () => {
+  const at = (date: string, time: string, zone: string) =>
+    convertZonedLocalToUTC(date, time, zone).toISOString();
+
+  it("accepts any zone Intl knows and nothing else", () => {
+    for (const zone of ["Asia/Tokyo", "Australia/Sydney", "Asia/Kolkata", "Europe/Madrid", "Pacific/Auckland", "UTC"]) {
+      expect(isValidTimeZone(zone)).toBe(true);
+    }
+    for (const zone of ["", "  ", "Not/AZone", undefined, null, 5]) {
+      expect(isValidTimeZone(zone)).toBe(false);
+    }
+  });
+
+  it("converts whole- and half-hour zones east of UTC", () => {
+    expect(at("2026-06-20", "9:00 AM", "Asia/Tokyo")).toBe("2026-06-20T00:00:00.000Z");
+    expect(at("2026-06-20", "10:00 AM", "Asia/Kolkata")).toBe("2026-06-20T04:30:00.000Z");
+    expect(at("2026-06-20", "10:00 AM", "Asia/Kathmandu")).toBe("2026-06-20T04:15:00.000Z");
+    // UTC+14: the wall clock is the day before in UTC.
+    expect(at("2026-06-20", "9:00 AM", "Pacific/Kiritimati")).toBe("2026-06-19T19:00:00.000Z");
+    expect(at("2026-06-20", "9:00 AM", "Europe/London")).toBe("2026-06-20T08:00:00.000Z");
+  });
+
+  it("reads a whole-minute offset at an instant with seconds", () => {
+    const instant = new Date("2026-06-20T06:30:35.409Z");
+    expect(getOffsetMinutesAtInstant("Asia/Kolkata", instant)).toBe(330);
+    expect(getOffsetMinutesAtInstant("America/St_Johns", instant)).toBe(-150);
+  });
+
+  it("keeps southern-hemisphere daylight time the right way round", () => {
+    // Sydney is UTC+11 (AEDT) in January and UTC+10 (AEST) in July.
+    expect(at("2026-01-15", "10:00 AM", "Australia/Sydney")).toBe("2026-01-14T23:00:00.000Z");
+    expect(at("2026-07-15", "10:00 AM", "Australia/Sydney")).toBe("2026-07-15T00:00:00.000Z");
+    expect(getOffsetMinutesAtInstant("Australia/Sydney", new Date("2026-01-15T00:00:00Z"))).toBe(660);
+    expect(getOffsetMinutesAtInstant("Australia/Sydney", new Date("2026-07-15T00:00:00Z"))).toBe(600);
+  });
+
+  it("resolves Sydney's DST changes like New York's", () => {
+    // Clocks go back from 3:00 to 2:00 on 5 April 2026: 2:30 happens twice,
+    // and the earlier (daylight) instant wins.
+    expect(at("2026-04-05", "2:30 AM", "Australia/Sydney")).toBe("2026-04-04T15:30:00.000Z");
+    // Clocks go forward from 2:00 to 3:00 on 4 October 2026: 2:30 does not
+    // exist and becomes the next valid local time.
+    const missing = convertZonedLocalToUTC("2026-10-04", "2:30 AM", "Australia/Sydney");
+    expect(
+      missing.toLocaleString("en-US", { timeZone: "Australia/Sydney", hour: "numeric", minute: "2-digit" }),
+    ).toBe("3:30 AM");
+  });
+
+  it("finds both offsets of a repeated hour 13 hours east of UTC", () => {
+    // Auckland's clocks go back from 3:00 NZDT (UTC+13) to 2:00 NZST on 5
+    // April 2026. 2:30 NZDT is 13:30 UTC on the 4th, more than 12 hours
+    // before 2:30 read as UTC, so a 12-hour probe saw only NZST and gave the
+    // later 2:30.
+    expect(at("2026-04-05", "2:30 AM", "Pacific/Auckland")).toBe("2026-04-04T13:30:00.000Z");
+    expect(at("2026-04-05", "3:30 AM", "Pacific/Auckland")).toBe("2026-04-04T15:30:00.000Z");
   });
 });

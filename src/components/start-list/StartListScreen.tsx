@@ -156,7 +156,6 @@ export default function StartListScreen() {
   const selectedMeetName =
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
   const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
-  const timeZoneIdentifier = meetDetails?.time.timeZoneIdentifier;
 
   usePreloadYearBests(athletes);
   const athleteBests = useYearBestsForSort(athletes, isBestLiftSort(filters.sort));
@@ -231,7 +230,6 @@ export default function StartListScreen() {
         currentTheme={currentTheme}
         validMeet={selectedMeetName}
         timeZoneAbbr={timeZoneAbbr}
-        timeZoneIdentifier={timeZoneIdentifier}
         isSubscribed={isSubscribed}
         onSeeAllResults={handleSeeAllResults}
       />
@@ -243,7 +241,6 @@ export default function StartListScreen() {
       currentTheme,
       selectedMeetName,
       timeZoneAbbr,
-      timeZoneIdentifier,
       isSubscribed,
       handleSeeAllResults,
     ],

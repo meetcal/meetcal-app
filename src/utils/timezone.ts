@@ -8,7 +8,7 @@ type ZonedDateParts = {
 
 /**
  * Formatters kept per zone id. Mirrors `ABBREVIATION_FORMATTER_CACHE_LIMIT` in
- * `utils/dateTime.ts`: a meet list spans a handful of US zones, and the bound
+ * `utils/dateTime.ts`: a meet list spans a handful of zones, and the bound
  * keeps odd spellings of the same zone from accumulating for the process life.
  */
 export const PARTS_FORMATTER_CACHE_LIMIT = 32;
@@ -35,22 +35,6 @@ const PARTS_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
 function assertTimeZone(timeZone: unknown): asserts timeZone is string {
   if (typeof timeZone !== "string" || timeZone.trim().length === 0) {
     throw new Error(`Invalid time zone: ${JSON.stringify(timeZone)}`);
-  }
-}
-
-/**
- * Whether `value` is a zone id this runtime can format in. For persisted rows
- * whose zone a screen hands straight to `toLocale*String`, which throws a
- * `RangeError` mid-render for an id `Intl` does not know. Builds (and caches)
- * the formatter the conversions below would use anyway.
- */
-export function isSupportedTimeZone(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  try {
-    getPartsFormatter(value);
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -100,6 +84,27 @@ function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
  */
 function normalizeHour(hour: number): number {
   return hour === 24 ? 0 : hour;
+}
+
+/**
+ * Whether `timeZone` is a zone this device's `Intl` can format in: any IANA
+ * zone the platform's time zone database knows (Hermes reads it from
+ * Foundation's `NSTimeZone` on iOS and ICU's `TimeZone` on Android), not only
+ * the US ones. A non-string, blank or unknown id (`""`, `"__proto__"`) is not.
+ *
+ * The API mapper checks a meet's zone with it, and so do persisted rows whose
+ * zone a screen hands straight to `toLocale*String`, which throws a
+ * `RangeError` mid-render for an id `Intl` does not know. Builds (and caches)
+ * the formatter the conversions below would use anyway.
+ */
+export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  if (typeof timeZone !== "string") return false;
+  try {
+    getPartsFormatter(timeZone);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getZonedParts(timeZone: string, instant: Date): ZonedDateParts {

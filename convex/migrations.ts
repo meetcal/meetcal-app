@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
+import { canonicalMeetDate } from './lib/validation';
 import { deleteResultRows, eventResultsByKey, recordWrite } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
@@ -237,5 +238,36 @@ export const duplicateMeetNames = internalQuery({
           .sort((a, b) => a._creationTime - b._creationTime)
           .map((meet) => ({ id: meet._id, federation: meet.federation ?? null, startDate: meet.startDate, endDate: meet.endDate, status: meet.status })),
       }));
+  },
+});
+
+/**
+ * Pads the meet dates the meet scraper once stored unpadded ("2026-9-5" ->
+ * "2026-09-05"): meet dates are compared as text, so an unpadded one sorts
+ * in the wrong place and its meet is never marked completed. A date that is
+ * not a date at all ("undefined-TBD-undefined") is listed for a person
+ * (`scrapers/queries:meetDataProblems`), not guessed at. Idempotent; writes
+ * through `recordWrite`, so the meets' views follow.
+ *
+ *   npx convex run migrations:padMeetDates
+ */
+export const padMeetDates = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const hints: { kind: 'meet'; key: string }[] = [];
+    const unreadable: string[] = [];
+    for (const meet of await ctx.db.query('meets').collect()) {
+      const startDate = canonicalMeetDate(meet.startDate);
+      const endDate = canonicalMeetDate(meet.endDate);
+      if (startDate === null || endDate === null) {
+        unreadable.push(meet.name);
+        continue;
+      }
+      if (startDate === meet.startDate && endDate === meet.endDate) continue;
+      await ctx.db.patch(meet._id, { startDate, endDate, updatedAt: Date.now() });
+      hints.push({ kind: 'meet', key: meet.name });
+    }
+    if (hints.length > 0) await recordWrite(ctx, 'meets', hints);
+    return { padded: hints.map((hint) => hint.key), unreadable };
   },
 });

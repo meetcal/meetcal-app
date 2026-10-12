@@ -20,6 +20,7 @@ import {
   getMeetLiftingResults,
   getMeetSchedule,
   getSessionAthletesFromMeetCache,
+  hasMeetEnded,
   initStore,
   markMeetExplicitlyDownloaded,
   pruneOrphanedAthleteHistory,
@@ -1941,6 +1942,21 @@ describe("downloaded meet expiry on the server's clock", () => {
   async function isMeetExplicitlyDownloadedFor(meet: string): Promise<boolean> {
     return (await getExplicitlyDownloadedMeetIds()).has(meet);
   }
+});
+
+describe("hasMeetEnded", () => {
+  it("waits until the end date is over everywhere on Earth (UTC-12)", () => {
+    // A meet ending 2026-06-20 in American Samoa (UTC-11) runs until 11:00
+    // UTC on the 21st; the old UTC-10 (Honolulu) cutoff dropped its data at
+    // 10:00, an hour before its last session ended.
+    expect(hasMeetEnded("2026-06-20", Date.parse("2026-06-21T10:30:00Z"))).toBe(false);
+    expect(hasMeetEnded("2026-06-20", Date.parse("2026-06-21T11:59:00Z"))).toBe(false);
+    expect(hasMeetEnded("2026-06-20", Date.parse("2026-06-21T12:01:00Z"))).toBe(true);
+  });
+
+  it("never treats an unreadable end date as ended", () => {
+    expect(hasMeetEnded("TBD", Date.parse("2030-01-01T00:00:00Z"))).toBe(false);
+  });
 });
 
 describe("clearMeetData failure order", () => {

@@ -114,6 +114,12 @@ export function recordHolder(
   return holder;
 }
 
+/** Sets a lift's holder on a record (`snatch_by`, `cjBy`, ...), or clears it when the lift has none. */
+export function setHolder<K extends string>(record: { [key in K]?: RecordHolder }, key: K, holder: RecordHolder | undefined): void {
+  if (holder) record[key] = holder;
+  else delete record[key];
+}
+
 const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 
 /**

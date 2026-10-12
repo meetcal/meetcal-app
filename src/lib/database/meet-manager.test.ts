@@ -192,7 +192,6 @@ describe("validatePrefetchedLiftingResults", () => {
 });
 
 describe("prefetchCriticalMeetData", () => {
-  const MEETS_LIST_CACHE_KEY = "@meets_list_cache_v1";
   const roster = [
     { name: "1-Red", session: { number: 1, platform: "Red" } },
     { name: "2-Blue", session: { number: 2, platform: "Blue" } },
@@ -236,7 +235,7 @@ describe("prefetchCriticalMeetData", () => {
 
     await prefetchCriticalMeetData("Test Meet" as any);
 
-    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet", null);
+    expect(mockFetchSchedule).toHaveBeenCalledWith("Test Meet");
     expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Test Meet", schedule);
     // The per-session caches are derived from this single roster write
     // (`saveMeetAthletes` -> `saveSessionAthleteCaches`); the eight
@@ -245,26 +244,6 @@ describe("prefetchCriticalMeetData", () => {
     expect(mockFetchAthletesWithSession).toHaveBeenCalledTimes(1);
     expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Test Meet");
     expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
-  });
-
-  it("hands the cached meet to the schedule fetch so no details request rides along", async () => {
-    const cachedMeet = {
-      id: "m1",
-      name: "Test Meet",
-      dates: { start: "2099-01-01", end: "2099-01-02" },
-      time: { timeZoneIdentifier: "America/Chicago" },
-    };
-    mockGetItem.mockImplementation(async (key: string) =>
-      key === MEETS_LIST_CACHE_KEY ? JSON.stringify([cachedMeet]) : null,
-    );
-    mockFetchSchedule.mockResolvedValue([]);
-
-    await prefetchCriticalMeetData("Test Meet" as any);
-
-    expect(mockFetchSchedule).toHaveBeenCalledWith(
-      "Test Meet",
-      expect.objectContaining({ name: "Test Meet" }),
-    );
   });
 
   it("defers full meet package prefetch for explicitly downloaded meets", async () => {

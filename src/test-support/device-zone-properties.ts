@@ -11,7 +11,6 @@ import {
   meetLocalDate,
   meetTimeZoneArb,
   readWallClock,
-  US_MEET_TIME_ZONES,
   utcCalendarDate,
   wallClockExists,
   zonedWallClockArb,
@@ -65,12 +64,15 @@ export function describeDeviceZoneProperties(deviceTimeZone: string): void {
       );
     });
 
-    it('anchors a meet date to an instant every US meet zone reads as that date', () => {
+    // The anchor is read back in UTC, not in a US meet zone: meets abroad
+    // keep their own zone, and noon UTC is already the next day from UTC+12
+    // (Auckland) eastward, so every caller formats it with `timeZone: 'UTC'`.
+    it('anchors a meet date to an instant that reads as that date in UTC', () => {
       fc.assert(
-        fc.property(isoCalendarDateArb, fc.constantFrom(...US_MEET_TIME_ZONES), (date, timeZone) => {
+        fc.property(isoCalendarDateArb, (date) => {
           const anchor = meetCalendarDateAnchor(date);
           expect(anchor).not.toBeNull();
-          expect(meetLocalDate(timeZone, anchor!)).toBe(date);
+          expect(utcCalendarDate(anchor!)).toBe(date);
         }),
       );
     });

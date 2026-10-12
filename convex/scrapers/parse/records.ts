@@ -1,4 +1,5 @@
-import { recordHolder, type RecordHolder } from './holder';
+import { recordHolder, setHolder, type RecordHolder } from './holder';
+import { pyInt } from '../lib/numbers';
 import { parseHtml, type HTMLElement } from '../lib/html';
 import { absoluteUrl } from '../lib/http';
 
@@ -110,12 +111,6 @@ function rowHolder(value: number, words: string[]): RecordHolder | undefined {
     : recordHolder(value, words.slice(0, at).join(' '), words[at], rest);
 }
 
-/** Sets a lift's holder, or clears it when the lift has none. */
-function setHolder(record: UsawRecord, key: 'snatch_by' | 'cj_by' | 'total_by', holder: RecordHolder | undefined) {
-  if (holder) record[key] = holder;
-  else delete record[key];
-}
-
 /**
  * Records from the PDF's text lines. Every age code the scraper keeps is one
  * token, so a kept row is `code gender bodyweight lift record name date place
@@ -135,9 +130,8 @@ export function parseRecords(pages: string[][]): UsawRecord[] {
       const weightClass = formatWeightClass(bodyweight);
       if (!weightClass) continue;
       if (!value || value.toUpperCase() === 'STANDARD') continue;
-      const number = Number(value);
-      if (!Number.isFinite(number) || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(value)) continue;
-      const weight = Math.trunc(number);
+      const weight = pyInt(value);
+      if (weight === null) continue;
       const key = `${age}|${gender}|${weightClass}`;
       const record = byKey.get(key) ?? {
         record_type: 'USAW' as const,

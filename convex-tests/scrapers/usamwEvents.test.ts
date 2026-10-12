@@ -20,6 +20,10 @@ describe('USA Masters events (usamasters.net)', () => {
     expect(timeZoneFor('TN')).toBe('America/Chicago');
     expect(timeZoneFor('Greece')).toBe('Europe/Athens');
     expect(timeZoneFor('PA')).toBe('America/New_York');
+    expect(timeZoneFor('TN', 'Knoxville')).toBe('America/New_York');
+    expect(timeZoneFor('Barcelona', 'Barcelona', 'Barcelona - SPAIN')).toBe('Europe/Madrid');
+    // Neither a state nor a known country: no zone, rather than Eastern.
+    expect(timeZoneFor('TBD', 'TBD', 'TBD')).toBeUndefined();
   });
 
   it('reads each event block, skipping training camps', () => {
@@ -29,12 +33,15 @@ describe('USA Masters events (usamasters.net)', () => {
       block('2026 Howard Cohen<br>American Masters<br><br>Dec 2-6, 2026<br><br>Book Hotel here', 'Valley Forge, PA<br><br>Valley Forge Resort &amp; Casino<br><br>Registration fees per lifter<br>$ 169.00'),
       block('2027 Elite Masters<br><br>August 18-22', 'Savannah, GA<br>Olympic Legacy Facility'),
       block('2028 IMWA World Masters<br><br>July 31-Aug 08, 2028', 'Corbera de Llobregat<br>Barcelona - SPAIN'),
+      block('2027 Masters Open<br>Mar 3, 2027', ''),
     ].join('');
     expect(parseUsamwEvents(html)).toEqual([
       { name: '2026 IMWA World Masters', startDate: '2026-09-17', endDate: '2026-09-26', venueName: 'TBD', venueCity: 'Athens', venueState: 'Greece', timeZone: 'Europe/Athens' },
       { name: '2026 Howard Cohen American Masters', startDate: '2026-12-02', endDate: '2026-12-06', venueName: 'Valley Forge Resort & Casino', venueCity: 'Valley Forge', venueState: 'PA', timeZone: 'America/New_York' },
       { name: '2027 Elite Masters', startDate: '2027-08-18', endDate: '2027-08-22', venueName: 'Olympic Legacy Facility', venueCity: 'Savannah', venueState: 'GA', timeZone: 'America/New_York' },
       { name: '2028 IMWA World Masters', startDate: '2028-07-31', endDate: '2028-08-08', venueName: 'TBD', venueCity: 'Corbera de Llobregat', venueState: 'Spain', timeZone: 'Europe/Madrid' },
+      // No location yet: no zone (the sync keeps a stored one), not Eastern.
+      { name: '2027 Masters Open', startDate: '2027-03-03', endDate: '2027-03-03', venueName: 'TBD', venueCity: 'TBD', venueState: 'TBD' },
     ]);
   });
 });

@@ -29,6 +29,45 @@ export function isValidIsoDate(value: string): boolean {
   return days !== undefined && day >= 1 && day <= days;
 }
 
+/**
+ * A stored meet date as a real, zero-padded `YYYY-MM-DD`, or null. The meet
+ * scraper once stored some unpadded ("2026-9-5") and some that were not dates
+ * at all ("undefined-TBD-undefined"); meet dates are compared as text, so
+ * those sort in the wrong place (`migrations:padMeetDates` repairs them).
+ */
+export function canonicalMeetDate(value: string): string | null {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value.trim());
+  if (!match) return null;
+  const date = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  return isValidIsoDate(date) ? date : null;
+}
+
+/** Whether `timeZone` is an IANA zone this runtime knows (a blank one is not). */
+export function isKnownTimeZone(timeZone: string): boolean {
+  if (!timeZone.trim()) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** "UTC" or an IANA Area/Location name as the database spells it ("Asia/Tokyo", "America/Argentina/Buenos_Aires"). */
+const IANA_ZONE_NAME = /^(?:UTC|[A-Z][A-Za-z]*(?:\/[A-Z][A-Za-z0-9_+-]*)+)$/;
+
+/**
+ * Whether `timeZone` can be a meet's zone: an IANA zone name, spelled as the
+ * database spells it, that this runtime's time zone database knows. Every
+ * client reads it in its own database (the app through `Intl` on Hermes, the
+ * widgets through Foundation and java.time), so names only V8 accepts are
+ * refused: abbreviations ("EST"), offsets ("+05:30") and other casings
+ * ("asia/tokyo", which `java.time` rejects).
+ */
+export function isMeetTimeZone(timeZone: string): boolean {
+  return IANA_ZONE_NAME.test(timeZone) && isKnownTimeZone(timeZone);
+}
+
 export function requireIsoDate(field: string, value: string | undefined): void {
   if (value !== undefined && !isValidIsoDate(value)) {
     throw apiError(400, `${field} must be a valid YYYY-MM-DD date`);

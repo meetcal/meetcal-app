@@ -61,11 +61,11 @@ jest.mock("@/contexts/SubscriptionContext", () => ({
   }),
 }));
 
-// "Today" in the download window's zone, so the window does not depend on
-// the day the suite runs.
+// "Today" where the download window is anchored (UTC-12), so the window does
+// not depend on the day the suite runs.
 jest.mock("@/utils/dateTime", () => ({
   ...jest.requireActual("@/utils/dateTime"),
-  getCalendarDateInTimeZone: () => "2099-06-15",
+  getAnywhereOnEarthDate: () => "2099-06-15",
 }));
 
 const MEETS = [

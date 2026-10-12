@@ -41,7 +41,6 @@ import {
 } from './meetcal-api';
 import { callQuery, isClockCall, jsonTransportStub, type JsonResponder } from './json-transport-stub';
 import { setApiTransportForTests } from './transport';
-import { timezoneOffsets, type USTimeZoneIdentifier } from '@/data/types/meet';
 import { isLiftResult } from '@/lib/athletes';
 import {
   clockTimeArb,
@@ -50,6 +49,7 @@ import {
   isoCalendarDateArb,
   timeZoneArb,
 } from '@/test-support/arbitraries';
+import { MS_PER_HOUR, readWallClock, wallClockExists } from '@/test-support/time-arbitraries';
 
 /**
  * The API boundary under generated payloads. A valid payload must map without
@@ -60,7 +60,29 @@ import {
  * AsyncStorage.
  */
 
-const US_ZONES = Object.keys(timezoneOffsets) as USTimeZoneIdentifier[];
+/**
+ * Whether `Intl` itself formats in `zone`: the oracle for "a real zone", kept
+ * apart from the app's `isValidTimeZone`. A meet's zone is any IANA zone, not
+ * only a US one, so a meet abroad keeps its own zone and only a blank or
+ * unknown id falls back.
+ */
+function intlAcceptsZone(zone: unknown): boolean {
+  if (typeof zone !== 'string' || zone.trim().length === 0) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+] as const;
+
+/** Zone ids the API could send that no device can read: these fall back. */
+const UNREADABLE_ZONES = ['', '   ', 'Not/AZone', '__proto__', 'Eastern'] as const;
 
 // --- valid wire payloads -----------------------------------------------------
 
@@ -81,7 +103,7 @@ const apiMeetArb: fc.Arbitrary<ApiMeet> = fc.record(
     name: nonBlankArb,
     start_date: isoCalendarDateArb,
     end_date: isoCalendarDateArb,
-    time_zone: fc.oneof({ weight: 3, arbitrary: fc.constantFrom(...US_ZONES) }, { weight: 1, arbitrary: timeZoneArb }),
+    time_zone: fc.oneof({ weight: 4, arbitrary: timeZoneArb }, { weight: 1, arbitrary: fc.constantFrom(...UNREADABLE_ZONES) }),
     status: fc.constantFrom('upcoming', 'ongoing', 'completed'),
     venue_name: fc.string(),
     venue_street: fc.string(),
@@ -213,7 +235,7 @@ function expectMappedMeet(meet: unknown): void {
   expect(m.venueMapPdfUrl === null || isString(m.venueMapPdfUrl)).toBe(true);
   expect(m.venueMapAppleUrl === null || isString(m.venueMapAppleUrl)).toBe(true);
   expect(isString(m.time.timeZone)).toBe(true);
-  expect(US_ZONES).toContain(m.time.timeZoneIdentifier);
+  expect(intlAcceptsZone(m.time.timeZoneIdentifier)).toBe(true);
   expect(isString(m.time.abbreviation)).toBe(true);
   expect(isFiniteNumber(m.time.utcOffset)).toBe(true);
   expect(isString(m.dates.start) && isString(m.dates.end)).toBe(true);
@@ -327,22 +349,33 @@ describe('meetcal API mappers (properties)', () => {
         expect(meet.dates).toEqual({ start: row.start_date, end: row.end_date });
         expect(meet.venue.name).toBe(row.venue_name);
         expect(meet.status).toBe(row.status);
-        const known = (US_ZONES as string[]).includes(row.time_zone);
+        const known = intlAcceptsZone(row.time_zone);
         expect(meet.timeZoneUnknown).toBe(!known);
         expect(meet.time.timeZoneIdentifier).toBe(known ? row.time_zone : 'America/New_York');
-        // The offset is one of the zone's two published offsets, never the
-        // device's and never a third value.
-        const { standard, dst } = timezoneOffsets[meet.time.timeZoneIdentifier];
-        expect([standard, dst]).toContain(meet.time.utcOffset);
+        // The offset is the zone's own at noon on the start date, never the
+        // device's: noon there, shifted by the offset, is that instant in UTC.
+        const zone = meet.time.timeZoneIdentifier;
+        const noon = { date: row.start_date, hour: 12, minute: 0 };
+        if (wallClockExists(zone, noon)) {
+          const [year, month, day] = row.start_date.split('-').map(Number);
+          const instant = Date.UTC(year, month - 1, day, 12) + meet.time.utcOffset * MS_PER_HOUR;
+          expect(readWallClock(zone, instant)).toMatchObject(noon);
+        }
       }),
     );
   });
 
   it('keeps every valid schedule row: one session per day and number, one platform per row', () => {
     fc.assert(
-      fc.property(fc.array(apiScheduleRowArb, { maxLength: 12 }), apiMeetArb, (rows, meetRow) => {
-        const schedule = mapApiSchedule(rows, mapApiMeet(meetRow));
+      fc.property(fc.array(apiScheduleRowArb, { maxLength: 12 }), (rows) => {
+        const schedule = mapApiSchedule(rows);
         expectSchedule(schedule);
+        // A day's title is its calendar date, whatever the meet's zone: read
+        // in a zone east of UTC+12 it used to name the next day.
+        for (const day of schedule) {
+          const [year, month, date] = day.fullDate.split('-').map(Number);
+          expect(day.date).toBe(`${MONTH_NAMES[month - 1]} ${date}, ${year}`);
+        }
         expect(schedule.map((day) => day.fullDate).sort()).toEqual([...new Set(rows.map((row) => row.date))].sort());
         const platformCount = schedule.flatMap((day) => day.sessions.flatMap((session) => session.platforms)).length;
         expect(platformCount).toBe(rows.length);
@@ -491,12 +524,12 @@ describe('meetcal API boundary under corrupted payloads (properties)', () => {
     await fc.assert(
       fc.asyncProperty(
         corrupt(fc.array(apiScheduleRowArb, { minLength: 1, maxLength: 4 })),
-        apiMeetArb,
+        nonBlankArb,
         answerFormArb,
-        async (payload, meetRow, form) => {
+        async (payload, meetName, form) => {
           clearHttpValidatorCache();
           serve(() => payload, form);
-          await rejectsOrSatisfies(() => fetchApiSchedule(meetRow.name, mapApiMeet(meetRow)), expectSchedule);
+          await rejectsOrSatisfies(() => fetchApiSchedule(meetName), expectSchedule);
         },
       ),
     );
