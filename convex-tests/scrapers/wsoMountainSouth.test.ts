@@ -44,6 +44,8 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     // A vacant class whose event carries a number is still vacant.
     expect(parseMountainSouth([['OPEN WOMEN - SNATCH', '60 A B NM 0 1/1/25 NAO Series 1']], 'Mountain South')[0].snatch_record).toBeNull();
     expect(() => parseMountainSouth([['OPEN WOMEN - SNATCH', '60 Maria De La Cruz AZ 88* 3/3/22 Meet']], 'Mountain South')).toThrow('unreadable lift value "88*"');
+    // Two-letter name words are not taken for the state.
+    expect(parseMountainSouth([['OPEN WOMEN - SNATCH', '60 JANE LI AZ 88 3/3/22 Meet']], 'Mountain South')[0].snatch_record).toBe(88);
   });
 
   it('reads holders from positioned runs: name columns, event and place split by the LOCATION column', () => {

@@ -116,18 +116,14 @@ function lineHolder(value: number | null, line: string | PdfLine, columns: Colum
 
 /**
  * The record on a class line's words ("60 Maria De La Cruz AZ 88 3/3/22 …"):
- * the cell after the athlete's state, however many words the name has, or
- * without a state, the first number before the date. The cell after the
- * state must read as a lift: anything else throws rather than clear the
- * record.
+ * the first word before the date that starts with a digit, however many
+ * words the name has (names and states never do). It must read as a lift:
+ * "88*" throws rather than clear the record.
  */
 function classLineValue(parts: readonly string[]): number | null {
   const date = parts.findIndex((word, i) => i > 0 && DATE.test(word));
-  const cells = parts.slice(1, date === -1 ? undefined : date);
-  const state = cells.findIndex((word, i) => i > 0 && STATE.test(word));
-  if (state !== -1 && state + 1 < cells.length) return lift(cells[state + 1]);
-  const number = cells.find((word) => /^\d+(?:\.\d+)?$/.test(word));
-  return number === undefined ? null : lift(number);
+  const value = parts.slice(1, date === -1 ? undefined : date).find((word) => /^\d/.test(word));
+  return value === undefined ? null : lift(value);
 }
 
 /** One PDF's records, from its lines (text, or runs with positions) page by page. */
