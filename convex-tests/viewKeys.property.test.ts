@@ -85,7 +85,9 @@ describe('view keys (property)', () => {
     expect(adaptiveKey('men', 'bwl', '2026')).not.toBe(adaptiveKey('men', 'BWL', '2026'));
   });
 
-  // FINDING: `nat|${federation}|${ageCategory}` (likewise `adaptiveKey`) is
+  // FINDING, deferred: see the linked issue in PR #184. Skipped until then:
+  // the fix changes stored keys and overlaps PR #179's key parsing.
+  // `nat|${federation}|${ageCategory}` (likewise `adaptiveKey`) is
   // ambiguous when a part holds '|': natKey('a|b', 'c') === natKey('a', 'b|c'),
   // so a request whose federation or age holds '|' could read another
   // ranking's view. Latent: no stored federation or age category holds '|',
@@ -107,12 +109,14 @@ describe('view keys (property)', () => {
     );
   });
 
-  // FINDING (same as above): shrunk counterexample.
+  // FINDING (same as above; deferred: see the linked issue in PR #184): shrunk counterexample.
   it.skip('example: a separator inside a part does not make two rankings one', () => {
     expect(natKey('a|b', 'c')).not.toBe(natKey('a', 'b|c'));
   });
 
-  // FINDING: views are deleted and listed by key prefix, and a meet's
+  // FINDING, deferred: see the linked issue in PR #184. Skipped until then:
+  // the fix changes stored keys and overlaps PR #179's key parsing.
+  // Views are deleted and listed by key prefix, and a meet's
   // prefixes (`meet|${meet}|` in `views:deleteMeetViews`,
   // `meetSessionPrefix(meet)` in `buildMeet`, `meetKey(meet, 'package_static')`
   // when a meet has no row) also cover the keys of any meet whose name starts
@@ -137,7 +141,7 @@ describe('view keys (property)', () => {
     );
   });
 
-  // FINDING (same as above): shrunk counterexamples.
+  // FINDING (same as above; deferred: see the linked issue in PR #184): shrunk counterexamples.
   it.skip("example: meet 'A' does not own the views of meet 'A|B'", () => {
     expect(meetKey('A|B', 'schedule').startsWith('meet|A|')).toBe(false);
     expect(meetKey('A|session|1', 'schedule').startsWith(meetSessionPrefix('A'))).toBe(false);
