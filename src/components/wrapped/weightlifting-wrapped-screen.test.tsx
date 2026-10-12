@@ -358,7 +358,7 @@ describe("WeightliftingWrappedScreen search submit", () => {
     expect(rangedCalls).toHaveLength(1);
 
     await act(async () => {
-      finish({ matchedName: null, suggestions: [], results: [] });
+      finish({ matchedName: null, suggestions: [], results: [], truncated: false });
     });
     // Once it lands, the next submit goes through again (and stays pending).
     await act(async () => {
@@ -376,6 +376,7 @@ describe("WeightliftingWrappedScreen share", () => {
       matchedName: "John Smith",
       suggestions: [],
       results: [liftRow("John Smith", "2025-03-01", 300)],
+      truncated: false,
     });
     await submit("John Smith");
     // The share button sits on the last slide.

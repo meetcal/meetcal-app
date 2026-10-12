@@ -8,6 +8,7 @@ import {
   type ChaosConfig,
   type ChaosFaultKind,
 } from '@/lib/api/dev-chaos';
+import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
 import type { ApiCall } from '@/lib/api/transport';
 
 const ALL_KINDS: ChaosFaultKind[] = ['network', 'hang', 'delay', 'status', 'transient', 'garbage', 'truncate'];
@@ -27,8 +28,6 @@ const callArb: fc.Arbitrary<ApiCall> = fc.record({
   kind: fc.constantFrom('query' as const, 'mutation' as const),
   args: fc.constant({}),
 });
-
-const clockCall: ApiCall = { path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} };
 
 /** Draws for a random source; `randomFrom` replays them in a cycle. */
 const drawsArb = fc.array(fc.double({ min: 0, max: 1, maxExcluded: true, noNaN: true }), { minLength: 1, maxLength: 6 });
@@ -98,7 +97,7 @@ describe('pickChaosFault', () => {
   it('never faults the server-clock sample', () => {
     fc.assert(
       fc.property(configArb, drawsArb, (config, draws) => {
-        expect(pickChaosFault({ ...config, rate: 1 }, clockCall, randomFrom(draws))).toEqual({ kind: 'pass' });
+        expect(pickChaosFault({ ...config, rate: 1 }, SERVER_CLOCK_CALL, randomFrom(draws))).toEqual({ kind: 'pass' });
       }),
     );
   });

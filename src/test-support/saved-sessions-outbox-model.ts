@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NetInfoState } from '@react-native-community/netinfo';
 import * as fc from 'fast-check';
 
+import { isClockCall } from '@/lib/api/json-transport-stub';
 import * as api from '@/lib/api/meetcal-api';
 import { TransportRequestError, type ApiCall, type Transport } from '@/lib/api/transport';
 import * as store from '@/lib/saved-sessions-store';
@@ -234,10 +235,6 @@ export interface Harness {
   online: boolean;
 }
 
-function isClock(call: ApiCall): boolean {
-  return call.fn === 'system:serverTime';
-}
-
 /**
  * The server as the transport sees it: offline fails every call before it
  * leaves the device; otherwise the write is applied, then `answers` decide
@@ -253,7 +250,7 @@ export function serverTransport(
   let next = 0;
   return async (call) => {
     if (!h.online) throw new TypeError('Network request failed');
-    if (isClock(call)) return Date.now();
+    if (isClockCall(call)) return Date.now();
     if (gate) await gate(call);
     const answer = next < answers.length ? answers[next++] : ({ kind: 'answer' } as const);
     answered.push(answer);
@@ -580,7 +577,7 @@ export class FlushCommand implements Command {
       const token = this.holder === 'owner' ? OWNER_TOKEN : this.holder === 'other' ? jwtFor(OTHER_USER) : 'not-a-jwt';
       const result = await settle(h.outbox.flushOutbox(OWNER, chaosGetToken(token, this.tokenFaults)), 'flush');
       processRefusals(m, h, chaos.calls, { seen: 0 });
-      const writes = chaos.calls.filter(({ call }) => !isClock(call));
+      const writes = chaos.calls.filter(({ call }) => !isClockCall(call));
       const foreign = writes.filter(({ call }) => call.token !== OWNER_TOKEN);
       if (foreign.length > 0) throw new Error(`sent ${foreign[0].call.fn} with a token that is not the owner's`);
       const sawAuthFailure = writes.some(({ fault }) => fault.kind === 'status' && fault.status === 401);
@@ -668,7 +665,7 @@ export class RestartCommand implements Command {
       let onWire = false;
       let finished = false;
       const chaos = installChaosTransport(async (call) => {
-        if (isClock(call)) return Date.now();
+        if (isClockCall(call)) return Date.now();
         if (applied) h.server.apply(call);
         onWire = true;
         return new Promise(() => {});
