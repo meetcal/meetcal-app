@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  getPillAccessibilityLabel,
   pillRowContentStyle,
   PillContent,
   ResetPill,
@@ -109,7 +110,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
               onPress={() => handlePillPress(config)}
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               accessibilityRole="button"
-              accessibilityLabel={`Filter by ${config.label}`}
+              accessibilityLabel={getPillAccessibilityLabel(config)}
             >
               <PillContent config={config} />
             </Pressable>

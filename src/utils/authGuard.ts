@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useUser } from '@clerk/expo';
 import { Alert } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
+import { showToast, type ToastOptions } from '@/lib/toast';
 import { cacheAuthState, getCachedAuthState } from '@/lib/authCache';
 import { isMaestroE2E } from '@/lib/e2e';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -70,6 +71,26 @@ export function resolveAuthState({
   }
 
   return false;
+}
+
+/**
+ * Why {@link resolveAuthState} could not answer. Offline, Clerk never
+ * finishes loading, so a user with no cached sign-in stays undecided for as
+ * long as the venue has no signal; every gated tap used to return silently.
+ */
+export type AuthPendingReason = 'offline' | 'loading';
+
+export function authPendingReason(hasNetwork: boolean | null): AuthPendingReason {
+  return hasNetwork === false ? 'offline' : 'loading';
+}
+
+const AUTH_PENDING_TOASTS: Record<AuthPendingReason, ToastOptions> = {
+  offline: { type: 'info', message: "You're offline. Connect to the internet to sign in." },
+  loading: { type: 'info', message: 'Still checking your sign-in. Try again in a moment.' },
+};
+
+export function authPendingToast(reason: AuthPendingReason): ToastOptions {
+  return AUTH_PENDING_TOASTS[reason];
 }
 
 // Re-exported: the return-path rule and the deep-link rule are one policy.
@@ -189,24 +210,33 @@ export function useAuthGuard() {
     };
   }, [isLoaded, userId]);
 
+  const authState = resolveAuthState({
+    userId,
+    isLoaded,
+    cachedIsSignedIn,
+    hasNetwork,
+    isCacheResolved,
+  });
+
+  /** Tell the user why a tap did nothing while sign-in cannot be decided. */
+  const notifyAuthPending = useCallback(() => {
+    showToast(authPendingToast(authPendingReason(hasNetwork)));
+  }, [hasNetwork]);
+
   /**
    * Check if user is authenticated. If not, show login prompt.
-   * @returns true if authenticated, false if login is required, null if still loading
+   * @returns true if authenticated, false if login is required, null if it
+   * cannot be decided yet (a toast says why: offline, or still loading)
    */
   const requireAuth = useCallback((options: AuthGuardOptions): boolean | null => {
     if (isMaestroE2E()) {
       return true;
     }
 
-    const resolved = resolveAuthState({
-      userId,
-      isLoaded,
-      cachedIsSignedIn,
-      hasNetwork,
-      isCacheResolved,
-    });
-    if (resolved !== false) {
-      return resolved;
+    if (authState === true) return true;
+    if (authState === null) {
+      notifyAuthPending();
+      return null;
     }
 
     const defaultMessage = 'You need to sign in to use this feature.';
@@ -235,20 +265,18 @@ export function useAuthGuard() {
     );
 
     return false;
-  }, [userId, isLoaded, router, cachedIsSignedIn, hasNetwork, isCacheResolved]);
+  }, [authState, notifyAuthPending, router]);
 
   return {
     requireAuth,
     // Same policy as `requireAuth`, so a screen that reads this flag and one
-    // that calls the guard can never disagree about the same user.
-    isAuthenticated:
-      resolveAuthState({
-        userId,
-        isLoaded,
-        cachedIsSignedIn,
-        hasNetwork,
-        isCacheResolved,
-      }) === true,
+    // that calls the guard can never disagree about the same user. Like the
+    // guard, it may trust the cached hint, so it is for reads and navigation
+    // only, never a stand-in for a token on a write.
+    isAuthenticated: authState === true,
+    /** `resolveAuthState`'s answer: `null` while it cannot be decided. */
+    authState,
+    notifyAuthPending,
     isLoaded,
   };
 }

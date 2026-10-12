@@ -27,9 +27,13 @@ import {
  * network and storage failures, through the real API client and the real
  * offline store. It pulls every athlete's history in sequential
  * `/lifting-results/by-names` batches (one in flight, for memory), retries a
- * batch once only for a 429/503 or Convex's "try again", and records the
- * download as complete (package ETag, history stamp, a resolved promise) only
- * when every athlete's history is on disk. A later healthy run completes.
+ * batch once straight away only for a 429/503 or Convex's "try again", and
+ * once more after the rest of the pass only when it got no answer (a timeout
+ * or a dropped connection). It records the download as complete (history
+ * stamp, a resolved promise) only when every athlete's history is on disk.
+ * The package ETag means "package ingested" and is saved before the history
+ * pass; what that pass still owes is kept in a pending list (or found again
+ * as missing blobs), so a later healthy run completes.
  */
 
 jest.mock('@/lib/networkUtils', () => ({ isNetworkAvailable: jest.fn(async () => true) }));
@@ -50,6 +54,7 @@ const BY_NAMES = 'results:byNames';
 const SERVER_LATENCY_MS = 50;
 const ETAG_KEY = '@meet_package_etag_v1';
 const HISTORY_SYNCED_AT_KEY = '@meet_history_synced_at_v1';
+const HISTORY_PENDING_KEY = '@meet_history_pending_v1';
 
 function athleteName(index: number): string {
   return `Lifter ${String(index).padStart(3, '0')}`;
@@ -180,23 +185,66 @@ function isRetryable(fault: TransportFault): boolean {
   return fault.kind === 'transient' || (fault.kind === 'status' && (fault.status === 429 || fault.status === 503));
 }
 
+/** Faults that never get an answer from the server: the batch must be tried again after the pass. */
+function getsNoAnswer(fault: TransportFault): boolean {
+  return fault.kind === 'network' || fault.kind === 'hang';
+}
+
 /**
- * Each batch's requests, in order: a batch is asked for again (once, and
- * straight away) exactly when its first request failed with a retryable
- * fault.
+ * Faults after which a deferred retry is allowed: no answer, or an answer
+ * the client could not use (a long delay may time out; truncated or garbage
+ * bodies may fail to parse). An HTTP status, Convex's "try again" and a
+ * clean answer are answers, never retried at the end.
+ */
+function mayDefer(fault: TransportFault): boolean {
+  return getsNoAnswer(fault) || fault.kind === 'delay' || fault.kind === 'truncate' || fault.kind === 'garbage';
+}
+
+/**
+ * Each batch's requests, split into phases. A phase is a request, plus one
+ * immediate retry exactly when it failed with a retryable fault (the very
+ * next by-names request). A batch has a second, deferred phase only when its
+ * first phase ended without a usable answer, and always when it ended with
+ * none; deferred phases run after every batch's first phase.
  */
 function assertRetryPolicy(chaos: ChaosTransport): void {
   const requests = chaos.calls
     .filter(({ call }) => call.fn === BY_NAMES)
-    .map(({ call, fault }) => ({ batch: (call.args.names as string[]).join('|'), fault }));
-  let i = 0;
-  while (i < requests.length) {
-    const first = requests[i];
-    let run = 1;
-    while (i + run < requests.length && requests[i + run].batch === first.batch) run += 1;
-    expect(run).toBe(isRetryable(first.fault) ? 2 : 1);
-    i += run;
+    .map(({ call, fault }, index) => ({ batch: (call.args.names as string[]).join('|'), fault, index }));
+  const byBatch = new Map<string, typeof requests>();
+  for (const request of requests) {
+    byBatch.set(request.batch, [...(byBatch.get(request.batch) ?? []), request]);
   }
+  let lastFirstPhaseIndex = -1;
+  const deferredStarts: number[] = [];
+  for (const attempts of byBatch.values()) {
+    const phases: (typeof requests)[] = [];
+    let i = 0;
+    while (i < attempts.length) {
+      const phase = [attempts[i]];
+      if (isRetryable(attempts[i].fault)) {
+        expect(attempts[i + 1]?.index).toBe(attempts[i].index + 1);
+        phase.push(attempts[i + 1]);
+      }
+      phases.push(phase);
+      i += phase.length;
+    }
+    expect(phases.length).toBeLessThanOrEqual(2);
+    const firstEnd = phases[0][phases[0].length - 1];
+    lastFirstPhaseIndex = Math.max(lastFirstPhaseIndex, firstEnd.index);
+    if (phases.length === 2) {
+      expect(mayDefer(firstEnd.fault)).toBe(true);
+      deferredStarts.push(phases[1][0].index);
+    } else {
+      expect(getsNoAnswer(firstEnd.fault)).toBe(false);
+    }
+  }
+  for (const start of deferredStarts) expect(start).toBeGreaterThan(lastFirstPhaseIndex);
+}
+
+/** The names the pending list says a meet's history pass still owes. */
+function pendingNames(): unknown {
+  return (storedJson(HISTORY_PENDING_KEY)[MEET] as { names?: unknown } | undefined)?.names;
 }
 
 function storedJson(key: string): Record<string, unknown> {
@@ -301,14 +349,13 @@ describe('offline meet download under transport and storage chaos', () => {
           // Nothing claims a complete download that is not. Complete means
           // every athlete has a history blob; the rows are the server's unless
           // a fault answered with a well-formed array (`[]` is "no history"),
-          // which the client has no way to tell from the truth.
+          // which the client has no way to tell from the truth. The package
+          // ETag is not a claim: it means "package ingested" and is saved
+          // before the history pass, which the healthy run below resumes.
           const plausibleWrongAnswer = transportPlan.some(
             (fault) => fault.kind === 'garbage' && Array.isArray(fault.value),
           );
-          const claimed =
-            outcome === 'resolved' ||
-            storedJson(ETAG_KEY)[MEET] !== undefined ||
-            storedJson(HISTORY_SYNCED_AT_KEY)[MEET] !== undefined;
+          const claimed = outcome === 'resolved' || storedJson(HISTORY_SYNCED_AT_KEY)[MEET] !== undefined;
           if (claimed) {
             expect(await findAthleteNamesWithoutHistory(names)).toEqual([]);
             if (!plausibleWrongAnswer) expect(await historyComplete(names)).toBe(true);
@@ -392,20 +439,45 @@ describe('offline meet download under transport and storage chaos', () => {
 
   // Shrunk counterexample from the property (a harness bug, since fixed: the
   // deferred download of a warmed meet failed before the test joined it).
-  it('a warmed meet whose deferred download hits a network failure asks once and marks nothing', async () => {
+  // A batch that got no answer is asked for once more after the pass.
+  it('a warmed meet whose deferred download hits a network failure retries the batch once after the pass', async () => {
     const names = [athleteName(0)];
     await markMeetExplicitlyDownloaded(MEET, true);
     const state: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
     state.chaos = installChaosTransport(backend(names, state), [{ kind: 'pass' }, { kind: 'network' }]);
     try {
+      expect(await runDownload('warm')).toBe('resolved');
+    } finally {
+      state.chaos.restore();
+    }
+    expect(state.chaos.calls.filter(({ call }) => call.fn === BY_NAMES)).toHaveLength(2);
+    assertRetryPolicy(state.chaos);
+    expect(await historyComplete(names)).toBe(true);
+    expect(storedJson(ETAG_KEY)[MEET]).toBe(ETAG);
+    expect(storedJson(HISTORY_SYNCED_AT_KEY)[MEET]).toBeDefined();
+    expect(pendingNames()).toBeUndefined();
+  });
+
+  it('a warmed meet whose batch gets no answer twice asks twice and marks nothing complete', async () => {
+    const names = [athleteName(0)];
+    await markMeetExplicitlyDownloaded(MEET, true);
+    const state: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
+    state.chaos = installChaosTransport(backend(names, state), [
+      { kind: 'pass' },
+      { kind: 'network' },
+      { kind: 'network' },
+    ]);
+    try {
       expect(await runDownload('warm')).toBe('rejected');
     } finally {
       state.chaos.restore();
     }
-    expect(state.chaos.calls.filter(({ call }) => call.fn === BY_NAMES)).toHaveLength(1);
+    expect(state.chaos.calls.filter(({ call }) => call.fn === BY_NAMES)).toHaveLength(2);
     assertRetryPolicy(state.chaos);
-    expect(storedJson(ETAG_KEY)[MEET]).toBeUndefined();
+    // The package was ingested; the history it owes is recorded, not claimed.
+    expect(storedJson(ETAG_KEY)[MEET]).toBe(ETAG);
     expect(storedJson(HISTORY_SYNCED_AT_KEY)[MEET]).toBeUndefined();
+    expect(pendingNames()).toEqual(names);
   });
 
   it('retries a batch once after a 429, then gives up on a second', async () => {
@@ -425,7 +497,10 @@ describe('offline meet download under transport and storage chaos', () => {
     const byNames = state.chaos.calls.filter(({ call }) => call.fn === BY_NAMES);
     expect(byNames.map(({ fault }) => fault.kind)).toEqual(['status', 'status', 'pass']);
     assertRetryPolicy(state.chaos);
-    expect(storedJson(ETAG_KEY)[MEET]).toBeUndefined();
+    // The package was ingested (ETag kept, so a retry revalidates with a 304);
+    // the refused batch is what the pending list says the next run owes.
+    expect(storedJson(ETAG_KEY)[MEET]).toBe(ETAG);
     expect(storedJson(HISTORY_SYNCED_AT_KEY)[MEET]).toBeUndefined();
+    expect(pendingNames()).toEqual(names.slice(0, NAMES_QUERY_CHUNK_SIZE));
   });
 });

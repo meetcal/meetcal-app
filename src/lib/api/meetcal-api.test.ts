@@ -77,7 +77,7 @@ const HOUR_MS = 60 * 60 * 1000;
 type Responder = (call: ApiCall) => unknown;
 
 /**
- * Swaps in a fake transport. Clock calls (`system:serverTime`) never reach
+ * Swaps in a fake transport. Clock calls (`kind: 'clock'`) never reach
  * `respond`: `clock` answers them, by default with the device clock, so the
  * first request's wait for its clock sample never stalls a test.
  */
@@ -2411,7 +2411,7 @@ describe('server clock', () => {
     expect(getTrustedNow()).toBeNull();
   });
 
-  it('samples the clock mutation alongside the first request, so a fast device clock is corrected', async () => {
+  it('samples the server clock alongside the first request, so a fast device clock is corrected', async () => {
     const serverNow = T0;
     // The device is three hours ahead of the server.
     jest.useFakeTimers({ now: serverNow + 3 * HOUR_MS });
@@ -2420,7 +2420,8 @@ describe('server clock', () => {
     await fetchApiMeets();
 
     expect(clockCalls()).toEqual([
-      { path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} },
+      // A cached query whose answer carries the server's Date header, not the clock mutation.
+      { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} },
     ]);
     expect(getServerClockSkewMs()).toBe(-3 * HOUR_MS);
     expect(getServerClockSample()).toEqual({
@@ -2669,7 +2670,7 @@ describe('request timeouts', () => {
     jest.useFakeTimers();
     let signal: AbortSignal | undefined;
     setApiTransportForTests(async (call) => {
-      if (call.fn === 'system:serverTime') return Date.now();
+      if (call.kind === 'clock') return Date.now();
       signal = call.signal;
       return new Promise(() => {}); // never answers
     });

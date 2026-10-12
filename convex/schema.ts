@@ -160,32 +160,26 @@ export default defineSchema({
   athletes: defineTable(athletesFields)
     .index('by_meet', ['meet'])
     .index('by_meet_and_session', ['meet', 'sessionNumber', 'sessionPlatform'])
-    .index('by_adaptive', ['adaptive'])
     .index('by_memberId', ['memberId'])
     .index('by_club', ['club'])
     .index('by_club_and_meet', ['club', 'meet'])
-    .index('by_wso', ['wso'])
-    .index('by_meet_and_wso', ['meet', 'wso']),
+    .index('by_wso', ['wso']),
 
-  intl_rankings: defineTable(intlRankingsFields)
-    .index('by_meet', ['meet'])
-    .index('by_gender_age', ['gender', 'ageCategory']),
+  intl_rankings: defineTable(intlRankingsFields).index('by_gender_age', ['gender', 'ageCategory']),
 
+  // Every index is one a query reads (grep `withIndex(` in convex/): each
+  // costs storage and write throughput, and the nightly sync rewrites this
+  // table in bulk. Name search goes through the directory views
+  // (`lib/directory.ts`), not a search index.
   lifting_results: defineTable(liftingResultsFields)
-    .index('by_name', ['name'])
     .index('by_meet', ['meet'])
     .index('by_date', ['date'])
-    .index('by_federation', ['federation'])
     .index('by_adaptive', ['adaptive'])
-    .index('by_name_and_date', ['name', 'date'])
     .index('by_event_and_name', ['eventId', 'name'])
     .index('by_federation_and_age', ['federation', 'age'])
     .index('by_federation_age_and_date', ['federation', 'age', 'date'])
-    .index('by_adaptive_and_federation', ['adaptive', 'federation'])
     .index('by_adaptive_and_date', ['adaptive', 'date'])
-    .index('by_meet_and_name', ['meet', 'name'])
-    .index('by_nameKey_and_date', ['nameKey', 'date'])
-    .searchIndex('search_name', { searchField: 'name' }),
+    .index('by_nameKey_and_date', ['nameKey', 'date']),
 
   meets: defineTable(meetsFields)
     .index('by_status', ['status'])
@@ -193,9 +187,7 @@ export default defineSchema({
     .index('by_name', ['name'])
     .index('by_end_date', ['endDate']),
 
-  qualifying_totals: defineTable(qualifyingTotalsFields)
-    .index('by_event', ['eventName'])
-    .index('by_event_gender_age', ['eventName', 'gender', 'ageCategory']),
+  qualifying_totals: defineTable(qualifyingTotalsFields).index('by_event', ['eventName']),
 
   records: defineTable(recordsFields)
     .index('by_record_type', ['recordType'])
@@ -215,27 +207,19 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_sessionId_and_userId', ['sessionId', 'userId'])
-    .index('by_date', ['date']),
+    .index('by_sessionId_and_userId', ['sessionId', 'userId']),
 
-  session_schedule: defineTable(sessionScheduleFields)
-    .index('by_meet', ['meet'])
-    .index('by_meet_and_session', ['meet', 'sessionId'])
-    .index('by_date', ['date']),
+  session_schedule: defineTable(sessionScheduleFields).index('by_meet', ['meet']),
 
   standards: defineTable(standardsFields).index('by_age_gender', ['ageCategory', 'gender']),
 
-  wso_records: defineTable(wsoRecordsFields)
-    .index('by_wso', ['wso'])
-    .index('by_wso_age_gender', ['wso', 'ageCategory', 'gender']),
+  wso_records: defineTable(wsoRecordsFields).index('by_wso', ['wso']),
 
   user_preferences: defineTable({
     userId: v.string(),
     autoUnsaveStartedSessions: v.boolean(),
     updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_autoUnsaveStartedSessions', ['autoUnsaveStartedSessions']),
+  }).index('by_userId', ['userId']),
 
   views: defineTable({
     key: v.string(),

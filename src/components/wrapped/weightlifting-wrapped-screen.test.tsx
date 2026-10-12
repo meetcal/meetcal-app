@@ -230,6 +230,7 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     rangedSearchAnswers({
       matchedName: null,
       suggestions: ["Jane Smith", "John Smith"],
+      truncated: false,
       results: [
         liftRow("John Smith", "2025-03-01", 300),
         liftRow("Jane Smith", "2025-04-01", 150),
@@ -255,10 +256,76 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     expect(texts()).not.toContain("DID YOU MEAN…");
   });
 
+  it("searches the whole calendar year, and asks for more of the name when the answer was cut", async () => {
+    rangedSearchAnswers({
+      matchedName: null,
+      suggestions: ["Jane Smith", "John Smith"],
+      truncated: true,
+      results: [
+        liftRow("John Smith", "2025-03-01", 300),
+        liftRow("Jane Smith", "2025-04-01", 150),
+      ],
+    });
+    await submit("Smith");
+
+    // `results:search` includes both ends, so the year ends on 31 December.
+    const ranged = jest.mocked(searchApi).mock.calls.find(([, startDate]) => startDate);
+    const year = ranged?.[1]?.slice(0, 4);
+    expect(ranged?.slice(1)).toEqual([`${year}-01-01`, `${year}-12-31`]);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
+    );
+  });
+
+  it("offers a cut search's one athlete to pick instead of building their Wrapped", async () => {
+    rangedSearchAnswers({
+      matchedName: null,
+      suggestions: ["Jane Doe"],
+      truncated: true,
+      results: [liftRow("Jane Doe", "2025-03-01", 200)],
+    });
+    await submit("an");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(texts()).toEqual(expect.arrayContaining(["DID YOU MEAN…", "Jane Doe"]));
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
+    );
+  });
+
+  it("asks for more of the name, not \"no results\", when a cut search found nobody", async () => {
+    rangedSearchAnswers({ matchedName: null, suggestions: ["Ann Lee"], truncated: true, results: [] });
+    await submit("an");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("Type more of the name") }),
+    );
+    expect(jest.mocked(showToast)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("No results") }),
+    );
+  });
+
+  it("does not build a Wrapped from an exact match whose year was cut", async () => {
+    rangedSearchAnswers({
+      matchedName: "john smith",
+      suggestions: [],
+      truncated: true,
+      results: [liftRow("John Smith", "2025-03-01", 300)],
+    });
+    await submit("john smith");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", message: expect.stringContaining("more") }),
+    );
+  });
+
   it("builds the Wrapped of an exact match under the athlete's name", async () => {
     rangedSearchAnswers({
       matchedName: "john smith",
       suggestions: [],
+      truncated: false,
       results: [liftRow("John Smith", "2025-03-01", 300)],
     });
     await submit("john smith");
@@ -291,7 +358,7 @@ describe("WeightliftingWrappedScreen search submit", () => {
     expect(rangedCalls).toHaveLength(1);
 
     await act(async () => {
-      finish({ matchedName: null, suggestions: [], results: [] });
+      finish({ matchedName: null, suggestions: [], results: [], truncated: false });
     });
     // Once it lands, the next submit goes through again (and stays pending).
     await act(async () => {
@@ -309,6 +376,7 @@ describe("WeightliftingWrappedScreen share", () => {
       matchedName: "John Smith",
       suggestions: [],
       results: [liftRow("John Smith", "2025-03-01", 300)],
+      truncated: false,
     });
     await submit("John Smith");
     // The share button sits on the last slide.
@@ -350,6 +418,7 @@ describe("WeightliftingWrappedScreen slide pager", () => {
     rangedSearchAnswers({
       matchedName: "John Smith",
       suggestions: [],
+      truncated: false,
       results: [liftRow("John Smith", "2025-03-01", 300)],
     });
     await submit("John Smith");

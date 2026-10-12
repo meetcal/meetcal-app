@@ -4,13 +4,20 @@ import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
+  readBoundedCacheEntry,
   replaceOfflineCache,
-  setOfflineCache,
+  writeBoundedCacheEntry,
 } from './offline-cache';
 import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;
+
+/**
+ * Federations kept from browsing Records. There are only a handful (USAW,
+ * IWF, Pan Am, ...), so this keeps every one a user opens.
+ */
+export const MAX_BROWSED_RECORD_FEDERATIONS = 8;
 
 type CompleteRecordsRow = {
   age_category: string;
@@ -92,10 +99,20 @@ async function readRecordsCache() {
   return await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
 }
 
+/**
+ * One federation's records: from the explicit download or from browsing,
+ * whichever was written last, each with its own write time.
+ */
 async function readFederationRecordsCache(federation: string) {
-  const cached = await readRecordsCache();
-  const data = cached?.data?.[federation];
-  return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
+  const [downloaded, browsed] = await Promise.all([
+    readRecordsCache(),
+    readBoundedCacheEntry<RecordsData>(OFFLINE_CACHE_KEYS.recordsBrowse, federation),
+  ]);
+  const data = downloaded?.data?.[federation];
+  const fromDownload = data ? { data, lastUpdatedAt: downloaded.lastSynced } : null;
+  if (!browsed) return fromDownload;
+  if (!fromDownload) return browsed;
+  return browsed.lastUpdatedAt > fromDownload.lastUpdatedAt ? browsed : fromDownload;
 }
 
 async function fetchRecordsFresh(federation: string): Promise<RecordsData> {
@@ -112,14 +129,21 @@ async function fetchRecordsFresh(federation: string): Promise<RecordsData> {
   return mapRowsToRecordsData(rows);
 }
 
-async function persistFederationRecords(federation: string, result: RecordsData) {
-  const cached = await readRecordsCache();
-  const nextCache: RecordsCache = {
-    ...(cached?.data || {}),
-    [federation]: result,
-  };
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.records, nextCache);
-  return { data: result, lastUpdatedAt: entry.lastSynced };
+/**
+ * Browsing keeps what it fetched in its own cache, apart from the explicit
+ * download (`OFFLINE_CACHE_KEYS.records`). It used to merge one federation
+ * into the download's entry, which also reset that entry's `lastSynced`: one
+ * look at USAW made Offline Data show "National & World Records" as
+ * downloaded and "Last synced just now", with no IWF records on the device,
+ * and made a month-old download of the other federations read as fresh.
+ */
+function persistFederationRecords(federation: string, result: RecordsData) {
+  return writeBoundedCacheEntry(
+    OFFLINE_CACHE_KEYS.recordsBrowse,
+    federation,
+    result,
+    MAX_BROWSED_RECORD_FEDERATIONS,
+  );
 }
 
 /**

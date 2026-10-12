@@ -197,3 +197,15 @@ export function mergeWithStoredSession(
     athleteNames: combinedNames, // Use the merged names
   };
 }
+
+/**
+ * How many saved sessions belong to a meet other than `meet`. The Saved tab
+ * lists one meet; with everything saved under another meet its empty state
+ * says so instead of "No saved sessions".
+ */
+export function countSessionsOutsideMeet(
+  sessions: readonly SavedSession[],
+  meet: MeetName | null,
+): number {
+  return sessions.filter((session) => session.meet !== meet).length;
+}

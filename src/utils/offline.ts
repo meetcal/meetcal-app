@@ -1,5 +1,4 @@
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
 import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
 import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
@@ -22,7 +21,7 @@ import {
   getExplicitlyDownloadedMeetIds,
   getLastSyncTime,
   markMeetExplicitlyDownloaded,
-  readStorageKeysForMeetClear,
+  listStoredMeets,
 } from "@/lib/database/offline-store";
 import {
   getCalendarDateInTimeZone,
@@ -119,7 +118,6 @@ const getMeetNameFromDownloadId = (
 };
 
 export const useOfflineData = () => {
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { availableMeets, isLoading: isMeetLoading } = useSelectedMeet();
   const availableMeetNames = useMemo(
     () => availableMeets.map((meet) => meet.name),
@@ -417,16 +415,19 @@ export const useOfflineData = () => {
             clearBrowseCaches(),
           ]);
     
-          // One key listing shared by every meet. Each `clearMeetData` has to
-          // scan all storage keys for that meet's session-athlete entries, and
-          // at this point the athlete-history keys — 1500 to 4500 of them for a
+          // Every meet with data on the device, not only the ones in today's
+          // window: a meet browsed last month, or one whose index entry was
+          // lost, kept its schedule and results otherwise. One key listing
+          // is shared by every meet. Each `clearMeetData` has to scan all
+          // storage keys for that meet's session-athlete entries, and at this
+          // point the athlete-history keys — 1500 to 4500 of them for a
           // downloaded meet — have not been removed yet, so the listing is at
           // its largest exactly while it was being repeated once per meet.
-          const storageKeys = await readStorageKeysForMeetClear(
-            availableMeets.length,
+          const { meetIds, storageKeys } = await listStoredMeets(
+            availableMeets.map((meet) => meet.name),
           );
-          for (const meet of availableMeets) {
-            await clearMeetData(meet.name, { storageKeys });
+          for (const meetId of meetIds) {
+            await clearMeetData(meetId, { storageKeys });
           }
           await clearAllAthleteHistory();
 
@@ -471,8 +472,6 @@ export const useOfflineData = () => {
   };
 
   return {
-    isSubscribed,
-    isSubscriptionLoading,
     isMeetLoading,
     filteredMeets,
     downloadingItems,

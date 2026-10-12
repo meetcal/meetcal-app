@@ -134,7 +134,8 @@ pub mod queries {
     /// Every result in a date range, a page at a time; takes `startDate`, `endDate`, `cursor`
     /// (null to start) and `numItems` (at most 2000). Answers `{ json, isDone, continueCursor }`.
     pub const RESULTS_PAGE: Query = Query::value("results:page");
-    /// `GET /search`; takes `query`, and optionally `startDate` and `endDate`.
+    /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
+    /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
     /// `GET /data/records`
     pub const RECORDS: Query = Query::text("reference:records");

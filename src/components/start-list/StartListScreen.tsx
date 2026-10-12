@@ -21,15 +21,18 @@ import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import { useFilterApplyReviewPrompt } from "@/hooks/useFilterApplyReviewPrompt";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useStarredClubs } from "@/hooks/useStarredClubs";
 import { useStartListData } from "@/hooks/useStartListData";
 import { usePreloadYearBests, useYearBestsForSort } from "@/hooks/useStartListBests";
 import { useStartListFilters } from "@/hooks/useStartListFilters";
+import { groupCalendarSessions } from "@/lib/calendar-export";
 import { lightImpact, successNotification } from "@/lib/haptics";
+import { loadFailureCopy } from "@/lib/load-failure";
+import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 import { captureViewAsPng } from "@/lib/share-image";
 import {
-  buildCalendarSessions,
   buildScheduleCsv,
   buildSessionExportRows,
   scheduleCsvFileName,
@@ -51,7 +54,6 @@ import {
   normalizeStartListAthletes,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
-import { useAuthGuard } from "@/utils/authGuard";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useNavigation, useRouter } from "expo-router";
 import React, {
@@ -105,10 +107,10 @@ export default function StartListScreen() {
   const { currentTheme } = useTheme();
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
-  const { saveSessionsFromAthletes } = useSavedSessions();
+  const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
+  const { saveAllFromAthletes } = useSavedSessions();
 
-  const { athletes, schedule, loading, refreshing, refresh } =
+  const { athletes, schedule, loading, refreshing, refresh, loadFailure } =
     useStartListData(selectedMeet);
   const {
     filters: storedFilters,
@@ -191,24 +193,14 @@ export default function StartListScreen() {
 
   /**
    * Sign-in, then the subscription: `true` only for a signed-in subscriber.
-   * A free user is sent to the paywall with a way back here. `null` from
-   * either is "unknown yet": do nothing rather than bounce a paying user to
-   * the paywall.
+   * A free user is sent to the paywall with a way back here; an unknown
+   * entitlement (offline, or still checking) says so in a toast and never
+   * opens the paywall (see `useRequirePremium` / `lib/premium-access`).
    */
   const requirePremium = useCallback(
-    (feature: string, message: string): boolean => {
-      const authResult = requireAuth({ feature, message, returnPath: START_LIST_PATH });
-      if (authResult !== true) return false;
-      if (isSubscribed === false) {
-        router.push({
-          pathname: "/shared-screens/paywall",
-          params: { from: START_LIST_PATH, feature },
-        });
-        return false;
-      }
-      return isSubscribed === true;
-    },
-    [isSubscribed, requireAuth, router],
+    (feature: string, message: string): boolean =>
+      requirePremiumAction({ feature, message, returnPath: START_LIST_PATH }),
+    [requirePremiumAction],
   );
 
   const handleSeeAllResults = useCallback(
@@ -368,7 +360,7 @@ export default function StartListScreen() {
 
   const handleSaveAll = () => {
     // Saving writes to the signed-in user's list, so sign-in comes first, as
-    // on every other save path. `saveSessionsFromAthletes` returns false
+    // on every other save path. `saveAllFromAthletes` saves nothing
     // without a user, which used to surface as "Failed to save sessions."
     // after the confirmation instead of a sign-in prompt. `null` is "still
     // loading"; `false` means the sign-in alert has already been shown.
@@ -395,13 +387,12 @@ export default function StartListScreen() {
           text: "Save",
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(
-                filteredAthletes,
-                validMeet,
-                schedule,
+              showToast({ type: "info", message: "Saving sessions..." });
+              const failure = describeSaveSessionsFailure(
+                await saveAllFromAthletes(filteredAthletes, validMeet, schedule),
               );
-              if (!success) {
-                showToast({ type: "error", message: "Failed to save sessions." });
+              if (failure) {
+                showToast({ type: "error", message: failure });
                 return;
               }
               successNotification();
@@ -431,7 +422,7 @@ export default function StartListScreen() {
       return;
     }
     calendarExport.exportSessions(
-      buildCalendarSessions(
+      groupCalendarSessions(
         buildSessionExportRows(filteredAthletes, getSessionDetails),
         selectedMeetName,
       ),
@@ -507,6 +498,12 @@ export default function StartListScreen() {
     return <StartListSkeleton skeletonPulse={skeletonPulse} />;
   }
 
+  // Not "Athletes will appear here once the start list is published": the
+  // roster could not be loaded (offline with nothing saved, or a failed
+  // request). A filtered or searched list keeps its own empty state.
+  const loadFailureText =
+    loadFailure && !isFiltering ? loadFailureCopy("start list", loadFailure === "offline") : null;
+
   return (
     <ThemedView
       testID="start-list-screen"
@@ -559,24 +556,43 @@ export default function StartListScreen() {
             ]}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <EmptyState
-                style={styles.listEmpty}
-                icon={
-                  <IconSymbol
-                    name={isFiltering ? "magnifyingglass" : "list.bullet"}
-                    size={44}
-                    color={colors.secondaryText}
-                  />
-                }
-                title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
-                message={
-                  isFiltering
-                    ? "Try adjusting or clearing your filters to see more athletes."
-                    : "Athletes will appear here once the start list is published."
-                }
-                actionLabel={isFiltering ? "Clear filters" : undefined}
-                onActionPress={isFiltering ? resetFilters : undefined}
-              />
+              loadFailureText ? (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={loadFailure === "offline" ? "wifi.slash" : "arrow.clockwise"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={loadFailureText.title}
+                  message={loadFailureText.message}
+                  actionLabel="Retry"
+                  onActionPress={() => {
+                    void refresh();
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={isFiltering ? "magnifyingglass" : "list.bullet"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
+                  message={
+                    isFiltering
+                      ? "Try adjusting or clearing your filters to see more athletes."
+                      : "Athletes will appear here once the start list is published."
+                  }
+                  actionLabel={isFiltering ? "Clear filters" : undefined}
+                  onActionPress={isFiltering ? resetFilters : undefined}
+                />
+              )
             }
             refreshControl={
               <RefreshControl

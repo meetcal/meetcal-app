@@ -25,6 +25,7 @@ import {
   computeWsoList,
   computeWsoRows,
   filterWsoRows,
+  requireAdaptiveGender,
   wsoAgeGroups,
 } from './lib/referenceData';
 import { compareBytes } from './lib/sort';
@@ -53,7 +54,7 @@ export const live = internalQuery({
       case 'searchSuggestions': {
         // The whole directory, the answer the shards must reproduce.
         const text = (await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? '';
-        return JSON.stringify({ matched_name: null, suggestions: searchDirectory(text, a.query, 8), results: [] });
+        return JSON.stringify({ matched_name: null, suggestions: searchDirectory(text, a.query, 8), results: [], truncated: false });
       }
       case 'athletes':
         return await liveAthletesJson(ctx, a.meet);
@@ -80,7 +81,7 @@ export const live = internalQuery({
       case 'wsoAgeGroups':
         return JSON.stringify(wsoAgeGroups(await computeWsoRows(ctx, a.wso)));
       case 'adaptive':
-        return JSON.stringify(await computeAdaptiveRecords(ctx, a.gender, a.excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
+        return JSON.stringify(await computeAdaptiveRecords(ctx, requireAdaptiveGender(a.gender), a.excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
       case 'clubMeetStats': {
         const roster = await ctx.db
           .query('athletes')

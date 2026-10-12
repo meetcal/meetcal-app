@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import * as fc from 'fast-check';
 
+import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
 import { callApi } from '@/lib/api/transport';
 import {
   chaosGetToken,
@@ -31,7 +32,7 @@ describe('installChaosTransport', () => {
   it('spares the server-clock sample unless asked', async () => {
     const chaos = installChaosTransport(async () => 'ok', [{ kind: 'network' }]);
     try {
-      await expect(callApi({ path: '/time', fn: 'system:serverTime', kind: 'query', args: {} })).resolves.toBe('ok');
+      await expect(callApi(SERVER_CLOCK_CALL)).resolves.toBe('ok');
       expect(chaos.calls[0].fault.kind).toBe('pass');
     } finally {
       chaos.restore();

@@ -176,6 +176,19 @@ describe("history and bests facades", () => {
     );
   });
 
+  it("matches year-bests rows keyed by the cleaned name to the raw spelling", async () => {
+    // The API echoes names trimmed and whitespace-folded, so the roster's
+    // ' Jane Doe' used to miss its row and resolve to "no results".
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      "Jane Doe": { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+    });
+
+    await expect(fetchAthleteBestsForNames([" Jane Doe", "jane  doe"])).resolves.toEqual({
+      " Jane Doe": { snatch_best: 80, cj_best: 100, total: 180 },
+      "jane  doe": { snatch_best: 80, cj_best: 100, total: 180 },
+    });
+  });
+
   it("returns suggestions from search and rethrows failures", async () => {
     mockSearchApi.mockResolvedValueOnce({ suggestions: ["Athlete A"], results: [] });
     await expect(searchAthletesByName("ath")).resolves.toEqual(["Athlete A"]);

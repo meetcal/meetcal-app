@@ -1,10 +1,12 @@
-import { computeAdaptiveRecords } from '../convex/lib/referenceData';
+import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
 import { clubAthletes, clubs, nationalRankings, wsoAthletes } from '../convex/reference';
 import { fakeDb, handlerOf } from './fakeDb';
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
+/** A current division: a known ranking class with or without results (`requireKnownRankingClass`). */
+const DIVISION = [...RANKING_DIVISIONS][0];
 
 function query<Args>(fn: unknown, db: unknown, args: Args) {
   return handlerOf<Args, Record<string, unknown> | unknown[]>(fn)({ db }, args);
@@ -14,11 +16,11 @@ const parse = (answer: unknown) => JSON.parse((answer as { json: string }).json)
 
 describe('national rankings and the club list while their views are stale or missing', () => {
   it('serve the last build while a change to it is pending', async () => {
-    const fake = fakeDb({ view_hints: [{ kind: 'nat', key: JSON.stringify(['USAW', 'Open']), seq: 0, updatedAt: 1 }] });
-    await writeView({ db: fake.db } as never, natKey('USAW', 'Open'), jsonChunks([{ name: 'Ada', total: 200 }]), STAMP);
+    const fake = fakeDb({ view_hints: [{ kind: 'nat', key: JSON.stringify(['USAW', DIVISION]), seq: 0, updatedAt: 1 }] });
+    await writeView({ db: fake.db } as never, natKey('USAW', DIVISION), jsonChunks([{ name: 'Ada', total: 200 }]), STAMP);
     await writeView({ db: fake.db } as never, REF_VIEWS.clubs, jsonChunks(['Alpha']), STAMP);
     await fake.db.insert('view_hints', { kind: 'table', key: 'athletes', seq: 0, updatedAt: 1 });
-    expect(parse(await query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: 'Open' }))).toEqual([{ name: 'Ada', total: 200 }]);
+    expect(parse(await query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: DIVISION }))).toEqual([{ name: 'Ada', total: 200 }]);
     expect(parse(await query(clubs, fake.db, {}))).toEqual(['Alpha']);
   });
 
@@ -32,7 +34,9 @@ describe('national rankings and the club list while their views are stale or mis
       athletes: [{ club: 'Beta' }, { club: '' }, { club: 'Alpha' }, { club: 'Beta' }],
     });
     expect(parse(await query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: 'New' }))).toEqual([{ name: 'Ada', total: 180 }]);
-    expect(parse(await query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: 'Nobody' }))).toEqual([]);
+    // A known class nobody has a total in is empty; an unknown one is a 404.
+    expect(parse(await query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: DIVISION }))).toEqual([]);
+    await expect(query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: 'Nobody' })).rejects.toMatchObject({ data: { status: 404 } });
     expect(parse(await query(clubs, fake.db, {}))).toEqual(['Alpha', 'Beta']);
   });
 

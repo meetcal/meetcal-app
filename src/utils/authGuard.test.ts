@@ -1,4 +1,5 @@
 import {
+  authPendingReason,
   isInternalRoutePath,
   resolveAuthRouteTarget,
   resolveAuthState,
@@ -199,5 +200,13 @@ describe('isInternalRoutePath', () => {
     ]) {
       expect(isInternalRoutePath(from)).toBe(true);
     }
+  });
+});
+
+describe('authPendingReason', () => {
+  it('is offline only when the probe said so', () => {
+    expect(authPendingReason(false)).toBe('offline');
+    expect(authPendingReason(true)).toBe('loading');
+    expect(authPendingReason(null)).toBe('loading');
   });
 });

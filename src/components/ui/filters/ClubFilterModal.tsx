@@ -90,6 +90,20 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
             pressed && { opacity: 0.8 },
           ]}
           onPress={() => handleSelect(club)}
+          // The star is a button inside this one. VoiceOver focuses the row
+          // as a single element, so starring is also offered as an action
+          // on the row (swipe up/down to reach it).
+          accessibilityRole="button"
+          accessibilityLabel={isStarred ? `${club}, starred` : club}
+          accessibilityState={{ selected: isSelected }}
+          accessibilityActions={[
+            { name: "toggleStar", label: isStarred ? "Unstar club" : "Star club" },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === "toggleStar") {
+              onToggleStarredClub(club);
+            }
+          }}
         >
           <ThemedText
             style={[
@@ -110,6 +124,10 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
                 onToggleStarredClub(club);
               }}
               style={styles.starButton}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={isStarred ? `Unstar ${club}` : `Star ${club}`}
+              accessibilityState={{ selected: isStarred }}
             >
               <IconSymbol
                 name={isStarred ? "star.fill" : "star"}

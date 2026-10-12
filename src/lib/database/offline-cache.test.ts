@@ -137,6 +137,7 @@ describe("bounded browse caches", () => {
     expect([...mockMemory.keys()]).toEqual([OFFLINE_CACHE_KEYS.records]);
     expect(BROWSE_CACHE_KEYS).toEqual(
       expect.arrayContaining([
+        OFFLINE_CACHE_KEYS.recordsBrowse,
         OFFLINE_CACHE_KEYS.nationalRankings,
         OFFLINE_CACHE_KEYS.clubAthletes,
         OFFLINE_CACHE_KEYS.clubMeetStats,

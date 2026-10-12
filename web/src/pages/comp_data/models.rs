@@ -106,7 +106,12 @@ impl AthleteSearchQuery {
 pub(crate) struct AthleteSearchResponse {
     pub matched_name: Option<String>,
     pub suggestions: Vec<String>,
-    pub results: Vec<LiftResult>,
+    /// Without an exact name match these are every matching athlete's rows,
+    /// so each carries its athlete's name.
+    pub results: Vec<LiftingResult>,
+    /// More results matched than the answer holds (it keeps the most recent).
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Clone, Serialize)]

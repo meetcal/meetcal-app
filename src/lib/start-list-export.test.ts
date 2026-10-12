@@ -5,8 +5,8 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import type { LiftResult } from "@/data/types/athletes";
+import { groupCalendarSessions } from "@/lib/calendar-export";
 import {
-  buildCalendarSessions,
   buildScheduleCsv,
   buildSessionExportRows,
   csvEscape,
@@ -110,9 +110,10 @@ describe("buildSessionExportRows", () => {
   });
 });
 
-describe("buildCalendarSessions", () => {
-  it("makes one event per session and platform", () => {
-    const sessions = buildCalendarSessions(buildSessionExportRows(athletes, lookup), "Nationals");
+// The Start List's Add to Calendar: its rows grouped by `groupCalendarSessions`.
+describe("calendar events from the export rows", () => {
+  it("makes one event per session and platform naming every weight class", () => {
+    const sessions = groupCalendarSessions(buildSessionExportRows(athletes, lookup), "Nationals");
     expect(sessions).toEqual([
       {
         date: "2026-06-21",
@@ -124,7 +125,7 @@ describe("buildCalendarSessions", () => {
         meet: "Nationals",
       },
       expect.objectContaining({ sessionNumber: "1", platform: "Blue" }),
-      expect.objectContaining({ sessionNumber: "1", platform: "Red", weightClass: "89" }),
+      expect.objectContaining({ sessionNumber: "1", platform: "Red", weightClass: "89, 81" }),
     ]);
   });
 });

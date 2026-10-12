@@ -5,6 +5,7 @@ import { act, create } from "react-test-renderer";
 import type { Meet, MeetName } from "@/data/types/meet";
 import {
   RECONNECT_REFETCH_JITTER_MAX_MS,
+  refreshedMeetDetails,
   SelectedMeetProvider,
   useSelectedMeet,
 } from "@/contexts/SelectedMeetContext";
@@ -218,6 +219,66 @@ describe("SelectedMeetProvider", () => {
     expect(mockSyncManagerStops).toEqual(["Meet A"]);
   });
 
+  // Regression: with the selected meet still in the fresh list, only
+  // `availableMeets` was replaced, so a corrected time zone never reached
+  // the tabs until a cold start.
+  it("refreshes the selected meet's details from a fresh list without restarting its sync", async () => {
+    const cached = makeMeet("Meet A");
+    const corrected: Meet = {
+      ...cached,
+      time: {
+        timeZone: "Central",
+        timeZoneIdentifier: "America/Chicago",
+        abbreviation: "CDT",
+        utcOffset: -5,
+      },
+      venueMapPdfUrl: "https://example.com/map.pdf",
+    };
+    mockGetCachedMeets.mockResolvedValue([cached]);
+    mockFetchMeetsFresh.mockResolvedValue([corrected]);
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>,
+      );
+    });
+    await flush();
+    await flush();
+
+    expect(captured!.selectedMeet).toBe("Meet A");
+    expect(captured!.meetDetails).toEqual(corrected);
+    expect(mockSyncManagerBuilds).toEqual(["Meet A"]);
+    expect(mockWarmMeetData).toHaveBeenCalledTimes(1);
+
+    // The 5-minute refresh picks up a later change the same way.
+    const moved: Meet = { ...corrected, dates: { start: "2026-06-21", end: "2026-06-23" } };
+    mockFetchMeetsFresh.mockResolvedValue([moved]);
+    await act(async () => {
+      jest.advanceTimersByTime(5 * 60 * 1000);
+    });
+    await flush();
+    await flush();
+    expect(captured!.meetDetails).toEqual(moved);
+    expect(mockSyncManagerBuilds).toEqual(["Meet A"]);
+    expect(mockWarmMeetData).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  it("keeps the same details object when the fresh copy is unchanged", () => {
+    const meet = makeMeet("Meet A");
+    expect(refreshedMeetDetails(meet, [{ ...meet }])).toBeNull();
+    expect(refreshedMeetDetails(meet, [makeMeet("Meet B")])).toBeNull();
+    expect(refreshedMeetDetails(null, [meet])).toBeNull();
+    const changed = { ...meet, venue: { ...meet.venue, name: "New venue" } };
+    expect(refreshedMeetDetails(meet, [changed])).toBe(changed);
+  });
+
   // Regression: the provider value was an object literal and the three
   // actions were plain closures, so every consumer re-rendered whenever the
   // tree above the provider did, and anything keyed on `setSelectedMeet`
@@ -428,6 +489,22 @@ describe("SelectedMeetProvider persisted selection", () => {
     // The cleared selection is refilled from the meets list, never with the
     // name that failed to resolve.
     expect(captured!.selectedMeet).toBe("Window Meet");
+    act(() => tree.unmount());
+  });
+
+  it("rewrites persisted details when the fresh list corrects the selected meet", async () => {
+    const stale = makeMeet("Window Meet");
+    const corrected = { ...stale, venue: { ...stale.venue, name: "Moved venue" } };
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Window Meet");
+    await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(stale));
+    mockFetchMeetsFresh.mockResolvedValue([corrected]);
+
+    const tree = await mount();
+
+    expect(captured!.meetDetails).toEqual(corrected);
+    await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBe(
+      JSON.stringify(corrected),
+    );
     act(() => tree.unmount());
   });
 

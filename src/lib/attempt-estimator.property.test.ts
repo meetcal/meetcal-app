@@ -108,8 +108,18 @@ describe('calculateEstimates', () => {
             expect(rate).toBeGreaterThanOrEqual(0);
             expect(rate).toBeLessThanOrEqual(1);
           }
-          for (const out of [estimate.snatchAttemptsOut, estimate.cjAttemptsOut]) {
-            expect(Number.isInteger(out) && out >= 0).toBe(true);
+          // Attempts out is a whole, non-negative count when the lift has an
+          // estimated opener, and `null` ("unknown", never a made-up 0) when
+          // it has none.
+          for (const [out, estimates] of [
+            [estimate.snatchAttemptsOut, estimate.snatchEstimates],
+            [estimate.cjAttemptsOut, estimate.cjEstimates],
+          ] as const) {
+            if ((estimates[0] ?? 0) > 0) {
+              expect(out !== null && Number.isInteger(out) && out >= 0).toBe(true);
+            } else {
+              expect(out).toBeNull();
+            }
           }
           const notes = generateAthleteNotes(estimate);
           expect(notes.length).toBeGreaterThan(0);

@@ -7,15 +7,17 @@ import type {
   SortDirection,
   SortKey,
 } from "@/components/schedule-details/sessionSort/types";
+import { Button } from "@/components/ui/Button";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { useSessionAthletes } from "@/hooks/useMeetAthletes";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { SessionAthlete } from "@/types/schedule-details";
-import { useAuthGuard } from "@/utils/authGuard";
 import {
   createSessionDetailsDeepLink,
   normalizeDeepLinkHref,
@@ -64,15 +66,23 @@ export default function SessionAthletes({
 }) {
   const router = useRouter();
   const colors = useAppColors();
-  const { athletes: sessionAthletes, isLoading, isRefreshing, refreshAthletes } =
-    useSessionAthletes(meetId, sessionNumber, platform);
+  const {
+    athletes: sessionAthletes,
+    isLoading,
+    isRefreshing,
+    loadError,
+    refreshAthletes,
+  } = useSessionAthletes(meetId, sessionNumber, platform);
+  const [isOffline] = useIsOffline();
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  // An unknown entitlement shows the locked UI, but a tap on it never opens
+  // the paywall: `requirePremium` says it can't confirm the subscription.
+  const { requirePremium, requireAuth, access } = useRequirePremium();
+  const isSubscribed = access === "granted";
   const refreshKeyRef = useRef(refreshKey);
   // Where sign-in and the paywall send the user back to. The bare route path
   // used to be passed, so the return landed on a details screen with no
@@ -265,23 +275,15 @@ export default function SessionAthletes({
     [],
   );
 
+  // Unlocking needs nothing more: once the entitlement is known the control
+  // re-renders unlocked.
   const handleSortLockedPress = useCallback(() => {
-    const authResult = requireAuth({
+    requirePremium({
       feature: "sort-athletes",
       message: "Sign in to access premium features.",
       returnPath,
     });
-    if (authResult === null || authResult === false) {
-      return;
-    }
-    router.push({
-      pathname: "/shared-screens/paywall",
-      params: {
-        from: returnPath,
-        feature: "sort-athletes",
-      },
-    });
-  }, [requireAuth, returnPath, router]);
+  }, [requirePremium, returnPath]);
 
    
   const loading = isLoading || (sessionAthletes.length === 0 && isRefreshing);
@@ -302,7 +304,7 @@ export default function SessionAthletes({
                   Session Athletes
                 </ThemedText>
                 <SessionSortControl
-                  isSubscribed={!!isSubscribed}
+                  isSubscribed={isSubscribed}
                   sortLabel={sortLabel}
                   sortKey={sortKey}
                   sortDirection={sortDirection}
@@ -324,6 +326,41 @@ export default function SessionAthletes({
         </View>
       );
     }
+    if (loadError) {
+      // The card used to vanish here, which read as "nobody in this
+      // session" when the request had failed.
+      const failure = loadFailureCopy("session athletes", isOffline);
+      return (
+        <View>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View
+              style={[
+                styles.titleSection,
+                { borderBottomColor: colors.border },
+              ]}
+            >
+              <ThemedText style={styles.athletesTitle}>
+                Session Athletes
+              </ThemedText>
+            </View>
+            <View style={styles.loadingContainer} testID="session-athletes-load-error">
+              <ThemedText style={styles.athletesTitle}>{failure.title}</ThemedText>
+              <ThemedText
+                style={[styles.loadingText, { color: colors.secondaryText, textAlign: "center" }]}
+              >
+                {failure.message}
+              </ThemedText>
+              <Button
+                title="Retry"
+                onPress={() => {
+                  void refreshAthletes();
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      );
+    }
     return null;
   }
 
@@ -338,7 +375,7 @@ export default function SessionAthletes({
               Session Athletes
             </ThemedText>
             <SessionSortControl
-              isSubscribed={!!isSubscribed}
+              isSubscribed={isSubscribed}
               sortLabel={sortLabel}
               sortKey={sortKey}
               sortDirection={sortDirection}
@@ -460,20 +497,10 @@ export default function SessionAthletes({
                         pressed && { opacity: 0.8 },
                       ]}
                       onPress={() => {
-                        const authResult = requireAuth({
+                        requirePremium({
                           feature: "athlete-bests",
                           message: "Sign in to access premium features.",
                           returnPath,
-                        });
-                        if (authResult === null || authResult === false) {
-                          return;
-                        }
-                        router.push({
-                          pathname: "/shared-screens/paywall",
-                          params: {
-                            from: returnPath,
-                            feature: "athlete-bests",
-                          },
                         });
                       }}
                     >

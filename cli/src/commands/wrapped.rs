@@ -29,7 +29,7 @@ pub struct WrappedArgs {
 pub async fn run(args: WrappedArgs) -> Result<()> {
     let year = args.year.unwrap_or_else(current_year);
     let response = get_athlete_year(&args.name, year).await?;
-    let results = exact_name_results(&args.name, response)?;
+    let results = exact_name_results(&args.name, year, response)?;
 
     if results.is_empty() {
         bail!("No results found for \"{}\" in {year}", args.name);
@@ -46,24 +46,53 @@ pub fn current_year() -> i32 {
 }
 
 pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
+    // `results:search` includes both ends of the range.
     let start_date = format!("{year:04}-01-01");
-    let end_date = format!("{:04}-01-01", year + 1);
+    let end_date = format!("{year:04}-12-31");
     let args = serde_json::json!({ "query": name, "startDate": start_date, "endDate": end_date });
 
     query(queries::SEARCH, &args).await
 }
 
-pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<LiftingResults>> {
+pub fn exact_name_results(
+    name: &str,
+    year: i32,
+    response: SearchResponse,
+) -> Result<Vec<LiftingResults>> {
     let results = filter_exact_name(name, response.results);
+    refuse_cut_year(name, year, response.truncated, &results)?;
 
     if results.is_empty() && !response.suggestions.is_empty() {
+        let narrow = if response.truncated {
+            " (more athletes match; type more of the name)"
+        } else {
+            ""
+        };
         bail!(
-            "No exact results found for \"{name}\". Suggestions: {}",
+            "No exact results found for \"{name}\". Suggestions: {}{narrow}",
             response.suggestions.join(", ")
         );
     }
 
     Ok(results)
+}
+
+/// Refuses stats for a year the search cut. A cut answer (`truncated`) kept only the most recent
+/// rows, so `results`, the exact name's rows in it, miss part of that year. Every report built
+/// from `get_athlete_year` goes through this before `calculate_wrapped_stats`.
+pub fn refuse_cut_year(
+    name: &str,
+    year: i32,
+    truncated: bool,
+    results: &[LiftingResults],
+) -> Result<()> {
+    if truncated && !results.is_empty() {
+        bail!(
+            "\"{name}\" has more results in {year} than one search returns, so the {year} stats \
+             would be incomplete. `meetcal progress \"{name}\" --since {year}` lists every result."
+        );
+    }
+    Ok(())
 }
 
 pub fn filter_exact_name(name: &str, results: Vec<LiftingResults>) -> Vec<LiftingResults> {
@@ -440,13 +469,50 @@ mod tests {
             matched_name: None,
             suggestions: vec!["Jane Doe".to_string()],
             results: vec![result("2026-01-01", "Meet", [70.0; 6], 70.0, 90.0, 160.0)],
+            truncated: false,
         };
 
-        let error = exact_name_results("Janet Doe", response)
+        let error = exact_name_results("Janet Doe", 2026, response)
             .unwrap_err()
             .to_string();
 
         assert!(error.contains("Suggestions: Jane Doe"));
+        assert!(!error.contains("more athletes match"));
+    }
+
+    #[test]
+    fn exact_name_filter_asks_to_narrow_a_truncated_search() {
+        let response = SearchResponse {
+            matched_name: None,
+            suggestions: vec!["Jane Doe".to_string()],
+            results: Vec::new(),
+            truncated: true,
+        };
+
+        let error = exact_name_results("Doe", 2026, response)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)")
+        );
+    }
+
+    #[test]
+    fn exact_name_filter_refuses_a_cut_year() {
+        let response = SearchResponse {
+            matched_name: Some("Jane Doe".to_string()),
+            suggestions: Vec::new(),
+            results: vec![result("2026-01-01", "Meet", [70.0; 6], 70.0, 90.0, 160.0)],
+            truncated: true,
+        };
+
+        let error = exact_name_results("Jane Doe", 2026, response)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("more results in 2026"));
+        assert!(error.contains("meetcal progress \"Jane Doe\" --since 2026"));
     }
 
     #[test]

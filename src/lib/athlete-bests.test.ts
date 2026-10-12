@@ -4,8 +4,9 @@ import {
 } from "@/lib/athlete-bests";
 import {
   getAllCachedLiftingResultsForAthletes,
-  getCachedAthleteBestsForNames,
+  getStoredAthleteBestsForNames,
   saveAthleteBestsBatch,
+  type StoredAthleteBests,
 } from "@/lib/database/offline-store";
 import { fetchAthleteBestsForNames } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
@@ -16,7 +17,8 @@ jest.mock("@/lib/networkUtils", () => ({
 
 jest.mock("@/lib/database/offline-store", () => ({
   getAllCachedLiftingResultsForAthletes: jest.fn(),
-  getCachedAthleteBestsForNames: jest.fn(),
+  getStoredAthleteBestsForNames: jest.fn(),
+  hasAnyAthleteBest: jest.requireActual("@/lib/database/offline-store").hasAnyAthleteBest,
   saveAthleteBestsBatch: jest.fn(),
 }));
 
@@ -31,9 +33,9 @@ const mockGetAllCachedLiftingResultsForAthletes =
   getAllCachedLiftingResultsForAthletes as jest.MockedFunction<
     typeof getAllCachedLiftingResultsForAthletes
   >;
-const mockGetCachedAthleteBestsForNames =
-  getCachedAthleteBestsForNames as jest.MockedFunction<
-    typeof getCachedAthleteBestsForNames
+const mockGetStoredAthleteBestsForNames =
+  getStoredAthleteBestsForNames as jest.MockedFunction<
+    typeof getStoredAthleteBestsForNames
   >;
 const mockSaveAthleteBestsBatch = saveAthleteBestsBatch as jest.MockedFunction<
   typeof saveAthleteBestsBatch
@@ -43,17 +45,24 @@ const mockFetchAthleteBestsForNames =
     typeof fetchAthleteBestsForNames
   >;
 
+const EMPTY = { snatch_best: null, cj_best: null, total: null };
+const stored = (
+  bests: StoredAthleteBests["bests"],
+  isFresh: boolean,
+): StoredAthleteBests => ({ bests, fetchedAt: isFresh ? Date.now() : 0, isFresh });
+
 describe("getAthleteBestsBatch", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetCachedAthleteBestsForNames.mockResolvedValue({});
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({});
     mockSaveAthleteBestsBatch.mockResolvedValue(undefined);
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({});
   });
 
-  it("uses persisted bests before checking network", async () => {
-    mockGetCachedAthleteBestsForNames.mockResolvedValue({
-      "Athlete A": { snatch_best: 100, cj_best: 120, total: 220 },
-      "Athlete B": { snatch_best: null, cj_best: null, total: null },
+  it("uses fresh persisted bests before checking network", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": stored({ snatch_best: 100, cj_best: 120, total: 220 }, true),
+      "Athlete B": stored(EMPTY, true),
     });
 
     const result = await getAthleteBestsBatch(
@@ -69,9 +78,28 @@ describe("getAthleteBestsBatch", () => {
     });
   });
 
+  it("looks a stale stored entry up again, all-null ones included", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": stored({ snatch_best: 100, cj_best: 120, total: 220 }, true),
+      "Athlete B": stored(EMPTY, false),
+    });
+    mockFetchAthleteBestsForNames.mockResolvedValue({
+      "Athlete B": { snatch_best: 80, cj_best: 100, total: 180 },
+    });
+
+    const result = await getAthleteBestsBatch(["Athlete A", "Athlete B"], "Test Meet" as any);
+
+    expect(mockFetchAthleteBestsForNames).toHaveBeenCalledWith(["Athlete B"]);
+    expect(result["Athlete B"]).toEqual({ snatch_best: 80, cj_best: 100, total: 180 });
+    expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
+      "Athlete B": { snatch_best: 80, cj_best: 100, total: 180 },
+    });
+  });
+
   it("loads cached bests without checking network", async () => {
-    mockGetCachedAthleteBestsForNames.mockResolvedValue({
-      "Athlete A": { snatch_best: 100, cj_best: 120, total: 220 },
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": stored({ snatch_best: 100, cj_best: 120, total: 220 }, false),
     });
 
     const result = await getCachedAthleteBestsBatch(["Athlete A", "Athlete B"]);
@@ -84,7 +112,7 @@ describe("getAthleteBestsBatch", () => {
     });
   });
 
-  it("uses cached lifting results when offline", async () => {
+  it("uses cached lifting results when offline, and stores none of it", async () => {
     mockIsNetworkAvailable.mockResolvedValue(false);
     mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({
       "Athlete A": [{ snatch_best: 100, cj_best: 120, total: 220 } as any],
@@ -113,6 +141,65 @@ describe("getAthleteBestsBatch", () => {
       cj_best: null,
       total: null,
     });
+    // An offline fallback is not an answer: stored, it read as "no results"
+    // for good, even once the device was back online.
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stale stored answer over the offline fallback", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": stored({ snatch_best: 100, cj_best: 120, total: 220 }, false),
+    });
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({ "Athlete A": [] });
+
+    const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);
+
+    expect(result["Athlete A"]).toEqual({ snatch_best: 100, cj_best: 120, total: 220 });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("stores nothing when the request fails or times out", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockFetchAthleteBestsForNames.mockRejectedValue(new Error("timed out"));
+    mockGetAllCachedLiftingResultsForAthletes.mockResolvedValue({
+      "Athlete A": [{ snatch_best: 90, cj_best: 110, total: 200 } as any],
+    });
+
+    const result = await getAthleteBestsBatch(["Athlete A", "Athlete B"], "Test Meet" as any);
+
+    expect(result).toEqual({
+      "Athlete A": { snatch_best: 90, cj_best: 110, total: 200 },
+      "Athlete B": EMPTY,
+    });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("stores the API's answer, \"no results\" included", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockFetchAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": { snatch_best: 90, cj_best: 110, total: 200 },
+      "Athlete B": EMPTY,
+    });
+
+    await getAthleteBestsBatch(["Athlete A", "Athlete B"], "Test Meet" as any);
+
+    expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
+      "Athlete A": { snatch_best: 90, cj_best: 110, total: 200 },
+      "Athlete B": EMPTY,
+    });
+  });
+
+  it("still returns the fetched bests when storing them fails", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockFetchAthleteBestsForNames.mockResolvedValue({
+      "Athlete A": { snatch_best: 90, cj_best: 110, total: 200 },
+    });
+    mockSaveAthleteBestsBatch.mockRejectedValue(new Error("SQLITE_FULL"));
+
+    const result = await getAthleteBestsBatch(["Athlete A"], "Test Meet" as any);
+
+    expect(result["Athlete A"]).toEqual({ snatch_best: 90, cj_best: 110, total: 200 });
   });
 
   it("fills missing online athletes from cache", async () => {

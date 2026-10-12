@@ -14,6 +14,13 @@ import { Palette } from "@/constants/Palette";
 
 const INACTIVE_COLOR = "#5A9AD4";
 const ACTIVE_COLOR = "#007AFF";
+/**
+ * Each dot's real touch height. hitSlop cannot supply it: Android ignores
+ * slop that reaches past the parent's bounds, and the pill is only 22pt tall.
+ */
+const DOT_TOUCH_HEIGHT = 44;
+/** The visible pill: a 6pt dot with 8pt above and below. */
+const PILL_HEIGHT = 22;
 
 function Dot({ active, activeShadow }: { active: boolean; activeShadow: string }) {
   const progress = useSharedValue(active ? 1 : 0);
@@ -61,6 +68,13 @@ export function PageIndicator({
   const activeDotShadow =
     currentTheme === "dark" ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.2)";
 
+  // Screen readers get one adjustable control, like a native page control:
+  // "Page 2 of 5", swipe up or down to change day. The dots are too small
+  // and too close together to be useful targets one by one.
+  const goTo = (page: number) => {
+    if (page >= 0 && page < count) onPageChange?.(page);
+  };
+
   return (
     <View
       style={[
@@ -79,12 +93,26 @@ export function PageIndicator({
             borderColor: containerBorder,
           },
         ]}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel="Day"
+        accessibilityValue={{ text: `Page ${currentPage + 1} of ${count}` }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "increment") goTo(currentPage + 1);
+          if (event.nativeEvent.actionName === "decrement") goTo(currentPage - 1);
+        }}
       >
         {Array.from({ length: count }).map((_, index) => (
           <Pressable
             key={index}
+            testID={`page-dot-${index}`}
             onPress={() => onPageChange?.(index)}
-            hitSlop={8}
+            style={styles.dotTarget}
+            // Sideways the dots are 13pt apart, so a wider slop would steal
+            // taps from the neighbouring dot. 3pt stays inside the pill's
+            // horizontal padding.
+            hitSlop={{ left: 3, right: 3 }}
           >
             <Dot active={index === currentPage} activeShadow={activeDotShadow} />
           </Pressable>
@@ -109,8 +137,8 @@ const styles = StyleSheet.create({
   dotsContainer: {
     flexDirection: "row",
     gap: 7,
+    alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: Palette.shadow,
@@ -121,6 +149,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
+  },
+  dotTarget: {
+    // A real 44pt target that overhangs the 22pt pill by 11pt above and
+    // below. The negative margin keeps the pill at its drawn size, and the
+    // overhang stays inside the container's 12pt padding. Touches outside a
+    // parent's bounds reach a child that is laid out there (overflow is
+    // visible), unlike hitSlop.
+    height: DOT_TOUCH_HEIGHT,
+    marginVertical: -(DOT_TOUCH_HEIGHT - PILL_HEIGHT) / 2,
+    justifyContent: "center",
   },
   dot: {
     height: 6,

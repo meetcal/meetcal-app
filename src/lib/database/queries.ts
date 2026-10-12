@@ -15,6 +15,7 @@ import {
   fetchApiSchedule,
   searchApi,
 } from '@/lib/api/meetcal-api';
+import { normalizeAthleteName } from '@/lib/athletes';
 import { getCachedMeetByName } from './meets-list-cache';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
@@ -116,9 +117,17 @@ export async function fetchAthleteBestsForNames(
   cutoffDate?: string,
 ): Promise<Record<string, SupabaseBests>> {
   const rows = await fetchApiYearBestsByNames(names, cutoffDate);
+  // The API keys its answer by the cleaned name (trimmed, whitespace folded),
+  // so a roster spelling like ' Jane Doe' never matched its own row under the
+  // raw key and resolved to "no results". Same fix as
+  // `start-list-api.getLastYearBestsBatch`.
+  const rowsByNormalized = new Map<string, (typeof rows)[string]>();
+  for (const [key, row] of Object.entries(rows)) {
+    rowsByNormalized.set(normalizeAthleteName(key), row);
+  }
   const byName: Record<string, SupabaseBests> = {};
   names.forEach((name) => {
-    const row = rows[name];
+    const row = rowsByNormalized.get(normalizeAthleteName(name));
     byName[name] = {
       snatch_best: row?.bestSnatch && row.bestSnatch > 0 ? row.bestSnatch : null,
       cj_best: row?.bestCJ && row.bestCJ > 0 ? row.bestCJ : null,
