@@ -66,14 +66,16 @@ const START_TIME = /^(?:(?:0?[1-9]|1[0-2]):[0-5]\d(?::[0-5]\d)?\s*(?:AM|PM)|(?:[
 /**
  * The saved session's when, which the app counts down to and auto-unsaves
  * by: a whole session number from 1, and a `YYYY-MM-DD` date and a clock
- * start time when given. Empty text is "not known" (the app sends `''` for a
- * session without a schedule row) and stays allowed.
+ * start time when given. Text that is not a date at all is "not known" and
+ * stays allowed: the app sends `''` for a session without a schedule row, and
+ * forwards a schedule's own placeholder (`TBD`) as the date. A date with
+ * digits in it must be a real `YYYY-MM-DD` one.
  */
 export function requireSavedSessionWhen(sessionNumber: number, date: string | undefined, startTime: string | undefined): void {
   if (!Number.isInteger(sessionNumber) || sessionNumber < 1) {
     throw apiError(400, 'session_number must be a whole number from 1');
   }
-  if (date !== undefined && date !== '' && !isValidIsoDate(date)) {
+  if (date !== undefined && /\d/.test(date) && !isValidIsoDate(date)) {
     throw apiError(400, 'date must be a valid YYYY-MM-DD date');
   }
   if (startTime !== undefined && startTime.trim() !== '' && !START_TIME.test(startTime.trim())) {

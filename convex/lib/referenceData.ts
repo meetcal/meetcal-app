@@ -178,19 +178,25 @@ export function isRankingDivision(ageCategory: string): boolean {
   return RANKING_DIVISION.test(ageCategory);
 }
 
+/** Federations the app, the website and the CLI rank; known whatever the data holds. */
+const RANKING_FEDERATIONS: ReadonlySet<string> = new Set(['USAW', 'USAMW']);
+
 /**
  * Rejects a ranking class nobody could mean, so a typo or the wrong case
- * answers 404 instead of an empty ranking that looks like "nobody lifted":
- * the federation must have results, and the age category must be a current
- * division (`isRankingDivision`) or have results under that federation (a
- * retired class such as `Open Men's 85 kg`). Costs one or two index reads.
+ * answers 404 instead of an empty ranking that looks like "nobody lifted".
+ * The federation must be one the clients rank or have results; the age
+ * category must be a current division (`isRankingDivision`) or have results
+ * under that federation (a retired class such as `Open Men's 85 kg`). A
+ * current division of USAW or USAMW costs no read; anything else one or two.
  */
 export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
-  const anyInFederation = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
-    .first();
-  if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
+  if (!RANKING_FEDERATIONS.has(federation)) {
+    const anyInFederation = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .first();
+    if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
+  }
   if (isRankingDivision(ageCategory)) return;
   const anyInClass = await ctx.db
     .query('lifting_results')

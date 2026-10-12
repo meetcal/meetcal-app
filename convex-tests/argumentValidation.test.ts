@@ -5,6 +5,8 @@ import { list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/
 import { adaptiveRecords, nationalRankings, nationalRankingsByYear } from '../convex/reference';
 import { isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
 import { requireSavedSessionWhen } from '../convex/users';
+import { toSavedSessionBody } from '../src/lib/saved-sessions-outbox';
+import type { SavedSession } from '../src/lib/saved-sessions-store';
 
 type Row = Record<string, unknown>;
 
@@ -98,10 +100,16 @@ describe('national ranking classes', () => {
     ],
   };
 
-  it('accept a current division nobody has lifted in yet, with one read', async () => {
-    const { ctx, reads } = fakeCtx(tables);
+  it('accept a current division nobody has lifted in yet, without a read', async () => {
+    const { ctx, reads } = fakeCtx({});
     expect(await statusOf(requireKnownRankingClass(ctx, 'USAW', "Women's Masters (90+) 86+kg"))).toBe('ok');
-    expect(reads.count).toBe(1);
+    expect(await statusOf(requireKnownRankingClass(ctx, 'USAMW', "Open Men's 88kg"))).toBe('ok');
+    expect(reads.count).toBe(0);
+  });
+
+  it('accept another federation that has results', async () => {
+    const withBwl = { lifting_results: [...tables.lifting_results, { federation: 'BWL', age: "Open Men's 60kg" }] };
+    expect(await statusOf(requireKnownRankingClass(fakeCtx(withBwl).ctx, 'BWL', "Open Men's 60kg"))).toBe('ok');
   });
 
   it('accept a retired class that has results', async () => {
@@ -128,8 +136,30 @@ describe('users:putSavedSession session timing', () => {
     [3, '2026-06-20', '12:30:00 pm'],
     [3, '', ''],
     [3, undefined, undefined],
+    // A schedule row's own placeholder, which the app forwards as the date.
+    [3, 'TBD', ''],
   ])('accepts session %p on %p at %p', async (session, date, startTime) => {
     expect(await statusOf(() => requireSavedSessionWhen(session, date, startTime))).toBe('ok');
+  });
+
+  it.each<[string, Partial<SavedSession>]>([
+    ['a scheduled session', { date: '2026-06-20', startTime: '9:00 AM' }],
+    ['a session on a schedule row dated TBD', { date: 'TBD', startTime: '' }],
+    ['a session without a schedule row', { date: '', startTime: '' }],
+  ])('accepts the body the app sends for %s', async (_what, when) => {
+    const session: SavedSession = {
+      id: 'Open-1-Red',
+      meet: 'Open' as SavedSession['meet'],
+      sessionNumber: 1,
+      platform: 'Red',
+      weightClass: '71',
+      startTime: '',
+      weighInTime: '',
+      date: '',
+      ...when,
+    };
+    const body = toSavedSessionBody(session);
+    expect(await statusOf(() => requireSavedSessionWhen(body.session_number, body.date, body.start_time))).toBe('ok');
   });
 
   it.each<[number, string | undefined, string | undefined]>([
@@ -138,6 +168,7 @@ describe('users:putSavedSession session timing', () => {
     [1.5, '2026-06-20', '9:00 AM'],
     [1, '06/20/2026', '9:00 AM'],
     [1, '2026-02-30', '9:00 AM'],
+    [1, '2026-6-20', '9:00 AM'],
     [1, '2026-06-20', 'soon'],
     [1, '2026-06-20', '13:00 PM'],
     [1, '2026-06-20', '24:00'],
