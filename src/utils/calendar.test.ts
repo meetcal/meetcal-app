@@ -7,6 +7,7 @@ import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
 import {
   calendarEventKey,
   type CalendarSession,
+  clearUnpersistedCalendarEventIds,
   createCalendarEvents,
   createCalendarEventsToCalendar,
   describeCalendarWrite,
@@ -300,6 +301,10 @@ describe("calendar destinations and failures", () => {
     const SESSION_2: CalendarSession = { ...SESSION, sessionNumber: "4" };
 
     beforeEach(() => {
+      clearUnpersistedCalendarEventIds();
+      // Drop `mockResolvedValueOnce` values an earlier test left queued.
+      mockCreateEventAsync.mockReset();
+      mockCreateEventAsync.mockResolvedValue("event-1");
       mockGetEventAsync.mockReset();
       mockGetEventAsync.mockRejectedValue(new Error("not found"));
       mockUpdateEventAsync.mockReset();
@@ -379,12 +384,47 @@ describe("calendar destinations and failures", () => {
       expect(second.updated).toBe(1);
     });
 
-    it("keys events by meet, session and canonical platform", () => {
-      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "red" })).toBe(
-        calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }),
+    it("adds the session to a newly chosen calendar instead of updating the old one", async () => {
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      mockCreateEventAsync.mockResolvedValueOnce("work-event").mockResolvedValueOnce("home-event");
+
+      await createCalendarEventsToCalendar([SESSION], "work");
+      const home = await createCalendarEventsToCalendar([SESSION], "home");
+
+      expect(home).toEqual({ total: 1, created: 1, updated: 0, failed: 0 });
+      expect(mockCreateEventAsync).toHaveBeenLastCalledWith("home", expect.any(Object));
+      expect(mockUpdateEventAsync).not.toHaveBeenCalled();
+
+      // Switching back updates the Work copy rather than adding another.
+      const work = await createCalendarEventsToCalendar([SESSION], "work");
+      expect(work).toEqual({ total: 1, created: 0, updated: 1, failed: 0 });
+      expect(mockUpdateEventAsync).toHaveBeenCalledWith("work-event", expect.any(Object));
+    });
+
+    it("still updates an event whose id could not be stored, for the rest of the session", async () => {
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      const setItem = jest
+        .spyOn(AsyncStorage, "setItem")
+        .mockRejectedValueOnce(new Error("storage full"));
+
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      expect(setItem).toHaveBeenCalled();
+      const again = await createCalendarEventsToCalendar([SESSION], "cal-1");
+
+      expect(again).toEqual({ total: 1, created: 0, updated: 1, failed: 0 });
+      expect(mockCreateEventAsync).toHaveBeenCalledTimes(1);
+      expect(mockUpdateEventAsync).toHaveBeenCalledWith("event-1", expect.any(Object));
+    });
+
+    it("keys events by calendar, meet, session and canonical platform", () => {
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "red" }, "c")).toBe(
+        calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c"),
       );
-      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" })).not.toBe(
-        calendarEventKey({ meet: "N", sessionNumber: "3", platform: "Red" }),
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c")).not.toBe(
+        calendarEventKey({ meet: "N", sessionNumber: "3", platform: "Red" }, "c"),
+      );
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c")).not.toBe(
+        calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "d"),
       );
     });
   });

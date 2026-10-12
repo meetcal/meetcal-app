@@ -293,35 +293,60 @@ export async function resolvePreferredAndroidCalendar(): Promise<CalendarDestina
   return selectedCalendar;
 }
 
-/** One calendar event per meet, session and platform. */
+/**
+ * One calendar event per destination calendar, meet, session and platform.
+ * The calendar is part of the key: exporting to Home after Work must add the
+ * session to Home, not update the Work copy, and switching back updates the
+ * Work copy again.
+ */
 export function calendarEventKey(
   session: Pick<CalendarSession, "meet" | "sessionNumber" | "platform">,
+  calendarId: string,
 ): string {
-  return `${session.meet}|${makeLookupKey(session.sessionNumber, session.platform)}`;
+  return `${calendarId}|${session.meet}|${makeLookupKey(session.sessionNumber, session.platform)}`;
+}
+
+/**
+ * Event ids the last store write failed to persist (a full AsyncStorage, say),
+ * kept for this app session so a repeat export still updates those events
+ * instead of adding them again. Cleared once a write succeeds, since that
+ * write carried them.
+ */
+let unpersistedEventIds: Record<string, string> = {};
+
+/** Test seam: forget event ids kept only in memory. */
+export function clearUnpersistedCalendarEventIds(): void {
+  unpersistedEventIds = {};
 }
 
 async function readCalendarEventIds(): Promise<Record<string, string>> {
   try {
     const raw = await AsyncStorage.getItem(CALENDAR_EVENT_IDS_KEY);
-    if (!raw) return {};
+    if (!raw) return { ...unpersistedEventIds };
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...unpersistedEventIds };
+    }
     const ids: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
       if (typeof value === "string" && value) ids[key] = value;
     }
-    return ids;
+    return { ...ids, ...unpersistedEventIds };
   } catch (error) {
     console.warn("Calendar: could not read stored event ids", error);
-    return {};
+    return { ...unpersistedEventIds };
   }
 }
 
 async function writeCalendarEventIds(ids: Record<string, string>): Promise<void> {
   try {
     await AsyncStorage.setItem(CALENDAR_EVENT_IDS_KEY, JSON.stringify(ids));
+    unpersistedEventIds = {};
   } catch (error) {
-    console.warn("Calendar: could not store event ids", error);
+    // The event exists; without its id a later export would add it again.
+    // Keep the ids in memory so this app session still updates it.
+    unpersistedEventIds = { ...ids };
+    console.warn("Calendar: could not store event ids; keeping them for this session", error);
   }
 }
 
@@ -340,7 +365,7 @@ let calendarWriteChain: Promise<unknown> = Promise.resolve();
 
 /**
  * Write one event per session into `calendarId`. A session MeetCal already
- * added, whose event the calendar can still find by the id it returned, has
+ * added to that calendar, whose event the calendar can still find by the id it returned, has
  * that event updated instead, so exporting again after saving one more
  * session, or retrying after a partial failure, does not duplicate what is
  * already there, and a session whose time moved is corrected. (An event the
@@ -384,7 +409,7 @@ async function writeCalendarEvents(
 
     try {
       const eventInput = await buildCalendarEventInput(session);
-      const key = calendarEventKey(session);
+      const key = calendarEventKey(session, calendarId);
       const existingId = eventIds[key];
       let updated = false;
       if (existingId && (await calendarEventExists(existingId))) {
