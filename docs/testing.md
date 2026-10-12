@@ -43,6 +43,8 @@ Name them `<module>.property.test.ts` and `<module>.chaos.test.ts`, next to the 
 - `time-arbitraries.ts`: meet-local wall clocks biased to DST gaps and overlaps, clock strings in every accepted spelling and out of range, and oracles that read a zone's wall clock and offset through their own `Intl` formatter, so a time property never checks `utils/timezone` against itself.
 - `device-zone-properties.ts`: the calendar-date properties that must not move with the device zone, in one `describeDeviceZoneProperties(zone)`. Each `src/utils/dateTime.*property.test.ts` file pins one device zone (Auckland, Los Angeles, Kolkata, Santiago) and calls it.
 
+To watch the real app degrade under the same transport faults on a simulator, set `DEV_CONFIG.CHAOS` in `src/config/development.ts` (documented there): a development build then fails a share of backend calls at random and logs each fault as `[chaos]`. It never touches a release build, Maestro runs, the server-clock sample or a transport installed with `setApiTransportForTests`.
+
 Each run uses fast-check's 100 cases and a fresh seed, so the gate keeps exploring. A failure prints the shrunk counterexample with its seed and path; replay it exactly, then keep the counterexample as an example test next to the property:
 
 ```sh
