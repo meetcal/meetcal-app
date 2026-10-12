@@ -42,6 +42,7 @@ import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { checkOnboardingComplete } from "@/lib/onboarding";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
@@ -354,13 +355,21 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   }, [isUserLoaded, user?.id, user?.primaryEmailAddress?.emailAddress]);
 
   useEffect(() => {
+    let cancelled = false;
     const requestPermissionAfterFirstPaint = setTimeout(() => {
-      OneSignal.Notifications.requestPermission(false).catch((error) => {
-        console.warn("OneSignal permission request failed:", error);
+      // Not over onboarding: its last page explains and asks for the same
+      // notification permission. A launch that is still onboarding skips the
+      // prompt; the next launch asks if the user has not answered by then.
+      void checkOnboardingComplete().then((completed) => {
+        if (cancelled || !completed) return;
+        OneSignal.Notifications.requestPermission(false).catch((error) => {
+          console.warn("OneSignal permission request failed:", error);
+        });
       });
     }, PUSH_PERMISSION_PROMPT_DELAY_MS);
 
     return () => {
+      cancelled = true;
       clearTimeout(requestPermissionAfterFirstPaint);
     };
   }, []);
