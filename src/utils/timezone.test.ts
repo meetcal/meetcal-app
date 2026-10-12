@@ -132,7 +132,7 @@ describe("timezone utilities", () => {
     });
 
     it("returns a whole-minute offset for an instant between minutes", () => {
-      // Found by the meetcal-api mapper property: a meet with no start date
+      // Also found by the meetcal-api mapper property: a meet with no start date
       // is read at "now", and a UTC offset of 5.00504 hours came back.
       expect(
         getOffsetMinutesAtInstant("America/Chicago", new Date("2026-06-20T15:00:18.144Z")),
