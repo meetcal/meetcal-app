@@ -1,22 +1,12 @@
+import { PreviewModalShell } from "@/components/share/PreviewModalShell";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { ThemedView } from "@/components/ui/ThemedView";
 import { showToast } from "@/components/ui/Toast";
 import { shareImageFile } from "@/lib/share-image";
 import { useAppColors } from "@/hooks/useAppColors";
 import { ImagePreviewModalProps } from "@/types/start-list";
 import React from "react";
-import {
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Palette, SharePreviewPalette } from "@/constants/Palette";
 
 export default function ImagePreviewModal({
@@ -28,7 +18,6 @@ export default function ImagePreviewModal({
   onClose,
 }: ImagePreviewModalProps) {
   const colors = useAppColors();
-  const insets = useSafeAreaInsets();
   const [imageAspectRatio, setImageAspectRatio] = React.useState(850 / 1200);
   const imageOptions = React.useMemo<ImageOption[]>(
     () =>
@@ -92,161 +81,121 @@ export default function ImagePreviewModal({
   };
 
   return (
-    <Modal
+    <PreviewModalShell
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      title="Schedule Preview"
+      onClose={onClose}
+      contentContainerStyle={styles.scrollContent}
     >
-      <ThemedView
-        style={[styles.container, { backgroundColor: colors.background }]}
-      >
-        <View
-          style={[
-            styles.header,
-            Platform.OS === "android" && {
-              paddingTop:
-                Math.max(insets.top, StatusBar.currentHeight ?? 0) + 24,
-              paddingBottom: 12,
-              minHeight: 64,
-            },
-          ]}
-        >
-          <ThemedText style={[styles.title, { color: colors.text }]}> 
-            Schedule Preview
-          </ThemedText>
+      {selectedOption ? (
+        <View style={styles.imageContainer}>
+          <View style={styles.optionSections}>
+            <View
+              style={[
+                styles.segmentedControl,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              {imageOptions.map((option, index) => {
+                const isActive = option.id === selectedOption.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={({ pressed }) => [
+                      styles.segment,
+                      isActive && { backgroundColor: colors.link },
+                      pressed && { opacity: 0.85 },
+                    ]}
+                    onPress={() => onChangeIndex(index)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isActive }}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.segmentText,
+                        {
+                          color: isActive ? Palette.white : colors.secondaryText,
+                        },
+                      ]}
+                    >
+                      {option.label}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.imageCard,
+              selectedOption.isTransparent && styles.imageCardTransparent,
+            ]}
+          >
+            {selectedOption.isTransparent ? (
+              <View style={styles.checkerboard} pointerEvents="none">
+                {Array.from({ length: 8 }).map((_, rowIndex) => (
+                  <View style={styles.checkerRow} key={`row-${rowIndex}`}>
+                    {Array.from({ length: 8 }).map((__, colIndex) => {
+                      const isLight = (rowIndex + colIndex) % 2 === 0;
+                      return (
+                        <View
+                          key={`cell-${rowIndex}-${colIndex}`}
+                          style={[
+                            styles.checkerSquare,
+                            isLight
+                              ? styles.checkerLight
+                              : styles.checkerDark,
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <Image
+              source={{ uri: selectedOption.uri }}
+              style={[styles.image, { aspectRatio: imageAspectRatio }]}
+              resizeMode="contain"
+            />
+          </View>
+
           <Pressable
             style={({ pressed }) => [
-              styles.closeButton,
-              Platform.OS === "android" && {
-                top: Math.max(insets.top, StatusBar.currentHeight ?? 0) + 8,
-              },
-              pressed && { opacity: 0.7 },
+              styles.shareButton,
+              pressed && { opacity: 0.8 },
             ]}
-            onPress={onClose}
+            onPress={handleShare}
           >
-            <ThemedText
-              style={[styles.closeButtonText, { color: colors.link }]}
-            >
-              Done
+            <IconSymbol
+              name={
+                Platform.select({
+                  ios: "square.and.arrow.up",
+                  android: "share",
+                }) || "square.and.arrow.up"
+              }
+              size={20}
+              color="#FFFFFF"
+            />
+            <ThemedText style={styles.shareButtonText}>
+              {`Share ${selectedOption.label}`}
             </ThemedText>
           </Pressable>
         </View>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={true}
-        >
-          {selectedOption ? (
-            <View style={styles.imageContainer}>
-              <View style={styles.optionSections}>
-                <View
-                  style={[
-                    styles.segmentedControl,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  {imageOptions.map((option, index) => {
-                    const isActive = option.id === selectedOption.id;
-                    return (
-                      <Pressable
-                        key={option.id}
-                        style={({ pressed }) => [
-                          styles.segment,
-                          isActive && { backgroundColor: colors.link },
-                          pressed && { opacity: 0.85 },
-                        ]}
-                        onPress={() => onChangeIndex(index)}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.segmentText,
-                            {
-                              color: isActive ? Palette.white : colors.secondaryText,
-                            },
-                          ]}
-                        >
-                          {option.label}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.imageCard,
-                  selectedOption.isTransparent && styles.imageCardTransparent,
-                ]}
-              >
-                {selectedOption.isTransparent ? (
-                  <View style={styles.checkerboard} pointerEvents="none">
-                    {Array.from({ length: 8 }).map((_, rowIndex) => (
-                      <View style={styles.checkerRow} key={`row-${rowIndex}`}>
-                        {Array.from({ length: 8 }).map((__, colIndex) => {
-                          const isLight = (rowIndex + colIndex) % 2 === 0;
-                          return (
-                            <View
-                              key={`cell-${rowIndex}-${colIndex}`}
-                              style={[
-                                styles.checkerSquare,
-                                isLight
-                                  ? styles.checkerLight
-                                  : styles.checkerDark,
-                              ]}
-                            />
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                <Image
-                  source={{ uri: selectedOption.uri }}
-                  style={[styles.image, { aspectRatio: imageAspectRatio }]}
-                  resizeMode="contain"
-                />
-              </View>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.shareButton,
-                  pressed && { opacity: 0.8 },
-                ]}
-                onPress={handleShare}
-              >
-                <IconSymbol
-                  name={
-                    Platform.select({
-                      ios: "square.and.arrow.up",
-                      android: "share",
-                    }) || "square.and.arrow.up"
-                  }
-                  size={20}
-                  color="#FFFFFF"
-                />
-                <ThemedText style={styles.shareButtonText}>
-                  {`Share ${selectedOption.label}`}
-                </ThemedText>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.noImageContainer}>
-              <ThemedText
-                style={[styles.noImageText, { color: colors.secondaryText }]}
-              >
-                No image available
-              </ThemedText>
-            </View>
-          )}
-        </ScrollView>
-      </ThemedView>
-    </Modal>
+      ) : (
+        <View style={styles.noImageContainer}>
+          <ThemedText
+            style={[styles.noImageText, { color: colors.secondaryText }]}
+          >
+            No image available
+          </ThemedText>
+        </View>
+      )}
+    </PreviewModalShell>
   );
 }
 
@@ -258,35 +207,6 @@ type ImageOption = {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Palette.lightSeparator,
-    position: "relative",
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  closeButton: {
-    position: "absolute",
-    right: 16,
-    padding: 4,
-  },
-  closeButtonText: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  scrollView: {
-    flex: 1,
-  },
   scrollContent: {
     padding: 16,
   },

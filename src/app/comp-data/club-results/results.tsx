@@ -1,3 +1,4 @@
+import { PreviewModalShell } from "@/components/share/PreviewModalShell";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
@@ -16,7 +17,6 @@ import {
   ActivityIndicator,
   Animated,
   Image,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -400,7 +400,7 @@ function MeetResultsByClubScreenContent() {
         </View>
       </View>
 
-      <ImagePreviewModal
+      <RecapPreviewModal
         visible={showPreview}
         imageUri={generatedImageUri}
         onClose={() => setShowPreview(false)}
@@ -646,8 +646,8 @@ function ShareableMakeRateCard({
   );
 }
 
-// Image Preview Modal
-function ImagePreviewModal({
+// Recap preview: the shared preview shell with this screen's image and button.
+function RecapPreviewModal({
   visible,
   imageUri,
   onClose,
@@ -658,68 +658,38 @@ function ImagePreviewModal({
   onClose: () => void;
   onShare: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const colors = useAppColors();
 
   return (
-    <Modal
+    <PreviewModalShell
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      title="Recap Preview"
+      onClose={onClose}
+      contentContainerStyle={styles.modalContent}
     >
-      <ThemedView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.modalHeader,
-            Platform.OS === "android" && {
-              paddingTop: Math.max(insets.top, 12) + 12,
-            },
-            { borderBottomColor: colors.border },
-          ]}
-        >
-          <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
-            Recap Preview
-          </ThemedText>
+      {imageUri && (
+        <>
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.previewImage}
+            resizeMode="contain"
+            accessibilityLabel="Meet recap image"
+          />
           <Pressable
-            style={[
-              styles.closeButton,
-              Platform.OS === "android" && {
-                top: Math.max(insets.top, 12) + 6,
-              },
-            ]}
-            onPress={onClose}
+            style={[styles.shareButton, { backgroundColor: colors.link, shadowColor: colors.link }]}
+            onPress={onShare}
+            accessibilityRole="button"
           >
-            <ThemedText style={{ color: colors.link, fontSize: 17, fontWeight: "600" }}>
-              Done
-            </ThemedText>
+            <IconSymbol
+              name={Platform.OS === "ios" ? "square.and.arrow.up" : "share"}
+              size={20}
+              color="#FFFFFF"
+            />
+            <ThemedText style={styles.shareButtonText}>Share Recap</ThemedText>
           </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.modalContent}>
-          {imageUri && (
-            <>
-              <Image
-                source={{ uri: imageUri }}
-                style={styles.previewImage}
-                resizeMode="contain"
-              />
-              <Pressable
-                style={[styles.shareButton, { backgroundColor: colors.link, shadowColor: colors.link }]}
-                onPress={onShare}
-              >
-                <IconSymbol
-                  name={Platform.OS === "ios" ? "square.and.arrow.up" : "share"}
-                  size={20}
-                  color="#FFFFFF"
-                />
-                <ThemedText style={styles.shareButtonText}>Share Recap</ThemedText>
-              </Pressable>
-            </>
-          )}
-        </ScrollView>
-      </ThemedView>
-    </Modal>
+        </>
+      )}
+    </PreviewModalShell>
   );
 }
 
@@ -922,24 +892,6 @@ const styles = StyleSheet.create({
     top: 0,
   },
   // Modal
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  closeButton: {
-    position: "absolute",
-    right: 16,
-  },
   modalContent: {
     padding: 20,
     alignItems: "center",
