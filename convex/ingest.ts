@@ -629,7 +629,15 @@ export const syncUsamwEvents = internalMutation({
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[], renamed: [] as string[] };
+    // `ambiguous` and `renamed` keep the site's event name, the run's stable
+    // name for the problem (`scrapers/usamwEvents.ts` fails naming each).
+    const result = {
+      inserted: [] as string[],
+      updated: [] as string[],
+      unchanged: [] as string[],
+      ambiguous: [] as { event: string; meets: string[] }[],
+      renamed: [] as { event: string; storedAs: string }[],
+    };
     // Every USAMW meet that has not ended before the earliest event: the
     // candidates for a folded-name or date match.
     const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
@@ -663,7 +671,7 @@ export const syncUsamwEvents = internalMutation({
         // more is ambiguous (two events on one weekend), left for a person.
         const overlapping = usamw.filter((meet) => !claimed.has(meet._id) && meet.startDate <= event.endDate && meet.endDate >= event.startDate);
         if (overlapping.length > 1) {
-          result.ambiguous.push(`${event.name}: ${overlapping.map((meet) => meet.name).join(' / ')}`);
+          result.ambiguous.push({ event: event.name, meets: overlapping.map((meet) => meet.name) });
           continue;
         }
         match = overlapping[0];
@@ -684,7 +692,7 @@ export const syncUsamwEvents = internalMutation({
         });
         hints.push({ kind: 'meet', key: name });
         result.inserted.push(name);
-        if (name !== event.name) result.renamed.push(name);
+        if (name !== event.name) result.renamed.push({ event: event.name, storedAs: name });
         continue;
       }
       const site: Partial<Doc<'meets'>> = { startDate: event.startDate, endDate: event.endDate };

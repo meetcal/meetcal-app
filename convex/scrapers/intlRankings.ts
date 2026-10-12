@@ -19,9 +19,9 @@ import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
  * USAW international squad standings (port of `intl_rankings_scraper.py
  * --all`): every rankings PDF behind a "View" button on the standings page,
  * each synced as one (meet, gender, age) group. A PDF that fails to
- * download or parse, or whose group cannot be named (no age category in its
- * title or text), is skipped and the rest stored; the run then fails naming
- * it. Groups no longer on the page are pruned, but only when every PDF was
+ * download, parse or store, or whose group cannot be named (no age category
+ * in its title or text), is skipped and the rest stored; the run then fails
+ * naming it. Groups no longer on the page are pruned, but only when every PDF was
  * stored, as before, and only so many at once (`deleteMissingIntlRankingGroups`):
  * a card whose wording changed drops off the page like a retired group.
  */
@@ -59,9 +59,11 @@ export const run = internalAction({
         failures.push({ source: pdf.title, error: `${pdf.rankings.length} rows; meet=${meet} gender=${gender} age=${ageCategory}` });
         continue;
       }
-      const counts: Omit<GroupResult, 'meet' | 'gender' | 'ageCategory' | 'pruned'> = await ctx.runMutation(
-        internal.ingest.replaceIntlRankingsGroup,
-        {
+      // A group that fails to store (a row repeated in the PDF, a transient
+      // error) is one failed PDF like an unreadable one: the rest are stored.
+      let counts: Omit<GroupResult, 'meet' | 'gender' | 'ageCategory' | 'pruned'>;
+      try {
+        counts = await ctx.runMutation(internal.ingest.replaceIntlRankingsGroup, {
           meet,
           gender,
           ageCategory,
@@ -72,8 +74,11 @@ export const run = internalAction({
             total: r.total ?? undefined,
             percentA: r.percent_a ?? undefined,
           })),
-        },
-      );
+        });
+      } catch (error) {
+        failures.push({ source: pdf.title, error: `${pdf.url}: not stored: ${(error as Error).message}` });
+        continue;
+      }
       groups.push({ meet, gender, ageCategory, ...counts, pruned: false });
     }
     if (failures.length === 0 && groups.length > 0) {
