@@ -29,6 +29,11 @@ jest.mock("@/config/development", () => ({
 jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
 const mockShowToast = showToast as jest.MockedFunction<typeof showToast>;
 
+const mockRecheck = jest.fn();
+jest.mock("@/contexts/SubscriptionContext", () => ({
+  useSubscription: () => ({ recheckSubscription: mockRecheck }),
+}));
+
 let mockIsOffline = false;
 jest.mock("@/hooks/useIsOffline", () => ({
   useIsOffline: () => [mockIsOffline, () => {}],
@@ -176,6 +181,12 @@ describe("PaywallScreen", () => {
     expect(texts(renderer)).toContain("You're offline");
     expect(mockGetOfferings).not.toHaveBeenCalled();
     expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    // Try Again cannot load anything until Clerk can; it says so.
+    await pressTryAgain(renderer);
+    expect(mockShowToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/Connect to the internet/) }),
+    );
   });
 
   it("routed: returns to the origin after a purchase", async () => {
@@ -190,6 +201,8 @@ describe("PaywallScreen", () => {
     expect(mockRouter.dismissTo).not.toHaveBeenCalled();
     expect(mockRouter.back).not.toHaveBeenCalled();
     expect(mockRouter.replace).not.toHaveBeenCalled();
+    // In case the listener never fires (the gate's "denied" came from cache).
+    expect(mockRecheck).toHaveBeenCalledTimes(1);
   });
 
   it("inline: closing leaves the gated screen", async () => {

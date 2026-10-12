@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
@@ -58,6 +59,7 @@ export default function PaywallScreen({
   const { user, isLoaded } = useUser();
   const userId = user?.id ?? null;
   const [isOffline] = useIsOffline();
+  const { recheckSubscription } = useSubscription();
   const [offeringState, setOfferingState] = useState<OfferingState>({ status: 'loading' });
   const [loadAttempt, setLoadAttempt] = useState(0);
 
@@ -106,7 +108,15 @@ export default function PaywallScreen({
     };
   }, [isLoaded, userId, loadAttempt]);
 
-  const retry = useCallback(() => setLoadAttempt((attempt) => attempt + 1), []);
+  const retry = useCallback(() => {
+    // Offerings wait for Clerk, which cannot load offline: say so rather
+    // than leave the button looking dead.
+    if (!isLoaded) {
+      showToast({ type: 'info', message: paywallErrorCopy('offline').message });
+      return;
+    }
+    setLoadAttempt((attempt) => attempt + 1);
+  }, [isLoaded]);
 
   const handleEvent = (event: PaywallEvent, customerInfo?: Purchases.CustomerInfo) => {
     const exit = paywallExitFor({
@@ -118,7 +128,14 @@ export default function PaywallScreen({
       showToast(NOTHING_RESTORED_TOAST);
       return;
     }
-    if (exit === 'stay') return;
+    if (exit === 'stay') {
+      // The gate swaps to the screen when the provider publishes the
+      // entitlement. RevenueCat's listener only fires when CustomerInfo
+      // changes, and the gate's "denied" may have come from the cache, so
+      // ask again rather than leave a paying user on the paywall.
+      recheckSubscription();
+      return;
+    }
 
     if (inline) {
       // `from` is the gated screen itself, so dismissing to it would be a

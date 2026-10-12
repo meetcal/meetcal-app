@@ -530,14 +530,17 @@ export default function StartListScreen() {
         returnPath: "/(tabs)/(start-list)",
       });
       if (authResult !== true) return;
-      // 2. Check subscription. `null` is "unknown yet": do nothing rather
-      // than bounce a paying user to the paywall.
-      if (isSubscribed === true) {
+      // 2. Check subscription. Unknown says so; it never bounces a paying
+      // user to the paywall.
+      const premium = premiumActionFor(
+        resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+      );
+      if (premium.kind === "proceed") {
         router.push({
           pathname: "/shared-screens/athlete-results",
           params: { name: athleteName },
         });
-      } else if (isSubscribed === false) {
+      } else if (premium.kind === "paywall") {
         router.push({
           pathname: "/shared-screens/paywall",
           params: {
@@ -545,9 +548,11 @@ export default function StartListScreen() {
             feature: "athlete-results",
           },
         });
+      } else {
+        showToast(premium.toast);
       }
     },
-    [requireAuth, isSubscribed, router],
+    [requireAuth, isSubscribed, isSubscriptionLoading, router],
   );
 
   const renderListItem = useCallback(
@@ -1116,22 +1121,28 @@ export default function StartListScreen() {
   const handleSaveToCalendar = async () => {
     // Same order as every other premium action: sign-in first (so the
     // paywall is never opened for a signed-out user and the intent survives
-    // sign-in), then the paywall with a way back here. `null` is "unknown
-    // yet": do nothing rather than bounce a paying user to the paywall.
+    // sign-in), then the paywall with a way back here. Unknown says so; it
+    // never bounces a paying user to the paywall.
     const authResult = requireAuth({
       feature: "add-to-calendar",
       message: "Sign in to add sessions to your calendar.",
       returnPath: "/(tabs)/(start-list)",
     });
     if (authResult !== true) return;
-    if (isSubscribed === false) {
+    const premium = premiumActionFor(
+      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+    );
+    if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: { from: "/(tabs)/(start-list)", feature: "add-to-calendar" },
       });
       return;
     }
-    if (isSubscribed !== true) return;
+    if (premium.kind === "notify") {
+      showToast(premium.toast);
+      return;
+    }
 
     if (!selectedMeet || !isMeetName(selectedMeet)) {
       showToast({
