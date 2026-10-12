@@ -9,7 +9,8 @@ use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    SINCLAIR_LABEL, chronological, fold, number, points, row_qpoints, row_sinclair,
+    SINCLAIR_LABEL, chronological, fold, number, plausible_row, points, row_qpoints, row_sinclair,
+    valid_total,
 };
 
 /// Compare two athletes head to head: the meets they both entered, who totalled more at each, and
@@ -75,17 +76,24 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         "Higher Total",
         "Margin",
     ]);
-    let (mut first_wins, mut second_wins) = (0, 0);
+    let (mut first_wins, mut second_wins, mut decided) = (0, 0, 0);
     for meeting in &meetings {
         let (a, b) = (meeting.first.total, meeting.second.total);
-        let winner = if a > b {
-            first_wins += 1;
-            first_name.clone()
-        } else if b > a {
-            second_wins += 1;
-            second_name.clone()
+        // A source error's total decides nothing (`plausible_row`).
+        let (winner, margin) = if !plausible_row(meeting.first) || !plausible_row(meeting.second) {
+            ("Source error".to_string(), String::new())
         } else {
-            "Tie".into()
+            decided += 1;
+            let winner = if a > b {
+                first_wins += 1;
+                first_name.clone()
+            } else if b > a {
+                second_wins += 1;
+                second_name.clone()
+            } else {
+                "Tie".into()
+            };
+            (winner, number((a - b).abs()))
         };
         table.add_row(vec![
             us_date(&meeting.first.date),
@@ -93,7 +101,7 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
             format!("{} ({})", number(a), meeting.first.age),
             format!("{} ({})", number(b), meeting.second.age),
             winner,
-            number((a - b).abs()),
+            margin,
         ]);
     }
 
@@ -112,7 +120,13 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         (&first_name, first, first_wins),
         (&second_name, second, second_wins),
     ] {
-        let max = |f: fn(&LiftingResults) -> f64| rows.iter().map(f).fold(0.0, f64::max);
+        // Bests leave source errors out (`plausible_row`).
+        let max = |f: fn(&LiftingResults) -> f64| {
+            rows.iter()
+                .filter(|row| plausible_row(row))
+                .map(f)
+                .fold(0.0, f64::max)
+        };
         let best_sinclair = rows
             .iter()
             .filter_map(row_sinclair)
@@ -128,11 +142,11 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         let recent = rows
             .iter()
             .filter(|row| row.date.as_str() >= cutoff)
-            .map(|row| row.total)
+            .filter_map(valid_total)
             .fold(0.0, f64::max);
         summary.add_row(vec![
             name.clone(),
-            format!("{wins} of {}", meetings.len()),
+            format!("{wins} of {decided}"),
             number(max(|r| r.snatch_best)),
             number(max(|r| r.cj_best)),
             number(max(|r| r.total)),
@@ -201,5 +215,33 @@ mod tests {
         assert_eq!(json["meetings"][0]["margin"], 4);
         assert_eq!(json["summary"][1]["higher_total_in"], "1 of 1");
         assert_eq!(json["summary"][1]["best_total"], 205);
+    }
+
+    #[test]
+    fn source_errors_decide_no_meeting_and_set_no_best() {
+        let a = vec![row(
+            "Ada",
+            "2025-06-01",
+            "Nationals",
+            "Open Women's 64kg",
+            63.0,
+            [-63.0, 633.0, 65.0],
+            [100.0, 0.0, 0.0],
+        )];
+        let b = vec![row(
+            "Bea",
+            "2025-06-01",
+            "Nationals",
+            "Open Women's 64kg",
+            64.0,
+            [84.0, 0.0, 0.0],
+            [110.0, 0.0, 0.0],
+        )];
+        let json = report(&a, &b, "2025-01-01").to_json();
+        assert_eq!(json["meetings"][0]["higher_total"], "Source error");
+        assert_eq!(json["summary"][0]["higher_total_in"], "0 of 0");
+        assert_eq!(json["summary"][0]["best_snatch"], 0);
+        assert_eq!(json["summary"][0]["best_total"], 0);
+        assert_eq!(json["summary"][0]["past_year_best_total"], 0);
     }
 }

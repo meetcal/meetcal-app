@@ -9,6 +9,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::backend::{queries, query};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::{plausible_row, valid_total};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -152,16 +153,20 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
             }
         }
 
+        // Bests, averages and the top meet leave source errors out (`plausible_row`).
+        if !plausible_row(result) {
+            continue;
+        }
         best_snatch = best_snatch.max(positive(result.snatch_best));
         best_clean_jerk = best_clean_jerk.max(positive(result.cj_best));
         best_total = best_total.max(positive(result.total));
 
-        if result.total > 0.0 && result.total.is_finite() {
-            positive_totals.push(result.total);
+        if let Some(total) = valid_total(result) {
+            positive_totals.push(total);
             meet_best_totals
                 .entry(result.meet.clone())
-                .and_modify(|best| *best = best.max(result.total))
-                .or_insert(result.total);
+                .and_modify(|best| *best = best.max(total))
+                .or_insert(total);
         }
     }
 
@@ -435,6 +440,35 @@ mod tests {
         assert_eq!(stats.best_snatch, 0.0);
         assert_eq!(stats.average_total, 0.0);
         assert_eq!(stats.improvement_from_first, 0.0);
+    }
+
+    #[test]
+    fn source_errors_set_no_bests() {
+        let results = vec![
+            result(
+                "2026-01-01",
+                "Real Meet",
+                [70.0, 72.0, 75.0, 90.0, 95.0, -98.0],
+                75.0,
+                95.0,
+                170.0,
+            ),
+            result(
+                "2026-02-01",
+                "Typo Meet",
+                [-63.0, 633.0, 65.0, 85.0, 90.0, -95.0],
+                633.0,
+                90.0,
+                723.0,
+            ),
+        ];
+
+        let stats = calculate_wrapped_stats(&results);
+
+        assert_eq!(stats.best_snatch, 75.0);
+        assert_eq!(stats.best_total, 170.0);
+        assert_eq!(stats.average_total, 170.0);
+        assert_eq!(stats.top_meet.as_deref(), Some("Real Meet"));
     }
 
     #[test]

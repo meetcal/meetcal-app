@@ -21,7 +21,7 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
-    row_sinclair,
+    row_sinclair, valid_total,
 };
 
 /// Lifters in the all-time table.
@@ -165,6 +165,16 @@ fn year(date: &str) -> String {
     date.get(..4).unwrap_or(date).to_string()
 }
 
+/// An athlete in the all-time table: their best row with a trustworthy total (none yet when all
+/// are bomb-outs or source errors), best Sinclair, results, and first and latest dates.
+type LifterEntry<'a> = (
+    Option<&'a LiftingResults>,
+    Option<f64>,
+    usize,
+    String,
+    String,
+);
+
 pub fn report(
     title: &str,
     group_rows: &[LiftingResults],
@@ -210,7 +220,10 @@ pub fn report(
                     .sum::<f64>()
             })
             .sum();
-        let best = rows.iter().map(|row| row.total).fold(0.0, f64::max);
+        let best = rows
+            .iter()
+            .filter_map(|row| valid_total(row))
+            .fold(0.0, f64::max);
         let prs = rows
             .iter()
             .filter(|row| pr_totals.contains(&pr_key(row)))
@@ -232,19 +245,20 @@ pub fn report(
         by_year.add_row(cells);
     }
 
-    // Each athlete's best total with the group, and best Sinclair.
-    let mut best: HashMap<String, (&LiftingResults, Option<f64>, usize, String, String)> =
-        HashMap::new();
+    // Each athlete's best total with the group (source errors left out), and best Sinclair.
+    let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
         let entry = best.entry(fold(&row.name)).or_insert((
-            row,
+            None,
             None,
             0,
             row.date.clone(),
             row.date.clone(),
         ));
-        if row.total > entry.0.total {
-            entry.0 = row;
+        if let Some(total) = valid_total(row)
+            && entry.0.is_none_or(|current| total > current.total)
+        {
+            entry.0 = Some(row);
         }
         if let Some(score) = row_sinclair(row) {
             entry.1 = Some(entry.1.map_or(score, |current: f64| current.max(score)));
@@ -266,7 +280,9 @@ pub fn report(
     }
     let mut lifters: Vec<_> = best
         .into_values()
-        .filter(|entry| entry.0.total > 0.0)
+        .filter_map(|(row, sinclair, results, first, last)| {
+            row.map(|row| (row, sinclair, results, first, last))
+        })
         .collect();
     lifters.sort_by(|a, b| {
         b.0.total
@@ -362,6 +378,58 @@ mod tests {
         let top = json["top_lifters"].as_array().unwrap();
         assert_eq!(top[0]["athlete"], "Bo");
         assert_eq!(top[1]["best_total"], 194);
+        assert_eq!(top[1]["results"], 2);
+    }
+
+    #[test]
+    fn source_error_totals_do_not_rank() {
+        let mut shifted = row(
+            "Cy",
+            "2025-05-01",
+            "M3",
+            "Open Men's 89kg",
+            88.0,
+            [100.0, 0.0, 0.0],
+            [120.0, 0.0, 0.0],
+        );
+        shifted.total = 900.0;
+        let rows = vec![
+            shifted,
+            row(
+                "Cy",
+                "2025-06-01",
+                "M4",
+                "Open Men's 89kg",
+                88.0,
+                [101.0, 0.0, 0.0],
+                [121.0, 0.0, 0.0],
+            ),
+            row(
+                "Bo",
+                "2025-03-01",
+                "M1",
+                "Open Men's 89kg",
+                88.0,
+                [120.0, 0.0, 0.0],
+                [150.0, 0.0, 0.0],
+            ),
+            row(
+                "Di",
+                "2025-03-01",
+                "M1",
+                "Open Men's 89kg",
+                88.0,
+                [-63.0, 633.0, 65.0],
+                [85.0, 0.0, 0.0],
+            ),
+        ];
+        let json = report("CLUB — Test", &rows, &HashSet::new(), None).to_json();
+        assert_eq!(json["by_year"][0]["best_total"], 270);
+        let top = json["top_lifters"].as_array().unwrap();
+        assert_eq!(top.len(), 2, "Di has no trustworthy total");
+        assert_eq!(top[0]["athlete"], "Bo");
+        assert_eq!(top[1]["athlete"], "Cy");
+        assert_eq!(top[1]["best_total"], 222);
         assert_eq!(top[1]["results"], 2);
     }
 }

@@ -11,7 +11,7 @@ use crate::{
         output::{self, Report},
         stats::{
             Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average, bombed_out, number,
-            percent, points, row_qpoints, row_sinclair,
+            percent, plausible_row, points, row_qpoints, row_sinclair, valid_total,
         },
     },
 };
@@ -101,11 +101,7 @@ pub struct MeetSummary {
 
 pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     let all: Vec<&LiftingResults> = rows.iter().collect();
-    let totals: Vec<f64> = rows
-        .iter()
-        .filter(|r| r.total > 0.0)
-        .map(|r| r.total)
-        .collect();
+    let totals: Vec<f64> = rows.iter().filter_map(valid_total).collect();
     let (mut taken, mut made) = (0, 0);
     for lift in [Lift::Snatch, Lift::CleanAndJerk] {
         let habits = attempt_habits(&all, lift);
@@ -229,7 +225,7 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
     ] {
         if let Some(row) = results
             .iter()
-            .filter(|r| value(r) > 0.0)
+            .filter(|r| value(r) > 0.0 && plausible_row(r))
             .max_by(|a, b| value(a).total_cmp(&value(b)))
         {
             heaviest.add_row(vec![
@@ -360,5 +356,45 @@ mod tests {
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
         assert_eq!(json["top_sinclair"].as_array().unwrap().len(), 1);
         assert!(json.get("editions").is_none());
+    }
+
+    #[test]
+    fn source_errors_are_not_the_heaviest_or_averaged() {
+        let mut shifted = row(
+            "Cy",
+            "2026-01-01",
+            "M",
+            "Open Men's 89kg",
+            88.0,
+            [100.0, 0.0, 0.0],
+            [120.0, 0.0, 0.0],
+        );
+        shifted.total = 900.0;
+        let rows = vec![
+            row(
+                "Ada",
+                "2026-01-01",
+                "M",
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            ),
+            shifted,
+            row(
+                "Di",
+                "2026-01-01",
+                "M",
+                "Open Men's 89kg",
+                88.0,
+                [-63.0, 633.0, 65.0],
+                [85.0, 0.0, 0.0],
+            ),
+        ];
+        let summary = summarize(&rows);
+        assert_eq!(summary.average_total, Some(180.0));
+        let json = report(&rows, &[("M".into(), summary)]).to_json();
+        let heaviest = json["heaviest_lifts"].as_array().unwrap();
+        assert!(heaviest.iter().all(|lift| lift["athlete"] == "Ada"));
     }
 }

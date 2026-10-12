@@ -8,7 +8,7 @@ use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, number,
-    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg,
+    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg, valid_total,
 };
 
 /// Show an athlete's progression: every meet with its Sinclair and PRs, their trend, and their
@@ -88,7 +88,11 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
 }
 
 fn trend(rows: &[&LiftingResults]) -> Table {
-    let totals: Vec<&&LiftingResults> = rows.iter().filter(|row| row.total > 0.0).collect();
+    // Source errors (`plausible_row`) are neither the best nor the first or latest total.
+    let totals: Vec<&&LiftingResults> = rows
+        .iter()
+        .filter(|row| valid_total(row).is_some())
+        .collect();
     let best = totals.iter().max_by(|a, b| a.total.total_cmp(&b.total));
     let best_sinclair = rows
         .iter()
@@ -198,5 +202,46 @@ mod tests {
         let trend = &json["trend"][0];
         assert_eq!(trend["meets"], 1);
         assert_eq!(trend["bomb_outs"], "0 of 1");
+    }
+
+    #[test]
+    fn a_typo_row_is_not_the_best_total_or_a_pr_to_beat() {
+        let rows = vec![
+            row(
+                "Ada",
+                "2025-01-01",
+                "M1",
+                "Open Women's 64kg",
+                63.0,
+                [60.0, 0.0, 0.0],
+                [80.0, 0.0, 0.0],
+            ),
+            row(
+                "Ada",
+                "2025-02-01",
+                "M2",
+                "Open Women's 64kg",
+                63.0,
+                [-63.0, 633.0, 65.0],
+                [85.0, 0.0, 0.0],
+            ),
+            row(
+                "Ada",
+                "2025-03-01",
+                "M3",
+                "Open Women's 64kg",
+                63.0,
+                [66.0, 0.0, 0.0],
+                [86.0, 0.0, 0.0],
+            ),
+        ];
+        let json = report("Ada", &rows, None).to_json();
+        let results = json["results"].as_array().unwrap();
+        assert_eq!(results[1]["prs"], serde_json::Value::Null);
+        assert_eq!(results[2]["prs"], "S CJ T");
+        let trend = &json["trend"][0];
+        assert_eq!(trend["best_total"], 152);
+        assert_eq!(trend["latest_total"], 152);
+        assert_eq!(trend["first_to_latest_total"], 12);
     }
 }

@@ -4,6 +4,7 @@ use crate::{
         backend::{queries, query},
         make_rate::make_rate_tables,
         output::{self, Report},
+        stats::plausible_row,
     },
 };
 use anyhow::Result;
@@ -72,8 +73,9 @@ pub async fn run(args: SearchArgs) -> Result<()> {
     Ok(())
 }
 
+/// The best snatch, clean & jerk and total, source errors left out (`plausible_row`).
 pub fn get_prs(results: &[LiftingResults]) -> PRs {
-    results.iter().fold(
+    results.iter().filter(|row| plausible_row(row)).fold(
         PRs {
             snatch_best: 0.0,
             cj_best: 0.0,
@@ -85,4 +87,38 @@ pub fn get_prs(results: &[LiftingResults]) -> PRs {
             total_best: acc.total_best.max(meet.total),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::stats::tests::row;
+
+    #[test]
+    fn prs_leave_source_errors_out() {
+        let rows = vec![
+            row(
+                "Ada",
+                "2026-01-01",
+                "M1",
+                "Open Women's 64kg",
+                63.0,
+                [60.0, 63.0, 0.0],
+                [80.0, 0.0, 0.0],
+            ),
+            row(
+                "Ada",
+                "2026-02-01",
+                "M2",
+                "Open Women's 64kg",
+                63.0,
+                [-63.0, 633.0, 65.0],
+                [85.0, 0.0, 0.0],
+            ),
+        ];
+        let prs = get_prs(&rows);
+        assert_eq!(prs.snatch_best, 63.0);
+        assert_eq!(prs.cj_best, 80.0);
+        assert_eq!(prs.total_best, 143.0);
+    }
 }

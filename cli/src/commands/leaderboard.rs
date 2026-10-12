@@ -16,7 +16,7 @@ use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, consistent_total, fold, number, points,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible_row, points,
     row_qpoints, row_sinclair,
 };
 
@@ -34,7 +34,7 @@ pub enum Metric {
 
 impl Metric {
     fn value(self, row: &LiftingResults) -> Option<f64> {
-        if !consistent_total(row) {
+        if !plausible_row(row) {
             return None;
         }
         let value = match self {
@@ -52,9 +52,10 @@ impl Metric {
 /// date range,
 /// across every class, filtered by gender, age category, division, federation, WSO or club.
 ///
-/// Without --club or --wso it reads every result in the range (a year is about 28,000). Results
-/// whose total is not their snatch plus clean & jerk (a source error) are left out, and Sinclair
-/// is not computed for impossible bodyweights.
+/// Without --club or --wso it reads every result in the range (a year is about 28,000). Source
+/// errors are left out: results whose total is not their snatch plus clean & jerk, whose lifts
+/// are heavier than the world records, or with a typo'd attempt (633 for 63). Sinclair is not
+/// computed for impossible bodyweights.
 ///
 /// Examples:
 ///   meetcal leaderboard --by sinclair --gender women
@@ -416,6 +417,27 @@ mod tests {
         let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
         assert!(!names.contains(&"Yu"), "youth divisions have no Q-points");
         assert_eq!(names.len(), 3);
+    }
+
+    #[test]
+    fn typo_rows_do_not_top_the_leaderboard() {
+        let mut rows = rows();
+        rows.push(row(
+            "Gunner Guillory",
+            "2026-04-04",
+            "2026 Texas Barbell Spring Showdown",
+            "Men's 14-15 Age Group 79+kg",
+            90.8,
+            [-63.0, 633.0, 65.0],
+            [85.0, 90.0, -95.0],
+        ));
+        for metric in [Metric::Total, Metric::Snatch, Metric::Sinclair] {
+            let ranked = rank(&rows, metric, &Filters::default(), 10);
+            assert!(
+                ranked.iter().all(|(row, _)| row.name != "Gunner Guillory"),
+                "{metric:?}"
+            );
+        }
     }
 
     #[test]

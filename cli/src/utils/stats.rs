@@ -169,20 +169,19 @@ pub fn qpoints_apply(division: &Division) -> bool {
     )
 }
 
-/// A result row's Q-points; `None` for youth divisions and rows whose total is not their snatch
-/// plus clean & jerk.
+/// A result row's Q-points; `None` for youth divisions and source errors (`plausible_row`).
 pub fn row_qpoints(row: &LiftingResults) -> Option<f64> {
     let division = Division::parse(&row.age);
-    if !consistent_total(row) || !qpoints_apply(&division) {
+    if !plausible_row(row) || !qpoints_apply(&division) {
         return None;
     }
     qpoints(row.total, row.body_weight, division.gender)
 }
 
-/// A result row's Sinclair score, from its division's gender; `None` for a row whose total is
-/// not its snatch plus clean & jerk.
+/// A result row's Sinclair score, from its division's gender; `None` for a source error
+/// (`plausible_row`).
 pub fn row_sinclair(row: &LiftingResults) -> Option<f64> {
-    if !consistent_total(row) {
+    if !plausible_row(row) {
         return None;
     }
     sinclair(row.total, row.body_weight, Division::parse(&row.age).gender)
@@ -192,6 +191,56 @@ pub fn row_sinclair(row: &LiftingResults) -> Option<f64> {
 /// source rows have their columns shifted; leaderboards leave them out.
 pub fn consistent_total(row: &LiftingResults) -> bool {
     row.total <= 0.0 || (row.total - (row.snatch_best + row.cj_best)).abs() <= 0.5
+}
+
+/// Heavier than anyone has lifted: a little over the senior world records (snatch 225, clean &
+/// jerk 267, total 492 kg). A best lift or total above these is a source error.
+pub const MAX_SNATCH: f64 = 230.0;
+pub const MAX_CJ: f64 = 275.0;
+pub const MAX_TOTAL: f64 = 500.0;
+/// A made attempt more than this many times the heaviest of the lifter's other attempts at that
+/// lift, and more than `MAX_ATTEMPT_JUMP_KG` heavier, is a typo (`633` for `63`); real jumps
+/// between attempts are far smaller. The kilogram floor keeps a child's 10 to 16 kg jump.
+pub const MAX_ATTEMPT_JUMP: f64 = 1.5;
+pub const MAX_ATTEMPT_JUMP_KG: f64 = 20.0;
+
+/// Whether a row can be trusted in rankings and bests: its total is its snatch plus clean & jerk
+/// (`consistent_total`), no best lift or total is heavier than anyone has lifted, and no made
+/// attempt is a typo-sized jump over the lifter's other attempts at that lift. The source has
+/// rows like snatches `[-63, 633, 65]` (total 723) and `[100, 200, 300]`.
+pub fn plausible_row(row: &LiftingResults) -> bool {
+    consistent_total(row)
+        && row.snatch_best <= MAX_SNATCH
+        && row.cj_best <= MAX_CJ
+        && row.total <= MAX_TOTAL
+        && [Lift::Snatch, Lift::CleanAndJerk]
+            .into_iter()
+            .all(|lift| plausible_attempts(lift.attempts(row)))
+}
+
+/// Whether no made attempt is a typo-sized jump (`MAX_ATTEMPT_JUMP`, `MAX_ATTEMPT_JUMP_KG`) over
+/// the heaviest other attempt taken at the same lift. One attempt alone cannot be checked this
+/// way.
+fn plausible_attempts(attempts: [f64; 3]) -> bool {
+    attempts.iter().enumerate().all(|(index, attempt)| {
+        let others = attempts
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != index)
+            .map(|(_, weight)| weight.abs())
+            .filter(|weight| *weight > 0.0 && weight.is_finite())
+            .fold(0.0, f64::max);
+        *attempt <= 0.0
+            || others <= 0.0
+            || *attempt <= others * MAX_ATTEMPT_JUMP
+            || *attempt - others <= MAX_ATTEMPT_JUMP_KG
+    })
+}
+
+/// A row's total when it has one and the row is not a source error (`plausible_row`): what to
+/// maximize, average or rank totals by.
+pub fn valid_total(row: &LiftingResults) -> Option<f64> {
+    (row.total > 0.0 && row.total.is_finite() && plausible_row(row)).then_some(row.total)
 }
 
 /// A score to two decimals.
@@ -315,12 +364,16 @@ impl PrFlags {
 }
 
 /// For each result, oldest first, which lifts beat everything before it. An athlete's first
-/// result sets their marks but is not a PR.
+/// result sets their marks but is not a PR. A source error (`plausible_row`) is neither a PR nor
+/// a mark later results must beat.
 pub fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
     let mut best = (0.0f64, 0.0f64, 0.0f64);
     let mut seen = false;
     rows.iter()
         .map(|row| {
+            if !plausible_row(row) {
+                return PrFlags::default();
+            }
             let flags = PrFlags {
                 snatch: seen && row.snatch_best > best.0,
                 cj: seen && row.cj_best > best.1,
@@ -490,6 +543,123 @@ pub(crate) mod tests {
         shifted.total = 148.0;
         assert!(!consistent_total(&shifted));
         assert_eq!(row_sinclair(&shifted), None);
+    }
+
+    #[test]
+    fn typo_attempts_and_impossible_lifts_are_source_errors() {
+        // Production rows: a ten-times typo in the middle snatch passes the total check.
+        let typo = row(
+            "Gunner Guillory",
+            "2026-04-04",
+            "2026 Texas Barbell Spring Showdown",
+            "Men's 14-15 Age Group 79+kg",
+            90.8,
+            [-63.0, 633.0, 65.0],
+            [85.0, 90.0, -95.0],
+        );
+        assert_eq!(typo.total, 723.0);
+        assert!(consistent_total(&typo));
+        assert!(!plausible_row(&typo));
+        assert_eq!(valid_total(&typo), None);
+        assert_eq!(row_sinclair(&typo), None);
+        let opener_typo = row(
+            "Zach Winter",
+            "2017-01-01",
+            "M",
+            "Open Men's 85kg",
+            84.0,
+            [8686.0, 90.0, -93.0],
+            [110.0, 0.0, 0.0],
+        );
+        assert!(!plausible_row(&opener_typo));
+        // Placeholders: every lift heavier than anyone has made.
+        let placeholder = row(
+            "P",
+            "2021-01-01",
+            "M",
+            "Open Men's 109kg",
+            100.0,
+            [100.0, 200.0, 300.0],
+            [100.0, 0.0, 0.0],
+        );
+        assert!(!plausible_row(&placeholder));
+        let single = row(
+            "P",
+            "2021-01-01",
+            "M",
+            "Open Men's 109kg",
+            100.0,
+            [200.0, 0.0, 0.0],
+            [300.0, 0.0, 0.0],
+        );
+        assert!(!plausible_row(&single));
+        // Real lifts, big jumps and bomb-outs stay.
+        let real = row(
+            "Lasha",
+            "2021-12-17",
+            "M",
+            "Open Men's +109kg",
+            180.0,
+            [215.0, 222.0, 225.0],
+            [250.0, -260.0, 267.0],
+        );
+        assert!(plausible_row(&real));
+        assert_eq!(valid_total(&real), Some(492.0));
+        let youth = row(
+            "Kid",
+            "2026-01-01",
+            "M",
+            "Women's 11 Under Age Group 30kg",
+            29.0,
+            [-10.0, 10.0, 16.0],
+            [-14.0, 14.0, 20.0],
+        );
+        assert!(plausible_row(&youth));
+        let bomb = row(
+            "B",
+            "2026-01-01",
+            "M",
+            "Open Men's 89kg",
+            88.0,
+            [-120.0, -120.0, -120.0],
+            [150.0, 0.0, 0.0],
+        );
+        assert!(plausible_row(&bomb));
+        assert_eq!(valid_total(&bomb), None);
+    }
+
+    #[test]
+    fn source_errors_set_no_pr_marks() {
+        let first = row(
+            "A",
+            "2026-01-01",
+            "M1",
+            "Open Men's 89kg",
+            88.0,
+            [60.0, 0.0, 0.0],
+            [80.0, 0.0, 0.0],
+        );
+        let typo = row(
+            "A",
+            "2026-02-01",
+            "M2",
+            "Open Men's 89kg",
+            88.0,
+            [-63.0, 633.0, 65.0],
+            [85.0, 0.0, 0.0],
+        );
+        let real = row(
+            "A",
+            "2026-03-01",
+            "M3",
+            "Open Men's 89kg",
+            88.0,
+            [66.0, 0.0, 0.0],
+            [86.0, 0.0, 0.0],
+        );
+        let flags = pr_flags(&[&first, &typo, &real]);
+        assert_eq!(flags[1], PrFlags::default());
+        assert!(flags[2].snatch && flags[2].cj && flags[2].total);
     }
 
     #[test]
