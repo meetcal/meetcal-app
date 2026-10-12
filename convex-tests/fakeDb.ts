@@ -1,101 +1,102 @@
+import { getFunctionName } from 'convex/server';
+import schema from '../convex/schema';
+
 /**
- * An in-memory stand-in for Convex's `ctx.db`, enough for the view and
- * reference code: index ranges (`eq`, `gt`, `gte`, `lt`, `lte`) in index
- * order, `order`, `first`, `unique`, `take`, `collect`, `paginate` (the
- * cursor is an offset), and `get` / `insert` / `patch` / `replace` / `delete`.
- * Not a test file: the suites import it.
+ * An in-memory stand-in for a mutation's `ctx.db`, enough for the ingest
+ * write paths, the migrations and the refresh bookkeeping:
+ * `query(table).withIndex(name, q => q.eq(...).gt(...))` (a schema index
+ * orders its rows by its fields, then creation, as Convex does; ranges are
+ * filters on those fields), `.order`, `.filter` with
+ * `q.field`/`q.eq`/`q.neq`, `collect`/`first`/`unique`/`take`/`paginate`, and
+ * `get`, `normalizeId`, `insert`, `patch`, `replace`, `delete`. `reads`
+ * counts the documents queries and `get` returned, for tests of how much a
+ * function reads. Call a
+ * registered function's handler with it through `handlerOf`; `fakeMutationCtx`
+ * adds a scheduler that records what was scheduled.
  */
+type Doc = Record<string, unknown> & { _id: string; _creationTime: number };
+type Predicate = (doc: Doc) => boolean;
 
-export type FakeDoc = Record<string, unknown> & { _id: string; _creationTime: number };
+/** Convex's order of values across types (undefined first), then within one. */
+function compareValues(a: unknown, b: unknown): number {
+  const rank = (value: unknown) =>
+    value === undefined ? 0 : value === null ? 1 : typeof value === 'number' ? 3 : typeof value === 'boolean' ? 4 : typeof value === 'string' ? 5 : 6;
+  if (rank(a) !== rank(b)) return rank(a) - rank(b);
+  if (typeof a === 'number' || typeof a === 'boolean') return Number(a) - Number(b);
+  if (typeof a === 'string') return a < (b as string) ? -1 : a > (b as string) ? 1 : 0;
+  return 0;
+}
 
-/** Index fields per `table.index`; an index not listed sorts by creation time alone. */
-const INDEXES: Record<string, string[]> = {
-  'views.by_key': ['key'],
-  'view_chunks.by_key_index': ['key', 'index'],
-  'view_hints.by_kind_key': ['kind', 'key'],
-  'view_hints.by_updatedAt': ['updatedAt'],
-  'view_state.by_name': ['name'],
-  'data_versions.by_table': ['table'],
-  'athletes.by_meet': ['meet'],
-  'athletes.by_club': ['club'],
-  'athletes.by_club_and_meet': ['club', 'meet'],
-  'athletes.by_wso': ['wso'],
-  'meets.by_name': ['name'],
-  'lifting_results.by_adaptive_and_date': ['adaptive', 'date'],
-  'lifting_results.by_federation_and_age': ['federation', 'age'],
+const compareTuples = (a: readonly unknown[], b: readonly unknown[]) => {
+  for (let i = 0; i < a.length; i++) {
+    const order = compareValues(a[i], b[i]);
+    if (order !== 0) return order;
+  }
+  return 0;
 };
 
-function rank(value: unknown): number {
-  if (value === undefined) return 0;
-  if (value === null) return 1;
-  if (typeof value === 'number') return 2;
-  if (typeof value === 'boolean') return 3;
-  return 4;
+function indexFields(table: string, index: string): string[] {
+  const definition = (schema.tables as Record<string, { ' indexes'(): { indexDescriptor: string; fields: string[] }[] }>)[table];
+  return definition?.[' indexes']().find((i) => i.indexDescriptor === index)?.fields ?? [];
 }
 
-function compareValues(a: unknown, b: unknown): number {
-  const ra = rank(a);
-  const rb = rank(b);
-  if (ra !== rb) return ra - rb;
-  if (ra < 2) return 0;
-  const x = a as string | number | boolean;
-  const y = b as string | number | boolean;
-  return x < y ? -1 : x > y ? 1 : 0;
-}
-
-export function fakeDb(initial: Record<string, Record<string, unknown>[]> = {}) {
-  let nextId = 0;
-  let clock = 0;
-  const tables = new Map<string, FakeDoc[]>();
+export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
+  const tables = new Map<string, Doc[]>();
   const reads = { count: 0 };
+  let next = 0;
   const table = (name: string) => {
-    let rows = tables.get(name);
-    if (!rows) tables.set(name, (rows = []));
-    return rows;
+    if (!tables.has(name)) tables.set(name, []);
+    return tables.get(name)!;
   };
-  const insert = (name: string, fields: Record<string, unknown>): string => {
-    const _id = `${name}:${nextId++}`;
-    table(name).push({ ...fields, _id, _creationTime: (clock += 1) });
-    return _id;
-  };
-  for (const [name, rows] of Object.entries(initial)) for (const row of rows) insert(name, row);
-  const find = (id: string) => {
-    for (const rows of tables.values()) {
-      const index = rows.findIndex((row) => row._id === id);
-      if (index >= 0) return { rows, index };
+  const locate = (id: string) => {
+    for (const docs of tables.values()) {
+      const at = docs.findIndex((doc) => doc._id === id);
+      if (at !== -1) return { docs, at };
     }
     return null;
   };
+  const find = (id: string) => {
+    const found = locate(id);
+    if (!found) throw new Error(`no document ${id}`);
+    return found;
+  };
+  const insert = async (name: string, value: Record<string, unknown>) => {
+    const _id = `${name}:${next++}`;
+    const doc: Doc = { ...value, _id, _creationTime: next };
+    for (const key of Object.keys(doc)) if (doc[key] === undefined) delete doc[key];
+    table(name).push(doc);
+    return _id;
+  };
+  for (const [name, docs] of Object.entries(seed)) for (const doc of docs) void insert(name, doc);
 
-  const query = (name: string) => {
+  function query(name: string) {
+    const predicates: Predicate[] = [];
     let fields: string[] = [];
-    const filters: ((row: FakeDoc) => boolean)[] = [];
     let descending = false;
-    const ordered = () => {
+    const keyOf = (doc: Doc) => [...fields.map((field) => doc[field]), doc._creationTime];
+    const results = () => {
       const rows = table(name)
-        .filter((row) => filters.every((f) => f(row)))
-        .sort((a, b) => {
-          for (const field of fields) {
-            const c = compareValues(a[field], b[field]);
-            if (c !== 0) return c;
-          }
-          return a._creationTime - b._creationTime;
-        });
+        .filter((doc) => predicates.every((p) => p(doc)))
+        .sort((a, b) => compareTuples(keyOf(a), keyOf(b)));
       return descending ? rows.reverse() : rows;
     };
-    const counted = (rows: FakeDoc[]) => {
-      reads.count += rows.length;
-      return rows.map((row) => ({ ...row }));
+    const copy = (doc: Doc) => {
+      reads.count += 1;
+      return { ...doc };
     };
     const chain = {
       withIndex(index: string, build?: (q: unknown) => unknown) {
-        fields = INDEXES[`${name}.${index}`] ?? [];
+        fields = indexFields(name, index);
+        const range = (test: (order: number) => boolean) => (field: string, value: unknown) => {
+          predicates.push((doc) => test(compareValues(doc[field], value)));
+          return q;
+        };
         const q = {
-          eq: (field: string, value: unknown) => (filters.push((row) => compareValues(row[field], value) === 0), q),
-          gt: (field: string, value: unknown) => (filters.push((row) => compareValues(row[field], value) > 0), q),
-          gte: (field: string, value: unknown) => (filters.push((row) => compareValues(row[field], value) >= 0), q),
-          lt: (field: string, value: unknown) => (filters.push((row) => compareValues(row[field], value) < 0), q),
-          lte: (field: string, value: unknown) => (filters.push((row) => compareValues(row[field], value) <= 0), q),
+          eq: range((order) => order === 0),
+          gt: range((order) => order > 0),
+          gte: range((order) => order >= 0),
+          lt: range((order) => order < 0),
+          lte: range((order) => order <= 0),
         };
         build?.(q);
         return chain;
@@ -104,75 +105,94 @@ export function fakeDb(initial: Record<string, Record<string, unknown>[]> = {}) 
         descending = direction === 'desc';
         return chain;
       },
-      filter() {
-        throw new Error('fakeDb: filter is not supported');
+      filter(build: (q: unknown) => Predicate) {
+        const value = (operand: unknown, doc: Doc) => (typeof operand === 'object' && operand !== null && 'field' in operand ? doc[(operand as { field: string }).field] : operand);
+        const q = {
+          field: (field: string) => ({ field }),
+          eq: (a: unknown, b: unknown) => (doc: Doc) => value(a, doc) === value(b, doc),
+          neq: (a: unknown, b: unknown) => (doc: Doc) => value(a, doc) !== value(b, doc),
+        };
+        predicates.push(build(q));
+        return chain;
       },
-      async first() {
-        return counted(ordered().slice(0, 1))[0] ?? null;
+      collect: async () => results().map(copy),
+      take: async (n: number) => results().slice(0, n).map(copy),
+      first: async () => {
+        const [doc] = results();
+        return doc ? copy(doc) : null;
       },
-      async unique() {
-        const rows = ordered();
-        if (rows.length > 1) throw new Error(`fakeDb: unique() found ${rows.length} rows in ${name}`);
-        return counted(rows)[0] ?? null;
+      unique: async () => {
+        const rows = results();
+        if (rows.length > 1) throw new Error(`unique() matched ${rows.length} ${name} documents`);
+        return rows[0] ? copy(rows[0]) : null;
       },
-      async take(n: number) {
-        return counted(ordered().slice(0, n));
-      },
-      async collect() {
-        return counted(ordered());
-      },
-      async paginate({ cursor, numItems }: { cursor: string | null; numItems: number }) {
-        const rows = ordered();
-        const offset = Number(cursor ?? 0);
-        const end = Math.min(offset + numItems, rows.length);
-        return { page: counted(rows.slice(offset, end)), continueCursor: String(end), isDone: end === rows.length };
+      /** Cursors are the last row's index key, so rows deleted between pages do not shift the next one. */
+      paginate: async ({ cursor, numItems }: { cursor: string | null; numItems: number }) => {
+        const after = cursor === null ? null : (JSON.parse(cursor) as unknown[]);
+        const rows = results().filter((doc) => after === null || compareTuples(keyOf(doc), after) * (descending ? -1 : 1) > 0);
+        const page = rows.slice(0, numItems);
+        const last = page[page.length - 1];
+        return {
+          page: page.map(copy),
+          isDone: rows.length <= numItems,
+          continueCursor: last ? JSON.stringify(keyOf(last)) : (cursor ?? JSON.stringify([])),
+        };
       },
     };
     return chain;
-  };
+  }
 
   const db = {
     query,
-    async get(id: string) {
-      const found = find(id);
+    insert,
+    get: async (id: string) => {
+      const found = locate(id);
       if (found) reads.count += 1;
-      return found ? { ...found.rows[found.index] } : null;
+      return found ? { ...found.docs[found.at] } : null;
     },
-    normalizeId(name: string, id: string) {
-      return table(name).some((row) => row._id === id) ? id : null;
+    normalizeId: (name: string, id: string) => (id.startsWith(`${name}:`) ? id : null),
+    patch: async (id: string, fields: Record<string, unknown>) => {
+      const { docs, at } = find(id);
+      const doc = { ...docs[at], ...fields };
+      for (const key of Object.keys(doc)) if (doc[key] === undefined) delete doc[key];
+      docs[at] = doc;
     },
-    async insert(name: string, fields: Record<string, unknown>) {
-      return insert(name, fields);
+    replace: async (id: string, value: Record<string, unknown>) => {
+      const { docs, at } = find(id);
+      const doc: Doc = { ...value, _id: docs[at]._id, _creationTime: docs[at]._creationTime };
+      for (const key of Object.keys(doc)) if (doc[key] === undefined) delete doc[key];
+      docs[at] = doc;
     },
-    async patch(id: string, fields: Record<string, unknown>) {
-      const found = find(id);
-      if (!found) throw new Error(`fakeDb: no document ${id}`);
-      const row = found.rows[found.index];
-      for (const [field, value] of Object.entries(fields)) {
-        if (value === undefined) delete row[field];
-        else row[field] = value;
-      }
-    },
-    async replace(id: string, fields: Record<string, unknown>) {
-      const found = find(id);
-      if (!found) throw new Error(`fakeDb: no document ${id}`);
-      const { _id, _creationTime } = found.rows[found.index];
-      found.rows[found.index] = { ...fields, _id, _creationTime };
-    },
-    async delete(id: string) {
-      const found = find(id);
-      if (!found) throw new Error(`fakeDb: no document ${id}`);
-      found.rows.splice(found.index, 1);
+    delete: async (id: string) => {
+      const { docs, at } = find(id);
+      docs.splice(at, 1);
     },
   };
-
-  return { db, reads, rows: (name: string) => table(name).map((row) => ({ ...row })) };
+  /** A table's documents without their system fields. */
+  const rows = (name: string) => table(name).map(({ _id: _i, _creationTime: _c, ...doc }) => doc);
+  /** A table's documents with their system fields. */
+  const docs = (name: string) => table(name).map((doc) => ({ ...doc }));
+  return { db, rows, docs, reads };
 }
 
-/** A registered Convex function's handler (Convex attaches it at runtime but leaves it out of the public types). */
-export function handlerOf<Args, Result = unknown>(fn: unknown): (ctx: unknown, args: Args) => Promise<Result> {
-  if (typeof fn !== 'function' && (typeof fn !== 'object' || fn === null)) throw new Error('not a Convex function');
-  const handler = (fn as { _handler?: unknown })._handler;
-  if (typeof handler !== 'function') throw new Error('missing Convex handler');
+/** A mutation context over `fakeDb`, whose scheduler records each call by function name. */
+export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> = {}) {
+  const store = fakeDb(seed);
+  const scheduled: { name: string; delayMs: number; args: unknown }[] = [];
+  const scheduler = {
+    runAfter: async (delayMs: number, fn: unknown, args: unknown) => {
+      scheduled.push({ name: getFunctionName(fn as never), delayMs, args });
+    },
+  };
+  return { ...store, ctx: { db: store.db, scheduler }, scheduled };
+}
+
+/** The handler Convex attaches to a registered function (left out of its public types). */
+export function handlerOf<Args, Result = unknown>(registered: unknown): (ctx: unknown, args: Args) => Promise<Result> {
+  const handler =
+    (typeof registered === 'function' || (typeof registered === 'object' && registered !== null)) && '_handler' in registered
+      ? registered._handler
+      : undefined;
+  if (typeof handler !== 'function') throw new Error('Missing Convex handler');
   return handler as (ctx: unknown, args: Args) => Promise<Result>;
 }

@@ -1,6 +1,7 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
+import { normalizeGender } from './normalize';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
@@ -31,7 +32,7 @@ export async function computeRecords(ctx: QueryCtx) {
     snatch_record: r.snatchRecord!,
     total_record: r.totalRecord!,
     weight_class: r.weightClass,
-    gender: r.gender,
+    gender: normalizeGender(r.gender),
     record_type: r.recordType,
     ...apiHolders(r),
   }));
@@ -42,7 +43,7 @@ export async function computeStandards(ctx: QueryCtx) {
   const rows = await ctx.db.query('standards').collect();
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
-    gender: r.gender,
+    gender: normalizeGender(r.gender),
     standard_a: r.standardA,
     standard_b: r.standardB,
     weight_class: r.weightClass,
@@ -54,7 +55,7 @@ export async function computeQualifyingTotals(ctx: QueryCtx) {
   const rows = await ctx.db.query('qualifying_totals').collect();
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     event_name: r.eventName,
-    gender: r.gender,
+    gender: normalizeGender(r.gender),
     age_category: r.ageCategory,
     weight_class: r.weightClass,
     qualifying_total: r.qualifyingTotal,
@@ -84,7 +85,7 @@ export async function computeIntlRankings(ctx: QueryCtx) {
       weight_class: r.weightClass,
       total: r.total,
       percent_a: r.percentA,
-      gender: r.gender,
+      gender: normalizeGender(r.gender),
       age_category: r.ageCategory,
     });
   }
@@ -205,7 +206,7 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
       .collect()
   ).sort(
     (a, b) =>
-      compareCollated(a.gender, b.gender) ||
+      compareCollated(normalizeGender(a.gender), normalizeGender(b.gender)) ||
       compareCollated(a.ageCategory, b.ageCategory) ||
       compareCollated(a.weightClass, b.weightClass) ||
       a._creationTime - b._creationTime,
@@ -213,7 +214,7 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
     cj_record: r.cjRecord ?? null,
-    gender: r.gender,
+    gender: normalizeGender(r.gender),
     snatch_record: r.snatchRecord ?? null,
     total_record: r.totalRecord ?? null,
     weight_class: r.weightClass,
@@ -223,8 +224,10 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
 }
 
 export function filterWsoRows(rows: WsoRecordRow[], ageCategory?: string, gender?: string): WsoRecordRow[] {
+  // Rows answer `normalizeGender`'s spelling; so is the filter read.
+  const wanted = gender === undefined ? undefined : normalizeGender(gender);
   return rows.filter(
-    (r) => (ageCategory === undefined || r.age_category === ageCategory) && (gender === undefined || r.gender === gender),
+    (r) => (ageCategory === undefined || r.age_category === ageCategory) && (wanted === undefined || r.gender === wanted),
   );
 }
 

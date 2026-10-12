@@ -20,6 +20,7 @@ import {
   wsoAgeGroups as ageGroupsOf,
   type WsoRecordRow,
 } from './lib/referenceData';
+import { athleteGenderLabel } from './lib/normalize';
 import { compareCollated } from './lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, meetKey, natKey, REF_VIEWS, wsoKey } from './lib/viewKeys';
 import { readFreshView, readViewAnyAge } from './lib/views';
@@ -205,7 +206,7 @@ function clubAthleteRow(r: Doc<'athletes'>) {
     name: r.name,
     meet: r.meet,
     club: r.club,
-    gender: r.gender,
+    gender: athleteGenderLabel(r.gender),
     weight_class: r.weightClass,
     entry_total: r.entryTotal,
     member_id: r.memberId,

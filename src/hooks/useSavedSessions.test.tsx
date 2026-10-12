@@ -1216,11 +1216,19 @@ describe("saved widget sync", () => {
     expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
   });
 
-  it("falls back to UTC when the meet config cannot be read", async () => {
+  it("passes no zone (not a UTC guess) when the meet config cannot be read", async () => {
     mockGetMeetConfig.mockRejectedValue(new Error("Meet not found"));
     mockSelectedMeet = "Meet C";
     await mountHook();
 
-    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), "UTC");
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), undefined);
+  });
+
+  it("passes no zone when the meet config has none", async () => {
+    mockGetMeetConfig.mockResolvedValue({ time: { timeZoneIdentifier: "" } } as never);
+    mockSelectedMeet = "Meet D";
+    await mountHook();
+
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet D", expect.any(Array), undefined);
   });
 });

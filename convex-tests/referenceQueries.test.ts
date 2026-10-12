@@ -90,7 +90,7 @@ describe('club and WSO athlete lists', () => {
     const rows = (await query(clubAthletes, fake.db, { club: 'Big Club' })) as { name: string; member_id: string }[];
     expect(Array.isArray(rows)).toBe(true);
     expect(rows).toHaveLength(8192);
-    expect(rows[0]).toEqual({ name: 'Lifter 08191', meet: 'Meet 31', club: 'Big Club', gender: 'Women', weight_class: '64', entry_total: 150, member_id: '8191' });
+    expect(rows[0]).toEqual({ name: 'Lifter 08191', meet: 'Meet 31', club: 'Big Club', gender: 'Female', weight_class: '64', entry_total: 150, member_id: '8191' });
     expect(parse(await query(wsoAthletes, fake.db, { wso: 'California' }))).toHaveLength(8192);
   });
 

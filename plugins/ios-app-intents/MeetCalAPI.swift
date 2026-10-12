@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import CryptoKit
 
 // MARK: - Response models (decode-what-you-need)
 
@@ -223,11 +224,15 @@ actor MeetCalAPI {
     // In-memory cache: request key -> (timestamp, raw data)
     private var memoryCache: [String: (Date, Data)] = [:]
 
+    /// Persisted answers, one file per request (see "TTL cache" below).
+    private let cacheDirectory: URL?
+
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 12
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.session = URLSession(configuration: config)
+        self.cacheDirectory = Self.makeCacheDirectory()
     }
 
     // MARK: Public endpoints
@@ -366,51 +371,100 @@ actor MeetCalAPI {
         return try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
     }
 
-    // MARK: TTL cache (memory + UserDefaults)
+    // MARK: TTL cache (memory + files)
+
+    /// The persisted layer lives in files under the App Group's
+    /// `Library/Caches`, not in its `UserDefaults`. Every widget timeline
+    /// loads that suite whole into a memory-limited extension, and one roster
+    /// answer for a national meet is about 0.5 MB. Caches is also purgeable
+    /// by the system, which suits a five-minute cache.
+    private static func makeCacheDirectory() -> URL? {
+        let fileManager = FileManager.default
+        let base = fileManager
+            .containerURL(forSecurityApplicationGroupIdentifier: MeetCalShared.appGroupIdentifier)?
+            .appendingPathComponent("Library/Caches", isDirectory: true)
+            ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+        guard let directory = base?.appendingPathComponent("MeetCalAPI", isDirectory: true) else {
+            return nil
+        }
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
+        } catch {
+            return nil
+        }
+    }
+
+    /// A request key's file: its SHA-256, so any key is a safe file name.
+    private func cacheFileURL(for key: String) -> URL? {
+        guard let cacheDirectory else { return nil }
+        let digest = SHA256.hash(data: Data(key.utf8))
+        let name = digest.map { String(format: "%02x", $0) }.joined()
+        return cacheDirectory.appendingPathComponent(name, isDirectory: false)
+    }
 
     private func cachedData(for key: String) -> Data? {
         if let (ts, data) = memoryCache[key], Date().timeIntervalSince(ts) < ttl {
             return data
         }
         // Fall back to the persisted layer (survives process relaunch between
-        // Siri invocations).
-        let defaults = SharedStore.defaults
-        let tsKey = "apiCacheTS::\(key)"
-        let dataKey = "apiCacheData::\(key)"
-        if let data = defaults.data(forKey: dataKey) {
-            let ts = defaults.double(forKey: tsKey)
-            if ts > 0, Date().timeIntervalSince1970 - ts < ttl {
-                memoryCache[key] = (Date(timeIntervalSince1970: ts), data)
-                return data
-            }
+        // Siri invocations). The file's modification date is the timestamp.
+        guard let url = cacheFileURL(for: key),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modified = attributes[.modificationDate] as? Date,
+              Date().timeIntervalSince(modified) < ttl,
+              let data = try? Data(contentsOf: url) else {
+            return nil
         }
-        return nil
+        memoryCache[key] = (modified, data)
+        return data
     }
 
     private func storeData(_ data: Data, for key: String) {
         let now = Date()
         memoryCache[key] = (now, data)
-        let defaults = SharedStore.defaults
-        pruneExpiredOnce(defaults, now: now)
-        defaults.set(data, forKey: "apiCacheData::\(key)")
-        defaults.set(now.timeIntervalSince1970, forKey: "apiCacheTS::\(key)")
+        migrateLegacyDefaultsCacheOnce()
+        pruneExpiredOnce(now: now)
+        guard let url = cacheFileURL(for: key) else { return }
+        try? data.write(to: url, options: [.atomic])
     }
 
     private var pruned = false
 
-    /// Every distinct request leaves an entry (each search, each hour of
-    /// `meets:list`), and the app group's defaults load whole into every intent
-    /// process, so expired entries are dropped, once per process.
-    private func pruneExpiredOnce(_ defaults: UserDefaults, now: Date) {
-        guard !pruned else { return }
+    /// Every distinct request leaves a file (each search, each hour of
+    /// `meets:list`), so expired files are dropped, once per process.
+    private func pruneExpiredOnce(now: Date) {
+        guard !pruned, let cacheDirectory else { return }
         pruned = true
-        let prefix = "apiCacheTS::"
-        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
-            let ts = (value as? Double) ?? 0
-            guard now.timeIntervalSince1970 - ts >= ttl else { continue }
-            let requestKey = String(key.dropFirst(prefix.count))
-            defaults.removeObject(forKey: key)
-            defaults.removeObject(forKey: "apiCacheData::\(requestKey)")
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            if now.timeIntervalSince(modified) >= ttl {
+                try? fileManager.removeItem(at: file)
+            }
         }
+    }
+
+    private static let legacyCacheMigratedKey = "apiCacheMovedToFiles"
+    private var checkedLegacyCache = false
+
+    /// Earlier builds kept this cache in the App Group `UserDefaults`
+    /// (`apiCacheData::…` / `apiCacheTS::…`). Remove those entries once, so
+    /// the widget extension stops loading them.
+    private func migrateLegacyDefaultsCacheOnce() {
+        guard !checkedLegacyCache else { return }
+        checkedLegacyCache = true
+        let defaults = SharedStore.defaults
+        guard !defaults.bool(forKey: Self.legacyCacheMigratedKey) else { return }
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("apiCacheData::") || key.hasPrefix("apiCacheTS::") {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.set(true, forKey: Self.legacyCacheMigratedKey)
     }
 }

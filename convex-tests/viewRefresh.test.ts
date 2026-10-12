@@ -64,6 +64,61 @@ async function seedMeets(h: ReturnType<typeof harness>, rosters: Record<string, 
 }
 
 describe('targeted refresh', () => {
+  // A hint is deleted once its group's builds succeed, and a view with no
+  // pending hint is served as fresh: a hint that reached no builder would
+  // leave a stale view served as fresh (#139).
+  it('sends every hint kind to the builder of each view it can change, and only then consumes it', async () => {
+    const h = harness(
+      {
+        meets: [{ name: 'Known Meet' }],
+        view_hints: [
+          hint('nat', nat('Open')),
+          hint('meet', 'Known Meet'),
+          hint('athlete', 'ann lee'),
+          hint('table', 'records'),
+          hint('adaptive', '1'),
+          hint('table', 'athletes'),
+          hint('table', 'wso_records'),
+          hint('name', 'Ann Lee'),
+        ],
+      },
+      builders({ syncResultNames: () => null, pendingShardChanges: () => [] }),
+    );
+    await seedMeets(h, { 'Known Meet': { keys: ['bo kim'] }, 'Roster Meet': { keys: ['ann lee'] } });
+    expect(await refresh(h)).toMatchObject({ failed: 0, deferred: 0 });
+    expect(h.called('buildNat')).toEqual([{ federation: 'USAW', ageCategory: 'Open' }]);
+    expect(h.called('buildMeet')).toEqual([{ meet: 'Known Meet' }]);
+    // The athlete's results feed the year bests and stats of every meet whose roster lists them.
+    expect(h.called('buildMeetTimelines').map((a) => a.meet).sort()).toEqual(['Known Meet', 'Roster Meet']);
+    expect(h.called('statsBuildPlan').map((a) => a.meet).sort()).toEqual(['Known Meet', 'Roster Meet']);
+    expect(h.called('buildReferenceTables')).toHaveLength(1);
+    expect(h.called('buildClubs')).toHaveLength(1);
+    expect(h.called('buildWso')).toHaveLength(1);
+    expect(h.called('syncResultNames')).toEqual([{ names: ['Ann Lee'] }]);
+    expect(h.hints()).toEqual([]);
+  });
+
+  it('starts a full rebuild instead when the hints overflow, and builds nothing itself', async () => {
+    const h = harness({ view_hints: Array.from({ length: 2001 }, (_, i) => hint('meet', `Meet ${i}`)) }, builders());
+    expect(await refresh(h)).toEqual({ full: 1 });
+    expect(h.called('buildMeet')).toEqual([]);
+    expect(h.scheduled.filter((s) => s.name === 'views:rebuildStage').map((s) => s.args.stage)).toEqual(['scan']);
+    expect(h.hints()).toHaveLength(2001);
+  });
+
+  it('waits for a running rebuild, keeping the hints for after it', async () => {
+    const h = harness(
+      {
+        view_hints: [hint('meet', 'Known Meet')],
+        view_state: [{ name: 'refresh', scheduled: false, baseline: [], rebuilding: true, rebuildHeartbeat: Date.now() }],
+      },
+      builders(),
+    );
+    expect(await refresh(h)).toEqual({ waiting: 1 });
+    expect(h.called('buildMeet')).toEqual([]);
+    expect(h.hints()).toEqual(['meet:Known Meet']);
+  });
+
   it('keeps the hints of a build that fails and deletes the rest', async () => {
     const h = harness(
       { view_hints: [hint('nat', nat('Open')), hint('nat', nat('Youth')), hint('table', 'records'), hint('table', 'meets')] },
@@ -159,7 +214,7 @@ describe('targeted refresh', () => {
       builders({
         // A result written mid-build: the write bumps the hint's `seq`.
         buildNat: async ({ ageCategory }) => {
-          const row = h.fake.rows('view_hints').find((r) => r.key === nat('Open'));
+          const row = h.fake.docs('view_hints').find((r) => r.key === nat('Open'));
           if (ageCategory === 'Open' && row) await h.fake.db.patch(row._id, { seq: 1, updatedAt: 2 });
           return 1;
         },
@@ -196,6 +251,28 @@ describe('targeted refresh', () => {
 });
 
 describe('full rebuild', () => {
+  it('prunes the histories of names gone from the directory', async () => {
+    const h = harness(
+      { athlete_summary: ['ann lee', 'bo kim', 'gone athlete'].map((nameKey) => ({ nameKey })) },
+      builders({ textViewAnyAge: () => 'Ann Lee\nBo Kim', buildHistories: () => 0 }),
+    );
+    expect(await handlerOf(views.rebuildStage)(h.ctx, { stage: 'prune', offset: 0, again: false, startedAt: 5 })).toBe('prune -> nat@0');
+    expect(h.called('buildHistories')).toEqual([{ keys: ['gone athlete'] }]);
+    expect(h.scheduled.map((s) => s.args.stage)).toEqual(['nat']);
+  });
+
+  it('sweeps only hints last written before the rebuild began', async () => {
+    const h = harness({
+      view_hints: [
+        { kind: 'meet', key: 'old', seq: 0, updatedAt: 500 },
+        { kind: 'meet', key: 'new', seq: 0, updatedAt: 1500 },
+        { kind: 'meet', key: 'legacy', seq: 0 },
+      ],
+    });
+    expect(await handlerOf(views.deleteHintsUpdatedBefore)(h.ctx, { before: 1000 })).toBe(1);
+    expect(h.hints()).toEqual(['meet:legacy', 'meet:new']);
+  });
+
   it('leaves a hint for a ranking class it could not build and carries on', async () => {
     const h = harness({}, builders({ buildNat: ({ ageCategory }) => { if (ageCategory === 'Open') throw new Error('boom'); return 1; } }));
     await writeView(h.ctx as never, 'rebuild|classes', jsonChunks([nat('Open'), nat('Youth')]), []);
@@ -248,7 +325,7 @@ describe('full rebuild', () => {
 
   it('finishes a rebuild scheduled before the sweep existed by consuming the hints it read', async () => {
     const h = harness({ view_hints: [hint('meet', 'Read Then'), hint('meet', 'Written Later')] });
-    const [readThen] = h.fake.rows('view_hints');
+    const [readThen] = h.fake.docs('view_hints');
     await handlerOf(views.rebuildStage)(h.ctx, { stage: 'sweep', offset: 0, again: false, hints: [{ id: readThen._id, seq: 0 }], versions: [] });
     expect(h.hints()).toEqual(['meet:Written Later']);
     expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
