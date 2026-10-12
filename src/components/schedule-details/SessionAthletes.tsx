@@ -29,6 +29,7 @@ import {
     View
 } from "react-native";
 import { devInfo } from "@/lib/logger";
+import { sortSessionAthletes } from "@/lib/session-athlete-sort";
 import { Palette } from "@/constants/Palette";
 
 function toSessionAthletesByPlatform(
@@ -192,39 +193,16 @@ export default function SessionAthletes({
     void refreshAthletes();
   }, [refreshAthletes, refreshKey]);
 
-  // Compute the numeric sort value for an athlete based on the active sort key
-  const getSortValue = useCallback(
-    (athlete: SessionAthlete) => {
-      if (sortKey === "entryTotal") {
-        return athlete.entryTotal || 0;
-      }
-      const bests = athleteBests[athlete.name];
-      const fallback = athlete.entryTotal ?? 0;
-      if (sortKey === "snatch") {
-        return bests?.snatch_best ?? fallback;
-      }
-      if (sortKey === "cj") {
-        return bests?.cj_best ?? fallback;
-      }
-      return bests?.total ?? fallback;
-    },
-    [athleteBests, sortKey],
-  );
-
   const sortedAthletes = useMemo(() => {
     const entries = Object.entries(athletes).map(
-      ([platformName, platformAthletes]) => {
-        const sorted = [...platformAthletes].sort((a, b) => {
-          const aValue = getSortValue(a);
-          const bValue = getSortValue(b);
-          if (aValue === bValue) return 0;
-          return sortDirection === "desc" ? bValue - aValue : aValue - bValue;
-        });
-        return [platformName, sorted] as const;
-      },
+      ([platformName, platformAthletes]) =>
+        [
+          platformName,
+          sortSessionAthletes(platformAthletes, athleteBests, sortKey, sortDirection),
+        ] as const,
     );
     return Object.fromEntries(entries);
-  }, [athletes, getSortValue, sortDirection]);
+  }, [athletes, athleteBests, sortKey, sortDirection]);
 
   const sortOptions = useMemo(
     () => [
