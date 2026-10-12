@@ -73,6 +73,25 @@ describe("capWidgetSessions", () => {
     ]);
   });
 
+  it("puts an untimed row after timed rows on later dates", () => {
+    // Untimed rows have no start instant, so the widget never drops them; an
+    // earlier-dated one must not sit above the next real session.
+    const sessions = [
+      session({ id: "untimed-19", date: "2026-06-19", startTime: "" }),
+      session({ id: "bad-time-18", date: "2026-06-18", startTime: "TBD" }),
+      session({ id: "timed-21", date: "2026-06-21", startTime: "9:00 AM" }),
+      session({ id: "timed-20", date: "2026-06-20", startTime: "9:00 AM" }),
+      session({ id: "undated", date: "" }),
+    ];
+    expect(capWidgetSessions(sessions).map((s) => s.id)).toEqual([
+      "timed-20",
+      "timed-21",
+      "bad-time-18",
+      "untimed-19",
+      "undated",
+    ]);
+  });
+
   it("does not mutate the caller's list", () => {
     const sessions = [
       session({ id: "b", date: "2026-06-21" }),

@@ -31,12 +31,25 @@ function clockMinutes(time: string | undefined): number {
   }
 }
 
+/** True when the row has a readable date and start time. */
+function isFullyTimed(session: SavedSession): boolean {
+  return ISO_DATE.test(session.date ?? '') && Number.isFinite(clockMinutes(session.startTime));
+}
+
 /**
  * Chronological order: meet-local date, then meet-local start time, then
  * session number and platform. All rows belong to one meet, so its wall-clock
- * order is its instant order. Rows missing a date or time go last.
+ * order is its instant order.
+ *
+ * Rows missing a date or time go after every fully timed row, whatever their
+ * date. They get no start instant, so the widget never drops them; sorted by
+ * date alone, a past untimed row would sit above the next real session for
+ * good.
  */
 export function compareWidgetSessions(a: SavedSession, b: SavedSession): number {
+  const aTimed = isFullyTimed(a);
+  const bTimed = isFullyTimed(b);
+  if (aTimed !== bTimed) return aTimed ? -1 : 1;
   const aDate = a.date || MISSING_DATE_SORT_KEY;
   const bDate = b.date || MISSING_DATE_SORT_KEY;
   if (aDate !== bDate) return aDate < bDate ? -1 : 1;
