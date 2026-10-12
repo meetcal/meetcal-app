@@ -21,9 +21,10 @@ import { isNetworkAvailable } from "@/lib/networkUtils";
 void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
+let mockParams = { meet: "test-meet", sessionNumber: "1", platform: "Red" };
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
-  useLocalSearchParams: () => ({ meet: "test-meet", sessionNumber: "1", platform: "Red" }),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -40,7 +41,7 @@ jest.mock("@/lib/database/queries", () => ({
 }));
 jest.mock("@/lib/networkUtils", () => ({ isNetworkAvailable: jest.fn(async () => true) }));
 
-const athlete = (name: string) => ({
+const athlete = (name: string, number = 1) => ({
   memberId: name,
   name,
   age: 25,
@@ -49,7 +50,7 @@ const athlete = (name: string) => ({
   weightClass: "89kg",
   entryTotal: 250,
   adaptive: false,
-  session: { number: 1, platform: "Red" as const },
+  session: { number, platform: "Red" as const },
 });
 
 const flush = async () => {
@@ -82,6 +83,7 @@ async function render(): Promise<ReactTestRenderer> {
 describe("attempt estimator states", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockParams = { meet: "test-meet", sessionNumber: "1", platform: "Red" };
     jest.mocked(isNetworkAvailable).mockResolvedValue(true);
     jest.mocked(getSessionAthletesFromMeetCache).mockResolvedValue([]);
     jest.mocked(getAllCachedLiftingResultsForAthletes).mockResolvedValue({});
@@ -153,6 +155,42 @@ describe("attempt estimator states", () => {
 
     expect(textOf(tree)).toContain("You're offline");
     expect(fetchAthletesWithSession).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
+
+  it("never lets the previous session's refresh land after a session change", async () => {
+    // Session 1 paints from cache and its refresh hangs; the user moves to
+    // session 2 before it answers.
+    jest.mocked(getSessionAthletesFromMeetCache).mockImplementation(async (_meet, session) =>
+      session === 1 ? [athlete("Session One Cached")] : [],
+    );
+    let resolveSessionOne!: (rows: ReturnType<typeof athlete>[]) => void;
+    jest.mocked(fetchAthletesWithSession).mockImplementation(async (_meet, session) =>
+      session === 1
+        ? new Promise((resolve) => {
+            resolveSessionOne = resolve;
+          })
+        : [athlete("Session Two Lifter", 2)],
+    );
+
+    const tree = await render();
+    expect(textOf(tree)).toContain("Session One Cached");
+
+    mockParams = { meet: "test-meet", sessionNumber: "2", platform: "Red" };
+    await act(async () => {
+      tree.update(<AttemptEstimatorScreen />);
+    });
+    await flush();
+    expect(textOf(tree)).toContain("Session Two Lifter");
+
+    await act(async () => {
+      resolveSessionOne([athlete("Session One Fresh")]);
+    });
+    await flush();
+
+    expect(textOf(tree)).toContain("Session Two Lifter");
+    expect(textOf(tree)).not.toContain("Session One");
+    expect(textOf(tree)).not.toContain("Refreshing");
     act(() => tree.unmount());
   });
 

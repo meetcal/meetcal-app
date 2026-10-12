@@ -318,6 +318,7 @@ export default function AttemptEstimatorScreen() {
         {refreshing && (
           <View
             style={styles.statusRow}
+            accessible
             accessibilityLiveRegion="polite"
             accessibilityLabel="Refreshing estimates"
           >
@@ -328,7 +329,7 @@ export default function AttemptEstimatorScreen() {
           </View>
         )}
         {!refreshing && loadIssue && sortedEstimates.length > 0 && (
-          <View style={styles.statusRow} accessibilityLiveRegion="polite">
+          <View style={styles.statusRow} accessible accessibilityLiveRegion="polite">
             <ThemedText style={[styles.statusText, { color: colors.secondaryText }]}>
               {loadIssue === "offline"
                 ? "Offline. Showing downloaded data."
