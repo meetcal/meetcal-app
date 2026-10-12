@@ -528,14 +528,22 @@ export async function getStoredPackageEtag(meet: MeetName): Promise<string | nul
   return typeof etag === 'string' && etag.length > 0 ? etag : null;
 }
 
+/**
+ * The ETag blob is read-modify-written by concurrent prefetches of different
+ * meets and by eviction; serialized like the other per-meet blobs.
+ */
+const packageEtagWrites = createWriteChain();
+
 export async function savePackageEtag(meet: MeetName, etag: string | null): Promise<void> {
-  const etags = await readPackageEtags();
-  if (etag) {
-    etags[meet] = etag;
-  } else {
-    delete etags[meet];
-  }
-  await writePackageEtags(etags);
+  await packageEtagWrites(async () => {
+    const etags = await readPackageEtags();
+    if (etag) {
+      etags[meet] = etag;
+    } else {
+      delete etags[meet];
+    }
+    await writePackageEtags(etags);
+  });
 }
 
 export async function clearPackageEtag(meet: MeetName): Promise<void> {
@@ -838,15 +846,22 @@ async function syncAthleteHistory(
     now: Date.now(),
   });
 
+  // A gap-only pass is recomputed from storage next time; only a full
+  // refresh needs its remainder written down. It is written before the pass
+  // too, so an app killed mid-way resumes with these names rather than the
+  // whole roster.
+  if (plan.fullRefresh && plan.names.length > 0) {
+    await writePendingHistory(meet, { names: plan.names, since: plan.since });
+  }
   const failed = plan.names.length > 0 ? await downloadAthleteHistory(meet, plan.names) : [];
   if (failed.length > 0) {
-    // A gap-only pass is recomputed from storage next time; only an
-    // unfinished full refresh needs its remainder written down.
     if (plan.fullRefresh) await writePendingHistory(meet, { names: failed, since: plan.since });
     return false;
   }
   if (plan.fullRefresh) await markHistorySynced(meet);
-  if (pendingByMeet[meet]) await writePendingHistory(meet, null);
+  if (pendingByMeet[meet] || (plan.fullRefresh && plan.names.length > 0)) {
+    await writePendingHistory(meet, null);
+  }
   return true;
 }
 
@@ -871,26 +886,34 @@ async function ingestMeetPackage(
   if (schedule.length > 0) {
     await saveMeetSchedule(meet, schedule);
   }
-  await saveMeetAthletes(meet, athletes);
+  const rosterSaved = await saveMeetAthletes(meet, athletes);
 
   if (liftingResults.length > 0) {
     validatePrefetchedLiftingResults(meet, athleteNames, liftingResults);
     await saveMeetLiftingResults(meet, liftingResults);
   }
 
-  await saveAthleteBestsBatch(
-    Object.fromEntries(
-      Object.entries(pkg.year_bests_by_name ?? {}).map(([name, bests]) => [
-        name,
-        {
-          snatch_best: bests.best_snatch > 0 ? bests.best_snatch : null,
-          cj_best: bests.best_cj > 0 ? bests.best_cj : null,
-          total: bests.best_total > 0 ? bests.best_total : null,
-        },
-      ]),
-    ),
-  );
+  // Only rows with a real best. The package answers every roster name, with
+  // zeros for anyone who has not lifted inside its window; stored, those
+  // read as a fresh "no results" and kept the start list from ever falling
+  // back to the athlete's most recent meet.
+  const yearBests: Record<string, { snatch_best: number | null; cj_best: number | null; total: number | null }> = {};
+  for (const [name, bests] of Object.entries(pkg.year_bests_by_name ?? {})) {
+    const row = {
+      snatch_best: bests.best_snatch > 0 ? bests.best_snatch : null,
+      cj_best: bests.best_cj > 0 ? bests.best_cj : null,
+      total: bests.best_total > 0 ? bests.best_total : null,
+    };
+    if (row.snatch_best !== null || row.cj_best !== null || row.total !== null) {
+      yearBests[name] = row;
+    }
+  }
+  await saveAthleteBestsBatch(yearBests);
 
+  // An empty roster that `saveMeetAthletes` refused to store over the
+  // downloaded one: the history pass is for the roster still on disk, not
+  // for nobody (which would mark the meet's history synced).
+  if (!rosterSaved) return (await readLocalRosterNames(meet)) ?? [];
   return athleteNames;
 }
 
@@ -901,9 +924,9 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
   await touchMeetAccess(meet);
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
   // The package ETag is the per-meet "package ingested" marker: it is saved
-  // once a package is fully decomposed, whatever happens to the history
-  // after, because history completeness is tracked on its own (the sync
-  // stamp and the pending list). It used to be withheld when one history
+  // as soon as a package is fully decomposed, before the history pass and
+  // whatever happens in it, because history completeness is tracked on its
+  // own (the sync stamp and the pending list). It used to be withheld when one history
   // batch failed, so the retry re-ingested the package and re-downloaded
   // every athlete. `undefined` leaves the stored one alone (a `304`, or a
   // request that never got an answer, changed nothing on disk); `null`
@@ -961,6 +984,13 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
     }
   }
 
+  // Saved before the history pass, which can run for minutes on a national
+  // meet: an app killed during it then resumes from a `304` and the pending
+  // list instead of re-ingesting the package.
+  if (etagUpdate !== undefined) {
+    await savePackageEtag(meet, etagUpdate);
+  }
+
   if (rosterNames) {
     try {
       const complete = await syncAthleteHistory(meet, rosterNames, {
@@ -972,10 +1002,6 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
       console.error('Prefetch athlete history failed:', { meet, error: historyError });
       errors.push('athlete_history');
     }
-  }
-
-  if (etagUpdate !== undefined) {
-    await savePackageEtag(meet, etagUpdate);
   }
 
   await touchMeetAccess(meet);

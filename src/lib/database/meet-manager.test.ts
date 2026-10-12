@@ -73,7 +73,8 @@ const mockPruneOrphanedAthleteHistory = jest.fn(
 );
 const mockClearImplicitMeetData = jest.fn(async (_meet?: string): Promise<void> => undefined);
 const mockSaveMeetSchedule = jest.fn(async () => undefined);
-const mockSaveMeetAthletes = jest.fn(async () => undefined);
+// `saveMeetAthletes` reports whether it stored the roster (false: refused an empty one).
+const mockSaveMeetAthletes = jest.fn(async (): Promise<boolean> => true);
 // Every roster name has a history blob unless a test says otherwise.
 const mockFindAthleteNamesWithoutHistory = jest.fn(
   async (_names: readonly string[]): Promise<string[]> => [],
@@ -1073,7 +1074,70 @@ describe("package revalidation with ETag", () => {
     const pendingWrites = mockSetItem.mock.calls
       .filter(([key]) => key === "@meet_history_pending_v1")
       .map(([, value]) => JSON.parse(value as string));
-    expect(pendingWrites).toEqual([{}]);
+    // Recorded before the pass (an app killed mid-way resumes here), then
+    // cleared once it completes.
+    expect(pendingWrites).toEqual([
+      { "Etag Meet Resume": { names: ["athlete  c", "Athlete B"], since: pendingSince } },
+      {},
+    ]);
+  });
+
+  it("saves the new ETag and the pending list before the history pass starts", async () => {
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"before-history"',
+      package: freshPackage,
+    });
+    const writesBeforeHistory: string[] = [];
+    mockFetchApiResultsByNames.mockImplementationOnce(async () => {
+      writesBeforeHistory.push(...mockSetItem.mock.calls.map(([key]) => key as string));
+      return [];
+    });
+
+    await prefetchMeetData("Etag Meet Early" as any);
+
+    expect(writesBeforeHistory).toEqual(
+      expect.arrayContaining([PACKAGE_ETAG_KEY, "@meet_history_pending_v1"]),
+    );
+    expect(savedEtags().at(-1)).toEqual({ "Etag Meet Early": '"before-history"' });
+  });
+
+  it("stores only the package's real year bests, not its zero rows", async () => {
+    const saveBests = offlineStore.saveAthleteBestsBatch as jest.Mock;
+    saveBests.mockClear();
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: null,
+      package: {
+        ...freshPackage,
+        year_bests_by_name: {
+          "Athlete A": { best_snatch: 90, best_cj: 110, best_total: 200 },
+          "Not Lifted Lately": { best_snatch: 0, best_cj: 0, best_total: 0 },
+        },
+      },
+    });
+
+    await prefetchMeetData("Etag Meet Bests" as any);
+
+    // A zero row stored as a fresh "no results" kept the start list from
+    // falling back to the athlete's most recent meet.
+    expect(saveBests).toHaveBeenCalledWith({
+      "Athlete A": { snatch_best: 90, cj_best: 110, total: 200 },
+    });
+  });
+
+  it("runs the history pass for the stored roster when the package's roster was refused as empty", async () => {
+    mockSaveMeetAthletes.mockResolvedValueOnce(false);
+    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Kept Athlete" }] });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: null,
+      package: { ...freshPackage, athletes: [], meet_results: [] },
+    });
+
+    await prefetchMeetData("Etag Meet Empty Roster" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Kept Athlete"]);
   });
 
   it("starts over when the unfinished refresh is older than the TTL", async () => {
