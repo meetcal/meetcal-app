@@ -4,6 +4,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { MEET_SEARCHES, transformMeets, type ScrapedMeet } from './parse/meets';
+import { sourcesFailed } from '../lib/cronAlerts';
 
 /**
  * Upcoming USAW meets (port of meet-sync: `sync-meets.js`,
@@ -59,7 +60,7 @@ export const run = internalAction({
       console.log(`meets (${search.key}): ${result.fetched} fetched, ${toIngest.length} synced, ${result.inserted.length} new, ${result.updated} updated`);
     }
     const failed = results.filter((r) => r.error);
-    if (failed.length) throw new Error(`meets: ${failed.map((r) => `${r.key}: ${r.error}`).join('; ')}`);
+    if (failed.length) throw sourcesFailed('meets', failed.map((r) => ({ source: r.key, error: r.error! })));
     return results;
   },
 });
