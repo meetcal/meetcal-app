@@ -7,6 +7,7 @@ import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { isKnownTimeZone, isMeetTimeZone } from './lib/validation';
 import { bumpVersion, type SourceTable } from './lib/views';
+import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
 import {
   athletesFields,
   intlRankingsFields,
@@ -79,11 +80,35 @@ const liftingResult = v.object(liftingResultsFields);
  * Python writer's natural key. `nameKey` is derived here, never taken from
  * the caller, and the federation is normalized (`normalize_federation`). A
  * row whose values are unchanged is not written, so re-syncing an unchanged
- * meet bumps no version and invalidates no view.
+ * meet bumps no version and invalidates no view. Without `allowShrink`, a
+ * batch that empties a column (a lift, the total, the body weight) on many
+ * of the stored rows it updates is refused, nothing written: that is a
+ * column the source renamed, not a set of corrections.
  */
 export const upsertLiftingResults = internalMutation({
-  args: { rows: v.array(liftingResult) },
-  handler: async (ctx, { rows }) => {
+  args: { rows: v.array(liftingResult), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, allowShrink }) => {
+    const stored = async (row: (typeof rows)[number]) =>
+      (
+        await ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
+          .collect()
+      ).find((r) => r.meet === row.meet);
+    if (!allowShrink) {
+      const updates = [];
+      for (const row of rows) {
+        const existing = await stored(row);
+        if (existing) updates.push({ stored: existing, next: row });
+      }
+      const emptied = clearedColumns(updates);
+      if (emptied.length) {
+        throw new Error(
+          `refusing to clear ${emptied.join(', ')} on most of ${updates.length} stored results (a source column renamed?). ` +
+            `If the source really cleared them, rerun its sync with '{"allowShrink":true}'`,
+        );
+      }
+    }
     const hints: WriteHint[] = [];
     let inserted = 0;
     let updated = 0;
@@ -95,12 +120,8 @@ export const upsertLiftingResults = internalMutation({
         federation: fields.federation === undefined ? undefined : normalizeFederation(fields.federation),
         nameKey: normalizeName(row.name),
       };
-      const existing = (
-        await ctx.db
-          .query('lifting_results')
-          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
-          .collect()
-      ).find((r) => r.meet === row.meet);
+      // Read again: an earlier row of this batch may have written it.
+      const existing = await stored(row);
       if (!existing) {
         await ctx.db.insert('lifting_results', doc);
         inserted += 1;
@@ -137,31 +158,104 @@ function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boo
   return true;
 }
 
+/**
+ * Deletes result rows, rewriting their athletes' histories and leaving the
+ * hints that update views and search, like every result write.
+ */
+async function deleteResultRows(ctx: MutationCtx, rows: readonly Doc<'lifting_results'>[]): Promise<number> {
+  const hints: WriteHint[] = [];
+  for (const row of rows) {
+    hints.push(...resultHints(row));
+    await ctx.db.delete(row._id);
+  }
+  if (rows.length > 0) {
+    await writeHistories(ctx, athleteKeys(hints));
+    await recordWrite(ctx, 'lifting_results', hints);
+  }
+  return rows.length;
+}
+
+/** A result row's identity, the one `upsertLiftingResults` matches on within an event: (meet, name). */
+const resultKey = (row: { meet: string; name: string }) => JSON.stringify([row.meet, row.name]);
+
+/** Deletes results by the identity `upsertLiftingResults` writes them under (eventId, meet, name). */
 export const deleteLiftingResults = internalMutation({
-  args: { keys: v.array(v.object({ eventId: v.string(), name: v.string() })) },
+  args: { keys: v.array(v.object({ eventId: v.string(), meet: v.string(), name: v.string() })) },
   handler: async (ctx, { keys }) => {
-    const hints: WriteHint[] = [];
-    let deleted = 0;
-    for (const { eventId, name } of keys) {
-      const rows = await ctx.db
+    const rows: Doc<'lifting_results'>[] = [];
+    for (const key of keys) {
+      const matches = await ctx.db
         .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId).eq('name', name))
+        .withIndex('by_event_and_name', (q) => q.eq('eventId', key.eventId).eq('name', key.name))
         .collect();
-      for (const row of rows) {
-        hints.push(...resultHints(row));
-        await ctx.db.delete(row._id);
-        deleted += 1;
-      }
+      rows.push(...matches.filter((row) => resultKey(row) === resultKey(key)));
     }
-    if (deleted > 0) {
-      await writeHistories(ctx, athleteKeys(hints));
-      await recordWrite(ctx, 'lifting_results', hints);
-    }
-    return { deleted };
+    return { deleted: await deleteResultRows(ctx, rows) };
   },
 });
 
-/** Replaces a meet's start list. */
+/**
+ * An event may lose at most this share of its stored results (and always
+ * this many) in one prune without `allowShrink`: a corrected name or a
+ * withdrawn result is a row or two, not a fifth of a meet.
+ */
+const RESULT_PRUNE_LIMIT = { share: 0.1, min: 5 };
+
+/**
+ * Rows one prune call deletes at most: each deletion rewrites its athlete's
+ * history, as a batch of upserts does (`INGEST_BATCH` in the Sport80 sync),
+ * so a retitled meet is pruned over several calls.
+ */
+export const RESULT_PRUNE_BATCH = 200;
+
+/**
+ * After a complete payload of an event's results was upserted: deletes the
+ * event's stored rows that payload no longer has (a name Sport80 corrected,
+ * a result withdrawn, rows under the meet's old title), through the same
+ * path as every result write, so histories, summaries, views and search
+ * follow. `keep` is the payload's (meet, name) pairs. A row whose athlete is
+ * still in the payload under another meet title was only retitled; the rest
+ * count against RESULT_PRUNE_LIMIT, past which nothing is deleted unless
+ * `allowShrink`. Deletes at most RESULT_PRUNE_BATCH rows, dropped ones
+ * first (so a later call's guard sees no larger share), and returns how
+ * many stale rows remain for the next call.
+ */
+export const pruneEventResults = internalMutation({
+  args: { eventId: v.string(), keep: v.array(v.object({ meet: v.string(), name: v.string() })), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { eventId, keep, allowShrink }) => {
+    if (!eventId) throw new Error('eventId is required');
+    if (keep.length === 0) throw new Error(`refusing to prune event ${eventId}'s results against an empty payload`);
+    const kept = new Set(keep.map(resultKey));
+    const names = new Set(keep.map((row) => row.name));
+    // Only rows the Sport80 sync writes (USAW, not adaptive): an imported
+    // row of another source under the same event id is not its to delete.
+    const stored = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
+        .collect()
+    ).filter((row) => row.federation === 'USAW' && !row.adaptive);
+    const stale = stored.filter((row) => !kept.has(resultKey(row)));
+    const dropped = stale.filter((row) => !names.has(row.name));
+    const retitled = stale.filter((row) => names.has(row.name));
+    // Judged against the event's rows less the retitled copies, which are
+    // its athletes counted twice.
+    if (!allowShrink && exceedsShrink(dropped.length, stored.length - retitled.length, RESULT_PRUNE_LIMIT)) {
+      throw new Error(
+        `refusing to delete ${dropped.length} of event ${eventId}'s ${stored.length - retitled.length} stored results no longer in its Sport80 table ` +
+          `(${dropped.slice(0, 10).map((row) => row.name).join(', ')}${dropped.length > 10 ? ', …' : ''}). ` +
+          `If Sport80 really dropped them: npx convex run scrapers/sport80:run '{"only":["${eventId}"],"allowShrink":true}' (add --prod for production)`,
+      );
+    }
+    const deleted = await deleteResultRows(ctx, [...dropped, ...retitled].slice(0, RESULT_PRUNE_BATCH));
+    return { deleted, remaining: stale.length - deleted };
+  },
+});
+
+/**
+ * Replaces a meet's start list. Gender is stored normalized, as the entries
+ * sync stores and matches it (`upsertEntryAthletes`).
+ */
 export const replaceMeetAthletes = internalMutation({
   args: { meet: v.string(), rows: v.array(v.object(athletesFields)) },
   handler: async (ctx, { meet, rows }) => {
@@ -171,7 +265,7 @@ export const replaceMeetAthletes = internalMutation({
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
     for (const row of existing) await ctx.db.delete(row._id);
-    for (const row of rows) await ctx.db.insert('athletes', row);
+    for (const row of rows) await ctx.db.insert('athletes', { ...row, gender: normalizeGender(row.gender) });
     await recordWrite(ctx, 'athletes', [
       { kind: 'meet', key: meet },
       { kind: 'table', key: 'athletes' },
@@ -420,6 +514,10 @@ const entryRow = v.object({
 
 const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
 
+/** Whether a start list has placed the athlete in a session. */
+const hasSession = (athlete: Pick<Doc<'athletes'>, 'sessionNumber' | 'sessionPlatform'>) =>
+  athlete.sessionNumber !== undefined || (athlete.sessionPlatform ?? '').trim() !== '';
+
 /**
  * The one stored athlete whose folded name is a leading run of whole words of
  * the entrant's (`nameKey`) with the same membership number, or, for an
@@ -452,8 +550,11 @@ export function truncatedEntryRow<T extends { memberId: string; name: string; ge
  * the row with the same name and gender carrying a blank or placeholder id,
  * or an older row with a one-off nine-digit id and the same age (ids the old
  * scraper minted per run: a real membership number recurs at other meets).
- * Rows already given a session are left alone, so entries never undo a
- * published start list. Entries are not deleted when they leave the list.
+ * Rows already given a session are left alone, and once any athlete of the
+ * meet has a session (its start list is published) no entry is added: an
+ * entrant the start list left out (scratched, withdrawn) stays out, so
+ * entries never undo a published start list. Entries are not deleted when
+ * they leave the list.
  */
 export const upsertEntryAthletes = internalMutation({
   args: { meet: v.string(), rows: v.array(entryRow) },
@@ -463,7 +564,8 @@ export const upsertEntryAthletes = internalMutation({
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
-    const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0 };
+    const published = existing.some(hasSession);
+    const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0 };
     const incomingKeys = new Set(rows.map((row) => normalizeName(row.name)));
     const oneOffIds = new Map<string, boolean>();
     const isOneOff = async (memberId: string) => {
@@ -507,13 +609,17 @@ export const upsertEntryAthletes = internalMutation({
         weightClass: row.weightClass,
         entryTotal: row.entryTotal,
       };
+      if (!match && published) {
+        counts.notOnStartList += 1;
+        continue;
+      }
       if (!match) {
         const doc = { ...values, meet, adaptive: false };
         existing.push({ ...doc, _id: await ctx.db.insert('athletes', doc), _creationTime: Date.now() });
         counts.inserted += 1;
         continue;
       }
-      if (match.sessionNumber !== undefined || (match.sessionPlatform ?? '').trim() !== '') {
+      if (hasSession(match)) {
         counts.sessionSkipped += 1;
         continue;
       }
@@ -679,12 +785,17 @@ const recordRow = v.object({
 /**
  * Inserts or updates records matched on (type, age, gender, class),
  * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Never deletes.
+ * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
+ * payload that clears more of the matched records' stored lifts than
+ * `exceedsShrink` allows is refused (nothing written): a lift row the parser
+ * stopped finding reads as no record for every class at once. A key the
+ * payload repeats is one record, written in payload order (the last row
+ * wins), and the guard judges that last row.
  */
 export const upsertRecords = internalMutation({
-  args: { rows: v.array(recordRow) },
-  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
-    const outcomes: UpsertOutcome[] = [];
+  args: { rows: v.array(recordRow), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, allowShrink }): Promise<UpsertOutcome[]> => {
+    const pairs = [];
     for (const row of rows) {
       const doc = {
         recordType: row.recordType,
@@ -706,11 +817,33 @@ export const upsertRecords = internalMutation({
           )
           .collect()
       ).find((r) => r.weightClass === doc.weightClass);
-      if (!existing) {
-        await ctx.db.insert('records', doc);
+      pairs.push({ key: JSON.stringify([doc.recordType, doc.ageCategory, doc.gender, doc.weightClass]), doc, existing });
+    }
+    if (!allowShrink) {
+      // One pair a key, its last row: that is what the key ends up holding.
+      const final = new Map(pairs.map((pair) => [pair.key, pair]));
+      const matched = [...final.values()].filter((pair) => pair.existing !== undefined);
+      const storedLifts = matched.reduce((sum, { existing }) => sum + liftCount(existing!), 0);
+      const cleared = matched.reduce((sum, { doc, existing }) => sum + clearedLifts(existing!, doc), 0);
+      if (exceedsShrink(cleared, storedLifts)) {
+        throw new Error(
+          `refusing to clear ${cleared} of ${storedLifts} stored record lifts (the source may be partly broken). ` +
+            `If it really cleared them, rerun its sync with '{"allowShrink":true}'`,
+        );
+      }
+    }
+    const outcomes: UpsertOutcome[] = [];
+    // What each key holds so far: an earlier row of this payload may have
+    // inserted or rewritten it, after `existing` was read.
+    const written = new Map<string, Lifts & { _id: Id<'records'> }>();
+    for (const { key, doc, existing } of pairs) {
+      const current = written.get(key) ?? existing;
+      if (!current) {
+        written.set(key, { ...doc, _id: await ctx.db.insert('records', doc) });
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (liftsChanged(existing, doc)) {
-        await ctx.db.replace(existing._id, doc);
+      } else if (liftsChanged(current, doc)) {
+        await ctx.db.replace(current._id, doc);
+        written.set(key, { ...doc, _id: current._id });
         outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
         outcomes.push({ wasInsert: false, wasChanged: false });
@@ -884,13 +1017,23 @@ export const replaceIntlRankingsGroup = internalMutation({
 });
 
 /**
+ * At most this share of the stored groups (and always this many) may be
+ * pruned in one run without `allowShrink`. The standings page lists a few
+ * dozen groups, so the WSO limits (20 classes) would never apply here.
+ */
+const INTL_GROUP_PRUNE_LIMIT = { share: 0.25, min: 2 };
+
+/**
  * Deletes every international rankings group not in `groups` (the ones the
  * page still links), `delete_missing_intl_ranking_groups` in the Python
- * writer. An empty list deletes nothing.
+ * writer. An empty list deletes nothing. Without `allowShrink`, more than
+ * INTL_GROUP_PRUNE_LIMIT of the stored groups is refused (nothing deleted):
+ * groups vanish from the page when its cards change wording, not only when
+ * they retire.
  */
 export const deleteMissingIntlRankingGroups = internalMutation({
-  args: { groups: v.array(v.object({ meet: v.string(), gender: v.string(), ageCategory: v.string() })) },
-  handler: async (ctx, { groups }) => {
+  args: { groups: v.array(v.object({ meet: v.string(), gender: v.string(), ageCategory: v.string() })), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { groups, allowShrink }) => {
     const active = new Set(
       groups
         .map((g) => ({ meet: g.meet, gender: normalizeGender(g.gender), ageCategory: normalizeAgeCategory(g.ageCategory) }))
@@ -906,6 +1049,14 @@ export const deleteMissingIntlRankingGroups = internalMutation({
       const group = byGroup.get(key) ?? { meet: row.meet ?? '', gender: row.gender ?? '', ageCategory: row.ageCategory ?? '', ids: [] };
       group.ids.push(row._id);
       byGroup.set(key, group);
+    }
+    const storedGroups = new Set(rows.map((row) => JSON.stringify([row.meet ?? null, row.gender ?? null, row.ageCategory ?? null]))).size;
+    if (!allowShrink && exceedsShrink(byGroup.size, storedGroups, INTL_GROUP_PRUNE_LIMIT)) {
+      throw new Error(
+        `refusing to prune ${byGroup.size} of ${storedGroups} international rankings groups no longer on the standings page ` +
+          `(${[...byGroup.values()].map((g) => `${g.meet}/${g.gender}/${g.ageCategory}`).join(', ')}). ` +
+          `If the page really retired them: npx convex run scrapers/intlRankings:run '{"allowShrink":true}' (add --prod for production)`,
+      );
     }
     const deletedGroups = [];
     for (const group of byGroup.values()) {
@@ -934,16 +1085,12 @@ const wsoRecordRow = v.object({
  * from the payload are deleted, the rest written only where they changed.
  * An empty payload or a duplicate class is refused, since either would mean
  * a bad parse rather than a WSO without records.
+ *
+ * Without `allowShrink`, a sync may delete only so many classes, and clear
+ * only so many stored lifts, (`exceedsShrink`). More looks like a source
+ * that partly broke, not one that changed its classes: refused, so the run
+ * fails and alerts instead of deleting records.
  */
-/**
- * A sync may delete up to this share of a WSO's stored rows (and always
- * MIN_SHRINK_ALLOWED) without `allowShrink`. More looks like a source that
- * partly broke, not one that changed its classes: refused, so the run fails
- * and alerts instead of deleting records.
- */
-const MAX_SHRINK_SHARE = 0.25;
-const MIN_SHRINK_ALLOWED = 20;
-
 export const replaceWsoRecordSet = internalMutation({
   args: { wso: v.string(), rows: v.array(wsoRecordRow), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { wso, rows, allowShrink }) => {
@@ -951,14 +1098,19 @@ export const replaceWsoRecordSet = internalMutation({
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
     const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
     if (!allowShrink) {
-      const incoming = new Set(rows.map((row) => keyOf({ ageCategory: normalizeAgeCategory(row.ageCategory), gender: normalizeGender(row.gender), weightClass: row.weightClass })));
-      const stored = new Set((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map(keyOf));
-      const dropped = [...stored].filter((key) => !incoming.has(key)).length;
-      if (dropped > Math.max(MIN_SHRINK_ALLOWED, stored.size * MAX_SHRINK_SHARE)) {
-        throw new Error(
-          `refusing to delete ${dropped} of ${wso}'s ${stored.size} WSO record classes (the source may be partly broken). ` +
-            `If it really dropped them: npx convex run scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}' (add --prod for production)`,
-        );
+      const incoming = new Map(rows.map((row) => [keyOf({ ageCategory: normalizeAgeCategory(row.ageCategory), gender: normalizeGender(row.gender), weightClass: row.weightClass }), row]));
+      const stored = new Map((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map((row) => [keyOf(row), row]));
+      const dropped = [...stored.keys()].filter((key) => !incoming.has(key)).length;
+      // A lift going from a value to none is a deletion too: a cell the
+      // parser misread must not empty a WSO's records one lift at a time.
+      const storedLifts = [...stored.values()].reduce((sum, row) => sum + liftCount(row), 0);
+      const cleared = [...stored].reduce((sum, [key, row]) => sum + (incoming.has(key) ? clearedLifts(row, incoming.get(key)!) : 0), 0);
+      const rerun = `npx convex run scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}' (add --prod for production)`;
+      if (exceedsShrink(dropped, stored.size)) {
+        throw new Error(`refusing to delete ${dropped} of ${wso}'s ${stored.size} WSO record classes (the source may be partly broken). If it really dropped them: ${rerun}`);
+      }
+      if (exceedsShrink(cleared, storedLifts)) {
+        throw new Error(`refusing to clear ${cleared} of ${wso}'s ${storedLifts} stored WSO record lifts (the source may be partly broken). If it really cleared them: ${rerun}`);
       }
     }
     const { byKey: existing, deleted: duplicates } = await onePerKey(

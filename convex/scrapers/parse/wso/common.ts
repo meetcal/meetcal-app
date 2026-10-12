@@ -1,7 +1,6 @@
 // Shared by the WSO records parsers (ports of `usaw/wso_sheets_scraper`).
 
-import { pyInt } from '../../lib/numbers';
-import { recordHolder, setHolder, type RecordHolder } from '../holder';
+import { recordHolder, recordLift, setHolder, type RecordHolder } from '../holder';
 
 /** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
@@ -68,8 +67,14 @@ export function copiedTabs(gids: readonly string[], texts: readonly string[], fi
   return `${pairs.join(', ')} (a tab deleted, renumbered or moved first?)`;
 }
 
-/** Python's `int(float(s))`, or null where that raises. */
-export const intOrNull = pyInt;
+/**
+ * A lift cell (`recordLift`): its number, null for an empty marker (blank,
+ * dash, vacant, TBD, standard), and a throw for anything else, so a cell the
+ * parser cannot read fails the WSO instead of clearing its stored record.
+ */
+export function intOrNull(value: string): number | null {
+  return recordLift(value);
+}
 
 /** A class's record before its lifts are read: every lift missing. */
 export function blankRecord(wso: string, age: string, gender: string, weightClass = ''): WsoRecord {

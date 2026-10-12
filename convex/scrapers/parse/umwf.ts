@@ -1,5 +1,4 @@
-import { recordHolder, setHolder, type RecordHolder } from './holder';
-import { pyInt } from '../lib/numbers';
+import { recordHolder, recordLift, setHolder, type RecordHolder } from './holder';
 import { parseCsv } from '../lib/csv';
 
 // Pure parsing for `scrapers/umwf.ts` (port of `usaw/records_scraper/umwf_records.py`).
@@ -79,9 +78,10 @@ function sheetDate(text: string): string {
 
 /**
  * One tab: a `… kg Category` row opens a weight class, then `Snatch`,
- * `Clean & Jerk` and `Total` rows fill it (a `Standard` value leaves a lift
- * at 0). A lift's holder is its row's Name ("Standard" when unclaimed), Date
- * and Where; the sheets name no meet.
+ * `Clean & Jerk` and `Total` rows fill it (a blank or `Standard` value
+ * leaves a lift at 0; any other value that is not a number throws). A
+ * lift's holder is its row's Name ("Standard" when unclaimed), Date and
+ * Where; the sheets name no meet.
  */
 export function parseUmwfSheet(csv: string, ageCategory: string, gender: string): UmwfRecord[] {
   const records: UmwfRecord[] = [];
@@ -100,9 +100,10 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     }
     if (!current) continue;
     const lift = row[1].trim();
-    const value = row[2].trim();
-    if (!value || value.toUpperCase() === 'STANDARD') continue;
-    const weight = pyInt(value);
+    if (lift !== 'Snatch' && lift !== 'Clean & Jerk' && lift !== 'Total') continue;
+    // Blank or "Standard" leaves the lift at 0; a value it cannot read
+    // ("125*") throws, failing the tab rather than clearing the record.
+    const weight = recordLift(row[2]);
     if (weight === null) continue;
     const cell = (index: number) => row[index] ?? '';
     const holder = weight === 0 ? undefined : recordHolder(weight, cell(columns.name), sheetDate(cell(columns.date)), cell(columns.where));

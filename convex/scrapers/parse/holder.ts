@@ -14,7 +14,7 @@
 export type RecordHolder = { name: string; date?: string; location?: string };
 
 const STANDARD = /^(?:(?:world|record|wso|state|american|national)\s+)?standard$/i;
-const EMPTY = /^(?:-+|–|—|n\/?a|none|tbd|vacant|open)?$/i;
+const EMPTY = /^(?:-+|–|—|#?n\/?a|none|tbd|vacant|open)?$/i;
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 
@@ -118,4 +118,20 @@ export function recordHolder(
 export function setHolder<K extends string>(record: { [key in K]?: RecordHolder }, key: K, holder: RecordHolder | undefined): void {
   if (holder) record[key] = holder;
   else delete record[key];
+}
+
+const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
+/**
+ * A lift's value as a records source writes it: a number as Python's
+ * `int(float(s))` read it, null for a cell that says there is none (blank, a
+ * dash, n/a, TBD, vacant, open, a standard). Anything else throws: "102 kg"
+ * or "125*" is a typo or a layout change, and read as empty it would erase
+ * the stored record and its holder on the next sync.
+ */
+export function recordLift(raw: string): number | null {
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (EMPTY.test(text) || STANDARD.test(text)) return null;
+  if (!NUMBER.test(text)) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
+  return Math.trunc(Number(text));
 }

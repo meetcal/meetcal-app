@@ -349,6 +349,36 @@ describe("AthleteItem year bests", () => {
     act(() => tree.unmount());
   });
 
+  it("never shows the previous athlete's bests on a recycled row", async () => {
+    jest
+      .mocked(getLastYearBests)
+      .mockImplementationOnce(async () => ({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 }))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const tree = mountRow(makeProps({ isSubscribed: true }));
+    await toggleRow(tree);
+    await settle();
+    expect(JSON.stringify(tree.toJSON())).toContain("180kg");
+
+    // FlashList hands the same component instance a different athlete.
+    act(() => {
+      tree.update(
+        <Parent
+          props={makeProps({
+            isSubscribed: true,
+            athlete: { ...ATHLETE, memberId: "456", name: "Chris Lee" },
+          })}
+        />,
+      );
+    });
+    await toggleRow(tree);
+
+    // Before the idle callback has run for Chris: a spinner, not Jane's 180.
+    expect(JSON.stringify(tree.toJSON())).toContain("Chris Lee");
+    expect(JSON.stringify(tree.toJSON())).not.toContain("180kg");
+    expect(spinnerCount(tree)).toBe(1);
+    act(() => tree.unmount());
+  });
+
   it("does not request bests for a collapsed row", async () => {
     const tree = mountRow(makeProps({ isSubscribed: true }));
     await settle();

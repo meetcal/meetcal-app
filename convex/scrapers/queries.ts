@@ -107,3 +107,19 @@ export const truncatedEntryNames = internalQuery({
     return { pairs, cursor: page.continueCursor, isDone: page.isDone };
   },
 });
+
+/** Status and end date (the meet's own calendar) of each named meet that exists. */
+export const meetEnds = internalQuery({
+  args: { names: v.array(v.string()) },
+  handler: async (ctx, { names }) => {
+    const ends: Record<string, { status: string; endDate: string }> = {};
+    for (const name of new Set(names)) {
+      const meet = await ctx.db
+        .query('meets')
+        .withIndex('by_name', (q) => q.eq('name', name))
+        .first();
+      if (meet) ends[name] = { status: meet.status, endDate: meet.endDate };
+    }
+    return ends;
+  },
+});

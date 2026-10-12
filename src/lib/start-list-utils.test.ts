@@ -9,7 +9,27 @@ import {
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
+  buildWeightClassOptions,
+  matchesAdaptiveFilter,
+  ADAPTIVE_ATHLETES_FILTER,
+  NON_ADAPTIVE_ATHLETES_FILTER,
+  applyStartListPillSelection,
+  DEFAULT_START_LIST_FILTERS,
+  hasActiveStartListFilters,
+  isPremiumStartListPill,
+  effectiveStartListSort,
+  normalizeStartListAthletes,
+  filterStartListAthletes,
+  compareStartListAthletes,
+  buildAgeGroupOptions,
+  buildWsoOptions,
+  getShareGroup,
+  buildSessionDetailsLookup,
+  STARRED_CLUBS_FILTER,
+  type AthleteSortOption,
+  type StartListFilters,
 } from "@/lib/start-list-utils";
+import type { LiftResult } from "@/data/types/athletes";
 
 describe("sortWeightClasses", () => {
   it("orders numerically ignoring non-digit characters", () => {
@@ -141,6 +161,166 @@ describe("parseWeightClasses", () => {
     expect(parseWeightClasses("abc / 55")).toEqual(["55kg"]);
     expect(parseWeightClasses("")).toEqual([]);
   });
+
+  it("reads the unlimited class written either way round", () => {
+    expect(parseWeightClasses("+87")).toEqual(["87+kg"]);
+    expect(parseWeightClasses("+87kg")).toEqual(["87+kg"]);
+    expect(parseWeightClasses("110+ kg")).toEqual(["110+kg"]);
+    expect(parseWeightClasses("+110 / 110+")).toEqual(["110+kg"]);
+  });
+});
+
+function athlete(overrides: Partial<LiftResult>): LiftResult {
+  return {
+    memberId: overrides.name ?? "1",
+    name: "Athlete",
+    age: 25,
+    club: "Club",
+    gender: "Male",
+    weightClass: "89",
+    entryTotal: 0,
+    adaptive: false,
+    ...overrides,
+  };
+}
+
+const NO_OPTION_FILTERS = { gender: "", ageGroup: "", adaptive: "" };
+
+describe("buildWeightClassOptions", () => {
+  it("lists the heaviest class present as itself when nobody is in a plus class", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "94" }),
+      athlete({ name: "B", weightClass: "110" }),
+      athlete({ name: "C", weightClass: "110" }),
+    ];
+    expect(buildWeightClassOptions(roster, NO_OPTION_FILTERS)).toEqual([
+      "94kg",
+      "110kg",
+    ]);
+  });
+
+  it("lists a plus class next to its number only when the data has one", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "110" }),
+      athlete({ name: "B", weightClass: "+110" }),
+      athlete({ name: "C", gender: "Female", weightClass: "86+" }),
+      athlete({ name: "D", gender: "Female", weightClass: "77" }),
+    ];
+    expect(buildWeightClassOptions(roster, NO_OPTION_FILTERS)).toEqual([
+      "77kg",
+      "86+kg",
+      "110kg",
+      "110+kg",
+    ]);
+    expect(
+      buildWeightClassOptions(roster, { ...NO_OPTION_FILTERS, gender: "female" }),
+    ).toEqual(["77kg", "86+kg"]);
+  });
+
+  it("only offers classes the other pills leave in view", () => {
+    const roster = [
+      athlete({ name: "Youth", age: 16, weightClass: "65" }),
+      athlete({ name: "Senior", age: 25, weightClass: "110+" }),
+      athlete({ name: "Adaptive", age: 25, weightClass: "79", adaptive: true }),
+    ];
+    expect(
+      buildWeightClassOptions(roster, { ...NO_OPTION_FILTERS, ageGroup: "U17" }),
+    ).toEqual(["65kg"]);
+    expect(
+      buildWeightClassOptions(roster, {
+        ...NO_OPTION_FILTERS,
+        adaptive: ADAPTIVE_ATHLETES_FILTER,
+      }),
+    ).toEqual(["79kg"]);
+    expect(
+      buildWeightClassOptions(roster, {
+        ...NO_OPTION_FILTERS,
+        adaptive: NON_ADAPTIVE_ATHLETES_FILTER,
+      }),
+    ).toEqual(["65kg", "110+kg"]);
+  });
+
+  it("offers exactly the classes the filter matches", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "+87kg" }),
+      athlete({ name: "B", weightClass: "71 / 76" }),
+    ];
+    for (const option of buildWeightClassOptions(roster, NO_OPTION_FILTERS)) {
+      expect(
+        roster.some((a) => parseWeightClasses(a.weightClass).includes(option)),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("applyStartListPillSelection", () => {
+  const withClass = { ...DEFAULT_START_LIST_FILTERS, weightClass: "89kg" };
+
+  it("clears the weight class when gender, age group or adaptive changes", () => {
+    expect(applyStartListPillSelection(withClass, "gender", "Male")).toMatchObject({
+      gender: "Male",
+      weightClass: "",
+    });
+    expect(applyStartListPillSelection(withClass, "ageGroup", "U17").weightClass).toBe("");
+    expect(
+      applyStartListPillSelection(withClass, "adaptiveAthlete", ADAPTIVE_ATHLETES_FILTER)
+        .weightClass,
+    ).toBe("");
+  });
+
+  it("keeps the weight class for the other pills and ignores unknown ids", () => {
+    expect(applyStartListPillSelection(withClass, "wso", "Ohio")).toMatchObject({
+      wso: "Ohio",
+      weightClass: "89kg",
+    });
+    expect(applyStartListPillSelection(withClass, "club", "x")).toBe(withClass);
+  });
+
+  it("only accepts known sorts", () => {
+    expect(applyStartListPillSelection(withClass, "sort", "bestSnatch").sort).toBe("bestSnatch");
+    expect(applyStartListPillSelection(withClass, "sort", "").sort).toBe("alphabetical");
+    expect(applyStartListPillSelection(withClass, "sort", "bogus").sort).toBe("alphabetical");
+  });
+});
+
+describe("best-lift sort gating", () => {
+  it("treats only the best-lift sorts as premium", () => {
+    expect(isPremiumStartListPill("sort", "bestTotal")).toBe(true);
+    expect(isPremiumStartListPill("sort", "bestSnatch")).toBe(true);
+    expect(isPremiumStartListPill("sort", "bestCJ")).toBe(true);
+    expect(isPremiumStartListPill("sort", "entryTotal")).toBe(false);
+    expect(isPremiumStartListPill("sort", "")).toBe(false);
+    expect(isPremiumStartListPill("weightClass", "bestCJ")).toBe(false);
+  });
+
+  it("applies a best-lift sort only while the subscription is confirmed", () => {
+    expect(effectiveStartListSort("bestCJ", true)).toBe("bestCJ");
+    expect(effectiveStartListSort("bestCJ", false)).toBe("alphabetical");
+    expect(effectiveStartListSort("bestCJ", null)).toBe("alphabetical");
+    expect(effectiveStartListSort("entryTotal", false)).toBe("entryTotal");
+  });
+});
+
+describe("hasActiveStartListFilters", () => {
+  it("counts pills and a non-default sort, not the search box", () => {
+    expect(hasActiveStartListFilters(DEFAULT_START_LIST_FILTERS)).toBe(false);
+    expect(
+      hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, search: "smith" }),
+    ).toBe(false);
+    expect(
+      hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, sort: "entryTotal" }),
+    ).toBe(true);
+    expect(hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, club: "C" })).toBe(true);
+  });
+});
+
+describe("matchesAdaptiveFilter", () => {
+  it("passes everyone with no filter and splits on the flag otherwise", () => {
+    expect(matchesAdaptiveFilter({ adaptive: true }, "")).toBe(true);
+    expect(matchesAdaptiveFilter({ adaptive: true }, ADAPTIVE_ATHLETES_FILTER)).toBe(true);
+    expect(matchesAdaptiveFilter({ adaptive: false }, ADAPTIVE_ATHLETES_FILTER)).toBe(false);
+    expect(matchesAdaptiveFilter({ adaptive: false }, NON_ADAPTIVE_ATHLETES_FILTER)).toBe(true);
+  });
 });
 
 describe("formatSessionDisplayDate", () => {
@@ -181,5 +361,113 @@ describe("formatSessionDisplayDate", () => {
 
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
+  });
+});
+
+describe("Start List filtering and sorting", () => {
+  const roster = [
+    athlete({ name: "John Smith", club: "Barbell Club", wso: " Ohio ", weightClass: "110" }),
+    athlete({ name: "Jane Doe", gender: "Female", club: "Lift House", age: 16, weightClass: "64" }),
+    athlete({ name: "Alex Moore", club: "Barbell Club", adaptive: true, entryTotal: 250 }),
+  ];
+  const normalized = normalizeStartListAthletes(roster);
+  const names = (list: LiftResult[]) => list.map((a) => a.name);
+  const run = (overrides: Partial<StartListFilters>, starred: string[] = []) =>
+    names(
+      filterStartListAthletes(normalized, { ...DEFAULT_START_LIST_FILTERS, ...overrides }, starred),
+    );
+
+  it("keeps everyone with the default filters", () => {
+    expect(run({})).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+  });
+
+  it("applies each pill", () => {
+    expect(run({ weightClass: "110kg" })).toEqual(["John Smith"]);
+    expect(run({ club: "Barbell Club" })).toEqual(["John Smith", "Alex Moore"]);
+    expect(run({ club: STARRED_CLUBS_FILTER }, ["Lift House"])).toEqual(["Jane Doe"]);
+    expect(run({ ageGroup: "U17" })).toEqual(["Jane Doe"]);
+    expect(run({ adaptive: ADAPTIVE_ATHLETES_FILTER })).toEqual(["Alex Moore"]);
+    expect(run({ gender: "female" })).toEqual(["Jane Doe"]);
+    expect(run({ wso: "Ohio" })).toEqual(["John Smith"]);
+  });
+
+  it("searches names word by word", () => {
+    expect(run({ search: "Smith " })).toEqual(["John Smith"]);
+    expect(run({ search: "smith john" })).toEqual(["John Smith"]);
+    expect(run({ search: "smith jane" })).toEqual([]);
+  });
+
+  it("sorts A-Z, by entry total, and by bests with no bests last", () => {
+    const bests = {
+      "Jane Doe": { bestSnatch: 70, bestCJ: 90, bestTotal: 160 },
+      "John Smith": { bestSnatch: 120, bestCJ: 150, bestTotal: 270 },
+    };
+    const sorted = (sort: AthleteSortOption) =>
+      names([...roster].sort(compareStartListAthletes(sort, bests)));
+    expect(sorted("alphabetical")).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
+    expect(sorted("entryTotal")).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
+    expect(sorted("bestSnatch")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+    expect(sorted("bestCJ")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+    expect(sorted("bestTotal")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+  });
+});
+
+describe("Start List pill options", () => {
+  it("lists the age groups present in age order", () => {
+    expect(
+      buildAgeGroupOptions([
+        athlete({ name: "a", age: 40 }),
+        athlete({ name: "b", age: 15 }),
+        athlete({ name: "c", age: 0 }),
+      ]),
+    ).toEqual(["U15", "Masters 40"]);
+  });
+
+  it("lists distinct trimmed WSOs A-Z", () => {
+    expect(
+      buildWsoOptions([
+        athlete({ name: "a", wso: " Ohio" }),
+        athlete({ name: "b", wso: "Florida" }),
+        athlete({ name: "c", wso: "Ohio " }),
+        athlete({ name: "d", wso: "  " }),
+        athlete({ name: "e" }),
+      ]),
+    ).toEqual(["Florida", "Ohio"]);
+  });
+});
+
+describe("getShareGroup", () => {
+  it("prefers a club, never the Favorites filter, then the WSO", () => {
+    expect(getShareGroup({ club: "Barbell Club", wso: "Ohio" })).toBe("Barbell Club");
+    expect(getShareGroup({ club: STARRED_CLUBS_FILTER, wso: "Ohio" })).toBe("Ohio");
+    expect(getShareGroup({ club: STARRED_CLUBS_FILTER, wso: "" })).toBe("");
+  });
+});
+
+describe("buildSessionDetailsLookup", () => {
+  it("finds a session's day and times by number", () => {
+    const lookup = buildSessionDetailsLookup([
+      {
+        date: "Saturday",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "1",
+            number: 3,
+            startTime: "9:00 AM",
+            weighInTime: "7:00 AM",
+            platforms: [{ platform: "Red", weightClass: "89" }],
+          },
+        ],
+      },
+    ]);
+    expect(lookup(3)).toEqual({
+      date: "2026-06-20",
+      displayDate: "Saturday",
+      startTime: "9:00 AM",
+      weighInTime: "7:00 AM",
+      platforms: [{ platform: "Red", weightClass: "89" }],
+    });
+    expect(lookup(4)).toBeNull();
   });
 });

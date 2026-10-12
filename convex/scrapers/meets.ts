@@ -5,6 +5,7 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, withRetries } from './lib/http';
 import { MEET_SEARCHES, readAllWidgetPages, transformMeets, widgetPageUrl, type ScrapedMeet } from './parse/meets';
+import { sourcesFailed } from '../lib/cronAlerts';
 
 /**
  * Upcoming USAW meets (port of meet-sync: `sync-meets.js`,
@@ -64,9 +65,12 @@ export const run = internalAction({
       console.log(`meets (${search.key}): ${result.fetched} fetched, ${toIngest.length} synced, ${result.inserted.length} new, ${result.updated} updated`);
     }
     // A meet left out for unreadable dates fails the run (after the rest are
-    // stored) so the alert names it.
-    const failed = results.flatMap((r) => (r.error ? [`${r.key}: ${r.error}`] : r.rejected.map((problem) => `${r.key}: ${problem}`)));
-    if (failed.length) throw new Error(`meets: ${failed.join('; ')}`);
+    // stored) so the alert names it. The search is the failing source: its
+    // key is stable from run to run, the problem text is not.
+    const failed = results.flatMap((r) =>
+      r.error ? [{ source: r.key, error: r.error }] : r.rejected.map((problem) => ({ source: r.key, error: problem })),
+    );
+    if (failed.length) throw sourcesFailed('meets', failed);
     return results;
   },
 });
