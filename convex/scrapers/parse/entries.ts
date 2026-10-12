@@ -58,13 +58,20 @@ function whole(value: number | string | null | undefined): number {
 }
 
 /**
- * One entry as the Node scraper built it: the last name cut at its first
- * space ("Mullen (She/her)" -> "Mullen"; pronouns follow the name), a
- * missing membership number replaced by its placeholder.
+ * The last name without the pronouns some entrants append in parentheses
+ * ("Mullen (She/her)" -> "Mullen"), every word of it kept ("De La Cruz").
+ * The Node scraper cut the name at its first space, which cut every
+ * multi-word surname too ("De La Cruz" -> "De"), so those entries never
+ * matched the athlete's results.
  */
+export function lastNameOf(raw: string | null | undefined): string {
+  return (raw ?? '').replace(/\([^)]*\)?/g, '').split(/\s+/).filter(Boolean).join(' ');
+}
+
+/** One entry: pronouns dropped from the last name, a missing membership number replaced by its placeholder. */
 export function entryFromRow(row: EntryRow, meet: string): Entry {
   const first = (row.first_name ?? '').trim();
-  const last = (row.last_name ?? '').trim().split(' ')[0];
+  const last = lastNameOf(row.last_name);
   const name = `${first} ${last}`;
   const memberId = (row.member_id ?? '').trim();
   return {

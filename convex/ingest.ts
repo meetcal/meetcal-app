@@ -350,6 +350,29 @@ const entryRow = v.object({
 const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
 
 /**
+ * The one stored athlete whose folded name is a leading run of whole words of
+ * the entrant's (`nameKey`) with the same membership number, or, for an
+ * entrant without one, a placeholder id and the same gender: the row the old
+ * entries scraper wrote after cutting the surname at its first space. A name
+ * the incoming list still carries as an entrant of its own is never taken.
+ */
+export function truncatedEntryRow<T extends { memberId: string; name: string; gender: string }>(
+  existing: readonly T[],
+  row: { memberId: string },
+  nameKey: string,
+  gender: string,
+  incomingKeys: ReadonlySet<string>,
+): T | undefined {
+  const idless = isPlaceholderMemberId(row.memberId);
+  const candidates = existing.filter((a) => {
+    const key = normalizeName(a.name);
+    if (!key || !nameKey.startsWith(`${key} `) || incomingKeys.has(key)) return false;
+    return idless ? isPlaceholderMemberId(a.memberId) && a.gender === gender : a.memberId === row.memberId;
+  });
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+/**
  * One meet's Sport80 entries (`upsert_athlete(..., preserve_assigned_session=True)`).
  * An athlete with a membership number is the row with that number and name
  * (names compared case- and space-insensitively) at the meet; one without is
@@ -368,6 +391,7 @@ export const upsertEntryAthletes = internalMutation({
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
     const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0 };
+    const incomingKeys = new Set(rows.map((row) => normalizeName(row.name)));
     const oneOffIds = new Map<string, boolean>();
     const isOneOff = async (memberId: string) => {
       if (!/^[1-9]\d{8}$/.test(memberId)) return false;
@@ -396,6 +420,10 @@ export const upsertEntryAthletes = internalMutation({
       } else {
         match = existing.find((a) => a.memberId === row.memberId && normalizeName(a.name) === nameKey);
       }
+      // A row the old scraper stored with the surname cut at its first space
+      // ("Maria De" for "Maria De La Cruz", its placeholder id minted from
+      // that name) is this entrant: repair it rather than add a second row.
+      match ??= truncatedEntryRow(existing, row, nameKey, gender, incomingKeys);
       const values = {
         // An adopted older row keeps its id rather than take a placeholder.
         memberId: idless && match && !isPlaceholderMemberId(match.memberId) ? match.memberId : row.memberId,
