@@ -1,17 +1,20 @@
 import { v } from 'convex/values';
-import { internalAction } from './_generated/server';
+import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { START_MARGIN_MS, type Notice } from './lib/cronAlerts';
+import { describeFailure, START_MARGIN_MS, type Notice } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './scrapers/lib/email';
+import { pingHeartbeat } from './lib/heartbeat';
 
 /**
  * Every scheduled job, its UTC schedule and what it runs. `crons.ts`
  * schedules each through `run` below, which records the run in
- * `cron_status` and emails `ALERT_EMAIL` (OneSignal) when a job fails, and
- * again when it recovers. The hourly `cron-watchdog` emails when a job missed
- * its run or never finished. Without `ALERT_EMAIL` (the dev deployment) the
+ * `cron_status` and emails `ALERT_EMAIL` (OneSignal) when a job fails, when
+ * a source starts failing in a job that already is, and when it recovers.
+ * The hourly `cron-watchdog` emails when a job missed its run or never
+ * finished, and pings `HEARTBEAT_URL` so an external monitor notices when
+ * the backend goes quiet. Without `ALERT_EMAIL` (the dev deployment) the
  * alerts are only logged.
  */
 type Job = {
@@ -43,8 +46,13 @@ export const JOBS: Record<string, Job> = {
   entries: { schedule: '25 7 * * *', run: { kind: 'action', fn: internal.scrapers.entries.run } },
 };
 
-/** The watchdog runs on its own schedule, outside JOBS: it is what checks them. */
+/**
+ * The watchdog runs on its own schedule, outside JOBS: it is what checks
+ * them. Its runs are recorded under WATCHDOG_JOB, and every job's run checks
+ * that it ran.
+ */
 export const WATCHDOG_SCHEDULE = '45 * * * *';
+export const WATCHDOG_JOB = 'cron-watchdog';
 
 const SUBJECTS: Record<Notice['kind'], string> = {
   failed: 'failed',
@@ -67,6 +75,34 @@ async function alert(notices: Notice[]): Promise<void> {
   await sendEmail(to, subject, `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif"><ul>${items}</ul><p style="color:#6e7781">${escapeHtml(deployment)} · Convex dashboard → Logs for the full run</p></div>`);
 }
 
+/** Clears emailed alerts from each job's queue. */
+async function markAllSent(ctx: ActionCtx, notices: readonly Notice[]): Promise<void> {
+  const byJob = new Map<string, { kind: string; detail: string }[]>();
+  for (const { job, kind, detail } of notices) byJob.set(job, [...(byJob.get(job) ?? []), { kind, detail }]);
+  for (const [job, sent] of byJob) await ctx.runMutation(internal.cronStatus.markSent, { job, sent });
+}
+
+/**
+ * Records a run's outcome in `cron_status` and sends the alerts it queued,
+ * with `extra` alerts already queued for another job. A failed send leaves
+ * them queued: the watchdog sends them next hour. Returns whether every
+ * alert was sent (true when there were none).
+ */
+async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: Notice[] = []): Promise<boolean> {
+  const { error, failedSources } = failure === undefined ? { error: undefined, failedSources: undefined } : describeFailure(failure);
+  const unsent: Notice[] = await ctx.runMutation(internal.cronStatus.finish, { job, error, failedSources });
+  const notices = [...unsent, ...extra];
+  if (!notices.length) return true;
+  try {
+    await alert(notices);
+    await markAllSent(ctx, notices);
+    return true;
+  } catch (sendError) {
+    console.error(`cron alert for ${job} could not be sent: ${(sendError as Error).message}`);
+    return false;
+  }
+}
+
 export const run = internalAction({
   args: { job: v.string() },
   handler: async (ctx, { job }): Promise<void> => {
@@ -80,17 +116,22 @@ export const run = internalAction({
     } catch (error) {
       failure = error;
     }
-    const message = failure === undefined ? undefined : failure instanceof Error ? failure.message : String(failure);
-    const unsent: Notice[] = await ctx.runMutation(internal.cronStatus.finish, { job, error: message });
-    if (unsent.length) {
-      try {
-        await alert(unsent);
-        await ctx.runMutation(internal.cronStatus.markSent, { job, sent: unsent.map(({ kind, detail }) => ({ kind, detail })) });
-      } catch (error) {
-        // Left queued: the watchdog sends it next hour.
-        console.error(`cron alert for ${job} could not be sent: ${(error as Error).message}`);
-      }
+    // Every job's run also checks on the watchdog, which nothing else does:
+    // one that missed its run or never finished is alerted from here, and
+    // while it is in trouble its queued alerts (which it would send itself)
+    // are sent from here too. A check that fails must not keep this run
+    // from being recorded.
+    let watchdogQueued: Notice[] = [];
+    try {
+      await ctx.runMutation(internal.cronStatus.raiseAlert, {
+        job: WATCHDOG_JOB,
+        due: lastScheduled(WATCHDOG_SCHEDULE, Date.now() - START_MARGIN_MS),
+      });
+      watchdogQueued = await ctx.runQuery(internal.cronStatus.queuedWhileAlerting, { job: WATCHDOG_JOB });
+    } catch (error) {
+      console.error(`watchdog check from ${job} failed: ${(error as Error).message}`);
     }
+    await finishRun(ctx, job, failure, watchdogQueued);
     // Rethrown so the run also shows as failed in the Convex dashboard.
     if (failure !== undefined) throw failure;
   },
@@ -99,28 +140,48 @@ export const run = internalAction({
 /**
  * Hourly: queues an alert for a job whose due run never started or that is
  * still running long after starting, then sends every queued alert (these,
- * and any whose email failed earlier), clearing each only once sent.
+ * and any whose email failed earlier), clearing each only once sent. Its own
+ * runs are recorded in `cron_status` like a job's (every job's run checks it
+ * ran), and a run that did all that pings the external heartbeat
+ * (`lib/heartbeat.ts`), whose monitor alerts when the pings stop. A run
+ * whose own alerts could not be sent does not ping.
  */
 export const watchdog = internalAction({
   args: {},
   handler: async (ctx): Promise<Notice[]> => {
-    const now = Date.now();
-    const statuses = new Map((await ctx.runQuery(internal.cronStatus.all, {})).map((s) => [s.job, s]));
-    const pending: Notice[] = [];
-    for (const [job, status] of statuses) {
-      for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
+    await ctx.runMutation(internal.cronStatus.start, { job: WATCHDOG_JOB });
+    let failure: unknown;
+    let sent: Notice[] = [];
+    try {
+      sent = await sweep(ctx);
+    } catch (error) {
+      failure = error;
     }
-    for (const [job, { schedule }] of Object.entries(JOBS)) {
-      // Judged and queued in one mutation, against the job's current row; queued
-      // before sending, so a failed send is retried rather than re-detected.
-      const notice: Notice | null = await ctx.runMutation(internal.cronStatus.raiseAlert, { job, due: lastScheduled(schedule, now - START_MARGIN_MS) });
-      if (notice) pending.push(notice);
-    }
-    if (pending.length === 0) return [];
-    await alert(pending);
-    const byJob = new Map<string, { kind: string; detail: string }[]>();
-    for (const { job, kind, detail } of pending) byJob.set(job, [...(byJob.get(job) ?? []), { kind, detail }]);
-    for (const [job, sent] of byJob) await ctx.runMutation(internal.cronStatus.markSent, { job, sent });
-    return pending;
+    const delivered = await finishRun(ctx, WATCHDOG_JOB, failure);
+    if (failure !== undefined) throw failure;
+    // Alerts left unsent (its own, say "is running again") mean alerting
+    // is broken: no ping, so the external monitor notices.
+    if (delivered) await pingHeartbeat(process.env.HEARTBEAT_URL);
+    return sent;
   },
 });
+
+/** The watchdog's check of every job, and its send of every queued alert. */
+async function sweep(ctx: ActionCtx): Promise<Notice[]> {
+  const now = Date.now();
+  const statuses = new Map((await ctx.runQuery(internal.cronStatus.all, {})).map((s) => [s.job, s]));
+  const pending: Notice[] = [];
+  for (const [job, status] of statuses) {
+    for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
+  }
+  for (const [job, { schedule }] of Object.entries(JOBS)) {
+    // Judged and queued in one mutation, against the job's current row; queued
+    // before sending, so a failed send is retried rather than re-detected.
+    const notice: Notice | null = await ctx.runMutation(internal.cronStatus.raiseAlert, { job, due: lastScheduled(schedule, now - START_MARGIN_MS) });
+    if (notice) pending.push(notice);
+  }
+  if (pending.length === 0) return [];
+  await alert(pending);
+  await markAllSent(ctx, pending);
+  return pending;
+}

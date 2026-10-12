@@ -56,6 +56,10 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
     expect(retired.total_by).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
   });
 
+  it('fails the tab on a lift it cannot read instead of reading it as 0', () => {
+    expect(() => parseUmwfSheet([',60 kg Category,,', ',Snatch,125*,DOE Jan'].join('\n'), 'Masters 30', 'men')).toThrow('unreadable lift value "125*"');
+  });
+
   it('formats weight classes like the Python scraper', () => {
     expect(formatWeightClass('86+ kg Category')).toBe('86+kg');
     expect(formatWeightClass('60 KG Category')).toBe('60kg');

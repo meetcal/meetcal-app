@@ -16,7 +16,7 @@ describe('Tennessee-Kentucky WSO sheet (port of scraper_tnky.py)', () => {
       'YOUTH: MEN,44 KG,13 & Under 48 KG',
       ...lift('SNATCH', '40', ''),
       ...lift('C&J', '50', '60'),
-      ...lift('TOTAL', '90', 'x'),
+      ...lift('TOTAL', '90', 'vacant'),
       'SENIORS: WOMEN,,15 years old <',
       ',86+ KG,notes',
       ...lift('SNATCH', '100', ''),
@@ -29,6 +29,12 @@ describe('Tennessee-Kentucky WSO sheet (port of scraper_tnky.py)', () => {
       ['U13', 'Men', '48', null, 60, null],
       ['Senior', 'Women', '86+', 100, 130, 230],
     ]);
+  });
+
+  it('fails on a lift cell it cannot read rather than clearing the record', () => {
+    const lift = (name: string, ...values: string[]) => [[name, ...values].join(','), 'Name,a,b', 'Date,x,y'];
+    const csv = ['YOUTH: MEN,44 KG,13 & Under 48 KG', ...lift('SNATCH', '40', ''), ...lift('C&J', '50', '102 kg'), ...lift('TOTAL', '90', ''), ''].join('\n');
+    expect(() => parseTnky(csv, 'Tennessee-Kentucky')).toThrow('unreadable lift value "102 kg"');
   });
 
   it('reads who set each lift from the name and date rows, a repeated class keeping the later column with its holder', () => {
