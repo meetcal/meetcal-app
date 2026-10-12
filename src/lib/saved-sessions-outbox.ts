@@ -284,9 +284,11 @@ export async function adoptPreOutboxSessions(
   if (serverIsEmpty && localSessions.length > 0) {
     await updateOutbox(userId, (outbox) => {
       for (const session of localSessions) {
-        if (outbox.sessions[session.id]) continue;
+        // Same check as `markSessionPut`: a body the reader would drop is not queued.
+        const body = parseSessionBody(session);
+        if (!body || outbox.sessions[body.id]) continue;
         const rev = outbox.nextRev++;
-        outbox.sessions[session.id] = { op: 'put', rev, meet: session.meet, session };
+        outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
         adopted += 1;
       }
     });
@@ -569,11 +571,14 @@ async function runPass(
     const next = candidatesInRevOrder(outbox).find((candidate) => {
       if (attempted.has(`${candidate.kind}:${candidate.key}:${candidate.rev}`)) return false;
       if (holdAll) return false;
-      // A session waits while any reset of its meet is still stored, so the
-      // reset cannot land after it and delete it. Checked against the stored
-      // outbox, not this pass's failures: a reset that was delivered but whose
-      // clear was lost is sent again next flush, after any save sent now.
-      if (candidate.kind === 'session') return resetRevsFor(candidate.entry.meet, outbox).length === 0;
+      // A session waits while an older reset of its meet is still stored, so
+      // the reset cannot land after it and delete it. Checked against the
+      // stored outbox, not this pass's failures: a reset that was delivered but
+      // whose clear was lost is sent again next flush, after any save sent now.
+      // A newer reset does not hold it: the session goes first, as revs order.
+      if (candidate.kind === 'session') {
+        return !resetRevsFor(candidate.entry.meet, outbox).some((rev) => rev < candidate.rev);
+      }
       return true;
     });
     if (!next) return 'done';

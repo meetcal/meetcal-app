@@ -318,6 +318,13 @@ describe("mergeServerSessions", () => {
 });
 
 describe("adoptPreOutboxSessions", () => {
+  it("skips a local row the outbox could not read back", async () => {
+    expect(
+      await adoptPreOutboxSessions(USER, true, [session("old"), session("bad", { sessionNumber: 0 })]),
+    ).toBe(1);
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
+  });
+
   it("queues pre-outbox local rows once, only when the server is empty", async () => {
     expect(await adoptPreOutboxSessions(USER, true, [session("old")])).toBe(1);
     expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
@@ -421,6 +428,25 @@ describe("flushOutbox", () => {
     await flushOutbox(USER, getToken);
     expect(mockDeleteAll).toHaveBeenCalledTimes(2);
     expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(mockPut.mock.invocationCallOrder[0]);
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
+
+  it("sends a write older than its meet's reset before the reset, not after it", async () => {
+    // No current writer stores this (a reset drops its meet's older entries),
+    // but if one did, holding the write until after the reset would let it
+    // undo the reset on the server.
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({
+        nextRev: 3,
+        resets: { "Test Meet": 2 },
+        sessions: { a: { op: "put", rev: 1, meet: "Test Meet", session: session("a") } },
+      }),
+    );
+
+    await flushOutbox(USER, getToken);
+
+    expect(mockPut.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteAll.mock.invocationCallOrder[0]);
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
