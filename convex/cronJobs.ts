@@ -25,9 +25,10 @@ type Job = {
 };
 
 export const JOBS: Record<string, Job> = {
-  // Hourly rather than the VPS job's daily run: each meet's end date is
-  // checked on its own calendar, so a completion lands within the hour.
-  'complete-ended-meets': { schedule: '15 * * * *', run: { kind: 'mutation', fn: internal.ingest.completeEndedMeets } },
+  // Hourly rather than the VPS job's daily run: each meet's dates are
+  // checked on its own calendar, so a meet turns ongoing or completed within
+  // the hour. Named for what it first did; the name keys its `cron_status`.
+  'complete-ended-meets': { schedule: '15 * * * *', run: { kind: 'mutation', fn: internal.ingest.updateMeetStatuses } },
   urlwatch: { schedule: '0 * * * *', run: { kind: 'action', fn: internal.scrapers.urlwatch.run } },
   // Catches views up if a refresh failed or was lost, and alerts when they
   // fall hours behind (`views:refreshJob`).

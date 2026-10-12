@@ -1,13 +1,20 @@
 /**
  * Folds an athlete name for case- and whitespace-insensitive matching:
- * collapses runs of whitespace to one space, trims, lowercases.
+ * composes it to Unicode NFC, collapses runs of whitespace to one space,
+ * trims, lowercases.
  *
- * The one spelling of the rule in `convex/`; it matches the Rust API's
- * `normalize_name` and the `lower(btrim(regexp_replace(name, '\s+', ' ')))`
- * Postgres indexes, and is what `name_key` columns are built from.
+ * NFC, so a name sent with a precomposed letter (é) and with a letter and a
+ * combining accent (e + U+0301) is one athlete: sources send both. Not NFKC,
+ * which also folds compatibility characters (ligatures, superscripts,
+ * full-width letters) and so can join spellings that are different text; NFC
+ * joins only spellings that are the same text.
+ *
+ * The one spelling of the rule in `convex/`, and what `nameKey` is built
+ * from: a change here rekeys stored rows, so run
+ * `migrations:backfillNameKeys` after deploying one.
  */
 export function normalizeName(name: string): string {
-  return name.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
+  return name.normalize('NFC').split(/\s+/).filter(Boolean).join(' ').toLowerCase();
 }
 
 /** Trims every name and drops the empty ones (`clean_name_list`). */

@@ -12,38 +12,39 @@
  * suggestions (exact-name search reads their history directly).
  */
 
-/** Earlier builds stored `lowercased \u0001 original` lines; read those too. */
-const LEGACY_SEPARATOR = '\u0001';
-
 export function directoryText(names: readonly string[]): string {
   return names.join('\n');
 }
 
 export function directoryNames(text: string): string[] {
-  const names: string[] = [];
-  for (const line of text.split('\n')) {
-    if (line.length === 0) continue;
-    const legacy = line.indexOf(LEGACY_SEPARATOR);
-    names.push(legacy === -1 ? line : line.slice(legacy + 1));
-  }
-  return names;
+  return text.split('\n').filter((line) => line.length > 0);
 }
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** `ILIKE '%query%'`: a case-insensitive substring test (Unicode case folding). */
+/**
+ * `ILIKE '%query%'`: a case-insensitive substring test (Unicode case
+ * folding), on both sides composed to NFC, so a precomposed and a decomposed
+ * accent match each other (`normalizeName` folds names the same way).
+ */
 export function nameMatcher(query: string): (name: string) => boolean {
-  const pattern = new RegExp(escapeRegExp(query), 'iu');
-  return (name) => pattern.test(name);
+  const pattern = new RegExp(escapeRegExp(query.normalize('NFC')), 'iu');
+  return (name) => pattern.test(name.normalize('NFC'));
 }
 
-/** Up to `limit` directory names containing `query`, ignoring case, in directory order. */
-export function searchDirectory(text: string, query: string, limit: number): string[] {
+/**
+ * Up to `limit` directory names containing `query`, ignoring case and
+ * Unicode composition (as `nameMatcher`), in directory order. A name stored
+ * decomposed is returned composed; it finds the same athlete.
+ */
+export function searchDirectory(directory: string, query: string, limit: number): string[] {
   const names: string[] = [];
   if (query.length === 0 || query.includes('\n')) return names;
-  const pattern = new RegExp(escapeRegExp(query), 'giu');
+  // Nearly free on text that is already NFC, which nearly all of it is.
+  const text = directory.normalize('NFC');
+  const pattern = new RegExp(escapeRegExp(query.normalize('NFC')), 'giu');
   while (names.length < limit) {
     const match = pattern.exec(text);
     if (!match) break;
