@@ -37,8 +37,8 @@ describe("pruneStartedSessions with the real server clock", () => {
     calls.length = 0;
     (getMeetConfig as jest.Mock).mockResolvedValue({ time: { timeZoneIdentifier: "America/New_York" } });
     setApiTransportForTests(async (call: ApiCall) => {
-      calls.push(call.fn);
-      if (call.fn === "system:serverTime") return Date.now();
+      calls.push(call.kind === "clock" ? "clock" : call.fn);
+      if (call.kind === "clock") return Date.now();
       if (call.fn === "users:preferences") return { auto_unsave_started_sessions: true };
       if (call.fn === "meets:list") return { etag: '"m"', json: "[]" };
       throw new Error(`unexpected ${call.fn}`);
@@ -62,6 +62,6 @@ describe("pruneStartedSessions with the real server clock", () => {
       removeSession,
     });
     expect(removeSession).toHaveBeenCalledWith("old");
-    expect(calls.filter((fn) => fn === "system:serverTime")).toHaveLength(2);
+    expect(calls.filter((fn) => fn === "clock")).toHaveLength(2);
   });
 });

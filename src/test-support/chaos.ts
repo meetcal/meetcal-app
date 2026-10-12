@@ -3,6 +3,7 @@ import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import * as fc from 'fast-check';
 
 import { withTransportFaults, type TransportFault } from '@/lib/api/chaos-transport';
+import { isClockCall } from '@/lib/api/json-transport-stub';
 import { setApiTransportForTests, type ApiCall, type Transport } from '@/lib/api/transport';
 import { hostileStringArb } from '@/test-support/arbitraries';
 
@@ -68,7 +69,7 @@ export type ChaosTransport = {
 
 /**
  * Installs `inner` behind `plan` as the app's transport. The server-clock
- * sample (`system:serverTime`) passes through untouched unless
+ * sample (`isClockCall`) passes through untouched unless
  * `faultClockCalls` is set, so a plan's faults land on the calls under test.
  */
 export function installChaosTransport(
@@ -81,7 +82,7 @@ export function installChaosTransport(
   setApiTransportForTests(
     withTransportFaults(inner, (call) => {
       const fault: TransportFault =
-        !faultClockCalls && call.fn === 'system:serverTime' ? { kind: 'pass' } : nextFault();
+        !faultClockCalls && isClockCall(call) ? { kind: 'pass' } : nextFault();
       calls.push({ call, fault });
       return fault;
     }),

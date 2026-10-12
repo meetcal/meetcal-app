@@ -1,7 +1,7 @@
 use super::{
     analytics::{WrappedStats, wrapped_stats},
     athlete_autocomplete::AthleteAutocomplete,
-    models::{AthleteSearchQuery, AthleteSearchResponse},
+    models::{AthleteSearchQuery, AthleteSearchResponse, LiftResult},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
@@ -43,25 +43,46 @@ pub fn Wrapped() -> impl IntoView {
 }
 
 async fn athlete(name: &str, year: i32) -> Result<(String, WrappedStats), String> {
+    // `results:search` includes both ends of the range.
     let query = AthleteSearchQuery::between(
         name.to_owned(),
         format!("{year:04}-01-01"),
-        format!("{:04}-01-01", year + 1),
+        format!("{year:04}-12-31"),
     );
     let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
         .await
         .map_err(|error| error.to_string())?;
+    let (athlete_name, results) = wrapped_rows(name, year, response)?;
+    Ok((athlete_name, wrapped_stats(&results)))
+}
+
+/// The athlete and rows one Wrapped scores, or why there are none. A
+/// truncated answer may miss part of the year, or, from the name-contains
+/// fallback, the athlete meant, so it is never scored or read as "no results".
+fn wrapped_rows(
+    name: &str,
+    year: i32,
+    response: AthleteSearchResponse,
+) -> Result<(String, Vec<LiftResult>), String> {
+    let suffix = if response.suggestions.is_empty() {
+        String::new()
+    } else {
+        format!(" Try: {}.", response.suggestions.join(", "))
+    };
+    if response.truncated {
+        return Err(match response.matched_name {
+            Some(matched) => format!(
+                "{matched} has more {year} results than one search returns, so a Wrapped would miss some."
+            ),
+            None => format!("Too many athletes match {name}. Type more of the name.{suffix}"),
+        });
+    }
     if response.results.is_empty() {
-        let suffix = if response.suggestions.is_empty() {
-            String::new()
-        } else {
-            format!(" Try: {}.", response.suggestions.join(", "))
-        };
         return Err(format!("No {year} results found for {name}.{suffix}"));
     }
     Ok((
         response.matched_name.unwrap_or_else(|| name.to_owned()),
-        wrapped_stats(&response.results),
+        response.results,
     ))
 }
 async fn load_wrapped(request: WrappedRequest) -> Result<Option<WrappedResponse>, String> {
@@ -89,6 +110,46 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(query["endDate"], "2027-01-01");
+    }
+
+    fn search_response(json: &str) -> AthleteSearchResponse {
+        serde_json::from_str(json).unwrap()
+    }
+
+    const ROW: &str = r#"{"meet":"Nationals","date":"2026-06-20","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":225.0,"adaptive":false}"#;
+
+    #[test]
+    fn wrapped_scores_a_whole_exact_answer() {
+        let response = search_response(&format!(
+            r#"{{"matched_name":"Test Athlete","suggestions":[],"results":[{ROW}],"truncated":false}}"#
+        ));
+        let (name, rows) = wrapped_rows("test athlete", 2026, response).unwrap();
+        assert_eq!(name, "Test Athlete");
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn wrapped_refuses_an_exact_answer_that_was_cut() {
+        let response = search_response(&format!(
+            r#"{{"matched_name":"Test Athlete","suggestions":[],"results":[{ROW}],"truncated":true}}"#
+        ));
+        let error = wrapped_rows("test athlete", 2026, response).unwrap_err();
+        assert!(error.contains("would miss some"), "{error}");
+    }
+
+    #[test]
+    fn wrapped_asks_to_narrow_a_cut_fallback_rather_than_say_no_results() {
+        let empty = search_response(
+            r#"{"matched_name":null,"suggestions":["Ann Lee"],"results":[],"truncated":true}"#,
+        );
+        let error = wrapped_rows("an", 2026, empty).unwrap_err();
+        assert!(error.contains("Type more of the name"), "{error}");
+        assert!(!error.contains("No 2026 results"), "{error}");
+
+        let some = search_response(&format!(
+            r#"{{"matched_name":null,"suggestions":["Ann Lee"],"results":[{ROW}],"truncated":true}}"#
+        ));
+        assert!(wrapped_rows("an", 2026, some).is_err());
     }
 
     #[test]
