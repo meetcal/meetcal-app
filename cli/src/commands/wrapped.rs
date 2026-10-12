@@ -29,7 +29,7 @@ pub struct WrappedArgs {
 pub async fn run(args: WrappedArgs) -> Result<()> {
     let year = args.year.unwrap_or_else(current_year);
     let response = get_athlete_year(&args.name, year).await?;
-    let results = exact_name_results(&args.name, response)?;
+    let results = exact_name_results(&args.name, year, response)?;
 
     if results.is_empty() {
         bail!("No results found for \"{}\" in {year}", args.name);
@@ -54,13 +54,13 @@ pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
     query(queries::SEARCH, &args).await
 }
 
-pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<LiftingResults>> {
+pub fn exact_name_results(
+    name: &str,
+    year: i32,
+    response: SearchResponse,
+) -> Result<Vec<LiftingResults>> {
     let results = filter_exact_name(name, response.results);
-
-    // A cut answer kept only the most recent rows, so a Wrapped would miss some.
-    if response.truncated && !results.is_empty() {
-        bail!("\"{name}\" has more results in that year than one search returns");
-    }
+    refuse_cut_year(name, year, response.truncated, &results)?;
 
     if results.is_empty() && !response.suggestions.is_empty() {
         let narrow = if response.truncated {
@@ -75,6 +75,24 @@ pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<Li
     }
 
     Ok(results)
+}
+
+/// Refuses stats for a year the search cut. A cut answer (`truncated`) kept only the most recent
+/// rows, so `results`, the exact name's rows in it, miss part of that year. Every report built
+/// from `get_athlete_year` goes through this before `calculate_wrapped_stats`.
+pub fn refuse_cut_year(
+    name: &str,
+    year: i32,
+    truncated: bool,
+    results: &[LiftingResults],
+) -> Result<()> {
+    if truncated && !results.is_empty() {
+        bail!(
+            "\"{name}\" has more results in {year} than one search returns, so the {year} stats \
+             would be incomplete. `meetcal progress \"{name}\" --since {year}` lists every result."
+        );
+    }
+    Ok(())
 }
 
 pub fn filter_exact_name(name: &str, results: Vec<LiftingResults>) -> Vec<LiftingResults> {
@@ -454,7 +472,7 @@ mod tests {
             truncated: false,
         };
 
-        let error = exact_name_results("Janet Doe", response)
+        let error = exact_name_results("Janet Doe", 2026, response)
             .unwrap_err()
             .to_string();
 
@@ -471,7 +489,9 @@ mod tests {
             truncated: true,
         };
 
-        let error = exact_name_results("Doe", response).unwrap_err().to_string();
+        let error = exact_name_results("Doe", 2026, response)
+            .unwrap_err()
+            .to_string();
 
         assert!(
             error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)")
@@ -487,11 +507,12 @@ mod tests {
             truncated: true,
         };
 
-        let error = exact_name_results("Jane Doe", response)
+        let error = exact_name_results("Jane Doe", 2026, response)
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("more results in that year"));
+        assert!(error.contains("more results in 2026"));
+        assert!(error.contains("meetcal progress \"Jane Doe\" --since 2026"));
     }
 
     #[test]
