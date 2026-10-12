@@ -11,12 +11,14 @@ import {
   joinRoster,
   meetByName,
   meetLocalDate,
+  narrowSessions,
   packageAthlete,
   packageStaticText,
   plainRoster,
   toApiMeet,
   yearBestsFromTimelines,
   type ApiScheduleRow,
+  type SessionRow,
   type Timeline,
   type TimelinesView,
   type ZoneFormatters,
@@ -208,21 +210,6 @@ export const athletes = query({
 
 export async function liveAthletesJson(ctx: QueryCtx, meet: string): Promise<string> {
   return JSON.stringify(plainRoster(await computeRoster(ctx, meet), meet));
-}
-
-type SessionRow = ReturnType<typeof athletesWithSessions>[number];
-
-/** The inner-join narrowing of the unfiltered (left-joined) start list. */
-function narrowSessions(rows: SessionRow[], sessionNumber?: number, platform?: string): SessionRow[] {
-  const platformKey = platform === undefined ? undefined : normalizeName(platform);
-  return rows.filter(
-    (row) =>
-      row.date !== null &&
-      row.session_number !== null &&
-      row.session_platform !== null &&
-      (sessionNumber === undefined || row.session_number === sessionNumber) &&
-      (platformKey === undefined || normalizeName(row.session_platform) === platformKey),
-  );
 }
 
 /**

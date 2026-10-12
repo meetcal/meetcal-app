@@ -3,6 +3,8 @@ import type { Doc } from '../_generated/dataModel';
 import { normalizeName } from './names';
 import {
   accumulateBests,
+  bestsSince,
+  namedBests,
   toApiLiftingResult,
   ZERO_BESTS,
   type ApiLiftingResult,
@@ -291,34 +293,49 @@ export function plainRoster(items: readonly RosterItem[], meet: string) {
  * (case-folded) it is an inner join, so athletes without a matching schedule
  * row drop out; unfiltered it is the left join.
  */
-export function athletesWithSessions(items: readonly RosterItem[], sessionNumber?: number, platform?: string) {
+export function athletesWithSessions(items: readonly RosterItem[], sessionNumber?: number, platform?: string): SessionRow[] {
+  const rows = items.map(sessionRow);
+  return sessionNumber === undefined && platform === undefined ? rows : narrowSessions(rows, sessionNumber, platform);
+}
+
+function sessionRow(item: RosterItem) {
+  return {
+    member_id: item.member_id,
+    name: item.name,
+    age: item.age,
+    club: item.club,
+    wso: item.wso,
+    gender: item.gender,
+    weight_class: item.weight_class,
+    entry_total: item.entry_total,
+    adaptive: item.adaptive,
+    session_number: item.session?.session_number ?? null,
+    session_platform: item.session?.session_platform ?? null,
+    date: item.session?.date ?? null,
+    start_time: item.session?.start_time ?? null,
+    weigh_in_time: item.session?.weigh_in_time ?? null,
+  };
+}
+
+/** One row of `/meets/athletes-sessions`. */
+export type SessionRow = ReturnType<typeof sessionRow>;
+
+/**
+ * The inner-join narrowing of the (left-joined) start list: rows of a
+ * scheduled session (a matching schedule row, so a date) in `sessionNumber`
+ * and on `platform` (case-folded), each when given. The query narrows a
+ * stored view with it, and `athletesWithSessions` a computed list.
+ */
+export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: number, platform?: string): SessionRow[] {
   const platformKey = platform === undefined ? undefined : normalizeName(platform);
-  const filtered = sessionNumber !== undefined || platformKey !== undefined;
-  const rows = [];
-  for (const item of items) {
-    if (filtered) {
-      if (!item.session || item.session.date === null) continue;
-      if (sessionNumber !== undefined && item.session.session_number !== sessionNumber) continue;
-      if (platformKey !== undefined && normalizeName(item.session.session_platform) !== platformKey) continue;
-    }
-    rows.push({
-      member_id: item.member_id,
-      name: item.name,
-      age: item.age,
-      club: item.club,
-      wso: item.wso,
-      gender: item.gender,
-      weight_class: item.weight_class,
-      entry_total: item.entry_total,
-      adaptive: item.adaptive,
-      session_number: item.session?.session_number ?? null,
-      session_platform: item.session?.session_platform ?? null,
-      date: item.session?.date ?? null,
-      start_time: item.session?.start_time ?? null,
-      weigh_in_time: item.session?.weigh_in_time ?? null,
-    });
-  }
-  return rows;
+  return rows.filter(
+    (row) =>
+      row.date !== null &&
+      row.session_number !== null &&
+      row.session_platform !== null &&
+      (sessionNumber === undefined || row.session_number === sessionNumber) &&
+      (platformKey === undefined || normalizeName(row.session_platform) === platformKey),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -395,21 +412,10 @@ export function yearBestsFromTimelines(
 ): NamedBests[] {
   const byKey = new Map<string, YearBests>();
   for (const [key, points] of timelines) {
-    let bests: YearBests | null = null;
-    for (const [date, snatch, cj, total] of points) {
-      if (date < sinceDate) continue;
-      const b: YearBests = bests ?? ZERO_BESTS;
-      bests = {
-        best_snatch: Math.max(b.best_snatch, snatch),
-        best_cj: Math.max(b.best_cj, cj),
-        best_total: Math.max(b.best_total, total),
-      };
-    }
+    const bests = bestsSince(points, sinceDate);
     if (bests) byKey.set(key, bests);
   }
-  return Array.from(new Set(names))
-    .sort(compareBytes)
-    .map((name) => ({ name, ...(byKey.get(normalizeName(name)) ?? ZERO_BESTS) }));
+  return namedBests(names, byKey);
 }
 
 // ---------------------------------------------------------------------------

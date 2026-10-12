@@ -4,7 +4,15 @@ import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
-import { toApiLiftingResult, ZERO_BESTS, type ApiLiftingResult, type NamedBests, type YearBests } from './lib/results';
+import {
+  bestsSince,
+  namedBests,
+  toApiLiftingResult,
+  ZERO_BESTS,
+  type ApiLiftingResult,
+  type NamedBests,
+  type YearBests,
+} from './lib/results';
 import { compareBytes } from './lib/sort';
 import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
 import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
@@ -80,20 +88,6 @@ function since(history: readonly ApiLiftingResult[], cutoff: string): ApiLifting
 
 type Histories = Map<string, ApiLiftingResult[]>;
 
-/** Bests over a newest-first mark list cut at `cutoff` (inclusive); the same numbers `bestsOf(since(...))` gives. */
-function bestsOfMarks(marks: readonly Mark[], cutoff: string): YearBests | null {
-  let bests = null as YearBests | null;
-  for (const [date, snatch, cj, total] of marks) {
-    if (date < cutoff) break;
-    bests = {
-      best_snatch: Math.max(bests?.best_snatch ?? 0, snatch),
-      best_cj: Math.max(bests?.best_cj ?? 0, cj),
-      best_total: Math.max(bests?.best_total ?? 0, total),
-    };
-  }
-  return bests;
-}
-
 export function answerByNames(histories: Histories, latestOnly: boolean, limit: number | undefined): string {
   const rows: ApiLiftingResult[] = [];
   for (const history of histories.values()) {
@@ -114,16 +108,14 @@ export function answerRecent(histories: Histories, cutoff: string): string {
 export function answerBests(summaries: Map<string, Summary>, names: readonly string[], cutoff: string): NamedBests[] {
   const bestByKey = new Map<string, YearBests>();
   for (const [key, { marks }] of summaries) {
-    const bests = bestsOfMarks(marks, cutoff);
+    const bests = bestsSince(marks, cutoff);
     if (bests) bestByKey.set(key, bests);
   }
-  return Array.from(new Set(names))
-    .sort(compareBytes)
-    .map((name) => ({ name, ...(bestByKey.get(normalizeName(name)) ?? ZERO_BESTS) }));
+  return namedBests(names, bestByKey);
 }
 
 export function answerYearBests(marks: readonly Mark[], cutoff: string): YearBests {
-  return bestsOfMarks(marks, cutoff) ?? ZERO_BESTS;
+  return bestsSince(marks, cutoff) ?? ZERO_BESTS;
 }
 
 /** `answerByNames` with `latestOnly`, from the summaries' latest rows. */
