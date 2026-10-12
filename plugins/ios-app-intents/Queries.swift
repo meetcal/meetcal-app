@@ -4,7 +4,9 @@
 //
 //  Entity queries. Saved sessions come from the App Group mirror (offline,
 //  personal). Meets / athletes / sessions are server-backed via MeetCalAPI —
-//  Apple's recommended pattern for large / changing datasets.
+//  Apple's recommended pattern for large / changing datasets. Server-backed
+//  queries throw on a network or server failure instead of answering `[]`,
+//  so Siri never reports an outage as "nothing found".
 //
 
 import Foundation
@@ -35,7 +37,7 @@ struct SavedSessionQuery: EnumerableEntityQuery {
 
 struct MeetQuery: EntityStringQuery {
     func entities(for identifiers: [MeetEntity.ID]) async throws -> [MeetEntity] {
-        let meets = (try? await MeetCalAPI.shared.meets()) ?? []
+        let meets = try await MeetCalAPI.shared.meets()
         let wanted = Set(identifiers)
         return meets
             .map { MeetEntity(api: $0) }
@@ -43,7 +45,7 @@ struct MeetQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [MeetEntity] {
-        let meets = (try? await MeetCalAPI.shared.meets()) ?? []
+        let meets = try await MeetCalAPI.shared.meets()
         let needle = string.lowercased()
         return meets
             .map { MeetEntity(api: $0) }
@@ -51,7 +53,7 @@ struct MeetQuery: EntityStringQuery {
     }
 
     func suggestedEntities() async throws -> [MeetEntity] {
-        let meets = (try? await MeetCalAPI.shared.meets()) ?? []
+        let meets = try await MeetCalAPI.shared.meets()
         return meets.prefix(10).map { MeetEntity(api: $0) }
     }
 }
@@ -64,7 +66,7 @@ struct AthleteQuery: EntityStringQuery {
         // selected meet's roster where possible.
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
-        let athletes = (try? await MeetCalAPI.shared.athletes(meet: meet)) ?? []
+        let athletes = try await MeetCalAPI.shared.athletes(meet: meet)
         let wanted = Set(identifiers)
         return athletes
             .map { AthleteEntity(api: $0) }
@@ -77,7 +79,7 @@ struct AthleteQuery: EntityStringQuery {
 
         // Prefer the selected meet's roster (has session/platform info).
         if !meet.isEmpty {
-            let athletes = (try? await MeetCalAPI.shared.athletes(meet: meet)) ?? []
+            let athletes = try await MeetCalAPI.shared.athletes(meet: meet)
             let matches = athletes
                 .map { AthleteEntity(api: $0) }
                 .filter { $0.name.lowercased().contains(needle) }
@@ -100,11 +102,11 @@ struct AthleteQuery: EntityStringQuery {
         }
 
         // Fall back to the global search endpoint.
-        let response = try? await MeetCalAPI.shared.search(string)
+        let response = try await MeetCalAPI.shared.search(string)
         let names =
-            [response?.matched_name].compactMap { $0 }
-            + (response?.suggestions ?? [])
-            + (response?.results?.compactMap { $0.name } ?? [])
+            [response.matched_name].compactMap { $0 }
+            + (response.suggestions ?? [])
+            + (response.results?.compactMap { $0.name } ?? [])
         var seen = Set<String>()
         return names.compactMap { name -> AthleteEntity? in
             guard seen.insert(name.lowercased()).inserted else { return nil }
@@ -115,7 +117,7 @@ struct AthleteQuery: EntityStringQuery {
     func suggestedEntities() async throws -> [AthleteEntity] {
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
-        let athletes = (try? await MeetCalAPI.shared.athletes(meet: meet)) ?? []
+        let athletes = try await MeetCalAPI.shared.athletes(meet: meet)
         return athletes.prefix(10).map { AthleteEntity(api: $0) }
     }
 }
@@ -129,8 +131,8 @@ struct SessionQuery: EntityStringQuery {
         "\(meet)||\(sessionNumber)||\(platform)"
     }
 
-    static func sessions(forMeet meet: String) async -> [SessionEntity] {
-        let rows = (try? await MeetCalAPI.shared.schedule(meet: meet)) ?? []
+    static func sessions(forMeet meet: String) async throws -> [SessionEntity] {
+        let rows = try await MeetCalAPI.shared.schedule(meet: meet)
         // Group by (session_id, platform); join weight classes.
         var grouped: [String: SessionEntity] = [:]
         for row in rows {
@@ -163,7 +165,7 @@ struct SessionQuery: EntityStringQuery {
     func entities(for identifiers: [SessionEntity.ID]) async throws -> [SessionEntity] {
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
-        let all = await Self.sessions(forMeet: meet)
+        let all = try await Self.sessions(forMeet: meet)
         let wanted = Set(identifiers)
         return all.filter { wanted.contains($0.id) }
     }
@@ -171,7 +173,7 @@ struct SessionQuery: EntityStringQuery {
     func entities(matching string: String) async throws -> [SessionEntity] {
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
-        let all = await Self.sessions(forMeet: meet)
+        let all = try await Self.sessions(forMeet: meet)
         let needle = string.lowercased()
         return all.filter {
             needle.isEmpty
@@ -184,7 +186,7 @@ struct SessionQuery: EntityStringQuery {
     func suggestedEntities() async throws -> [SessionEntity] {
         let meet = SharedStore.selectedMeet
         guard !meet.isEmpty else { return [] }
-        return await Self.sessions(forMeet: meet)
+        return try await Self.sessions(forMeet: meet)
     }
 }
 

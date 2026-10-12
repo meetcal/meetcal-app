@@ -11,6 +11,27 @@ import Foundation
 import AppIntents
 import SwiftUI
 
+// MARK: - Failure answers
+
+/// What an intent answers when MeetCal's server could not be reached
+/// (offline, a timeout, a server error). Kept distinct from "nothing
+/// matched", which is what swallowing the error used to make Siri say.
+enum IntentFailure {
+    static func dialog() -> IntentDialog {
+        "MeetCal couldn't reach the server. Check your connection and try again."
+    }
+
+    static func view(title: String, systemImage: String) -> SnippetListView {
+        SnippetListView(
+            title: title,
+            subtitle: nil,
+            rows: [],
+            emptyMessage: "Couldn't reach MeetCal",
+            systemImage: systemImage
+        )
+    }
+}
+
 // MARK: - FindMeetsIntent
 
 struct FindMeetsIntent: AppIntent {
@@ -21,7 +42,16 @@ struct FindMeetsIntent: AppIntent {
     var searchTerm: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[MeetEntity]> & ProvidesDialog & ShowsSnippetView {
-        let apiMeets = (try? await MeetCalAPI.shared.meets()) ?? []
+        let apiMeets: [APIMeet]
+        do {
+            apiMeets = try await MeetCalAPI.shared.meets()
+        } catch {
+            return .result(
+                value: [MeetEntity](),
+                dialog: IntentFailure.dialog(),
+                view: IntentFailure.view(title: "Meets", systemImage: "calendar")
+            )
+        }
         var meets = apiMeets.map { MeetEntity(api: $0) }
 
         if let term = searchTerm?.trimmingCharacters(in: .whitespacesAndNewlines), !term.isEmpty {
@@ -67,7 +97,16 @@ struct SearchAthleteIntent: AppIntent {
     var name: String
 
     func perform() async throws -> some IntentResult & ReturnsValue<[AthleteEntity]> & ProvidesDialog & ShowsSnippetView {
-        let matches = (try? await AthleteEntity.defaultQuery.entities(matching: name)) ?? []
+        let matches: [AthleteEntity]
+        do {
+            matches = try await AthleteEntity.defaultQuery.entities(matching: name)
+        } catch {
+            return .result(
+                value: [AthleteEntity](),
+                dialog: IntentFailure.dialog(),
+                view: IntentFailure.view(title: "Athletes", systemImage: "person.fill")
+            )
+        }
         let limited = Array(matches.prefix(8))
 
         let rows = limited.map { athlete -> SnippetRow in
@@ -128,7 +167,16 @@ struct GetSessionScheduleIntent: AppIntent {
             )
         }
 
-        let sessions = await SessionQuery.sessions(forMeet: meetName)
+        let sessions: [SessionEntity]
+        do {
+            sessions = try await SessionQuery.sessions(forMeet: meetName)
+        } catch {
+            return .result(
+                value: [SessionEntity](),
+                dialog: IntentFailure.dialog(),
+                view: IntentFailure.view(title: meetName, systemImage: "calendar")
+            )
+        }
         let limited = Array(sessions.prefix(12))
         let rows = limited.map { session -> SnippetRow in
             var subtitleParts: [String] = []
@@ -182,9 +230,16 @@ struct ShowSavedSessionsIntent: AppIntent {
             )
         }
 
-        let dialog: IntentDialog = saved.isEmpty
-            ? "You don't have any saved sessions yet."
-            : "You have \(saved.count) saved sessions."
+        // Only the meet selected in the app is mirrored, so an empty answer
+        // names that meet instead of claiming nothing is saved anywhere.
+        let dialog: IntentDialog
+        if !saved.isEmpty {
+            dialog = "You have \(saved.count) upcoming saved sessions."
+        } else if selectedMeet.isEmpty {
+            dialog = "You don't have any upcoming saved sessions. Select a meet in MeetCal to see the sessions you saved for it."
+        } else {
+            dialog = "You don't have any upcoming saved sessions for \(selectedMeet). To check another meet, select it in MeetCal."
+        }
 
         return .result(
             value: saved,
@@ -212,11 +267,32 @@ struct GetAthleteResultsIntent: AppIntent {
     /// Recent meets shown in the snippet; also the per-name fetch bound.
     private static let recentResultCount = 5
 
+    /// The bests cover `HistoryCutoff.yearBestsYears` of results, not a
+    /// career, so they are labelled with that window, never as records.
+    private static var bestsWindow: String {
+        let years = HistoryCutoff.yearBestsYears
+        return years == 1 ? "the past year" : "the past \(years) years"
+    }
+
+    private static var bestsTitle: String {
+        let years = HistoryCutoff.yearBestsYears
+        return years == 1 ? "Bests (Past Year)" : "Bests (Past \(years) Years)"
+    }
+
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        async let bestsTask = MeetCalAPI.shared.bests(names: [name])
-        async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
-        let bests = (try? await bestsTask) ?? [:]
-        let results = (try? await resultsTask) ?? []
+        let bests: [String: APIYearBests]
+        let results: [APILiftingResult]
+        do {
+            async let bestsTask = MeetCalAPI.shared.bests(names: [name])
+            async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
+            bests = try await bestsTask
+            results = try await resultsTask
+        } catch {
+            return .result(
+                dialog: IntentFailure.dialog(),
+                view: IntentFailure.view(title: name, systemImage: "trophy.fill")
+            )
+        }
 
         var rows: [SnippetRow] = []
 
@@ -226,7 +302,7 @@ struct GetAthleteResultsIntent: AppIntent {
             let total = best.best_total.map { Int($0) }
             rows.append(SnippetRow(
                 leading: "",
-                title: "Personal Records",
+                title: Self.bestsTitle,
                 subtitle: "Sn \(snatch.map(String.init) ?? "—") • CJ \(cj.map(String.init) ?? "—")",
                 trailing: total.map { "\($0) kg" } ?? "—"
             ))
@@ -246,7 +322,7 @@ struct GetAthleteResultsIntent: AppIntent {
         if rows.isEmpty {
             dialog = "I couldn't find results for \(name)."
         } else if let best = bests[name] ?? bests.values.first, let total = best.best_total {
-            dialog = "\(name)'s best total is \(Int(total)) kilograms."
+            dialog = "\(name)'s best total over \(Self.bestsWindow) is \(Int(total)) kilograms."
         } else {
             dialog = "Here are recent results for \(name)."
         }
@@ -339,8 +415,22 @@ private func filterSubtitle(_ parts: [String?]) -> String {
     return joined.isEmpty ? "Latest data" : joined
 }
 
-private func liveQualifyingTotalsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
-    let apiRows = (try? await MeetCalAPI.shared.qualifyingTotals()) ?? []
+/// Runs a live comp-data lookup, answering the unreachable-server result when
+/// it throws.
+private func liveOrUnreachable(
+    title: String,
+    systemImage: String,
+    _ load: () async throws -> (IntentDialog, SnippetListView, [CompDataRowEntity])
+) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    do {
+        return try await load()
+    } catch {
+        return (IntentFailure.dialog(), IntentFailure.view(title: title, systemImage: systemImage), [])
+    }
+}
+
+private func liveQualifyingTotalsResult(filters: CompDataFilters) async throws -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = try await MeetCalAPI.shared.qualifyingTotals()
     // With no filters, fall back to the previous Nationals / Men / Senior default.
     let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
     let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
@@ -373,8 +463,8 @@ private func liveQualifyingTotalsResult(filters: CompDataFilters) async -> (Inte
     return (dialog, view, compDataEntities(category: "Qualifying Totals", rows: rows))
 }
 
-private func liveStandardsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
-    let apiRows = (try? await MeetCalAPI.shared.standards()) ?? []
+private func liveStandardsResult(filters: CompDataFilters) async throws -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = try await MeetCalAPI.shared.standards()
     let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
     let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
     let filtered = apiRows.filter {
@@ -404,8 +494,8 @@ private func liveStandardsResult(filters: CompDataFilters) async -> (IntentDialo
     return (dialog, view, compDataEntities(category: "A/B Standards", rows: rows))
 }
 
-private func liveRankingsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
-    let apiRows = (try? await MeetCalAPI.shared.intlRankings()) ?? []
+private func liveRankingsResult(filters: CompDataFilters) async throws -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = try await MeetCalAPI.shared.intlRankings()
     // With no meet filter, default to the first meet in the feed.
     let meet = filters.meet ?? (filters.isEmpty ? apiRows.first?.meet : nil)
     let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
@@ -440,8 +530,8 @@ private func liveRankingsResult(filters: CompDataFilters) async -> (IntentDialog
     return (dialog, view, compDataEntities(category: "International Rankings", rows: rows))
 }
 
-private func liveRecordsResult(filters: CompDataFilters) async -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
-    let apiRows = (try? await MeetCalAPI.shared.records()) ?? []
+private func liveRecordsResult(filters: CompDataFilters) async throws -> (IntentDialog, SnippetListView, [CompDataRowEntity]) {
+    let apiRows = try await MeetCalAPI.shared.records()
     let recordType = filters.recordType ?? (filters.isEmpty ? "USAW" : nil)
     let gender = filters.gender ?? (filters.isEmpty ? "Men" : nil)
     let age = filters.ageCategory ?? (filters.isEmpty ? "Senior" : nil)
@@ -504,11 +594,15 @@ struct GetQualifyingTotalsIntent: AppIntent {
                 systemImage: "target"
             )
             if rows.isEmpty {
-                (dialog, view, rows) = await liveQualifyingTotalsResult(filters: filters)
+                (dialog, view, rows) = await liveOrUnreachable(title: "Qualifying Totals", systemImage: "target") {
+                    try await liveQualifyingTotalsResult(filters: filters)
+                }
             }
             return .result(value: rows, dialog: dialog, view: view)
         }
-        let (dialog, view, rows) = await liveQualifyingTotalsResult(filters: filters)
+        let (dialog, view, rows) = await liveOrUnreachable(title: "Qualifying Totals", systemImage: "target") {
+            try await liveQualifyingTotalsResult(filters: filters)
+        }
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
@@ -539,11 +633,15 @@ struct GetStandardsIntent: AppIntent {
                 systemImage: "chart.bar"
             )
             if rows.isEmpty {
-                (dialog, view, rows) = await liveStandardsResult(filters: filters)
+                (dialog, view, rows) = await liveOrUnreachable(title: "A/B Standards", systemImage: "chart.bar") {
+                    try await liveStandardsResult(filters: filters)
+                }
             }
             return .result(value: rows, dialog: dialog, view: view)
         }
-        let (dialog, view, rows) = await liveStandardsResult(filters: filters)
+        let (dialog, view, rows) = await liveOrUnreachable(title: "A/B Standards", systemImage: "chart.bar") {
+            try await liveStandardsResult(filters: filters)
+        }
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
@@ -578,11 +676,15 @@ struct GetRankingsIntent: AppIntent {
                 systemImage: "globe.americas.fill"
             )
             if rows.isEmpty {
-                (dialog, view, rows) = await liveRankingsResult(filters: filters)
+                (dialog, view, rows) = await liveOrUnreachable(title: "International Rankings", systemImage: "globe.americas.fill") {
+                    try await liveRankingsResult(filters: filters)
+                }
             }
             return .result(value: rows, dialog: dialog, view: view)
         }
-        let (dialog, view, rows) = await liveRankingsResult(filters: filters)
+        let (dialog, view, rows) = await liveOrUnreachable(title: "International Rankings", systemImage: "globe.americas.fill") {
+            try await liveRankingsResult(filters: filters)
+        }
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
@@ -610,7 +712,9 @@ struct GetRecordsIntent: AppIntent {
             weightClass: weightClass,
             recordType: recordType
         )
-        let (dialog, view, rows) = await liveRecordsResult(filters: filters)
+        let (dialog, view, rows) = await liveOrUnreachable(title: "Records", systemImage: "medal.fill") {
+            try await liveRecordsResult(filters: filters)
+        }
         return .result(value: rows, dialog: dialog, view: view)
     }
 }
